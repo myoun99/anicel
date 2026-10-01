@@ -165,14 +165,13 @@ void main() {
   });
 
   group('the frame ruler composites onto the header it just filled', () {
-    _LineSpy paintRuler({int currentFrameIndex = -1}) {
+    _LineSpy paintRuler() {
       final spy = _LineSpy();
       TimelineFrameRulerPainter(
         scale: TimelineRulerScale(
           axis: Axis.horizontal,
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
-          currentFrameIndex: currentFrameIndex,
           playbackFrameCount: 30,
           leadingFrameSpacer: 0,
           crossExtent: 28,
@@ -197,41 +196,6 @@ void main() {
       );
       expect(line.color, isNot(paintsAs(ink.color)));
     });
-
-    test('the SELECTED header\'s line multiplies onto ITS tint, not onto the '
-        'plain surface beside it', () {
-      final spy = paintRuler(currentFrameIndex: 6);
-      final selectedGround = TimelineFrameRulerPainter(
-        scale: TimelineRulerScale(
-          axis: Axis.horizontal,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: 30,
-          currentFrameIndex: 6,
-          playbackFrameCount: 30,
-          leadingFrameSpacer: 0,
-          crossExtent: 28,
-          metrics: TimelineGridMetrics.defaults,
-          colorScheme: scheme,
-          face: const TextStyle(),
-          numberType: TimelineFrameRulerPainter.numberType,
-          secondsFontSize: 9,
-        ),
-      ).scale.modelAt(6).background;
-      expect(
-        selectedGround,
-        isNot(scheme.surface),
-        reason: 'fixture premise: the current frame\'s header is tinted',
-      );
-      expect(
-        lineAtX(spy, timelineFrameBoundaryLinePosition(6, 24)).color,
-        paintsAs(
-          timelineGridLineInkOnGround(
-            timelineGridSixLineInk(scheme),
-            selectedGround,
-          ),
-        ),
-      );
-    });
   });
 
   /// 🚨AND THE X-SHEET'S RAIL, which had never joined. D43 landed on the
@@ -242,14 +206,13 @@ void main() {
   /// the two painters' rect and model had been brought together and the
   /// paint was the only thing left to compare.
   group('the X-sheet rail composites onto the row it just filled', () {
-    _LineSpy paintRail({int currentFrameIndex = -1}) {
+    _LineSpy paintRail() {
       final spy = _LineSpy();
       XSheetFrameRailPainter(
         scale: TimelineRulerScale(
           axis: Axis.vertical,
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
-          currentFrameIndex: currentFrameIndex,
           playbackFrameCount: 30,
           leadingFrameSpacer: 0,
           crossExtent: 28,
@@ -279,33 +242,6 @@ void main() {
       );
       expect(line.color, isNot(paintsAs(timelineGridSixLineInk(scheme).color)));
     });
-
-    test('and the SELECTED row\'s line multiplies onto ITS tint', () {
-      final ground = TimelineRulerScale(
-        axis: Axis.vertical,
-        frameStartIndex: 0,
-        frameEndIndexExclusive: 30,
-        currentFrameIndex: 6,
-        playbackFrameCount: 30,
-        leadingFrameSpacer: 0,
-        crossExtent: 28,
-        metrics: TimelineGridMetrics.defaults,
-        colorScheme: scheme,
-        face: const TextStyle(),
-        numberType: XSheetFrameRailPainter.numberType,
-        secondsFontSize: 8,
-      ).modelAt(6).background;
-      expect(ground, isNot(scheme.surface), reason: 'fixture premise');
-      expect(
-        lineAtY(
-          paintRail(currentFrameIndex: 6),
-          timelineFrameBoundaryLinePosition(6, 24),
-        ).color,
-        paintsAs(
-          timelineGridLineInkOnGround(timelineGridSixLineInk(scheme), ground),
-        ),
-      );
-    });
   });
 
   test('the two surfaces answer a shared boundary with the SAME pixel when '
@@ -326,7 +262,6 @@ void main() {
         axis: Axis.horizontal,
         frameStartIndex: 0,
         frameEndIndexExclusive: 30,
-        currentFrameIndex: -1,
         playbackFrameCount: 30,
         leadingFrameSpacer: 0,
         crossExtent: 28,

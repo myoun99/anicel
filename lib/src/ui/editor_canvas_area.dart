@@ -15,12 +15,16 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/canvas_selection_shape.dart' show CanvasSelectionShape;
 import '../services/cut_piece_slot.dart';
+import '../services/playback/playback_frame_mapping.dart'
+    show TrackStackContribution;
 import '../services/last_stroke_slot.dart';
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_editor_selection.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/temporary_tool.dart';
+import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
@@ -39,8 +43,7 @@ import 'canvas/flip_hud_controller.dart';
 import '../models/drawing_guide.dart';
 import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
-import 'canvas/canvas_point_gizmo.dart';
-import 'canvas/layer_transform_box.dart';
+import 'canvas/row_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
@@ -54,22 +57,41 @@ import 'dialogs/app_confirm_dialog.dart' show showAppNotice;
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import 'timeline/memo_token.dart' show ByList;
-import '../models/layer.dart' show Layer, layerAcceptsBrushInput;
+import 'timeline/timeline_drag_preview.dart'
+    show
+        TimelineDragPreview,
+        timelineDragPreviewGlobalLayerFor,
+        timelineDragPreviewLayerFor;
+import '../models/layer.dart' show Layer;
+import '../models/layer_kind.dart';
 import '../services/layer_pose_matrix.dart'
     show LayerPoseSample, artworkToCanvas, canvasToArtwork;
 import '../models/canvas_point.dart';
-import '../models/transform_track.dart' show TransformPose;
+import '../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
+import 'widgets/tick_layer.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'effective_device_pixel_ratio.dart';
 import 'timeline/transform_lane_policy.dart'
     show CanvasManipulator, canvasManipulatorsForLane;
 import 'repaint_props.dart';
+import 'session/editing_canvas.dart' show StrokeRefusal;
 
 part 'canvas_area/interactive_canvas_build.dart';
+
+/// What one mount of the track stack says of itself: the frame it follows,
+/// whose contributions it draws there, whether it lays its own floor,
+/// whether it crops to the camera, and the key it is found by.
+typedef _TrackStackMount = ({
+  ValueListenable<int?> globalFrame,
+  List<TrackStackContribution> Function(int globalFrame) positionsOf,
+  bool paintsFloor,
+  bool cameraView,
+  Key key,
+});
 
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
@@ -400,6 +422,86 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   @override
   Widget build(BuildContext context) {
     final session = widget.session;
+    // A drag in flight moves what the canvas shows (F-195;
+    // canvas-follows-block-moves, 유저 2026-09-28 「따라가게」). The picture
+    // and the chrome over it hear it for themselves, each in its own
+    // TickLayer (`_InteractiveCanvasBuild._followingTheDrag`); the AREA is
+    // rebuilt only for what it hands the panel ([_panelShows]).
+    return SlicedValueListenableBuilder<TimelineDragPreview?, Object?>(
+      valueListenable: session.dragPreview,
+      slice: (preview) => _panelShows(session, preview),
+      builder: (context, _) => _buildFollowingSession(session),
+    );
+  }
+
+  /// The rows [_panelShows] last answered for, and its answer — a drag step
+  /// that moves none of them cannot change it (the lookup is cheap, the
+  /// answer walks the composite).
+  _DragAsShown? _panelRows;
+  Object? _panelShown;
+
+  /// What the canvas AREA takes from a drag: the row being drawn on as the
+  /// panel is handed it — its display opacity, its colour keys and the pose
+  /// the pen draws in ([_InteractiveCanvasBuild.standingOf]) — and, in
+  /// camera mode, the camera's pose the Fit button frames.
+  ///
+  /// 🚨canvas-wakes-for-what-it-shows: a block carried under the playhead
+  /// changes the PICTURE, which the underlay follows by itself — not these.
+  /// Rebuilding the area for it relaid out the whole panel content a step.
+  Object? _panelShows(
+    EditorSessionManager session,
+    TimelineDragPreview? preview,
+  ) {
+    final rows = _rowsShownBy(session, preview);
+    if (rows == _panelRows) {
+      return _panelShown;
+    }
+    _panelRows = rows;
+    final isCameraLayerActive = session.camera.isCameraLayerActive;
+    final inGap =
+        !session.playbackRig.playback.isActive &&
+        session.editingSession.playheadInGap;
+    final stack = inGap ? null : session.editingCanvas.stack;
+    return _panelShown = (
+      stack?.activeLayerOpacity,
+      stack == null ? null : ByList(stack.activeSourceEffects),
+      _InteractiveCanvasBuild.standingOf(
+        session,
+        inGap: inGap,
+        isCameraLayerActive: isCameraLayerActive,
+      ).pose,
+      isCameraLayerActive ? session.camera.cameraPoseAtCurrentFrame : null,
+    );
+  }
+
+  /// Every row of the open cut and of its track as a drag shows it, in both
+  /// forms, and the camera the canvas draws — equal while the drag changes
+  /// none of them (a movie's end, a sound's silhouette on an SE cell, a V
+  /// track's chain, another cut's rows).
+  ///
+  /// ⚠️A new reader of the channel on the canvas reads rows by the same two
+  /// functions ([timelineDragPreviewLayerFor], [timelineDragPreviewGlobalLayerFor])
+  /// or the camera's one answer; one that read something else would need it
+  /// here too, or it would go stale between steps.
+  static _DragAsShown _rowsShownBy(
+    EditorSessionManager session,
+    TimelineDragPreview? preview,
+  ) {
+    final track = session.activeTrack;
+    return _DragAsShown([
+      for (final row in [
+        ...?session.activeCutOrNull?.layers,
+        ...track.seLayers,
+        track.transitionLayer,
+      ]) ...[
+        timelineDragPreviewLayerFor(preview, row.id),
+        timelineDragPreviewGlobalLayerFor(preview, row.id),
+      ],
+      session.camera.activeCutCameraTrack,
+    ]);
+  }
+
+  Widget _buildFollowingSession(EditorSessionManager session) {
     return ListenableBuilder(
       // The session subscription lives HERE now (HomePage no longer
       // setStates the world). Committed seeks retarget the editing stack
@@ -485,10 +587,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   }
 
   /// The track stack (multitrack display path): one camera-frame
-  /// projection per covered track, following [globalFrame] per move.
-  /// Three mounts, one construction: the parked contentOverride, the
-  /// scrub preview's gap branch (both on the gap parking) and ALL-CUTS
-  /// playback (on the clock's global frame, R3a).
+  /// projection per covered track, following [globalFrame] per move — the
+  /// parked contentOverride, the scrub preview's gap branch (both on the gap
+  /// parking) and ALL-CUTS playback (on the clock's global frame, R3a).
   ///
   /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
@@ -502,29 +603,67 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
     bool cameraView = false,
-  }) {
+  }) => _trackStack(session, viewport, (
+    globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
+    positionsOf: session.rowSpans.trackStackContributionsAt,
+    paintsFloor: true,
+    cameraView: cameraView,
+    key: const ValueKey<String>('canvas-track-stack-view'),
+  ));
+
+  /// The editing canvas's O.L partner ([_cutFadeWash]): [partners] held at
+  /// [standing], laid OVER the live cut — so no floor of its own.
+  Widget _olPartnerStack(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    int standing,
+    List<TrackStackContribution> partners,
+  ) => _trackStack(session, viewport, (
+    globalFrame: AlwaysStoppedAnimation<int?>(standing),
+    positionsOf: (_) => partners,
+    paintsFloor: false,
+    cameraView: false,
+    key: const ValueKey<String>('canvas-ol-partner'),
+  ));
+
+  /// The one construction every mount of the track stack shares.
+  Widget _trackStack(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+    _TrackStackMount mount,
+  ) {
     final project = session.repository.requireProject();
-    return CanvasTrackStackView(
-      globalFrame: globalFrame ?? session.gapParkingListenable,
-      positionsOf: session.rowSpans.trackStackContributionsAt,
-      compositeCache: session.renderCaches.cutFrameCompositeCache,
-      qualityOf: () => session.playbackRig.playbackQuality,
-      cameraFrameSize: session.camera.cameraFrameSize,
-      cameraViewEnabled: cameraView,
-      cameraPoseOf: session.camera.cameraPoseForCut,
-      seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
-      cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
-      trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-      cutPictureVisibleOf: session.isCutPictureVisible,
-      onFrameCached:
-          session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
-      viewport: viewport,
-      background: session.projectSettings.projectBackground,
-      backdropArgb: project.backdropArgb,
-      backdropNone: project.backdropNone,
-      pasteboardArgb: project.pasteboardArgb,
-      pasteboardNone: project.pasteboardNone,
-      trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
+    // 🚨canvas-stack-relays-the-panel-per-scrub-crossing (I-22 계측, 09-28): the
+    // view rebuilds itself as a scrub crosses into another cut, and bare under
+    // the panel content's LayoutBuilder every such rebuild relaid out and
+    // repainted the whole panel content. Its own TickLayer takes that scope —
+    // every mount hands it the panel's size (a Positioned.fill, a
+    // StackFit.expand).
+    return TickLayer(
+      child: CanvasTrackStackView(
+        key: mount.key,
+        globalFrame: mount.globalFrame,
+        positionsOf: mount.positionsOf,
+        paintsFloor: mount.paintsFloor,
+        compositeCache: session.renderCaches.cutFrameCompositeCache,
+        qualityOf: () => session.playbackRig.playbackQuality,
+        cameraFrameSize: session.camera.cameraFrameSize,
+        cameraViewEnabled: mount.cameraView,
+        cameraPoseOf: session.camera.cameraPoseForCut,
+        seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
+        cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
+        trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
+        cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
+        onFrameCached:
+            session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
+        viewport: viewport,
+        background: session.projectSettings.projectBackground,
+        backdropArgb: project.backdropArgb,
+        backdropNone: project.backdropNone,
+        pasteboardArgb: project.pasteboardArgb,
+        pasteboardNone: project.pasteboardNone,
+        trackEffectsOf: session.effectsAndFx.trackEffectsForCut,
+      ),
     );
   }
 
@@ -533,9 +672,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   // draw straight in the layer's own canvas space.
 
   /// R26 #35: WHY the paint press did nothing — a drawing row simply has
-  /// no cel at this frame; every other section cannot hold artwork at
-  /// all. One shared message table, so the wording stays consistent
-  /// wherever this refusal is reused.
+  /// no cel at this frame; a hidden one has it out of sight; every other
+  /// section cannot hold artwork at all. One shared message table, so the
+  /// wording stays consistent wherever this refusal is reused.
   String _drawRefusalFor(EditorSessionManager session) {
     final strings = AppStrings.of(
       session.languageSettings.value.programLanguage,
@@ -548,15 +687,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     if (!_rowAcceptsStrokes(session.standing.currentRowListenable.value)) {
       return strings.noticeLayerNotDrawable;
     }
-    final activeLayer = session.activeLayer;
     // R27 #16: the question is whether THIS LAYER takes strokes, not
     // which section it sits in — the CAM section is no longer uniformly
     // undrawable in the user's model, so the refusal names the layer
     // (media-REFERENCE layers included: strokes wait for a rasterize).
-    final drawable = activeLayer != null && layerAcceptsBrushInput(activeLayer);
-    return drawable
-        ? strings.noticeNoFrameHere
-        : strings.noticeLayerNotDrawable;
+    // F-242: and the answer is the stroke target's own, reason and all.
+    return switch (session.editingCanvas.activeRowStrokeRefusal) {
+      StrokeRefusal.notDrawable => strings.noticeLayerNotDrawable,
+      StrokeRefusal.hidden => strings.noticeLayerHidden,
+      null => strings.noticeNoFrameHere,
+    };
   }
 
   /// Whether the row the frame-axis verbs are on can take a stroke.
@@ -567,6 +707,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// brush has nothing to write on.
   static bool _rowAcceptsStrokes(TimelineRowAddress? row) =>
       row is! LaneRowAddress;
+
+  /// Whether the row you stand on takes a stroke — H19's ROW question, the
+  /// one a press and every pixel verb ask: not a property lane
+  /// ([_rowAcceptsStrokes]), and a layer the stroke target's own gates let
+  /// draw (`EditingCanvas.activeRowStrokeRefusal`).
+  ///
+  /// 🗣️F-223 (유저 2026-09-28): 「카메라 레이어에 서있을때 변형툴쓰면
+  /// 콘티그림?이 옮겨짐. 그림이 없으면 아무것도 안하는 로직인건데.」 The
+  /// camera row shows the first drawn row's cel so there is artwork to frame
+  /// (`Camera.cameraBackdropSelection`) — a cel it SHOWS, not one it stands
+  /// on — and this used to ask only 「is it a lane」, so the pixel verbs
+  /// took the borrowed cel for the row's own.
+  static bool _standingRowTakesStrokes(EditorSessionManager session) =>
+      _rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+      session.editingCanvas.activeRowStrokeRefusal == null;
 
   void _noteCanvasProbe(
     EditorSessionManager session,
@@ -629,7 +784,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           seNameTagsOf: session.seEntries.seNameTagsForCutFrame,
           cutFxEnabledOf: session.effectsAndFx.isCutFxEnabled,
           trackStaticOpacityOf: session.opacityVerbs.trackStaticOpacityForCut,
-          cutPictureVisibleOf: session.isCutPictureVisible,
+          cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
           viewport: viewport,
           background: session.projectSettings.projectBackground,
           pasteboardArgb: session.repository.requireProject().pasteboardArgb,
@@ -677,8 +832,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // 🚨F-196: the ROW first. `beginAutoFrameForStroke` asks the toggle and
     // the LAYER, never the row you stand on, so a press on a lane's empty
     // frame made a block on the layer beneath it and then drew into it —
-    // the stroke the lane refuses.
-    if (_rowAcceptsStrokes(session.standing.currentRowListenable.value) &&
+    // the stroke the lane refuses. F-242: nor does it ask the eye, so a
+    // hidden row's empty frame got a block no stroke could draw into.
+    if (_standingRowTakesStrokes(session) &&
         session.autoFrame.beginAutoFrameForStroke()) {
       return true;
     }
@@ -691,11 +847,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// ([FrameVerbs.layerParentPlacement]); an unfoldered row's parent is the
   /// canvas itself, and its values pass straight through.
   ///
-  /// 🚨The three gizmos below edit that own pose, so each stands where the
-  /// parent shows its value and each drag comes back through the parent: a
-  /// row in a folder moved right by 200 had its crosshair 200 to the left of
-  /// its picture, and under a 2× folder a drag moved the picture twice as
-  /// far as the pointer (measured 2026-09-25).
+  /// 🚨The layer's box below edits that own pose, so each of its grabs
+  /// stands where the parent shows its value and each drag comes back
+  /// through the parent: a row in a folder moved right by 200 had its
+  /// crosshair 200 to the left of its picture, and under a 2× folder a drag
+  /// moved the picture twice as far as the pointer (measured 2026-09-25).
   ({
     LayerPoseSample? placement,
     CanvasPoint Function(CanvasPoint point) toCanvas,
@@ -716,93 +872,66 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  Positioned _anchorGizmo(
+  /// [layer] as the canvas shows it — the drag in flight on it, if one is
+  /// (F-195, canvas-follows-block-moves), so a handle stands where the
+  /// picture is, not where the release will have put it.
+  static Layer _shownRow(EditorSessionManager session, Layer layer) =>
+      timelineDragPreviewLayerFor(session.dragPreview.value, layer.id) ??
+      layer;
+
+  /// A canvas handle's ONE edit, landed two ways (F-195): shown while the
+  /// handle moves, written when it lets go — and dropped when it is
+  /// cancelled, through the box's [RowTransformBox.onCancelled]
+  /// (`endLaneEditPreview`).
+  ///
+  /// ⛔[editOf] is the SAME edit for both landings — the release keeps what
+  /// the drag showed because it is the drag's own computation, not a second
+  /// one that happens to agree.
+  RowBoxLanding<T> _handleLandings<T>(
     EditorSessionManager session,
-    Layer activeLayer,
+    LayerId layerId,
+    TransformTrack Function(TransformTrack track, int frameIndex) Function(
+      T value,
+    )
+    editOf, {
+    required String description,
+  }) {
+    final verbs = session.laneVerbs;
+    return (
+      changed: (value) =>
+          verbs.previewLayerTransformAtPlayhead(layerId, editOf(value)),
+      committed: (value) => verbs.editLayerTransformAtPlayhead(
+        layerId,
+        editOf(value),
+        description: description,
+      ),
+    );
+  }
+
+  /// The active layer's fx box (F-222 ②): the inside moves its position, a
+  /// corner scales it, outside on stage turns it, and the cross places its
+  /// anchor point — as much of that as the standing lane declares (R5 #10:
+  /// the box for position, scale and rotation, the cross for the anchor).
+  ///
+  /// ONE key at the playhead per drag (AE rule, one undo) — on the row the
+  /// project holds, at the playhead on its own axis. ⚠️Not on the active
+  /// layer as found: a track-SE row's is its cut-local clone, and writing
+  /// that back erased the keys of earlier cuts (F-102).
+  Widget _layerBox(
+    _HostFrame frame,
     CanvasViewport viewport,
+    CanvasSize canvasSize,
   ) {
-    // The handle stands where the row's value IS: for a track-SE row that is
+    final session = frame.session;
+    final activeLayer = frame.activeLayer!;
+    // The handles stand where the row's value IS: for a track-SE row that is
     // the track's row at the global frame, not the cut's clone (F-102).
     final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
-      session.currentFrameIndex,
-    );
-    final parent = _parentSpaceOf(session, activeLayer);
-    return Positioned.fill(
-      // Unwrapped like the position handle, for the same
-      // reason.
-      child: CanvasPointGizmo(
-        glyph: HandleGlyph.anchor,
-        point: parent.toCanvas(
-          session.layerAnchorPointAtFrame(at.layer, at.frame),
-        ),
-        viewport: viewport,
-        onCommitted: (dropped) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithAnchorDragged(
-                track,
-                frameIndex: frameIndex,
-                anchorPoint: parent.fromCanvas(dropped),
-              ),
-              description: 'Anchor ${activeLayer.name}',
-            ),
-      ),
-    );
-  }
-
-  Positioned _positionGizmo(
-    EditorSessionManager session,
-    Layer activeLayer,
-    CanvasViewport viewport,
-  ) {
-    final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
-      session.currentFrameIndex,
-    );
-    final parent = _parentSpaceOf(session, activeLayer);
-    return Positioned.fill(
-      // No cut-pose wrap: the V row's transform is gone. The
-      // crosshair stands in the row's PARENT space — the canvas
-      // for an unfoldered row — carried out and back through it.
-      child: CanvasPointGizmo(
-        glyph: HandleGlyph.crosshair,
-        point: parent.toCanvas(
-          session.layerPoseAtFrame(at.layer, at.frame).center,
-        ),
-        viewport: viewport,
-        // ONE key at the playhead per drag (AE rule,
-        // one undo) — on the row the project holds, at
-        // the playhead on its own axis. ⚠️Not on
-        // [activeLayer] as found: a track-SE row's is its
-        // cut-local clone, and writing that back erased
-        // the keys of earlier cuts (F-102).
-        onCommitted: (dropped) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithPositionDragged(
-                track,
-                frameIndex: frameIndex,
-                position: parent.fromCanvas(dropped),
-              ),
-              description: 'Move ${activeLayer.name}',
-            ),
-      ),
-    );
-  }
-
-  Positioned _transformBox(
-    Rect transformBoxBounds,
-    EditorSessionManager session,
-    Layer activeLayer,
-    CanvasSize canvasSize,
-    CanvasViewport viewport,
-  ) {
-    final at = session.laneVerbs.laneValueSourceAt(
-      activeLayer,
+      _shownRow(session, activeLayer),
       session.currentFrameIndex,
     );
     final own = session.layerPoseAtFrame(at.layer, at.frame);
+    final anchorPoint = session.layerAnchorPointAtFrame(at.layer, at.frame);
     final parent = _parentSpaceOf(session, activeLayer);
     // The box draws the row as the canvas SHOWS it — its own pose under the
     // folders' — and turns and scales about the row's anchor where that
@@ -810,89 +939,277 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // are those less the parent's.
     final parentZoom = parent.placement?.pose.zoom ?? 1;
     final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
-    return Positioned.fill(
-      // R5 #10: the box frames the PICTURE, and its
-      // corners scale while its rotate handle turns —
-      // one member per handle. No cut pose to ride any
-      // more: the V row's transform is gone.
-      child: LayerTransformBox(
-        bounds: transformBoxBounds,
-        pose: TransformPose(
-          center: parent.toCanvas(own.center),
-          zoom: parentZoom * own.zoom,
-          rotationDegrees: parentTurn + own.rotationDegrees,
+    final pose = TransformPose(
+      center: parent.toCanvas(own.center),
+      zoom: parentZoom * own.zoom,
+      rotationDegrees: parentTurn + own.rotationDegrees,
+    );
+    final name = activeLayer.name;
+    final box = frame.boxGrabbable;
+    final posed = artworkToCanvas((
+      pose: pose,
+      anchorPoint: anchorPoint,
+    ), canvasSize);
+    return RowTransformBox(
+      // The box frames the layer's PICTURE (the user chose that on the
+      // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
+      // 그렇게하자」) — and a blank cel's box is the canvas, the transform
+      // tool's own rule for a picture with nothing in it.
+      corners: box
+          ? [
+              for (final point in CanvasSelectionShape.wholePicture(
+                canvasSize,
+                frame.inkBounds,
+              ).points)
+                posed.apply(point),
+            ]
+          : const [],
+      pose: pose,
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: frame.boxClaimsCanvas,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: box
+          ? _handleLandings<CanvasPoint>(
+              session,
+              activeLayer.id,
+              (dropped) =>
+                  (track, frameIndex) => transformTrackWithPositionDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    position: parent.fromCanvas(dropped),
+                  ),
+              description: 'Move $name',
+            )
+          : null,
+      scale: box
+          ? _handleLandings<double>(
+              session,
+              activeLayer.id,
+              (zoom) =>
+                  (track, frameIndex) => transformTrackWithScaleDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    zoom: zoom / parentZoom,
+                  ),
+              description: 'Scale $name',
+            )
+          : null,
+      turn: box
+          ? _handleLandings<double>(
+              session,
+              activeLayer.id,
+              (degrees) =>
+                  (track, frameIndex) => transformTrackWithRotationDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    rotationDegrees: degrees - parentTurn,
+                  ),
+              description: 'Rotate $name',
+            )
+          : null,
+      // 🗣️F-222-box-Q3 (유저 2026-10-01, chat — replacing the board's 「그림은
+      // 가만히」): 「레이어 상자 십자가는 앵커포인트로서 작동하게, 즉 각자
+      // 대응하는 ui로직이됨. 그래서 그림은 가만히라기보다 지금 로직
+      // 그대로이고 앵커포인트위치를 십자가로 조정하도록」 — a drag keys the
+      // anchor point alone, and the picture moves as scrubbing its value does.
+      // 🗣️And it is After Effects' (same day): 「ae랑 똑같으면 문제없어.
+      // 애초에 트랜스폼 fx는 똑같도록하는게 목표」. AE draws the anchor where
+      // it LANDS — the position, the centre the layer turns and scales about
+      // — so the cross stands there, never apart from the box's pivot, and
+      // stays with the position while the drag moves the picture under it.
+      cross: frame.crossGrabbable
+          ? (
+              at: pose.center,
+              value: parent.toCanvas(anchorPoint),
+              landing: _handleLandings<CanvasPoint>(
+                session,
+                activeLayer.id,
+                (dropped) =>
+                    (track, frameIndex) => transformTrackWithAnchorDragged(
+                      track,
+                      frameIndex: frameIndex,
+                      anchorPoint: parent.fromCanvas(dropped),
+                    ),
+                description: 'Anchor $name',
+              ),
+            )
+          : null,
+    );
+  }
+
+  /// An SE row's box (F-222 ②): its name tag, and it only MOVES — the tag
+  /// is placed by position alone (a tag has no scale or turn to drive).
+  /// With no tag under the playhead the box is the canvas, the law for a
+  /// box with nothing in it.
+  Widget _seBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+    List<ResolvedSeNameTag> tags,
+  ) {
+    final session = frame.session;
+    final activeLayer = frame.activeLayer!;
+    final at = session.laneVerbs.laneValueSourceAt(
+      _shownRow(session, activeLayer),
+      session.currentFrameIndex,
+    );
+    final parent = _parentSpaceOf(session, activeLayer);
+    var bounds = canvasSize.canvasRect;
+    for (final tag in tags) {
+      if (tag.layerId != activeLayer.id.value) {
+        continue;
+      }
+      final tagBox = seNameTagBoxBounds(tag, canvasSize: canvasSize);
+      if (!tagBox.isEmpty) {
+        bounds = tagBox;
+      }
+    }
+    return RowTransformBox(
+      corners: [
+        CanvasPoint(x: bounds.left, y: bounds.top),
+        CanvasPoint(x: bounds.right, y: bounds.top),
+        CanvasPoint(x: bounds.right, y: bounds.bottom),
+        CanvasPoint(x: bounds.left, y: bounds.bottom),
+      ],
+      pose: TransformPose(
+        center: parent.toCanvas(
+          session.layerPoseAtFrame(at.layer, at.frame).center,
         ),
-        anchorPoint: session.layerAnchorPointAtFrame(at.layer, at.frame),
+      ),
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: frame.boxClaimsCanvas,
+      onCancelled: session.laneVerbs.endLaneEditPreview,
+      move: frame.boxGrabbable
+          ? _handleLandings<CanvasPoint>(
+              session,
+              activeLayer.id,
+              (dropped) =>
+                  (track, frameIndex) => transformTrackWithPositionDragged(
+                    track,
+                    frameIndex: frameIndex,
+                    position: parent.fromCanvas(dropped),
+                  ),
+              description: 'Move ${activeLayer.name}',
+            )
+          : null,
+    );
+  }
+
+  /// The camera row's box ([CameraFrameBox], F-222 ③).
+  ///
+  /// It drives the CAMERA ROW's transform — the cut's camera track —
+  /// through the one handle path the layer handles take (「트랜스폼이나
+  /// 카메라나 법 하나」): one key at the playhead, shown while it moves, on
+  /// the ONE member the grab drives — as the user chose
+  /// (camera-frame-keys-what-you-grab-Q1 「잡은 것만」).
+  Widget _cameraBox(
+    _HostFrame frame,
+    CanvasViewport viewport,
+    CanvasSize canvasSize,
+  ) {
+    final session = frame.session;
+    final cameraRow = session.activeLayer!;
+    final at = 'at frame ${session.currentFrameIndex + 1}';
+    final move = _handleLandings<CanvasPoint>(
+      session,
+      cameraRow.id,
+      (center) =>
+          (track, frameIndex) => transformTrackWithPositionDragged(
+            track,
+            frameIndex: frameIndex,
+            position: center,
+          ),
+      description: 'Move camera $at',
+    );
+    final zoom = _handleLandings<double>(
+      session,
+      cameraRow.id,
+      (zoom) =>
+          (track, frameIndex) => transformTrackWithScaleDragged(
+            track,
+            frameIndex: frameIndex,
+            zoom: zoom,
+          ),
+      description: 'Zoom camera $at',
+    );
+    final turn = _handleLandings<double>(
+      session,
+      cameraRow.id,
+      (degrees) =>
+          (track, frameIndex) => transformTrackWithRotationDragged(
+            track,
+            frameIndex: frameIndex,
+            rotationDegrees: degrees,
+          ),
+      description: 'Rotate camera $at',
+    );
+    // The box follows the frame along its animated pose, as the frame does.
+    return _atTheCameraPose(
+      session,
+      (pose) => CameraFrameBox(
+        pose: pose,
+        cameraFrameSize: session.camera.cameraFrameSize,
         canvasSize: canvasSize,
         viewport: viewport,
-        onScaleCommitted: (zoom) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithScaleDragged(
-                track,
-                frameIndex: frameIndex,
-                zoom: zoom / parentZoom,
-              ),
-              description: 'Scale ${activeLayer.name}',
-            ),
-        onRotationCommitted: (degrees) =>
-            session.laneVerbs.editLayerTransformAtPlayhead(
-              activeLayer.id,
-              (track, frameIndex) => transformTrackWithRotationDragged(
-                track,
-                frameIndex: frameIndex,
-                rotationDegrees: degrees - parentTurn,
-              ),
-              description: 'Rotate ${activeLayer.name}',
-            ),
+        claimsCanvas: frame.boxClaimsCanvas,
+        onCancelled: session.laneVerbs.endLaneEditPreview,
+        move: move,
+        zoom: zoom,
+        turn: turn,
       ),
     );
   }
 
+  /// The camera's frame — the dim outside it and its hairline — drawn for
+  /// every row. It takes no press: on the camera row the frame's box does
+  /// ([_cameraBox]), over the tools.
   Positioned _cameraOverlay(
     EditorSessionManager session,
     CanvasViewport viewport,
-    bool isCameraLayerActive,
   ) {
     return Positioned.fill(
-      // The cursor subscription keeps the frame gliding
-      // along its animated pose during scrubs (and after
-      // committed seeks) without any wider rebuild.
-      //
-      // ㊲: the PARKING is the other half of "where am
-      // I". A scrub that crosses a cut boundary moves
-      // only that — the cursor stays put, by design —
-      // so a pose read on the cursor alone stayed
-      // frozen on the cut being left.
-      child: ListenableBuilder(
-        listenable: session.editingFrameCursor,
-        builder: (context, _) => ValueListenableBuilder<int?>(
-          valueListenable: session.gapParkingListenable,
-          builder: (context, _, _) {
-            final pose = session.camera.displayedCameraPose;
-            // Nothing under the cursor to frame:
-            // the scrub is over a gap.
-            if (pose == null) {
-              return const SizedBox.shrink();
-            }
-            return CameraFrameOverlay(
-              pose: pose,
-              cameraFrameSize: session.camera.cameraFrameSize,
-              viewport: viewport,
-              // Dim belongs to camera-view mode;
-              // plain manipulation keeps the
-              // artwork undimmed.
-              dimOpacity: widget.cameraViewEnabled.value
-                  ? widget.cameraDimOpacity.value
-                  : 0,
-              interactive: isCameraLayerActive,
-              onPoseCommitted: session.camera.setCameraKeyframeAtCurrentFrame,
-            );
-          },
+      child: _atTheCameraPose(
+        session,
+        (pose) => CameraFrameOverlay(
+          pose: pose,
+          cameraFrameSize: session.camera.cameraFrameSize,
+          viewport: viewport,
+          // Dim belongs to camera-view mode; plain manipulation keeps the
+          // artwork undimmed.
+          dimOpacity: widget.cameraViewEnabled.value
+              ? widget.cameraDimOpacity.value
+              : 0,
         ),
       ),
     );
   }
+
+  /// [build] at the camera's pose as the canvas shows it, again whenever the
+  /// pose moves — and nothing where there is no pose: under the cursor is a
+  /// gap. The camera's frame and its box both stand on it.
+  ///
+  /// The cursor subscription keeps the frame gliding along its animated
+  /// pose during scrubs (and after committed seeks) without any wider
+  /// rebuild.
+  ///
+  /// ㊲: the PARKING is the other half of "where am I". A scrub that crosses
+  /// a cut boundary moves only that — the cursor stays put, by design — so a
+  /// pose read on the cursor alone stayed frozen on the cut being left.
+  Widget _atTheCameraPose(
+    EditorSessionManager session,
+    Widget Function(TransformPose pose) build,
+  ) => ListenableBuilder(
+    listenable: session.editingFrameCursor,
+    builder: (context, _) => ValueListenableBuilder<int?>(
+      valueListenable: session.editingSession.gapParkingListenable,
+      builder: (context, _, _) {
+        final pose = session.camera.displayedCameraPose;
+        return pose == null ? const SizedBox.shrink() : build(pose);
+      },
+    ),
+  );
 
   Positioned _cutFadeWash(
     CanvasViewport viewport,
@@ -902,6 +1219,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     List<TransitionVeil> veils,
     BuildContext context,
   ) {
+    final standing = session.editingGlobalFrame;
+    final partners = _olPartnersAt(session, standing);
     return Positioned.fill(
       // The cut fade on the EDITING canvas (R9-C →
       // R3b): the fade is transparency, and here the
@@ -913,21 +1232,87 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       //
       // F-192: a one-sided transition's own screen is part of the unit,
       // so it goes down FIRST and the wash thins it with the rest.
+      //
+      // 🗣️F-227 (유저 2026-09-29): 「컷ol은 두 컷이 동시에 존재하는 상태면서
+      // 오버랩하는건데 … 컷1이 fo하다가 갑자기 컷2가 fi하는 상태」. Inside an
+      // O.L the share the fade takes is not backdrop: it is the OTHER cut,
+      // and the canvas used to dip the cut to the backdrop there — half an
+      // O.L on each side of the boundary. The partner is laid over the live
+      // cut at its own share, the backdrop keeping whatever is left (none,
+      // when the two halves are the whole frame): the mix playback paints.
       child: IgnorePointer(
-        child: CustomPaint(
-          painter: _CutFadeWashPainter(
-            viewport: viewport,
-            canvasSize: canvasSize,
-            veils: veils,
-            color: Color(
-              session.repository.requireProject().backdropArgb,
-            ).withValues(alpha: (1 - cutFadeOpacity).clamp(0.0, 1.0)),
-            devicePixelRatio: EffectiveDevicePixelRatio.of(context),
-          ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            CustomPaint(
+              painter: _CutFadeWashPainter(
+                viewport: viewport,
+                canvasSize: canvasSize,
+                veils: veils,
+                color: Color(
+                  session.repository.requireProject().backdropArgb,
+                ).withValues(
+                  alpha: _backdropShare(
+                    cutFadeOpacity,
+                    partnerShare: _shareOf(session, partners),
+                  ),
+                ),
+                devicePixelRatio: EffectiveDevicePixelRatio.of(context),
+              ),
+            ),
+            if (partners.isNotEmpty)
+              _olPartnerStack(session, viewport, standing, partners),
+          ],
         ),
       ),
     );
   }
+
+  /// The other cuts an O.L composites at [globalFrame] on the ACTIVE
+  /// track — the partner the editing canvas lays over the live cut. Other
+  /// tracks stay off the editing canvas, as they always have.
+  List<TrackStackContribution> _olPartnersAt(
+    EditorSessionManager session,
+    int globalFrame,
+  ) {
+    final activeCutId = session.activeCutId;
+    final trackId = session.activeTrack.id;
+    return [
+      for (final contribution in session.rowSpans.trackStackContributionsAt(
+        globalFrame,
+      ))
+        if (contribution.cutId != activeCutId &&
+            session.trackOwningCut(contribution.cutId)?.id == trackId)
+          contribution,
+    ];
+  }
+
+  /// How much of the frame [partners] claim — each one's ramp times its
+  /// track's own opacity, the unit alpha the track stack weighs it by.
+  double _shareOf(
+    EditorSessionManager session,
+    List<TrackStackContribution> partners,
+  ) {
+    var share = 0.0;
+    for (final partner in partners) {
+      share +=
+          partner.opacity *
+          session.opacityVerbs.trackStaticOpacityForCut(partner.cutId);
+    }
+    return share;
+  }
+
+  /// The backdrop wash over the live cut once a partner claiming
+  /// [partnerShare] is laid above it: the live cut keeps [cutFadeOpacity],
+  /// the partner its share, the backdrop the rest — `1 − fade` with no
+  /// partner (the wash as it always was), nothing when an O.L's two halves
+  /// are the whole frame.
+  static double _backdropShare(
+    double cutFadeOpacity, {
+    required double partnerShare,
+  }) => partnerShare >= 1
+      ? 0
+      : (1 - cutFadeOpacity / (1 - partnerShare)).clamp(0.0, 1.0);
 
   Positioned _seNameTagOverlay(
     CanvasViewport viewport,
@@ -961,7 +1346,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       child: GuideEditLayer(
         guides: verbs.activeCutGuidesForDisplay,
         viewport: viewport,
-        onGuideSelected: (id) => session.selectedGuideId = id,
+        onGuideSelected: (id) => session.cutVerbs.selectedGuideId = id,
         // A drag PREVIEWS and the release COMMITS, so it is one undo entry.
         // ⛔Through the cut verbs' one preview, not a copy kept here: the
         // settings panel edits the same guides from another subtree
@@ -996,7 +1381,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               vanishingPointLabel: AppText.strings.guideVanishingPoint,
               color: Theme.of(context).colorScheme.primary,
               face: appFaceOf(DefaultTextStyle.of(context).style),
-              selectedGuideId: session.selectedGuideId,
+              selectedGuideId: session.cutVerbs.selectedGuideId,
             ),
           ),
         ),
@@ -1189,4 +1574,20 @@ class _FrameRetargetScopeState extends State<_FrameRetargetScope> {
     _builtFrameIndex = widget.session.currentFrameIndex;
     return widget.builder(context);
   }
+}
+
+/// A drag as the canvas shows it ([_EditorCanvasAreaState._rowsShownBy]):
+/// equal while every part is the SAME object — the rule a timeline row's
+/// gate keeps for its one row, over every row the canvas draws.
+final class _DragAsShown {
+  const _DragAsShown(this.parts);
+
+  final List<Object?> parts;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _DragAsShown && listsMatch(parts, other.parts, identical);
+
+  @override
+  int get hashCode => Object.hashAll(parts.map(identityHashCode));
 }

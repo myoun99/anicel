@@ -35,7 +35,6 @@ void main() {
     axis: axis,
     frameStartIndex: 0,
     frameEndIndexExclusive: frames,
-    currentFrameIndex: -1,
     playbackFrameCount: frames,
     leadingFrameSpacer: 0,
     crossExtent: 28,
@@ -94,10 +93,10 @@ void main() {
     fail('fixture: no cell in the zoom range writes every frame');
   }
   group('the pair', () {
-    test('is the number and the second at the playhead, bold on the full '
-        'ink', () {
+    test('is the number and the second at the playhead, bold, in the '
+        'accent (F-239)', () {
       expect(
-        scheme.onSurface,
+        scheme.primary,
         isNot(scheme.onSurfaceVariant),
         reason: 'fixture: the two inks differ',
       );
@@ -105,7 +104,7 @@ void main() {
       expect(writing.pair.map(textOf), ['31', '1']);
       for (final glyph in writing.pair) {
         expect(styleOf(glyph).fontWeight, FontWeight.w700);
-        expect(styleOf(glyph).color, scheme.onSurface);
+        expect(styleOf(glyph).color, scheme.primary);
       }
     });
 
@@ -161,7 +160,7 @@ void main() {
       expect(writing.pair.map(textOf), ['1', '31']);
       for (final glyph in writing.pair) {
         expect(styleOf(glyph).fontWeight, FontWeight.w700);
-        expect(styleOf(glyph).color, scheme.onSurface);
+        expect(styleOf(glyph).color, scheme.primary);
       }
       final own = XSheetFrameRailPainter.glyphsAt(scale, 30, current: false);
       expect(
@@ -212,7 +211,7 @@ void main() {
       expect(
         styleOf(own).color,
         scheme.onSurfaceVariant,
-        reason: 'a mark keeps the marks\' ink; only the pair wears the full',
+        reason: 'a mark keeps the marks\' ink; only the pair wears the accent',
       );
     });
   });
@@ -442,7 +441,6 @@ void main() {
         body: TimelineFrameHeaderRow(
           frameStartIndex: 0,
           frameEndIndexExclusive: 30,
-          currentFrameIndex: -1,
           playbackFrameCount: 30,
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
@@ -478,16 +476,6 @@ void main() {
       ),
       reason: 'its repaints never re-record the strip',
     );
-    final strip =
-        tester
-                .widget<CustomPaint>(
-                  find.byKey(
-                    const ValueKey<String>('timeline-frame-ruler-paint'),
-                  ),
-                )
-                .painter!
-            as TimelineFrameRulerPainter;
-    expect(strip.scale.currentFrameIndex, -1);
 
     await tester.pumpWidget(row());
     expect(writing, findsNothing, reason: 'no playhead, no writing');

@@ -8,6 +8,8 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart'
+    show cutDrawnFrameCount, cutMediaStartFrame, cutTransitionHandlesIn;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
@@ -161,6 +163,22 @@ class CanvasPlaybackController extends ChangeNotifier
   @override
   bool get isPlaying => _playlist != null;
   PlaybackScope get scope => _scope;
+
+  /// The track frame [playlistFrame] of this run shows. The all-cuts
+  /// playlist IS the track axis; a cut played alone starts where its
+  /// material does — ahead of its conte start in a cut an O.L arrives into
+  /// ([cutMediaStartFrame], F-227 ④) — so a take or a cue stated on the
+  /// track lands where the picture and the sound are.
+  int trackFrameOf(int playlistFrame) {
+    if (_scope == PlaybackScope.allCuts) {
+      return playlistFrame;
+    }
+    final cutId = resolveActiveCutId();
+    final start = cutId == null
+        ? null
+        : cutMediaStartFrame(resolveProject(), cutId);
+    return (start ?? 0) + playlistFrame;
+  }
 
   PlaybackLoopMode get loopMode => _loopMode;
   set loopMode(PlaybackLoopMode mode) {
@@ -329,9 +347,13 @@ class CanvasPlaybackController extends ChangeNotifier
     switch (scope) {
       case PlaybackScope.activeCut:
         final activeCutId = resolveActiveCutId();
-        for (final entry in buildStoryboardTimelineLayout(resolveProject())) {
+        final project = resolveProject();
+        for (final entry in buildStoryboardTimelineLayout(project)) {
           if (entry.cutId == activeCutId) {
-            final duration = math.max(1, entry.cut.duration);
+            // 🗣️F-227 (유저 2026-09-29): 「재생도 타임라인패널의 재생이면 여백까지
+            // 재생」 — the cut plays every frame it is DRAWN for, through the
+            // のりしろ an O.L asks of it, not to the red line.
+            final duration = cutDrawnFrameCount(project, entry.cutId)!;
             return [
               StoryboardTimelineLayoutEntry(
                 trackId: entry.trackId,
@@ -342,6 +364,10 @@ class CanvasPlaybackController extends ChangeNotifier
                 endFrame: duration,
                 duration: duration,
                 cut: entry.cut,
+                // Its frame 0 is where its material starts — ahead of the
+                // conte start in a cut an O.L arrives into — so the sound
+                // plays from there too.
+                mediaLead: cutTransitionHandlesIn(project, entry.cutId).head,
               ),
             ];
           }

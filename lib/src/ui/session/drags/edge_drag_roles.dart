@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import '../active_cut_controllers.dart';
 import '../session_roles.dart';
 
@@ -18,5 +20,5 @@ typedef EdgeDragRoles = ({
   ProjectAccess project,
   ChangeSink changes,
   ActiveCutControllers controllers,
-  SessionInternals internals,
+  ValueNotifier<TimelineDragPreview?> dragPreview,
 });

@@ -155,7 +155,9 @@ void main() {
       if (shown) {
         // Flipped under a running grid: the host's law carries the switch
         // to every row without a rebuild of the workspace.
-        AppFrameGridSettings.settings.value = const AppFrameGridSettings();
+        AppFrameGridSettings.settings.value = const AppFrameGridSettings(
+          blockFrameLines: true,
+        );
         await tester.pumpAndSettle();
       }
       final strays = <String>[];

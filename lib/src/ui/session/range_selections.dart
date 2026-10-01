@@ -18,6 +18,7 @@ import '../timeline/timeline_section_policy.dart';
 import '../timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 import 'playback_rig.dart';
+import 'project_settings.dart';
 import 'row_spans.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
@@ -38,40 +39,66 @@ class RangeSelections {
   RangeSelections({
     required ProjectAccess project,
     required SelectionAccess selection,
-    required ChangeSink changes,
-    required TimelineAccess timeline,
-    required SessionInternals internals,
+    required RetimeLaw retime,
+    required ProjectSettings projectSettings,
+    required TimelineRowAddress Function() currentRow,
     required PlaybackRig playbackRig,
     required StoryboardRows storyboardRows,
     required TrackSeDisplay trackSe,
     required RowSpans rowSpans,
+    required bool Function(TimelineRowAddress row) rowIsSelected,
+    required void Function(TrackId trackId) selectTrackRow,
+    required void Function(LayerId layerId) selectLayer,
+    required void Function(TimelineRowAddress row, {WorkingPanel panel})
+    standOnRow,
   }) : _project = project,
        _selection = selection,
-       _changes = changes,
-       _timeline = timeline,
-       _internals = internals,
+       _retime = retime,
+       _projectSettings = projectSettings,
+       _currentRow = currentRow,
        _playbackRig = playbackRig,
        _storyboardRows = storyboardRows,
        _trackSe = trackSe,
-       _rowSpans = rowSpans;
+       _rowSpans = rowSpans,
+       _rowIsSelected = rowIsSelected,
+       _selectTrackRow = selectTrackRow,
+       _selectLayer = selectLayer,
+       _standOnRow = standOnRow;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
-  final ChangeSink _changes;
-  final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
+  final ProjectSettings _projectSettings;
+
+  /// The row the user stands on — `Standing.currentRow`, asked when needed.
+  final TimelineRowAddress Function() _currentRow;
   final PlaybackRig _playbackRig;
   final StoryboardRows _storyboardRows;
   final TrackSeDisplay _trackSe;
   final RowSpans _rowSpans;
 
+  /// The four doors onto where the user stands that the selections pass
+  /// through — the row selection's question and the session's standing
+  /// doors (which settle the last edit before they move you, I-41).
+  ///
+  /// ⚠️Taken as CLOSURES, not as the `Standing` and `RowSelection` they end
+  /// in: both of those hold this object, so naming either here would close a
+  /// construction cycle — the ninth family's cure for a cycle edge
+  /// (ARCH-session-state, the fourteenth family; they were asked through
+  /// `SessionInternals` before).
+  final bool Function(TimelineRowAddress row) _rowIsSelected;
+  final void Function(TrackId trackId) _selectTrackRow;
+  final void Function(LayerId layerId) _selectLayer;
+  final void Function(TimelineRowAddress row, {WorkingPanel panel})
+  _standOnRow;
+
   /// Whether the artwork carries a marquee, published by whoever owns it —
   /// the fifth kind [hasAnySelection] counts.
   ///
   /// ⚠️Kept HERE, by the one collaborator that asks, and not on the session:
-  /// `SessionInternals` only shrinks (ARCH-session-state, the eleventh
-  /// family). The workspace publishes it while its canvas is mounted and
-  /// clears it when the project goes behind.
+  /// `SessionInternals` only shrank, until it was deleted (ARCH-session-state,
+  /// the eleventh family). The workspace publishes it while its canvas is
+  /// mounted and clears it when the project goes behind.
   bool Function()? canvasHasSelection;
 
   /// Lets go of the marquee, published by whoever owns it — the fifth kind
@@ -81,7 +108,7 @@ class RangeSelections {
   /// 🚨T10 — whether standing on ([row], [frameIndex]) lands INSIDE whatever
   /// is currently selected.
   ///
-  /// The one question [_internals.standOnRow] asks before it clears. 유저 확정
+  /// The one question `Standing.standOnRow` asks before it clears. 유저 확정
   /// 2026-08-14: 「탭다운 하면 **먼저 기존 선택된거 삭제**하게 하면, 바꾸면
   /// 선택삭제고 거기서 이동하면 선택 새로 추가니까 문제없을거같은데」 — a
   /// press clears when it moves you somewhere else, and holds when it is the
@@ -97,7 +124,7 @@ class RangeSelections {
   /// being named here, exactly like [claimSelection]'s switch.
   ///
   /// ⚠️A null [frameIndex] means "no cell is in question", so only the ROW
-  /// selection can answer. [_internals.standOnRow] does not pass null — it substitutes
+  /// selection can answer. `Standing.standOnRow` does not pass null — it substitutes
   /// the playhead, because standing on a row without naming a frame IS
   /// standing there at the playhead.
   bool standingInsideSelection(
@@ -105,7 +132,7 @@ class RangeSelections {
     int? frameIndex,
     bool frameIsGlobal = false,
   ]) {
-    if (_internals.rowIsSelected(row)) {
+    if (_rowIsSelected(row)) {
       return true;
     }
     final cells = _selection.frameRangeSelection.value;
@@ -307,7 +334,7 @@ class RangeSelections {
     for (final id in selection.spanLayerIds) {
       // Rows whose timing is not their own stand down — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
+      if (_retime.standsDownFromRetime(id)) {
         continue;
       }
       final display = _project.rangeLayerById(id);
@@ -390,7 +417,7 @@ class RangeSelections {
       spanned = railRows.sublist(first, last + 1);
     }
 
-    final axis = _timeline.axisForTrack(trackId);
+    final axis = _projectSettings.axisForTrack(trackId);
     final lanes = <RangeBlock? Function(int)>[
       for (final row in spanned) ?_rowSpans.trackRowSnapLane(row, axis),
     ];
@@ -475,10 +502,11 @@ class RangeSelections {
   /// block snap). Starting a lane selection clears the cell selection
   /// (mutual exclusion, the F4 rule).
   ///
-  /// R26 #3 — the cells' grammar on lane rows: [headLaneId] (the lane row
-  /// under the pointer) spans the selection across the layer's lane group
-  /// in display order; the group HEADER as anchor selects every member
-  /// lane. Starting on ANOTHER layer's lanes activates that layer
+  /// R26 #3 — the cells' grammar on lane rows: the lane row under the
+  /// pointer spans the selection across the layer's lane group in display
+  /// order, and the group HEADER as anchor selects every member lane — the
+  /// rail slices that span out of the rows it drew and hands it over as
+  /// [spanLaneIds]. Starting on ANOTHER layer's lanes activates that layer
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
   /// [panel] is the panel the drag is on, and it says two things the panel
@@ -497,7 +525,6 @@ class RangeSelections {
     required String laneId,
     required int anchorIndex,
     required int headIndex,
-    String? headLaneId,
     required List<String> spanLaneIds,
     WorkingPanel panel = WorkingPanel.timeline,
   }) {
@@ -510,7 +537,7 @@ class RangeSelections {
       if (_project.trackById(carrierTrackId) == null) {
         return;
       }
-      _internals.selectTrackRow(carrierTrackId);
+      _selectTrackRow(carrierTrackId);
     } else {
       if (_project.layerById(layerId) == null) {
         // A REAL track row that just is not the ACTIVE track's (its lane
@@ -527,11 +554,11 @@ class RangeSelections {
         case WorkingPanel.timeline when _selection.activeLayerId != layerId:
           // selectLayer first: it drops the OLD selection (a different
           // layer's), then the fresh span lands for the new active layer.
-          _internals.selectLayer(layerId);
+          _selectLayer(layerId);
         case WorkingPanel.storyboard
             when _selection.storyboardStandingRow.owningLayerId != layerId:
           // The rail's row, the way the V track's lanes above take theirs.
-          _internals.standOnRow(
+          _standOnRow(
             LayerRowAddress(layerId),
             panel: WorkingPanel.storyboard,
           );
@@ -824,7 +851,7 @@ class RangeSelections {
       //
       // and SINGLE-CEL (image) rows with them — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_changes.standsDownFromRetime(id)) {
+      if (_retime.standsDownFromRetime(id)) {
         continue;
       }
       final layer = _project.rangeLayerById(id);
@@ -838,7 +865,7 @@ class RangeSelections {
       );
       if (starts.isNotEmpty) {
         byLayer[id] = [
-          for (final start in starts) _internals.commitBlockStart(id, start),
+          for (final start in starts) _trackSe.commitBlockStart(id, start),
         ];
       }
     }
@@ -949,7 +976,7 @@ class RangeSelections {
   /// row's aggregate runs — so the gate answers true exactly where a drag
   /// would select something (T25).
   ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
-    final rowLayerId = switch (_internals.currentRow) {
+    final rowLayerId = switch (_currentRow()) {
       LayerRowAddress(:final layerId) => layerId,
       LaneRowAddress(:final layerId) => layerId,
       TrackRowAddress() => _selection.activeLayerId,

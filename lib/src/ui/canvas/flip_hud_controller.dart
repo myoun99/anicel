@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter/widgets.dart' show Offset;
 
 import '../../models/app_input_settings.dart';
+import '../shortcuts/sheet_arrow.dart';
 import 'flip_hud_model.dart';
 
 /// Which axis the flip locked to.
@@ -27,7 +28,7 @@ enum FlipHudAxis {
 /// everything it shows comes from a snapshot the session hands over. Step
 /// a slot index here and the HUD becomes a second movement rule that
 /// drifts the day the navigation rules change.
-class FlipHudController extends ChangeNotifier {
+class FlipHudController extends ChangeNotifier implements SheetArrowTurn {
   FlipHudController({
     VoidCallback? hapticTick,
     bool Function()? hapticsEnabled,
@@ -111,6 +112,24 @@ class FlipHudController extends ChangeNotifier {
   /// stack. Asked here, beside the axis, for the reason [framesRunAlong] is.
   int rowStepAcross({required bool forward}) =>
       (forward ? 1 : -1) * (framesRunVertically ? -1 : 1);
+
+  /// [pressed] as the timeline reads it (F-241, [SheetArrowTurn]) — built
+  /// from the two answers above, so the turn cannot disagree with them:
+  /// along the frames an arrow is back or on in time (← →), across them it
+  /// is a step up or down the rows (↑ ↓).
+  @override
+  SheetArrow timelineArrowFor(SheetArrow pressed) {
+    if (framesRunAlong(horizontal: pressed.horizontal)) {
+      return pressed.forward ? SheetArrow.right : SheetArrow.left;
+    }
+    return rowStepAcross(forward: pressed.forward) > 0
+        ? SheetArrow.down
+        : SheetArrow.up;
+  }
+
+  @override
+  SheetArrow sheetArrowFor(SheetArrow timeline) => SheetArrow.values
+      .firstWhere((pressed) => timelineArrowFor(pressed) == timeline);
 
   (int, int)? _lastPosition;
   DateTime? _lastLandedAt;

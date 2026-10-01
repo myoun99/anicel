@@ -308,7 +308,10 @@ void main() {
       // …and the coordinator refuses a transform outright — writing one is
       // a programming error, not a silently ignored edit.
       expect(
-        () => session.updateLayerTransformTrack(row.id, TransformTrack.empty()),
+        () => session.laneVerbs.updateLayerTransformTrack(
+          row.id,
+          TransformTrack.empty(),
+        ),
         throwsStateError,
       );
     });

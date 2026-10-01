@@ -40,7 +40,7 @@ void main() {
   test('no marks and no ghosts returns the SAME layer instance', () {
     final layer = _layer(timeline: {0: _draw('a', 3)});
     expect(
-      identical(rederiveRunBehaviors(layer, cutFrameCount: 12), layer),
+      identical(rederiveRunBehaviors(layer, drawnFrameCount: 12), layer),
       isTrue,
     );
   });
@@ -51,7 +51,7 @@ void main() {
       timeline: {0: _draw('a', 2, end: holdMark), 2: _draw('b', 2)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 10);
     final ghost = derived.timeline[4]!;
     expect(ghost.ghostOf, endHoldGhost);
     expect(ghost.frameId, const FrameId('b'));
@@ -66,7 +66,7 @@ void main() {
       timeline: {0: _draw('a', 2, end: repeatMark), 2: _draw('b', 1)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 10);
     // Span 3 cycles at 3 and 6; the cycle at 9 truncates to one frame.
     expect(derived.timeline[3]!.frameId, const FrameId('a'));
     expect(derived.timeline[3]!.length, 2);
@@ -85,7 +85,7 @@ void main() {
       timeline: {0: _draw('a', 2, end: holdMark), 5: _draw('c', 1)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 12);
     expect(derived.timeline[2]!.ghost, isTrue);
     expect(derived.timeline[2]!.length, 3, reason: 'clamped at 5');
     expect(derived.timeline[5]!.ghost, isFalse);
@@ -94,13 +94,13 @@ void main() {
   test('a fully occluded side keeps its mark (self-restoring)', () {
     final atCutEnd = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2, end: holdMark)}),
-      cutFrameCount: 2,
+      drawnFrameCount: 2,
     );
     expect(atCutEnd.timeline.values.any((entry) => entry.ghost), isFalse);
     expect(atCutEnd.timeline[0]!.endEdge, holdMark, reason: 'mark survives');
 
     // Room opens up again: the tail comes back.
-    final reopened = rederiveRunBehaviors(atCutEnd, cutFrameCount: 6);
+    final reopened = rederiveRunBehaviors(atCutEnd, drawnFrameCount: 6);
     expect(reopened.timeline[2]!.ghost, isTrue);
     expect(reopened.timeline[2]!.length, 4);
   });
@@ -108,13 +108,13 @@ void main() {
   test('a deleted carrier takes its property with it (self-healing)', () {
     final held = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2), 2: _draw('b', 1, end: holdMark)}),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
     expect(held.timeline[3]!.ghost, isTrue, reason: 'LIVENESS — it holds');
 
     final withoutCarrier = rederiveRunBehaviors(
       held.copyWith(timeline: {0: held.timeline[0]!}),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
     expect(withoutCarrier.timeline.keys, [0]);
     expect(withoutCarrier.timeline[0]!.endEdge.isNone, isTrue);
@@ -125,7 +125,7 @@ void main() {
       timeline: {4: _draw('a', 2, start: holdMark), 6: _draw('b', 1)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 12);
     final ghost = derived.timeline[0]!;
     expect(ghost.ghostOf, startHoldGhost);
     expect(ghost.frameId, const FrameId('a'));
@@ -138,7 +138,7 @@ void main() {
       timeline: {5: _draw('a', 2, start: repeatMark), 7: _draw('b', 1)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 12);
     // Span 3 tiles left from 5: cycle [2,5) = a@2,b@4; the partial cycle
     // [-1,2) clips to its visible tail: a@0 (one frame of two), b@1.
     expect(derived.timeline[2]!.frameId, const FrameId('a'));
@@ -161,7 +161,7 @@ void main() {
       timeline: {0: _draw('c', 2), 6: _draw('a', 2, start: holdMark)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 12);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 12);
     expect(derived.timeline[2]!.ghost, isTrue);
     expect(derived.timeline[2]!.length, 4, reason: 'fills [2,6) only');
     expect(derived.timeline[0]!.ghost, isFalse);
@@ -176,7 +176,7 @@ void main() {
       },
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 7);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 7);
     // Pattern = [b, c] → b,c cycling after the run.
     expect(derived.timeline[3]!.frameId, const FrameId('b'));
     expect(derived.timeline[4]!.frameId, const FrameId('c'));
@@ -189,7 +189,7 @@ void main() {
       'with no gap (the pattern IS the live run)', () {
     final layer = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 4, end: repeatMark)}),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
     expect(layer.timeline[4]!.ghost, isTrue);
 
@@ -205,7 +205,7 @@ void main() {
                   : entry.value,
         },
       ),
-      cutFrameCount: 12,
+      drawnFrameCount: 12,
     );
 
     // The tail re-attaches at the NEW run end — zero gap.
@@ -223,14 +223,14 @@ void main() {
   test('a cut duration change refills the tail (longer AND shorter)', () {
     final layer = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2, end: holdMark)}),
-      cutFrameCount: 6,
+      drawnFrameCount: 6,
     );
     expect(layer.timeline[2]!.length, 4);
 
-    final longer = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    final longer = rederiveRunBehaviors(layer, drawnFrameCount: 10);
     expect(longer.timeline[2]!.length, 8);
 
-    final shorter = rederiveRunBehaviors(layer, cutFrameCount: 3);
+    final shorter = rederiveRunBehaviors(layer, drawnFrameCount: 3);
     expect(shorter.timeline[2]!.length, 1);
   });
 
@@ -247,7 +247,7 @@ void main() {
       },
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
     expect(derived.timeline[3]!.breakdownOffsets, const [1, 2]);
     // The truncated cycle at 6 keeps only what its length spares.
     expect(derived.timeline[6]!.length, 2);
@@ -266,7 +266,7 @@ void main() {
       timeline: {4: _draw('a', 2, start: holdMark, end: repeatMark)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 10);
     expect(derived.timeline[0]!.ghost, isTrue);
     expect(derived.timeline[0]!.length, 4, reason: 'the front-hold lead-in');
     // The repeated unit is hold(4f) + block(2f) = 6 frames; the tail
@@ -287,7 +287,7 @@ void main() {
       timeline: {6: _draw('a', 2, start: repeatMark, end: holdMark)},
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 10);
     // Rear hold: [8,10) ghost. Pattern = block(2f) + hold(2f) = 4 frames,
     // tiled flush leftward over the [0,6) lead-in: cycle at 2 = block copy
     // [2,4) + hold copy [4,6); the leftmost partial keeps the TAIL — the
@@ -319,7 +319,7 @@ void main() {
       },
     );
 
-    final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+    final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
     // Pattern = [a] alone, tiled leftward over [0,5).
     for (var index = 0; index < 5; index += 1) {
       expect(
@@ -340,7 +340,7 @@ void main() {
         },
       );
 
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+      final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
       expect(derived.timeline[3]!.ghostOf, endHoldGhost);
       expect(derived.timeline[3]!.length, 5, reason: 'one hold block');
       expect(
@@ -359,7 +359,7 @@ void main() {
         },
       );
 
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+      final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
       // The whole run [4,6) tiles flush leftward over [0,4).
       expect(derived.timeline[0]!.ghostOf, startRepeatGhost);
       expect(derived.timeline[0]!.frameId, const FrameId('a'));
@@ -377,7 +377,7 @@ void main() {
         },
       );
 
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: 9);
+      final derived = rederiveRunBehaviors(layer, drawnFrameCount: 9);
       // c wins; walking back from it meets b — another carrier — before a's
       // bound, so the pattern is the whole run [0,3).
       for (final (index, id) in [(3, 'a'), (4, 'b'), (5, 'c'), (6, 'a')]) {
@@ -391,7 +391,7 @@ void main() {
     test('a run no carrier speaks for keeps no bound', () {
       final derived = rederiveRunBehaviors(
         _layer(timeline: {0: _draw('a', 1, end: boundMark)}),
-        cutFrameCount: 4,
+        drawnFrameCount: 4,
       );
       expect(derived.timeline.keys, [0]);
       expect(derived.timeline[0]!.endEdge.isNone, isTrue);
@@ -411,7 +411,7 @@ void main() {
         },
       );
 
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: 10);
+      final derived = rederiveRunBehaviors(layer, drawnFrameCount: 10);
       expect(
         derived.timeline[1],
         isNull,
@@ -426,7 +426,7 @@ void main() {
       // 「이름바꿔서 링크프레임 작동시키면 성질 사라짐」.
       final held = rederiveRunBehaviors(
         _layer(timeline: {0: _draw('a', 1, end: holdMark)}),
-        cutFrameCount: 4,
+        drawnFrameCount: 4,
       );
       final relinked = rederiveRunBehaviors(
         held.copyWith(
@@ -434,7 +434,7 @@ void main() {
             0: held.timeline[0]!.copyWith(frameId: const FrameId('b')),
           },
         ),
-        cutFrameCount: 4,
+        drawnFrameCount: 4,
       );
       expect(relinked.timeline[0]!.endEdge, holdMark);
       expect(relinked.timeline[1]!.ghostOf, endHoldGhost);
@@ -446,7 +446,7 @@ void main() {
       'and the ghosts saved before F-134 are dropped', () {
     final layer = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2, end: repeatBoundMark)}),
-      cutFrameCount: 6,
+      drawnFrameCount: 6,
     );
     expect(layer.timeline[2]!.ghostOf, endRepeatGhost, reason: 'LIVENESS');
 
@@ -492,7 +492,7 @@ void main() {
   test('runEdgeBehaviorAt resolves the edge through the LIVE run', () {
     final layer = rederiveRunBehaviors(
       _layer(timeline: {0: _draw('a', 2), 2: _draw('b', 1, end: holdMark)}),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
 
     // Both blocks of the glued run answer for the run's edges.

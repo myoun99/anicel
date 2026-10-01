@@ -60,7 +60,7 @@ void main() {
         path: moviePath,
         settings: const ImportFileSettings(
           mode: ImportFileMode.reference,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       ),
     );

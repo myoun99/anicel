@@ -4,8 +4,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 
 void main() {
+  /// The container rides in [output]'s extension — ffmpeg muxes by it.
   List<String> args({
-    ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
@@ -15,7 +15,6 @@ void main() {
     frameRate: ProjectFrameRate.fps24,
     outputFilePath: output,
     audioMixPath: audioMixPath,
-    container: container,
     codec: codec,
     alpha: alpha,
     bitrateBps: bitrateBps,
@@ -51,7 +50,6 @@ void main() {
     };
     byCodec.forEach((codec, profile) {
       final arguments = args(
-        container: ExportVideoContainer.mov,
         codec: codec,
         output: 'out.mov',
       );
@@ -65,7 +63,6 @@ void main() {
 
   test('4444 with alpha: yuva444p10le, transparent pad, PCM audio', () {
     final arguments = args(
-      container: ExportVideoContainer.mov,
       codec: ExportVideoCodec.prores4444,
       alpha: true,
       audioMixPath: 'mix.wav',
@@ -80,7 +77,6 @@ void main() {
 
   test('4444 without alpha stays opaque 4:4:4', () {
     final arguments = args(
-      container: ExportVideoContainer.mov,
       codec: ExportVideoCodec.prores4444,
       output: 'out.mov',
     );

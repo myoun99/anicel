@@ -106,7 +106,7 @@ void main() {
             ),
           },
         ),
-        cutFrameCount: 240,
+        drawnFrameCount: 240,
       );
   Layer seEntry(String dialogue) => Layer(
     id: const LayerId('se'),

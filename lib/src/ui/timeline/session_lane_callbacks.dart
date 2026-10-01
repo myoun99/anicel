@@ -32,6 +32,16 @@ PropertyLaneEditCallbacks sessionLaneEditCallbacks(
         frameIsGlobal: frameIsGlobal,
         description: 'Set ${lane.label} at frame ${frameIndex + 1}',
       ),
+  // F-195: the same edit, shown while a scrub lasts.
+  onPreviewValue: (layer, lane, frameIndex, input) =>
+      session.laneVerbs.previewLaneValueAt(
+        layer.id,
+        lane.laneId,
+        frameIndex,
+        input,
+        frameIsGlobal: frameIsGlobal,
+      ),
+  onEndPreview: session.laneVerbs.endLaneEditPreview,
 );
 
 /// The sound edits an SE row's audio band takes, wired to [session] — the

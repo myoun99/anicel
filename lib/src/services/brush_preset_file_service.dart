@@ -52,6 +52,14 @@ class BrushPresetFileService {
   /// release that reaches someone who has drawn with their own brushes has to
   /// put carry-forward back before it bumps this number, or the bump eats
   /// their library. Nothing here enforces that; this comment is the warning.
+  ///
+  /// ⛔**A ROSTER CHANGE DOES NOT BUMP IT EITHER** (유저 2026-09-24, board
+  /// `preset-spacing-library-delivery`: 「굳이 뭐 안해도되. 내가 그냥 지금
+  /// 있는거 삭제해서 초기화시킬테니 그런 이행코드같은거 만들지마」). 유저 has
+  /// brushes of their own now, which a bump would eat without asking; they
+  /// bring a new roster in themselves with "Reset brush library". ↩️So "what
+  /// makes a roster change reach the person running the app" above no longer
+  /// holds — board F-218 reworked the roster under version 9.
   // 8: the paper texture stores its SOURCE plus invert/brightness/contrast,
   // where 7 stored one mask with the levels already baked in. A 7 file would
   // read its baked mask back as a source and bake the levels a second time.
@@ -153,20 +161,18 @@ class BrushPresetFileService {
 
   /// Sends presets whose group no longer exists back to the root section, so
   /// a hand-edited or partially-merged file can never hide a preset behind a
-  /// header that is not there.
+  /// header that is not there — the tab it shows in
+  /// ([BrushPreset.groupShownAmong]) made what it holds.
   static List<BrushPreset> _withKnownGroups(
     List<BrushPreset> presets,
     List<BrushGroup> groups,
-  ) {
-    final knownIds = {for (final group in groups) group.id};
-    return [
-      for (final preset in presets)
-        if (preset.groupId == null || knownIds.contains(preset.groupId))
-          preset
-        else
-          preset.copyWith(groupId: null),
-    ];
-  }
+  ) => [
+    for (final preset in presets)
+      if (preset.groupShownAmong(groups) == preset.groupId)
+        preset
+      else
+        preset.copyWith(groupId: null),
+  ];
 
   /// Writes the preset library, creating the app-data directory as needed.
   Future<void> save(BrushPresetLibraryData library) => saveVersionedSettings(

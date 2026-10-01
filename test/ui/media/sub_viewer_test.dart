@@ -201,6 +201,7 @@ void main() {
                   viewerId: 'media-viewer-sub',
                   session: session,
                   request: slot.request,
+                  position: slot.position,
                   onAssetDropped: dropped.add,
                 ),
               ),
@@ -309,6 +310,7 @@ void main() {
             viewerId: 'media-viewer-sub',
             session: session,
             request: slot.request,
+            position: slot.position,
             onRegisterAsset: (path) {
               registered.add(path);
               pool.add(path);
@@ -467,6 +469,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
+              position: slot.position,
               onRegisterAsset: registered.add,
               onSwapViewers: () => swaps += 1,
               isPathRegistered: (_) => false,

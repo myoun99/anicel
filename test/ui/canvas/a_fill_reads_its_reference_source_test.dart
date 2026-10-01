@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/fill_reference_button.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/panel_finders.dart';
 
@@ -100,7 +101,7 @@ void main() {
       workspaceOf(tester).session;
 
   List<int> pixelsOf(WidgetTester tester, LayerId layer, FrameId frame) {
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(
       BrushFrameKey(
         projectId: const ProjectId('fr-project'),
@@ -370,15 +371,24 @@ void main() {
     );
     expect(
       tester
-          .widget<SegmentedButton<CanvasReadSource>>(segments)
-          .segments
-          .map((segment) => segment.value),
-      [CanvasReadSource.display, CanvasReadSource.layer],
+          .widgetList<Pill>(
+            find.descendant(of: segments, matching: find.byType(Pill)),
+          )
+          .map((pill) => (pill.key! as ValueKey<String>).value),
+      [
+        for (final offer in [CanvasReadSource.display, CanvasReadSource.layer])
+          'eyedropper-source-${offer.name}',
+      ],
     );
     final reads = find.byKey(const ValueKey<String>('eyedropper-reads'));
     expect(
       tester.widget<Text>(reads).data,
       AppText.strings.toolReadsEveryVisibleLayer,
+    );
+    expect(
+      tester.widget<PillStrip>(segments).axis,
+      Axis.vertical,
+      reason: 'stood up — side by side the answers fold in the panel',
     );
     await press(
       tester,
@@ -388,5 +398,14 @@ void main() {
       ),
     );
     expect(tester.widget<Text>(reads).data, color.value);
+    bool lit(CanvasReadSource offer) => tester
+        .widget<Pill>(
+          find.byKey(ValueKey<String>('eyedropper-source-${offer.name}')),
+        )
+        .selected;
+    expect(
+      (lit(CanvasReadSource.display), lit(CanvasReadSource.layer)),
+      (false, true),
+    );
   });
 }

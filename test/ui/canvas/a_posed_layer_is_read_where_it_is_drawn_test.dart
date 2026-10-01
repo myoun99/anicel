@@ -174,7 +174,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
     }
 
-    final surface = sessionOf(tester).pixelEditingCoordinator!
+    final surface = sessionOf(tester).pixelEditing.coordinator!
         .currentSurfaceOf(
           const BrushFrameKey(
             projectId: ProjectId('pl-project'),

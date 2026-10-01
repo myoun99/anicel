@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/drawing_block_move_drag.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -22,20 +24,23 @@ class DrawingBlockMoveDragVerbs {
     required ProjectAccess project,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required RetimeLaw retime,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required FoldersAndAttachments folders,
     required RenderCaches renderCaches,
   }) : _project = project,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
+       _retime = retime,
+       _dragPreview = dragPreview,
        _folders = folders,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final FoldersAndAttachments _folders;
   final RenderCaches _renderCaches;
 
@@ -59,11 +64,12 @@ class DrawingBlockMoveDragVerbs {
       layerId: layerId,
       blockStartIndex: blockStartIndex,
       layerById: _project.layerById,
-      isEligibleRow: _internals.blockMoveEligible,
+      isEligibleRow: _retime.blockMoveEligible,
       noticeIneligible: _folders.noticeSyncedAttachRefusal,
       bankOf: _controllers.timelineController.bankLanesOf,
       cutFrameCount: () => _project.activeCutFrameCount,
-      preview: _internals.dragPreview,
+      drawnFrameCount: () => _project.activeCutDrawnFrameCount,
+      preview: _dragPreview,
       land: _landDrawingBlockMove,
     );
     if (drag == null) {
@@ -94,7 +100,7 @@ class DrawingBlockMoveDragVerbs {
   }
 
   /// Applies the drag's cumulative deltas as a live preview on
-  /// [_internals.dragPreview] (repository untouched). [targetLayerId] is the layer row
+  /// [_dragPreview] (repository untouched). [targetLayerId] is the layer row
   /// currently under the pointer (null or the source id = plain slide).
   /// Blocks in the way are pushed in the direction of travel (R12-②) and
   /// ride the preview live; the rare still-illegal landing (mark collision,
@@ -149,7 +155,7 @@ class DrawingBlockMoveDragVerbs {
         before: source,
         after: rederiveRunBehaviors(
           plan.sourceAfter,
-          cutFrameCount: _project.activeCutFrameCount,
+          drawnFrameCount: _project.activeCutDrawnFrameCount,
         ),
       ),
       if (plan.targetBefore != null)
@@ -158,7 +164,7 @@ class DrawingBlockMoveDragVerbs {
           before: plan.targetBefore!,
           after: rederiveRunBehaviors(
             plan.targetAfter!,
-            cutFrameCount: _project.activeCutFrameCount,
+            drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
         ),
     ];
@@ -170,15 +176,14 @@ class DrawingBlockMoveDragVerbs {
           pairs: [
             for (final frameId in plan.movedFrameIds)
               (
-                _internals.brushFrameKeyForCut(cut, source.id, frameId),
-                _internals.brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
+                _project.brushFrameKeyForCut(cut, source.id, frameId),
+                _project.brushFrameKeyForCut(cut, plan.targetAfter!.id, frameId),
               ),
           ],
         ),
       );
     }
-    return commands.length == 1
-        ? commands.single
-        : CompositeCommand(description: description, commands: commands);
+    // Never empty: the source row's rewrite is always the first.
+    return oneStepOf(description, commands)!;
   }
 }

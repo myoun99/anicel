@@ -10,6 +10,29 @@ import 'timeline_zoom_limits.dart';
 
 import '../../models/project_frame_rate.dart';
 
+/// What a [TimelineViewCluster] shows — the key both frame panels keep
+/// theirs by across their host's rebuilds (F-244 ⑧, `keptWhileSame`):
+/// the channels its counter hears, by identity, its words and numbers, and
+/// [trailing] — what the host's own controls beside it show.
+///
+/// 🔬Measured (10-01, a comma drag released on 24 rows): the timeline's
+/// cluster was built anew at every commit — 47 elements, every one of them
+/// the same — because the panel made it afresh in its build.
+///
+/// The zoom's callback is a fact, by equality, as the cells rows' content
+/// callbacks are: whether there is one is what the − and + show, and a
+/// host's tear-off compares equal across its rebuilds.
+typedef TimelineViewClusterFacts = ({
+  ValueListenable<int> frameCursor,
+  ValueListenable<int?>? globalFrame,
+  ProjectFrameRate projectFrameRate,
+  bool showSeconds,
+  double pixelsPerFrame,
+  ValueChanged<double>? onPixelsPerFrameChanged,
+  String cutName,
+  Object? trailing,
+});
+
 /// The right-side view cluster shared VERBATIM by the timeline and
 /// storyboard tabs: frame counter + zoom slider, plus host-specific
 /// trailing controls (the timeline's orientation toggle).
@@ -31,6 +54,7 @@ class TimelineViewCluster extends StatelessWidget {
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.globalFrame,
+    this.cutName = '',
     this.trailing = const <Widget>[],
   });
 
@@ -45,6 +69,16 @@ class TimelineViewCluster extends StatelessWidget {
   /// refreshes the label too. Null (the timeline tab) keeps the plain
   /// cut-local counter.
   final ValueListenable<int?>? globalFrame;
+
+  /// The name of the cut whose frames the counter counts (I-57, 유저
+  /// 2026-10-01: 「현재 컷의 이름을 표기하고싶음. 위치는 타임라인/콘티패널
+  /// 동일하게. 타임라인 줌의 마이너스버튼 왼쪽. 즉 로컬/글로벌 인덱스를
+  /// 왼쪽에 두고, 그 사이에 컷이름」) — between the counter and the zoom's −
+  /// button, on both panels, because both mount this one bar.
+  final String cutName;
+
+  /// How wide the cut's name may grow before it is cut short, at 1×.
+  static const double _cutNameMaxWidth = 160;
 
   final ProjectFrameRate projectFrameRate;
   final bool showSeconds;
@@ -172,6 +206,24 @@ class TimelineViewCluster extends StatelessWidget {
           },
         ),
         const SizedBox(width: 4),
+        // I-57: the cut the counter counts, named between the counter and
+        // the zoom it stands beside — the slot is always laid, the name is
+        // what changes.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _cutNameMaxWidth),
+          child: Text(
+            cutName,
+            key: const ValueKey<String>('timeline-cut-name'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
         // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
         // decorations — click-to-zoom without the slider's drag precision.
         _zoomStepButton(zoomIn: false),
@@ -195,19 +247,17 @@ class TimelineViewCluster extends StatelessWidget {
             // Equal travel is equal RATIO here, as it is on every editor
             // zoom in the app.
             scale: FieldSliderScale.exponential,
-            // Quantized by the range's own law (R4 #5 kept: a sub-pixel
-            // drag above 1px rebuilt the entire grid for a visually
-            // identical step). The bar echoes the gesture smoothly either
-            // way.
+            // F-220: every value the bar reaches is the zoom — held inside
+            // the range, and nothing else ([TimelineZoomLimits.clamped]).
             onChanged: onPixelsPerFrameChanged == null
                 ? null
                 : (value) {
-                    final stepped = TimelineZoomLimits.quantize(
+                    final zoom = TimelineZoomLimits.clamped(
                       value,
                       framesPerSecond: projectFrameRate.countingBase,
                     );
-                    if (stepped != pixelsPerFrame) {
-                      onPixelsPerFrameChanged!(stepped);
+                    if (zoom != pixelsPerFrame) {
+                      onPixelsPerFrameChanged!(zoom);
                     }
                   },
           ),

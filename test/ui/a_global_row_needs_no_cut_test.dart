@@ -102,7 +102,7 @@ void main() {
 
   test('frame 10 really is a gap — the fixture proves the premise', () {
     final s = standingAt(10);
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.playheadInGap, isTrue);
     expect(
       s.activeCutOrNull,
       isNull,

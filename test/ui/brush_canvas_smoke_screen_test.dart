@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -14,6 +15,14 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import 'brush_canvas_test_helpers.dart';
+
+/// ↩️I-50: the screen's default brush is a 1px nib at 3단계, and a nib that
+/// small is all anti-alias edge — its tap lays a faint dot. These tests pin
+/// the plumbing (a tap lands, undo takes it back, a colour reaches the next
+/// stroke), so they draw with a nib that lands whole.
+final _hardPixel = BrushEditCanvasInputSettings(
+  antiAlias: BrushAntiAlias.none,
+);
 
 void main() {
   group('BrushCanvasSmokeScreen', () {
@@ -120,9 +129,10 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          const BrushCanvasSmokeScreen(
-            canvasSize: CanvasSize(width: 8, height: 8),
+          BrushCanvasSmokeScreen(
+            canvasSize: const CanvasSize(width: 8, height: 8),
             tileSize: 2,
+            inputSettings: _hardPixel,
           ),
         ),
       );
@@ -141,9 +151,10 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          const BrushCanvasSmokeScreen(
-            canvasSize: CanvasSize(width: 8, height: 8),
+          BrushCanvasSmokeScreen(
+            canvasSize: const CanvasSize(width: 8, height: 8),
             tileSize: 2,
+            inputSettings: _hardPixel,
           ),
         ),
       );
@@ -188,11 +199,12 @@ void main() {
 
         await tester.pumpWidget(
           _app(
-            const BrushCanvasSmokeScreen(
-              layerId: LayerId('layer-a'),
-              frameId: FrameId('frame-a'),
+            BrushCanvasSmokeScreen(
+              layerId: const LayerId('layer-a'),
+              frameId: const FrameId('frame-a'),
               canvasSize: canvasSize,
               tileSize: 2,
+              inputSettings: _hardPixel,
             ),
           ),
         );
@@ -202,11 +214,12 @@ void main() {
 
         await tester.pumpWidget(
           _app(
-            const BrushCanvasSmokeScreen(
-              layerId: LayerId('layer-b'),
-              frameId: FrameId('frame-b'),
+            BrushCanvasSmokeScreen(
+              layerId: const LayerId('layer-b'),
+              frameId: const FrameId('frame-b'),
               canvasSize: canvasSize,
               tileSize: 2,
+              inputSettings: _hardPixel,
             ),
           ),
         );
@@ -233,9 +246,10 @@ void main() {
     ) async {
       await tester.pumpWidget(
         _app(
-          const BrushCanvasSmokeScreen(
-            canvasSize: CanvasSize(width: 8, height: 8),
+          BrushCanvasSmokeScreen(
+            canvasSize: const CanvasSize(width: 8, height: 8),
             tileSize: 2,
+            inputSettings: _hardPixel,
           ),
         ),
       );
@@ -354,19 +368,19 @@ void main() {
         await tester.pumpWidget(_app(_smallScreen()));
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final blackState = _view(tester).sessionState;
+        final blackCel = _view(tester).celNow();
         await _tapKey(
           tester,
           const ValueKey<String>('brush-canvas-smoke-screen-color-blue'),
         );
         await tapCanvas(tester, const Offset(3.5, 2.5));
-        final blueState = _view(tester).sessionState;
+        final blueCel = _view(tester).celNow();
 
         expect(_host(tester).inputSettings.color, 0xFF0000FF);
         expect(find.textContaining('color: 0xFF0000FF'), findsOneWidget);
-        // Each commit materializes into a new session state instance and
+        // Each commit materializes into a new cel surface and
         // the earlier stroke's pixels remain untouched.
-        expect(identical(blueState, blackState), isFalse);
+        expect(identical(blueCel, blackCel), isFalse);
         expect(_surfaceRgbaAt(tester, 1, 1), [0, 0, 0, 255]);
         expect(_surfaceRgbaAt(tester, 3, 2), [0, 0, 255, 255]);
       },
@@ -478,7 +492,7 @@ InteractiveBrushCanvasSmokeHost _host(WidgetTester tester) {
 }
 
 List<int> _surfaceRgbaAt(WidgetTester tester, int x, int y) {
-  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  final surface = _view(tester).celNow();
   final tileSize = surface.tileSize;
   final tile = surface.tileAt(TileCoord(x: x ~/ tileSize, y: y ~/ tileSize));
   if (tile == null) {
@@ -498,7 +512,7 @@ int _alphaAt(WidgetTester tester, int x, int y) =>
     _surfaceRgbaAt(tester, x, y)[3];
 
 bool _surfaceIsBlank(WidgetTester tester) {
-  final surface = _view(tester).sessionState.canvasState.currentSurface;
+  final surface = _view(tester).celNow();
   return surface.tiles.values.every((tile) => !tile.hasInk);
 }
 
@@ -514,9 +528,10 @@ Future<void> _tapKey(WidgetTester tester, Key key) async {
 }
 
 BrushCanvasSmokeScreen _smallScreen() {
-  return const BrushCanvasSmokeScreen(
-    canvasSize: CanvasSize(width: 8, height: 8),
+  return BrushCanvasSmokeScreen(
+    canvasSize: const CanvasSize(width: 8, height: 8),
     tileSize: 2,
+    inputSettings: _hardPixel,
   );
 }
 

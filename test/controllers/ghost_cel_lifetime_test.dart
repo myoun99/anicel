@@ -52,19 +52,19 @@ void main() {
     ),
   );
 
-  /// One authored cel at 0, and an end-hold's ghosts standing at 1 and 2.
+  /// One authored cel at 0 that HOLDS, its ghosts standing after it.
   ///
-  /// ⚠️Ghosts are written into the fixture rather than derived, because the
-  /// claim is about what the CONTROLLER does when it sees them — deriving
-  /// them here would test the deriver instead.
+  /// ↩️The ghosts used to be written into the fixture by hand, so the claim
+  /// would be about the CONTROLLER and not the deriver. The repository now
+  /// settles run edges on every write (F-227), so a ghost with no hold to
+  /// derive it from cannot be stored at all — the hold is the fixture, and
+  /// the controller still sees exactly the ghosts it did.
   Layer heldRow() => Layer(
     id: layerId,
     name: 'A',
     frames: [Frame(id: celId, duration: 1, strokes: const [])],
     timeline: {
-      0: const TimelineExposure.drawing(celId, length: 1),
-      1: const TimelineExposure.drawing(celId, length: 1, ghostOf: endHoldGhost),
-      2: const TimelineExposure.drawing(celId, length: 1, ghostOf: endHoldGhost),
+      0: const TimelineExposure.drawing(celId, length: 1, endEdge: holdMark),
     },
   );
 

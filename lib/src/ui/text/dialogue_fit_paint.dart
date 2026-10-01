@@ -22,13 +22,14 @@ import 'vertical_writing_text.dart';
 /// how far down it runs; [style] carries the whole look, so the screen's
 /// w600 12pt and the sheet's regular 9pt are values rather than two
 /// placers. `style.fontSize` must be set — the vertical cell sizes
-/// against it.
+/// against it. [setWord] is how the host sets a glyph ([WordSetter]).
 void paintDialogueFitColumn(
   Canvas canvas,
   String text, {
   required Offset topCenter,
   required double extent,
   required TextStyle style,
+  required WordSetter setWord,
   double maxCrossExtent = double.infinity,
 }) {
   final glyphs = text.characters.toList(growable: false);
@@ -53,8 +54,46 @@ void paintDialogueFitColumn(
       painter: painter,
       center: Offset(topCenter.dx, topCenter.dy + centers[i]),
       fontSize: style.fontSize!,
+      setWord: setWord,
       maxCrossExtent: maxCrossExtent,
       alongColumnScale: condense,
     );
   }
+}
+
+/// How long [text] runs along [axis] at its natural size — its glyphs one
+/// after another, none spread over a block and none narrowed into one: the
+/// length below which the placers above start narrowing it. [maxCrossExtent]
+/// is a column's width, which a glyph standing in it is fitted to first
+/// ([verticalGlyphFit]).
+double dialogueNaturalExtent(
+  String text, {
+  required Axis axis,
+  required TextStyle style,
+  double maxCrossExtent = double.infinity,
+}) {
+  var extent = 0.0;
+  for (final glyph in text.characters) {
+    final painter = TextPainter(
+      text: TextSpan(text: glyph, style: style),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    if (axis == Axis.horizontal) {
+      extent += painter.width;
+      continue;
+    }
+    final (:turned, :scale) = verticalGlyphFit(
+      verticalGlyphCell(glyph),
+      painter: painter,
+      fontSize: style.fontSize!,
+      room: (across: maxCrossExtent, span: 0),
+    );
+    extent += verticalGlyphAdvance(
+      turned: turned,
+      painter: painter,
+      fontSize: style.fontSize!,
+      scale: scale,
+    );
+  }
+  return extent;
 }

@@ -59,6 +59,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onViewportChanged,
     this.brushToolState,
     this.viewportOverlayBuilder,
+    this.viewportControlsBuilder,
     this.viewportUnderlayBuilder,
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
@@ -167,6 +168,11 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// editor viewport (e.g. the camera frame overlay).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Forwarded to [BrushCanvasPanel]: the controls stacked over every tool
+  /// layer (the standing row's transform box).
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportControlsBuilder;
 
   /// Forwarded to [BrushCanvasPanel]: painted under the interactive canvas
   /// (paper + layers below the active one) — or, in merged mode, the whole
@@ -560,6 +566,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onViewportChanged: widget.onViewportChanged,
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
+      viewportControlsBuilder: widget.viewportControlsBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,
       activeStrokeOverlayModel: widget.activeStrokeOverlayModel,
       interactiveContentOpacity: widget.interactiveContentOpacity,

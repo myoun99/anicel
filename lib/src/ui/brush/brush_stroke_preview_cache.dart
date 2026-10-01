@@ -14,6 +14,8 @@ import '../../models/brush_settings.dart';
 import '../../models/canvas_point.dart';
 import '../../services/brush_dab_coverage.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/brush_dab_share.dart';
+import '../../services/brush_pixel_blend.dart';
 import '../../services/brush_pressure_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
 import 'brush_tool_state.dart';
@@ -501,6 +503,9 @@ Uint8List rasterizeBrushStrokeSample(
     if (pendingDistance < spacing) {
       continue;
     }
+    // The stretch since the dab before, which is what this one stands for
+    // (`BrushDab.pathStep`) — none for the first, which opens the stroke.
+    final stretch = pendingDistance;
     pendingDistance = 0;
 
     final pressure = math.sin(t * math.pi).clamp(0.08, 1.0).toDouble();
@@ -539,6 +544,7 @@ Uint8List rasterizeBrushStrokeSample(
         // deliberately does not: it is random per dab on the canvas, and a
         // preview that moved under you every rebuild would be noise.
         antiAlias: settings.antiAlias,
+        pathStep: stretch.isFinite ? stretch : null,
       ),
       shape: settings.shape,
     );
@@ -563,17 +569,39 @@ Uint8List rasterizeBrushStrokeSample(
     // of those objects, and the container was 127 ms of an 833 ms raster.
     // ⛔The arithmetic is unchanged: same walk, same cascade, same order —
     // see `forEachBrushPixelCoverage`, which the list form now also runs.
-    // ⛔`coverage * dab.flow * dab.opacity` STAYS IN THAT ORDER. Folding the
-    // two dab factors into one hoisted product is the same value in algebra
-    // and a different double in floating point, and this plane is compared
-    // byte for byte by the preview's own pins.
+    //
+    // 🚨THE DAB SETTLES AT ITS OPACITY, as it does on the canvas (F-205,
+    // [settledDabAlpha]). ↩️The swatch multiplied it in —
+    // `coverage * dab.flow * dab.opacity`, kept in that order for the
+    // preview's byte pins — until 2026-10-01, so a pressure-opacity brush's
+    // swatch went on darkening where its dabs crossed while the canvas
+    // stopped at the press. An opacity of one still lays those same bytes:
+    // `coverage * dab.flow` is that product with its factor of one gone.
+    //
+    // 🚨AND IT LAYS ITS SHARE, as it does on the canvas (`stampShareOf`): a
+    // swatch row's nib is 0.62 of the row, so without it a tall row piled
+    // up darker than a short one.
+    final opacity = dab.opacity;
+    final evening = eveningTableOf(dab);
     forEachBrushPixelCoverage(dab, (x, y, coverage) {
       if (x >= width || y >= height) {
         return;
       }
       final index = y * width + x;
-      final dabAlpha = coverage * dab.flow * dab.opacity;
-      accumulated[index] += dabAlpha * (1 - accumulated[index]);
+      final whole = coverage * dab.flow;
+      final laid = evening == null ? whole : evenedLaid(evening, whole);
+      final under = accumulated[index];
+      final dabAlpha = opacity >= 1.0
+          ? laid
+          : settledDabAlpha(
+              laid: laid,
+              opacity: opacity,
+              destinationAlpha: under,
+            );
+      if (dabAlpha == null) {
+        return;
+      }
+      accumulated[index] = under + dabAlpha * (1 - under);
     });
   }
 

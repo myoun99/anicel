@@ -4,6 +4,9 @@
 // `updateSeName` default flipped to true, so every plain rename also wrote
 // the (absent) SE name and wiped the one the frame had. Nothing noticed;
 // this pins the default beside the opt-in.
+//
+// ↩️I-20 (2026-10-01): the opt-in is a record now — `seEntry` carries the
+// speaker AND the delivery, so no flag answers for two fields.
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/timeline_controller.dart';
@@ -16,6 +19,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -50,6 +54,7 @@ Project _project() => Project(
                   strokes: const [],
                   name: 'A',
                   seName: 'boom',
+                  seType: SeLineType.off,
                 ),
               ],
               timeline: {
@@ -75,7 +80,7 @@ Frame _frameOf(ProjectRepository repository) => repository
     .single;
 
 void main() {
-  test('a plain rename keeps the SE name', () {
+  test('a plain rename keeps the SE name and the delivery', () {
     final repository = ProjectRepository(initialProject: _project());
     final controller = TimelineController(
       repository: repository,
@@ -88,9 +93,11 @@ void main() {
     );
     expect(_frameOf(repository).name, 'A2');
     expect(_frameOf(repository).seName, 'boom');
+    expect(_frameOf(repository).seType, SeLineType.off);
   });
 
-  test('updateSeName writes the SE name the call carries', () {
+  test('an SE entry edit writes the fields the call carries — name and '
+      'delivery (I-20) — in the same step as the dialogue', () {
     final repository = ProjectRepository(initialProject: _project());
     final controller = TimelineController(
       repository: repository,
@@ -99,10 +106,11 @@ void main() {
     controller.renameFrameForLayer(
       layerId: _layerId,
       frameId: _frameId,
-      name: 'A',
-      seName: 'crash',
-      updateSeName: true,
+      name: 'B',
+      seEntry: (seName: 'crash', seType: SeLineType.mono),
     );
+    expect(_frameOf(repository).name, 'B');
     expect(_frameOf(repository).seName, 'crash');
+    expect(_frameOf(repository).seType, SeLineType.mono);
   });
 }

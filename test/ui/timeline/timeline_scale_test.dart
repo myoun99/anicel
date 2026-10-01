@@ -9,10 +9,10 @@ void main() {
     expect(scale.leftForFrame(24), 192);
   });
 
-  test('widthForDuration maps duration to pixels with visual minimum', () {
+  test('a block ends at its end, or its minimum on from its start', () {
     const scale = TimelineScale(pixelsPerFrame: 8, minBlockWidth: 96);
 
-    expect(scale.widthForDuration(12), 96);
-    expect(scale.widthForDuration(24), 192);
+    expect(scale.blockEndFor(10, 12), 80 + 96);
+    expect(scale.blockEndFor(10, 24), 80 + 192);
   });
 }

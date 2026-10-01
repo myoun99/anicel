@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/app_frame_count_settings.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_frame_count_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_frame_grid_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
 import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
@@ -53,6 +55,7 @@ void main() {
     AppSave.settings.value = const AppSaveSettings();
     AppMemory.settings.value = const AppMemorySettings();
     AppFrameGridSettings.settings.value = const AppFrameGridSettings();
+    AppFrameCountSettings.settings.value = const AppFrameCountSettings();
   }
 
   setUp(resetAppWideDefaults);
@@ -73,6 +76,7 @@ void main() {
       'uiscale',
       'onion',
       'grid',
+      'count',
     ];
     String path(String name) => '${directory.path}/$name.json';
 
@@ -96,6 +100,9 @@ void main() {
         ),
         frameGridSettingsStore: AppFrameGridSettingsStore(
           filePath: path('grid'),
+        ),
+        frameCountSettingsStore: AppFrameCountSettingsStore(
+          filePath: path('count'),
         ),
       )..restore();
       addTearDown(settings.dispose);
@@ -158,9 +165,15 @@ void main() {
     );
     first.setUiScale(1.25);
     // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
-    // the accents; OFF here because ON is the default a lost store returns.
+    // the accents; ON here because OFF is the default a lost store returns
+    // (↩️the other way round until 2026-10-01, 「기본값 off로」).
     appSettingsOf(first).setFrameGridSettings(
-      const AppFrameGridSettings(blockFrameLines: false),
+      const AppFrameGridSettings(blockFrameLines: true),
+    );
+    // The count window's entry (I-24-open-entry) — seconds+frames, because
+    // frames is the default a lost store returns.
+    appSettingsOf(first).setFrameCountSettings(
+      const AppFrameCountSettings(lastEntry: FrameCountEntry.secondsPlusFrames),
     );
     // The saves are fire-and-forget. Waiting on the files rather than on a
     // fixed delay keeps this honest on a machine that is busy building.
@@ -193,7 +206,9 @@ void main() {
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
-          !AppFrameGridSettings.settings.value.blockFrameLines &&
+          AppFrameGridSettings.settings.value.blockFrameLines &&
+          AppFrameCountSettings.settings.value.lastEntry ==
+              FrameCountEntry.secondsPlusFrames &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
     );
 
@@ -205,7 +220,11 @@ void main() {
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
-    expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
+    expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
+    expect(
+      AppFrameCountSettings.settings.value.lastEntry,
+      FrameCountEntry.secondsPlusFrames,
+    );
     expect(appSettingsOf(second).audioSyncSettings.value.offset, 42);
     expect(appSettingsOf(second).audioSyncSettings.value.micGainDb, 3);
     // The onion's live value is the run's settings object, read through the

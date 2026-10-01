@@ -79,8 +79,9 @@ class _TimelineRetime {
   /// A storyboard row and its cut's length are one thing (feedback #5/#9):
   /// re-timing the row's commas moves the cut's end, and undoing half of
   /// that would leave a drawing outside its cut. The fade re-anchor maps
-  /// are gone (R4): fade keys are TRACK data on the global axis, and a
-  /// cut resize moves none of them.
+  /// are gone (R4): the V lanes' keys are TRACK data on the global axis,
+  /// and a cut resize moves none of them. The transition row's spans ride
+  /// their front cut inside the duration command itself.
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/track_transitions.dart';
 import '../../models/transition_geometry.dart';
 import 'camera.dart';
 import 'editor_app_settings.dart';
@@ -23,20 +24,17 @@ import 'transitions.dart';
 class ActiveCutSpan {
   ActiveCutSpan({
     required ProjectAccess project,
-    required SelectionAccess selection,
     required EditorAppSettings appSettings,
     required Camera camera,
     required TrackSeDisplay trackSe,
     required Transitions transitions,
   }) : _project = project,
-       _selection = selection,
        _appSettings = appSettings,
        _camera = camera,
        _trackSe = trackSe,
        _transitions = transitions;
 
   final ProjectAccess _project;
-  final SelectionAccess _selection;
   final EditorAppSettings _appSettings;
   final Camera _camera;
   final TrackSeDisplay _trackSe;
@@ -105,12 +103,11 @@ class ActiveCutSpan {
     if (cut == null) {
       return activeCutPlaybackFrameCount;
     }
-    final start = _project.activeCutGlobalStartFrame;
-    return cutTransitionHandles(
-      cutStart: start,
-      cutEnd: start + cut.duration,
+    return drawnFramesOfCutAt(
+      cut: cut,
+      cutStart: _project.activeCutGlobalStartFrame,
       spans: _transitions.activeTrackTransitionSpans,
-    ).drawnFrames(activeCutPlaybackFrameCount);
+    );
   }
 
   /// What the ruler writes across that margin: the TERM that asked for it, then
@@ -128,8 +125,8 @@ class ActiveCutSpan {
     final start = _project.activeCutGlobalStartFrame;
     final end = start + cut.duration;
     final terms = <String>[];
-    for (final entry in _selection.activeTrack.transitionLayer.instructions
-        .entries) {
+    for (final entry
+        in _transitions.activeTrackTransitionRowShown.instructions.entries) {
       if (!transitionSpanFires(
         span: _transitions.transitionSpanOf(entry),
         cutStart: start,
@@ -149,6 +146,16 @@ class ActiveCutSpan {
     }
     return '${terms.join('/')} ${_appSettings.uiStrings.tlNoriShiro}';
   }
+
+  /// [activeCutDrawnFrameCount] and [activeCutNoriShiroLabel] as a timeline
+  /// surface asks for them: together, and afresh wherever it hears a drag —
+  /// both read the one row a drag shows, so the blue line and the name
+  /// across the margin ride a transition span dragged over the cut's
+  /// boundary before the release.
+  ({int drawnFrameCount, String label}) activeCutNoriShiro() => (
+    drawnFrameCount: activeCutDrawnFrameCount,
+    label: activeCutNoriShiroLabel,
+  );
 
   /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
   /// leaves no active cut, but that is a playhead position — not "no

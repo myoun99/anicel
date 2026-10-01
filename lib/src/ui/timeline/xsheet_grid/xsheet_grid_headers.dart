@@ -51,12 +51,17 @@ class _XSheetGridHeaders {
         child: child,
       );
 
+  /// One lane's HEADER cell — the transposed rail row. R10 adds the drag
+  /// gate for the same reason the horizontal rail has it: the blue value
+  /// column must follow a key move per step, not sit on the committed
+  /// track until the pointer lifts.
   Widget _laneHeader(TimelineDisplayRow entry) {
     // The header subscribes to the cursor itself, on a layer of its own
     // ([TimelineLaneControlsRow]).
     return TimelineDragPreviewRowGate(
       dragPreview: _state.widget.hooks.dragPreview,
       layer: entry.layer,
+      slice: (layer) => laneRowSlice(layer, entry.lane!.laneId),
       rowBuilder: (context, layer) => TimelineLaneControlsRow(
         axis: Axis.vertical,
         keyPrefix: 'xsheet',
@@ -86,60 +91,50 @@ class _XSheetGridHeaders {
     );
   }
 
-  /// The header column for one display row: a lane's, or the layer's.
-  Widget headerFor(TimelineDisplayRow entry) =>
-      entry.isLane ? _laneHeader(entry) : _layerHeaderFor(entry);
-
-  /// The layer header, fed the row's live facts the same way the rail row
-  /// is (fx, onion, solo, arrow, lanes, fold).
-  Widget _layerHeaderFor(TimelineDisplayRow entry) {
-    final layer = entry.layer;
+  /// [entry]'s column header, draggable. A LAYER's is kept while nothing
+  /// it is built from changed — the rail's memo, turned on its side
+  /// ([keptLayerControlsRow], F-244): a commit rebuilt every header of
+  /// the sheet. A lane's is built every pass.
+  Widget header(TimelineDisplayRow entry) {
+    if (entry.isLane) {
+      return draggableHeader(entry, _laneHeader(entry));
+    }
+    final grid = _controlsRowGrid;
     final fold = _state._groupFoldFor(entry);
-    final hooks = _state.widget.hooks;
-    return TimelineLayerControlsRow(
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      mainExtent: naturalHeaderExtent,
-      depth: entry.depth,
-      onSettledPress: hooks.onSettledPress,
-      labelDoubleClick: hooks.labelDoubleClick,
-      linkPartners: hooks.layerLinkPartnersOf?.call(layer.id) ?? const [],
-      opacityOverride: hooks.layerOpacityOverrideOf?.call(layer.id),
-      onToggleLayerOnionSkin: hooks.onToggleLayerOnionSkin,
-      onionSkinEnabled: hooks.layerOnionSkinEnabledOf?.call(layer.id) ?? false,
-      onLayerBlendModeSelected: hooks.onLayerBlendModeSelected,
-      wearsBaseComposite: attachRowWearsBaseComposite(
-        layer,
-        _state.widget.layers,
+    final facts = layerControlsRowFacts(
+      entry,
+      grid,
+      fold: fold,
+      hasLanes: _state._lanesFor(entry.layer).isNotEmpty,
+    );
+    final drag = layerRowDragInputs(
+      row: entry,
+      drawnRows: _state._dragRows,
+      hooks: grid.hooks.rowDragHooks,
+      onRowSelectionSpan: grid.hooks.onRowSelectionSpan,
+    );
+    return keptLayerControlsRow(
+      _kept,
+      entry,
+      (facts: facts, drag: drag),
+      () => draggableHeader(
+        entry,
+        layerControlsRowFrom(facts, entry, grid, fold),
       ),
-      layer: layer,
-      active: layer.id == hooks.activeLayerId,
-      // ⑨ · T1
-      selected: hooks.selectedRows.contains(LayerRowAddress(layer.id)),
-      metrics: _state._metrics,
-      onSelectLayer: hooks.onSelectLayer,
-      onToggleLayerVisibility: hooks.onToggleLayerVisibility,
-      onLayerOpacityChanged: hooks.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: hooks.onLayerOpacityChangeEnd,
-      opacityDragPreview: hooks.opacityDragPreview,
-      onToggleLayerTimesheet: hooks.onToggleLayerTimesheet,
-      fxState: hooks.layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-      onToggleLayerFx: hooks.onToggleLayerFx,
-      onLayerMarkSelected: hooks.onLayerMarkSelected,
-      onToggleLayerFillReference: hooks.onToggleLayerFillReference,
-      onOpenLayerMixer: hooks.onOpenLayerMixer,
-      onOpenLayerReference: hooks.onOpenLayerReference,
-      isReferenceSourceShort:
-          hooks.layerSourceIsShortOf?.call(layer.id) ?? false,
-      attachArrowPlacement: hooks.attachArrowPlacementOf?.call(layer.id),
-      isLayerSoloed: hooks.isLayerSoloed?.call(layer.id) ?? false,
-      hasLanes: _state._lanesFor(layer).isNotEmpty,
-      lanesExpanded: hooks.expandedLaneLayerIds.contains(layer.id),
-      onToggleLanes: hooks.onToggleLayerLanes,
-      // One fold twirl — the rail's rule, the rail's function.
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      onToggleGroupFold: fold.onToggle,
     );
   }
+
+  final Map<LayerId, KeptLayerControlsRow> _kept = {};
+
+  /// The header strip as its controls rows see it: the rail's record,
+  /// turned on its side — each header laid out at the strip's natural
+  /// extent, which the rail window above then cuts.
+  LayerControlsRowGrid get _controlsRowGrid => (
+    hooks: _state.widget.hooks,
+    layers: _state.widget.layers,
+    metrics: _state._metrics,
+    axis: Axis.vertical,
+    keyPrefix: 'xsheet',
+    mainExtent: naturalHeaderExtent,
+  );
 }

@@ -10,7 +10,11 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart';
+import '../../models/transform_track.dart';
+import '../../services/project_repository.dart';
 import '../../services/project_tree_editor.dart';
 import '../listenable_rebind.dart';
 import '../collection_equality.dart';
@@ -127,6 +131,160 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   );
 }
 
+/// A LANE EDIT in flight (F-195): one row's keyed values as the release
+/// would leave them — a value scrubbed on a lane's label, a canvas handle
+/// dragged, a key range slid along a lane.
+///
+/// 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이 실시간으로
+/// 화면에 보이도록. 레이어에서 값편집이든 캔버스에서 편집이든」. Each of those
+/// held its value in the widget being dragged — a label's text, a handle's
+/// offset, a box's zoom, the camera frame's pose — and nothing else saw it
+/// until the release. The value in flight lives HERE, and whatever shows the
+/// row reads it: every panel's lane labels and key markers (the row gates),
+/// the editing canvas's picture and pose, the handles, the camera frame.
+///
+/// ⛔ITS OWN VARIANT, not a [BlockMoveDragPreview] (which carried the lane
+/// moves until F-195): the lane verbs drop only their own preview
+/// (`LaneVerbs.endLaneEditPreview`), and the camera takes a lane edit's
+/// track straight off it (`Camera.activeCutCameraTrack`).
+/// ↩️It was split off so the canvas could follow a lane edit and NOT a block
+/// move — the row being drawn on shows the cel the brush holds, so a canvas
+/// following a block move showed half of it. 유저 2026-09-28 answered
+/// 「따라가게 — 끄는 동안 캔버스도 바뀐다」 (canvas-follows-block-moves): the
+/// canvas follows every drag now ([cutShowingDragPreview]) and stands that
+/// row down as an image while a drag moves its cel (`EditingStackMap`).
+///
+/// Exactly one subject is set — a ROW ([row], with [globalRow] for a
+/// track-owned one), a V TRACK's chain ([trackId]) or the open cut's CAMERA
+/// ([cameraCutId]) — because a lane lives on exactly one of them.
+class LaneEditPreview extends TimelineDragPreview {
+  /// [row] as the open cut shows it — a track-owned row's cut-local display
+  /// clone, whose [globalRow] is the track's own (the pair
+  /// `TrackSeDisplay.previewFormsOf` decides).
+  const LaneEditPreview.row({required Layer this.row, this.globalRow})
+    : trackId = null,
+      trackEffects = null,
+      cameraCutId = null,
+      cameraTrack = null,
+      cameraMarkerLayer = null;
+
+  /// A V track's EFFECT chain — all a track row's lanes edit.
+  const LaneEditPreview.track({
+    required TrackId this.trackId,
+    required List<LayerEffect> this.trackEffects,
+  }) : row = null,
+       globalRow = null,
+       cameraCutId = null,
+       cameraTrack = null,
+       cameraMarkerLayer = null;
+
+  /// [cameraCutId]'s camera track. The camera row's lanes are built from
+  /// the CUT, not from the row's Layer, so a clone of the row rides along
+  /// ([cameraMarkerLayer]) only to trip that row's gate — a FRESH one per
+  /// step, since the gate compares identities (the P3b-2 contract).
+  const LaneEditPreview.camera({
+    required CutId this.cameraCutId,
+    required TransformTrack this.cameraTrack,
+    this.cameraMarkerLayer,
+  }) : row = null,
+       globalRow = null,
+       trackId = null,
+       trackEffects = null;
+
+  final Layer? row;
+  final Layer? globalRow;
+  final TrackId? trackId;
+  final List<LayerEffect>? trackEffects;
+  final CutId? cameraCutId;
+  final TransformTrack? cameraTrack;
+  final Layer? cameraMarkerLayer;
+
+  @override
+  bool operator ==(Object other) =>
+      other is LaneEditPreview &&
+      other.row == row &&
+      other.globalRow == globalRow &&
+      other.trackId == trackId &&
+      listEquals(other.trackEffects, trackEffects) &&
+      other.cameraCutId == cameraCutId &&
+      other.cameraTrack == cameraTrack &&
+      identical(other.cameraMarkerLayer, cameraMarkerLayer);
+
+  @override
+  int get hashCode => Object.hash(
+    row,
+    globalRow,
+    trackId,
+    trackEffects == null ? null : Object.hashAll(trackEffects!),
+    cameraCutId,
+    cameraTrack,
+    identityHashCode(cameraMarkerLayer),
+  );
+}
+
+/// The lane edit in flight on [preview]'s channel, or null.
+LaneEditPreview? laneEditInFlight(TimelineDragPreview? preview) =>
+    preview is LaneEditPreview ? preview : null;
+
+/// [layers] as they show while [preview] is in flight: every row the drag
+/// previews in the form a timeline row paints ([timelineDragPreviewLayerFor]
+/// — a track-owned row's cut-local clone), every other row as it is. The
+/// same list back when the drag touches none of them.
+///
+/// ★ONE substitution for every drag — a block, a comma, several rows, a file
+/// pushing its neighbours, a lane value. The canvas asking a function of its
+/// own is how it came to follow the lane edits alone.
+List<Layer> layersShowingDragPreview(
+  List<Layer> layers,
+  TimelineDragPreview? preview,
+) => preview == null
+    ? layers
+    : _layersShowing(
+        layers,
+        (layerId) => timelineDragPreviewLayerFor(preview, layerId),
+      );
+
+/// The same for a track's OWN rows on the global axis (its SE rows, its
+/// transition row): each previewed row in its GLOBAL form
+/// ([timelineDragPreviewGlobalLayerFor]).
+List<Layer> globalLayersShowingDragPreview(
+  List<Layer> layers,
+  TimelineDragPreview? preview,
+) => preview == null
+    ? layers
+    : _layersShowing(
+        layers,
+        (layerId) => timelineDragPreviewGlobalLayerFor(preview, layerId),
+      );
+
+List<Layer> _layersShowing(
+  List<Layer> layers,
+  Layer? Function(LayerId layerId) shownFor,
+) {
+  List<Layer>? shown;
+  for (var i = 0; i < layers.length; i++) {
+    final row = shownFor(layers[i].id);
+    if (row != null && !identical(row, layers[i])) {
+      (shown ??= List.of(layers))[i] = row;
+    }
+  }
+  return shown ?? layers;
+}
+
+/// [cut] as the editing canvas shows it while [preview] is in flight — the
+/// rows the drag previews substituted in ([layersShowingDragPreview]).
+/// Display only: the repository never sees it. [cut] itself when the drag
+/// touches none of its rows.
+///
+/// ⛔Not the camera. The picture and the pen's space read no camera; the
+/// camera's readers (its frame on the canvas, its lanes, its marks) take the
+/// one camera answer, `Camera.activeCutCameraTrack`, which reads this
+/// channel itself — a second camera here would be a copy nobody reads.
+Cut cutShowingDragPreview(Cut cut, TimelineDragPreview? preview) {
+  final layers = layersShowingDragPreview(cut.layers, preview);
+  return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
+}
+
 /// A FILE from the pool held over the timeline — 「끄는 동안 보이는 것은
 /// 놓았을 때 생길 것이다」 (미디어 배치 라운드 2d-2).
 ///
@@ -234,6 +392,57 @@ class CutTrimDragPreview extends TimelineDragPreview {
   );
 }
 
+/// [drawn] as its release will leave the rows: the project it previews,
+/// settled the way the write settles it
+/// ([ProjectRepository.settledAsWritten]), every row that pass derived
+/// again joining the drag's own.
+///
+/// 🗣️F-227: the のりしろ holds and the conte start an O.L asks of the cuts
+/// it joins belong to the write, which reads them off the new layout.
+/// Every verb that re-lays the cuts — a front edge, a red end line or the
+/// comma it rides, a move — previews through here, or the hand shows one
+/// thing and the release another.
+CutTrimDragPreview cutTrimPreviewAsReleased(
+  ProjectRepository repository,
+  CutTrimDragPreview drawn,
+) {
+  final draft = _projectWithCutTrimPreview(repository.requireProject(), drawn);
+  final derived = _rowsDerivedAgain(
+    draft,
+    repository.settledAsWritten(draft),
+  );
+  return derived.isEmpty
+      ? drawn
+      : CutTrimDragPreview(
+          previewDurations: drawn.previewDurations,
+          previewGaps: drawn.previewGaps,
+          previewOrder: drawn.previewOrder,
+          previewLayers: {...drawn.previewLayers, ...derived},
+        );
+}
+
+/// The cut rows [settled] holds as other instances than [draft] does. The
+/// settle maps tracks and cuts in place, so the two walk side by side.
+Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
+  final derived = <LayerId, Layer>{};
+  for (var t = 0; t < settled.tracks.length; t += 1) {
+    final drafted = draft.tracks[t].cuts;
+    final cuts = settled.tracks[t].cuts;
+    for (var c = 0; c < cuts.length; c += 1) {
+      if (identical(cuts[c], drafted[c])) {
+        continue;
+      }
+      final before = {for (final layer in drafted[c].layers) layer.id: layer};
+      for (final layer in cuts[c].layers) {
+        if (!identical(layer, before[layer.id])) {
+          derived[layer.id] = layer;
+        }
+      }
+    }
+  }
+  return derived;
+}
+
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
 /// the storyboard's end line, its grip and its ruler's end line all read it
 /// through `timelineCutEndPreviewFrameCount`, so the three follow the pointer
@@ -280,8 +489,31 @@ Layer? timelineDragPreviewLayerFor(
     // the timeline row follows the same one preview the strip renders.
     return preview.previewLayers[layerId];
   }
+  if (preview is LaneEditPreview) {
+    // The camera row's marker, as for a block move: its lanes re-derive
+    // through the session's camera track, which reads this same preview.
+    if (preview.cameraMarkerLayer?.id == layerId) {
+      return preview.cameraMarkerLayer;
+    }
+    return preview.row?.id == layerId ? preview.row : null;
+  }
   return null;
 }
+
+/// The EFFECT chain [preview] shows for [trackId]'s V row, or null when it
+/// does not touch that track — a block move carrying the chain's keys, or a
+/// lane edit of one of its values.
+List<LayerEffect>? timelineDragPreviewTrackEffectsFor(
+  TimelineDragPreview? preview,
+  TrackId trackId,
+) => switch (preview) {
+  BlockMoveDragPreview(:final previewTrackEffects) =>
+    previewTrackEffects?[trackId],
+  LaneEditPreview(trackId: final edited, :final trackEffects)
+      when edited == trackId =>
+    trackEffects,
+  _ => null,
+};
 
 /// The cells [preview] would AUTHOR on [layerId] — not there yet, and
 /// painted as such — or null where this row gains none.
@@ -315,6 +547,9 @@ Layer? timelineDragPreviewGlobalLayerFor(
   }
   if (preview is BlockMoveDragPreview) {
     return preview.previewGlobalLayers[layerId];
+  }
+  if (preview is LaneEditPreview && preview.row?.id == layerId) {
+    return preview.globalRow;
   }
   return null;
 }
@@ -350,28 +585,38 @@ List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
 Project _projectWithCutTrimPreview(Project project, CutTrimDragPreview trim) {
   final resized = project.copyWith(
     tracks: [
-      for (final track in project.tracks)
-        track.copyWith(
-          cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])
-              .map(
-                (cut) =>
-                    trim.previewDurations.containsKey(cut.id) ||
-                        trim.previewGaps.containsKey(cut.id)
-                    ? cut.copyWith(
-                        duration:
-                            trim.previewDurations[cut.id] ?? cut.duration,
-                        leadingGapFrames:
-                            trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
-                      )
-                    : cut,
-              )
-              .toList(growable: false),
-        ),
+      for (final track in project.tracks) _trackWithCutTrimPreview(track, trim),
     ],
   );
   return trim.previewLayers.isEmpty
       ? resized
       : _projectWithLayersSubstituted(resized, trim.previewLayers);
+}
+
+/// One track under a cut edge drag — and its transition row carried the way
+/// the release will carry it (`TransitionsRideTheCuts`, 유저 2026-08-10:
+/// 「움직일때만 앵커로서 앞 컷에 앵커」 · 2026-09-30: 「경계를 따라간다」): the
+/// same function, so an O.L follows the boundary it crosses under the hand
+/// rather than jumping there on release.
+Track _trackWithCutTrimPreview(Track track, CutTrimDragPreview trim) {
+  final moved = track.copyWith(
+    cuts: _previewOrdered(track.cuts, trim.previewOrder[track.id])
+        .map(
+          (cut) =>
+              trim.previewDurations.containsKey(cut.id) ||
+                  trim.previewGaps.containsKey(cut.id)
+              ? cut.copyWith(
+                  duration: trim.previewDurations[cut.id] ?? cut.duration,
+                  leadingGapFrames:
+                      trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
+                )
+              : cut,
+        )
+        .toList(growable: false),
+  );
+  return moved.copyWith(
+    transitionLayer: transitionRowFollowingItsCuts(before: track, after: moved),
+  );
 }
 
 /// A project snapshot with an in-flight drag preview substituted in —
@@ -416,6 +661,34 @@ Project projectWithTimelineDragPreview(
       return _projectWithLayersSubstituted(project, previewLayers);
     case MovieEndDragPreview(:final trailingFrames):
       return project.copyWith(trailingFrames: trailingFrames);
+    case final LaneEditPreview edit:
+      // The edited row, its track's chain or its cut's camera — reaching the
+      // project views the way a block move's rows and camera keys do.
+      final row = edit.row;
+      final withRow = row == null
+          ? project
+          : _projectWithLayersSubstituted(project, {row.id: row});
+      final trackId = edit.trackId;
+      final trackEffects = edit.trackEffects;
+      if (trackId != null && trackEffects != null) {
+        return updateTrackById(
+              withRow,
+              trackId,
+              (track) => track.copyWith(effects: trackEffects),
+            ) ??
+            withRow;
+      }
+      final cutId = edit.cameraCutId;
+      final cameraTrack = edit.cameraTrack;
+      if (cutId == null || cameraTrack == null) {
+        return withRow;
+      }
+      return updateCutAnywhere(
+            withRow,
+            cutId,
+            (cut) => cut.copyWith(camera: CutCamera.fromTrack(cameraTrack)),
+          ) ??
+          withRow;
   }
 }
 
@@ -446,6 +719,32 @@ Project _projectWithLayersSubstituted(
   );
 }
 
+/// What [layer]'s cut-local row SHOWS while [preview] is in flight, or null
+/// when the preview does not reach it — the row gate's answer, and the
+/// standing wash's, so the wash cannot ride a drag its row does not.
+Layer? timelineRowPreviewLayer(TimelineDragPreview? preview, Layer layer) {
+  final direct = timelineDragPreviewLayerFor(preview, layer.id);
+  if (direct != null) {
+    return direct;
+  }
+  // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
+  // drag previews the base, re-derive the mirrored display timeline
+  // from the previewed base so the attach row follows the pointer, not
+  // just the release commit. FREE attach rows own their timeline — a
+  // base drag must never overwrite it (UI-R21 #3).
+  if (!isSyncedAttachedLayer(layer)) {
+    return null;
+  }
+  final baseId = layer.attachedToLayerId;
+  if (baseId != null) {
+    final previewBase = timelineDragPreviewLayerFor(preview, baseId);
+    if (previewBase != null) {
+      return attachedDisplayLayer(attached: layer, base: previewBase);
+    }
+  }
+  return null;
+}
+
 /// Wraps one grid row (or X-sheet column) so an edge drag rebuilds ONLY
 /// the dragged layer's row: the gate listens to the preview channel and
 /// re-runs [rowBuilder] with the preview layer substituted while its layer
@@ -459,7 +758,16 @@ class TimelineDragPreviewRowGate extends StatefulWidget {
     required this.layer,
     required this.rowBuilder,
     this.useGlobalForm = false,
+    this.slice,
   });
+
+  /// What of the layer this row SHOWS: a preview rebuilds the row only when
+  /// this answer changes (by identity) or the silhouette moves —
+  /// `SlicedListenableBuilder`'s rule for a row. A lane row answers with its own lane (`laneRowSlice`), so a
+  /// value scrubbed on one lane stops rebuilding every other row of its
+  /// layer (F-195). Null = the whole layer, which is every row's answer
+  /// until it states a narrower one.
+  final Object Function(Layer layer)? slice;
 
   /// The session's preview channel; null renders the base row untouched
   /// (grids hosted without a session, e.g. focused widget tests).
@@ -484,11 +792,22 @@ class _TimelineDragPreviewRowGateState
     extends State<TimelineDragPreviewRowGate> {
   Layer? _previewLayer;
 
+  /// The cells a hovering file would author on this row
+  /// ([timelineDragSilhouetteFor]) — the OTHER thing a row draws from the
+  /// preview, so the other thing that rebuilds it.
+  ///
+  /// 🚨Watched only the row's preview LAYER, the gate kept a silhouette that
+  /// came with no preview row off the screen: a sound over an SE row's empty
+  /// cell and a file over a reference row (I-47) hand over the span alone,
+  /// because nothing on the row moves — and the row never rebuilt to draw it.
+  ({int startIndex, int endIndexExclusive})? _silhouette;
+
   @override
   void initState() {
     super.initState();
     widget.dragPreview?.addListener(_handlePreviewChanged);
     _previewLayer = _resolvePreviewLayer();
+    _silhouette = _resolveSilhouette();
   }
 
   @override
@@ -502,6 +821,7 @@ class _TimelineDragPreviewRowGateState
     // A parent rebuild mid-drag (or an element re-match after the row
     // window scrolled) must re-derive against the new layer identity.
     _previewLayer = _resolvePreviewLayer();
+    _silhouette = _resolveSilhouette();
   }
 
   @override
@@ -510,50 +830,38 @@ class _TimelineDragPreviewRowGateState
     super.dispose();
   }
 
-  Layer? _resolvePreviewLayer() {
-    if (widget.useGlobalForm) {
-      return timelineDragPreviewGlobalLayerFor(
-        widget.dragPreview?.value,
-        widget.layer.id,
-      );
-    }
-    final direct = timelineDragPreviewLayerFor(
-      widget.dragPreview?.value,
-      widget.layer.id,
-    );
-    if (direct != null) {
-      return direct;
-    }
-    // SYNCED attach rows mirror their BASE live (UI-R20 #8): while a
-    // drag previews the base, re-derive the mirrored display timeline
-    // from the previewed base so the attach row follows the pointer, not
-    // just the release commit. FREE attach rows own their timeline — a
-    // base drag must never overwrite it (UI-R21 #3).
-    if (!isSyncedAttachedLayer(widget.layer)) {
-      return null;
-    }
-    final baseId = widget.layer.attachedToLayerId;
-    if (baseId != null) {
-      final previewBase = timelineDragPreviewLayerFor(
-        widget.dragPreview?.value,
-        baseId,
-      );
-      if (previewBase != null) {
-        return attachedDisplayLayer(attached: widget.layer, base: previewBase);
-      }
-    }
-    return null;
-  }
+  Layer? _resolvePreviewLayer() => widget.useGlobalForm
+      ? timelineDragPreviewGlobalLayerFor(
+          widget.dragPreview?.value,
+          widget.layer.id,
+        )
+      : timelineRowPreviewLayer(widget.dragPreview?.value, widget.layer);
+
+  /// Track-global hosts draw no silhouette ([timelineDragSilhouetteFor] is
+  /// the active-cut rows' question).
+  ({int startIndex, int endIndexExclusive})? _resolveSilhouette() =>
+      widget.useGlobalForm
+      ? null
+      : timelineDragSilhouetteFor(widget.dragPreview?.value, widget.layer.id);
 
   void _handlePreviewChanged() {
     final next = _resolvePreviewLayer();
-    if (identical(next, _previewLayer)) {
+    final silhouette = _resolveSilhouette();
+    if (identical(next, _previewLayer) && silhouette == _silhouette) {
       return;
     }
-    if (next == null && _previewLayer == null) {
+    final slice = widget.slice;
+    final shown = _previewLayer ?? widget.layer;
+    final silhouetteMoved = silhouette != _silhouette;
+    // Held either way, so any rebuild from elsewhere builds the newest.
+    _previewLayer = next;
+    _silhouette = silhouette;
+    if (!silhouetteMoved &&
+        slice != null &&
+        identical(slice(next ?? widget.layer), slice(shown))) {
       return;
     }
-    setState(() => _previewLayer = next);
+    setState(() {});
   }
 
   @override

@@ -9,6 +9,8 @@ import '../../models/layer_id.dart';
 import '../../models/onion_skin_settings.dart';
 import '../canvas/canvas_layer_stack_view.dart';
 import '../../services/onion_skin_plan.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 
@@ -21,7 +23,7 @@ import 'session_roles.dart';
 /// not need the session to own them: this object is the one that plans with
 /// them, so it holds the LAYER SET, and the UI reads `session.onionSkin` —
 /// the first family of ARCH-session-state's state move (2026-09-16), which
-/// the session's `SessionInternals` ledger counts down by the two getters it
+/// the session's `SessionInternals` ledger counted down by the two getters it
 /// no longer carries. The peg [settings] are the user's, one value for every
 /// open project, so they are the app's (`EditorAppSettings.onionSkinSettings`,
 /// I-7) and this object plans with that notifier.
@@ -36,18 +38,18 @@ class OnionSkin {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals;
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final ValueListenable<TimelineDragPreview?> _dragPreview;
 
   /// The peg settings — the app's one notifier (see the class doc), so the
   /// canvas underlay and the onion panel subscribe without whole-session
@@ -173,13 +175,18 @@ class OnionSkin {
   /// The ghost frames to composite at the playhead: every onion-enabled
   /// VISIBLE drawing layer contributes its plan (unique drawings, peg
   /// opacities, side tints) in layer-stack order.
+  ///
+  /// Planned from the cut as a drag in flight shows it, like the picture
+  /// they ghost around (canvas-follows-block-moves) — a block moved past the
+  /// playhead moves its ghost with it.
   List<CanvasLayerImageRequest> onionSkinCanvasRequests() {
     final pegs = settings.value;
-    final cut = _project.activeCutOrNull;
+    final committed = _project.activeCutOrNull;
     final enabledIds = layerIds.value;
-    if (cut == null || enabledIds.isEmpty) {
+    if (committed == null || enabledIds.isEmpty) {
       return const [];
     }
+    final cut = cutShowingDragPreview(committed, _dragPreview.value);
     return [
       for (final layer in cut.layers)
         // A ghost is that layer's artwork, so it is shown exactly when the
@@ -196,7 +203,7 @@ class OnionSkin {
             settings: pegs,
           ))
             CanvasLayerImageRequest(
-              frameKey: _internals.brushFrameKeyForCut(
+              frameKey: _project.brushFrameKeyForCut(
                 cut,
                 layer.id,
                 plan.frameId,

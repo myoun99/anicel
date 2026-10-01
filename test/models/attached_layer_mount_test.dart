@@ -224,7 +224,7 @@ void main() {
       final detached = detachedLayer(
         attached: attached,
         base: base,
-        cutFrameCount: 6,
+        drawnFrameCount: 6,
       );
 
       expect(detached.attachedToLayerId, isNull);
@@ -253,7 +253,7 @@ void main() {
       final detached = detachedLayer(
         attached: attached,
         base: base,
-        cutFrameCount: 8,
+        drawnFrameCount: 8,
       );
 
       expect(
@@ -274,7 +274,7 @@ void main() {
       final unlinked = detachedLayer(
         attached: _row('row', attachedTo: 'base', links: {'b2': 'r2'}),
         base: base,
-        cutFrameCount: 8,
+        drawnFrameCount: 8,
       );
       expect(
         unlinked.timeline.values.every(
@@ -295,7 +295,7 @@ void main() {
       final detached = detachedLayer(
         attached: free,
         base: baseWith2Blocks(),
-        cutFrameCount: 6,
+        drawnFrameCount: 6,
       );
       expect(detached.attachedToLayerId, isNull);
       expect(_blocks(detached), [(1, 4, 'r1')]);
@@ -306,7 +306,7 @@ void main() {
       final detached = detachedLayer(
         attached: _row('row', attachedTo: 'gone', links: {'b1': 'r1'}),
         base: null,
-        cutFrameCount: 6,
+        drawnFrameCount: 6,
       );
       expect(detached.attachedToLayerId, isNull);
       expect(detached.timeline, isEmpty);
@@ -316,7 +316,7 @@ void main() {
     test('an ordinary row is returned untouched', () {
       final row = _row('row', blocks: [(0, 1, 'r1')]);
       expect(
-        detachedLayer(attached: row, base: null, cutFrameCount: 3),
+        detachedLayer(attached: row, base: null, drawnFrameCount: 3),
         same(row),
       );
     });
@@ -354,7 +354,7 @@ void main() {
       final back = detachedLayer(
         attached: mounted,
         base: base,
-        cutFrameCount: 3,
+        drawnFrameCount: 3,
       );
       expect(_blocks(back), _blocks(row));
     });

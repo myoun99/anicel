@@ -95,6 +95,7 @@ class _StoryboardSheet {
       // Rightwards never runs out: the axis reaches wherever the playhead
       // stands, past the last cut included.
       frameCount: frame + 1 > end ? frame + 1 : end,
+      countsTrackFrames: true,
     );
   }
 
@@ -116,7 +117,11 @@ class _StoryboardSheet {
           // The S row as this rail draws it (a take in flight stands in for
           // its lane), else the one other layer row a track group has.
           slot == -1
-              ? track.transitionLayer
+              ? _state.widget.transitionRowShown?.call(
+                      track,
+                      track.transitionLayer,
+                    ) ??
+                    track.transitionLayer
               : (_state._seDisplayAt(track, slot) ?? track.transitionLayer),
           withRuns: withRuns,
           // The strip's own writing on its blocks: the cel each opens with.

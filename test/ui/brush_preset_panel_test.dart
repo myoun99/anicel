@@ -80,6 +80,7 @@ class _PanelHost extends StatefulWidget {
     this.onGroupCreated,
     this.onGroupEdited,
     this.onGroupDeleted,
+    this.onGroupOpened,
     this.onGroupsReordered,
     this.onLibraryReset,
   });
@@ -97,6 +98,7 @@ class _PanelHost extends StatefulWidget {
   final void Function(BrushGroupId id, String name, BrushGroupIcon? icon)?
   onGroupEdited;
   final ValueChanged<BrushGroupId>? onGroupDeleted;
+  final ValueChanged<BrushGroupId?>? onGroupOpened;
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
   final VoidCallback? onLibraryReset;
 
@@ -127,6 +129,7 @@ class _PanelHostState extends State<_PanelHost> {
               onGroupCreated: widget.onGroupCreated,
               onGroupEdited: widget.onGroupEdited,
               onGroupDeleted: widget.onGroupDeleted,
+              onGroupOpened: widget.onGroupOpened,
               onGroupsReordered: widget.onGroupsReordered == null
                   ? null
                   : (groups) {
@@ -157,6 +160,7 @@ Future<void> _pumpPanel(
   void Function(BrushGroupId id, String name, BrushGroupIcon? icon)?
   onGroupEdited,
   ValueChanged<BrushGroupId>? onGroupDeleted,
+  ValueChanged<BrushGroupId?>? onGroupOpened,
   ValueChanged<List<BrushGroup>>? onGroupsReordered,
   VoidCallback? onLibraryReset,
 }) async {
@@ -174,6 +178,7 @@ Future<void> _pumpPanel(
       onGroupCreated: onGroupCreated,
       onGroupEdited: onGroupEdited,
       onGroupDeleted: onGroupDeleted,
+      onGroupOpened: onGroupOpened,
       onGroupsReordered: onGroupsReordered,
       onLibraryReset: onLibraryReset,
     ),
@@ -1371,9 +1376,36 @@ void main() {
     expect(_tab('paint'), findsOneWidget);
   });
 
+  testWidgets('F-250: a tapped tab is told to the workspace — the open one '
+      'too', (tester) async {
+    // Whether the hand already holds a brush of the tab is the workspace's
+    // question (`openGroup`); the panel only reports the tap.
+    final opened = <BrushGroupId?>[];
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      onGroupOpened: opened.add,
+    );
+
+    await tester.tap(_tab('paint'));
+    await tester.pumpAndSettle();
+    await tester.tap(_tab('paint'));
+    await tester.pumpAndSettle();
+
+    expect(opened, [_paint, _paint]);
+  });
+
   testWidgets('holding a dragged brush over a tab opens that tab', (
     tester,
   ) async {
+    final opened = <BrushGroupId?>[];
     // The move-between-groups gesture. A tab that only accepted a DROP
     // would lose the ordering; opening it lets the brush be placed.
     await _pumpPanel(
@@ -1389,6 +1421,7 @@ void main() {
       ],
       onPresetsReordered: (_) {},
       onGroupsReordered: (_) {},
+      onGroupOpened: opened.add,
     );
     expect(_row('preset-calligraphy'), findsOneWidget);
     expect(_row('preset-sampled'), findsNothing);
@@ -1410,6 +1443,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_row('preset-sampled'), findsOneWidget);
+    expect(
+      opened,
+      isEmpty,
+      reason: 'F-250: a drag opens the tab to drop into — it picks no '
+          'brush; only a tapped tab does',
+    );
 
     await gesture.up();
     await tester.pumpAndSettle();

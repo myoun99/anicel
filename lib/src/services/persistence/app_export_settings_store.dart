@@ -1,6 +1,4 @@
 import 'versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import 'app_export_settings.dart';
 import 'app_support_path.dart';
@@ -31,15 +29,10 @@ class AppExportSettingsStore {
     fromJson: AppExportSettings.fromJson,
   );
 
-  Future<void> save(AppExportSettings settings) async {
-    try {
-      final file = File(filePath);
-      file.parent.createSync(recursive: true);
-      file.writeAsStringSync(
-        jsonEncode({'version': version, ...settings.toJson()}),
+  Future<void> save(AppExportSettings settings) async =>
+      saveVersionedSettingsSync(
+        filePath: filePath,
+        version: version,
+        json: settings.toJson(),
       );
-    } on Object {
-      // Settings persistence is best-effort; the live state stays valid.
-    }
-  }
 }

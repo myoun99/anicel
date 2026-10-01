@@ -72,7 +72,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       : NativeDabBatcher(
           nativeScratch.native,
           tileSize: tileSize,
-          pointerFor: nativeScratch.pointerFor,
+          planesFor: nativeScratch.pointersFor,
           onTileChanged: changedCoords.add,
         );
 
@@ -120,7 +120,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       plan,
       tileSize: tileSize,
       bufferFor: (tileX, tileY) =>
-          scratch.bufferFor(TileCoord(x: tileX, y: tileY)),
+          scratch.planesFor(TileCoord(x: tileX, y: tileY)),
       onTileChanged: (tileX, tileY) =>
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );
@@ -293,13 +293,18 @@ void _blendStampDab({
 /// width, exactly what `BrushLiveStrokeRasterizer.strokePixelsWithinBounds`
 /// materializes — its size scales with the stroke, never the canvas.
 ///
-/// This is the pen-up fast path: the interactive view rasterizes the stroke
-/// incrementally while the pointer moves (`BrushLiveStrokeRasterizer`, same
-/// per-dab math as [materializeBrushDabSequenceOnBitmapSurface]), so commit
-/// only needs one source-over pass of the finished stroke over the existing
-/// artwork instead of re-running the whole dab loop — removing the commit
-/// hiccup for long dense strokes. The composited pixels are exactly the
-/// stroke the user watched being drawn.
+/// This is the pen-up fast path: the interactive view piles the stroke up
+/// on its own buffer while the pointer moves (`BrushLiveStrokeRasterizer`,
+/// the dab kernels [materializeBrushDabSequenceOnBitmapSurface] runs), so
+/// commit is one source-over pass of the finished stroke over the existing
+/// artwork — removing the commit hiccup for long dense strokes. The
+/// composited pixels are exactly the stroke the user watched being drawn.
+///
+/// ⚠️It is also the ONLY way a stroke of brush dabs lands: one re-derived
+/// from its dabs is piled up on an empty surface first and comes through
+/// here (`brushCommitResultForBrushDabSequenceOnBitmapSurface`). The same
+/// dabs laid on the artwork one by one reach the same sum but round after
+/// every dab, a level away over paint.
 ///
 /// R21: implemented as ONE synthetic stamp dab through the ordinary
 /// materializer — the stroke buffer IS a stamp at the bounds (integer

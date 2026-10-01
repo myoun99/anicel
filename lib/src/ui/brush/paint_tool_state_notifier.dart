@@ -33,16 +33,17 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   BrushPresetId? presetHeldBy(CanvasTool tool) =>
       tool == value.tool ? value.presetId : _paintToolBank[tool]?.presetId;
 
+  /// Every tile is remembered, the stamp as much as any.
+  ///
+  /// ↩️The stamp used to be passed through (유저 확정 2026-08-15: 「찍기는
+  /// 아예 성질이 다른거니까 그 외만 기억하도록」), so leaving it and pressing
+  /// the Cut button handed back the cut tile from before it. 🗣️I-53 (유저
+  /// 2026-09-28) retired that: 「잘라내기 도구 선택시 스탬프 선택된 상태면
+  /// 다른 잘라내기로 바꾸는 해당로직 싹 삭제. 잔재 삭제. 이제부터는
+  /// 잘라내기도구 선택시 마지막 스탬프 선택된상태여도 다른 도구처럼 스탬프
+  /// 선택되도록」 — a cut is picked with the lasso cut's own key instead.
   void _rememberRailTile() {
     final tool = value.tool;
-    // The stamp is passed through rather than recorded — 유저 확정, see
-    // [canvasToolRailTileIsRemembered]. Skipping it here (not in
-    // [railEntry]) means the tile you were on BEFORE arming the stamp is
-    // still the one waiting: cut with the lasso, stamp a few copies, go
-    // paint, and the Cut button hands the lasso back.
-    if (!canvasToolRailTileIsRemembered(tool)) {
-      return;
-    }
     _railTileByGroup[canvasToolRailGroup(tool)] = tool;
   }
 

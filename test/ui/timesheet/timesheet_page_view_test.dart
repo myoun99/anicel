@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import '../../helpers/app_icon_button_probe.dart';
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
@@ -213,6 +214,13 @@ void main() {
       return layoutOf().pageRect(page).top * view.zoom + view.panY;
     }
 
+    /// Where a turn puts a sheet's top: half a gap under the view's top —
+    /// the window's, under the pill's band (유저 2026-09-30: 「판정을
+    /// 알약까지 포함해서 판정. 타임시트 최대 스크롤기준이나」).
+    double turnedTop(WidgetTester tester) =>
+        pillBandOf(tester) +
+        layoutOf().pageStack.gap / 2 * painted(tester).zoom;
+
     testWidgets('the MODES stay in the pill and the PAGES stand on the left '
         'edge, above / n-N / below', (tester) async {
       // 유저 확정 ⑥ (2026-08-13) split what used to be one row. The two mode
@@ -287,10 +295,7 @@ void main() {
 
       expect(reading.value, 1);
       expect(pageText(tester), '2/2');
-      expect(
-        pageTopOnScreen(tester, 1),
-        closeTo(layoutOf().pageStack.gap / 2 * painted(tester).zoom, 1e-6),
-      );
+      expect(pageTopOnScreen(tester, 1), closeTo(turnedTop(tester), 1e-6));
       expect(enabled(tester, _prevKey), isTrue);
       expect(enabled(tester, _nextKey), isFalse);
 
@@ -301,8 +306,9 @@ void main() {
       expect(pageText(tester), '1/2');
       expect(
         pageTopOnScreen(tester, 0),
-        closeTo(0, 1e-6),
-        reason: 'the first sheet\'s top stops on the view\'s — the paper',
+        closeTo(pillBandOf(tester), 1e-6),
+        reason: 'the first sheet\'s top stops on the view\'s — the paper, '
+            'under the pill\'s band',
       );
     });
 
@@ -341,32 +347,32 @@ void main() {
     });
 
     testWidgets('the ink windows are the pages\' on screen: scrolling to the '
-        'next sheet takes the first\'s away and brings its own', (
-      tester,
-    ) async {
+        'next sheet brings its own, and back takes it away', (tester) async {
       await pumpHost(tester, render: CanvasViewport());
+      final second = find.byKey(
+        const ValueKey<String>('timesheet-ink-strip-1-h0'),
+      );
 
       expect(
         find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-strip-1-h0')),
+        second,
         findsNothing,
         reason: '⛔전제: the second sheet is below the view',
       );
 
       await tester.tap(find.byKey(_nextKey));
       await tester.pumpAndSettle();
+      expect(second, findsOneWidget);
 
-      expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-strip-1-h0')),
-        findsOneWidget,
-      );
+      // Back on the first sheet, the second is below the view again. (The
+      // way down is not the mirror: a turn puts the sheet under the pill's
+      // band, and the first sheet's tail still shows beside the pill.)
+      await tester.tap(find.byKey(_prevKey));
+      await tester.pumpAndSettle();
+      expect(second, findsNothing);
     });
 
     testWidgets('playback crossing into the next sheet moves the view to it '
@@ -385,10 +391,7 @@ void main() {
 
       expect(reading.value, 1);
       expect(pageText(tester), '2/2');
-      expect(
-        pageTopOnScreen(tester, 1),
-        closeTo(layout.pageStack.gap / 2 * painted(tester).zoom, 1e-6),
-      );
+      expect(pageTopOnScreen(tester, 1), closeTo(turnedTop(tester), 1e-6));
 
       session.playbackRig.playback.stop();
       session.playbackRig.prerenderScheduler.cancel();

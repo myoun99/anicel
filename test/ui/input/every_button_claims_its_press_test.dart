@@ -131,31 +131,32 @@ void main() {
   /// fails wherever it is. Files are counted rather than lines because a
   /// line number drifts the first time anything above it is edited.
   ///
-  /// ⚠️Five of these files close with other sessions' rounds:
+  /// ⚠️Four of these files close with other sessions' rounds:
   /// `tool_settings_panel`, `brush_settings_panel` and `guide_panels`
-  /// (brush and rendering), `export_dialog` and `import_dialog` (import,
-  /// export and saving).
+  /// (brush and rendering), and `import_dialog` (import, export and
+  /// saving). `export_dialog` closed with 「끝나면 고르기」
+  /// (drive-folder-windows-Q1): its destination buttons are one claimed
+  /// builder.
   const bareMaterialControls = <String, int>{
     // ↓2026-09-23, the app's one boolean (guide-sym ⑥⑧): every
     // `SwitchListTile`, radio and filter chip below became a claimed
     // `SettingsSwitchRow` — brush settings 2 → 1, tool settings 15 → 9,
     // input settings 5 → 3, and the timesheet dialog's 2 → gone.
-    'lib/src/ui/brush/brush_settings_panel.dart': 1,
+    // ↓2026-09-30, the app's one grouped choice (pill-group-everywhere):
+    // the brush edge's and the read source's `SegmentedButton` became a
+    // claimed `PillStrip` — brush settings 1 → gone, tool settings 9 → 8.
     'lib/src/ui/brush/guide_panels.dart': 1,
     // 16 → 15 on 2026-09-22: the scale anchor's SegmentedButton went with
     // the setting itself (유저 gave the modifier a touch entrance instead,
     // so a persistent choice and a held key were two entrances to one
     // question). The ratchet only ever comes DOWN.
-    'lib/src/ui/brush/tool_settings_panel.dart': 9,
-    'lib/src/ui/dialogs/audio_settings_section.dart': 3,
+    'lib/src/ui/brush/tool_settings_panel.dart': 8,
+    // ↓2026-09-30, F-230: the nine framework dropdowns became the shared
+    // flyout's button, which claims — audio settings 3, input settings 3,
+    // the linked cut, the instruction and the language dialogs → gone.
     'lib/src/ui/dialogs/camera_size_dialog.dart': 1,
     'lib/src/ui/dialogs/canvas_size_dialog.dart': 1,
-    'lib/src/ui/dialogs/convert_to_linked_cut_dialog.dart': 1,
-    'lib/src/ui/dialogs/input_settings_dialog.dart': 3,
-    'lib/src/ui/dialogs/instruction_event_dialog.dart': 1,
     'lib/src/ui/dialogs/instruction_set_editor_dialog.dart': 1,
-    'lib/src/ui/dialogs/language_settings_dialog.dart': 1,
-    'lib/src/ui/export/export_dialog.dart': 1,
     'lib/src/ui/import/import_dialog.dart': 2,
     'lib/src/ui/widgets/app_window.dart': 1,
     'lib/src/ui/widgets/panel_flyout.dart': 1,

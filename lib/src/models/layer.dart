@@ -16,6 +16,7 @@ import 'layer_effect.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
+import 'layer_process.dart';
 import 'media_reference.dart';
 import 'non_negative_index_map.dart';
 import 'se_name_tag.dart';
@@ -493,11 +494,25 @@ class Layer {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is Layer &&
-          other.id == id &&
+          sameBesideTimeline(other) &&
+          mapEquals(other.timeline, timeline);
+
+  /// Whether [other] is this layer in every field but its [timeline] — the
+  /// ONE list of those fields, and [==]'s own.
+  ///
+  /// 🚨F-244: the timeline's tiles keep what an edit left alone across the
+  /// new instance the edit made (`firstCellThatMayDiffer`), and this is
+  /// where they learn that nothing but the timeline moved. A field missing
+  /// here would keep a tile across a change of it — which is why [==] reads
+  /// this list rather than a copy of it.
+  bool sameBesideTimeline(Layer other) =>
+      identical(this, other) ||
+      other.id == id &&
           other.name == name &&
           listEquals(other.frames, frames) &&
-          mapEquals(other.timeline, timeline) &&
-          mapEquals(other.instructions, instructions) &&
+          // A direction row's spans are READ OFF its blocks ([instructions]),
+          // so what stands beside its timeline is the stored map.
+          mapEquals(other._storedInstructions, _storedInstructions) &&
           listEquals(other.audioClips, audioClips) &&
           other.isVisible == isVisible &&
           other.collapsed == collapsed &&
@@ -610,8 +625,8 @@ bool layerCarriesTimesheetToggle(Layer layer) =>
 /// all read (three inline copies of `animation && onTimesheet` used to
 /// drift apart). The real sheets keep BG/BOOK picture rows out of the
 /// cel columns, so the image kind never qualifies regardless of its
-/// sheet flag — the flag itself STAYS meaningful on image rows (D24
-/// 후반's 끼움 표시 will consume it).
+/// sheet flag — the flag itself STAYS meaningful on image rows: D24
+/// 후반's 끼움 표시 reads it ([layerMarksSheetBook]).
 ///
 /// 🚨IT IS THE SWITCH'S LAW PLUS TWO WORDS: a row can only print what it
 /// can switch, so this asks [layerCarriesTimesheetToggle] FIRST rather
@@ -625,6 +640,19 @@ bool layerTakesSheetCelColumn(Layer layer) =>
     layerCarriesTimesheetToggle(layer) &&
     layer.kind == LayerKind.animation &&
     layer.onTimesheet;
+
+/// D24 후반: whether this layer marks a BOOK on the sheet — an image row
+/// whose colour label is 美術, whatever its revise and whatever its name
+/// (유저 2026-09-26: 「이름 bg든 북이든 구별없이 이미지레이어면서 미술이면
+/// 수정공정뭐던간에 북표시하는거 잊지말고」 — ⛔never by the name BG/BOOK).
+///
+/// The cel column's law with the image row's words: the row's sheet
+/// switch is the flag the note above kept for this.
+bool layerMarksSheetBook(Layer layer) =>
+    layerCarriesTimesheetToggle(layer) &&
+    layer.kind == LayerKind.image &&
+    layer.onTimesheet &&
+    layer.mark.process == LayerProcess.art;
 
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find
@@ -648,6 +676,11 @@ extension LayerStackQueries on List<Layer> {
     }
     return null;
   }
+
+  /// Whether the cut's camera work is bypassed — the camera row's own
+  /// transform switch (R8: persisted like every other row's). A bypassed
+  /// camera shows the canvas centred, whatever its keys say.
+  bool get cameraWorkBypassed => cameraLayer?.transformEnabled == false;
 
   /// The camera row's stack index, or -1.
   int get cameraIndex {

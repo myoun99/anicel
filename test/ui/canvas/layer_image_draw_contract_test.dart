@@ -261,7 +261,19 @@ void main() {
 /// the envelope painter each drew a picture contained in its box; both go
 /// through `paintSheetImageContained` now, which owns the quality its
 /// caller names.
-const int _knownRawDraws = 29;
+/// **30** on 2026-09-30 (board `F-240`, 유저 「변형중에도 필터 통일적용하도록
+/// 근본/구조적 해결」): +1 in surface_paint/surface_paint_pass — below 100%
+/// the region a landing preview covers is painted at level 0, halved down
+/// through `drawHalvings`, and drawn 1:1 in the level's pixels
+/// (`_paintLandingAtLevel`). The 1:1 blit class, on the tile paint
+/// (`FilterQuality.none`), the blit a level tile gets.
+/// **31** on 2026-10-01 (board `F-224`, 유저 「8%정도에서 대사 텍스트가
+/// 많으면 안보이는데 … 더 잘 보이게」): +1 in text/word_bake — a narrowed word
+/// drawn from its bake (`paintBakedWord`), rasterised at the word's own
+/// device pixels and drawn back onto them: the 1:1 blit class, owning
+/// `FilterQuality.low` on its own Paint for the frames a zoom draws it from
+/// the bake of the narrowing before.
+const int _knownRawDraws = 31;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

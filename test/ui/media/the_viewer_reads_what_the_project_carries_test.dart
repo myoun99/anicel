@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/carried_media_fixture.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -65,20 +66,6 @@ void main() {
         (kind: MediaAssetKind.video, write: writeCarriedMovie),
       ];
 
-  Future<void> settleAsync(
-    WidgetTester tester,
-    bool Function() ready, {
-    void Function()? everyFrame,
-  }) async {
-    for (var i = 0; i < 60 && !ready(); i += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      everyFrame?.call();
-    }
-  }
-
   /// The least the viewer held drawn over the frames [settleAsync] pumps
   /// with it as `everyFrame`, from the first page it drew — ZERO the moment
   /// the panel empties its pages, which is what a blink is.
@@ -114,7 +101,7 @@ void main() {
             viewerId: 'media-viewer',
             session: session,
             request: slot.request,
-            position: 0,
+            position: slot.position,
           ),
         ),
       ),

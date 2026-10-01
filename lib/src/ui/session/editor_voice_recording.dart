@@ -20,7 +20,6 @@ import '../playback/audio_device_transport.dart';
 import '../../models/audio_sync_settings.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../text/app_strings.dart';
-import '../../services/command.dart';
 import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../native/qa_audio_native.dart' show QaAudioNative;
@@ -731,17 +730,14 @@ class EditorVoiceRecording {
   );
 
   /// The playing position on the TRACK-global axis, or null while
-  /// playback is inactive. The all-cuts playlist IS the track axis
-  /// (gaps included); the active-cut playlist is that cut alone, so its
-  /// frames shift by the cut's global start.
+  /// playback is inactive — the run's own answer
+  /// ([CanvasPlaybackController.trackFrameOf]).
   int? _playbackTrackGlobalFrame() {
     final global = playback.globalFrameIndexListenable.value;
     if (global == null) {
       return null;
     }
-    return playback.scope == PlaybackScope.allCuts
-        ? global
-        : activeCutGlobalStartFrame + global;
+    return playback.trackFrameOf(global);
   }
 
   /// Opens the microphone and ROLLS the transport (REC1-B): record =
@@ -961,7 +957,7 @@ class EditorVoiceRecording {
     // stated in it.
     final axisShift =
         playback.isActive && playback.scope == PlaybackScope.activeCut
-        ? activeCutGlobalStartFrame
+        ? playback.trackFrameOf(0)
         : 0;
     final settingsNow = audioSyncSettings.value;
     if (settingsNow.cueBeeps) {
@@ -1188,42 +1184,37 @@ class EditorVoiceRecording {
     // it ran before this line, so the bytes are held before the pool ever
     // hears the name.
     final pool = mediaAssets;
-    _cutCommandCoordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Record voice',
-        commands: [
-          if (!pool.any((asset) => asset.path == path))
-            UpdateMediaAssetsCommand(
-              repository: _repository,
-              mediaAssets: [
-                ...pool,
-                MediaAsset(
-                  path: path,
-                  name: mediaAssetDefaultName(path),
-                  // A take is the project's own recording, so the project
-                  // carries it. The shelf copy stays where it is — losing
-                  // a performance because a save never happened is not a
-                  // trade anyone would take.
-                  //
-                  // 🚨And that sentence is exactly why the bytes are staged
-                  // just below: the shelf file is on the user's disk, so
-                  // clearing the Recordings folder before saving used to
-                  // take the performance with it. Carrying now means held,
-                  // not just flagged.
-                  carriedAs: carry.token,
-                  identity: readMediaIdentity(path),
-                ),
-              ],
-              description: 'Record voice',
+    _cutCommandCoordinator.historyManager.executeAsOneStep('Record voice', [
+      if (!pool.any((asset) => asset.path == path))
+        UpdateMediaAssetsCommand(
+          repository: _repository,
+          mediaAssets: [
+            ...pool,
+            MediaAsset(
+              path: path,
+              name: mediaAssetDefaultName(path),
+              // A take is the project's own recording, so the project
+              // carries it. The shelf copy stays where it is — losing a
+              // performance because a save never happened is not a trade
+              // anyone would take.
+              //
+              // 🚨And that sentence is exactly why the bytes are staged
+              // just below: the shelf file is on the user's disk, so
+              // clearing the Recordings folder before saving used to take
+              // the performance with it. Carrying now means held, not just
+              // flagged.
+              carriedAs: carry.token,
+              identity: readMediaIdentity(path),
             ),
-          UpdateLayerTimelineCommand(
-            repository: _repository,
-            before: lane,
-            after: plan.layer,
-          ),
-        ],
+          ],
+          description: 'Record voice',
+        ),
+      UpdateLayerTimelineCommand(
+        repository: _repository,
+        before: lane,
+        after: plan.layer,
       ),
-    );
+    ]);
     // ⚠️AFTER the pool records the take, not before: a take has no file of
     // its own, and its bytes are found through the carry the pool names
     // (`ProjectFile.mediaByteSourceFor`) — asked before the record, there

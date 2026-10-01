@@ -6,6 +6,7 @@ import 'cel_bank_lanes.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart' show ghostFreeTimeline;
@@ -18,8 +19,18 @@ import 'timeline_repeat.dart' show ghostFreeTimeline;
 /// panel for it and the drawing would drop off the conte while staying in
 /// the file. Every other row may sit past the end, which is data the cut
 /// simply does not show.
+///
+/// Both ends are the CONTE's, in the cut's own frames: a cut an O.L arrives
+/// into keeps its panels after the のりしろ it owes ([storyboardConteStart],
+/// F-227) — the frames in front are its first panel held back, not room for
+/// a panel to slide into.
+int _axisStartFor(Layer layer) =>
+    layer.kind.coversWithoutGaps ? storyboardConteStart(layer.timeline) : 0;
+
 int? _axisEndFor(Layer layer, int? cutFrameCount) =>
-    layer.kind.coversWithoutGaps ? cutFrameCount : null;
+    layer.kind.coversWithoutGaps && cutFrameCount != null
+    ? _axisStartFor(layer) + cutFrameCount
+    : null;
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
 /// layers with the block relocated. Same-layer slides carry only
@@ -134,6 +145,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
       runStart: runStart,
       runEnd: runStart + moved.length - 1,
       frameDelta: frameDelta,
+      axisStart: _axisStartFor(source),
       axisEndExclusive: _axisEndFor(source, cutFrameCount),
     );
     if (landed == null) {
@@ -244,11 +256,13 @@ _sameLayerRunMove({
   required int runStart,
   required int runEnd,
   required int frameDelta,
+  int axisStart = 0,
   int? axisEndExclusive,
 }) {
   final lengths = [for (final block in blocks) block.length];
+  // Planned from [axisStart]: the axis has no room in front of it.
   final gaps = leadingGapsOf(
-    starts: [for (final block in blocks) block.startIndex],
+    starts: [for (final block in blocks) block.startIndex - axisStart],
     lengths: lengths,
   );
   final slots = <BlockMoveSlot>[
@@ -261,9 +275,11 @@ _sameLayerRunMove({
     runStart: runStart,
     runEnd: runEnd,
     frameDelta: frameDelta,
-    axisEndExclusive: axisEndExclusive,
+    axisEndExclusive: axisEndExclusive == null
+        ? null
+        : axisEndExclusive - axisStart,
   );
-  final destinationStartIndex = layout.startOf(runStart);
+  final destinationStartIndex = axisStart + layout.startOf(runStart);
   if (!layout.isReorder &&
       destinationStartIndex == blocks[runStart].startIndex) {
     return null;
@@ -271,7 +287,8 @@ _sameLayerRunMove({
 
   final timeline = SplayTreeMap<int, TimelineExposure>();
   for (var position = 0; position < layout.order.length; position += 1) {
-    timeline[layout.starts[position]] = blocks[layout.order[position]].entry;
+    timeline[axisStart + layout.starts[position]] =
+        blocks[layout.order[position]].entry;
   }
   return (timeline: timeline, destinationStartIndex: destinationStartIndex);
 }

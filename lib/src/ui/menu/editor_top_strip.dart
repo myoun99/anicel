@@ -1187,7 +1187,7 @@ class _BlendModeControl extends StatelessWidget {
         final blendOn = state.supports(ToolParameter.blend);
         // The ERASER tool fixes it to 消去/Erase — the eraser IS the erase
         // blend — and that is not a blend CHOICE, so the flyout stands down.
-        final toolLocked = state.tool == CanvasTool.eraser;
+        final toolLocked = state.blendIsFixed;
         final mode = state.activeBlendMode;
         if (toolLocked) {
           return SizedBox(
@@ -1449,16 +1449,15 @@ class _ProjectTabOverflow extends StatelessWidget {
       key: const ValueKey<String>('project-tab-overflow'),
       tooltip: '+${hidden.length}',
       padding: EdgeInsets.zero,
-      entriesBuilder: () => [
-        for (final session in hidden)
-          PanelFlyoutItem(
-            keyValue: 'project-tab-overflow-${sessions.indexOf(session)}',
-            label: projectTabLabel(projects, session),
-            // ⛔NOT a check: the open one accents, as a tab does.
-            selected: identical(session, active),
-            onSelected: () => projects.activate(session),
-          ),
-      ],
+      // ⛔NOT a check: the open one accents, as a tab does.
+      entriesBuilder: () => hidden.asFlyoutValueChoices(
+        current: active,
+        choiceOf: (session) => PanelFlyoutChoice(
+          key: 'project-tab-overflow-${sessions.indexOf(session)}',
+          label: projectTabLabel(projects, session),
+        ),
+        onPicked: projects.activate,
+      ),
       child: Center(
         child: Text(
           activeHidden

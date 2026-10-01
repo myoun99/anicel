@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart';
@@ -13,6 +14,8 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_ink_layer.dart'
+    show SheetInkOnScreen, sheetInkAbovePicture;
 import '../sheet_painting.dart';
 import '../timeline/memo_token.dart';
 import '../timeline/timeline_cut_end_handle.dart'
@@ -21,6 +24,28 @@ import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'conte_fonts.dart';
 
 export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
+
+/// [cut]'s length as the conte prints it while [preview] is in flight.
+///
+/// 🚨The SAME law the timeline's end line and the timesheet read
+/// ([timelineCutEndPreviewFrameCount]) — a second answer here is how two
+/// panels print one number differently for the length of a drag (F-88,
+/// 유저: 「콘티패널의 초수도 똑같이」).
+int conteLiveFramesOf(ConteCutSource cut, TimelineDragPreview? preview) =>
+    timelineCutEndPreviewFrameCount(
+      preview: preview,
+      cutId: cut.cutId,
+      playbackFrameCount: cut.durationFrames,
+    );
+
+/// What a conte page PRINTS of a drag: every cut's live length — the one
+/// thing [ContePagePainter] reads off its `dragPreview` — compared by value.
+///
+/// 🚨sheet-prints-only-its-drags: a drag that moves nothing the conte prints
+/// — a lane value, a block — prints the same, and the page neither repaints
+/// nor stands its bake down for it.
+Object conteDragPrint(ConteSheetSource source, TimelineDragPreview? preview) =>
+    ByList([for (final cut in source.cuts) conteLiveFramesOf(cut, preview)]);
 
 /// The conte page on a Canvas — the panel's and the PNG export's printer.
 ///
@@ -31,7 +56,8 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 ///
 /// The paper is WHITE and the ink is black whatever the app theme is: this
 /// is a printed page shown on a screen, not a panel.
-class ContePagePainter extends CustomPainter with RepaintOnProps {
+class ContePagePainter extends CustomPainter
+    with RepaintOnProps, SheetInkOnScreen {
   ContePagePainter({
     required this.page,
     required this.source,
@@ -41,7 +67,9 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.layers,
     this.inkImageFor,
+    this.inkSurfaceFor,
     this.liveInkKeys = const {},
+    this.picturesOverInk = const [],
     this.dragPreview,
     required this.words,
     // The thumbnail store (async pictures): a landed render must repaint
@@ -66,9 +94,11 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   /// The panel's pan/zoom (the canvas-shell mount, #16). Null fits the page
   /// into the size it is given (the export paths).
+  @override
   final CanvasViewport? viewport;
 
   /// The view's DPR — the SAME one the host snapped with.
+  @override
   final double effectiveRatio;
 
   /// The finished composite for a cell, or null while it renders (the cell
@@ -83,14 +113,26 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   /// three sheets' shared vocabulary.
   final Set<SheetPaintLayer>? layers;
 
-  /// The sheet ink's display raster for one window key (R5) — the page's
-  /// surface and each cell's row-band surface, at [conteInkScale] over
-  /// document points. Null (the resolver or the image) draws no ink.
+  /// The sheet ink's raster for one window key (R5) — each cell's row-band
+  /// surface, at [conteInkScale] over document points — for an EXPORT,
+  /// which has no view to draw it through. Null (the resolver or the
+  /// image) draws no ink.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The sheet ink's surface for one window key, ON SCREEN: printed as the
+  /// brush's live window paints it ([SheetInkOnScreen], F-215), so the
+  /// brush switch changes no pixel of it.
+  @override
+  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
 
   /// Keys whose ink a LIVE input window is already showing: skipped, so
   /// translucent ink never composites twice.
+  @override
   final Set<BrushFrameKey> liveInkKeys;
+
+  /// This page's pictures and where each shows its cut's canvas — no ink
+  /// on the paper shows there (F-216). Empty yields to none.
+  final List<SheetPictureOverInk> picturesOverInk;
 
   ConteSheetMetrics get metrics => page.metrics;
 
@@ -105,6 +147,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final printed = marks();
     SheetCanvasPrinter(
       style: conteTextStyle,
       layers: layers,
@@ -114,6 +157,7 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         inkImageFor: inkImageFor,
         liveInkKeys: liveInkKeys,
       ),
+      picturesOverInk: picturesOverInk,
     ).paint(
       canvas,
       size,
@@ -122,28 +166,27 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
         devicePixelRatio: effectiveRatio,
         paper: Size(metrics.pageWidth, metrics.pageHeight),
       ),
-      marks(),
+      printed,
     );
+    if (layers?.contains(SheetPaintLayer.ink) ?? true) {
+      printInkAsLive(
+        canvas,
+        size,
+        printed.whereType<SheetInk>().toList(),
+        above: [
+          for (final over in picturesOverInk) sheetInkAbovePicture(over),
+        ],
+      );
+    }
   }
 
-  /// The live length of the cut [cutId] names, or null with no drag
-  /// channel.
-  ///
-  /// 🚨The SAME law the timeline's end line and the timesheet read
-  /// ([timelineCutEndPreviewFrameCount]) — a second answer here is how two
-  /// panels print one number differently for the length of a drag (F-88,
-  /// 유저: 「콘티패널의 초수도 똑같이」).
+  /// The live length of the cut [cutId] names ([conteLiveFramesOf]), or
+  /// null with no drag channel.
   int? _liveFramesOf(String cutId) {
     final channel = dragPreview;
-    if (channel == null) {
-      return null;
-    }
-    final cut = source.cutById(cutId);
-    return timelineCutEndPreviewFrameCount(
-      preview: channel.value,
-      cutId: cut.cutId,
-      playbackFrameCount: cut.durationFrames,
-    );
+    return channel == null
+        ? null
+        : conteLiveFramesOf(source.cutById(cutId), channel.value);
   }
 
   @override
@@ -157,7 +200,14 @@ class ContePagePainter extends CustomPainter with RepaintOnProps {
   // comparing them re-recorded every stratum for one typed letter (유저
   // 2026-09-25: 「텍스트 바뀌거나 하는데 용지 리빌드하면 너무
   // 비효율적이잖아」).
-  Object get props => (ByList(_printed()), viewport, effectiveRatio);
+  Object get props => (
+    ByList(_printed()),
+    viewport,
+    effectiveRatio,
+    ByList([
+      for (final over in picturesOverInk) (over.picture, ByList(over.canvas)),
+    ]),
+  );
 
   /// What this painter puts on the page: its strata's marks, less the ink a
   /// live window is showing.

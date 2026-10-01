@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/core/timeline/timeline_defaults.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -85,7 +86,11 @@ void main() {
         .startFrame;
 
     s.selectGlobalFrame(5); // the gap between a and b
-    expect(s.gapParkedGlobalFrame, 5, reason: 'fixture: really parked');
+    expect(
+      s.editingSession.gapGlobalFrame,
+      5,
+      reason: 'fixture: really parked',
+    );
     expect(placementOf(s).canCreateCut, isTrue);
 
     s.cutVerbs.createCut();
@@ -128,6 +133,44 @@ void main() {
       30,
       reason: 'undo restores the RECORDED gap',
     );
+  });
+
+  test('🗣️F-204: a gap too short for the default cut gets a cut as long as '
+      'the room in front of the next cut, and the next cut does not move '
+      '(유저 09-28: 「20부터 컷 존재하고 10에서 만들면 … 10코마의 컷을 만들게 '
+      '되도록」)', () {
+    // Axis: cut-a [0,4) · gap [4,7) · cut-b [7,11).
+    final s = session(gap: 3);
+    addTearDown(s.dispose);
+    s.selectGlobalFrame(5);
+    expect(
+      s.editingSession.gapGlobalFrame,
+      5,
+      reason: '⛔전제: parked in the gap',
+    );
+
+    s.cutVerbs.createCut();
+
+    final cuts = cutsOf(s);
+    expect(cuts, hasLength(3));
+    expect(cuts[1].duration, 2, reason: 'the room from 5 up to cut-b at 7');
+    expect(s.trackFrameAxis().entryFor(cuts[1].id)!.startFrame, 5);
+    expect(
+      s.trackFrameAxis().entryFor(const CutId('b'))!.startFrame,
+      7,
+      reason: '🚨↩️the default length pushed cut-b along',
+    );
+  });
+
+  test('F-204: a gap with room for the default cut still gets the default',
+      () {
+    final s = session(gap: 30);
+    addTearDown(s.dispose);
+    s.selectGlobalFrame(5);
+
+    s.cutVerbs.createCut();
+
+    expect(cutsOf(s)[1].duration, defaultCutDurationFrames);
   });
 
   test('an empty-space range creates a cut of exactly that range — and '

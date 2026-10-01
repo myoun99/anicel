@@ -172,7 +172,7 @@ class _FolderAndAttachmentCommands {
                 // The counterpart's OWN base in its OWN cut — the pointer
                 // is per-cut even though the relation is shared.
                 base: attachedBaseOf(row, cut.layers),
-                cutFrameCount: cut.duration,
+                drawnFrameCount: cutDrawnFrameCount(project, cut.id)!,
               ),
             ),
             description: description,
@@ -281,7 +281,7 @@ class _FolderAndAttachmentCommands {
         standalone: detachedLayer(
           attached: row,
           base: attachedBaseOf(row, cut.layers),
-          cutFrameCount: cut.duration,
+          drawnFrameCount: cutDrawnFrameCount(project, cut.id)!,
         ),
         base: base,
       ));
@@ -296,18 +296,13 @@ class _FolderAndAttachmentCommands {
     required LayerAttachDrop attach,
     String description = 'Attach layer',
   }) {
-    final commands = layerAttachmentCommands(
-      cutId: cutId,
-      attach: attach,
-      description: description,
-    );
-    if (commands.isEmpty) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
+    _coordinator.historyManager.executeAsOneStep(
+      description,
+      layerAttachmentCommands(
+        cutId: cutId,
+        attach: attach,
+        description: description,
+      ),
     );
   }
 }

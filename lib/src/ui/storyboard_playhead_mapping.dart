@@ -6,7 +6,6 @@ library;
 
 import 'dart:math' as math;
 
-import '../models/track_frame_axis.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import '../models/storyboard_timeline_layout.dart';
@@ -15,19 +14,14 @@ import '../models/storyboard_timeline_layout.dart';
 /// track holds no cuts). Reads the session's first-class track selection
 /// rather than hunting for the active cut's owner, so a playhead parked in
 /// a gap keeps addressing the same track.
+///
+/// ⛔It is the session's track axis, not a second walk of its own: this
+/// narrowed the layout itself, word for word the walk
+/// [EditorSessionManager.trackFrameAxis] does, and the two had only to
+/// drift for the storyboard to address one track and the session another.
 List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
   EditorSessionManager session,
-) {
-  final layout = buildStoryboardTimelineLayout(
-    session.repository.requireProject(),
-  );
-  final trackId = session.selectedTrackId;
-  final scoped = [
-    for (final entry in layout)
-      if (entry.trackId == trackId) entry,
-  ];
-  return scoped.isEmpty ? layout : scoped;
-}
+) => session.trackFrameAxis().entries;
 
 /// "To start" (REC1-B, amended by D1 2026-08-17): global frame 0 — the
 /// axis origin GAPS INCLUDED, where an all-cuts play actually begins.
@@ -37,10 +31,10 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
 /// the only way to be in a gap), and the storyboard playhead follows the
 /// parking with no extra wiring.
 ///
-/// A free function for the same reason the two above are: the storyboard's
-/// transport left its panel for the 문턱 (유저 확정, 2026-08-10), so the
-/// button that calls this is built by the WORKSPACE now while the host still
-/// owns the layout cache. One implementation, two callers.
+/// A free function because the storyboard's transport left its panel for
+/// the 문턱 (유저 확정, 2026-08-10): the button that calls this is built by
+/// the WORKSPACE, not by the storyboard host. One implementation, two
+/// callers.
 void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
   // An EMPTY selected track displays the whole-layout fallback — re-aim
   // at the track actually on screen before seeking (the old body's
@@ -59,59 +53,11 @@ void seekStoryboardPlayheadToTrackStart(EditorSessionManager session) {
   session.selectGlobalFrame(0);
 }
 
-/// Where the storyboard playhead sits: the playback position while playback
-/// is active (an activeCut-scope playlist is rebased to frame 0, so map
-/// through the cut's track slot), the editing playhead otherwise. An
-/// over-end playhead on the track's LAST cut stays unclamped — it lives in
-/// the endless runway, exactly like the timeline shows it.
-///
-/// [layout] takes a prebuilt active-track layout so per-tick callers
-/// (the storyboard host's playhead refresh) don't rebuild it every frame
-/// (R12-⑥); omitted, it is derived here.
-int? storyboardPlayheadFrame(
-  EditorSessionManager session, {
-  List<StoryboardTimelineLayoutEntry>? layout,
-}) {
-  final playback = session.playbackRig.playback;
-  // All-cuts playback speaks TRACK-GLOBAL frames directly — including the
-  // GAP frames between cuts, where there is no cut position to map
-  // through (R10-⑤: the ruler must keep moving through gaps).
-  if (playback.isActive && playback.scope == PlaybackScope.allCuts) {
-    final global = playback.globalFrameIndexListenable.value;
-    if (global != null) {
-      return global;
-    }
-  }
-  layout ??= storyboardActiveTrackLayout(session);
-  final playbackPosition = session.playbackRig.playback.isActive
-      ? session.playbackRig.playback.position
-      : null;
-  if (playbackPosition == null) {
-    // Editing playhead: a GAP PARKING reads its exact stored global
-    // (R16-⑥); otherwise the playhead clamps to the CUT's last frame
-    // (UI-R9 #4 — the timeline's over-end runway is a clipped view of
-    // the cut, never the trailing gap). No cut + no parking = no playhead.
-    // ★The storyboard's flip starts from this very answer.
-    return TrackFrameAxis(layout).storyboardFrameOf(
-      parkedGlobalFrame: session.gapParkedGlobalFrame,
-      activeCutId: session.activeCutId,
-      localFrame: session.currentFrameIndex,
-    );
-  }
-  for (final entry in layout) {
-    if (entry.cutId == playbackPosition.cutId) {
-      final maxLocal = entry.duration > 0 ? entry.duration - 1 : 0;
-      return entry.startFrame +
-          playbackPosition.localFrameIndex.clamp(0, maxLocal);
-    }
-  }
-  return null;
-}
-
 /// The stretches of the track-global frames in `[start, end)` that are
-/// READY to play — the storyboard ruler's green bar. [layout] takes a
-/// prebuilt layout: the ruler asks on every repaint, and rebuilding the
-/// whole track layout each time was a fixed per-tick tax (R12-⑥).
+/// READY to play — the storyboard ruler's green bar. [layout] defaults to
+/// the session's track axis, which is one memo per layout and track: the
+/// ruler asks on every repaint, and rebuilding the whole track layout each
+/// time was a fixed per-tick tax (R12-⑥).
 ///
 /// Each cut answers for its own frames in spans of one picture
 /// ([PlaybackCacheBudget.playbackReadyRunsForCut]) — the bar used to ask
@@ -275,8 +221,9 @@ void clampPlayheadForStoryboard(EditorSessionManager session) {
   if (cutId == null) {
     return;
   }
-  final layout = storyboardActiveTrackLayout(session);
-  final entry = TrackFrameAxis(layout).entryFor(cutId);
+  final axis = session.trackFrameAxis();
+  final layout = axis.entries;
+  final entry = axis.entryFor(cutId);
   if (entry == null) {
     return;
   }

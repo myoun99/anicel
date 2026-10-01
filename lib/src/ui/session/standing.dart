@@ -9,6 +9,7 @@ import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
+import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -52,7 +53,9 @@ class Standing {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required void Function(TrackId trackId) selectTrackCutAtPlayhead,
+    required ValueListenable<bool> brushInputActive,
+    required bool Function() sessionDisposed,
     required PlaybackRig playbackRig,
     required RowSelection rowSelectionVerbs,
     required VisibilitySolo solo,
@@ -66,7 +69,9 @@ class Standing {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _selectTrackCutAtPlayhead = selectTrackCutAtPlayhead,
+       _brushInputActive = brushInputActive,
+       _sessionDisposed = sessionDisposed,
        _playbackRig = playbackRig,
        _rowSelectionVerbs = rowSelectionVerbs,
        _solo = solo,
@@ -92,7 +97,19 @@ class Standing {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+
+  /// Standing on a V row: its track's cut under the playhead becomes the
+  /// active cut (`selectTrackCutAtPlayhead`). The session's own verb — it
+  /// selects cuts and parks the playhead, which are the session's — so it
+  /// comes as the question, the ninth family's cure for a cycle edge.
+  final void Function(TrackId trackId) _selectTrackCutAtPlayhead;
+
+  /// Whether a stroke is in flight — the session's `brushInputActive`.
+  final ValueListenable<bool> _brushInputActive;
+
+  /// Whether the session has been disposed — a plain flag, so it comes as
+  /// the question.
+  final bool Function() _sessionDisposed;
   final PlaybackRig _playbackRig;
   final RowSelection _rowSelectionVerbs;
   final VisibilitySolo _solo;
@@ -540,7 +557,12 @@ class Standing {
   /// yet) — there is nothing to light in that state, and asking would
   /// throw.
   void publishCurrentRow() {
-    if (_internals.disposed || !_currentRowAnswers) {
+    // ⚠️Mutating the DISPOSED half of this guard away leaves every suite
+    // green (measured 2026-09-28, the audit's seventeenth family): no route
+    // in them reaches it after teardown with a row that moved, and the
+    // notifier ignores an equal value. Kept for the route that would — a
+    // write to a disposed notifier throws.
+    if (_sessionDisposed() || !_currentRowAnswers) {
       return;
     }
     currentRowListenable.value = currentRow;
@@ -775,7 +797,7 @@ class Standing {
   void selectRow(TimelineRowAddress row) {
     switch (row) {
       case LayerRowAddress(:final layerId):
-        if (_internals.strokeInFlight) {
+        if (_brushInputActive.value) {
           return;
         }
         // The row lives on a track, so picking it picks that track too —
@@ -807,7 +829,7 @@ class Standing {
           _changes.notifyChanged();
         }
       case TrackRowAddress(:final trackId):
-        _internals.selectTrackCutAtPlayhead(trackId);
+        _selectTrackCutAtPlayhead(trackId);
     }
     // Every arm can move the drawn row, and the track arm does it through
     // a path of its own — publishing once here beats three call sites that
@@ -864,14 +886,14 @@ class Standing {
       return;
     }
     // R15-⑤: never switch cuts under a live stroke.
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     final before = _selection.activeLayerId;
     rememberActiveLayerForCut();
 
     final fromGap =
-        _selection.gapGlobalFrame != null ||
+        _timeline.editingSession.gapGlobalFrame != null ||
         _timeline.editingSession.activeCutId == null;
     // The visibility solo is cut-scoped: restore the eyes before leaving.
     if (_solo.layerVisibilitySoloEnabled) {

@@ -38,7 +38,7 @@ void main() {
     expect(session.currentFrameIndex, duration + 5);
 
     expect(
-      session.editingPlayheadInGap,
+      session.editingSession.playheadInGap,
       isFalse,
       reason: 'a gap is "no cut here"; past the end of THIS cut is still this '
           'cut — and `inGap` is what would take the paper away',
@@ -64,7 +64,7 @@ void main() {
     session.selectFrameIndex(duration + 4);
 
     expect(session.requireActiveCut.id, cuts.first.id, reason: 'still here');
-    expect(session.editingPlayheadInGap, isFalse);
+    expect(session.editingSession.playheadInGap, isFalse);
     expect(session.editingCanvas.stack.nodes, isNotEmpty);
   });
 
@@ -77,7 +77,7 @@ void main() {
     session.selectFrameIndex(duration + 40);
 
     expect(
-      session.editingPlayheadInGap,
+      session.editingSession.playheadInGap,
       isFalse,
       reason: 'the cut-local seek clamps onto its own cut; only a GLOBAL seek '
           'into a gap parks, and that is a different verb',

@@ -201,7 +201,14 @@ void main() {
   /// `every_menu_entry_speaks_every_language_test` is what asks whether it
   /// is. ⚠️Same shape as I-15's entry: the count went UP by a line that was
   /// translated the moment it was written.
-  const untranslatedElsewhere = 87;
+  ///
+  /// 88 (I-18 · I-55 · the arrows, 2026-10-01): the English rows of the
+  /// registry actions those rounds added — Auto Name, Copy Pixels, Paste
+  /// Pixels Above and Below, Whole Picture Cut, and the arrows' Previous and
+  /// Next Block and Layer Up and Down — each answered in the other four
+  /// languages by id, less the eight rows the arrows retired. I-15's shape
+  /// again: one more line, translated the moment it was written.
+  const untranslatedElsewhere = 88;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

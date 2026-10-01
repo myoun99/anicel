@@ -7,6 +7,8 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/storyboard_panel_slots.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 
+import '../helpers/run_edge_fixtures.dart';
+
 /// THE TRACK AS PANELS — the unit that lets ONE lead-edge rule serve the
 /// storyboard too (I-21 ②, 유저 2026-09-12: 「앞 컷이 그냥 컷블록이면 컷이
 /// 1코마될때까지 미는거지 … 근데 그 컷 블록에 콘티블록있으면 그 블록의
@@ -192,5 +194,31 @@ void main() {
       conteTimelineFromPanels(timeline: null, panelLengths: [4]),
       isNull,
     );
+  });
+
+  // 🗣️F-227: a cut an O.L arrives into keeps its panels after the のりしろ
+  // it owes, its first panel HELD back over it — a ghost the run-edge pass
+  // derives, not a panel.
+  test('a receiving cut\'s panels are laid from its conte start, and the '
+      'held-back のりしろ in front of them is not a panel', () {
+    final row = SplayTreeMap<int, TimelineExposure>.of({
+      0: const TimelineExposure.drawing(
+        FrameId('p0'),
+        length: 6,
+        ghostOf: startHoldGhost,
+      ),
+      6: const TimelineExposure.drawing(FrameId('p0'), length: 4),
+      10: const TimelineExposure.drawing(FrameId('p1'), length: 6),
+    });
+
+    final next = conteTimelineFromPanels(
+      timeline: row,
+      panelLengths: [6, 4],
+    );
+
+    expect(next, isNotNull);
+    expect(next!.keys.toList(), [6, 12], reason: 'counted from 6, not 0');
+    expect(next[6]!.length, 6);
+    expect(next[12]!.length, 4);
   });
 }

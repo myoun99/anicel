@@ -150,26 +150,16 @@ class CellInstances {
         fills[layer.id] = layerFills;
       }
     }
-    final commands = <Command>[
+    _project.historyManager.executeAsOneStep('Create selected cells', [
       ...cameraCommands,
       ?transitionCommand,
       if (fills.isNotEmpty)
         ..._controllers.timelineController.drawingFramesCommandsForLayers(
           fills,
         ),
-    ];
-    if (commands.isNotEmpty) {
-      _project.historyManager.execute(
-        commands.length == 1
-            ? commands.single
-            : CompositeCommand(
-                description: 'Create selected cells',
-                commands: commands,
-              ),
-      );
-      if (cameraCommands.isNotEmpty) {
-        _changes.refreshAfterCutCommand();
-      }
+    ]);
+    if (cameraCommands.isNotEmpty) {
+      _changes.refreshAfterCutCommand();
     }
     _changes.notifyChanged();
     return true;

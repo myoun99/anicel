@@ -54,165 +54,87 @@ class _XSheetGridColumns {
         columns: _state.widget.metrics.railColumns,
       );
 
+  /// One column: a layer of its own size, and in it the row's gate — an
+  /// edge-drag step re-runs the builder with the preview layer substituted
+  /// for the drag target's column only. A layer's CELLS column is kept
+  /// while nothing it is built from changed ([keptTimelineCellsRow] — the
+  /// timeline's rows' memo, F-244); a lane's is built every pass.
   Widget _gatedColumn(
     TimelineDisplayRow entry,
-    TimelineVisibleRange frameRange,
     TimelineVirtualizationPlan plan,
-    double viewportExtent,
+    TimelineCellsRowGrid grid,
   ) {
-    return RepaintBoundary(
+    // 🚨F-244: a layer of the column's own size, as the horizontal rows have
+    // — a drag step rebuilds the dragged column in ITS scope, not the grid's.
+    // The box is laid FRESH on every pass, outside the kept column: a zoom
+    // step moves its extent and keeps the column.
+    return SizedBox(
       key: ValueKey<String>(
         'xsheet-column-${entry.layer.id}-${entry.lane?.laneId ?? 'cells'}',
       ),
-      child: TimelineDragPreviewRowGate(
-        dragPreview: _state.widget.hooks.dragPreview,
-        layer: entry.layer,
-        rowBuilder: (context, layer) =>
-            _columnFor(entry, layer, frameRange, plan, viewportExtent),
-      ),
+      width: timelineDisplayRowExtent(entry, _state._metrics),
+      height: plan.totalFrameContentWidth,
+      child: entry.isLane
+          ? timelineGatedRow(
+              entry,
+              grid.hooks.dragPreview,
+              (context, layer) =>
+                  timelineLaneRowFrom(entry, layer, grid, _laneSpan(plan)),
+            )
+          : keptTimelineCellsRow(_kept, entry, grid),
     );
   }
 
-  Widget _columnFor(
-    TimelineDisplayRow entry,
-    Layer layer,
-    TimelineVisibleRange frameRange,
-    TimelineVirtualizationPlan plan,
-    double viewportExtent,
-  ) {
-    // Recorded for the window, which is recomputed on bucket crossings —
-    // outside any build.
-    _state._frameViewportExtent = viewportExtent;
-    if (entry.isLane) {
-      return laneIsSeAudio(entry.lane!)
-          ? SeAudioLaneFrameRow(
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-              layer: layer,
-              frameStartIndex: frameRange.startIndex,
-              frameEndIndexExclusive: frameRange.endIndexExclusive,
-              leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-              trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-              metrics: _state._metrics,
-              frameRate: _state.widget.hooks.projectFrameRate,
-              audioPeaksFor: _state.widget.hooks.audioPeaksFor,
-              spillInLeadFrames:
-                  _state.widget.hooks.spillInLeadFrames[entry.layer.id],
-              onSetClipOffset:
-                  _state.widget.hooks.audioLane?.onSetClipOffset == null
-                  ? null
-                  : (clipIndex, offsetFrames) =>
-                        _state.widget.hooks.audioLane!.onSetClipOffset!(
-                          entry.layer.id,
-                          clipIndex,
-                          offsetFrames,
-                        ),
-              offsetDrag: _state.widget.hooks.audioLane?.offsetDrag,
-              onSetClipFades:
-                  _state.widget.hooks.audioLane?.onSetClipFades == null
-                  ? null
-                  : (clipIndex, fadeIn, fadeOut) =>
-                        _state.widget.hooks.audioLane!.onSetClipFades!(
-                          entry.layer.id,
-                          clipIndex,
-                          fadeIn,
-                          fadeOut,
-                        ),
-            )
-          : TimelineLaneFrameRow(
-              axis: Axis.vertical,
-              keyPrefix: 'xsheet',
-              layer: layer,
-              // R10: the previewed lane while a key drag is in flight —
-              // the same re-derivation the horizontal body does.
-              lane: previewedLaneRow(
-                row: entry,
-                previewLayer: layer,
-                lanesForLayer: _state._lanesFor,
-              ),
-              frameStartIndex: frameRange.startIndex,
-              frameEndIndexExclusive: frameRange.endIndexExclusive,
-              leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
-              trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
-              metrics: _state._metrics,
-              // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
-              // lanes now, camera included (2026-08-08; see the rail's
-              // twin for why it stood down and why the reason was wrong).
-              // Through the B4-④ escalation wrap, like the horizontal grid.
-              laneRange: _state._laneRange,
-            );
-    }
-    // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column
-    // gets FULL bounds — its painter windows itself off the quantized
-    // bucket (repaint per span crossing), so the bucket pass diffs
-    // identical params and records nothing; the sparse widget-cell kinds
-    // re-window internally under the same bucket.
-    return TimelineFrameCellsRow(
-      axis: Axis.vertical,
-      keyPrefix: 'xsheet',
-      onActivateCell: _state.widget.hooks.onActivateCell,
-      instructionDefById: _state.widget.hooks.instructionDefById,
-      instructionCrossingTooltip:
-          _state.widget.hooks.instructionCrossingTooltip,
-      audioPeaksFor: _state.widget.hooks.audioPeaksFor,
-      projectFrameRate: _state.widget.hooks.projectFrameRate,
-      showSeconds: _state.widget.hooks.showSeconds,
-      audioLane: _state.widget.hooks.audioLane,
-      onDropMediaAssetOnLayer: _state.widget.hooks.onDropMediaAssetOnLayer,
-      acceptsMediaAssetOnLayer: _state.widget.hooks.acceptsMediaAssetOnLayer,
-      onHoverMediaAssetOnLayer: _state.widget.hooks.onHoverMediaAssetOnLayer,
-      onLeaveMediaAssetOnLayer: _state.widget.hooks.onLeaveMediaAssetOnLayer,
-      // The sheet shows what the timeline shows: a file held over a column
-      // draws the cells it would author there. ⛔Not the sheet's own rule —
-      // the same span off the same channel, resolved by the same function.
-      silhouette: timelineDragSilhouetteFor(
-        _state.widget.hooks.dragPreview?.value,
-        layer.id,
-      ),
-      seClipMarkerTooltip: _state.widget.hooks.seClipMarkerTooltip,
-      spillInLeadFrames: _state.widget.hooks.spillInLeadFrames[layer.id],
-      layer: layer,
-      baseLayer: entry.layer,
-      playbackFrameCount: _state.widget.hooks.playbackFrameCount,
-      geometry: _state._frameScroll.publishFrameGeometry(layer.kind),
-      crossAxisExtent: _state._metrics.layerRowHeight,
-      windowBucket: _state._frameWindowBucket,
-      viewportMainExtent: viewportExtent,
-      exposureStateForLayer: _state.widget.hooks.exposureStateForLayer,
-      frameNameForLayer: _state.widget.hooks.frameNameForLayer,
-      celContent: _state.widget.hooks.celContent,
-      onSelectLayer: _state.widget.hooks.onSelectLayer,
-      onSelectFrame: _state.widget.hooks.onSelectFrame,
-      onSettledPress: _state.widget.hooks.onSettledPress,
-      commaDrag: _state.widget.hooks.commaDrag,
-      rangeGesture: _state._rangeGesture,
-      runEdit: _state.widget.hooks.runEdit,
-      substrateGeneration: _state.widget.hooks.substrateGeneration,
-      // The CAMERA column's union key markers (B4) — the shared lane key
-      // marker code, resolved per rebuild like the lanes are.
-      unionLane: _state.widget.hooks.unionLaneForLayer?.call(layer),
-    );
-  }
+  final Map<LayerId, KeptTimelineCellsRow> _kept = {};
+
+  /// The frames the sheet lays its lane columns over — its plan's window
+  /// and room — and their selection domain ([timelineLaneRowFrom]).
+  TimelineLaneRowSpan _laneSpan(TimelineVirtualizationPlan plan) => (
+    startIndex: plan.frameRange.startIndex,
+    endIndexExclusive: plan.frameRange.endIndexExclusive,
+    leadingSpacer: plan.leadingFrameSpacerWidth,
+    trailingSpacer: plan.trailingFrameSpacerWidth,
+    laneRange: _state._laneRange,
+  );
+
+  /// The sheet's columns as their cells see them — the timeline's rows'
+  /// record, turned on its side.
+  ///
+  /// PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column
+  /// gets FULL bounds — its painter windows itself off the quantized
+  /// bucket (repaint per span crossing), so the bucket pass diffs
+  /// identical params and records nothing; the sparse widget-cell kinds
+  /// re-window internally under the same bucket.
+  TimelineCellsRowGrid _cellsRowGrid(double viewportExtent) => (
+    hooks: _state.widget.hooks,
+    metrics: _state._metrics,
+    geometry: _state._frameScroll.publishFrameGeometry(),
+    windowBucket: _state._frameWindowBucket,
+    viewportMainExtent: viewportExtent,
+    rangeGesture: _state._rangeGesture,
+    axis: Axis.vertical,
+    keyPrefix: 'xsheet',
+  );
 
   /// One column per display row. A RepaintBoundary per column (mirrors the
   /// horizontal rows): the cursor layer repaints alone on ticks. The gate
   /// inside makes an edge-drag step rebuild exactly the dragged layer's
-  /// column.
+  /// column, and a commit — or a bucket crossing — rebuilds none it did
+  /// not change.
   Widget buildColumns(
     List<TimelineDisplayRow> entries,
     TimelineVirtualizationPlan plan,
     double bodyViewportHeight,
   ) {
+    // Recorded for the window, which is recomputed on bucket crossings —
+    // outside any build. ⚠️Before the geometry is published: the window is
+    // laid over this extent.
+    _state._frameViewportExtent = bodyViewportHeight;
+    final grid = _cellsRowGrid(bodyViewportHeight);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        for (var index = 0; index < entries.length; index += 1)
-          _gatedColumn(
-            entries[index],
-            plan.frameRange,
-            plan,
-            bodyViewportHeight,
-          ),
+        for (final entry in entries) _gatedColumn(entry, plan, grid),
       ],
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'listenable_rebind.dart';
 
 /// A [ValueListenableBuilder] that rebuilds only when a SLICE of the
 /// value changes.
@@ -75,37 +74,140 @@ class SlicedListenableBuilder<S> extends StatefulWidget {
 
 class _SlicedListenableBuilderState<S>
     extends State<SlicedListenableBuilder<S>> {
-  /// The slice the subtree was last built from.
-  late S _shown;
+  /// The gate the subtree rebuilds through — the slice it was last built
+  /// from, asked of the CURRENT widget's [SlicedListenableBuilder.slice].
+  late SlicedListenable<S> _gate = _gateOn(widget.listenable);
 
-  @override
-  void initState() {
-    super.initState();
-    _shown = widget.slice();
-    widget.listenable.addListener(_onChanged);
-  }
+  SlicedListenable<S> _gateOn(Listenable listenable) =>
+      SlicedListenable<S>(listenable, () => widget.slice())
+        ..addListener(_rebuild);
 
   @override
   void didUpdateWidget(SlicedListenableBuilder<S> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    rebindListener(oldWidget.listenable, widget.listenable, _onChanged);
-  }
-
-  @override
-  void dispose() {
-    widget.listenable.removeListener(_onChanged);
-    super.dispose();
-  }
-
-  void _onChanged() {
-    if (widget.slice() != _shown) {
-      setState(() {});
+    if (!identical(oldWidget.listenable, widget.listenable)) {
+      _gate.dispose();
+      _gate = _gateOn(widget.listenable);
     }
   }
 
   @override
+  void dispose() {
+    _gate.dispose();
+    super.dispose();
+  }
+
+  void _rebuild() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) =>
+      widget.builder(context, _gate.reread());
+}
+
+/// [listenable]'s news passed on only when the answer of [slice] changes —
+/// the one rule behind [SlicedListenableBuilder], for a listener that is not
+/// a subtree: a painter's `repaint`, a stratum's live switch.
+///
+/// Slices compare by value (primitives and records both do).
+class SlicedListenable<S> extends ChangeNotifier {
+  SlicedListenable(this._listenable, this._slice) : _shown = _slice() {
+    _listenable.addListener(_onChanged);
+  }
+
+  final Listenable _listenable;
+  final S Function() _slice;
+  S _shown;
+
+  /// The slice as last passed on.
+  S get slice => _shown;
+
+  /// The slice read afresh — what a rebuild from ABOVE shows, so nothing it
+  /// was handed is older than that rebuild.
+  S reread() => _shown = _slice();
+
+  void _onChanged() {
+    final next = _slice();
+    if (next == _shown) {
+      return;
+    }
+    _shown = next;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _listenable.removeListener(_onChanged);
+    super.dispose();
+  }
+}
+
+/// [source] for a reader of one SLICE of it: the value is [source]'s, and
+/// its listeners hear only when the slice changes ([SlicedListenable]). A
+/// painter handed a busy channel this way repaints for its part alone.
+class SlicedValueListenable<T, S> extends SlicedListenable<S>
+    implements ValueListenable<T> {
+  SlicedValueListenable(this._source, S Function(T value) slice)
+    : super(_source, () => slice(_source.value));
+
+  final ValueListenable<T> _source;
+
+  @override
+  T get value => _source.value;
+}
+
+/// Holds a [SlicedValueListenable] of [valueListenable] for as long as it is
+/// mounted, and hands it to [builder] — for a subtree that passes the
+/// channel on to listeners of its own (a painter's `repaint`, a stratum's
+/// live switch) rather than rebuilding on it.
+///
+/// [slice] is asked of the CURRENT widget, and the slice is read afresh on
+/// every build, as [SlicedListenableBuilder] reads its own.
+class SlicedValueListenableScope<T, S> extends StatefulWidget {
+  const SlicedValueListenableScope({
+    super.key,
+    required this.valueListenable,
+    required this.slice,
+    required this.builder,
+  });
+
+  final ValueListenable<T> valueListenable;
+  final S Function(T value) slice;
+  final Widget Function(
+    BuildContext context,
+    SlicedValueListenable<T, S> sliced,
+  )
+  builder;
+
+  @override
+  State<SlicedValueListenableScope<T, S>> createState() =>
+      _SlicedValueListenableScopeState<T, S>();
+}
+
+class _SlicedValueListenableScopeState<T, S>
+    extends State<SlicedValueListenableScope<T, S>> {
+  late SlicedValueListenable<T, S> _sliced = _slicing(widget.valueListenable);
+
+  SlicedValueListenable<T, S> _slicing(ValueListenable<T> source) =>
+      SlicedValueListenable<T, S>(source, (value) => widget.slice(value));
+
+  @override
+  void didUpdateWidget(SlicedValueListenableScope<T, S> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.valueListenable, widget.valueListenable)) {
+      _sliced.dispose();
+      _sliced = _slicing(widget.valueListenable);
+    }
+  }
+
+  @override
+  void dispose() {
+    _sliced.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    _shown = widget.slice();
-    return widget.builder(context, _shown);
+    _sliced.reread();
+    return widget.builder(context, _sliced);
   }
 }

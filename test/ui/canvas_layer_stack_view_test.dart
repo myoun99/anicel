@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -61,6 +62,9 @@ void main() {
           tipShape: BrushTipShape.round,
           pressure: 1,
           sequence: 0,
+          // A dab that COVERS: at 3단계 a 2px nib is all anti-alias edge
+          // (I-50) and the row under it would show through.
+          antiAlias: BrushAntiAlias.none,
         ),
       ],
     );

@@ -331,7 +331,7 @@ void main() {
     void putRotation(CutId cutId, double degrees) {
       session.selectCut(cutId);
       final layer = counterpartIn(cutId, row);
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         layer.transformTrack.copyWith(
           rotation: layer.transformTrack.rotation.withKey(0, degrees),

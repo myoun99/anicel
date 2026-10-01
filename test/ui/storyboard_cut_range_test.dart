@@ -268,7 +268,7 @@ void main() {
       addTearDown(session.dispose);
       expect(session.selectedTrackId, trackId, reason: 'A is the selected one');
 
-      final axis = session.axisForTrack(otherTrackId);
+      final axis = session.projectSettings.axisForTrack(otherTrackId);
       final onB = axis.entryFor(const CutId('b-1'))!;
       session.updateStoryboardCutSelectionByFrame(
         trackId: otherTrackId,

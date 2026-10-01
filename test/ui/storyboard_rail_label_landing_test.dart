@@ -77,7 +77,7 @@ void main() {
       cutBefore,
       reason: '⑭: a cut covers frame 3, so the label press keeps it',
     );
-    expect(manager.gapParkedGlobalFrame, isNull);
+    expect(manager.editingSession.gapGlobalFrame, isNull);
     expect(manager.currentFrameIndex, 3);
   });
 
@@ -98,7 +98,7 @@ void main() {
     expect(manager.selectedRow, LayerRowAddress(seLayerIdForTrack(trackId, 1)));
     expect(manager.activeCutId, isNull, reason: 'the gap has no cut to take');
     expect(
-      manager.gapParkedGlobalFrame,
+      manager.editingSession.gapGlobalFrame,
       gapFrame,
       reason: 'parked exactly where the playhead stood',
     );
@@ -119,7 +119,7 @@ void main() {
 
     expect(manager.selectedRow, TrackRowAddress(trackId));
     expect(manager.activeCutId, isNull);
-    expect(manager.gapParkedGlobalFrame, gapFrame);
+    expect(manager.editingSession.gapGlobalFrame, gapFrame);
   });
 
   testWidgets('the V row\'s label takes the playhead cut when one IS there '

@@ -86,7 +86,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.gapParkedGlobalFrame,
+      session.editingSession.gapGlobalFrame,
       0,
       reason: 'a leading gap parks the playhead at global 0 — the old '
           'cut-local body skipped straight to the first cut\'s frame',
@@ -110,7 +110,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(session.gapParkedGlobalFrame, isNull);
+    expect(session.editingSession.gapGlobalFrame, isNull);
     expect(session.activeCutOrNull?.id, const CutId('cut-1'));
     expect(session.currentFrameIndex, 0);
   });
@@ -146,6 +146,6 @@ void main() {
           'there (the old selectCut side effect, kept deliberately), or '
           'the play button dies on an empty playlist',
     );
-    expect(session.gapParkedGlobalFrame, 0);
+    expect(session.editingSession.gapGlobalFrame, 0);
   });
 }

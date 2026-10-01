@@ -67,7 +67,7 @@ void main() {
       int sampleAt(double x, double y) => sampleCompositeColor(
         cut: session.requireActiveCut,
         frameIndex: session.currentFrameIndex,
-        surfaceResolver: session.brushSurfaceForLayerFrame,
+        surfaceResolver: session.renderCaches.brushSurfaceForLayerFrame,
         point: CanvasPoint(x: x, y: y),
         paperColor: session.projectSettings.projectBackground.argb,
       );

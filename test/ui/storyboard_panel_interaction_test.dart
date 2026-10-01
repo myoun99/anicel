@@ -932,7 +932,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {required shownHeight}) =>
+        thumbnailFor: (cut, _, {required shownHeight, region}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -994,7 +994,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         thumbnailFor:
-            (cut, frameIndex, {required shownHeight}) {
+            (cut, frameIndex, {required shownHeight, region}) {
               asked.add((cut.id, frameIndex));
               return null;
             },
@@ -1074,7 +1074,7 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _, {required shownHeight}) =>
+        thumbnailFor: (cut, _, {required shownHeight, region}) =>
             cut.id == const CutId('cut-a') ? image : null,
       );
 
@@ -1457,7 +1457,7 @@ void main() {
 
     Future<
       ({
-        List<(String laneId, String? headLaneId)> inGroup,
+        List<(String laneId, List<String> span)> inGroup,
         List<
           ({
             LayerId layerId,
@@ -1476,7 +1476,7 @@ void main() {
       final laneSelection = ValueNotifier<TimelineLaneSelection?>(null);
       addTearDown(selection.dispose);
       addTearDown(laneSelection.dispose);
-      final inGroup = <(String, String?)>[];
+      final inGroup = <(String, List<String>)>[];
       final escalated =
           <
             ({
@@ -1503,8 +1503,8 @@ void main() {
         },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
-          onSelectUpdate: (layerId, laneId, anchor, head, headLaneId, span) =>
-              inGroup.add((laneId, headLaneId)),
+          onSelectUpdate: (layerId, laneId, anchor, head, span) =>
+              inGroup.add((laneId, span)),
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,
@@ -1600,10 +1600,9 @@ void main() {
       );
     });
 
-    testWidgets('IN-GROUP vertical reach hands the host a real head lane — '
-        'the stale hand-kept walk answered null for every SE anchor', (
-      tester,
-    ) async {
+    testWidgets('IN-GROUP vertical reach hands the host the span to a real '
+        'head lane — the stale hand-kept walk answered null for every SE '
+        'anchor', (tester) async {
       final log = await pumpLanes(tester);
       expect(positionLane(), findsOneWidget);
 
@@ -1618,10 +1617,12 @@ void main() {
       await tester.pump();
 
       expect(log.escalated, isEmpty, reason: 'never left the group');
+      expect(log.inGroup.last.$1, 'position');
       expect(
-        log.inGroup.last,
-        ('position', 'scale'),
-        reason: 'the head lane resolves off the rows the panel draws',
+        log.inGroup.last.$2,
+        ['position', 'scale'],
+        reason: 'the head lane resolves off the rows the panel draws, and '
+            'the span runs to it',
       );
     });
   });
@@ -1922,7 +1923,7 @@ void main() {
         },
         laneRange: TimelineLaneRangeHooks(
           selection: laneSelection,
-          onSelectUpdate: (_, _, _, _, _, _) {},
+          onSelectUpdate: (_, _, _, _, _) {},
           onTapAt: (_, _, _) {},
           onTapClear: () {},
           onMoveBegin: () => false,

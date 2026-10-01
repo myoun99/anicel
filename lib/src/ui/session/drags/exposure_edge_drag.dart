@@ -7,6 +7,7 @@ import '../../../models/cut_id.dart';
 import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
+import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
@@ -34,12 +35,14 @@ typedef CutSyncCapture = ({
 typedef CutResize = ({Map<CutId, int> durations, Map<CutId, int> gaps});
 
 /// What an exposure comma BEGIN is handed beyond [EdgeDragRoles]: the
-/// cut-local SE lens — the one of these the drag keeps — and the three it
-/// asks ONCE and never again (does this row own its own timing, what does
-/// the live selection cover, which of its rows may a retime touch).
+/// cut-local SE lens — the one of these the drag keeps — and the four it
+/// asks ONCE and never again (does this row own its own timing, does the
+/// retime law stand the gripped row down, what does the live selection
+/// cover, which of its rows may a retime touch).
 typedef ExposureBeginRoles = ({
   TrackSeDisplay trackSe,
   FoldersAndAttachments folders,
+  RetimeLaw retime,
   SelectionAccess selection,
   RangeSelections rangeSelections,
 });
@@ -60,7 +63,7 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
       // A row that reshapes never — a movie kept as a reference — is left
       // out of the selection's retime, so a grip on it trims its own block
       // alone rather than retiming every other row and not it.
-      roles.changes.standsDownFromRetime(grip.layerId) ||
+      beginRoles.retime.standsDownFromRetime(grip.layerId) ||
       !live.coversLayer(grip.layerId) ||
       !live.contains(grip.blockStartIndex)) {
     return null;
@@ -78,7 +81,7 @@ Map<LayerId, BulkRetimeRow>? _captureBulk({
     rows[row.id] = (
       starts: [
         for (final start in starts)
-          roles.internals.commitBlockStart(row.id, start),
+          beginRoles.trackSe.commitBlockStart(row.id, start),
       ],
       before: row.commit,
     );
@@ -173,7 +176,9 @@ int _storedRowEndOf(Layer layer) {
       end = blockEnd;
     }
   }
-  return end;
+  // In the CONTE's frames, which is what the cut's length counts: a cut an
+  // O.L arrives into keeps its panels after the のりしろ it owes (F-227).
+  return end - storyboardConteStart(layer.timeline);
 }
 
 /// What the press grabbed: the row, the block's start key and which edge.
@@ -459,7 +464,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   ({List<({Layer before, Layer after})> edits, CutResize? resize})? _result;
 
   /// Applies the drag's current cumulative frame delta as a live preview on
-  /// [SessionInternals.dragPreview] — the repository is NOT touched.
+  /// the session's `dragPreview` — the repository is NOT touched.
   @override
   void update(int cumulativeDelta) {
     // Bulk selection retime (UI-R17 #3/#8): the edge delta becomes a LENGTH
@@ -479,7 +484,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     // fake test clock.
     if (after == _before) {
       _result = null;
-      _roles.internals.dragPreview.value = null;
+      _roles.dragPreview.value = null;
       return;
     }
     // A storyboard row's comma moves its cut's end with it (feedback #9):
@@ -487,10 +492,13 @@ class ExposureEdgeDrag implements EditorDragSession {
     final resize = _cutSyncResizeFor(after);
     _result = (edits: [(before: _before, after: after)], resize: resize);
     if (resize != null) {
-      _roles.internals.dragPreview.value = CutTrimDragPreview(
-        previewDurations: resize.durations,
-        previewGaps: resize.gaps,
-        previewLayers: {after.id: after},
+      _roles.dragPreview.value = cutTrimPreviewAsReleased(
+        _roles.project.repository,
+        CutTrimDragPreview(
+          previewDurations: resize.durations,
+          previewGaps: resize.gaps,
+          previewLayers: {after.id: after},
+        ),
       );
       return;
     }
@@ -499,7 +507,7 @@ class ExposureEdgeDrag implements EditorDragSession {
     // storyboard's track-global strips (UI-R7 #7); the commit uses
     // [_result].
     final forms = _trackSe.previewFormsOf(after);
-    _roles.internals.dragPreview.value = ExposureEdgeDragPreview(
+    _roles.dragPreview.value = ExposureEdgeDragPreview(
       previewLayer: forms.shown,
       globalPreviewLayer: forms.global,
     );
@@ -530,18 +538,21 @@ class ExposureEdgeDrag implements EditorDragSession {
     }
     if (edits.isEmpty) {
       _result = null;
-      _roles.internals.dragPreview.value = null;
+      _roles.dragPreview.value = null;
       return;
     }
     // A storyboard row in the bulk drags its cut's length along (feedback
     // #9) — one preview, one release.
     final resize = _bulkCutSyncResize(edits);
     _result = (edits: edits, resize: resize);
-    _roles.internals.dragPreview.value = resize != null
-        ? CutTrimDragPreview(
-            previewDurations: resize.durations,
-            previewGaps: resize.gaps,
-            previewLayers: previews,
+    _roles.dragPreview.value = resize != null
+        ? cutTrimPreviewAsReleased(
+            _roles.project.repository,
+            CutTrimDragPreview(
+              previewDurations: resize.durations,
+              previewGaps: resize.gaps,
+              previewLayers: previews,
+            ),
           )
         : previews.length == 1
         ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
@@ -629,7 +640,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   @override
   void commit() {
     final result = _result;
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
     if (result == null) {
       return;
     }
@@ -665,7 +676,7 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// repository was never written during the drag).
   @override
   void cancel() {
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
   }
 }
 

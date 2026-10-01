@@ -10,21 +10,23 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
-import '../models/layer_effect.dart' show EffectId, effectParameterValueAt;
+import '../models/layer_effect.dart'
+    show EffectId, LayerEffect, effectParameterValueAt;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
+import '../models/range_snap.dart' show snapSpanToBlocks;
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart'
     show
         TimelineBlockEdge,
         TimelineDrawingBlock,
-        coveringDrawingBlockAt,
         drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
+import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
 import 'canvas/flip_hud_rows.dart';
@@ -52,6 +54,7 @@ import 'timeline/property_lane_model.dart'
         PropertyLaneEditCallbacks,
         PropertyLaneRow,
         TimelineDisplayRow,
+        laneAsPreviewed,
         laneGroupKey;
 import 'timeline/property_lanes_for_row.dart' show propertyLanesForRow;
 import 'timeline/timeline_row_span_resolver.dart'
@@ -78,6 +81,7 @@ import 'timeline/layer_row_drag.dart'
         layerRowDragChips;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
+import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
     show laneSelectionCoversBandRow, transformGroupHeader;
@@ -96,16 +100,16 @@ import 'timeline/timeline_double_tap.dart'
         timelineCellDoubleTapActivation,
         timelineCellDoubleTapRecord,
         timelineLabelDoubleTapDetector;
+import 'timeline/lane_row_slice.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
         storyboardCutBlockBackgroundColor,
-        timelineBlockCornerRadiusAt,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
         timelineRowSelectionBandDecoration,
         timelineSelectedFrameBorderColor,
-        timelineStandingCellDecoration;
+        timelineStandingWashDecorationAt;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -141,34 +145,35 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_coordinate_policy.dart'
-    show FrameScrubDedupe, frameIndexFromLocalX;
+    show FrameScrubDedupe, frameIndexFromLocalX, timelineFrameEdge;
 import 'timeline/timeline_frame_range_policy.dart'
     show TimelineFrameRange, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import '../models/camera_instruction.dart' show CameraInstructionDef;
-import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
 import 'timeline/timeline_instruction_row_visual.dart'
     show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
+import 'timeline/timeline_row_run_labels_painter.dart'
+    show TimelineRowRunLabelsPainter;
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
-import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
+import 'timeline/timeline_playhead.dart' show timelinePlayheadColumn;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_section_policy.dart'
     show TimelineSection, timelineSectionForLayerKind, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
-import 'timeline/timeline_selected_exposure_outline.dart'
-    show TimelineSelectionRing;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 import 'layout/device_grid_scroll_controller.dart';
 import 'text/app_strings.dart' show AppText;
 import 'listenable_rebind.dart';
+import 'session/row_spans.dart' show trackRowMaterialBlocks;
+import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
@@ -190,7 +195,7 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// property lane — of the V track's carrier or of an SE layer — which is a
 /// wider set than [bandRow], the lanes that carry a range band. The
 /// fade-envelope row is the case that separates the two: it is the opacity
-/// lane's row and takes the standing ring, but it draws fade handles
+/// lane's row and takes the standing cell, but it draws fade handles
 /// instead of key markers and no selection reaches it.
 ///
 /// [lane] is whether the row is a LANE band at all — the Audio lane as much
@@ -466,6 +471,8 @@ class StoryboardPanel extends StatefulWidget {
     this.cutSelect,
     this.stripSelect,
     this.onCreateStoryboardLayer,
+    this.linkedCutIds = const {},
+    this.onOpenCutLinks,
     this.movieEnd,
     this.trackLaneHeight = defaultTrackLaneHeight,
     this.onResizeTrackLanes,
@@ -476,6 +483,7 @@ class StoryboardPanel extends StatefulWidget {
     this.frameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
+    this.cutUnderPlayhead,
     this.revealSelectionTick,
     this.playbackFrame,
     this.frameReadySignal,
@@ -529,6 +537,7 @@ class StoryboardPanel extends StatefulWidget {
     this.seSelect,
     this.audioLane,
     this.transitionDefById,
+    this.transitionRowShown,
     this.rowsChannel,
     this.transitionCrossingTooltip,
     this.transitionCommaDrag,
@@ -553,10 +562,18 @@ class StoryboardPanel extends StatefulWidget {
   /// (유저 2026-09-26, zoom-floor-fixed-marks-Q1 — the painter's `_widthFor`),
   /// so a zero-length cut with a cut right behind it is not drawn at all.
   ///
+  /// ↩️And it is one pixel, not eight (유저 2026-09-27: 「타임라인줌 최대한
+  /// 줄이면 컷블록이 엔드라인 넘거나 해서 원래 있어야할 크기보다 블럭이
+  /// 커지는데 최대한 원래 공간만 차지하도록」). Eight pixels was 64 frames at
+  /// the floor, so a short cut before a gap and the film's last cut grew past
+  /// their frames — the last one over the end line. A block is its frames
+  /// now; only a cut too short to cover a pixel is drawn as one, so it does
+  /// not vanish, and still never past the next cut.
+  ///
   /// Public since D15: the folded storyboard draws the same blocks and
-  /// must not carry a floor of its own — a second `8` over there is a
+  /// must not carry a floor of its own — a second floor over there is a
   /// second answer the day this one moves.
-  static const double cutBlockMinWidth = 8;
+  static const double cutBlockMinWidth = 1;
   static const double _minBlockWidth = cutBlockMinWidth;
 
   // Wide enough for the timeline-style rows (icon + names) the rail mirrors.
@@ -803,6 +820,13 @@ class StoryboardPanel extends StatefulWidget {
   /// canAddLayerOfKind/addLayerOfKind (T25). Null = display-only.
   final ValueChanged<CutId>? onCreateStoryboardLayer;
 
+  /// The LINKED cuts (I-25): their names wear the link icon.
+  final Set<CutId> linkedCutIds;
+
+  /// Pressed on a linked cut's link icon: the link window (I-25). Null
+  /// keeps the icon display-only.
+  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
   final StoryboardMovieEndCallbacks? movieEnd;
@@ -826,8 +850,9 @@ class StoryboardPanel extends StatefulWidget {
 
   /// Where the FRAME axis stands, in pixels — kept by the host beside
   /// [railExtent] because it has to outlive this panel (F-143: a fold
-  /// remounts it, and the offset that lived here went with it). Null = a
-  /// session-local one of our own, as with the rail.
+  /// remounted it until 09-28, and the offset that lived here went with it)
+  /// and because the folded row turns it. Null = a session-local one of our
+  /// own, as with the rail.
   final ValueNotifier<double>? frameAxisOffset;
 
   final ProjectFrameRate projectFrameRate;
@@ -839,6 +864,11 @@ class StoryboardPanel extends StatefulWidget {
   /// subscribe, so scrub moves and playback ticks never rebuild the panel's
   /// strips/blocks/rails. Null (or a null value) hides the line.
   final ValueListenable<int?>? playheadFrame;
+
+  /// The cut under the playhead — the session's one answer for the cut being
+  /// looked at, moving on crossings only. Its plate wears the standing wash
+  /// (F-248); null where none is wired.
+  final ValueListenable<CutId?>? cutUnderPlayhead;
 
 
   /// F-110: WHETHER PLAYBACK IS RUNNING — the playback position, or null
@@ -1108,6 +1138,11 @@ class StoryboardPanel extends StatefulWidget {
   /// spans unmarked.
   final CameraInstructionDef? Function(String instructionId)? transitionDefById;
 
+  /// [track]'s transition row — or a drag's form of it — the way it is
+  /// SHOWN: every span named by the cuts it joins (F-229). Null shows the
+  /// row as stored, which is what a host with no session does.
+  final Layer Function(Track track, Layer row)? transitionRowShown;
+
   /// Where this panel hands its stacked rows to the shell — the ↑/↓ walk and
   /// the flip window read them while the storyboard is the panel being
   /// worked in ([_StoryboardSheet]). Null for a mount nothing walks.
@@ -1185,10 +1220,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   final ScrollController _verticalController = ScrollController();
 
-  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounts
-  /// this panel, and a newborn 0 was read back after layout and recorded as
-  /// a scroll over the position the host had kept. The timeline grids'
-  /// controllers are born the same way.
+  /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
+  /// this panel until 09-28, and a newborn 0 was read back after layout and
+  /// recorded as a scroll over the position the host had kept. A panel
+  /// built afresh is still born there. The timeline grids' controllers are
+  /// born the same way.
   late final ScrollController _horizontalController = ScrollController(
     initialScrollOffset: _horizontalScrollOffset.value,
   );
@@ -1370,19 +1406,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
-    // anchors. Shared policy with the timeline grids.
-    if (oldWidget.pixelsPerFrame != widget.pixelsPerFrame &&
-        _horizontalController.hasClients) {
-      _horizontalController.jumpTo(
-        zoomAnchoredScrollOffset(
-          oldOffset: _horizontalController.position.pixels,
-          oldPixelsPerFrame: oldWidget.pixelsPerFrame,
-          newPixelsPerFrame: widget.pixelsPerFrame,
-          viewportExtent: _horizontalController.position.viewportDimension,
-          anchorFrame: widget.playheadFrame?.value,
-        ),
-      );
-    }
+    // anchors. ⛔The timeline grids' own call, not a third spelling of it:
+    // this jump was the policy written out again, and the one that did not
+    // hear the fold rule the grids' call keeps.
+    applyZoomAnchoredScroll(
+      _horizontalController,
+      oldPixelsPerFrame: oldWidget.pixelsPerFrame,
+      newPixelsPerFrame: widget.pixelsPerFrame,
+      anchorFrame: widget.playheadFrame?.value,
+    );
   }
 
   TimelineScale get _scale => TimelineScale(
@@ -1417,9 +1449,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ) {
     var width = 0.0;
     for (final entry in entries) {
-      final right =
-          scale.leftForFrame(entry.startFrame) +
-          scale.widthForDuration(entry.duration);
+      final right = scale.blockEndFor(entry.startFrame, entry.duration);
       if (right > width) {
         width = right;
       }
@@ -1528,7 +1558,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return TimelineGridLaw(
       ground: Theme.of(context).colorScheme.surface,
       framesPerSecond: _countingFps,
-      child: ValueListenableBuilder<double?>(
+      // R26 #34: the canvas's pan moves the conte panel too, through the
+      // timeline grids' one driver.
+      child: PanelPanDriver(
+        controllers: [_verticalController, _horizontalController],
+        child: ValueListenableBuilder<double?>(
         valueListenable: _railRows._railExtent,
         builder: (context, _, child) => LayoutBuilder(
           builder: (context, constraints) {
@@ -1591,6 +1625,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             );
           },
         ),
+      ),
       ),
     );
   }
@@ -1995,9 +2030,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       ),
                                     ),
                                     if (playheadListenable != null)
-                                      _playheadTint(
-                                        playheadListenable,
-                                        frame.scale,
+                                      Positioned.fill(
+                                        child: StoryboardPlayheadTint(
+                                          playhead: playheadListenable,
+                                          pixelsPerFrame:
+                                              frame.scale.pixelsPerFrame,
+                                        ),
                                       ),
                                     // The MOVIE-END line through the
                                     // STRIPS (UI-R20 #3): the ruler's
@@ -2432,6 +2470,10 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
       key: const ValueKey<String>('storyboard-ruler'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
+        // R26 #34: a press that pans is the pan's, not a scrub.
+        if (canvasPressPans(canvasPressButtons(event))) {
+          return;
+        }
         _resetScrubTracking();
         _scrubAtGlobal(event.position);
       },
@@ -2462,7 +2504,6 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
                 key: const ValueKey<String>('storyboard-frame-ruler'),
                 frameStartIndex: 0,
                 frameEndIndexExclusive: widget.renderedFrames,
-                currentFrameIndex: -1,
                 playhead: widget.playhead,
                 playbackFrameCount: widget.contentFrames,
                 // F-18: the ruler's end line follows the drag with the
@@ -2669,35 +2710,54 @@ class _StoryboardLabelShell extends StatelessWidget {
   }
 }
 
-/// The frame-wide accent tint on the playhead's frame — no solid edge line
-/// over the blocks (user direction); the ruler carries its own current-frame
-/// highlight. It subscribes to the cursor itself, on a layer of its own
+/// The playhead's column on the playhead's frame — no solid edge line over
+/// the blocks (user direction) — the timeline's own ([timelinePlayheadColumn],
+/// F-212). It subscribes to the cursor itself, on a layer of its own
 /// ([TickLayer]): a tick moves THIS overlay, the blocks never rebuild.
-Widget _playheadTint(ValueListenable<int?> playhead, TimelineScale scale) =>
-    Positioned.fill(
-      child: IgnorePointer(
-        child: TickLayer(
-          child: ValueListenableBuilder<int?>(
-            valueListenable: playhead,
-            builder: (context, frame, _) => Stack(
-              children: [
-                if (frame != null)
-                  Positioned(
-                    key: const ValueKey<String>('storyboard-playhead'),
-                    left: scale.leftForFrame(frame),
-                    top: 0,
-                    bottom: 0,
-                    width: scale.pixelsPerFrame,
-                    child: ColoredBox(
-                      color: timelinePlayheadColor.withValues(alpha: 0.18),
-                    ),
-                  ),
-              ],
-            ),
-          ),
+///
+/// ONE tint for the panel's strips and for the row the storyboard folds
+/// into (유저 2026-09-27, folded-row-playhead-during-playback-Q1: 「접힌
+/// 오버레이도 재생헤드나 인덱스나 … 다 구조적으로 동기화」) — the folded
+/// row had no playhead at all.
+class StoryboardPlayheadTint extends StatelessWidget {
+  const StoryboardPlayheadTint({
+    super.key,
+    required this.playhead,
+    required this.pixelsPerFrame,
+    this.firstFrame = 0,
+  });
+
+  /// The track frame the playhead stands on ([PlayheadCursors.trackFrame]).
+  final ValueListenable<int?> playhead;
+
+  final double pixelsPerFrame;
+
+  /// The frame at this layer's left edge: 0 on the panel's strips, the
+  /// window's first frame on the folded row, which lays out one screenful
+  /// from there (F-143).
+  final int firstFrame;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: TickLayer(
+      child: ValueListenableBuilder<int?>(
+        valueListenable: playhead,
+        builder: (context, frame, _) => Stack(
+          children: [
+            if (frame != null)
+              timelinePlayheadColumn(
+                axis: Axis.horizontal,
+                frame: frame,
+                cellExtent: pixelsPerFrame,
+                origin: -timelineFrameEdge(firstFrame, pixelsPerFrame),
+                columnKey: const ValueKey<String>('storyboard-playhead'),
+              ),
+          ],
         ),
       ),
-    );
+    ),
+  );
+}
 
 /// A storyboard label row's NAME: the one row-name style every surface
 /// wears ([layerRowNameStyle], F-26 #1226 — 「스토리보드패널도 겸사겸사 싹 다
@@ -3232,13 +3292,57 @@ TimelineFrameRangeGestureLayer _storyboardRowRangeGestureLayer({
   );
 }
 
-class _StoryboardTransitionRow extends StatelessWidget {
+/// 🗣️F-228 (유저 2026-09-29): 「블록이라면 전부 코마텍스트가 존재해야함.
+/// 통일해서 적용」 — the S rows and the transition row drew their blocks and
+/// printed no length. They print it with the timeline row's own painter,
+/// which already knows what a block is on either kind of row, fed the
+/// panel's LIVE axis and window: the inputs the V row's blocks painter
+/// reads, so a zoom step or a span crossing repaints the numbers alone.
+///
+/// Mounted over the paper and under the writing and the marks — where the
+/// timeline row prints them (its cells' foreground, under its overlays).
+mixin _StoryboardRowRunLabels {
+  TimelineFrameGeometryHandle get frameGeometry;
+  ValueListenable<int> get windowBucket;
+  double get viewportWidth;
+  bool get showSeconds;
+  ProjectFrameRate get projectFrameRate;
+  double get height;
+
+  Widget _runLabels(BuildContext context, Layer layer) => Positioned.fill(
+    child: IgnorePointer(
+      child: RepaintBoundary(
+        child: CustomPaint(
+          key: ValueKey<String>('storyboard-run-labels-${layer.id}'),
+          foregroundPainter: TimelineRowRunLabelsPainter(
+            layer: layer,
+            geometry: frameGeometry,
+            crossAxisExtent: height,
+            showSeconds: showSeconds,
+            countingBase: projectFrameRate.countingBase,
+            baseTextStyle: DefaultTextStyle.of(context).style,
+            windowBucket: windowBucket,
+            viewportMainExtent: viewportWidth,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _StoryboardTransitionRow extends StatelessWidget
+    with _StoryboardRowRunLabels {
   const _StoryboardTransitionRow({
     required this.track,
     required this.layer,
     required this.width,
     required this.height,
     required this.timelineScale,
+    required this.frameGeometry,
+    required this.windowBucket,
+    required this.viewportWidth,
+    required this.showSeconds,
+    required this.projectFrameRate,
     this.defById,
     this.crossingTooltip,
     this.commaDrag,
@@ -3256,8 +3360,22 @@ class _StoryboardTransitionRow extends StatelessWidget {
   final double width;
 
   /// Its label's height ([_StoryboardRowHeights.transition]) — one row.
+  @override
   final double height;
   final TimelineScale timelineScale;
+
+  /// The panel's live axis and window, which the spans' lengths are printed
+  /// on ([_StoryboardRowRunLabels]).
+  @override
+  final TimelineFrameGeometryHandle frameGeometry;
+  @override
+  final ValueListenable<int> windowBucket;
+  @override
+  final double viewportWidth;
+  @override
+  final bool showSeconds;
+  @override
+  final ProjectFrameRate projectFrameRate;
   final CameraInstructionDef? Function(String instructionId)? defById;
 
   /// D26: the crossing-fade warning, by GLOBAL start key on this axis.
@@ -3277,9 +3395,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
 
   /// The visible frame window this strip covers — the whole content width,
   /// like the SE grips' own geometry.
-  int get _frameEndExclusive => timelineScale.pixelsPerFrame <= 0
-      ? 0
-      : (width / timelineScale.pixelsPerFrame).ceil();
+  int get _frameEndExclusive => timelineScale.framesCovering(width);
 
   TimelineFrameGeometry get _geometry => TimelineFrameGeometry(
     frameCellExtent: timelineScale.pixelsPerFrame,
@@ -3301,7 +3417,10 @@ class _StoryboardTransitionRow extends StatelessWidget {
           left: timelineScale.leftForFrame(entry.key),
           top: 0,
           bottom: 0,
-          width: entry.value.length * timelineScale.pixelsPerFrame,
+          width: timelineScale.spanWidth(
+            entry.key,
+            entry.key + entry.value.length,
+          ),
           child: IgnorePointer(
             key: ValueKey<String>(
               'storyboard-transition-paper-${layer.id}-${entry.key}',
@@ -3317,6 +3436,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
         ),
       );
     }
+    spans.add(_runLabels(context, layer));
     // The marks, from the direction row's own overlay builder.
     final defById = this.defById;
     if (defById != null && _frameEndExclusive > 0) {
@@ -3364,7 +3484,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
     if (onRowFramePress != null || onEditSpan != null) {
       int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
           ? null
-          : (local.dx / timelineScale.pixelsPerFrame).floor();
+          : timelineScale.frameAt(local.dx);
       spans.add(
         _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
@@ -3453,7 +3573,7 @@ class _StoryboardTransitionRow extends StatelessWidget {
 /// on the global frame axis — blocks keep their true lengths (a sound may
 /// cross cut boundaries; each crossed boundary draws a `~` continuation
 /// mark) and the timeline's data is exactly this layer, by identity.
-class _StoryboardSeRow extends StatelessWidget {
+class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
   const _StoryboardSeRow({
     required this.trackIndex,
     required this.slot,
@@ -3463,6 +3583,10 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.height,
     required this.timelineScale,
     required this.projectFrameRate,
+    required this.frameGeometry,
+    required this.windowBucket,
+    required this.viewportWidth,
+    required this.showSeconds,
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.onRowFramePress,
@@ -3471,7 +3595,6 @@ class _StoryboardSeRow extends StatelessWidget {
     this.onEditSeEntry,
     this.seCommaDrag,
     this.seSelect,
-    this.frameGeometry,
     this.railRowAt,
     this.seRowsInDisplayOrder = const [],
   });
@@ -3498,8 +3621,10 @@ class _StoryboardSeRow extends StatelessWidget {
   final double width;
 
   /// Its label's height ([_StoryboardRowHeights.se]) — one row.
+  @override
   final double height;
   final TimelineScale timelineScale;
+  @override
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
@@ -3532,10 +3657,18 @@ class _StoryboardSeRow extends StatelessWidget {
   final StoryboardSeSelectCallbacks? seSelect;
 
   /// The panel's live frame-axis geometry, which the shared gesture reads
-  /// to turn a pointer position into a track-global frame.
-  final TimelineFrameGeometryHandle? frameGeometry;
+  /// to turn a pointer position into a track-global frame, and the blocks'
+  /// lengths are printed on ([_StoryboardRowRunLabels]).
+  @override
+  final TimelineFrameGeometryHandle frameGeometry;
 
-  /// Whether the live selection covers this row at [globalFrame].
+  /// The panel's window, as the V row's blocks painter takes it.
+  @override
+  final ValueListenable<int> windowBucket;
+  @override
+  final double viewportWidth;
+  @override
+  final bool showSeconds;
 
   @override
   Widget build(BuildContext context) {
@@ -3543,7 +3676,7 @@ class _StoryboardSeRow extends StatelessWidget {
     final layer = this.layer;
     if (layer != null) {
       final blocks = drawingBlocks(layer.timeline);
-      spans.addAll(_contentSpans(layer, blocks));
+      spans.addAll(_contentSpans(context, layer, blocks));
       spans.addAll(_interactionLayers(context, layer, blocks));
       final clipTooltip = seClipMarkerTooltip;
       if (clipTooltip != null) {
@@ -3567,9 +3700,7 @@ class _StoryboardSeRow extends StatelessWidget {
     Layer layer,
     String tooltip,
   ) {
-    final frames = timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : (width / timelineScale.pixelsPerFrame).ceil();
+    final frames = timelineScale.framesCovering(width);
     return Positioned.fill(
       child: TimelineFixedFrameSpanLayer(
         geometry: TimelineFrameGeometry(
@@ -3594,8 +3725,10 @@ class _StoryboardSeRow extends StatelessWidget {
   }
 
   /// What the row shows: each block's paper, the waveform where a clip's
-  /// peaks are known, and the dialogue / SE name over each block.
+  /// peaks are known, each block's length, and the dialogue / SE name over
+  /// each block.
   List<Widget> _contentSpans(
+    BuildContext context,
     Layer layer,
     List<TimelineDrawingBlock> blocks,
   ) {
@@ -3636,6 +3769,7 @@ class _StoryboardSeRow extends StatelessWidget {
         );
       }
     }
+    spans.add(_runLabels(context, layer));
     // The sheet's writing on the paper blocks.
     for (final block in blocks) {
       final frame = layer.frameById(block.frameId);
@@ -3687,10 +3821,9 @@ class _StoryboardSeRow extends StatelessWidget {
     // clone the timeline shows is windowed to the active cut, so a sound
     // two cuts away has no local index to be selected by. Mounted UNDER
     // the grips so the edges keep comma-drag priority.
-    final geometry = frameGeometry;
-    if (seSelect != null && geometry != null) {
+    if (seSelect != null) {
       spans.add(
-        _rangeGestureLayer(layer, geometry, seSelect),
+        _rangeGestureLayer(layer, frameGeometry, seSelect),
       );
     }
     // …and EVERY block carries the timeline's own comma edge grips
@@ -3742,15 +3875,13 @@ class _StoryboardSeRow extends StatelessWidget {
   /// The press's conversion: this row's frame 0 sits at its left edge.
   int? _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
       ? null
-      : (x / timelineScale.pixelsPerFrame).floor();
+      : timelineScale.frameAt(x);
 
   /// The row's cells, as its grips and its drop places are laid out on.
   TimelineFrameGeometry get _rowFrames => TimelineFrameGeometry(
     frameCellExtent: timelineScale.pixelsPerFrame,
     frameStartIndex: 0,
-    frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : (width / timelineScale.pixelsPerFrame).ceil(),
+    frameEndIndexExclusive: timelineScale.framesCovering(width),
   );
 
   Positioned _gripLayer(List<Widget> grips) {
@@ -3831,8 +3962,10 @@ class _StoryboardSeRow extends StatelessWidget {
     return TimelineFrameSpan(
       placement: timelineBlockEdgeGripPlacement(
         edge: edge,
-        startIndex: block.startIndex,
-        endIndexExclusive: block.endIndexExclusive,
+        block: (
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+        ),
         // I-44: on the SE paper, which stops a seam short of the row.
         crossAxisExtent: timelineRowPaperExtent(height),
       ),
@@ -3898,9 +4031,10 @@ class _StoryboardSeRow extends StatelessWidget {
                   left: timelineScale.leftForFrame(selection.startFrame),
                   top: 0,
                   bottom: 0,
-                  width:
-                      selection.lengthFrames *
-                      timelineScale.pixelsPerFrame,
+                  width: timelineScale.spanWidth(
+                    selection.startFrame,
+                    selection.startFrame + selection.lengthFrames,
+                  ),
                   child: ColoredBox(
                     color: timelineSelectedFrameBorderColor.withValues(
                       alpha: 0.12,
@@ -3931,7 +4065,7 @@ class _StoryboardSeRow extends StatelessWidget {
     left: timelineScale.leftForFrame(startFrame),
     top: 0,
     bottom: 0,
-    width: (endExclusive - startFrame) * timelineScale.pixelsPerFrame,
+    width: timelineScale.spanWidth(startFrame, endExclusive),
     child: IgnorePointer(key: key, child: child),
   );
 
@@ -4056,7 +4190,7 @@ class _StoryboardLaneStripRow extends StatelessWidget {
     );
     final frames = timelineScale.pixelsPerFrame <= 0
         ? 0
-        : (width / timelineScale.pixelsPerFrame).floor();
+        : timelineScale.frameAt(width);
     final onSetClipOffset = audioLane?.onSetClipOffset;
     final onSetClipFades = audioLane?.onSetClipFades;
     return SizedBox(
@@ -4131,6 +4265,7 @@ class StoryboardTrackLabelRow extends StatelessWidget {
     this.onSelectTrack,
     this.activeCut,
     this.subjectCut,
+    this.followsSubject,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
     this.trackFxState = LayerFxState.on,
@@ -4183,6 +4318,13 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   /// look, no stand-down; null (a gap on this track) just makes a press
   /// a no-op, because no cut exists at the index.
   final Cut? subjectCut;
+
+  /// Where the subject comes from when it MOVES — the cut under the
+  /// playhead, which a scrub changes on nearly every move at a far zoom.
+  /// Handed the eye's builder, it rebuilds the eye alone, on a tick layer
+  /// of its own, and the row around it stands; [subjectCut] is not read.
+  /// Null: the eye shows [subjectCut] as given.
+  final Widget Function(Widget Function(Cut? subject) eye)? followsSubject;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
@@ -4195,6 +4337,22 @@ class StoryboardTrackLabelRow extends StatelessWidget {
   final double trackOpacity;
   final ValueChanged<double>? onTrackOpacityChanged;
   final ValueChanged<double>? onTrackOpacityChangeEnd;
+
+  /// The eye on [subject] — the SAME eye the layer and folder rows mount;
+  /// this was a sixth inline copy (R28 follow-up).
+  Widget _eye(Cut? subject) => LayerVisibilityToggleButton(
+    keyValue:
+        'storyboard-cut-visibility-'
+        '${subject?.id.value ?? 'none-${track.id.value}'}',
+    subject: RailSubject.track,
+    isVisible:
+        subject == null || (cutPictureVisibleOf?.call(subject.id) ?? true),
+    onToggle: () {
+      if (subject != null) {
+        onToggleCutPictureVisibility!(subject.id);
+      }
+    },
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -4323,24 +4481,12 @@ class StoryboardTrackLabelRow extends StatelessWidget {
                     : RailSwipeColumnPointer(
                         child: SizedBox(
                           height: 26,
-                          // The SAME eye the layer and folder rows mount —
-                          // this was a sixth inline copy (R28 follow-up).
-                          child: LayerVisibilityToggleButton(
-                            keyValue:
-                                'storyboard-cut-visibility-'
-                                '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                            subject: RailSubject.track,
-                            isVisible:
-                                subjectCut == null ||
-                                (cutPictureVisibleOf?.call(subjectCut!.id) ??
-                                    true),
-                            onToggle: () {
-                              final subject = subjectCut;
-                              if (subject != null) {
-                                onToggleCutPictureVisibility!(subject.id);
-                              }
-                            },
-                          ),
+                          child: switch (followsSubject) {
+                            null => _eye(subjectCut),
+                            // The one cell of the row the playhead moves
+                            // — laid out and painted alone (I-22 ③).
+                            final follow => TickLayer(child: follow(_eye)),
+                          },
                         ),
                       ),
                 // R9 #21: the track's STATIC opacity — this slot was empty
@@ -4504,7 +4650,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
     required this.layoutEntries,
-    required this.activeCutId,
     required this.onRowFramePress,
     required this.onDropMediaAsset,
     required this.acceptsMediaAsset,
@@ -4518,12 +4663,15 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.timelineScale,
     required this.frameGeometry,
     required this.hoveredCutId,
+    this.standingCutId,
     required this.windowBucket,
     required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
     this.railRowAt,
     this.onCreateStoryboardLayer,
+    this.linkedCutIds = const {},
+    this.onOpenCutLinks,
   });
 
   /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
@@ -4540,6 +4688,13 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// keeps the affordance display-only.
   final ValueChanged<CutId>? onCreateStoryboardLayer;
 
+  /// The LINKED cuts on this track (I-25): their names wear the link icon.
+  final Set<CutId> linkedCutIds;
+
+  /// Pressed on a linked cut's link icon: the link window (I-25). Null
+  /// keeps the icon display-only.
+  final void Function(BuildContext context, CutId cutId)? onOpenCutLinks;
+
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
 
@@ -4549,9 +4704,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cell there is still a cell ("빈 칸도 칸").
   final double width;
 
-  /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
-  /// cut-scoped rail controls stand down.
-  final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
   final StoryboardMediaDrop? onDropMediaAsset;
   final StoryboardMediaDropAccepts? acceptsMediaAsset;
@@ -4576,6 +4728,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// is no widget per cut to hold a hover state, so one notifier does for
   /// the whole row and a hover is a repaint rather than a rebuild.
   final ValueNotifier<CutId?> hoveredCutId;
+
+  /// The cut under the playhead, whose plate wears the standing wash
+  /// ([StoryboardCutBlocksPainter.standingCutId]).
+  final ValueListenable<CutId?>? standingCutId;
 
   /// The shared window inputs (UI-R16): the blocks painter draws — and asks
   /// for thumbnails — only inside the visible span.
@@ -4658,8 +4814,12 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// plate and its last panel ends it — the plate's round corners — and
   /// every boundary between panels is the plate's straight edge. Only a cut
   /// with no storyboard layer hangs its edges on the plate now, and its one
-  /// placeholder is both.
-  TimelineGripPaper _gripPaper(List<_StoryboardStripGrip> grips) => (
+  /// placeholder is both. The corner is the one the painter rounds the plate
+  /// by ([StoryboardCutBlocksPainter.plateCorner]).
+  TimelineGripPaper _gripPaper(
+    List<_StoryboardStripGrip> grips,
+    StoryboardCutBlocksPainter blocksPainter,
+  ) => (
     cornerStarts: {
       for (final grip in grips)
         if (grip.panelIndex == 0) grip.startFrame,
@@ -4670,7 +4830,8 @@ class _StoryboardTrackRow extends StatelessWidget {
             grips[index + 1].cutId != grips[index].cutId)
           grips[index].endFrameExclusive,
     },
-    cornerRadius: StoryboardCutBlocksPainter.plateCornerRadius,
+    cornerRadius: blocksPainter.plateCorner.x,
+    band: StoryboardCutBlocksPainter.bandHeight,
   );
 
   /// One chrome layer of the row's EDGES, on one [paper]: over its slot
@@ -4699,7 +4860,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       // colour then (유저 2026-09-25: 「배경이 어두워서 엣지가 잘 안보여」).
       gripGround: storyboardCutBlockBackgroundColor(
         Theme.of(context).colorScheme,
-        active: false,
         hovered: false,
       ),
       gripGrounds: () =>
@@ -4849,6 +5009,20 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
+  /// Whether the conte blocks' gesture takes a press at [frame]: only where
+  /// there is a strip, and not inside the live CUT selection — a press there
+  /// starts sliding the selected cuts, the shared range gesture's own law,
+  /// which the conte blocks lying over the cut used to shadow (유저
+  /// 2026-09-28, F-203: 「v행 선택범위로 선택…하고 컷 잡아끌때 띠만 잡아야
+  /// 반응하는상황? 그냥 컷 어디 잡아끌든 컷 움직이게」).
+  ///
+  /// The panels keep a press inside their OWN selection (「물론 컷 안
+  /// 콘티블록 선택된상황에선 다르긴한데」) without a term here: the two
+  /// selections never stand together — taking one drops the other — so a
+  /// live panel selection means there is no cut run to yield to.
+  bool _stripClaims(int frame) =>
+      _stripAt(frame) != null && !_isSelectedAt(frame);
+
   /// Whether [frame] sits in the live selection — a plain range test now
   /// that the selection IS a range on this row's own axis.
   bool _isSelectedAt(int frame) => _storyboardRangeCovers(
@@ -4950,9 +5124,8 @@ class _StoryboardTrackRow extends StatelessWidget {
     onCreate(block.cutId);
   }
 
-  int _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
-      ? 0
-      : (x / timelineScale.pixelsPerFrame).floor();
+  int _frameAtX(double x) =>
+      timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
 
   void _handleHover(PointerHoverEvent event) {
     hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
@@ -4984,20 +5157,19 @@ class _StoryboardTrackRow extends StatelessWidget {
       geometry: frameGeometry,
       crossAxisExtent: laneHeight,
       minBlockWidth: timelineScale.minBlockWidth,
-      activeCutId: activeCutId,
       selectedRange: cutSelect?.selectedRange,
       rowAddress: TrackRowAddress(track.id),
       hoveredCutId: hoveredCutId,
+      standingCutId: standingCutId,
       colorScheme: Theme.of(context).colorScheme,
-      baseTextStyle:
-          Theme.of(context).textTheme.labelSmall ??
-          DefaultTextStyle.of(context).style,
+      baseTextStyle: DefaultTextStyle.of(context).style,
       showSeconds: showSeconds,
       countingBase: projectFrameRate.countingBase,
       thumbnails: thumbnails,
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
+      linkedCutIds: linkedCutIds,
     );
 
     return KeyedSubtree(
@@ -5036,7 +5208,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 child: Listener(
                   behavior: HitTestBehavior.translucent,
                   onPointerDown: (event) {
-                    _onCutPressDown(event, blocksPainter);
+                    _onCutPressDown(context, event, blocksPainter);
                   },
                 ),
               ),
@@ -5059,7 +5231,9 @@ class _StoryboardTrackRow extends StatelessWidget {
             // the split between "the cut's bands are the cut, the conte
             // blocks are its panels" is hit-testing and not a branch: a
             // press on a cut band simply misses this and lands on the cut
-            // gesture below.
+            // gesture below — and so does a press inside the live cut
+            // selection, which is starting that selection's move
+            // ([_stripClaims]).
             if (_stripGesture() case final stripGesture?)
               Positioned(
                 key: ValueKey<String>(
@@ -5076,7 +5250,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 // gesture below is starved and the drag dies silently (the
                 // real-device "no selection where there is no cut block").
                 child: _FrameHitGate(
-                  claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
+                  claimsDx: (dx) => _stripClaims(_frameAtX(dx)),
                   // The gesture layer fills its Stack, so it needs one of
                   // its own here — a second Positioned around it would be
                   // two ParentDataWidgets on one render object.
@@ -5131,6 +5305,13 @@ class _StoryboardTrackRow extends StatelessWidget {
             // 2026-09-25 (「제대로 컷블록의 위치에 존재하지않아」), and on the
             // picture strip before that (#757, 07-25).
             //
+            // 🗣️IN THE BANDS ALONE (I-52, 유저 2026-09-28: 「썸네일이 존재하는
+            // 블록은 엣지를 썸네일 안가리도록 … 띠에만」 · 「세로로는 해당
+            // 상단띠 전체에 걸치도록」): on both papers a triangle takes one
+            // band whole — the back edge's the paper's first (the conte
+            // block's name, the cut's name), the front edge's its last (the
+            // comma count, the cut's length) — and never a picture.
+            //
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer per paper, where this used to be
             // two widgets a cut.
@@ -5144,13 +5325,14 @@ class _StoryboardTrackRow extends StatelessWidget {
                     cornerStarts: <int>{},
                     cornerEnds: <int>{},
                     cornerRadius: 0.0,
+                    band: StoryboardCutBlocksPainter.bandHeight,
                   ),
                 ),
                 (
                   name: 'plate-edit-chrome',
                   slot: (top: 0.0, height: laneHeight),
                   conteBlocks: false,
-                  corners: _gripPaper(grips),
+                  corners: _gripPaper(grips, blocksPainter),
                 ),
               ])
                 _edgeChrome(context, paper, grips, blocksPainter),
@@ -5207,10 +5389,10 @@ class _StoryboardTrackRow extends StatelessWidget {
           ),
           top: 0,
           bottom: 0,
-          width:
-              timelineScale.pixelsPerFrame *
-              (selection.endIndexExclusive -
-                  selection.startIndex),
+          width: timelineScale.spanWidth(
+            anchor.startFrame + selection.startIndex,
+            anchor.startFrame + selection.endIndexExclusive,
+          ),
           child: Semantics(
             key: const ValueKey<String>(
               'storyboard-strip-range-selection',
@@ -5233,6 +5415,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// A press on the cut blocks: gated first, then the press itself, then
   /// the storyboard-layer create judged on the painter this build drew.
   void _onCutPressDown(
+    BuildContext context,
     PointerDownEvent event,
     StoryboardCutBlocksPainter blocksPainter,
   ) {
@@ -5244,6 +5427,24 @@ class _StoryboardTrackRow extends StatelessWidget {
     // painter this build drew), so running after the
     // press's activation cannot widen it (D30).
     _maybeCreateStoryboardLayer(blocksPainter, event);
+    _maybeOpenCutLinks(context, blocksPainter, event);
+  }
+
+  /// I-25: a press inside a linked cut's link icon opens the link window —
+  /// the rect is [StoryboardCutBlocksPainter.linkAffordanceRectOf]'s, the
+  /// SAME call the paint made (the D30 create affordance's shape).
+  void _maybeOpenCutLinks(
+    BuildContext context,
+    StoryboardCutBlocksPainter painter,
+    PointerDownEvent event,
+  ) {
+    final onOpen = onOpenCutLinks;
+    final block = onOpen == null ? null : painter.blockAt(event.localPosition);
+    final icon = block == null ? null : painter.linkAffordanceRectOf(block);
+    if (icon == null || !icon.contains(event.localPosition)) {
+      return;
+    }
+    onOpen!(context, block!.cutId);
   }
 
   double _timelineWidthFor(
@@ -5258,9 +5459,7 @@ class _StoryboardTrackRow extends StatelessWidget {
 
     return entries
             .map(
-              (entry) =>
-                  scale.leftForFrame(entry.startFrame) +
-                  scale.widthForDuration(entry.duration),
+              (entry) => scale.blockEndFor(entry.startFrame, entry.duration),
             )
             .reduce(
               (width, nextWidth) => width > nextWidth ? width : nextWidth,

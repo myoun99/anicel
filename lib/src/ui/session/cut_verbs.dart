@@ -15,10 +15,13 @@ import '../../models/layer_mark.dart';
 import '../../models/timesheet_ink_keys.dart' show timesheetInkKeyOfCut;
 import '../../services/brush_frame_store.dart' show BrushFrameStore;
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
+import '../../services/persistence/cel_places.dart' show rowOwnerName;
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../../services/commands/set_cut_guides_command.dart';
 import '../../services/commands/cut_reorder_planner.dart';
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
+import '../text/place_lines.dart' show drawingPlaceLines;
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
 import 'cut_placement.dart';
@@ -43,7 +46,6 @@ class CutVerbs {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required StoryboardRows storyboardRows,
     required ActiveCutEdits activeCut,
     required CutPlacement placement,
@@ -53,7 +55,6 @@ class CutVerbs {
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
        _storyboardRows = storyboardRows,
        _activeCut = activeCut,
        _placement = placement,
@@ -73,7 +74,6 @@ class CutVerbs {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   /// Where a cut may step to and which index that is. Stateless, and asked
   /// by nobody but these verbs — so it is theirs, not a name on the session.
@@ -127,13 +127,13 @@ class CutVerbs {
     final store = _renderCaches.brushFrameStore;
     for (final row in source.layers) {
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: store,
         cut: into,
         to: copy.rows[row.id]!,
         minted: {for (final cel in row.frames) cel.id: copy.minted[cel.id]!},
         pictureOf: (cel) => store.bakedSurfaceOrNull(
-          _internals.brushFrameKeyForCut(source, row.id, cel),
+          _project.brushFrameKeyForCut(source, row.id, cel),
         ),
       );
     }
@@ -341,6 +341,15 @@ class CutVerbs {
     ),
   );
 
+  /// Names each cut of [names] — ONE undo step. 자동 이름 지정's cuts (I-18,
+  /// targets-Q4 「컷마다 따로 연번」): every cut takes a number of its own, a
+  /// 겸용 cut too — a name does not travel along a link.
+  void renameCuts(Map<CutId, String> names) {
+    _project.cutCommandCoordinator.renameCuts(names);
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+  }
+
   /// The active cut's drawing guides — empty when parked in a gap.
   ///
   /// ⛔What is WRITTEN: what the brush snaps to and what is saved. A drag in
@@ -368,6 +377,23 @@ class CutVerbs {
   /// the overlay draws and nothing else reads.
   CutGuides get activeCutGuidesForDisplay =>
       guidesDragPreview.value ?? activeCutGuides;
+
+  /// Which guide the guide tool is editing.
+  ///
+  /// UI state, like the active layer — the CUT stores the guides, not which
+  /// one is under the hand. It lives here rather than in a widget because
+  /// two of them need it (the tool panels and the canvas overlay), and two
+  /// copies of a selection are two answers waiting to disagree. (It moved
+  /// here from the session with the guides it points into — the audit's
+  /// twentieth family, 2026-09-29.)
+  GuideId? get selectedGuideId => _selectedGuideId;
+  GuideId? _selectedGuideId;
+
+  set selectedGuideId(GuideId? id) {
+    if (_selectedGuideId == id) return;
+    _selectedGuideId = id;
+    _changes.notifyChanged();
+  }
 
   /// Shows [guides] without writing anything: a drag in flight.
   void previewActiveCutGuides(CutGuides guides) =>
@@ -461,7 +487,11 @@ class CutVerbs {
       layerNamesAppearingInOrigin: [
         for (final id in plan.targetOnlyLayerIds) layerName(targetCut, id),
       ],
-      replacedFrameCount: plan.replacedFrameCount,
+      replacedDrawings: [
+        for (final MapEntry(key: layerId, value: frames)
+            in plan.replacedFrames.entries)
+          ...drawingPlaceLines(project, layerId, frames),
+      ],
       joiningFrameCount: plan.joiningFrameCount,
       linksAnything: plan.linksAnything,
       canvasSizesDiffer: originCut.canvasSize != targetCut.canvasSize,
@@ -527,6 +557,28 @@ class CutVerbs {
     return cut.layers.any(
       (layer) => registry.isLinked(cutId: cutId, layerId: layer.id),
     );
+  }
+
+  /// The LINKED cuts (겸용 — [linkedCutSiblings]), which wear the link icon
+  /// on their blocks (I-25: 「링크컷이 발생해있는 경우, 모든 컷에 적용」).
+  Set<CutId> get linkedCutIds {
+    final project = _project.repository.requireProject();
+    return {
+      for (final track in project.tracks)
+        for (final cut in track.cuts)
+          if (linkedCutSiblings(project, cutId: cut.id).isNotEmpty) cut.id,
+    };
+  }
+
+  /// The cuts [cutId] is linked with, named as a place line names them — the
+  /// link window's list (I-25).
+  List<String> linkedCutLines(CutId cutId) {
+    final project = _project.repository.requireProject();
+    return [
+      for (final siblingId in linkedCutSiblings(project, cutId: cutId))
+        if (cutPositionOf(project, siblingId) case final position?)
+          rowOwnerName(track: position.track, cut: position.cut),
+    ];
   }
 
   /// 독립시키기 for every linked row of every cut in [cutIds] — ONE undo

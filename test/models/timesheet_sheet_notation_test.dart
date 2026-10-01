@@ -8,6 +8,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
@@ -45,6 +46,7 @@ void main() {
               strokes: const [],
               name: '그건 아니라고 생각해',
               seName: '앨리스',
+              seType: SeLineType.off,
             ),
           ],
           timeline: {
@@ -59,8 +61,11 @@ void main() {
     );
     expect(seColumn.cells[2].seName, '앨리스');
     expect(seColumn.cells[2].label, '그건 아니라고 생각해');
+    // I-20: the start cell carries the delivery the sheet prints over it.
+    expect(seColumn.cells[2].seType, SeLineType.off);
     // Names never leak onto held rows or non-SE columns.
     expect(seColumn.cells[3].seName, isNull);
+    expect(seColumn.cells[3].seType, isNull);
     final actionColumn = document.columns.firstWhere(
       (column) => column.kind == TimesheetColumnKind.action,
     );
@@ -86,6 +91,7 @@ void main() {
                 strokes: const [],
                 name: 'せーの',
                 seName: '앨리스',
+                seType: SeLineType.mono,
               ),
             ],
             timeline: {
@@ -96,7 +102,7 @@ void main() {
               ),
             },
           ),
-          cutFrameCount: 24,
+          drawnFrameCount: 24,
         ),
       ],
     );
@@ -113,6 +119,9 @@ void main() {
     expect(seColumn.cells[0].label, 'せーの');
     expect(seColumn.cells[0].seName, '앨리스');
     expect(seColumn.cells[2].seName, '앨리스');
+    // I-20: and its delivery — the lead-in prints what the block prints.
+    expect(seColumn.cells[0].seType, SeLineType.mono);
+    expect(seColumn.cells[4].seType, SeLineType.mono);
     // Held rows still carry no name, ghost or authored.
     expect(seColumn.cells[1].seName, isNull);
   });

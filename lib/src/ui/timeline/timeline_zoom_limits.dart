@@ -32,68 +32,46 @@ abstract final class TimelineZoomLimits {
   static double minPixelsPerFrameAt(int framesPerSecond) =>
       1 / math.max(1, (framesPerSecond / _widestPixelsPerSecond).ceil());
 
-  /// The zoom values a control may emit — the GRID: whole pixels per frame
-  /// from one pixel up (R4 #5: a sub-pixel drag rebuilt the entire grid for
-  /// a visually identical step), and under one pixel the same rule turned
-  /// over, whole FRAMES per pixel (1/2, 1/3, …), so every step still moves
-  /// some frame boundary by a whole pixel.
+  /// The zoom a control may emit: [pixelsPerFrame] held inside the range —
+  /// ANY value in it, so every percent the bar shows is a zoom of its own.
   ///
-  /// 🚨ONE quantizer, asked by the slider and by the −/+ buttons, and it
-  /// lands on the grid BEFORE it clamps. The slider rounded without
-  /// clamping at all, so the bottom of its track wrote 2px where the floor
-  /// was 2.4 and the value was never brought back (I-22 ②-1). Both bounds
-  /// are grid values, so a clamped value is still on the grid, and nothing
-  /// can reach a zero cell — what trips the grid's `frameCellWidth > 0`
-  /// assert, the x-sheet's virtualization and the zoom anchor's division.
-  static double quantize(
+  /// 🚨ONE bound, asked by the slider and by the −/+ buttons. The slider
+  /// once wrote 2px under a 2.4px floor and nothing brought it back (I-22
+  /// ②-1); nothing can reach a zero cell either — what trips the grid's
+  /// `frameCellWidth > 0` assert, the x-sheet's virtualization and the zoom
+  /// anchor's division.
+  ///
+  /// 🗣️F-220 (유저 2026-09-29): 「1.7에서 2.8까지 이동하면 안바뀌고,
+  /// 2.9까지 이동해야 … 바뀜 … 제대로 퍼센테이지 바뀔때마다 줌 상태가 바뀌지
+  /// 않음 … 손을 뗄 때 값이 멋대로 살짝 바뀜」. ↩️The zoom landed on a GRID
+  /// first — whole pixels per frame, whole FRAMES per pixel under one (R4 #5,
+  /// 07-16: a sub-pixel drag rebuilt the entire grid for a visually identical
+  /// step) — which left no zoom at all between 1/2 and 1 pixel a frame, and
+  /// the bar, echoing the finger, jumped back to the grid on release. The
+  /// user's ask then was a smooth drag, not the grid: a zoom step repaints
+  /// the rows rather than rebuilding them since R28 #4, and every frame edge
+  /// lands on a whole pixel at any zoom ([timelineFrameEdge]) — which is
+  /// what the grid was keeping crisp.
+  static double clamped(
     double pixelsPerFrame, {
     required int framesPerSecond,
-  }) {
-    final floor = minPixelsPerFrameAt(framesPerSecond);
-    return _onGrid(pixelsPerFrame).clamp(floor, maxPixelsPerFrame);
-  }
+  }) => pixelsPerFrame.clamp(
+    minPixelsPerFrameAt(framesPerSecond),
+    maxPixelsPerFrame,
+  );
 
   /// One −/+ step (UI-R11 #11): ×1.25 like every editor zoom in the app, so
-  /// a step feels equal at 4px and 96px — landed on the grid, and where
-  /// that lands back on the zoom it left, the next grid value over.
+  /// a step feels equal at 4px and 96px.
   ///
-  /// ↩️That fallback went on 2026-09-16 because nothing could reach it: on
-  /// whole pixels over a 2.4px floor, ×1.25 stood still only AT the two
-  /// bounds, where the clamp answered first. The finer grid under one
-  /// pixel reaches it — ÷1.25 of 2 rounds back to 2, of 1 back to 1, and
-  /// ×1.25 of 1/2 back to 1/2 — so without it both buttons would stick
-  /// there with nothing on screen saying why.
+  /// ↩️It fell back to the next grid value where ×1.25 rounded back onto
+  /// the zoom it left (2026-09-16); with no grid, ×1.25 always moves, and
+  /// only the bounds stop it.
   static double stepped(
     double pixelsPerFrame, {
     required bool zoomIn,
     required int framesPerSecond,
-  }) {
-    final target = quantize(
-      zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25,
-      framesPerSecond: framesPerSecond,
-    );
-    if (target != pixelsPerFrame) {
-      return target;
-    }
-    return quantize(
-      _gridNeighbour(pixelsPerFrame, zoomIn: zoomIn),
-      framesPerSecond: framesPerSecond,
-    );
-  }
-
-  static double _onGrid(double pixelsPerFrame) {
-    if (pixelsPerFrame >= 1) {
-      return pixelsPerFrame.roundToDouble();
-    }
-    return 1 / (1 / pixelsPerFrame).roundToDouble();
-  }
-
-  /// The grid value next to [pixelsPerFrame] (itself on the grid).
-  static double _gridNeighbour(double pixelsPerFrame, {required bool zoomIn}) {
-    if (pixelsPerFrame > 1 || (pixelsPerFrame == 1 && zoomIn)) {
-      return zoomIn ? pixelsPerFrame + 1 : pixelsPerFrame - 1;
-    }
-    final framesPerPixel = (1 / pixelsPerFrame).roundToDouble();
-    return 1 / (zoomIn ? framesPerPixel - 1 : framesPerPixel + 1);
-  }
+  }) => clamped(
+    zoomIn ? pixelsPerFrame * 1.25 : pixelsPerFrame / 1.25,
+    framesPerSecond: framesPerSecond,
+  );
 }

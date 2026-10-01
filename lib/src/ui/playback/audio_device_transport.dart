@@ -17,7 +17,6 @@
 /// acceptable outcome for audio.
 library;
 
-import 'dart:async';
 import 'dart:math' as math;
 
 import '../../models/layer_id.dart';
@@ -95,7 +94,6 @@ class AudioDeviceTransport {
   /// whether it streams, and where the window sits. The scrubber owns one
   /// of the same kind, which is what keeps the two on one geometry.
   final AudioStreamingWindow _window = AudioStreamingWindow();
-  bool _windowAdvanceInFlight = false;
 
   /// The frame the current arm started at: the clock clamp while the
   /// device's own latency drains (pressing play at frame 100 must not
@@ -363,31 +361,18 @@ class AudioDeviceTransport {
       return AudioClockStatus(globalFrame: _totalFrames - 1, ended: true);
     }
     // Streaming windows advance from here (AUDIO-PRO R6): this poll runs
-    // every displayed frame, and the halfway trigger leaves ~15 s of
-    // margin before the mix could read past a window's edge. The read
-    // runs off this frame's stack; in-flight guard so polls cannot stack
-    // reads.
-    if (_window.hasStreaming && !_windowAdvanceInFlight) {
-      final position = device.positionSamples;
-      final recenter =
-          position > _window.centerSample +
-              (AudioStreamingWindow.aheadSeconds * _deviceRate) ~/ 2 ||
-          position <
-              _window.centerSample -
-                  AudioStreamingWindow.backSeconds * _deviceRate;
-      if (recenter) {
-        _windowAdvanceInFlight = true;
-        unawaited(Future(() {
-          try {
-            if (_carrying && _device != null) {
-              _uploadWindow(_device!.positionSamples);
-            }
-          } finally {
-            _windowAdvanceInFlight = false;
-          }
-        }));
-      }
-    }
+    // every displayed frame, and the window's own rule decides.
+    _window.followPlayback(
+      positionSamples: device.positionSamples,
+      deviceRate: _deviceRate,
+      conformStore: conformStore,
+      current: () {
+        final carrying = _device;
+        return _carrying && carrying != null
+            ? (device: carrying, deviceRate: _deviceRate)
+            : null;
+      },
+    );
     final heard = math.max(
       0,
       device.positionSamples -

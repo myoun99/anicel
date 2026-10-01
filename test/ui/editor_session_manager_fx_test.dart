@@ -43,7 +43,7 @@ void main() {
         reason: 'no transform work = identity, no wrap',
       );
 
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           position: PropertyTrack<CanvasPoint>().withKey(
@@ -72,7 +72,7 @@ void main() {
         'animated Opacity sample; bypass restores the static value', () {
       final layer = session.activeLayer!;
       session.opacityVerbs.setLayerOpacity(layerId: layer.id, opacity: 0.8);
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           opacity: PropertyTrack<double>().withKey(0, 0.5),
@@ -118,7 +118,7 @@ void main() {
       expect(anchor.y, canvasSize.height / 2);
       expect(resolveOpacityTrackAt(layer.transformTrack.opacity, 0), 1);
 
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0),
@@ -145,7 +145,7 @@ void main() {
 
     test('opacity, between two keys', () {
       final layer = session.activeLayer!;
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           opacity: PropertyTrack<double>().withKey(0, 1).withKey(8, 0),
@@ -166,7 +166,7 @@ void main() {
 
     test('the anchor point, between two keys', () {
       final layer = session.activeLayer!;
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           anchorPoint: PropertyTrack<CanvasPoint>()
@@ -185,5 +185,23 @@ void main() {
       expect(key?.value.x, closeTo(150, 1e-9));
       expect(key?.value.y, closeTo(200, 1e-9));
     });
+  });
+
+  test('a layer transform write is announced — the rails and the canvas '
+      'rebuild off the session, and nothing else says the track moved', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final layer = session.activeLayer!;
+    var announced = 0;
+    session.addListener(() => announced += 1);
+    session.laneVerbs.updateLayerTransformTrack(
+      layer.id,
+      TransformTrack.empty().copyWith(
+        opacity: PropertyTrack<double>().withKey(0, 0.5),
+      ),
+    );
+    expect(announced, greaterThan(0));
   });
 }

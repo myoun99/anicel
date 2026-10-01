@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -16,10 +17,13 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart'
+    show maxGapTightening;
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -31,8 +35,13 @@ import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
     show timelineCellWritesNothing;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
+        storyboardCutBandColor,
         storyboardCutBlockBackgroundColor,
-        storyboardPanelPictureGroundColor;
+        storyboardPanelPictureGroundColor,
+        timelineSelectedFrameBorderColor,
+        timelineStandingWashColor;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import '../helpers/fixed_thumbnails.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -126,6 +135,8 @@ Future<void> _pump(
   CutId? activeCutId = const CutId('cut-1'),
   double pixelsPerFrame = 12,
   StoryboardThumbnailResolver? thumbnailFor,
+  ValueListenable<CutId?>? cutUnderPlayhead,
+  TimelineRowAddress? selectedRow,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -135,6 +146,8 @@ Future<void> _pump(
         body: StoryboardPanel(
           project: _project(storyboardLayer: storyboardLayer, cutMark: cutMark),
           activeCutId: activeCutId,
+          cutUnderPlayhead: cutUnderPlayhead,
+          selectedRow: selectedRow,
           pixelsPerFrame: pixelsPerFrame,
           thumbnails: thumbnailFor == null
               ? null
@@ -156,6 +169,9 @@ Future<void> _pump(
 class _ParagraphOffsetSpy implements Canvas {
   final List<Offset> offsets = [];
   final List<Rect> rects = [];
+
+  /// How far each paragraph was narrowed across, beside [rects].
+  final List<double> xScales = [];
   final List<({Offset center, double radius, Color color})> circles = [];
   final List<({Rect rect, Color color})> plates = [];
   final _saved = <Matrix4>[];
@@ -185,6 +201,7 @@ class _ParagraphOffsetSpy implements Canvas {
         offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
       ),
     );
+    xScales.add(_transform.storage[0]);
   }
 
   @override
@@ -336,7 +353,6 @@ void main() {
       geometry: painter.geometry,
       crossAxisExtent: floor,
       minBlockWidth: painter.minBlockWidth,
-      activeCutId: painter.activeCutId,
       selectedRange: painter.selectedRange,
       rowAddress: painter.rowAddress,
       hoveredCutId: painter.hoveredCutId,
@@ -408,13 +424,11 @@ void main() {
   testWidgets('🗣️the plate is the conte sheet\'s ink, and nothing outlines '
       'it — 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이 검정색」 · 「패딩/'
       '실루엣선 이런거 싹 없도록 심플하게만」 (유저 2026-09-26)', (tester) async {
-    await _pump(
-      tester,
-      storyboardLayer: _dividedStoryboardLayer('cut-1'),
-      activeCutId: null,
-    );
+    // The ACTIVE cut, on purpose: being active colours no plate. What does
+    // is the playhead standing in it (F-248, below) — none is wired here.
+    // ↩️F-212 had taken the active cut's accent plate away.
+    await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     final block = requireCutBlock(tester, 'cut-1');
-    expect(block.isActive, isFalse, reason: '⛔전제: the plate at rest');
     final spy = _painted(tester);
 
     expect(
@@ -433,6 +447,89 @@ void main() {
       },
       reason: 'the bands and nothing else: no panel silhouette (↩️#15), no '
           'create box (↩️D30), no gap',
+    );
+  });
+
+  group('🗣️F-248: the cut you stand on wears the standing wash on its four '
+      'bands — 「썸네일 제외한 띠 부분. 컷이나 콘티블록 띠만」', () {
+    Future<ValueNotifier<CutId?>> stand(
+      WidgetTester tester, {
+      TimelineRowAddress? on,
+    }) async {
+      final under = ValueNotifier<CutId?>(const CutId('cut-1'));
+      addTearDown(under.dispose);
+      await _pump(
+        tester,
+        storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+        cutMark: _art,
+        cutUnderPlayhead: under,
+        selectedRow: on,
+      );
+      return under;
+    }
+
+    ({List<int> bands, int plate}) painted(WidgetTester tester) {
+      final block = requireCutBlock(tester, 'cut-1');
+      final spy = _painted(tester);
+      return (
+        bands: [
+          for (final band in [
+            block.topBand,
+            block.innerTopBand,
+            block.innerBottomBand,
+            block.bottomBand,
+          ])
+            spy.fillOf(band),
+        ],
+        plate: spy.plates.single.color.toARGB32(),
+      );
+    }
+
+    int washed(Color label) =>
+        Color.alphaBlend(timelineStandingWashColor, label).toARGB32();
+
+    testWidgets('on the V row: the bands, never the plate around its '
+        'pictures — and they go with the cut', (tester) async {
+      final under = await stand(tester, on: const TrackRowAddress(_trackId));
+      final conte = layerMarkColor(_conte);
+      final cut = layerMarkColor(_art);
+      final stood = painted(tester);
+      expect(stood.bands, [
+        washed(cut),
+        washed(conte),
+        washed(conte),
+        washed(cut),
+      ]);
+      expect(stood.plate, conteSheetInk.toARGB32());
+
+      under.value = null;
+      expect(
+        tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
+        isTrue,
+        reason: 'the crossing repaints the row',
+      );
+      await tester.pump();
+      expect(painted(tester).bands.first, cut.toARGB32());
+    });
+
+    testWidgets('standing nowhere on this rail, none', (tester) async {
+      await stand(tester);
+      expect(
+        painted(tester).bands.first,
+        layerMarkColor(_art).toARGB32(),
+      );
+    });
+  });
+
+  test('a selected band you stand on wears both — the wash under the '
+      'selection\'s tint', () {
+    const label = Color(0xFF406080);
+    expect(
+      storyboardCutBandColor(label, rangeSelected: true, standing: true),
+      Color.alphaBlend(
+        timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+        Color.alphaBlend(timelineStandingWashColor, label),
+      ),
     );
   });
 
@@ -460,7 +557,6 @@ void main() {
       geometry: painter.geometry,
       crossAxisExtent: painter.crossAxisExtent,
       minBlockWidth: painter.minBlockWidth,
-      activeCutId: painter.activeCutId,
       selectedRange: range,
       rowAddress: painter.rowAddress,
       hoveredCutId: painter.hoveredCutId,
@@ -493,7 +589,6 @@ void main() {
       spy.plates.single.color.toARGB32(),
       storyboardCutBlockBackgroundColor(
         painter.colorScheme,
-        active: block.isActive,
         hovered: false,
       ).toARGB32(),
       reason: 'the block keeps its resting plate around the picture',
@@ -617,7 +712,7 @@ void main() {
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1', named: named),
         pixelsPerFrame: pixelsPerFrame,
-        thumbnailFor: (cut, frame, {required shownHeight}) =>
+        thumbnailFor: (cut, frame, {required shownHeight, region}) =>
             null,
       );
       return (requireCutBlock(tester, 'cut-1'), _painted(tester));
@@ -687,6 +782,35 @@ void main() {
       expect(a.center.dy, closeTo(block.innerBottomBand.center.dy, 0.01));
     });
 
+    // 🧪F-220: the zoom follows every percent, and the law lays cells a
+    // pixel apart in width — 14 and 15 at 14.6. A count centred on a cell
+    // of the zoom's nominal width sat a fraction off the panel's last cell.
+    testWidgets('at a zoom that is not whole pixels the comma count centres '
+        'on the panel\'s last cell as the law laid it', (tester) async {
+      const zoom = 14.6;
+      double edge(int frame) => timelineFrameEdge(frame, zoom);
+      final (block, spy) = await painted(
+        tester,
+        named: true,
+        pixelsPerFrame: zoom,
+      );
+
+      final commas = _wordsIn(block.innerBottomBand, spy);
+      expect(commas, hasLength(3), reason: '4, 5 and 3');
+      // The panels end at frames 4, 9 and 12.
+      for (final (comma, end) in [
+        (commas[0], 4),
+        (commas[1], 9),
+        (commas[2], 12),
+      ]) {
+        expect(
+          comma.center.dx,
+          closeTo(block.rect.left + (edge(end - 1) + edge(end)) / 2, 0.01),
+          reason: 'the panel ending at $end',
+        );
+      }
+    });
+
     // 🗣️유저 2026-09-26: 「콘티레이어는 이름 없으면 진짜 이름 없도록 … 그리고
     // 이름없다고해서 띠까지 썸네일 차지한다던가 이런거없이 ui는 안바뀌게」.
     // ↩️It wore the timeline's in-between mark, drawn on the band, since
@@ -709,6 +833,47 @@ void main() {
       final named = (await painted(tester, named: true)).$1;
       expect(block.innerTopBand, named.innerTopBand, reason: 'the band stays');
       expect(block.strip, named.strip, reason: 'the picture does not grow');
+    });
+
+    // 🗣️F-234 (유저 2026-09-29): 「코마텍스트가 위아래 정렬이 중앙이아니라
+    // 살짝위라던가 … 특히 컷블록의 코마텍스트. 관련 텍스트 통일」.
+    testWidgets('🚨F-234: every word in the four bands keeps its whole '
+        'height — the block word\'s box, which the band holds — on the '
+        'band\'s middle', (tester) async {
+      final (block, spy) = await painted(tester, named: true);
+
+      for (final band in [
+        block.topBand,
+        block.innerTopBand,
+        block.innerBottomBand,
+        block.bottomBand,
+      ]) {
+        final words = _wordsIn(band, spy);
+        expect(words, isNotEmpty, reason: 'fixture: $band writes');
+        for (final word in words) {
+          expect(
+            word.height,
+            closeTo(11, 0.01),
+            reason: '↩️a 1.45 line made a 16px box, narrowed to 81% of its '
+                'height to fit a 13px band its ink never overflowed',
+          );
+          expect(word.center.dy, closeTo(band.center.dy, 0.01));
+        }
+      }
+    });
+
+    testWidgets('F-234: the words are printed from the row\'s own ambient '
+        'style — the one every block word is printed from', (tester) async {
+      await painted(tester, named: true);
+
+      expect(
+        cutBlocksPainter(tester).baseTextStyle,
+        DefaultTextStyle.of(
+          tester.element(find.byType(StoryboardPanel)),
+        ).style,
+        reason: '↩️it was the theme\'s labelSmall, a style no other block '
+            'word reads',
+      );
     });
 
     testWidgets('the cut TITLE follows the ground law too — the cells\' one '
@@ -748,6 +913,67 @@ void main() {
     );
   });
 
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」. Each word is
+  // first painted at a roomy zoom, where it runs its natural length.
+  group('a word a few pixels long gives up its letter gaps and is not '
+      'narrowed', () {
+    final onePanel = Layer(
+      id: const LayerId('cut-1-sb'),
+      name: 'SB',
+      kind: LayerKind.storyboard,
+      frames: [
+        Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 12),
+      },
+    );
+    Future<({double width, double xScale})> wordIn(
+      WidgetTester tester,
+      Rect Function(StoryboardCutBlockVisual block) band, {
+      required double pixelsPerFrame,
+    }) async {
+      await _pump(
+        tester,
+        pixelsPerFrame: pixelsPerFrame,
+        storyboardLayer: onePanel,
+      );
+      final block = requireCutBlock(tester, 'cut-1');
+      final spy = _painted(tester);
+      final at = spy.rects.indexWhere(
+        (rect) => band(block).contains(rect.center),
+      );
+      return (width: spy.rects[at].width, xScale: spy.xScales[at]);
+    }
+
+    testWidgets('the cut\'s title', (tester) async {
+      Rect title(StoryboardCutBlockVisual block) => block.topBand;
+      final natural = await wordIn(tester, title, pixelsPerFrame: 12);
+      final tight = await wordIn(tester, title, pixelsPerFrame: 5.25);
+      final room = requireCutBlock(tester, 'cut-1').topBand.width - 8;
+      expect(
+        natural.width - room,
+        inExclusiveRange(0, 4 * maxGapTightening),
+        reason: '⛔전제: longer than its room by less than its four gaps give',
+      );
+      expect(tight.xScale, 1, reason: 'its gaps gave the pixels');
+    });
+
+    testWidgets('a panel\'s comma count', (tester) async {
+      Rect commas(StoryboardCutBlockVisual block) => block.innerBottomBand;
+      final natural = await wordIn(tester, commas, pixelsPerFrame: 12);
+      // Twelve frames of 22/12px: 22px of panel.
+      final tight = await wordIn(tester, commas, pixelsPerFrame: 22 / 12);
+      expect(
+        natural.width - 22,
+        inExclusiveRange(0, maxGapTightening),
+        reason: '⛔전제: 「12」 is longer than its panel by less than its gap',
+      );
+      expect(tight.xScale, 1, reason: 'its gap gave the pixel');
+      expect(tight.width, lessThanOrEqualTo(22), reason: 'set that tight');
+    });
+  });
+
   testWidgets('🗣️the row asks its pictures at the strip\'s height in DEVICE '
       'pixels — the conte cell\'s law — so a V row may grow as tall as it '
       'likes without stretching a small picture (유저 2026-09-26: 「최대값은 '
@@ -771,6 +997,7 @@ void main() {
                 cut,
                 frame, {
                 required shownHeight,
+                region,
               }) {
                 asked.add(shownHeight);
                 return null;
@@ -793,6 +1020,13 @@ void main() {
         StoryboardCutBlocksPainter.stripBandOf(laneHeight).height * 2,
       }, reason: 'a $laneHeight row, at twice the density');
     }
+
+    // 🚨And at the floor, where the strip has no room, it asks for none: it
+    // shows none, and every ask is a render that thaws its cut at the
+    // canvas's full size (유저 2026-09-28: V행을 키우다 튕겼다 — measured on
+    // the user's film, 26 pictures nobody could see took +570MB).
+    await pumpAt(StoryboardPanel.minTrackLaneHeight);
+    expect(asked, isEmpty, reason: 'a row at its floor shows no picture');
   });
 
   test('🗣️the V row\'s heights are the user\'s: 96 by default and the four '
@@ -824,7 +1058,7 @@ void main() {
       cutMark: _art,
       pixelsPerFrame: cell,
       // Panel a's picture is there; b's and c's are still being made.
-      thumbnailFor: (cut, frame, {required shownHeight}) =>
+      thumbnailFor: (cut, frame, {required shownHeight, region}) =>
           frame == 0 ? picture : null,
     );
     final block = requireCutBlock(tester, 'cut-1');

@@ -1,6 +1,8 @@
 import '../../models/project_background.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../models/track_frame_axis.dart';
+import '../../models/track_id.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_project_frame_rate_command.dart';
 import 'editor_app_settings.dart';
@@ -144,4 +146,47 @@ class ProjectSettings {
   }
 
   final _layout = IdentityMemo<List<StoryboardTimelineLayoutEntry>>();
+
+  /// The global frame axis of ONE track: [projectLayout] narrowed to its
+  /// cuts. Asked per playback tick, per scrub move and per repaint of the
+  /// storyboard ruler's green bar (R12-⑥), so each track's axis is built
+  /// once per layout and kept beside the layout it narrows.
+  ///
+  /// ⛔THE narrowing (the session-state audit's twenty-second family,
+  /// 2026-09-29): the session's selected-track axis, its any-track axis and
+  /// the panel flip each filtered the layout by track for themselves — the
+  /// second from a layout it rebuilt on every call, past this memo.
+  TrackFrameAxis axisForTrack(TrackId trackId) {
+    final layout = _layoutForAxes();
+    return _axes.putIfAbsent(
+      trackId,
+      () => TrackFrameAxis([
+        for (final entry in layout)
+          if (entry.trackId == trackId) entry,
+      ]),
+    );
+  }
+
+  /// Every track's cuts on one axis — the selected track's axis when that
+  /// track has none (the session's own fallback since #723 kept the answer
+  /// the old whole-layout axis gave).
+  TrackFrameAxis projectAxis() {
+    final layout = _layoutForAxes();
+    return _projectAxis ??= TrackFrameAxis(layout);
+  }
+
+  /// [projectLayout], letting go of every axis built on an older one.
+  List<StoryboardTimelineLayoutEntry> _layoutForAxes() {
+    final layout = projectLayout();
+    if (!identical(layout, _axesLayout)) {
+      _axesLayout = layout;
+      _axes.clear();
+      _projectAxis = null;
+    }
+    return layout;
+  }
+
+  List<StoryboardTimelineLayoutEntry>? _axesLayout;
+  final Map<TrackId, TrackFrameAxis> _axes = {};
+  TrackFrameAxis? _projectAxis;
 }

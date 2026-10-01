@@ -39,6 +39,7 @@ import 'timeline_cell_style.dart'
         timelineBlockWordStyle,
         timelineFittedGlyphFontSize,
         timelineInBlockInk;
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_frame_span_layout.dart'
@@ -208,6 +209,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   @override
   void dispose() {
     _disposeValueControllers();
+    // A label taken away mid-scrub (its row folded under it) never sees the
+    // release: what it was showing is dropped once the tree settles — a
+    // notifier fired while the tree is being torn down would be too soon.
+    final endPreview = widget.laneEdit?.onEndPreview;
+    if (_scrubbed != null && endPreview != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => endPreview());
+    }
     super.dispose();
   }
 
@@ -250,15 +258,25 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
 
   // AE-style value scrubbing: the drag's TOTAL delta (positions against
   // the pointer-down origin — slop never eats into the value) maps the
-  // label captured at the start; a live preview repaints only this row and
-  // the release commits ONCE through the normal onSetValue path — one undo.
+  // label captured at the start, and the release commits ONCE through the
+  // normal onSetValue path — one undo.
+  //
+  // 🚨F-195 (유저 2026-09-27 「레이어에서 값편집이든 … 실시간으로 화면에
+  // 보이도록」): each step is SHOWN through the host's preview, not here.
+  // This row used to print the scrubbed text on its own while the picture,
+  // the handles and every other panel's copy of the value waited for the
+  // release; now the value in flight is the session's, and this label reads
+  // it back through the row gate like everything else that shows the row.
+  // What stays is the gesture's own accounting — where it started, and the
+  // last value it reached, for the release to write.
   String? _scrubBaseLabel;
   Offset? _scrubOrigin;
-  String? _scrubPreview;
+  String? _scrubbed;
 
   void _startScrub(Offset globalPosition, String currentLabel) {
     _scrubBaseLabel = currentLabel;
     _scrubOrigin = globalPosition;
+    _scrubbed = null;
   }
 
   void _updateScrub(Offset globalPosition) {
@@ -268,35 +286,32 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     if (base == null || origin == null || scrub == null) {
       return;
     }
-    final preview = scrub(base, globalPosition - origin);
-    if (preview != null) {
-      setState(() => _scrubPreview = preview);
+    final value = scrub(base, globalPosition - origin);
+    // A move inside one step of the value changes nothing to show.
+    if (value == null || value == _scrubbed) {
+      return;
     }
+    _scrubbed = value;
+    widget.laneEdit?.onPreviewValue?.call(layer, lane, _frame, value);
   }
 
   void _endScrub() {
-    final preview = _scrubPreview;
-    setState(() {
-      _scrubPreview = null;
-      _scrubBaseLabel = null;
-      _scrubOrigin = null;
-    });
-    if (preview != null) {
-      widget.laneEdit?.onSetValue?.call(
-        layer,
-        lane,
-        _frame,
-        preview,
-      );
+    final value = _scrubbed;
+    _scrubBaseLabel = null;
+    _scrubOrigin = null;
+    _scrubbed = null;
+    if (value != null) {
+      widget.laneEdit?.onSetValue?.call(layer, lane, _frame, value);
+    } else {
+      widget.laneEdit?.onEndPreview?.call();
     }
   }
 
   void _cancelScrub() {
-    setState(() {
-      _scrubPreview = null;
-      _scrubBaseLabel = null;
-      _scrubOrigin = null;
-    });
+    _scrubBaseLabel = null;
+    _scrubOrigin = null;
+    _scrubbed = null;
+    widget.laneEdit?.onEndPreview?.call();
   }
 
   void _commitValueEdit() {
@@ -565,7 +580,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // AE's blue value.
           child: widget.axis == Axis.horizontal
               ? Text(
-                  _scrubPreview ?? valueLabel,
+                  valueLabel,
                   maxLines: 1,
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
@@ -574,7 +589,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                     color: colorScheme.primary,
                   ),
                 )
-              : _stackedValue(_scrubPreview ?? valueLabel, colorScheme),
+              : _stackedValue(valueLabel, colorScheme),
         ),
       ),
     );
@@ -948,6 +963,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         // thing a fixed-string preview does track.
         line: _previewTag.showLine ? preview.line : '',
         tag: _previewTag,
+        axis: widget.axis,
       ),
     );
   }
@@ -1214,8 +1230,13 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// Cross-axis extent: rail-row height in the timeline, column width in
   /// the X-sheet (the transposed metrics carry both as layerRowHeight).
   double get _crossExtent => metrics.layerRowHeight;
-  double get _visibleExtent =>
-      (frameEndIndexExclusive - frameStartIndex) * _cellExtent;
+  double get _visibleExtent => _edge(frameEndIndexExclusive);
+
+  /// [frame]'s leading boundary along this band — the frame axis' one law
+  /// ([timelineFrameEdge]), from the band's first frame.
+  double _edge(int frame) =>
+      timelineFrameEdge(frame, _cellExtent) -
+      timelineFrameEdge(frameStartIndex, _cellExtent);
 
   /// ONE metric law for every marker on this axis — see
   /// [timelineLaneKeyMarkerSize] / [timelineLaneUnionKeyMarkerSize].
@@ -1297,8 +1318,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final hit = _hitSize;
     return placedAlong(
       axis,
-      along:
-          (frame - frameStartIndex) * _cellExtent + _cellExtent / 2 - hit / 2,
+      along: (_edge(frame) + _edge(frame + 1)) / 2 - hit / 2,
       across: _crossExtent / 2 - hit / 2,
       alongExtent: hit,
       acrossExtent: hit,
@@ -1358,9 +1378,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
   /// member alike.
   Widget _keyName(int frame, String text) => placedAlong(
     axis,
-    along: (frame - frameStartIndex) * _cellExtent,
+    along: _edge(frame),
     across: 0,
-    alongExtent: _cellExtent,
+    alongExtent: _edge(frame + 1) - _edge(frame),
     acrossExtent: _crossExtent,
     child: IgnorePointer(child: _LaneKeyName(text: text)),
   );
@@ -1387,7 +1407,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
 const double _laneKeyNameFontSize = 8;
 
 /// A named key's label, centred in its cell — a block word whose block is
-/// that one cell ([TimelineBlockWord]).
+/// that one cell ([TimelineBlockText]).
 ///
 /// ↩️It was CLIPPED to the cell (「the first letters are what tell two names
 /// apart」 — mine, 2026-08-11) and its type shrank with the zoom; the law
@@ -1403,7 +1423,8 @@ class _LaneKeyName extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TimelineBlockWord(
+    return TimelineBlockText(
+      text: text,
       // One cell: the word is centred on both axes whichever way the frame
       // axis runs.
       place: (
@@ -1413,19 +1434,14 @@ class _LaneKeyName extends StatelessWidget {
         growth: TimelineBlockWordGrowth.towardBlockEnd,
         acrossAlignment: 0,
       ),
-      child: Text(
-        text,
-        maxLines: 1,
-        softWrap: false,
-        // The frame block's own print — ink, size, weight and the box that
-        // makes centring read as centred (유저 2026-09-12: 「내부에 있는
-        // 텍스트 디자인? 색도 똑같이 그대로 재사용」).
-        style: timelineBlockWordStyle(
-          DefaultTextStyle.of(context).style,
-          ink: timelineInBlockInk(),
-          fontSize: _laneKeyNameFontSize,
-          bold: true,
-        ),
+      // The frame block's own print — ink, size, weight and the box that
+      // makes centring read as centred (유저 2026-09-12: 「내부에 있는 텍스트
+      // 디자인? 색도 똑같이 그대로 재사용」).
+      style: timelineBlockWordStyle(
+        DefaultTextStyle.of(context).style,
+        ink: timelineInBlockInk(),
+        fontSize: _laneKeyNameFontSize,
+        bold: true,
       ),
     );
   }
@@ -1556,7 +1572,7 @@ List<Widget> timelineUnionKeyMarkerSpans({
         // used to.
         placement: TimelineFrameSpanPlacement(
           startIndex: frame,
-          mainExtentCells: 1,
+          endIndexExclusive: frame + 1,
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {

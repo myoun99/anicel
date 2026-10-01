@@ -195,9 +195,9 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
             layers: stratum.layers,
             imageFor: widget.imageFor,
             inkOwner: owner,
-            inkImageFor: inkController == null
+            inkSurfaceFor: inkController == null
                 ? null
-                : (key) => inkController.displayImageFor(null, key),
+                : (key) => inkController.surfaceFor(null, key),
             liveInkKeys: {for (final window in mounted) window.key},
             repaint: repaint,
           );

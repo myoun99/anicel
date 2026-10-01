@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/conte/conte_ink_keys.dart'
     show conteInkRowKey;
@@ -14,6 +15,8 @@ import '../../services/cut_frame_composite_plan.dart';
 import '../../services/layer_pose_paint.dart';
 import '../../models/working_panel.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, cutShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'independent_clip_mint.dart';
 import 'render_caches.dart';
@@ -38,7 +41,8 @@ class FrameVerbs {
     required FrameIds frameIds,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
+    required TimelineRowAddress Function() currentRow,
     required RenderCaches renderCaches,
     required TrackAxisWalk trackAxis,
     required WorkingPanel Function() workingPanel,
@@ -48,7 +52,8 @@ class FrameVerbs {
        _frameIds = frameIds,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _dragPreview = dragPreview,
+       _currentRow = currentRow,
        _renderCaches = renderCaches,
        _trackAxis = trackAxis,
        _workingPanel = workingPanel;
@@ -59,7 +64,10 @@ class FrameVerbs {
   final FrameIds _frameIds;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
+
+  /// The row the user stands on — `Standing.currentRow`, asked when needed.
+  final TimelineRowAddress Function() _currentRow;
   final RenderCaches _renderCaches;
 
   /// The TRACK's axis, walked — the storyboard's rows and a gap's steps.
@@ -89,6 +97,11 @@ class FrameVerbs {
 
   /// [placement] asked of [layerId]'s row in the open cut at the playhead —
   /// null with no cut open or no such row.
+  ///
+  /// The cut as the canvas SHOWS it (F-195, canvas-follows-block-moves): a
+  /// drag in flight on this row or a folder above it — a lane value, a key
+  /// range, a block carrying keys — moves the pen's space and the handles
+  /// with the picture, not at the release.
   LayerPoseSample? _atThePlayhead(
     LayerId layerId,
     LayerPoseSample? Function({
@@ -98,7 +111,10 @@ class FrameVerbs {
     })
     placement,
   ) {
-    final cut = _project.activeCutOrNull;
+    final committed = _project.activeCutOrNull;
+    final cut = committed == null
+        ? null
+        : cutShowingDragPreview(committed, _dragPreview.value);
     final layer = cut?.layers.byId(layerId);
     return cut == null || layer == null
         ? null
@@ -247,13 +263,13 @@ class FrameVerbs {
     if (cut != null) {
       final store = _renderCaches.brushFrameStore;
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: store,
         cut: cut,
         to: layer.id,
         minted: placed.minted,
         pictureOf: (source) => store.bakedSurfaceOrNull(
-          _internals.brushFrameKeyForCut(cut, layer.id, source),
+          _project.brushFrameKeyForCut(cut, layer.id, source),
         ),
       );
       final ink = _renderCaches.conteInkRowStore;
@@ -292,47 +308,45 @@ class FrameVerbs {
   /// mutating so the caller can offer to link instead (see [linkSelectedFrame]).
   /// SE rows are exempt from the collision rule — the same dialogue can
   /// legitimately repeat on a sheet, so duplicates just apply.
+  ///
+  /// The one-entry call of [TimelineController.nameFramesForLayer] — the
+  /// body 자동 이름 지정 names many drawings through (I-18).
   FrameId? renameSelectedFrame(String name) {
     final layer = _selection.activeLayer;
     final frame = selectedFrame;
     if (layer == null || frame == null || !canRenameFrameAtCurrentFrame) {
       return null;
     }
-
-    final allowDuplicateName = !layer.kind.celNameIsIdentity;
-    if (!allowDuplicateName) {
-      final conflictingFrameId = _controllers.timelineController
-          .conflictingFrameIdForRename(
-            layer: layer,
-            frameId: frame.id,
-            name: name,
-          );
-      if (conflictingFrameId != null) {
-        return conflictingFrameId;
+    final names = {frame.id: name};
+    if (layer.kind.celNameIsIdentity) {
+      final conflict = _controllers.timelineController.nameConflicts(
+        layer,
+        names,
+      )[frame.id];
+      if (conflict != null) {
+        return conflict;
       }
     }
-
-    _controllers.timelineController.renameFrameForLayer(
+    _controllers.timelineController.nameFramesForLayer(
       layerId: layer.id,
-      frameId: frame.id,
-      name: name,
-      allowDuplicateName: allowDuplicateName,
+      names: names,
     );
     _changes.notifyChanged();
     return null;
   }
 
+  /// Joins the selected frame onto [targetFrameId], the drawing holding
+  /// the name it was refused — [TimelineController.nameFramesForLayer]'s
+  /// one-entry join.
   void linkSelectedFrame(FrameId targetFrameId) {
     final layer = _selection.activeLayer;
     final frame = selectedFrame;
     if (layer == null || frame == null) {
       return;
     }
-
-    _controllers.timelineController.linkFrameForLayer(
+    _controllers.timelineController.nameFramesForLayer(
       layerId: layer.id,
-      sourceFrameId: frame.id,
-      targetFrameId: targetFrameId,
+      joins: {frame.id: targetFrameId},
     );
     _changes.notifyChanged();
   }
@@ -421,7 +435,7 @@ class FrameVerbs {
     // RANGE on the sheet; the artwork's marquee is a tool in hand, and a
     // flip is a move to another column, not a 선택 해제.
     _selection.clearTimelineSelections();
-    switch (_internals.currentRow) {
+    switch (_currentRow()) {
       case TrackRowAddress(:final trackId):
         _trackAxis.flipPanels(trackId, forward: forward);
       case LayerRowAddress(:final layerId)

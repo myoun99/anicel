@@ -163,7 +163,7 @@ void main() {
     final s = session();
     s.cutVerbs.createCut();
     final trackId = s.selectedTrackId;
-    final axis = s.axisForTrack(trackId);
+    final axis = s.projectSettings.axisForTrack(trackId);
 
     final lane = s.rowSpans.trackRowSnapLane(TrackRowAddress(trackId), axis);
     expect(lane, isNotNull);
@@ -183,7 +183,7 @@ void main() {
 
     final lane = s.rowSpans.trackRowSnapLane(
       LayerRowAddress(se.id),
-      s.axisForTrack(s.selectedTrackId),
+      s.projectSettings.axisForTrack(s.selectedTrackId),
     );
     expect(lane, isNotNull);
     final block = lane!(3);
@@ -199,7 +199,10 @@ void main() {
     s.cutVerbs.createCut();
     final track = s.repository.requireProject().tracks.single;
     final second = track.cuts[1].id;
-    final start = s.axisForTrack(track.id).entryFor(second)!.startFrame;
+    final start = s.projectSettings
+        .axisForTrack(track.id)
+        .entryFor(second)!
+        .startFrame;
 
     expect(s.rowSpans.trackGlobalFrameOf(second, 2), start + 2);
   });

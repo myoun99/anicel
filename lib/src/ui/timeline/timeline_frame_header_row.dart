@@ -25,7 +25,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
     super.key,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacerWidth,
     required this.trailingFrameSpacerWidth,
@@ -46,7 +45,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
@@ -83,7 +81,6 @@ class TimelineFrameHeaderRow extends StatelessWidget {
       axis: Axis.horizontal,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      currentFrameIndex: currentFrameIndex,
       playbackFrameCount: playbackFrameCount,
       leadingFrameSpacer: leadingFrameSpacerWidth,
       crossExtent: metrics.layerRowHeight,

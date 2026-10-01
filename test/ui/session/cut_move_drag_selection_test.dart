@@ -5,10 +5,13 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/session/drags/cut_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -70,7 +73,14 @@ void main() {
         <({List<CutId> order, Map<CutId, int> afterGaps})>[];
     final drag = CutMoveDrag.begin(
       cutId: a,
-      tracks: [sparseTrack()],
+      repository: ProjectRepository(
+        initialProject: Project(
+          id: const ProjectId('band'),
+          name: 'band',
+          createdAt: DateTime.utc(2026),
+          tracks: [sparseTrack()],
+        ),
+      ),
       selectedCutIds: const [a, b],
       preview: preview,
       selection: selection,

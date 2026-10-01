@@ -37,6 +37,7 @@ class DrawingBlockMoveDrag {
     required bool Function(LayerId layerId) isEligibleRow,
     required CelBankLanes sourceBank,
     required int Function() cutFrameCount,
+    required int Function() drawnFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(DrawingBlockMovePlan plan, Layer source) land,
   }) : _source = source,
@@ -46,6 +47,7 @@ class DrawingBlockMoveDrag {
        _isEligibleRow = isEligibleRow,
        _sourceBank = sourceBank,
        _cutFrameCount = cutFrameCount,
+       _drawnFrameCount = drawnFrameCount,
        _preview = preview,
        _land = land;
 
@@ -67,10 +69,12 @@ class DrawingBlockMoveDrag {
   /// a cross-row landing may not carry off a cel one of them still shows.
   final CelBankLanes _sourceBank;
 
-  /// ⚠️A closure, not a captured int: the cut's length is what run
-  /// behaviours are rederived against, and a drag outlives the frame it
-  /// began on.
+  /// ⚠️Closures, not captured ints: a drag outlives the frame it began on.
+  /// TWO questions, two numbers — where a row that tiles its cut stops (the
+  /// conte 尺) and where hold/repeat ghosts fill to (the DRAWN end, F-227).
+  /// They agree until a transition asks for のりしろ.
   final int Function() _cutFrameCount;
+  final int Function() _drawnFrameCount;
 
   final ValueNotifier<TimelineDragPreview?> _preview;
 
@@ -99,6 +103,7 @@ class DrawingBlockMoveDrag {
     required void Function(LayerId layerId) noticeIneligible,
     required CelBankLanes Function(LayerId layerId) bankOf,
     required int Function() cutFrameCount,
+    required int Function() drawnFrameCount,
     required ValueNotifier<TimelineDragPreview?> preview,
     required void Function(DrawingBlockMovePlan plan, Layer source) land,
   }) {
@@ -119,6 +124,7 @@ class DrawingBlockMoveDrag {
       isEligibleRow: isEligibleRow,
       sourceBank: bankOf(layerId),
       cutFrameCount: cutFrameCount,
+      drawnFrameCount: drawnFrameCount,
       preview: preview,
       land: land,
     );
@@ -133,6 +139,7 @@ class DrawingBlockMoveDrag {
       target = _isEligibleRow(targetLayerId) ? _layerById(targetLayerId) : null;
     }
     final frames = _cutFrameCount();
+    final drawn = _drawnFrameCount();
     final plan = target == null
         ? null
         : planDrawingRangeMove(
@@ -152,12 +159,12 @@ class DrawingBlockMoveDrag {
             previewLayers: {
               plan.sourceAfter.id: rederiveRunBehaviors(
                 plan.sourceAfter,
-                cutFrameCount: frames,
+                drawnFrameCount: drawn,
               ),
               if (plan.targetAfter != null)
                 plan.targetAfter!.id: rederiveRunBehaviors(
                   plan.targetAfter!,
-                  cutFrameCount: frames,
+                  drawnFrameCount: drawn,
                 ),
             },
           );

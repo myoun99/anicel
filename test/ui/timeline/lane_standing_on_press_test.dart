@@ -293,6 +293,15 @@ void main() {
       find.byKey(const ValueKey<String>('frame-name-conflict-dialog')),
       findsOneWidget,
     );
+    // I-18: the notice lists what the link takes — for a key, the row its
+    // lanes are on ('Cut · A').
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('app-notice-details-list')),
+        matching: find.text('Cut · A'),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(
       find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),
     );

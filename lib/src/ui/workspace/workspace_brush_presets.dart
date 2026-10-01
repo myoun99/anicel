@@ -167,15 +167,17 @@ class _WorkspaceBrushPresets {
 
   Timer? _brushHandSettingsSave;
 
-  /// What the workspace does whenever the tool state moves — two rules, in
+  /// What the workspace does whenever the tool state moves — three rules, in
   /// this order.
   ///
   /// 1. H36: a painting tool in hand that holds NO brush opens on the
   ///    library's opening preset — the moment a tool is first held is its
   ///    opening moment, for every tool and not only the one the app starts
   ///    on (유저: 「브러시만 되있는데 이상하잖아」). The apply re-enters this
-  ///    listener through the assignment and lands in rule 2.
-  /// 2. H25: what the hand set is filed under the brush the state is
+  ///    listener through the assignment and lands in the two rules below.
+  /// 2. F-250: the brush is remembered in the tab it shows in, for the tool
+  ///    holding it (`_WorkspaceBrushGroups`, which opens a tab on it).
+  /// 3. H25: what the hand set is filed under the brush the state is
   ///    holding — [BrushToolState.presetId], read from the SAME state as the
   ///    values, so the two can never name different brushes (H25-again).
   ///
@@ -198,6 +200,9 @@ class _WorkspaceBrushPresets {
     if (preset == null) {
       return;
     }
+    // 2. F-250: the group this tool last held a brush in remembers it — for
+    //    every road a brush is taken up by, which all pass here.
+    _state._brushGroups.remember(state.tool, preset);
     final key = _handKey(state.tool, presetId);
     // The brush's OWN blend rides in its shape — not `activeBlendMode`,
     // which answers 消去 for the eraser tool no matter what the brush says;
@@ -331,6 +336,79 @@ class _WorkspaceBrushPresets {
     takeUpBrushes(
       _state._brushTool,
       presets: held.presets,
+      inHand: held.tool,
+      brushFor: _brushNamed,
+    );
+  }
+
+  /// A preset dragged to a new place or into another group — one undo step
+  /// (F-250).
+  void arrangePresets(List<BrushPreset> presets) => _arrange(
+    brushLibraryArrangementOf(presets, _state._presetLibrary.groups),
+  );
+
+  /// A group tab dragged to a new place — one undo step (F-250).
+  void arrangeGroups(List<BrushGroup> groups) => _arrange(
+    brushLibraryArrangementOf(_state._presetLibrary.presets, groups),
+  );
+
+  void _arrange(BrushLibraryArrangement after) {
+    final library = _state._presetLibrary;
+    final before = library.arrangement;
+    if (sameBrushLibraryArrangement(before, after)) {
+      return;
+    }
+    _state.widget.session.historyManager.execute(
+      ArrangeBrushLibraryCommand(library, before: before, after: after),
+    );
+  }
+
+  /// Deletes a preset, and every paint tool that held it takes up the brush
+  /// beside it ([BrushPresetLibrary.presetBeside]).
+  ///
+  /// 🗣️F-250 ③ (유저 2026-10-01): 「브러시 삭제하면 현재 선택된 브러시 ui가
+  /// 없어지는데, 제대로 삭제하면 그 외 브러시 선택시키도록」 — a tool left
+  /// holding a deleted preset holds a brush the library cannot name, the
+  /// F-63 state ([openingPresetFor]).
+  void deletePreset(BrushPresetId id) {
+    final beside = _state._presetLibrary.presetBeside(id);
+    _whileDropping({id}, () => _state._presetLibrary.delete(id), beside);
+  }
+
+  /// Deletes a group and its presets; a tool that held one of them takes up
+  /// the library's opening preset — nothing is left beside it.
+  void deleteGroup(BrushGroupId id) {
+    final gone = {
+      for (final preset in _state._presetLibrary.presetsInGroup(id)) preset.id,
+    };
+    _whileDropping(gone, () => _state._presetLibrary.deleteGroup(id), null);
+  }
+
+  /// Runs [drop], then hands every paint tool that held one of [gone] the
+  /// preset [beside] — or, with none, the library's first, the brush a tool
+  /// with no nameable brush opens on (F-63) — down the road a reset and a
+  /// resumed project take ([takeUpBrushes]).
+  void _whileDropping(
+    Set<BrushPresetId> gone,
+    void Function() drop,
+    BrushPresetId? beside,
+  ) {
+    final held = toolChoiceOf(_state._brushTool);
+    drop();
+    final next = beside ?? _state._presetLibrary.presets.firstOrNull?.id;
+    if (next == null) {
+      return;
+    }
+    final orphaned = {
+      for (final MapEntry(key: tool, value: id) in held.presets.entries)
+        if (gone.contains(id)) tool: next,
+    };
+    if (orphaned.isEmpty) {
+      return;
+    }
+    takeUpBrushes(
+      _state._brushTool,
+      presets: orphaned,
       inHand: held.tool,
       brushFor: _brushNamed,
     );

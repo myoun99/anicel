@@ -75,6 +75,16 @@ final BrushTipMask paperGrainTextureMask = _generatePaperGrainMask();
 /// it tiles by construction.
 final BrushTipMask canvasWeaveTextureMask = _generateCanvasWeaveMask();
 
+/// Canvas-anchored COLD-PRESS watercolour paper (board F-218, 유저: 「질감
+/// 있다면 그냥 수채가아니라 아날로그 수채라던가 … 질감도 진짜 아날로그질감
+/// 종이질감」): the rounded tooth of mould-made paper, with pigment pooling in
+/// the hollows between the bumps.
+///
+/// ⚠️256 texels, not the 64 of [paperGrainTextureMask]: tooth is a few
+/// pixels across, and a 64-texel tile scaled up to read as paper repeats
+/// every couple of centimetres of a stroke — the grid the eye finds first.
+final BrushTipMask coldPressTextureMask = _generateColdPressMask();
+
 const int _maskSize = 64;
 
 /// Every round tip is one disc about the mask centre, a pixel short of the
@@ -411,10 +421,102 @@ BrushTipMask _generateCanvasWeaveMask() {
   );
 }
 
+/// Cold-press paper: three layers of height, each wrapping at the tile edge.
+///
+/// - TOOTH — the rounded hills the paper is felted into: one freely
+///   jittered point per 16-texel cell, each raising a soft dome
+///   `crown · (1 − (d/R)²)²` that reaches past its own cell, so neighbouring
+///   domes run into each other the way the tooth of a sheet does, with soft
+///   hollows between them rather than lines. Each dome draws its own crown,
+///   so the tooth is not a lattice. The search runs across the wrapped
+///   neighbour cells, so a dome on one edge continues on the other.
+/// - SWELL — the sheet's slow undulation, 8-lattice value noise.
+/// - FIBRE — fine felt, 64-lattice value noise.
+///
+/// The mask is how much paint stays: the hollows hold the most (pigment
+/// settles there), the crowns the least — kept above 0.3 so the paper
+/// grains a wash without breaking it.
+///
+/// ⚠️Arithmetic only — no `exp`, no `pow`. The bytes are pinned by their sum
+/// (`brush_tip_mask_defaults_test`), and a library function may round its
+/// last bit differently on another platform.
+BrushTipMask _generateColdPressMask() {
+  const size = 256;
+  final (tooth, highest) = _coldPressTooth(size);
+  final swell = _seamlessValueNoise(8, 0x51ED270B, size: size);
+  final fibre = _seamlessValueNoise(64, 0x7C3A9E25, size: size);
+  final alpha = Uint8List(size * size);
+  for (var index = 0; index < alpha.length; index += 1) {
+    final height =
+        tooth[index] / highest * 0.65 + swell[index] * 0.2 + fibre[index] * 0.15;
+    // Smoothstep of the depth: broad hollows, broad crowns.
+    final depth = (1.0 - height).clamp(0.0, 1.0);
+    final paint = 0.3 + depth * depth * (3.0 - 2.0 * depth) * 0.7;
+    alpha[index] = (255 * paint).round().clamp(0, 255);
+  }
+  return BrushTipMask(id: 'builtin-cold-press', size: size, alpha: alpha);
+}
+
+/// The cold-press TOOTH (see [_generateColdPressMask]): the dome heights of
+/// a [size]-texel tile, row-major, and the highest of them.
+(List<double>, double) _coldPressTooth(int size) {
+  const cell = 16;
+  final cells = size ~/ cell;
+  const reach = cell * 1.1;
+  final pointX = List<double>.filled(cells * cells, 0);
+  final pointY = List<double>.filled(cells * cells, 0);
+  final crown = List<double>.filled(cells * cells, 0);
+  var state = 0x2F6B3A91;
+  double draw() {
+    state = _nextSeed(state);
+    return ((state >> 8) & 0xFFFF) / 65535.0;
+  }
+
+  for (var index = 0; index < cells * cells; index += 1) {
+    pointX[index] = (index % cells + draw()) * cell;
+    pointY[index] = (index ~/ cells + draw()) * cell;
+    crown[index] = 0.5 + draw() * 0.5;
+  }
+  final tooth = List<double>.filled(size * size, 0);
+  var highest = 0.0;
+  for (var y = 0; y < size; y += 1) {
+    final cy = y ~/ cell;
+    for (var x = 0; x < size; x += 1) {
+      final cx = x ~/ cell;
+      var height = 0.0;
+      for (var oy = -2; oy <= 2; oy += 1) {
+        for (var ox = -2; ox <= 2; ox += 1) {
+          final nx = (cx + ox) % cells;
+          final ny = (cy + oy) % cells;
+          final n = ny * cells + nx;
+          // The neighbour's point, moved to the side of the tile this texel
+          // sees it from, so distances run across the seam.
+          final dx = x + 0.5 - (pointX[n] + (cx + ox - nx) * cell);
+          final dy = y + 0.5 - (pointY[n] + (cy + oy - ny) * cell);
+          final reached = (dx * dx + dy * dy) / (reach * reach);
+          if (reached < 1.0) {
+            final dome = 1.0 - reached;
+            height += crown[n] * dome * dome;
+          }
+        }
+      }
+      tooth[y * size + x] = height;
+      if (height > highest) {
+        highest = height;
+      }
+    }
+  }
+  return (tooth, highest);
+}
+
 /// Value noise on a [lattice]×[lattice] grid, smoothly interpolated up to
 /// the mask size with the lattice WRAPPING at both edges — that wrap is what
 /// makes the result tile seamlessly.
-List<double> _seamlessValueNoise(int lattice, int seed) {
+List<double> _seamlessValueNoise(
+  int lattice,
+  int seed, {
+  int size = _maskSize,
+}) {
   final grid = List<double>.filled(lattice * lattice, 0);
   var state = seed;
   for (var index = 0; index < grid.length; index += 1) {
@@ -424,14 +526,14 @@ List<double> _seamlessValueNoise(int lattice, int seed) {
 
   double smooth(double t) => t * t * (3.0 - 2.0 * t);
 
-  final result = List<double>.filled(_maskSize * _maskSize, 0);
-  final scale = lattice / _maskSize;
-  for (var y = 0; y < _maskSize; y += 1) {
+  final result = List<double>.filled(size * size, 0);
+  final scale = lattice / size;
+  for (var y = 0; y < size; y += 1) {
     final sampleY = y * scale;
     final y0 = sampleY.floor() % lattice;
     final y1 = (y0 + 1) % lattice;
     final ty = smooth(sampleY - sampleY.floor());
-    for (var x = 0; x < _maskSize; x += 1) {
+    for (var x = 0; x < size; x += 1) {
       final sampleX = x * scale;
       final x0 = sampleX.floor() % lattice;
       final x1 = (x0 + 1) % lattice;
@@ -440,7 +542,7 @@ List<double> _seamlessValueNoise(int lattice, int seed) {
           grid[y0 * lattice + x0] * (1 - tx) + grid[y0 * lattice + x1] * tx;
       final bottom =
           grid[y1 * lattice + x0] * (1 - tx) + grid[y1 * lattice + x1] * tx;
-      result[y * _maskSize + x] = top * (1 - ty) + bottom * ty;
+      result[y * size + x] = top * (1 - ty) + bottom * ty;
     }
   }
   return result;

@@ -66,7 +66,7 @@ void main() {
         ),
       },
     ),
-    cutFrameCount: 6,
+    drawnFrameCount: 6,
   );
 
   Widget harness({
@@ -413,7 +413,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 6,
+      drawnFrameCount: 6,
     );
     await tester.pumpWidget(
       harness(
@@ -467,7 +467,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 6,
+      drawnFrameCount: 6,
     );
     await tester.pumpWidget(
       harness(layers: [patterned], runEdit: recordingCallbacks()),

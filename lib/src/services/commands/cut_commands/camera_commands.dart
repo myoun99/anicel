@@ -101,7 +101,7 @@ class _CameraCommands {
             ))
               (cutId: write.cutId, track: write.track),
           ];
-    final commands = <Command>[
+    _coordinator.historyManager.executeAsOneStep(description, [
       for (final write in writes)
         UpdateCutCameraCommand(
           repository: _coordinator.repository,
@@ -109,12 +109,7 @@ class _CameraCommands {
           camera: CutCamera.fromTrack(write.track),
           description: description,
         ),
-    ];
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
+    ]);
   }
 
   /// Replaces the project's instruction vocabulary; one undo step, no-op

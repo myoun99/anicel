@@ -22,10 +22,6 @@ class _BrushEditOpening {
   /// speed takes two readings.
   bool _speedMeasured = false;
 
-  /// Whether this contact has read the pen's lean yet — false only while
-  /// UIKit calls it an estimate ([_BrushEditPressure.tiltOf]).
-  bool _tiltMeasured = false;
-
   /// The direction the stroke set off in, once a move has left the press —
   /// what the press is drawn with when its brush turns on direction
   /// ([BrushStrokeDynamics.readsDirection]). Like speed, a press has none of
@@ -79,17 +75,13 @@ class _BrushEditOpening {
   /// Whether this contact has not read a pressure yet.
   bool get pressureUnread => _pressureUnread;
 
-  /// Whether this contact has not read the pen's lean yet.
-  bool get tiltUnread => !_tiltMeasured;
-
   /// Which way the stroke set off, or null until a move has said so.
   double? get pressDirection => _pressDirection;
 
   /// A contact begins with what its press [read].
-  void startContact(({bool pressure, bool speed, bool tilt}) read) {
+  void startContact(({bool pressure, bool speed}) read) {
     _pressureUnread = !read.pressure;
     _speedMeasured = read.speed;
-    _tiltMeasured = read.tilt;
     _pressDirection = null;
   }
 
@@ -118,7 +110,7 @@ class _BrushEditOpening {
     void Function() paint, {
     required CanvasPoint penPosition,
     required Duration at,
-    required ({bool pressure, bool speed, bool tilt}) read,
+    required ({bool pressure, bool speed}) read,
   }) {
     final waiting = _waiting;
     if (waiting != null) {
@@ -131,7 +123,6 @@ class _BrushEditOpening {
             _reads(BrushInputSource.pressure),
         speed:
             read.speed && !_speedMeasured && _reads(BrushInputSource.speed),
-        tilt: read.tilt && !_tiltMeasured && _reads(BrushInputSource.tilt),
       );
       // The first move that leaves the press says which way the stroke set
       // off — the direction its opening segment is drawn along.
@@ -145,9 +136,6 @@ class _BrushEditOpening {
     }
     if (read.speed) {
       _speedMeasured = true;
-    }
-    if (read.tilt) {
-      _tiltMeasured = true;
     }
     if (waiting == null) {
       return false;
@@ -175,12 +163,16 @@ class _BrushEditOpening {
   }
 
   /// Whether an input this stroke's brush reads has not been read yet in
-  /// this contact — its pressure, speed or lean, or, for a brush that turns
-  /// on the stroke's direction, which way it set off.
+  /// this contact — its pressure or speed, or, for a brush that turns on
+  /// the stroke's direction, which way it set off.
+  ///
+  /// ↩️The lean waited here too, while UIKit's estimate of it counted as no
+  /// reading. Build 1065 showed nearly every Pencil sample estimated: every
+  /// sample's lean is read now ([_BrushEditPressure.tiltOf]), so a contact
+  /// has read it from its press and there is nothing to wait for.
   bool get _awaitsAReading =>
       (_pressureUnread && _reads(BrushInputSource.pressure)) ||
       (!_speedMeasured && _reads(BrushInputSource.speed)) ||
-      (!_tiltMeasured && _reads(BrushInputSource.tilt)) ||
       (_pressDirection == null &&
           (_state._strokeDynamics?.readsDirection ?? false));
 
@@ -193,20 +185,13 @@ class _BrushEditOpening {
   /// The FIRST reading of an input stands for every sample that waited
   /// without one — the sample just noted brought it, so it is what the
   /// stroke holds now.
-  void _fillWaiting({
-    required bool pressure,
-    required bool speed,
-    required bool tilt,
-  }) {
+  void _fillWaiting({required bool pressure, required bool speed}) {
     for (final sample in _waiting!.samples) {
       if (pressure) {
         sample.pressure = _state._currentPressure;
       }
       if (speed) {
         sample.speed = _state._currentSpeed;
-      }
-      if (tilt) {
-        sample.tilt = _state._currentTilt;
       }
     }
   }
@@ -278,6 +263,6 @@ class _WaitingSample {
   final CanvasPoint position;
   double pressure;
   double speed;
-  ({double azimuthDegrees, double altitude})? tilt;
+  final PenLean? tilt;
   final void Function() paint;
 }

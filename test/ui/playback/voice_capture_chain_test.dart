@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/written_wav.dart';
+import '../../helpers/canned_audio_recorder.dart';
 
 /// The capture chain wired through the session (REC1-D): baked gain in
 /// the landed WAV, the clip flag on the AudioClip, the clip light, the
@@ -95,7 +96,7 @@ void main() {
     manager.selectLayer(laneId);
 
     // Notice OFF (default): the take clips silently — flag only.
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // The armed snapshot reads settings at start: raise gain BEFORE.
     var message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
@@ -104,7 +105,7 @@ void main() {
     manager.appSettings.setAudioSyncSettings(
       manager.appSettings.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(
@@ -119,7 +120,7 @@ void main() {
     manager.appSettings.setAudioSyncSettings(
       manager.appSettings.audioSyncSettings.value.copyWith(clippingNotice: true),
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     message = await manager.voiceRecording.stopVoiceRecordingAndPlace();
     expect(message, manager.uiStrings.recordTakeClipped);
@@ -134,7 +135,7 @@ void main() {
     manager.appSettings.setAudioSyncSettings(
       manager.appSettings.audioSyncSettings.value.copyWith(micGainDb: 12),
     );
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOf(0.6));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOf(0.6));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     expect(manager.voiceRecording.voiceRecordClipLit.value, isFalse);
 
@@ -211,31 +212,3 @@ void main() {
 
 /// A microphone stand-in: start always succeeds at the take's rate and
 /// stop hands the prepared take back once.
-class _FakeRecorder extends AudioRecorder {
-  _FakeRecorder(this.recording);
-
-  final AudioRecording recording;
-  bool _started = false;
-
-  @override
-  bool get isRecording => _started;
-
-  @override
-  int start({
-    required int sampleRate,
-    bool useNullBackend = false,
-    int deviceIndex = -1,
-  }) {
-    _started = true;
-    return recording.sampleRate;
-  }
-
-  @override
-  AudioRecording? stop() {
-    if (!_started) {
-      return null;
-    }
-    _started = false;
-    return recording;
-  }
-}

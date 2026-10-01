@@ -83,6 +83,36 @@ Project _project() => Project(
   ],
 );
 
+/// A film whose one cut has no storyboard layer: its edges hang on the
+/// plate, in the cut's own bands (I-52).
+Project _bareCutProject() => Project(
+  id: const ProjectId('bare-project'),
+  name: 'Bare',
+  createdAt: DateTime.utc(2026, 10, 1),
+  tracks: [
+    Track(
+      id: _trackId,
+      name: 'Video',
+      cuts: [
+        Cut(
+          id: const CutId('cut-1'),
+          name: 'cut-1',
+          duration: 10,
+          canvasSize: const CanvasSize(width: 640, height: 360),
+          layers: [
+            Layer(
+              id: const LayerId('cut-1-a'),
+              name: 'A',
+              frames: const [],
+              timeline: const {},
+            ),
+          ],
+        ),
+      ],
+    ),
+  ],
+);
+
 void main() {
   group('the grip\'s ink is the ground law\'s pick', () {
     test('a dark ground takes the LIGHT ink, a light one the dark ink', () {
@@ -142,13 +172,13 @@ void main() {
     });
   });
 
-  Future<void> openStoryboard(WidgetTester tester) async {
+  Future<void> openStoryboard(WidgetTester tester, {Project? project}) async {
     await tester.binding.setSurfaceSize(const Size(1500, 800));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(
         theme: ThemeData(brightness: Brightness.dark),
-        home: HomePage(initialProject: _project()),
+        home: HomePage(initialProject: project ?? _project()),
       ),
     );
     await tester.pumpAndSettle();
@@ -197,10 +227,51 @@ void main() {
     );
   });
 
-  testWidgets('🗣️and a triangle that crosses a label band reads THAT band '
-      'there — two grounds, two inks (유저 2026-09-26: 「2여도 흰종이부분에 '
-      '엣지는 1처럼 제대로 보이게 가능하지?」)', (tester) async {
+  /// Every edge [prefix]'s paper hangs, against the paper's own height:
+  /// each must be a band deep — the back edge's at the paper's top, the
+  /// front edge's at its bottom.
+  void expectEdgesInTheBands(WidgetTester tester, String prefix) {
+    final painter = timelineRowChromePainter(
+      tester,
+      _trackId.value,
+      prefix: prefix,
+    )!;
+    final paper = tester
+        .getSize(timelineRowChromeFinder(_trackId.value, prefix: prefix))
+        .height;
+    final grips = painter.targets.whereType<TimelineRowGripTarget>().toList();
+    expect(
+      grips.map((grip) => grip.edge).toSet(),
+      TimelineBlockEdge.values.toSet(),
+      reason: 'premise: both edges hang on this paper',
+    );
+    for (final grip in grips) {
+      expect(
+        grip.rect.height,
+        StoryboardCutBlocksPainter.bandHeight,
+        reason: '${grip.id}: a band deep',
+      );
+      expect(
+        grip.edge == TimelineBlockEdge.end ? grip.rect.top : grip.rect.bottom,
+        grip.edge == TimelineBlockEdge.end ? 0 : paper,
+        reason: '${grip.id}: the back edge in the first band, the front in '
+            'the last',
+      );
+    }
+  }
+
+  // 🗣️I-52 (유저 2026-09-28): 「썸네일이 존재하는 블록은 엣지를 썸네일
+  // 안가리도록 하고싶으니, 띠에만 존재하도록」 · 「세로로는 해당 상단띠 전체에
+  // 걸치도록」. ↩️A triangle took half its paper and crossed a label band
+  // into the picture — two grounds, two inks (유저 09-26 「2여도 흰종이부분에
+  // 엣지는 1처럼 제대로 보이게 가능하지?」).
+  testWidgets('🗣️I-52: a conte block\'s edges stand in its bands alone — '
+      'the back edge in its name band, the front in its comma band', (
+    tester,
+  ) async {
     await openStoryboard(tester);
+    expectEdgesInTheBands(tester, 'storyboard');
+
     final painter = timelineRowChromePainter(
       tester,
       _trackId.value,
@@ -209,17 +280,24 @@ void main() {
     final end = painter.targets.whereType<TimelineRowGripTarget>().firstWhere(
       (target) => target.edge == TimelineBlockEdge.end,
     );
+    // One ground under the triangle: the conte blocks' top band, in the
+    // storyboard layer's label — the paper, unlabelled — as painted: the
+    // conte opens standing on the V row, in the cut under the playhead,
+    // whose bands wear the standing wash (F-248).
+    final band = painter.gripGrounds!().under(end.rect).single;
+    expect(
+      band.color,
+      Color.alphaBlend(
+        timelineStandingWashColor,
+        layerMarkColor(LayerMark.none),
+      ),
+    );
+    expect(
+      band.rect.expandToInclude(end.rect),
+      band.rect,
+      reason: 'the triangle lies inside its band',
+    );
 
-    // The end triangle hangs from its conte block's top: the conte blocks'
-    // top band, in the storyboard layer's label — the paper, unlabelled.
-    final band = painter.gripGrounds!()
-        .under(end.rect)
-        .singleWhere((ground) => ground.rect.top == end.rect.top);
-    expect(band.color, layerMarkColor(LayerMark.none));
-    expect(band.rect.height, StoryboardCutBlocksPainter.bandHeight);
-
-    // Painted: the band's part in the dark ink, the rest in the plate's
-    // light one.
     final spy = _InkSpy();
     painter.paint(
       spy,
@@ -228,22 +306,26 @@ void main() {
       ),
     );
     // As ARGB: a Paint keeps its colour in 32 bits.
-    int ink(Color ground) =>
-        blockEdgeGripColor(BlockEdgeGripInk.rest, ground: ground).toARGB32();
-    bool drawn(int ink, ClipOp op) => spy.draws.any(
-      (draw) => draw.ink == ink && draw.clips.contains((band.rect, op)),
-    );
+    final ink = blockEdgeGripColor(
+      BlockEdgeGripInk.rest,
+      ground: band.color,
+    ).toARGB32();
     expect(
-      drawn(ink(band.color), ClipOp.intersect),
+      spy.draws.any(
+        (draw) =>
+            draw.ink == ink &&
+            draw.clips.contains((band.rect, ClipOp.intersect)),
+      ),
       isTrue,
       reason: 'the band\'s ink, inside the band',
     );
-    expect(
-      drawn(ink(conteSheetInk), ClipOp.difference),
-      isTrue,
-      reason: 'the plate\'s ink everywhere but the band — ↩️one ink on both '
-          'would lay a light triangle under the band\'s dark one',
-    );
+  });
+
+  testWidgets('I-52: a cut with no conte blocks hangs its edges in its own '
+      'bands — the back edge in its name band, the front in its length '
+      'band', (tester) async {
+    await openStoryboard(tester, project: _bareCutProject());
+    expectEdgesInTheBands(tester, 'storyboard-plate');
   });
 
   testWidgets('with thumbnails OFF there is no picture under an edge — the '
@@ -279,10 +361,18 @@ void main() {
     )!;
     expect(painter.gripGround, conteSheetInk);
     final grounds = painter.gripGrounds!();
+    // The film's one cut is the one stood on, so its bands wear the
+    // standing wash (F-248) — what the edges stand on is the band as
+    // painted.
     for (final grip in painter.targets.whereType<TimelineRowGripTarget>()) {
       expect(
         grounds.under(grip.rect).map((ground) => ground.color).toSet(),
-        {layerMarkColor(LayerMark.none)},
+        {
+          Color.alphaBlend(
+            timelineStandingWashColor,
+            layerMarkColor(LayerMark.none),
+          ),
+        },
         reason: '${grip.id}: its conte block\'s band, and the plate',
       );
     }

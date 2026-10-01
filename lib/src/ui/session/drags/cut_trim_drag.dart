@@ -13,6 +13,7 @@ import '../../../models/storyboard_coverage.dart';
 import '../../../models/storyboard_timeline_layout.dart';
 import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import 'edge_drag_roles.dart';
@@ -166,7 +167,7 @@ sealed class CutTrimDrag implements EditorDragSession {
 
   /// What the release would commit; null while the drag has not left its
   /// frame. Fields, never the preview channel: a consumer clearing
-  /// [SessionInternals.dragPreview] mid-drag must not void the commit.
+  /// the session's `dragPreview` mid-drag must not void the commit.
   CutTrimResult? _after;
 
   /// The durations and gaps this edge resolves [cumulativeDelta] to. The
@@ -183,7 +184,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   ) => const [];
 
   /// Applies the drag's cumulative frame delta as a live preview on
-  /// [SessionInternals.dragPreview] (the repository is NOT touched).
+  /// the session's `dragPreview` (the repository is NOT touched).
   @override
   void update(int cumulativeDelta) {
     final planned = _plan(cumulativeDelta);
@@ -206,14 +207,17 @@ sealed class CutTrimDrag implements EditorDragSession {
           )
         : null;
     _after = after;
-    _roles.internals.dragPreview.value = after == null
+    _roles.dragPreview.value = after == null
         ? null
-        : CutTrimDragPreview(
-            previewDurations: after.durations,
-            previewGaps: after.gaps,
-            previewLayers: {
-              for (final edit in after.rowEdits) edit.after.id: edit.after,
-            },
+        : cutTrimPreviewAsReleased(
+            _roles.project.repository,
+            CutTrimDragPreview(
+              previewDurations: after.durations,
+              previewGaps: after.gaps,
+              previewLayers: {
+                for (final edit in after.rowEdits) edit.after.id: edit.after,
+              },
+            ),
           );
   }
 
@@ -222,7 +226,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   @override
   void commit() {
     final after = _after;
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
     if (after == null) {
       return;
     }
@@ -280,7 +284,7 @@ sealed class CutTrimDrag implements EditorDragSession {
   /// repository was never written during the drag).
   @override
   void cancel() {
-    _roles.internals.dragPreview.value = null;
+    _roles.dragPreview.value = null;
   }
 
   /// The storyboard-row rewrites a duration change owes, one per resized cut
@@ -299,6 +303,7 @@ sealed class CutTrimDrag implements EditorDragSession {
     return storyboardTimelineFilledToCover(
       timeline: row.timeline,
       cutDuration: afterDurations[cutId]!,
+      conteStart: storyboardConteStart(row.timeline),
     );
   });
 
@@ -322,7 +327,10 @@ sealed class CutTrimDrag implements EditorDragSession {
         continue;
       }
       final next = rewrite(cutId, row);
-      if (next == null || mapEquals(next, row.timeline)) {
+      // Against the REAL blocks: the ghosts holding the first and last panel
+      // through the のりしろ (F-227) are derived, never what a rewrite
+      // returns — comparing them in made every row look edited.
+      if (next == null || mapEquals(next, ghostFreeTimeline(row))) {
         continue;
       }
       edits.add((before: row, after: row.copyWith(timeline: next)));
@@ -423,18 +431,25 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     );
   }
 
-  /// The conte row's division keys for [id], cut-local — empty when the cut
-  /// has no row, which is exactly what makes it one panel.
+  /// The conte row's division keys for [id], in the CONTE's frames (the
+  /// panels are the conte's; a cut an O.L arrives into keeps them after its
+  /// のりしろ, F-227) — empty when the cut has no row, which is exactly what
+  /// makes it one panel.
   List<int> _divisionKeysOf(CutId id) {
     final cut = _roles.project.cutById(id);
     final row = cut == null ? null : storyboardLayerForCut(cut);
     if (cut == null || row == null) {
       return const [];
     }
-    return storyboardDivisionKeys(
-      timeline: row.timeline,
-      cutDuration: cut.duration,
-    );
+    final conteStart = storyboardConteStart(row.timeline);
+    return [
+      for (final key in storyboardDivisionKeys(
+        timeline: row.timeline,
+        cutDuration: cut.duration,
+        conteStart: conteStart,
+      ))
+        key - conteStart,
+    ];
   }
 
   /// The conte rows this drag owes, read off the SAME panel layout the

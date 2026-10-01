@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../models/canvas_point.dart';
+import '../../models/canvas_size.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import 'transform_tool_options.dart';
@@ -420,6 +422,39 @@ class CanvasSelectionCommands extends ChangeNotifier {
       return;
     }
     setRegion(null);
+  }
+
+  /// 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능. 내용은 선택되지
+  /// 않은 부분을 선택함. 위치는 선택툴일때의 툴설정. 버튼.」 Selects what is
+  /// NOT selected, out to [canvasSize]'s pasteboard wall (I-23-Q1
+  /// 「페이스트보드 벽까지」: 「선택도구로 사용할수있는 모든부분까지임」).
+  ///
+  /// ONE undo step, through [regionHistoryRecorder] like every selection
+  /// change. An open box or a pending move lands FIRST, as its own entry:
+  /// the inverse is of the selection that landing leaves, so one Ctrl+Z
+  /// takes back the inverse and nothing else.
+  ///
+  /// ⚠️It reads [region], never [liveShape]: the move tool's implicit box
+  /// is not a selection (F-108), and inverting it would invert something
+  /// the user never chose. ⛔And it writes through [applyRegion], never a
+  /// bare [setRegion] — the mounted layer has to hear it (see the note in
+  /// `_adoptChannelRegion`).
+  void invertSelection({required CanvasSize canvasSize}) {
+    confirmPendingMove();
+    final before = region;
+    final after = CanvasSelectionRegion.invertedWithin(
+      before,
+      canvasSize.pasteboardRect,
+    );
+    if (after == before) {
+      return;
+    }
+    final record = regionHistoryRecorder;
+    if (record != null) {
+      record(before, after);
+      return;
+    }
+    applyRegion(after);
   }
 
   /// Whether a free-transform session is open (Escape then cancels it, and

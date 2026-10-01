@@ -26,7 +26,9 @@ import '../../native/qa_tablet_bridge.dart';
 ///
 /// HID states all of it outright on usage page 0x0D — Tip Switch, Barrel
 /// Switch, Eraser, Invert — so this service reports DECLARED bits and
-/// never infers a button from pressure or from a cursor index.
+/// never infers a button from pressure or from a cursor index. And the
+/// pen's lean the same way (X Tilt, Y Tilt), which the embedder drops
+/// before Flutter sees it (desktop-pen-tilt).
 ///
 /// Unlike the Wintab sidecar this is NOT user-switchable: it observes a
 /// message-only window on its own thread and cannot alter how input
@@ -167,6 +169,11 @@ class RawPenInputService {
     }
     return bits;
   }
+
+  /// The pen's plane tilts in degrees as the newest fresh report declares
+  /// them — null when no report is fresh or the report carries none.
+  ({double x, double y})? freshTilt({DateTime? now}) =>
+      _freshState(now)?.tilt;
 
   /// Whether the pen is turned TAIL-DOWN right now; null = no fresh
   /// report.

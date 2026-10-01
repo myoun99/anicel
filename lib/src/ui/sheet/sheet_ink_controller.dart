@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 
 import '../../models/bitmap_surface.dart';
@@ -14,8 +12,6 @@ import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
-import '../canvas/bitmap_tile_image_cache.dart';
-import '../canvas/tiled_surface_compose.dart';
 
 /// 🚨★★★WHAT EVERY SHEET'S INK CONTROLLER DOES, once.
 ///
@@ -25,14 +21,14 @@ import '../canvas/tiled_surface_compose.dart';
 /// every method below was written twice around that one lookup.
 ///
 /// 🚨THE COPIES HAD ALREADY DIVERGED, which is why this exists rather than
-/// a third copy of a guard. [displayImageFor] then composed tiles
+/// a third copy of a guard. `displayImageFor` then composed tiles
 /// asynchronously and notified when the image landed; the envelope checked
 /// `_disposed` first, because "the panel can close while a compose is in
 /// flight — a notify then would throw, and the image would leak". The
 /// conte never got that check: the fix arrived with the envelope and did
 /// not flow back. Closing the conte panel mid-compose threw and leaked.
 /// (The asynchronous compose itself went on 2026-09-17 — see
-/// [displayImageFor] — and the guard with it; the lesson is the merge.)
+/// [surfaceFor] — and the guard with it; the lesson is the merge.)
 ///
 /// ⛔SO THE FIX IS THE MERGE, not a guard added in a second place — a
 /// second place to remember is what produced the bug.
@@ -124,42 +120,28 @@ abstract class SheetInkController<P> extends ChangeNotifier {
   bool hasInkFor(P plane, BrushFrameKey key) =>
       storeFor(plane).celHasRenderableContent(key);
 
-  final Map<BrushFrameKey, (BitmapSurface, ui.Image)> _display = {};
-
-  /// The painter-side display image for a window: the baked surface's
-  /// tiles composed inside this call, and kept until that surface changes.
+  /// A window's ink as the sheet shows it on screen: the baked surface
+  /// itself, which the sheet's painter prints as the brush's live window
+  /// paints it (`printSheetInkAsLive`, F-215). ↩️It was the surface's tiles
+  /// composed into one raster here and kept until the surface changed
+  /// (`displayImageFor`) — drawn `medium` in paper space, the soft and
+  /// shifted ink the brush switch gave away.
   ///
-  /// 🚨★★★IT IS THE SURFACE'S PICTURE THE MOMENT IT IS THE SURFACE — a
-  /// stroke's pen-up, an undo, a redo, ink mode switched off (유저 절대규칙
-  /// 2026-09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」). A tile that has
-  /// no picture gets one made here, through the one door
-  /// ([composeTiledSurfaceImageNow]), so there is nothing to wait for.
+  /// 🚨★★★IT IS THE SURFACE THE MOMENT IT IS THE SURFACE — a stroke's
+  /// pen-up, an undo, a redo, ink mode switched off (유저 절대규칙
+  /// 2026-09-17 「보이는 중이랑 결과랑 절대로 다르면 안 되」). The painter
+  /// makes a tile's missing picture through the one synchronous door
+  /// (`BitmapTileImageCache.pictureFor`), so there is nothing to wait for.
   ///
-  /// 🪦Until then a surface with an unpictured tile was composed
-  /// ASYNCHRONOUSLY and 「the stale image holds meanwhile」: an undo made
-  /// while ink mode was off left the undone stroke on the sheet for the
-  /// frames the compose took. That road is also what needed a `_disposed`
-  /// guard — the panel could close while a compose was in flight, a notify
-  /// then threw and the image leaked — and the guard existed on ONE of the
-  /// two copies this class replaced (the header's story). With nothing in
-  /// flight there is nothing to guard.
-  ui.Image? displayImageFor(P plane, BrushFrameKey key) {
-    final surface = storeFor(plane).bakedSurfaceOrNull(key);
-    if (surface == null) {
-      return null;
-    }
-    final cached = _display[key];
-    if (cached != null && identical(cached.$1, surface)) {
-      return cached.$2;
-    }
-    final composed = composeTiledSurfaceImageNow(
-      surface,
-      reuse: BitmapTileImageCache.instance,
-    );
-    cached?.$2.dispose();
-    _display[key] = (surface, composed);
-    return composed;
-  }
+  /// 🪦Before 09-17 the raster was composed ASYNCHRONOUSLY and 「the stale
+  /// image holds meanwhile」: an undo made while ink mode was off left the
+  /// undone stroke on the sheet for the frames the compose took. That road
+  /// is also what needed a `_disposed` guard — the panel could close while
+  /// a compose was in flight, a notify then threw and the image leaked —
+  /// and the guard existed on ONE of the two copies this class replaced
+  /// (the header's story). With nothing in flight there is nothing to guard.
+  BitmapSurface? surfaceFor(P plane, BrushFrameKey key) =>
+      storeFor(plane).bakedSurfaceOrNull(key);
 
   @override
   void dispose() {
@@ -168,10 +150,6 @@ abstract class SheetInkController<P> extends ChangeNotifier {
     for (final slot in _planes.values) {
       slot.store.celPixelRevision.removeListener(_onCelPixelsChanged);
     }
-    for (final entry in _display.values) {
-      entry.$2.dispose();
-    }
-    _display.clear();
     super.dispose();
   }
 }

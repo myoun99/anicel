@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
@@ -27,9 +25,8 @@ import 'conte_picture_ink.dart';
 ///
 /// Laid over the printed picture as the picture is printed: the camera's
 /// frame on the ground the picture renders on ([exportFrameGround]), the
-/// layers cropped at the canvas, inside the slot's rounded corners — and
-/// the camera's labels printed over it again, since it covers the ones the
-/// page printed.
+/// layers cropped at the canvas — and the camera's work written over it
+/// again, since it covers what the page wrote.
 class ContePictureLive extends StatelessWidget {
   const ContePictureLive({
     super.key,
@@ -64,8 +61,10 @@ class ContePictureLive extends StatelessWidget {
             Positioned.fill(child: _live(picture)),
           Positioned.fill(
             child: CustomPaint(
-              painter: _CameraLabels(
-                labels: [for (final picture in pictures) ...picture.labels],
+              painter: _CameraWork(
+                marks: [
+                  for (final picture in pictures) ...picture.cameraWork,
+                ],
                 viewport: viewport,
                 effectiveRatio: effectiveRatio,
                 paper: paper,
@@ -109,7 +108,8 @@ class ContePictureLive extends StatelessWidget {
                 nodes: drawn.nodes,
                 imageCache: session.renderCaches.layerFrameImageCache,
                 canvasSize: canvas,
-                viewport: viewportOfSimilarity(canvasToScreen)!,
+                // The view the print is laid by too (F-215).
+                viewport: pictureCanvasViewport(viewport, window.canvasToPaper),
                 activeSurfacePainter: BitmapSurfacePainter(
                   surface: celSurfaceWithSourceEffects(
                     surfaceOf(picture),
@@ -120,6 +120,9 @@ class ContePictureLive extends StatelessWidget {
                   lineage: (window.key.layerId, window.key.frameId),
                 ),
                 onBufferBytes: (bytes) => _count(window.id, bytes),
+                // The page prints this picture under it: taking over from
+                // the print, the live one shows no less on its first frame.
+                alreadyShown: true,
               ),
             ),
           ),
@@ -129,21 +132,19 @@ class ContePictureLive extends StatelessWidget {
   }
 
   /// Where [picture] shows on the screen: the camera's frame in its slot,
-  /// inside the slot's rounded corners.
-  ///
-  /// 🚨Cut on the page's grid, INSIDE the frame (F-197): the print under it
-  /// fills the window to the grid's nearest lines, and this composite ends
-  /// where its frame ends — a clip reaching past that end showed the ground
-  /// under the frame's edge, a light line round a dark picture.
-  _Shot _shotOf(ContePicture picture) {
-    final grid = SheetDeviceGrid.through(viewport, effectiveRatio);
-    return _Shot(
-      window: grid.rounded(
-        grid.inside(picture.mark.slot),
-        picture.mark.cornerRadius,
-      ),
-      shown: grid.inside(picture.shown),
-    );
+  /// cut INSIDE on the page's grid ([SheetDeviceGrid.livePicture], F-197),
+  /// the one call the paper's ink around it stops at too (F-216).
+  _Outline _shotOf(ContePicture picture) {
+    final shot = SheetDeviceGrid.through(
+      viewport,
+      effectiveRatio,
+    ).livePicture(picture.mark);
+    return _Outline([
+      shot.topLeft,
+      shot.topRight,
+      shot.bottomRight,
+      shot.bottomLeft,
+    ]);
   }
 
   /// Picture [id]'s display buffer, on the census — pushed: the census
@@ -158,27 +159,12 @@ class ContePictureLive extends StatelessWidget {
   }
 }
 
-/// A picture's shot on screen: the camera's frame where the slot shows
-/// it, inside the slot's rounded corners.
-class _Shot extends CustomClipper<Path> {
-  const _Shot({required this.window, required this.shown});
-
-  final ui.RSuperellipse window;
-  final Rect shown;
-
-  @override
-  Path getClip(Size size) => Path.combine(
-    PathOperation.intersect,
-    Path()..addRSuperellipse(window),
-    Path()..addRect(shown),
-  );
-
-  @override
-  bool shouldReclip(_Shot oldClipper) =>
-      oldClipper.window != window || oldClipper.shown != shown;
-}
-
-/// The canvas on screen — turned when the camera is.
+/// An outline on screen: a picture's shot, or the canvas in it — turned
+/// when the camera is.
+///
+/// ⛔Never a rect clipper, even for the square shot: a
+/// `CustomClipper<Rect>` is the ink window's clip, and there is one
+/// (`one_sheet_ink_layer_test`).
 class _Outline extends CustomClipper<Path> {
   const _Outline(this.corners);
 
@@ -192,17 +178,17 @@ class _Outline extends CustomClipper<Path> {
       !listEquals(oldClipper.corners, corners);
 }
 
-/// The camera's labels over the live pictures, printed as the page prints
-/// them.
-class _CameraLabels extends CustomPainter {
-  const _CameraLabels({
-    required this.labels,
+/// The camera's work over the live pictures — its frames, the trails of
+/// their corners and its keys' names — printed as the page prints it.
+class _CameraWork extends CustomPainter {
+  const _CameraWork({
+    required this.marks,
     required this.viewport,
     required this.effectiveRatio,
     required this.paper,
   });
 
-  final List<SheetMark> labels;
+  final List<SheetMark> marks;
   final CanvasViewport viewport;
   final double effectiveRatio;
   final Size paper;
@@ -214,12 +200,12 @@ class _CameraLabels extends CustomPainter {
           viewport: viewport,
           devicePixelRatio: effectiveRatio,
           paper: paper,
-        ), labels);
+        ), marks);
   }
 
   @override
-  bool shouldRepaint(_CameraLabels oldDelegate) =>
-      !listEquals(oldDelegate.labels, labels) ||
+  bool shouldRepaint(_CameraWork oldDelegate) =>
+      !listEquals(oldDelegate.marks, marks) ||
       oldDelegate.viewport != viewport ||
       oldDelegate.effectiveRatio != effectiveRatio ||
       oldDelegate.paper != paper;

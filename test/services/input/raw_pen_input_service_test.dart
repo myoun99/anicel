@@ -104,8 +104,6 @@ void main() {
     wintab.debugInjectPacket(
       const QaTabletPacket(
         pressure: 0,
-        tiltAzimuthDegrees: 0,
-        altitude: 1,
         timeMs: 1,
         buttons: 0x02,
       ),
@@ -127,5 +125,29 @@ void main() {
 
     raw.stop();
     wintab.stop();
+  });
+
+  test('the report\'s tilt speaks while it is fresh — and only a report '
+      'that carries one (desktop-pen-tilt)', () {
+    final service = RawPenInputService.instance;
+    RawPenInputService.debugClockOverride = () => DateTime(2024);
+    QaPenRawState? next;
+    service.debugPollOverride = () => next;
+    service.start();
+
+    expect(service.freshTilt(), isNull, reason: 'nothing reported yet');
+
+    // A HOVERING pen leans too: no switch is down.
+    next = const QaPenRawState(flags: 0, sequence: 1, tilt: (x: 12.5, y: -30));
+    expect(service.freshTilt(), (x: 12.5, y: -30.0));
+
+    next = const QaPenRawState(flags: 0x01, sequence: 2);
+    expect(service.freshTilt(), isNull, reason: 'a report with no tilt');
+
+    next = const QaPenRawState(flags: 0x01, sequence: 3, tilt: (x: 5, y: 5));
+    final stale = DateTime(
+      2024,
+    ).add(RawPenInputService.freshWindow + const Duration(milliseconds: 1));
+    expect(service.freshTilt(now: stale), isNull);
   });
 }

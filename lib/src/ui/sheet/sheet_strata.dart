@@ -45,12 +45,19 @@ class SheetStrata extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final changes = liveChanges;
-    if (changes == null) {
-      return _strata();
-    }
-    return ListenableBuilder(
-      listenable: changes,
-      builder: (context, _) => _strata(),
+    // ⛔Paint only — the strata take no press. A `CustomPaint` answers every
+    // hit inside its box, and a book lays its pages one over another across
+    // the whole panel (F-201): the page laid after took each press meant
+    // for a cell of the page above it (F-214, 유저 2026-09-28: 「85%밑
+    // 줌에서는 클릭해도 편집ui가 안열림 … 열리다가 안열리다가」 — below that
+    // zoom the view meets two pages).
+    return IgnorePointer(
+      child: changes == null
+          ? _strata()
+          : ListenableBuilder(
+              listenable: changes,
+              builder: (context, _) => _strata(),
+            ),
     );
   }
 

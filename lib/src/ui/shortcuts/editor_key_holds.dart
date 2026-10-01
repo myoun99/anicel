@@ -156,6 +156,16 @@ final class EditorKeyHolds {
     }
   }
 
+  /// Every hold ends — the window lost the OS's focus, and a key let go
+  /// while another app has it is never heard here ([_onKey] hears every
+  /// release this window gets, and that one it does not get).
+  void letGoOfEverything() {
+    _waiting.clear();
+    final holds = {..._held.values};
+    _held.clear();
+    holds.forEach(_end);
+  }
+
   /// A shell that goes away holds nothing. The pan's flag is app-wide, so
   /// it lets go; a switched tool goes with the shell that owns it — putting
   /// it back would rebuild a tree that is being taken down.

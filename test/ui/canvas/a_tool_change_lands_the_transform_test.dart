@@ -89,7 +89,7 @@ void main() {
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
     );
-    final coordinator = workspace.session.pixelEditingCoordinator!;
+    final coordinator = workspace.session.pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(
       BrushFrameKey(
         projectId: const ProjectId('tl-project'),

@@ -32,6 +32,7 @@ import 'selection_float_overlay.dart';
 import 'subtree_image_composite.dart';
 import 'static_composite_bake.dart';
 import 'layer_image_draw.dart';
+import 'blends_in_place.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
@@ -214,7 +215,23 @@ class CanvasLayerStackView extends StatefulWidget {
     this.debugDisableSingleBuffer = false,
     this.debugBufferCache,
     this.onBufferBytes,
+    this.alreadyShown = false,
   });
+
+  /// Whether what this stack shows is on screen already, painted by
+  /// another route this view takes over from — the conte's printed
+  /// pictures, drawn live while its brush is on. Its first sweep then
+  /// composes every row whatever it takes, as it composes a cel that just
+  /// left the active slot: a picture on screen may not go blank for the
+  /// frames an asynchronous build takes (F-215, 유저 2026-09-28: 「브러시
+  /// 허용 on시 … 그림이 사라졌다가 다시 렌더되서 보이기시작. on하든off하든
+  /// 바뀌는게 없어야」).
+  ///
+  /// ⛔False is every other view's first sweep — a project opened, a cut
+  /// switched to: nothing of it was on screen, and a whole cold stack made
+  /// in one build is a stall nobody asked for
+  /// ([LayerFrameImageCache.prepareSyncOrNull]).
+  final bool alreadyShown;
 
   /// 🚨A cache the TEST owns, so it can read how each frame was built.
   /// An optimisation that never runs looks exactly like one that works —
@@ -418,7 +435,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     if (leftLineage != widget.activeSurfacePainter?.lineage) {
       TilePyramid.instance.dropSeed(leftLineage);
     }
-    _syncImagesWithCache(leftTheActiveSlot: oldWidget.activeCels.toSet());
+    _syncImagesWithCache(shownAlready: oldWidget.activeCels.toSet());
     unawaited(_ensureImages());
   }
 
@@ -608,21 +625,23 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   /// This is what keeps a layer switch flicker-free — the just-deactivated
   /// layer arrives here with a warm cache image (the prerender re-warms it
   /// once the editor goes idle after a stroke) or, when the switch beats
-  /// the prerender, has its image composed right here
-  /// ([leftTheActiveSlot]); the async pass alone would paint it one frame
-  /// late at best: the artwork visibly vanished and reappeared. The
-  /// just-activated layer leaves the same frame, so it never double-draws
-  /// under the interactive view.
+  /// the prerender, has its image composed right here ([shownAlready]);
+  /// the async pass alone would paint it one frame late at best: the
+  /// artwork visibly vanished and reappeared. The just-activated layer
+  /// leaves the same frame, so it never double-draws under the interactive
+  /// view.
   ///
-  /// [leftTheActiveSlot] is the cels the widget this build replaces was
-  /// drawing as ACTIVE rows ([CanvasLayerStackView.activeCels]) — empty
-  /// for the first sweep, which replaces nothing.
+  /// [shownAlready] is the cels on screen already that this view holds no
+  /// image of: the ones the widget this build replaces was drawing as
+  /// ACTIVE rows ([CanvasLayerStackView.activeCels]), and — for the first
+  /// sweep of a view that takes over what another route showed
+  /// ([CanvasLayerStackView.alreadyShown]) — every row.
   void _syncImagesWithCache({
-    Set<BrushFrameKey> leftTheActiveSlot = const {},
+    Set<BrushFrameKey> shownAlready = const {},
   }) {
     labProbe(
       'layerStackSyncSweep(${widget.layers.length})',
-      () => _syncSweepBody(leftTheActiveSlot),
+      () => _syncSweepBody(shownAlready),
     );
   }
 
@@ -683,32 +702,38 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final ratio = EffectiveDevicePixelRatio.of(context);
-    if (_dependenciesSeen && ratio == _devicePixelRatio) {
+    final first = !_dependenciesSeen;
+    if (!first && ratio == _devicePixelRatio) {
       return;
     }
     _dependenciesSeen = true;
     _devicePixelRatio = ratio;
-    _syncImagesWithCache();
+    _syncImagesWithCache(
+      shownAlready: first && widget.alreadyShown
+          ? {for (final layer in widget.layers) layer.frameKey}
+          : const {},
+    );
     unawaited(_ensureImages());
   }
 
   /// Whether [key]'s cel was on screen a frame ago and is about to be
   /// asked for as an image it may not have: it just LEFT the active slot,
-  /// or the image this row holds is of the cel before an EDIT
-  /// (`sourceRevision` moves on every surface write and on nothing else).
-  /// Such a row's image is composed inside the sweep
-  /// ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
+  /// or another route showed it until this view took over
+  /// ([CanvasLayerStackView.alreadyShown]), or the image this row holds is
+  /// of the cel before an EDIT (`sourceRevision` moves on every surface
+  /// write and on nothing else). Such a row's image is composed inside the
+  /// sweep ([LayerFrameImageCache.prepareSyncOrNull]'s `makePictures`).
   bool _wasOnScreen(
     BrushFrameKey key,
     int? revision,
-    Set<BrushFrameKey> leftTheActiveSlot,
+    Set<BrushFrameKey> shownAlready,
   ) {
     final held = _images[key];
-    return leftTheActiveSlot.contains(key) ||
+    return shownAlready.contains(key) ||
         (held != null && held.revision != revision);
   }
 
-  void _syncSweepBody(Set<BrushFrameKey> leftTheActiveSlot) {
+  void _syncSweepBody(Set<BrushFrameKey> shownAlready) {
     final wanted = <BrushFrameKey>{
       for (final layer in widget.layers) layer.frameKey,
     };
@@ -751,11 +776,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           canvasSize: widget.canvasSize,
           quality: quality,
           sourceEffects: layer.sourceEffects,
-          makePictures: _wasOnScreen(
-            layer.frameKey,
-            revision,
-            leftTheActiveSlot,
-          ),
+          makePictures: _wasOnScreen(layer.frameKey, revision, shownAlready),
           inkSuffices: layer.inkSuffices,
         );
       } on Object catch (error, stack) {

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsConfiguration;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -10,6 +11,12 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/text/vertical_writing.dart'
+    show verticalTextCells;
+import 'package:anicel/src/ui/text/vertical_writing_text.dart'
+    show VerticalLatinForm, verticalWritingNaturalBox;
+import 'package:anicel/src/ui/text/word_condensation.dart'
+    show maxGapTightening, wordFitsAsItIs;
 import 'package:anicel/src/ui/canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'package:anicel/src/ui/canvas/flip_hud_model.dart';
 import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
@@ -17,16 +24,25 @@ import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_block_word.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show TimelineBlockWordGrowth;
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_glyph_cache.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart'
+    show TimelineGridTileOp;
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart'
+    show TimelineGridTileStore;
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart';
 
+import '../../helpers/block_word_finder.dart';
 import 'timeline_frame_geometry_probe.dart';
 
 /// 🚨B (유저 2026-09-24, `block-word-size-at-zoom-Q1`): 「글자크기 그냥
@@ -115,12 +131,19 @@ void main() {
       for (final cell in zooms) {
         final painter = cellsPainter(cell);
         for (final (start, length) in blocks) {
-          final word = naturalName(painter, start);
-          final layout = painter.cellWordLayoutFor(start, word);
+          final model = painter.cellModelAt(start);
+          final style = painter.glyphStyleFor(model);
+          final layout = painter.cellWordSetFor(start, model.glyph, style);
+          // The word as it is set: its letter gaps gave what they could.
+          final word = timelineGlyphPainter(
+            model.glyph,
+            style,
+            tightening: layout.tightening,
+          ).size;
           final left = layout.origin.dx;
           final right = left + word.width * layout.fit.x;
           final blockLeft = painter.cellRectFor(start).left;
-          final blockRight = blockLeft + length * cell;
+          final blockRight = timelineFrameEdge(start + length, cell);
           final what = '$cell px cell, block at $start';
           expect(left, greaterThanOrEqualTo(blockLeft - 1e-6), reason: what);
           expect(
@@ -130,7 +153,7 @@ void main() {
           );
           expect(
             layout.fit.x < 1,
-            word.width > length * cell,
+            word.width > blockRight - blockLeft,
             reason: '$what: narrowed exactly when the block runs short',
           );
           expect(
@@ -155,16 +178,104 @@ void main() {
         );
         expect(
           box.right,
-          lessThanOrEqualTo(blockLeft + length * cell + 0.5),
+          lessThanOrEqualTo(timelineFrameEdge(start + length, cell) + 0.5),
           reason: 'the block at $start',
         );
       }
     });
 
+    // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」 — a narrowed
+    // glyph smears; a word a little too long takes it out of its gaps.
+    test('its letter gaps give way first, and it narrows only past that', () {
+      const cell = 9.0;
+      final painter = cellsPainter(cell);
+      TextStyle styleAt(int start) =>
+          painter.glyphStyleFor(painter.cellModelAt(start));
+      final room = timelineFrameEdge(4, cell) - painter.cellRectFor(1).left;
+      expect(
+        naturalName(painter, 1).width - room,
+        1,
+        reason: '⛔전제: the three-cell block is a pixel short of 「12」',
+      );
+      final set = painter.cellWordSetFor(1, '12', styleAt(1));
+      expect(set.fit, wordFitsAsItIs, reason: 'the gap gave the pixel');
+      expect(set.tightening, 1);
+
+      // A one-cell block is far past what 「A1234」's gaps can give.
+      final tight = painter.cellWordSetFor(0, 'A1234', styleAt(0));
+      expect(tight.tightening, maxGapTightening);
+      expect(tight.fit.x, lessThan(1), reason: 'and narrows what is left');
+
+      // And the classic pass paints that set: the tighter word, unnarrowed.
+      final spy = _PaintedBoxes();
+      painter.paint(spy, const Size(cell * 16, rowExtent));
+      final at = spy.boxes.indexWhere(
+        (box) => (box.left - painter.cellRectFor(1).left).abs() < 0.5,
+      );
+      expect(spy.widths[at], lessThan(naturalName(painter, 1).width));
+      expect(spy.xScales[at], 1);
+    });
+
+    test('a tile bakes the word its gaps set — told apart from the same word '
+        'unset', () async {
+      const cell = 9.0;
+      // 「12」 twice: in three cells, a pixel short of it, and in four.
+      final twice = TimelineRowCellsPainter(
+        layer: Layer(
+          id: const LayerId('twice'),
+          name: 'T',
+          frames: [
+            Frame(id: const FrameId('t0'), duration: 1, strokes: const []),
+            Frame(id: const FrameId('t3'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('t0'), length: 3),
+            3: const TimelineExposure.drawing(FrameId('t3'), length: 4),
+          },
+        ),
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        exposureStateForLayer: stateFor,
+        frameNameForLayer: (_, frame) => frame == 0 || frame == 3 ? '12' : null,
+        colorScheme: const ColorScheme.dark(),
+        baseTextStyle: base,
+      );
+      final ops = await TimelineGridTileStore.instance.debugForegroundOps(
+        painter: twice,
+        spanStartIndex: 0,
+        spanEndIndexExclusive: 8,
+        devicePixelRatio: 1,
+      );
+      final widths = <int>[];
+      for (var at = 0; at < ops.length;) {
+        switch (ops[at]) {
+          case TimelineGridTileOp.glyph:
+            widths.add(ops[at + 5]);
+            at += 8;
+          case TimelineGridTileOp.rrectFill:
+            at += 8;
+          default:
+            at += 6;
+        }
+      }
+      // Baked at its ink plus the bake's two-pixel margin: the tight one
+      // runs 27px — its gap gave one — and the roomy one its whole 28 (the
+      // empty stretch's `x` after them is the third glyph).
+      expect(widths.take(2), [27 + 2, 28 + 2]);
+    });
+
     test('a squeezed row narrows it ACROSS instead of shrinking the type', () {
       final painter = cellsPainter(24, crossExtent: 8);
       final word = naturalName(painter, 1);
-      final layout = painter.cellWordLayoutFor(1, word);
+      final model = painter.cellModelAt(1);
+      final layout = painter.cellWordSetFor(
+        1,
+        model.glyph,
+        painter.glyphStyleFor(model),
+      );
       expect(painter.glyphStyleFor(painter.cellModelAt(1)).fontSize, 14);
       expect(layout.fit.y, lessThan(1));
       expect(
@@ -210,8 +321,8 @@ void main() {
         expect(spy.boxes, hasLength(labels.length), reason: 'fixture');
         for (var i = 0; i < labels.length; i += 1) {
           final label = labels[i];
-          final blockLeft = label.startIndex * cell;
-          final blockRight = label.endIndexExclusive * cell;
+          final blockLeft = timelineFrameEdge(label.startIndex, cell);
+          final blockRight = timelineFrameEdge(label.endIndexExclusive, cell);
           expect(
             spy.boxes[i].left,
             greaterThanOrEqualTo(blockLeft - 1e-6),
@@ -230,6 +341,39 @@ void main() {
         }
       }
     });
+
+    test('its letter gaps give way before it narrows (F-234-Q1)', () {
+      // A twelve-frame block a pixel short of its 「12」.
+      const cell = 17 / 12;
+      expect(
+        timelineFrameEdge(12, cell),
+        2 * timelineRunLabelFontSize - 1,
+        reason: '⛔전제: a pixel short',
+      );
+      final painter = TimelineRowRunLabelsPainter(
+        layer: Layer(
+          id: const LayerId('koma'),
+          name: 'K',
+          frames: [
+            Frame(id: const FrameId('k'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            0: const TimelineExposure.drawing(FrameId('k'), length: 12),
+          },
+        ),
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        showSeconds: false,
+        countingBase: 24,
+        baseTextStyle: base,
+      );
+      final spy = _PaintedBoxes();
+      painter.paint(spy, const Size(cell * 16, rowExtent));
+      expect(spy.xScales.single, 1, reason: 'the gap gave the pixel');
+    });
   });
 
   test('the glyph cache tells two faces of one word apart', () {
@@ -242,6 +386,156 @@ void main() {
       reason: '↩️the cache keyed on colour, weight and size alone, so a '
           'number laid out in one face was served in another',
     );
+  });
+
+  // 🗣️block-words-os-text-size-Q1 (유저 2026-09-30): 「블록 글자는 전부 안
+  // 따른다」 — the painted words never followed the OS text size, and the
+  // built ones do not either.
+  testWidgets('a word built as a widget keeps its type under the OS text '
+      'size, as a painted one does', (tester) async {
+    const style = TextStyle(fontSize: 10);
+    const place = (
+      axis: Axis.horizontal,
+      cells: 1,
+      cellIndex: 0,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0.0,
+    );
+    await tester.pumpWidget(
+      const MediaQuery(
+        data: MediaQueryData(textScaler: TextScaler.linear(1.5)),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 80,
+                height: 20,
+                child: TimelineBlockText(
+                  text: '12',
+                  style: style,
+                  place: place,
+                ),
+              ),
+              SizedBox(
+                width: 20,
+                height: 80,
+                child: TimelineBlockColumn(
+                  text: 'ドア',
+                  style: style,
+                  latinForm: VerticalLatinForm.upright,
+                  place: place,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    for (final word in [
+      tester.renderObject<RenderTimelineBuiltWord>(
+        find.byType(TimelineBlockText),
+      ),
+      tester.renderObject<RenderTimelineBuiltWord>(
+        find.byType(TimelineBlockColumn),
+      ),
+    ]) {
+      expect(word.style.fontSize, 10, reason: '${word.runtimeType}');
+    }
+  });
+
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」 — for a word a row
+  // builds as a widget too, set by the painted word's own code.
+  test('a word built as a widget gives up its letter gaps first', () {
+    const style = TextStyle(fontSize: 10, fontFamily: 'Face');
+    final natural = timelineGlyphPainter('12', style).size;
+    final word = RenderTimelineBlockText(
+      text: '12',
+      style: style,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(
+      BoxConstraints.tight(Size(natural.width - 1, 2 * natural.height)),
+    );
+    expect(
+      word.wordRect.width,
+      natural.width - 1,
+      reason: 'its gap gave the pixel, and nothing narrowed it',
+    );
+    final painted = _PaintedBoxes();
+    word.paintSetWord(painted, Offset.zero, wordFitsAsItIs);
+    expect(painted.widths, [natural.width - 1], reason: 'painted as it was set');
+    final read = SemanticsConfiguration();
+    word.describeSemanticsConfiguration(read);
+    expect(read.label, '12', reason: 'read aloud as the Text it replaced was');
+  });
+
+  test('a column built as a widget gives up the space between its glyphs '
+      'first', () {
+    const style = TextStyle(fontSize: 9, fontFamily: 'Face');
+    final natural = verticalWritingNaturalBox(
+      verticalTextCells('ドアー', latinForm: VerticalLatinForm.upright),
+      fontSize: 9,
+      lineHeight: 1.05,
+    ).size;
+    final column = RenderTimelineBlockColumn(
+      text: 'ドアー',
+      style: style,
+      lineHeight: 1.05,
+      latinForm: VerticalLatinForm.upright,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(
+      BoxConstraints.tight(Size(2 * natural.width, natural.height - 1)),
+    );
+    expect(
+      column.wordRect.height,
+      natural.height - 1,
+      reason: 'its two gaps gave the pixel, and nothing narrowed it',
+    );
+    // The renderer sizes a glyph to its slot less the leading, and these
+    // slots gave more than their 0.45px of leading.
+    final painted = _PaintedBoxes();
+    column.paintSetWord(painted, Offset.zero, wordFitsAsItIs);
+    expect(painted.widths, hasLength(3), reason: 'fixture: three glyphs');
+    expect(painted.widths, everyElement(9), reason: 'it keeps its type');
+  });
+
+  // F-224: the column is narrowed glyph by glyph, each set at its share of
+  // the narrowing (so a screen draws it from its bake), not scaled whole.
+  test('a column built as a widget narrows down its block past that', () {
+    const style = TextStyle(fontSize: 9, fontFamily: 'Face');
+    final column = RenderTimelineBlockColumn(
+      text: 'ドアー',
+      style: style,
+      lineHeight: 1.05,
+      latinForm: VerticalLatinForm.upright,
+      place: (
+        axis: Axis.horizontal,
+        cells: 1,
+        cellIndex: 0,
+        growth: TimelineBlockWordGrowth.towardBlockEnd,
+        acrossAlignment: 0,
+      ),
+    )..layout(BoxConstraints.tight(const Size(20, 12)));
+    final painted = _PaintedBoxes();
+    column.paint(TestRecordingPaintingContext(painted), Offset.zero);
+    expect(painted.boxes, hasLength(3), reason: 'fixture: three glyphs');
+    // To within a pixel: a glyph's box is its line, not its ink.
+    final set = painted.boxes.reduce((a, b) => a.expandToInclude(b));
+    expect(set.top, greaterThan(-1));
+    expect(set.bottom, lessThan(12 + 1), reason: 'narrowed into its block');
   });
 
   group('a lane key\'s NAME', () {
@@ -284,7 +578,7 @@ void main() {
       ) async {
         const cell = 6.0;
         await pumpLane(tester, cell: cell, axis: axis);
-        final word = find.text('Walk');
+        final word = findBlockText('Walk');
         expect(
           word,
           findsOneWidget,
@@ -292,12 +586,8 @@ void main() {
               'both mine (2026-08-11), from when the name stood beside the '
               'diamond',
         );
-        expect(
-          find.ancestor(of: word, matching: find.byType(TimelineBlockWord)),
-          findsOneWidget,
-        );
         final origin = tester.getTopLeft(find.byType(TimelineLaneFrameRow));
-        final painted = tester.getRect(word).shift(-origin);
+        final painted = blockWordRect(tester, word).shift(-origin);
         final along = axis == Axis.horizontal
             ? (painted.left, painted.right)
             : (painted.top, painted.bottom);
@@ -337,17 +627,11 @@ void main() {
     );
     final word = find.descendant(
       of: chip,
-      matching: find.byType(TimelineBlockWord),
+      matching: find.byType(TimelineBlockColumn),
     );
     expect(word, findsOneWidget);
     final room = tester.getRect(word);
-    final child = tester.renderObject<RenderBox>(
-      find.descendant(of: word, matching: find.byType(ExcludeSemantics)).first,
-    );
-    final painted = MatrixUtils.transformRect(
-      child.getTransformTo(null),
-      Offset.zero & child.size,
-    );
+    final painted = blockWordRect(tester, word);
     expect(painted.left, greaterThanOrEqualTo(room.left - 1e-6));
     expect(painted.right, lessThanOrEqualTo(room.right + 1e-6));
     expect(painted.top, greaterThanOrEqualTo(room.top - 1e-6));
@@ -404,7 +688,7 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-instruction-cam-0')),
     );
     for (final text in ['FROMHERE', 'TOTHERE']) {
-      final painted = tester.getRect(find.text(text));
+      final painted = blockWordRect(tester, findBlockText(text));
       expect(
         painted.left,
         greaterThanOrEqualTo(span.left - 1e-6),
@@ -448,6 +732,14 @@ void main() {
             'whose paragraph still measured the whole name',
       );
     }
+    expect(
+      [
+        for (var i = 0; i < spy.boxes.length; i += 1)
+          if ((spy.boxes[i].height - 14).abs() < 1e-6) spy.widths[i],
+      ],
+      everyElement(lessThan(8 * 14.0)),
+      reason: 'set tighter first — its letter gaps gave way (F-234-Q1)',
+    );
   });
 
   testWidgets('the folded row\'s fallback strip never drops a word', (
@@ -502,6 +794,139 @@ void main() {
         reason: 'and it stays inside its block',
       );
     }
+    expect(
+      [
+        for (var i = 0; i < spy.boxes.length; i += 1)
+          if (spy.boxes[i].left < 2 * 3) spy.widths[i],
+      ],
+      everyElement(lessThan(8 * 9.5)),
+      reason: 'set tighter first — its letter gaps gave way (F-234-Q1)',
+    );
+  });
+
+  // 🧪F-220: the zoom follows every percent, so a cell is seldom a whole
+  // number of pixels — the law lays cells a pixel apart in width (14 and 15
+  // at 14.6). A word centred on a cell is centred on THAT cell; one centred
+  // on a cell of the zoom's nominal width sits a fraction off it.
+  group('🚨on the cell the frame axis\' law laid', () {
+    const cell = 14.6;
+    double edge(int frame) => timelineFrameEdge(frame, cell);
+
+    test('a cell\'s word centres on its cell while it fits', () {
+      final painter = cellsPainter(cell);
+      final small = base.copyWith(fontSize: 4);
+      final word = timelineGlyphPainter('x', small).size;
+      for (final (start, _) in blocks) {
+        final laid = painter.cellRectFor(start);
+        expect(
+          painter.cellWordSetFor(start, 'x', small).origin.dx + word.width / 2,
+          closeTo(laid.center.dx, 1e-9),
+          reason: 'block at $start, on its ${laid.width}px cell',
+        );
+      }
+    });
+
+    test('a word grows into its block to the law\'s end of it — one as wide '
+        'as the block fills it unnarrowed, one a hair wider narrows inside '
+        'it', () {
+      final painter = cellsPainter(cell);
+      // The block over 1-3: the word outgrows its first cell and the room
+      // grows cell by cell — to the law's boundaries. Stepped by the zoom's
+      // nominal width it ended 0.2px past this block, over its neighbour.
+      final blockLeft = edge(1);
+      final blockRight = edge(4);
+      // One letter an em wide: no gap to give way, so the room is all the
+      // word has.
+      TextStyle wide(double em) => base.copyWith(fontSize: em);
+      final room = blockRight - blockLeft;
+      final exact = painter.cellWordSetFor(1, 'x', wide(room));
+      expect(exact.origin.dx, blockLeft);
+      expect(exact.fit.x, 1.0, reason: 'the block holds it exactly');
+      // ⚠️A narrowing is quantised down to 1/64 (the tile bake is keyed on
+      // it), which would hide a fraction of a pixel on a much wider word —
+      // so the word is a hair wider than the block: it must narrow.
+      final wider = timelineGlyphPainter('x', wide(room + 0.1)).width;
+      final narrowed = painter.cellWordSetFor(1, 'x', wide(room + 0.1));
+      expect(narrowed.fit.x, lessThan(1), reason: 'the block cannot hold it');
+      expect(
+        narrowed.origin.dx + wider * narrowed.fit.x,
+        lessThanOrEqualTo(blockRight),
+        reason: 'inside its own block, not past it',
+      );
+    });
+
+    test('a koma number anchors on its block\'s last cell and is centred on '
+        'it', () {
+      final painter = TimelineRowRunLabelsPainter(
+        layer: layer,
+        geometry: testFrameGeometry(
+          frameCellExtent: cell,
+          frameEndIndexExclusive: 16,
+        ),
+        crossAxisExtent: rowExtent,
+        showSeconds: false,
+        countingBase: 24,
+        baseTextStyle: base,
+      );
+      final spy = _PaintedBoxes();
+      painter.paint(spy, Size(edge(16), rowExtent));
+      final labels = painter.runLabels();
+      expect(labels, isNotEmpty, reason: 'fixture');
+      expect(spy.boxes, hasLength(labels.length), reason: 'fixture');
+      for (var i = 0; i < labels.length; i += 1) {
+        final end = labels[i].endIndexExclusive;
+        final centre = (edge(end - 1) + edge(end)) / 2;
+        expect(labels[i].anchor.dx, closeTo(centre, 1e-9), reason: '$end');
+        expect(spy.boxes[i].center.dx, closeTo(centre, 1e-6), reason: '$end');
+      }
+    });
+
+    testWidgets('the folded row writes a block\'s name, and an empty '
+        'stretch\'s x, in the first cell the law laid', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 600,
+              child: CollapsedRowOverlay(
+                snapshot: FlipHudSnapshot(
+                  rows: [
+                    FlipHudRow(
+                      name: 'A',
+                      kind: LayerKind.animation,
+                      runs: [FlipHudRun(startIndex: 1, length: 3, label: '1')],
+                    ),
+                  ],
+                  rowIndex: 0,
+                  frameIndex: 0,
+                  frameCount: 40,
+                ),
+                rail: null,
+                naturalRailWidth: 100,
+                pixelsPerFrame: cell,
+                framesPerSecond: 24,
+              ),
+            ),
+          ),
+        ),
+      );
+      final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
+      final spy = _PaintedBoxes();
+      tester.widget<CustomPaint>(strip).painter!.paint(
+        spy,
+        tester.getSize(strip),
+      );
+      double centreNear(double x) => spy.boxes
+          .map((box) => box.center.dx)
+          .reduce((a, b) => (a - x).abs() < (b - x).abs() ? a : b);
+      // The block's plate stands a pixel in from its first boundary.
+      final name = edge(1) + 1 + (edge(2) - edge(1)) / 2;
+      expect(centreNear(name), closeTo(name, 1e-6), reason: 'the name');
+      for (final empty in [0, 4]) {
+        final x = (edge(empty) + edge(empty + 1)) / 2;
+        expect(centreNear(x), closeTo(x, 1e-6), reason: 'the x at $empty');
+      }
+    });
   });
 }
 
@@ -509,6 +934,14 @@ void main() {
 /// word is drawn at the origin of a scaled canvas.
 class _PaintedBoxes implements Canvas {
   final boxes = <Rect>[];
+
+  /// Each painted word's own width, before any narrowing — shorter than its
+  /// natural width when its letter gaps gave way (F-234-Q1).
+  final widths = <double>[];
+
+  /// How far each painted word was narrowed across.
+  final xScales = <double>[];
+
   final _saved = <Matrix4>[];
   var _transform = Matrix4.identity();
 
@@ -535,12 +968,16 @@ class _PaintedBoxes implements Canvas {
   );
 
   @override
-  void drawParagraph(ui.Paragraph paragraph, Offset offset) => boxes.add(
-    MatrixUtils.transformRect(
-      _transform,
-      offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
-    ),
-  );
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) {
+    boxes.add(
+      MatrixUtils.transformRect(
+        _transform,
+        offset & Size(paragraph.maxIntrinsicWidth, paragraph.height),
+      ),
+    );
+    widths.add(paragraph.maxIntrinsicWidth);
+    xScales.add(_transform.storage[0]);
+  }
 
   @override
   int getSaveCount() => _saved.length + 1;

@@ -98,6 +98,12 @@ const _knownToPaintThrough = <String, String>{
   'panel:media-viewer-sub':
       'the same widget as panel:media-viewer, in the rail instead of the '
       'floor: an InteractiveViewer, nothing static to bake',
+  // 🆕2026-09-28 — the pool's floor escape is ALWAYS mounted now (card
+  // `overflow-escape-three-copies`: crossing the floor used to rebuild its
+  // list from nothing), so its scrollers are a viewport around the body.
+  'panel:media':
+      'yields to body:media inside the floor escape — the panel scrolls '
+      'when squeezed, and its scrollers never unmount',
   // 🪦`body:Brush Settings` stood here from 2026-09-22 to 09-23, and it was
   // NOT a yield: Material's `Switch` always contains an `Opacity` —
   // `Opacity(opacity: onChanged == null ? disabledOpacity : 1)`,
@@ -169,6 +175,9 @@ const _mustBakeWhenActive = <String, List<String>>{
   // bar became zones, because an outer bake around inner ones is the
   // nesting that freezes. Each group bakes itself instead.
   EditorWorkspace.timelineTabId: <String>['command-group'],
+  // The yield `panel:media` makes above is to THIS — with nothing
+  // imported, as the sweep opens it, the body holds no list of its own.
+  EditorWorkspace.mediaTabId: <String>['body:media'],
 };
 
 void main() {

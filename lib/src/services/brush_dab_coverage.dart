@@ -34,8 +34,7 @@ void forEachBrushPixelCoverage(
   }
 
   final tip = brushDabTipGeometry(dab);
-  final tipMask = tip.tipMask;
-  final isRound = tip.isRound;
+  final edge = brushDabEdgeLaw(dab);
 
   // Applies the dual-brush and paper-texture multiplications with the EXACT
   // multiplication order of the commit/live rasterizers (separate `*=`
@@ -96,24 +95,14 @@ void forEachBrushPixelCoverage(
     for (var x = dirtyRegion.left; x < dirtyRegion.rightExclusive; x += 1) {
       final dx = x + 0.5 - dab.center.x;
       final dy = y + 0.5 - dab.center.y;
-      double coverage;
-      if (tipMask != null) {
-        coverage = rotatedTipMaskCoverage(tip, tipMask, dx, dy);
-      } else if (isRound) {
-        coverage = analyticRoundTipCoverage(tip, dx, dy);
-      } else {
-        // A square dab is the fill and stamp verbs' "cover exactly this
-        // rect", and the dab constructor refuses to build one that is
-        // squashed or rotated — so there is no rotated-rect case to test.
-        coverage = 1.0;
-      }
+      var coverage = tipCoverageAt(tip, dx, dy);
       if (coverage <= 0.0) {
         continue;
       }
       // The brush's own EDGE, ahead of the tiled masks — the same place and
       // the same arithmetic as `blendDabTilesDart`, which is what makes this
       // a reference for it rather than a second opinion.
-      coverage = dab.antiAlias.applyTo(coverage);
+      coverage = brushEdgeApplied(edge, coverage);
       if (coverage <= 0.0) {
         continue;
       }

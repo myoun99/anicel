@@ -3,32 +3,39 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/ui/dialogs/timesheet_format_window.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 const _bar = ValueKey<String>('timesheet-format-exposure-bar');
 const _threshold = ValueKey<String>('timesheet-format-exposure-bar-threshold');
 const _seFill = ValueKey<String>('timesheet-format-se-empty-fill');
 const _save = ValueKey<String>('timesheet-format-save-button');
 
+/// Opens the window on [initial] — and, when given, on the cut [sheet] the
+/// sheet shows — handing the saved format's info to [onResult] and the
+/// whole format to [onFormat].
 Future<void> _openWindow(
   WidgetTester tester,
   TimesheetInfo initial,
-  void Function(TimesheetInfo? result) onResult,
-) async {
+  void Function(TimesheetInfo? result) onResult, {
+  ({TimesheetSheetKind kind, int celColumns})? sheet,
+  void Function(TimesheetFormat? format)? onFormat,
+}) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Builder(
         builder: (context) => Center(
           child: TextButton(
             onPressed: () async {
-              onResult(
-                await showDialog<TimesheetInfo>(
-                  context: context,
-                  builder: (_) => TimesheetFormatWindow(initialInfo: initial),
-                ),
+              final format = await showDialog<TimesheetFormat>(
+                context: context,
+                builder: (_) =>
+                    TimesheetFormatWindow(initialInfo: initial, sheet: sheet),
               );
+              onResult(format?.info);
+              onFormat?.call(format);
             },
             child: const Text('open'),
           ),
@@ -48,8 +55,8 @@ Future<void> _press(WidgetTester tester, ValueKey<String> key) async {
   await tester.pumpAndSettle();
 }
 
-ExportPill _pill(WidgetTester tester, ValueKey<String> key) =>
-    tester.widget<ExportPill>(find.byKey(key));
+Pill _pill(WidgetTester tester, ValueKey<String> key) =>
+    tester.widget<Pill>(find.byKey(key));
 
 ValueKey<String> _box(TimesheetHeaderField field) =>
     ValueKey<String>('timesheet-format-visible-${field.name}');
@@ -184,5 +191,78 @@ void main() {
       second!.exposureBarThreshold,
       TimesheetInfo.defaultExposureBarThreshold,
     );
+  });
+
+  // The paper the cut on the sheet prints on (timesheet-sheet-kind-scope-Q1
+  // 「컷마다 따로」), and the paper its cel columns do not fit refused
+  // (timesheet-sheet-capacity-Q1 「3초 시트로 고정(6초 끔)」).
+  group('the paper', () {
+    ValueKey<String> paper(TimesheetSheetKind kind) =>
+        ValueKey<String>('timesheet-format-paper-${kind.jsonValue}');
+    const three = TimesheetSheetKind.threeSeconds;
+    const six = TimesheetSheetKind.sixSeconds;
+
+    testWidgets('both offered while the 6-second strip holds the cut\'s cel '
+        'columns; the one picked goes out with the save', (tester) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: (kind: six, celColumns: 3),
+        onFormat: (saved) => format = saved,
+      );
+      expect(_pill(tester, paper(six)).selected, isTrue);
+      expect(_pill(tester, paper(three)).selected, isFalse);
+
+      await _press(tester, paper(three));
+      expect(_pill(tester, paper(three)).selected, isTrue);
+      expect(_pill(tester, paper(six)).selected, isFalse);
+      await _press(tester, _save);
+      expect(format!.kind, three);
+    });
+
+    testWidgets('a cut whose cel columns outgrow the 6-second strip prints on '
+        'the 3-second sheet — 6초 keeps its place and takes no tap', (
+      tester,
+    ) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        sheet: (kind: six, celColumns: 9),
+        onFormat: (saved) => format = saved,
+      );
+      expect(_pill(tester, paper(three)).selected, isTrue);
+      expect(_pill(tester, paper(six)).selected, isFalse);
+      expect(_pill(tester, paper(six)).onTap, isNull);
+      expect(_pill(tester, paper(three)).onTap, isNotNull);
+
+      await _press(tester, _save);
+      expect(
+        format!.kind,
+        six,
+        reason: 'what the cut chose, for when its cel layers fit again',
+      );
+    });
+
+    testWidgets('in the gap there is no cut to set: both keep their place '
+        'and take no tap', (tester) async {
+      TimesheetFormat? format;
+      await _openWindow(
+        tester,
+        TimesheetInfo.empty,
+        (_) {},
+        onFormat: (saved) => format = saved,
+      );
+      for (final kind in TimesheetSheetKind.values) {
+        expect(find.byKey(paper(kind)), findsOneWidget);
+        expect(_pill(tester, paper(kind)).onTap, isNull);
+      }
+
+      await _press(tester, _save);
+      expect(format!.kind, isNull);
+    });
   });
 }

@@ -13,7 +13,10 @@ import '../../models/project_background.dart';
 import '../brush/cut_piece_preview.dart' show CutStampPreview, paintCutPiece;
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'blends_in_place.dart';
 import 'display_resample.dart';
+import 'landing_preview.dart';
+import 'level_image.dart' show halvingPicture;
 import 'tile_origin.dart';
 import 'tile_picture_budget.dart';
 import 'tile_pyramid.dart';
@@ -26,6 +29,11 @@ part 'surface_paint/coordinate_picture.dart';
 part 'surface_paint/level_blocks.dart';
 part 'surface_paint/overlay_pass.dart';
 part 'surface_paint/surface_paint_pass.dart';
+
+/// A selection's float as a row paints it: the [preview], in CANVAS space,
+/// and the matrix that carries canvas space into the row's own — null while
+/// the row stands where the canvas does, the posed row's inverse otherwise.
+typedef RowFloat = ({LandingPreview preview, Matrix4? canvasToRow});
 
 /// Paints the brush canvas — committed artwork plus the in-progress stroke —
 /// with the viewport transform applied INSIDE the picture.
@@ -240,14 +248,18 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// A layer's opacity and blend have to apply to the LAYER once. Wrapping
   /// the whole painter in a `saveLayer` is one way to get that; handing the
   /// same paint to each draw is another, and the two are the same pixels
-  /// exactly when no two draws land on the same pixel.
+  /// exactly when no two draws land on the same pixel — and the paint's
+  /// blend acts where it is drawn. 🚨F-243: on the Windows app a tile drawn
+  /// in multiply blended the whole screen ([blendsInPlace]), so a row in
+  /// such a blend never rides the draws, whatever this answers (the
+  /// stack's `needsBuffer`).
   ///
   /// ⛔NOT A NEW LAW — the overlay's own blend already rides it one level
   /// down: *"BB-1: the brush blend previews live (tiles never overlap, so
   /// per-tile draws blend each pixel exactly once)."* This is that sentence
   /// asked about the LAYER's paint instead of the stroke's.
   ///
-  /// 🧪Measured: with the tile paint this class actually uses
+  /// 🧪Measured on the test VM: with the tile paint this class actually uses
   /// (`isAntiAlias = false`, `FilterQuality.none`) the two routes agree to
   /// the byte at scale 1, 1.37, 0.63 and 2, at phases 0, 0.42 and 0.5 —
   /// 0 of 19200 pixels differ. Antialiased draws do NOT agree, which is why
@@ -290,13 +302,22 @@ class BitmapSurfacePainter extends CustomPainter with RepaintOnProps {
   /// committed tiles are drawn as LEVEL TILES ([TilePyramid]), 1:1 in
   /// level pixels, and only a block no level tile can be made for yet
   /// falls back to its tiles under the caller's scale ([_LevelBlocks]).
-  void paintContentInto(Canvas canvas, {Paint? layerPaint, int level = 0}) =>
+  ///
+  /// [float] is a selection's lifted float, drawn over this surface's
+  /// coordinates ([RowFloat]).
+  void paintContentInto(
+    Canvas canvas, {
+    Paint? layerPaint,
+    int level = 0,
+    RowFloat? float,
+  }) =>
       // Constructed PER PAINT: the pass keeps one paint's state in `late
       // final` fields, and a painter paints more than once.
       _SurfacePaintPass(this).paintContentInto(
         canvas,
         layerPaint: layerPaint,
         level: level,
+        float: float,
       );
 
   /// The part of CANVAS space this paint can actually reach, read off the

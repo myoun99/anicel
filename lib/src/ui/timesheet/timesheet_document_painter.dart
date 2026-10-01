@@ -5,15 +5,18 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../core/page_stack.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_sheet_kind.dart';
 import '../../models/timesheet_words.dart';
 import '../../models/transition_geometry.dart'
     show TransitionSides, transitionSidesOf;
@@ -23,6 +26,7 @@ import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
+import '../text/word_condensation.dart' show paintScaledText;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/timeline_instruction_row_visual.dart'
@@ -31,6 +35,7 @@ import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount, timelineDrawnEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import '../repaint_props.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart' show paintSheetInkWindow, paintSheetPaper;
 import '../timeline/memo_token.dart';
 
@@ -40,6 +45,7 @@ part 'document_painter/timesheet_instruction_pass.dart';
 part 'document_painter/timesheet_se_pass.dart';
 part 'document_painter/timesheet_bands_pass.dart';
 part 'document_painter/timesheet_cells_pass.dart';
+part 'document_painter/timesheet_books_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -132,13 +138,45 @@ class TimesheetDocumentLayout {
 
   int get _cameraColumnCount => _columnCountOf(TimesheetColumnKind.camera);
 
+  /// The strips a page lays side by side ([TimesheetSheetKind.strips]).
+  int get _strips => document.sheetKind.strips;
+
+  /// A strip's width at its sheet's own column counts, before any scale:
+  /// the ACTION and CELL blocks and the two fixed group allotments.
+  static double _baseStripWidth(TimesheetSheetKind kind) =>
+      kind.celColumns * (actionColumnWidth + celColumnWidth) +
+      seGroupWidth +
+      cameraGroupWidth;
+
+  /// What the strips of [kind] span inside the paper's padding, their
+  /// columns printed [scale] times as wide.
+  static double _stripsSpan(TimesheetSheetKind kind, double scale) =>
+      kind.strips * (frameNumberGutterWidth + _baseStripWidth(kind) * scale) +
+      (kind.strips - 1) * halfGap;
+
+  /// How much wider [kind]'s columns print than the 6-second sheet's: what
+  /// spreads its strips across the SAME paper — 1 on the 6-second sheet,
+  /// about 1.5 on the 3-second one, whose single strip spans what the two
+  /// halves and the gap between them do (the reference sheet's wider
+  /// columns, TOEI_3sec; 유저 2026-09-25: 「형식은 지금 우리가 만든 형식.
+  /// 규격이나 사이즈나 그런거」).
+  static double columnScaleOf(TimesheetSheetKind kind) {
+    final span = _stripsSpan(TimesheetSheetKind.sixSeconds, 1);
+    final fixed = _stripsSpan(kind, 0);
+    return (span - fixed) / (kind.strips * _baseStripWidth(kind));
+  }
+
   int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
 
   /// Per-column width. Instance-level because the CAM and SE cells share
   /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
   /// the base two slots each column in that group narrows so the paper
   /// width stays put.
-  double columnWidthFor(TimesheetColumnKind kind) {
+  double columnWidthFor(TimesheetColumnKind kind) =>
+      _baseColumnWidthFor(kind) * columnScaleOf(document.sheetKind);
+
+  /// [columnWidthFor] on the 6-second sheet's scale.
+  double _baseColumnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
     }
@@ -177,13 +215,15 @@ class TimesheetDocumentLayout {
   /// One fixed paper width in BOTH modes — the view toggle never resizes
   /// the paper (or the header band that spans it).
   double get paperWidth =>
-      pagePadding * 2 + (frameNumberGutterWidth + halfWidth) * 2 + halfGap;
+      pagePadding * 2 +
+      (frameNumberGutterWidth + halfWidth) * _strips +
+      halfGap * (_strips - 1);
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
-  int halfRowCount(int half) => half == 0
+  int halfRowCount(int half) => half < _strips - 1
       ? document.halfFrameCount
-      : document.pageFrameCount - document.halfFrameCount;
+      : document.pageFrameCount - document.halfFrameCount * (_strips - 1);
 
   /// Which halves of a page actually carry rows, in print order.
   ///
@@ -192,7 +232,7 @@ class TimesheetDocumentLayout {
   /// painter prints. They used to walk `half 0..1, skip halfRowCount <= 0`
   /// each for themselves.
   List<({int half, int rowCount})> get halfStrips => [
-    for (var half = 0; half < 2; half += 1)
+    for (var half = 0; half < _strips; half += 1)
       if (halfRowCount(half) > 0) (half: half, rowCount: halfRowCount(half)),
   ];
 
@@ -252,6 +292,41 @@ class TimesheetDocumentLayout {
       memoBandHeight +
       headerGap +
       columnsHeaderHeight;
+
+  /// Top of the grid — its column header's top edge.
+  double gridTop(int pageIndex) =>
+      halfRowsTop(pageIndex) - columnsHeaderHeight;
+
+  /// A book's tag (D24): its height, the step between two stacked, the size
+  /// its words print at, and what it keeps clear of the memo band's bottom.
+  static const double bookTagHeight = 13;
+  static const double bookTagStep = 15;
+  static const double bookTagFontSize = 9;
+  static const double bookTagFloorGap = 2;
+
+  /// Where each book's tag stands over the ACTION block of [half] of
+  /// [pageIndex]: the x of its boundary and the tag's bottom edge. The last
+  /// book's tag sits on the memo band's bottom and each before it a step
+  /// higher — the reference sheets' diagonal (유저 2026-09-25, 사진 셋),
+  /// stacked up from the band because our form has no empty band over the
+  /// grid (timesheet-book-tag-place-Q1: 「메모 띠 아래쪽에 겹쳐 쌓는다
+  /// (크기 그대로)」).
+  List<({String label, double x, double bottom})> bookTags(
+    int pageIndex,
+    int half,
+  ) {
+    final books = document.books;
+    final left = halfLeft(pageIndex, half);
+    final floor = memoBandRect(pageIndex).bottom - bookTagFloorGap;
+    return [
+      for (var index = 0; index < books.length; index += 1)
+        (
+          label: books[index].label,
+          x: left + columnLeftInHalf(books[index].boundary),
+          bottom: floor - (books.length - 1 - index) * bookTagStep,
+        ),
+    ];
+  }
 
   /// Width fractions of the header boxes when all print; hiding boxes
   /// renormalizes the rest over the band. Proportions follow the user's
@@ -327,11 +402,11 @@ class TimesheetDocumentLayout {
     }
     final page = frameIndex ~/ document.pageFrameCount;
     final local = frameIndex % document.pageFrameCount;
-    final half = local < document.halfFrameCount ? 0 : 1;
+    final half = math.min(local ~/ document.halfFrameCount, _strips - 1);
     return (
       page: page,
       half: half,
-      row: half == 0 ? local : local - document.halfFrameCount,
+      row: local - half * document.halfFrameCount,
     );
   }
 
@@ -406,13 +481,64 @@ void _enterDocumentSpace(
   }
 }
 
+/// [column]'s cells as [preview] shows them. Every layer-backed column kind
+/// previews (UI-R18 #7 — action, SE, camera instruction): the column's own
+/// baked [TimesheetColumn.previewCellsBuilder] re-derives the cells on the
+/// row the drag previews, so the painter never learns each kind's recipe.
+/// SE previews arrive as DISPLAY clones under the same id (the timeline's
+/// seam), so the SE windowing stays the document's job. The document's own
+/// cells where the drag previews no row of this column.
+List<TimesheetCell> timesheetColumnCellsShowing(
+  TimesheetColumn column,
+  TimelineDragPreview? preview,
+) {
+  final layerId = column.layerId;
+  final rebuild = column.previewCellsBuilder;
+  if (preview == null || layerId == null || rebuild == null) {
+    return column.cells;
+  }
+  final previewLayer = timelineDragPreviewLayerFor(preview, layerId);
+  return previewLayer == null ? column.cells : rebuild(previewLayer);
+}
+
+/// What the content stratum PRINTS from the drag channel — every column's
+/// cells as the drag shows them, the cut's live end and its live drawn end,
+/// the three things [TimesheetDocumentPainter] reads off its `dragPreview` —
+/// compared by value.
+///
+/// 🚨sheet-prints-only-its-drags: a drag that moves nothing the sheet prints
+/// — a lane value scrubbed, a canvas handle, a key range (F-195) — prints
+/// the same, and the sheet neither repaints nor stands its bake down for it.
+Object timesheetDragPrint({
+  required TimesheetDocument document,
+  required CutId? cutId,
+  required TimelineDragPreview? preview,
+}) => (
+  ByList([
+    for (final column in document.columns)
+      ByList(timesheetColumnCellsShowing(column, preview)),
+  ]),
+  timelineCutEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+  ),
+  timelineDrawnEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+    drawnFrameCount: document.drawnFrameCount,
+  ),
+);
+
 /// Paints the sheet document — the paper form (header band, Direction memo
 /// band, group/letter rows, second-heavy grid), cel numbers, holds,
 /// in-between marks, X cells, camera keys, the data-driven cut-end
 /// strikethrough and the playhead row — under the panel viewport transform
 /// (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
+class TimesheetDocumentPainter extends CustomPainter
+    with RepaintOnProps, SheetInkOnScreen {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
@@ -425,6 +551,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.ink = const [],
     this.inkImageFor,
+    this.inkSurfaceFor,
     this.liveInkKeys = const {},
     Listenable? inkRepaint,
   }) : accent = AppColors.accent,
@@ -434,17 +561,25 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// through too (`timesheetInkWindows`), handed in by whoever built it.
   final List<SheetInk> ink;
 
-  /// A window's baked ink raster, or null to print none there.
+  /// A window's baked ink raster, or null to print none there — for an
+  /// EXPORT, which has no view to draw it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// A window's ink surface ON SCREEN, printed as the brush's live window
+  /// paints it ([SheetInkOnScreen], F-215).
+  @override
+  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
 
   /// Keys a LIVE brush window is already showing: skipped here, so
   /// translucent ink never composites twice.
+  @override
   final Set<BrushFrameKey> liveInkKeys;
 
   /// Device pixels per LOGICAL pixel — monitor ratio × UI scale; the
   /// viewport transform lands the paper on the device grid with it.
   /// Defaulting to 1.0 keeps every focused test and the PSD export path
   /// unchanged.
+  @override
   final double effectiveRatio;
 
   /// The accent at the moment this painter was BUILT.
@@ -463,6 +598,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
+  @override
   final CanvasViewport? viewport;
 
   /// The words the sheet prints, in the NOTATION language (UI-R10 #7) —
@@ -624,6 +760,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
         startFrame: 0,
         rowCount: document.rowCount,
       );
+      if (_drawContent) {
+        _books.paintHalf(canvas, pageIndex: 0, half: 0);
+      }
     } else {
       // Every page, one under another.
       for (final pageIndex in layout.visiblePageIndexes) {
@@ -649,6 +788,9 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
                 (strip.half == 0 ? 0 : document.halfFrameCount),
             rowCount: strip.rowCount,
           );
+          if (_drawContent) {
+            _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
+          }
         }
       }
     }
@@ -661,6 +803,11 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
     }
 
     canvas.restore();
+    // On screen the ink is the stratum's last, and drawn out of document
+    // space: as the live windows draw it (F-215).
+    if (_draws(SheetPaintLayer.ink)) {
+      printInkAsLive(canvas, size, ink);
+    }
   }
 
   /// The handwriting, pen over paper: each window's surface where its
@@ -704,6 +851,12 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   // library). The painter keeps the passes its paint() calls.
   late final _TimesheetSePass _se = _TimesheetSePass(this);
 
+  // ── the books pass: its own object, in its own file ─────────────────
+  //
+  // A collaborator (timesheet/document_painter/timesheet_books_pass.dart, a part of this
+  // library). The painter keeps the passes its paint() calls.
+  late final _TimesheetBooksPass _books = _TimesheetBooksPass(this);
+
   // ── the instruction pass: its own object, in its own file ───────────
   //
   // A collaborator (timesheet/document_painter/timesheet_instruction_pass.dart, a part of this
@@ -739,6 +892,7 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
       top: top,
       mainExtent: rows * TimesheetDocumentLayout.rowHeight,
       naturalCellExtent: TimesheetDocumentLayout.rowHeight,
+      setWord: paintScaledText,
       maxCellWidth: columnWidth - 2,
     );
   }
@@ -764,6 +918,10 @@ class TimesheetDocumentPainter extends CustomPainter with RepaintOnProps {
   /// A header box's value: set this size, bold, centred on the box, in
   /// [headerValueRect] (R7-⑥ reference layout).
   static const double headerValueSize = 14;
+
+  /// The duration box's second, parenthesised length — the drawn one
+  /// ([_TimesheetBandsPass._paintDrawnLength]) — set small under the value.
+  static const double headerDrawnLengthSize = 9;
 
   /// Where a header box's value is set: its top this far down the box, no
   /// wider than the box less its margins.

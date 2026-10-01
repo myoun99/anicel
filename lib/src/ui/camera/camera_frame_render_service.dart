@@ -16,7 +16,9 @@ import '../canvas/bitmap_tile_image_cache.dart';
 import '../../services/composite_effect_paint.dart';
 import '../../services/layer_pose_paint.dart' show applyCameraProjection;
 import '../../services/straight_rgba_image.dart';
+import '../canvas/display_resample.dart';
 import '../canvas/layer_image_draw.dart';
+import '../canvas/level_image.dart';
 import '../canvas/subtree_image_composite.dart';
 import '../canvas/tiled_surface_compose.dart';
 
@@ -139,6 +141,18 @@ class CameraFrameRenderService {
   /// name tags) that must scale with the artwork but never enter a
   /// composite cache. Cel renders leave it null: a cel is the artwork
   /// alone.
+  ///
+  /// [displayLevels] reduces the artwork as the canvas's display does
+  /// ([displayLevelOf]): each layer's image halved, a 2×2 box mean a time,
+  /// until what is left of the reduction is over half ([displayResidualOf]),
+  /// which the draw takes with the display's own filter. A panel's picture
+  /// asks for it — the print a conte cell shows beside the canvas's live
+  /// composite of the same cut, which reduces this way (F-215, 유저
+  /// 2026-09-30: 「허용누르면 필터on되는거같은데. 왜 브러시허용이랑
+  /// 렌더링이랑 연관있는거냐고」 · 「축소시 이거 캔버스랑 같은규칙으로
+  /// 안티low 필터같은거 동일적용한거맞나?」). ↩️It was one bilinear draw
+  /// down to a quarter and less, which samples 2×2 of each 4×4 and lets a
+  /// line a pixel wide vanish between them.
   Future<ui.Image> renderThroughCamera({
     List<CutFrameCompositeLayer> layers = const [],
     List<CompositeNode<CutFrameCompositeLayer>>? nodes,
@@ -146,6 +160,7 @@ class CameraFrameRenderService {
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
     void Function(ui.Canvas canvas)? overlayPass,
+    bool displayLevels = false,
   }) async {
     final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
@@ -195,6 +210,21 @@ class CameraFrameRenderService {
 
     await composeImages(tree);
 
+    final previewScale = resolvedOutput.width / cameraFrameSize.width;
+    // The scale the CTM below is at. A group that rasterises ITSELF needs it,
+    // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
+    // projection's zoom is the whole answer.
+    final cameraRasterScale = (previewScale * pose.zoom).abs();
+    if (displayLevels) {
+      final level = displayLevelOf(cameraRasterScale);
+      for (final layer in [...layerImages.keys]) {
+        layerImages[layer] = await _halved(layerImages[layer]!, level);
+      }
+    }
+    final leafQuality = displayLevels
+        ? filterQualityForDisplayScale(displayResidualOf(cameraRasterScale))
+        : filterQuality;
+
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     canvas.drawRect(
@@ -207,7 +237,6 @@ class CameraFrameRenderService {
       Paint()..color = background,
     );
 
-    final previewScale = resolvedOutput.width / cameraFrameSize.width;
     applyCameraProjection(
       canvas,
       pose,
@@ -238,10 +267,6 @@ class CameraFrameRenderService {
       center: Offset(pose.center.x, pose.center.y),
       radius: visibleRadius,
     );
-    // The scale the CTM below is at. A group that rasterises ITSELF needs it,
-    // and a `Canvas` will not tell anyone. Rotation preserves scale, so the
-    // projection's zoom is the whole answer.
-    final cameraRasterScale = (previewScale * pose.zoom).abs();
     void paintNodes(
       Canvas canvas,
       List<CompositeNode<CutFrameCompositeLayer>> list,
@@ -326,12 +351,17 @@ class CameraFrameRenderService {
               effects: layer.effects,
               // Drawn through the camera's projection: never a texel copy.
               texelScale: null,
-              filterQuality: filterQuality,
-              drawAtOriginWhen: (worldRect, _) =>
+              filterQuality: leafQuality,
+              // ⚠️And the image a texel a canvas pixel: a level
+              // ([displayLevels]) spans the canvas at half and less, and
+              // laid at the origin it would draw at that size.
+              drawAtOriginWhen: (worldRect, image) =>
                   worldRect.left == 0 &&
                   worldRect.top == 0 &&
                   worldRect.width == canvasSize.width &&
-                  worldRect.height == canvasSize.height,
+                  worldRect.height == canvasSize.height &&
+                  image.width == canvasSize.width &&
+                  image.height == canvasSize.height,
             );
         }
       }
@@ -350,4 +380,28 @@ class CameraFrameRenderService {
       }
     }
   }
+}
+
+/// [composed] with its image halved [level] times over the same canvas
+/// rect — each time the exact mean of a 2×2 block of the one above
+/// ([halvingPicture]), as the display's own levels are made. The images
+/// it passes through are let go of; the one it hands back is the caller's.
+Future<PositionedSurfaceImage> _halved(
+  PositionedSurfaceImage composed,
+  int level,
+) async {
+  var image = composed.image;
+  for (var step = 0; step < level; step += 1) {
+    final size = halvedSize(image.width, image.height);
+    final picture = halvingPicture([(image: image, at: ui.Offset.zero)]);
+    final ui.Image halved;
+    try {
+      halved = await picture.toImage(size.width, size.height);
+    } finally {
+      picture.dispose();
+    }
+    image.dispose();
+    image = halved;
+  }
+  return PositionedSurfaceImage(image: image, worldRect: composed.worldRect);
 }

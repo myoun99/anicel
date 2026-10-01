@@ -201,7 +201,7 @@ void main() {
     session.addListener(heardSession);
     addTearDown(() => session.removeListener(heardSession));
     final quietSession = await railRebuildsAfter(
-      () => session.selectedGuideId = const GuideId('rail-quiet-news'),
+      () => session.cutVerbs.selectedGuideId = const GuideId('rail-quiet-news'),
     );
     expect(sessionNews, greaterThan(0), reason: 'premise: the session spoke');
     expect(quietSession, isEmpty, reason: 'a guide pick lights no door');

@@ -38,6 +38,32 @@ int deviceScaledHotCelBudget({required int? physicalMemoryBytes}) =>
       ceiling: 1536 * 1024 * 1024,
     );
 
+/// What a read of a cel is for — the one thing the store's readers differ
+/// in (card `render-reads-thaw-into-hot`, 2026-09-29).
+///
+/// 🚨The hot budget belongs to what feeds the screen first (the cache law's
+/// third question). A render read cels nobody is drawing on as a USE: each
+/// cold or file-backed one thawed into the hot tier — filling a 13-cut
+/// film's storyboard took it from 149 to 529MB (measured 09-28) — and,
+/// newest in line, pushed the cut being drawn toward cooling.
+enum CelRead {
+  /// The app working on the cel — the canvas, an edit, a copy: what the
+  /// read thaws stays hot with its display cache seeded, and the read
+  /// counts as the cel's latest use.
+  use,
+
+  /// A render looking at it — a storyboard or conte picture, an export
+  /// frame: the same pixels, decoded for this read alone. Nothing the store
+  /// keeps moves — no hot tier, no place in line, no display cache — and a
+  /// parked copy stays parked. What the caller then holds is outside every
+  /// budget, so it holds only what it is drawing (`ExportFrameRenderer`).
+  ///
+  /// A movie's picture is not thawed but decoded, by the hydrator, for
+  /// whoever asked — a render included — so a look finds it where the
+  /// hydrator just put it.
+  look,
+}
+
 class BrushFrameStore {
   BrushFrameStore();
 
@@ -508,47 +534,68 @@ class BrushFrameStore {
   /// cel materializes (inflate + decode) and promotes to hot right here;
   /// a file-backed cel reads its bytes from the saved .anicel first — this
   /// is the ONE seam every pixel consumer goes through.
-  BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) {
+  ///
+  /// [read] says what the read is for ([CelRead]): a [CelRead.look] gets
+  /// the same pixels and leaves the store as it found it.
+  BitmapSurface? bakedSurfaceOrNull(
+    BrushFrameKey key, {
+    CelRead read = CelRead.use,
+  }) {
     key = _canonicalize(key);
-    final hot = _bakedSurfaces.remove(key);
+    final hot = _bakedSurfaces[key];
     if (hot != null) {
-      _bakedSurfaces[key] = hot; // LRU touch.
+      if (read == CelRead.use) {
+        // LRU touch.
+        _bakedSurfaces
+          ..remove(key)
+          ..[key] = hot;
+      }
       return hot;
     }
-    final AnicelCelBlob blob;
+    final blob = _keptBlobOrNull(key);
+    if (blob == null) {
+      return null;
+    }
+    final surface = blob.decode().toSurface();
+    if (read == CelRead.use) {
+      _keepThawed(key, surface);
+    }
+    return surface;
+  }
+
+  /// The bytes a cel that is not hot is kept as — its parked blob, or its
+  /// stretch of the saved file — or null when it has neither.
+  AnicelCelBlob? _keptBlobOrNull(BrushFrameKey key) {
     final parked = _coldCels[key];
     if (parked == null) {
       final fileRef = _fileCels[key];
-      if (fileRef == null) {
-        return null;
-      }
       // The ref stays: the file still holds these exact bytes, so a
       // later cooling of this (clean) cel is a free drop.
-      blob = AnicelCelBlob(_readFileRefBytes(fileRef));
-    } else {
-      final read = _readScratchBlob(parked);
-      if (read == null) {
-        // 🚨★★★**THE REF STAYS AND SO DOES THE FILE.** A cold cel is the
-        // only copy of that picture outside the hot tier, so a read that
-        // fails right now — a volume that blinked, an antivirus holding
-        // the file — must not be turned into 「this cel is empty」, which
-        // is what dropping the ref would say to every caller and to the
-        // next save. The picture is UNAVAILABLE this moment; the next
-        // access tries again.
-        return null;
-      }
-      blob = read;
-      // Read succeeded, so the bytes are in hand and the parking space is
-      // free. ⛔Dropped only AFTER the read, never before it.
-      _dropCold(key);
+      return fileRef == null
+          ? null
+          : AnicelCelBlob(_readFileRefBytes(fileRef));
     }
-    final surface = blob.decode().toSurface();
+    // 🚨★★★**THE REF STAYS AND SO DOES THE FILE when this answers null.**
+    // A cold cel is the only copy of that picture outside the hot tier, so
+    // a read that fails right now — a volume that blinked, an antivirus
+    // holding the file — must not be turned into 「this cel is empty」,
+    // which is what dropping the ref would say to every caller and to the
+    // next save. The picture is UNAVAILABLE this moment; the next access
+    // tries again.
+    return _readScratchBlob(parked);
+  }
+
+  /// A thawed cel made the app's: hot, its display cache reseeded from the
+  /// same object so first paint after a promotion is O(1) (mirroring what
+  /// open used to do eagerly), and its parking space let go.
+  void _keepThawed(BrushFrameKey key, BitmapSurface surface) {
+    // The bytes are in hand, so the parking space is free. ⛔Dropped only
+    // AFTER the read, never before it — and after the decode, so a blob
+    // that will not decode keeps its only copy.
+    _dropCold(key);
     _storeHot(key, surface);
-    // Reseed the display cache from the same object so first paint after
-    // a promotion is O(1), mirroring what open used to do eagerly.
     storeRebuiltDisplayCache(key: key, previewSurface: surface);
     _scheduleCooling();
-    return surface;
   }
 
   /// 🚨Through the SESSION'S handle, not a fresh open per cel.
@@ -991,10 +1038,12 @@ class BrushFrameStore {
   /// The cel's current pixels: a VALID display cache at [canvasSize]
   /// first (donations keep it fresh), else the baked truth (a cold cel
   /// materializes if its recorded size matches). Null = the cel is empty
-  /// (or sized for another canvas — resize flows reseed).
+  /// (or sized for another canvas — resize flows reseed). [read] as
+  /// [bakedSurfaceOrNull]'s.
   BitmapSurface? currentSurfaceWithoutReplay(
     BrushFrameKey key, {
     required CanvasSize canvasSize,
+    CelRead read = CelRead.use,
   }) {
     key = _canonicalize(key);
     final cached = validPreviewSurfaceOrNull(key);
@@ -1009,15 +1058,17 @@ class BrushFrameStore {
     }
     final hot = _bakedSurfaces[key];
     if (hot != null) {
-      return hot.canvasSize == canvasSize ? bakedSurfaceOrNull(key) : null;
+      return hot.canvasSize == canvasSize
+          ? bakedSurfaceOrNull(key, read: read)
+          : null;
     }
     final cold = _coldCels[key];
     if (cold != null && cold.canvasSize == canvasSize) {
-      return bakedSurfaceOrNull(key);
+      return bakedSurfaceOrNull(key, read: read);
     }
     final fileRef = _fileCels[key];
     if (fileRef != null && fileRef.canvasSize == canvasSize) {
-      return bakedSurfaceOrNull(key);
+      return bakedSurfaceOrNull(key, read: read);
     }
     return null;
   }

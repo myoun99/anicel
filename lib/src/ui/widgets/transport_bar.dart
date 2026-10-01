@@ -47,7 +47,10 @@ class TransportBar extends StatelessWidget {
 
   final bool playing;
   final ValueChanged<int> onSeek;
-  final VoidCallback onPlayPause;
+
+  /// Null when there is nothing to play — a still, a PDF: the button stays
+  /// where it is and is off.
+  final VoidCallback? onPlayPause;
 
   /// A new (in, out) pair, already ordered and inside the source.
   final void Function(int inFrame, int outFrame) onRangeChanged;
@@ -161,7 +164,9 @@ class TransportBar extends StatelessWidget {
                       ),
                     AppIconButton(
                       keyValue: 'transport-play',
-                      tooltip: playing ? 'Pause' : 'Play',
+                      tooltip: playing
+                          ? AppText.strings.menuPause
+                          : AppText.strings.menuPlay,
                       icon: Icon(playing ? Icons.pause : Icons.play_arrow),
                       size: AppIconButtonSize.bar,
                       isSelected: playing,

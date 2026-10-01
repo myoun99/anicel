@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../models/brush_edit_session_state.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_surface_painter.dart';
@@ -17,14 +17,14 @@ import '../effective_device_pixel_ratio.dart';
 class BrushEditCanvasView extends StatelessWidget {
   const BrushEditCanvasView({
     super.key,
-    required this.sessionState,
+    required this.surface,
     this.viewport,
     this.showTransparentBackground = true,
     this.overlayModel,
     this.lineage,
   });
 
-  final BrushEditSessionState sessionState;
+  final BitmapSurface surface;
 
   /// Zoom/pan applied inside the painter; `null` renders at identity.
   final CanvasViewport? viewport;
@@ -80,7 +80,7 @@ class BrushEditCanvasView extends StatelessWidget {
         // rotated layer-pose wrap is the one geometry where cached and live
         // can still genuinely differ.
         painter: BitmapSurfacePainter(
-          surface: sessionState.canvasState.currentSurface,
+          surface: surface,
           viewport: viewport,
           overlayModel: overlayModel,
           showTransparentBackground: showTransparentBackground,

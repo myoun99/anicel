@@ -270,6 +270,9 @@ void main() {
       dualMask: maskFor('dual'),
       dualMaskScale: 0.7,
       textureMaskSource: maskFor('texture'),
+      textureInvert: true,
+      textureBrightness: 0.25,
+      textureContrast: -0.5,
       textureScale: 1.2,
       textureDensity: 0.9,
       blendMode: BrushBlendMode.multiply,
@@ -309,6 +312,44 @@ void main() {
       expect(input.textureScale, state.textureScale);
       expect(input.textureDensity, state.textureDensity);
       expect(input.blendMode, state.blendMode);
+    });
+
+    // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저
+    // 2026-10-01, 「초기화가 설마 텍스처항목은 초기화안하나?」): copyWith laid
+    // the texture of the brush being LEFT over every shape it was handed,
+    // and dropped the three levels — so a brush picked after a textured one
+    // wore its paper, and no slider could set a level.
+    test('a shape laid down by copyWith is taken whole — the texture of the '
+        'brush before included', () {
+      final before = everyCarriedFieldNonDefault();
+      final plain = BrushToolState(size: 9, flow: 0.4).shape;
+      expect(before.copyWith(shape: plain).shape, plain);
+      expect(
+        BrushToolState().copyWith(shape: before.shape).shape,
+        before.shape,
+      );
+    });
+
+    test('copyWith lands the texture and its three levels as handed', () {
+      final state = BrushToolState(textureMaskSource: maskFor('texture'));
+      final levelled = state.copyWith(
+        textureMaskSource: maskFor('canvas'),
+        textureInvert: true,
+        textureBrightness: 0.25,
+        textureContrast: -0.5,
+      );
+      expect(levelled.textureMaskSource?.id, 'canvas');
+      expect(levelled.textureInvert, isTrue);
+      expect(levelled.textureBrightness, 0.25);
+      expect(levelled.textureContrast, -0.5);
+      final tweaked = levelled.copyWith(size: 30);
+      expect(
+        tweaked.textureMaskSource,
+        levelled.textureMaskSource,
+        reason: 'a slider keeps the texture AS PICKED — not the levelled '
+            'bake laid back as the source, to be levelled again',
+      );
+      expect(tweaked.textureMask, levelled.textureMask);
     });
 
     test('fromBrushSettings clamps out-of-range preset values', () {

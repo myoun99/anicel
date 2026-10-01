@@ -100,7 +100,7 @@ void main() {
       workspaceOf(tester).session;
 
   int inkOf(WidgetTester tester, FrameId frameId, {CutId cut = cutId}) {
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(keyFor(frameId, cut: cut));
     final size = surface.canvasSize;
     var ink = 0;

@@ -54,7 +54,7 @@ void main() {
             ),
           },
         ),
-        cutFrameCount: 24,
+        drawnFrameCount: 24,
       ),
     ],
   );

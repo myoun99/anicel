@@ -18,8 +18,11 @@ class _TimesheetSePass {
   /// spills into row 0 — the mark sits on the column's first row edge.
   /// Pure display, exactly the timeline rows' meaning.
   void paintSeCrossingMarks(Canvas canvas) {
-    // The `~` straddles the red line, so it follows the same live length —
-    // otherwise a drag leaves the mark hanging where the line used to be.
+    // The `~` straddles the cut's CONTE end — where the next cut's sound
+    // begins — and follows the same live length, or a drag leaves it
+    // hanging where the end used to be. ⚠️F-227 moved the sheet's END LINE
+    // to the drawn end when the cut owes のりしろ; a sound crossing into the
+    // next cut still crosses here, so this mark did not move with it.
     final frameCount = _painter.livePlaybackFrameCount;
     final endLine = _painter.layout.cutEndLineFor(frameCount);
     final startTop = _painter.layout.frameRowTop(0);
@@ -99,26 +102,19 @@ class _TimesheetSePass {
         columnWidth: columnWidth,
         y: cellTop + 1,
       );
+      _paintDelivery(
+        canvas,
+        cell.seType,
+        boundary: Offset(centerX, cellTop),
+        maxWidth: columnWidth - 2,
+      );
     }
 
     if (seName.isNotEmpty) {
-      // R6-②: a soft accent tint with dark ink writing — the full-strength
-      // accent read too loud against the paper. FULL column width (R7-②:
-      // the name box, the red bars and the SE column must share ONE exact
-      // width — the old 1px inset read as a mismatched overlay).
-      canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
-        Paint()..color = _painter.accent.withValues(alpha: 0.3),
-      );
-      _painter._text(
+      _paintNameBox(
         canvas,
         seName,
-        Offset(centerX, cellTop + 4),
-        fontSize: 7,
-        bold: true,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 4,
+        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
       );
     }
 
@@ -143,6 +139,60 @@ class _TimesheetSePass {
   }
 
   static const double _nameBoxHeight = 12.0;
+
+  /// The entry's name chip, over [box].
+  ///
+  /// R6-②: a soft accent tint with dark ink writing — the full-strength
+  /// accent read too loud against the paper. FULL column width (R7-②: the
+  /// name box, the red bars and the SE column must share ONE exact width —
+  /// the old 1px inset read as a mismatched overlay).
+  void _paintNameBox(Canvas canvas, String seName, Rect box) {
+    canvas.drawRect(
+      box,
+      Paint()..color = _painter.accent.withValues(alpha: 0.3),
+    );
+    _painter._text(
+      canvas,
+      seName,
+      Offset(box.center.dx, box.top + 2),
+      fontSize: 7,
+      bold: true,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+      maxWidth: box.width - 4,
+    );
+  }
+
+  /// How far above the entry's red bar the delivery's writing starts — one
+  /// line of the name's size, so it sits on the bar rather than across it.
+  static const double _deliveryLift = 9.0;
+
+  /// 🗣️I-20 (유저 2026-09-30): the delivery over the name — 「타임시트에도
+  /// 이름 위에 빨간 가로선 위에 배경색없이 텍스트만」 — and only where the
+  /// sheets print it (「OFF거나 MONO일때만」, [SeLineType.printsOnSheets]).
+  /// On the half's first row the row above IS the column's title, and it
+  /// lands there on purpose: 「1콤마부터 대사 나올땐 … 1콤마의 위(SE1이나
+  /// SE2 이런글자)에 겹치도록」.
+  void _paintDelivery(
+    Canvas canvas,
+    SeLineType? delivery, {
+    required Offset boundary,
+    required double maxWidth,
+  }) {
+    if (delivery == null || !delivery.printsOnSheets) {
+      return;
+    }
+    _painter._text(
+      canvas,
+      delivery.label,
+      boundary.translate(0, -_deliveryLift),
+      fontSize: 7,
+      bold: true,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+      maxWidth: maxWidth,
+    );
+  }
 
   /// This page half's share of an SE entry's dialogue: the glyphs that the
   /// layout over the WHOLE span lands on this half's rows, from [row] down —
@@ -202,6 +252,7 @@ class _TimesheetSePass {
         color: TimesheetDocumentPainter._ink,
         fontSize: 9,
       ),
+      setWord: paintScaledText,
     );
   }
 

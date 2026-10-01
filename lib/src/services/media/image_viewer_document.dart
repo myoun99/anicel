@@ -1,7 +1,11 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../photoshop/psd_image.dart' show decodePsdCompositeImage;
+import '../photoshop/psd_reader.dart' show looksLikePsdBytes;
 import 'media_byte_source.dart';
+import 'psd_composite_document.dart';
 import 'viewer_document.dart';
 
 /// A still or animated image, as a [ViewerDocument]: one page per frame,
@@ -33,13 +37,51 @@ final class ImageViewerDocument implements ViewerDocument {
   /// Bytes that are not one — a carried image inside the project file, or
   /// its framed copy — are read once and handed over the same way.
   ///
+  /// 🚨A PHOTOSHOP DOCUMENT IS ASKED FOR FIRST, and opens as its composite
+  /// ([PsdCompositeDocument]): no platform codec reads one, and every image
+  /// entry point asks ([decodePsdCompositeImage]'s note). 🪦The viewer read
+  /// its images through `decodeImageFrames`, which asks, until this
+  /// document replaced it (#1364, 2026-08-29) without asking — from then on
+  /// the viewer's own picker offered a `.psd` the viewer could not open, and
+  /// a PSD from the pool stamped nothing onto an envelope (found 2026-09-30,
+  /// moving the import preview onto the viewer's door).
+  ///
   /// Everything is read before this returns, so whoever holds [source]
   /// can let go as soon as it does.
-  static Future<ImageViewerDocument> open(MediaByteSource source) async {
+  static Future<ViewerDocument> open(MediaByteSource source) async {
     final file = source.wholeFilePath;
-    final buffer = file != null
-        ? await ui.ImmutableBuffer.fromFilePath(file)
-        : await ui.ImmutableBuffer.fromUint8List(await source.read());
+    if (file == null) {
+      final bytes = await source.read();
+      return looksLikePsdBytes(bytes)
+          ? PsdCompositeDocument.read(bytes)
+          : _decoded(await ui.ImmutableBuffer.fromUint8List(bytes));
+    }
+    return _startsLikePsd(file)
+        ? PsdCompositeDocument.read(await File(file).readAsBytes())
+        : _decoded(await ui.ImmutableBuffer.fromFilePath(file));
+  }
+
+  /// Whether the file at [path] begins like a Photoshop document — four
+  /// bytes read, so an image the codec takes still never enters the heap.
+  ///
+  /// 🚨SYNCHRONOUS ON PURPOSE: open, read and close in one breath, so the
+  /// file is never held open across an event. An awaited open left a
+  /// handle standing between turns, and on Windows a file with a handle on
+  /// it cannot be deleted — a Drive pick replaced while the import preview
+  /// was reading it kept its copy's folder (`ProviderDocuments.letGo` gave
+  /// up in silence). Four bytes cost nothing on the thread that asks.
+  static bool _startsLikePsd(String path) {
+    final file = File(path).openSync();
+    try {
+      return looksLikePsdBytes(file.readSync(4));
+    } finally {
+      file.closeSync();
+    }
+  }
+
+  /// [buffer] through the platform codec. The buffer is released here,
+  /// whichever way this ends.
+  static Future<ImageViewerDocument> _decoded(ui.ImmutableBuffer buffer) async {
     final ui.ImageDescriptor descriptor;
     try {
       descriptor = await ui.ImageDescriptor.encoded(buffer);

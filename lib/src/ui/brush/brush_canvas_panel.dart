@@ -97,6 +97,7 @@ import '../text/text_measure.dart';
 import '../listenable_rebind.dart';
 import '../repaint_props.dart';
 import '../input/value_control_pointers.dart';
+import '../canvas/canvas_viewport_offset.dart';
 
 part 'canvas_panel/canvas_panel_shell_bars.dart';
 part 'canvas_panel/canvas_panel_selection.dart';
@@ -168,6 +169,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.viewportOverlayBuilder,
+    this.viewportControlsBuilder,
     this.viewportUnderlayBuilder,
     this.activeStrokeOverlayModel,
     this.interactiveContentOpacity = 1.0,
@@ -286,7 +288,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 🗣️유저 2026-09-17: 「몇 행에 걸쳐서 적용하던 **동시적용은 가능하게**.
   /// **적용시만 각 행에 따라 불가능하면 그냥 무시**하는방식」 · 2026-09-18:
   /// 「**여러프레임 확정가능**하게한다던가」. Rows and frames are ONE law and
-  /// the session already writes it — `CellVerbs.pixelVerbCellKeys`, which
+  /// the session already writes it — `PixelVerbs.pixelVerbCellKeys`, which
   /// skips a hidden row, an empty cel or a row that takes no brush.
   ///
   /// ⛔A FUNCTION, not a list: the range changes under this panel, and a
@@ -300,7 +302,7 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// Where each cel of [transformTargetKeys] stands on the canvas — its
   /// row's placement, the one the pixel verbs restate an outline through
-  /// (`CellVerbs.placementOf`). A range over several rows lands each cel
+  /// (`PixelVerbs.placementOf`). A range over several rows lands each cel
   /// through its OWN row's placement (a-marquee-on-a-posed-row ④).
   ///
   /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
@@ -466,6 +468,14 @@ class BrushCanvasPanel extends StatefulWidget {
   /// (e.g. the camera frame overlay, layers above the active one).
   final Widget Function(BuildContext context, CanvasViewport viewport)?
   viewportOverlayBuilder;
+
+  /// Optional CONTROLS stacked over every tool layer — the standing row's
+  /// transform box (F-222). On top, so a press that lands on one of them is
+  /// its own whatever tool is armed (「컨트롤 위에서 시작한 제스처는 그
+  /// 컨트롤의 것이다」), and it says which presses those are: a press it does
+  /// not claim falls to the tool beneath.
+  final Widget Function(BuildContext context, CanvasViewport viewport)?
+  viewportControlsBuilder;
 
   /// Optional layer painted UNDER the interactive canvas (layers below the
   /// active one + the paper). When present, the interactive view skips its
@@ -1180,6 +1190,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     super.didChangeDependencies();
     _shellBars.readStageColors();
     _onFloor = CanvasFloorInsets.isFloor(context);
+    _pillBand = _CanvasEditorPanelShell.pillBandIn(context);
     // ⛔Nothing here answers a RATIO change any more, deliberately. Holding
     // the percentage across one used to take a remembered scale, a re-zoom
     // around a chosen anchor, a value held through the build that noticed
@@ -1892,7 +1903,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // interactive subtree on every frame flip — the constant flip
       // hitch. Cel changes reset in place via didUpdateWidget.
       key: const ValueKey<String>('brush-canvas-view'),
-      sessionState: coordinator.activeSessionState,
+      celNow: () => coordinator.currentSurfaceOf(activeKey),
       layerId: activeKey.layerId,
       frameId: activeKey.frameId,
       inputSettings: _inputSettingsNow,
@@ -1974,18 +1985,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
     // artwork coordinates in lockstep (R3 ⑩ — always-applied transforms).
+    //
+    // ⛔ALWAYS a Transform — the identity while the row stands unposed. The
+    // wrap used to come and go with the pose, and a view that changes parent
+    // is a view mounted again: the expensive half of a flip. Since F-195 the
+    // canvas follows a handle drag as it goes, so an unposed row paid that
+    // mount on the first step of every drag and again when a drag went away.
+    // An identity Transform paints its child in place (a translation by
+    // zero: no layer), so standing still costs nothing.
     final pose = widget.interactiveContentPose;
-    final posedView = pose == null
-        ? interactiveView
-        : Transform(
-            transform: layerPoseViewportWrapMatrix(
+    final posedView = Transform(
+      transform: pose == null
+          ? Matrix4.identity()
+          : layerPoseViewportWrapMatrix(
               pose.pose,
               widget.canvasSize,
               _viewportState._viewport,
               anchorPoint: pose.anchorPoint,
             ),
-            child: interactiveView,
-          );
+      child: interactiveView,
+    );
     if (widget.interactiveContentOpacity >= 1.0) {
       return posedView;
     }
@@ -1995,9 +2014,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     );
   }
 
-  /// What is hidden from the artwork by the panels lying on it. Zero for a
-  /// panel nothing lies on, which is every one but the floor.
-  EdgeInsets get _framingInsets => widget.floorCover;
+  /// What is hidden from the artwork: the panels lying on the floor, a
+  /// docked panel's own lanes — its panbars stand on the artwork's right and
+  /// bottom edges (F-209) — and the pill's band across the top edge
+  /// ([_CanvasEditorPanelShell.pillBandIn]). Framing keeps out from under
+  /// all of it as it keeps out from under a panel.
+  EdgeInsets get _framingInsets =>
+      widget.floorCover +
+      (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
+      EdgeInsets.only(top: _pillBand);
+
+  /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
+  /// sized by are known — and again whenever they change.
+  late double _pillBand;
 
   void _handleSourceStrokeCommitted(BrushStrokeCommitData strokeData) {
     labProbe('penUpCommitHandler', () => _commitSourceStroke(strokeData));
@@ -2081,7 +2110,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The surface is never written here. Cutting copies.
   void _cutPieceFromShape(CanvasSelectionShape shape) {
     final slot = widget.cutPieceSlot;
-    final coordinator = widget._editableCoordinator;
+    // ★THE CEL QUESTION, NOT THE ROW'S (H19): a cut COPIES — it reads the
+    // cel and writes nothing — so a lane, which refuses the STROKE, does
+    // not refuse it. 🗣️F-222-box-Q4 「선택 · 잘라내기만 빼고 모든 도구」
+    // leaves the cut its canvas on an fx row; through the verbs' guard it
+    // drew its outline there and silently cut nothing.
+    final coordinator = widget.celEditable ? widget.coordinator : null;
     // The outline is drawn on the canvas; the pixels are the row's own
     // (a-marquee-on-a-posed-row) — and the PIECE stays those pure pixels in
     // the row's own coordinates, as confirmed above.
@@ -2285,20 +2319,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         strokeData: strokeData,
         cacheInvalidationSink: widget.cacheInvalidationSink,
       );
-      final prefix = widget.takeStrokePrefixCommand?.call();
-      historyManager.execute(
-        prefix == null
-            ? stroke
-            // ⚠️The prefix ALREADY RAN at pen-down and re-running it is a
-            // no-op: `UpdateLayerTimelineCommand` holds its before/after
-            // from construction, so applying `after` twice writes the same
-            // layer. The stroke runs for the first time here, into the
-            // block that prefix made.
-            : CompositeCommand(
-                description: 'Draw on a new frame',
-                commands: [prefix, stroke],
-              ),
-      );
+      // ⚠️The prefix ALREADY RAN at pen-down and re-running it is a
+      // no-op: `UpdateLayerTimelineCommand` holds its before/after from
+      // construction, so applying `after` twice writes the same layer. The
+      // stroke runs for the first time here, into the block that prefix
+      // made.
+      historyManager.executeAsOneStep('Draw on a new frame', [
+        ?widget.takeStrokePrefixCommand?.call(),
+        stroke,
+      ]);
     });
   }
 }
@@ -2323,6 +2352,33 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// width IS that bar's hit lane.
   static const double rightStripWidth = AppScrollbarLane.medium;
 
+  /// 🗣️F-209 (유저 2026-09-28): 「도킹시 스크롤바는 어차피 창 최대크기로
+  /// 되어있으니까 그냥 알약이아니라 패널로서 공간 차지해서? 두자. 뒤에 캔버스
+  /// 안보이게 되도 되니까」 — and the two capsules that F-201 stretched along
+  /// their whole edges (「도킹된 패널은 스크롤바 알약 최대치로 늘리자 길이」)
+  /// crossed at the corner (「가로 세로 스크롤바끼리 오른쪽끝에서 서로
+  /// 겹치니까 안겹치도록」). A DOCKED panel's panbars are its own lanes now,
+  /// flush with its right and bottom edges and meeting at a corner square of
+  /// neither's. The artwork runs on behind them, and framing keeps out from
+  /// under them as it does from under a panel (`_framingInsets`). A lane in
+  /// a column of its own is the timeline rails' width.
+  static const double dockedLane = AppScrollbarLane.wide;
+
+  static const EdgeInsets dockedLanes = EdgeInsets.only(
+    right: dockedLane,
+    bottom: dockedLane,
+  );
+
+  /// 🗣️(유저 2026-09-30): 「판정을 알약까지 포함해서 판정. 타임시트 최대
+  /// 스크롤기준이나 캔버스 재생시나 그런거」 — the pill is part of what hides
+  /// the artwork, on the floor and docked alike: the band it floats in
+  /// across the top edge, its margin above it and below, is cover to every
+  /// frame the panel makes (Fit, playback's fit, a limit's window, the
+  /// middle a zoom holds). ↩️It was a see-through capsule for a day
+  /// (F-209); the user took that back for this.
+  static double pillBandIn(BuildContext context) =>
+      2 * _capsuleMargin + _CanvasViewportBottomBar.heightIn(context);
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -2340,10 +2396,11 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final Widget rightStripBar;
 
   /// Whether this panel is the FLOOR under the others — the canvas or the
-  /// viewer — rather than a panel docked in a rail ([_capsuleTrack]).
+  /// viewer — rather than a panel docked in a rail ([dockedLanes]).
   final bool onFloor;
 
-  /// The horizontal panbar, its own capsule on the top edge.
+  /// The horizontal panbar: its own capsule on the floor's bottom edge, its
+  /// own lane on a docked panel's.
   final Widget horizontalStripBar;
 
   /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
@@ -2388,10 +2445,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// second rail.
   static const double _pageStripWidth = 32;
 
-  /// What a scrollbar capsule spans ON THE FLOOR, as a share of the edge it
-  /// rides — clamped, because the point of a capsule is that it says where
-  /// you are and lets you drag back, not that it maps the whole pasteboard.
-  /// A docked panel's runs its whole edge ([_capsuleTrack]).
+  /// What a scrollbar capsule spans — only the floor has capsules — as a
+  /// share of the edge it rides: clamped, because the point of a capsule is
+  /// that it says where you are and lets you drag back, not that it maps
+  /// the whole pasteboard. A docked panel's bars are lanes ([dockedLanes]).
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
 
@@ -2402,12 +2459,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     // has nowhere to travel — a scrollbar that cannot be dragged is not a
     // scrollbar, and dragging is the ONLY way back from a runaway pan.
     final room = math.max(0.0, edge - 2 * _capsuleMargin);
-    // 🗣️F-201 (유저 2026-09-27): 「바탕에 깔린 캔버스나 뷰어말고 도킹된
-    // 패널은 스크롤바 알약 최대치로 늘리자 길이」 — a DOCKED panel's capsule
-    // runs its whole edge; only the floor's keeps the short one below.
-    if (!onFloor) {
-      return room;
-    }
     final wanted = (edge * _capsuleTrackFraction).clamp(
       _capsuleTrackMin,
       _capsuleTrackMax,
@@ -2465,101 +2516,20 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             ),
           ),
         ),
-        // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
-        // wall.
-        //
-        // 🆕유저, R3 #5·#6, and it is the third pass over this: the bars now
-        // CENTRE ON WHAT YOU CAN SEE. Both are placed inside the visible
-        // rectangle rather than the panel's — the vertical one at the middle
-        // of the visible HEIGHT (so docking the region at the bottom walks
-        // it up, which is what "하단패널이 열린거에 따라 중앙계산" asked back),
-        // the horizontal one at the middle of the visible WIDTH, on the
-        // BOTTOM edge (패널열리면 위치바뀌는거 허용).
-        //
-        // ★And the vertical bar only steps IN from the edge when the rail is
-        // actually beside it. A rail panel is as tall as it was left at, so
-        // a short one covers a band, not an edge: stepping in for the whole
-        // edge left the bar hanging in the middle of nothing.
-        Positioned.fill(
-          child: LayoutBuilder(
-            builder: (context, panel) {
-              final insets = cover;
-              final visibleTop = insets.top;
-              final visibleBottom = math.max(
-                visibleTop,
-                panel.maxHeight - insets.bottom,
-              );
-              final track = _capsuleTrack(visibleBottom - visibleTop);
-              final centre = (visibleTop + visibleBottom) / 2;
-              final barTop = centre - track / 2;
-              final intrudes = canvasFloorBandIntrudes(
-                railBand,
-                top: barTop,
-                bottom: barTop + track,
-              );
-              final edge = intrudes
-                  ? insets.right + _capsuleMargin
-                  : _capsuleMargin;
-              return Stack(
-                children: [
-                  Positioned(
-                    right: edge,
-                    top: barTop,
-                    height: track,
-                    child: _capsule(
-                      colorScheme,
-                      keyValue: 'canvas-panbar-vertical',
-                      width: rightStripWidth,
-                      height: track,
-                      child: rightStripBar,
-                    ),
-                  ),
-                  // 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서
-                  // 펼치든말든 중앙에. The two axes are NOT the same
-                  // question, and the answer differs by axis rather than
-                  // by widget:
-                  //
-                  //  * ALONG the edge it rides, the bar holds the window's
-                  //    centre. A side panel opening is not a reason for
-                  //    the thing you read to walk sideways — that is the
-                  //    「읽는 것은 안 움직인다」 rule, and the earlier pass
-                  //    over-applied "centre on what you can see" to it.
-                  //  * ACROSS that edge it still yields, because there it
-                  //    is not a matter of taste: a bar on the bottom edge
-                  //    with the region docked below would be UNDER it.
-                  Positioned(
-                    left: _capsuleMargin,
-                    right: _capsuleMargin,
-                    // ⑩: …and above whatever lies ON the artwork at that
-                    // edge. The collapsed row frames nothing, so it is not
-                    // in `insets` — but it is exactly where this bar was,
-                    // which is what the user saw.
-                    bottom: insets.bottom + bottomOverlaySpan + _capsuleMargin,
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: _capsule(
-                        colorScheme,
-                        keyValue: 'canvas-panbar-horizontal',
-                        height: AppScrollbarLane.medium,
-                        width: _capsuleTrack(panel.maxWidth),
-                        child: horizontalStripBar,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
-        ),
+        if (onFloor)
+          _floorCapsules(colorScheme)
+        else
+          ..._dockedLanes(colorScheme),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
           // and yields only on the axis that would bury it — the region
-          // docked on TOP is above it, a rail beside it is not.
+          // docked on TOP is above it, a rail beside it is not. On a docked
+          // panel it floats over what the lanes leave.
           left: 0,
           top: cover.top,
-          right: 0,
-          bottom: cover.bottom,
+          right: onFloor ? 0 : dockedLane,
+          bottom: cover.bottom + (onFloor ? 0 : dockedLane),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final window = Size(
@@ -2658,8 +2628,149 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     );
   }
 
+  /// The floor's panbars, in capsules. THE PANBARS ARE FURNITURE — but
+  /// furniture in a room, not in the wall.
+  ///
+  /// 🆕유저, R3 #5·#6, and it is the third pass over this: the bars now
+  /// CENTRE ON WHAT YOU CAN SEE. Both are placed inside the visible
+  /// rectangle rather than the panel's — the vertical one at the middle
+  /// of the visible HEIGHT (so docking the region at the bottom walks
+  /// it up, which is what "하단패널이 열린거에 따라 중앙계산" asked back),
+  /// the horizontal one at the middle of the visible WIDTH, on the
+  /// BOTTOM edge (패널열리면 위치바뀌는거 허용).
+  ///
+  /// ★And the vertical bar only steps IN from the edge when the rail is
+  /// actually beside it. A rail panel is as tall as it was left at, so
+  /// a short one covers a band, not an edge: stepping in for the whole
+  /// edge left the bar hanging in the middle of nothing.
+  Widget _floorCapsules(ColorScheme colorScheme) => Positioned.fill(
+    child: LayoutBuilder(
+      builder: (context, panel) => Stack(
+        children: [
+          _floorVerticalCapsule(colorScheme, panel),
+          _floorHorizontalCapsule(colorScheme, panel),
+        ],
+      ),
+    ),
+  );
+
+  Positioned _floorVerticalCapsule(
+    ColorScheme colorScheme,
+    BoxConstraints panel,
+  ) {
+    final insets = cover;
+    final visibleTop = insets.top;
+    final visibleBottom = math.max(visibleTop, panel.maxHeight - insets.bottom);
+    final track = _capsuleTrack(visibleBottom - visibleTop);
+    final centre = (visibleTop + visibleBottom) / 2;
+    final barTop = centre - track / 2;
+    final intrudes = canvasFloorBandIntrudes(
+      railBand,
+      top: barTop,
+      bottom: barTop + track,
+    );
+    return Positioned(
+      right: intrudes ? insets.right + _capsuleMargin : _capsuleMargin,
+      top: barTop,
+      height: track,
+      child: _capsule(
+        colorScheme,
+        keyValue: 'canvas-panbar-vertical',
+        width: rightStripWidth,
+        height: track,
+        child: rightStripBar,
+      ),
+    );
+  }
+
+  /// 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서 펼치든말든 중앙에. The
+  /// two axes are NOT the same question, and the answer differs by axis
+  /// rather than by widget:
+  ///
+  ///  * ALONG the edge it rides, the bar holds the window's centre. A side
+  ///    panel opening is not a reason for the thing you read to walk
+  ///    sideways — that is the 「읽는 것은 안 움직인다」 rule, and the
+  ///    earlier pass over-applied "centre on what you can see" to it.
+  ///  * ACROSS that edge it still yields, because there it is not a matter
+  ///    of taste: a bar on the bottom edge with the region docked below
+  ///    would be UNDER it.
+  Positioned _floorHorizontalCapsule(
+    ColorScheme colorScheme,
+    BoxConstraints panel,
+  ) => Positioned(
+    left: _capsuleMargin,
+    right: _capsuleMargin,
+    // ⑩: …and above whatever lies ON the artwork at that edge. The
+    // collapsed row frames nothing, so it is not in `cover` — but it is
+    // exactly where this bar was, which is what the user saw.
+    bottom: cover.bottom + bottomOverlaySpan + _capsuleMargin,
+    child: Align(
+      alignment: Alignment.bottomCenter,
+      child: _capsule(
+        colorScheme,
+        keyValue: 'canvas-panbar-horizontal',
+        height: AppScrollbarLane.medium,
+        width: _capsuleTrack(panel.maxWidth),
+        child: horizontalStripBar,
+      ),
+    ),
+  );
+
+  /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
+  /// own, flush with its edge, and the corner between them left to neither.
+  /// Each lane is ringed on its artwork side in the backdrop, for the
+  /// capsule's reason ([_capsule]).
+  List<Widget> _dockedLanes(ColorScheme colorScheme) {
+    const ring = BorderSide(color: AppColors.backdrop);
+    Widget lane(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
+      key: ValueKey<String>(keyValue),
+      decoration: BoxDecoration(color: colorScheme.surface, border: ringed),
+      child: bar,
+    );
+    return [
+      Positioned(
+        top: 0,
+        right: 0,
+        bottom: dockedLane,
+        width: dockedLane,
+        child: lane(
+          'canvas-panbar-vertical',
+          const Border(left: ring),
+          rightStripBar,
+        ),
+      ),
+      Positioned(
+        left: 0,
+        right: dockedLane,
+        bottom: 0,
+        height: dockedLane,
+        child: lane(
+          'canvas-panbar-horizontal',
+          const Border(top: ring),
+          horizontalStripBar,
+        ),
+      ),
+      Positioned(
+        right: 0,
+        bottom: 0,
+        width: dockedLane,
+        height: dockedLane,
+        child: lane('canvas-panbar-corner', const Border()),
+      ),
+    ];
+  }
+
   /// One floating control surface: opaque, superellipse, ringed in the
   /// backdrop.
+  ///
+  /// ↩️Opaque on a docked panel too. Its capsules were see-through for a
+  /// day (F-209, 유저 2026-09-28), and the user took that back (09-30:
+  /// 「알약 반투명하지말자. 원복. 대신 판정을 알약까지 포함해서 판정」),
+  /// leaving a see-through pill to us only if it costs nothing
+  /// (「굽기가능하거나 성능변화없으면」). It does not: the pill faded WHOLE is
+  /// a group opacity, one more offscreen pass on every frame the canvas
+  /// under it moves (Impeller keeps no raster cache) — and with the framing
+  /// out from under the pill ([pillBandIn]) nothing framed lies under it.
   ///
   /// The ring is not decoration. What lies beside a capsule is the
   /// PASTEBOARD, a colour the user chooses, so no fill of ours can be
@@ -3364,10 +3475,8 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   /// [rect]'s four corners through the view transform, as a PATH: under
   /// rotation a plane is a quad, and a Rect would silently square it back up.
   Path _quad(Rect rect) {
-    Offset at(double x, double y) {
-      final point = viewport.canvasToViewport(CanvasPoint(x: x, y: y));
-      return Offset(point.x, point.y);
-    }
+    Offset at(double x, double y) =>
+        viewport.canvasToViewportOffset(CanvasPoint(x: x, y: y));
 
     return Path()
       ..moveTo(at(rect.left, rect.top).dx, at(rect.left, rect.top).dy)

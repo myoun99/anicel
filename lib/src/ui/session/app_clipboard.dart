@@ -1,6 +1,7 @@
 import '../../models/bitmap_surface.dart';
 import 'frame_clipboard.dart' show FrameBoard;
 import 'layer_clipboard.dart' show LayerBoard;
+import 'pixel_board.dart';
 
 /// THE APP'S CLIPBOARD — what the last copy of each kind put in hand, ONE
 /// for every open project (I-7).
@@ -17,14 +18,20 @@ import 'layer_clipboard.dart' show LayerBoard;
 /// home page holds one and hands it to every session it opens; a session
 /// made on its own — a test, a tool — gets one of its own.
 ///
-/// ⛔Two boards, not one: a frame copy and a layer copy are two payloads
-/// answering two sets of verbs (G0-2). The cut tool's piece is a third
-/// holder, kept by the workspace the app has one of ([CutPieceSlot]) — it
-/// crossed projects before any of this (유저 2026-08-12: 「다른 프로젝트에
-/// 붙여넣고 싶을 수 있으니」).
+/// ⛔Separate boards, not one: a frame copy and a layer copy are two
+/// payloads answering two sets of verbs (G0-2), and 픽셀 복사 is a third
+/// ([PixelBoard], I-55). The cut tool's piece is yet another holder, kept by
+/// the workspace the app has one of ([CutPieceSlot]) — it crossed projects
+/// before any of this (유저 2026-08-12: 「다른 프로젝트에 붙여넣고 싶을 수
+/// 있으니」).
 class AppClipboard {
   final FrameBoard frames = FrameBoard();
   final LayerBoard layers = LayerBoard();
+
+  /// 픽셀 복사's board (I-55) — a third payload with a third set of verbs,
+  /// which the frame copy neither reads nor overwrites (유저 2026-10-01:
+  /// 「프레임 복사한다고해서 픽셀복사 내역이 사라지지않아」).
+  final PixelBoard pixels = PixelBoard();
 
   /// Every picture the two boards hold — by value, so they stay in memory
   /// for as long as the copy does (`collectMemoryCensus` weighs them).

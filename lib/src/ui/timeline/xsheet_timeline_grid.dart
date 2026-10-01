@@ -1,13 +1,12 @@
+import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../widgets/empty_state_text.dart';
+import '../widgets/tick_layer.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
-import '../../models/attached_layer_resolve.dart'
-    show attachRowWearsBaseComposite;
-import '../../models/layer_kind.dart';
 import '../text/app_face.dart';
 import '../text/app_strings.dart' show AppText;
 import '../theme/app_theme.dart';
@@ -20,23 +19,26 @@ import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_coordinate_policy.dart' show frameRangeVisibleWidth;
+import 'timeline_frame_coordinate_policy.dart'
+    show frameRangeVisibleWidth, timelineFrameEdge;
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerScale;
 import 'timeline_ruler_playhead_writing.dart';
 import 'timeline_cut_end_handle.dart';
+import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/timeline_row_address.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
+import '../../models/layer_id.dart';
+import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
 import 'layer_row_drag.dart';
+import 'layer_controls_row_facts.dart';
+import 'timeline_cells_row_facts.dart';
 import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
-import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
 import 'timeline_frame_scrub.dart';
@@ -46,7 +48,6 @@ import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'property_lane_model.dart';
 import 'timeline_grid_metrics.dart';
-import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_layer_controls_header.dart';
@@ -60,7 +61,6 @@ import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_virtualization_plan.dart';
-import 'timeline_visible_range.dart';
 import 'timeline_zoom_anchor_policy.dart';
 import 'timeline_frame_grid_stack.dart';
 import 'timeline_grid_sheet.dart';
@@ -71,6 +71,7 @@ import 'rail_eyes.dart';
 import 'timeline_swipe_columns.dart';
 import '../input/wheel_law.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 
 part 'xsheet_grid/xsheet_grid_frame_scroll.dart';
 part 'xsheet_grid/xsheet_grid_headers.dart';
@@ -332,8 +333,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     super.initState();
     // PEN-10: pen-friendly positions — while a stylus is nearby, a
     // coasting fling stops hiding the cells from hit-testing.
-    // Born where the axis stands, as on the rail (F-143) — a fold remounts
-    // this sheet too, and a newborn 0 would be recorded as a scroll.
+    // Born where the axis stands, as on the rail (F-143) — an orientation
+    // switch builds this sheet afresh (a fold did too, until 09-28), and a
+    // newborn 0 would be recorded as a scroll.
     _frameScrollController = PenFriendlyScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
@@ -430,16 +432,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         onToggleAttachGroup: widget.hooks.onToggleAttachGroup,
       );
 
-  /// One column wrapped in its repaint boundary + drag-preview gate: an
-  /// edge-drag step re-runs the builder with the preview layer substituted
-  /// for the drag target's column only.
-  /// One lane's HEADER cell — the transposed rail row.
-  ///
-  /// Lane headers show the value AT the cursor, so they subscribe to the
-  /// cursor here and a tick rebuilds only these cells. R10 adds the drag
-  /// gate for the same reason the horizontal rail has it: the blue value
-  /// column must follow a key move per step, not sit on the committed
-  /// track until the pointer lifts.
   /// The display entries of the pass in flight, for the drag's row → slot
   /// conversion (see [effectHeaderRowsOf]).
   List<TimelineDisplayRow> _dragRows = const [];
@@ -464,17 +456,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     frameCount: _frameScroll.renderedFrameCount,
     layerCount: entries.length,
   );
-
-  /// Where the drawn end sits, for the rail's drawn-end mark — the same
-  /// product the body stack's wash and blue line read.
-  double _drawnEndOffset(TimelineDragPreview? preview) =>
-      timelineDrawnEndOffset(
-        preview: preview,
-        cutId: widget.hooks.cutEndDrag?.cutId,
-        playbackFrameCount: widget.hooks.playbackFrameCount,
-        drawnFrameCount: widget.hooks.drawnFrameCount,
-        frameCellExtent: _metrics.frameCellWidth,
-      );
 
   Widget _buildRailSplitter(_SheetGeometry geometry) {
     final availableHeaderExtent = geometry.availableHeaderExtent;
@@ -536,7 +517,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 dragPreview: widget.hooks.dragPreview,
                 frameCellExtent: _metrics.frameCellWidth,
                 playbackFrameCount: widget.hooks.playbackFrameCount,
-                drawnFrameCount: widget.hooks.drawnFrameCount,
+                noriShiro: widget.hooks.noriShiro,
               );
             },
           ),
@@ -559,15 +540,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       frameRangeSelection: widget.hooks.rangeHooks?.selection,
       // R27 #14: one band for cells and lanes alike.
       laneRangeSelection: widget.hooks.laneRange?.selection,
-      frameCursor: widget.hooks.frameCursor,
       dragPreview: widget.hooks.dragPreview,
+      frameCursor: widget.hooks.frameCursor,
       rows: entries,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: frameRange.startIndex,
       frameEndIndexExclusive: frameRange.endIndexExclusive,
       leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: entries.length * _metrics.layerRowHeight,
     );
   }
@@ -682,15 +662,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                               stack: widget.layers,
                               child: Row(
                                 children: [
-                                  for (
-                                    var index = 0;
-                                    index < entries.length;
-                                    index += 1
-                                  )
-                                    _headers.draggableHeader(
-                                      entries[index],
-                                      _headers.headerFor(entries[index]),
-                                    ),
+                                  for (final entry in entries)
+                                    _headers.header(entry),
                                 ],
                               ),
                             ),
@@ -796,6 +769,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       key: const ValueKey<String>('xsheet-frame-rail-scrub-area'),
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
+        // R26 #34: a press that pans is the pan's, not a scrub.
+        if (canvasPressPans(canvasPressButtons(event))) {
+          return;
+        }
         _railScrub.resetTracking();
         _railScrub.pressAt(event.position);
       },
@@ -887,9 +864,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           child: _XSheetFrameNumberRail(
                             frameStartIndex: 0,
                             frameEndIndexExclusive: _frameScroll.renderedFrameCount,
-                            // The tint lives in the
-                            // overlay now.
-                            currentFrameIndex: -1,
                             playhead: widget.hooks.frameCursor,
                             playbackFrameCount: widget.hooks.playbackFrameCount,
                             leadingFrameSpacerHeight: 0,
@@ -905,40 +879,56 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         Positioned.fill(
                           child: _buildRailCursorOverlay(geometry),
                         ),
-                        // UI-R18 #14: the rail's
-                        // line follows the live
-                        // trim preview so it never
-                        // splits from the body's.
-                        if (widget.hooks.cutEndDrag != null &&
-                            widget.hooks.dragPreview != null)
-                          ValueListenableBuilder<TimelineDragPreview?>(
-                            valueListenable: widget.hooks.dragPreview!,
-                            builder: (context, preview, _) =>
-                                TimelineRulerCutEndBoundary(
-                                  axis: Axis.vertical,
-                                  left:
-                                      timelineCutEndPreviewFrameCount(
-                                        preview: preview,
-                                        cutId: widget.hooks.cutEndDrag!.cutId,
-                                        playbackFrameCount:
-                                            widget.hooks.playbackFrameCount,
-                                      ) *
-                                      _metrics.frameCellWidth,
-                                ),
-                          )
-                        else
-                          TimelineRulerCutEndBoundary(
-                            axis: Axis.vertical,
-                            left: cutEndBoundaryOffset,
-                          ),
-                        // The のりしろ boundary,
-                        // transposed: a length
-                        // below the cut's end.
-                        TimelineRulerNoriShiroBoundary(
-                          axis: Axis.vertical,
-                          cutEnd: cutEndBoundaryOffset,
-                          drawnEnd: _drawnEndOffset(null),
-                          label: widget.hooks.noriShiroLabel,
+                        // 🚨F-244: the two marks
+                        // a drag moves, on a layer
+                        // of their own — as the
+                        // timeline ruler's.
+                        TickOverlay(
+                          children: [
+                            // UI-R18 #14: the rail's
+                            // line follows the live
+                            // trim preview so it
+                            // never splits from the
+                            // body's.
+                            if (widget.hooks.cutEndDrag != null &&
+                                widget.hooks.dragPreview != null)
+                              ValueListenableBuilder<TimelineDragPreview?>(
+                                valueListenable: widget.hooks.dragPreview!,
+                                builder: (context, preview, _) =>
+                                    TimelineRulerCutEndBoundary(
+                                      axis: Axis.vertical,
+                                      left: timelineFrameEdge(
+                                        timelineCutEndPreviewFrameCount(
+                                          preview: preview,
+                                          cutId:
+                                              widget.hooks.cutEndDrag!.cutId,
+                                          playbackFrameCount:
+                                              widget.hooks.playbackFrameCount,
+                                        ),
+                                        _metrics.frameCellWidth,
+                                      ),
+                                    ),
+                              )
+                            else
+                              TimelineRulerCutEndBoundary(
+                                axis: Axis.vertical,
+                                left: cutEndBoundaryOffset,
+                              ),
+                            // The のりしろ mark,
+                            // transposed: a length
+                            // below the cut's end,
+                            // riding a drag as the
+                            // timeline ruler's does.
+                            TimelineRulerNoriShiro(
+                              dragPreview: widget.hooks.dragPreview,
+                              cutId: widget.hooks.cutEndDrag?.cutId,
+                              playbackFrameCount:
+                                  widget.hooks.playbackFrameCount,
+                              noriShiro: widget.hooks.noriShiro,
+                              metrics: _metrics,
+                              axis: Axis.vertical,
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1270,7 +1260,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
   const _XSheetFrameNumberRail({
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacerHeight,
     required this.trailingFrameSpacerHeight,
@@ -1285,7 +1274,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
   final double leadingFrameSpacerHeight;
   final double trailingFrameSpacerHeight;
@@ -1323,7 +1311,6 @@ class _XSheetFrameNumberRail extends StatelessWidget {
       axis: Axis.vertical,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      currentFrameIndex: currentFrameIndex,
       playbackFrameCount: playbackFrameCount,
       leadingFrameSpacer: leadingFrameSpacerHeight,
       crossExtent: metrics.layerControlsWidth,
@@ -1366,7 +1353,8 @@ class _XSheetFrameNumberRail extends StatelessWidget {
 /// ruler's UI-R13 #1 treatment, transposed): number rows, the seconds
 /// column, selection tint, playback dimming and the cached strip paint
 /// in a single pass. Public for the test probe.
-class XSheetFrameRailPainter extends CustomPainter with RepaintOnProps {
+class XSheetFrameRailPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   XSheetFrameRailPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 

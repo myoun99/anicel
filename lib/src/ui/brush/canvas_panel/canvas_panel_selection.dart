@@ -119,8 +119,7 @@ class _CanvasPanelSelection {
 
   /// [shape] on the active row's artwork — [regionOnTheRow] for one outline.
   CanvasSelectionShape? shapeOnTheRow(CanvasSelectionShape shape) =>
-      regionOnTheRow(CanvasSelectionRegion.shape(shape))?.steps.single.shapes
-          .single;
+      regionOnTheRow(CanvasSelectionRegion.shape(shape))?.singleShape;
 
   /// A canvas point on the active row's artwork — where a press on the
   /// canvas lands on a posed row (a stamp's), the same inverse the eyedropper
@@ -231,7 +230,7 @@ class _CanvasPanelSelection {
   /// R26 #18 ("선택하고 그리면 선택 내부만 그려진다"): a stroke that lands
   /// with a live selection is CLIPPED to it before it reaches the commit —
   /// on [surface], the cel it lands on ([clipStrokeCommitToSelection], the
-  /// one funnel a sheet window's slice of one paper takes too). Null
+  /// one funnel a sheet window's stroke takes too). Null
   /// return = the whole stroke fell outside the selection and there is
   /// nothing to commit.
   BrushStrokeCommitData? clipStrokeToSelection(

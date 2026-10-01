@@ -204,12 +204,7 @@ class BrushTipLibrary extends ChangeNotifier {
     unawaited(_persistIndex());
   }
 
-  Future<void> _persistIndex() async {
-    try {
-      await _service.saveIndex(_tips);
-    } on Object catch (_) {
-      // Index persistence must never take the editor down; the in-memory
-      // library stays correct until the next successful write.
-    }
-  }
+  /// The index as it stands — behind any write still on its way, and never
+  /// reaching the editor when it fails ([saveVersionedSettings]).
+  Future<void> _persistIndex() => _service.saveIndex(_tips);
 }

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
@@ -13,11 +14,12 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
-/// R20-B tip-stamp cache (the CSP/PS brush architecture): every dab
-/// resolves to a prerendered, quantized, PREROTATED raster mask consumed
-/// through the existing unrotated-lattice fast path. Resolution is
-/// idempotent and deterministic; the same key returns the same mask
-/// object, so uploads and lattices amortize across a stroke.
+/// R20-B tip-stamp cache (the CSP/PS brush architecture): every analytic
+/// dab resolves to a prerendered, quantized, PREROTATED raster mask consumed
+/// through the existing unrotated-lattice fast path; a raster tip is sampled
+/// as it is (F-251). Resolution is idempotent and deterministic; the same
+/// key returns the same mask object, so uploads and lattices amortize across
+/// a stroke.
 void main() {
   BrushDab dab({
     double size = 12,
@@ -92,7 +94,11 @@ void main() {
   test('a hard round resolved dab covers the same disc: full alpha at the '
       'center, empty outside the radius', () {
     final cache = BrushTipStampCache();
-    final resolved = cache.resolveDab(dab(size: 16, x: 16, y: 16));
+    // At 없음: the disc itself, with no anti-alias edge grown inside it
+    // (I-50 — at 3단계 the stamp carries a ramp in from the rim).
+    final resolved = cache.resolveDab(
+      dab(size: 16, x: 16, y: 16).copyWith(antiAlias: BrushAntiAlias.none),
+    );
     final result = materializeBrushDabSequenceOnBitmapSurface(
       surface: BitmapSurface(
         canvasSize: const CanvasSize(width: 32, height: 32),
@@ -110,52 +116,108 @@ void main() {
     expect(alphaAt(2, 2), 0, reason: 'corner outside the disc stays empty');
   });
 
-  test('a 90°-rotated asymmetric raster tip resolves to the rotated '
-      'footprint (prerotation)', () {
-    // A 4x4 tip whose TOP half is opaque.
-    final alpha = Uint8List(16);
-    for (var i = 0; i < 8; i += 1) {
-      alpha[i] = 255;
+  // F-251 (2026-10-01): a raster tip is sampled where it is — baking one cost
+  // its source's resolution per degree, and the baked mask lost the corners.
+  group('a raster tip is not baked', () {
+    BrushTipMask solid() => BrushTipMask(
+      id: 'solid',
+      size: 4,
+      alpha: Uint8List(16)..fillRange(0, 16, 255),
+    );
+
+    int alphaAt(BitmapSurface surface, int x, int y) {
+      final tile = surface.tiles[TileCoord(x: 0, y: 0)];
+      return tile == null
+          ? 0
+          : tile.pixels[tile.byteOffsetForPixel(x: x, y: y) + 3];
     }
-    final tip = BrushTipMask(id: 'half', size: 4, alpha: alpha);
-    final cache = BrushTipStampCache();
 
-    final upright = cache.resolveDab(dab(size: 8, tipMask: tip));
-    final rotated = cache.resolveDab(dab(size: 8, tipMask: tip, angle: 90));
-    expect(identical(upright.tipMask, rotated.tipMask), isFalse);
+    BitmapSurface laid(BrushDab dab) =>
+        materializeBrushDabSequenceOnBitmapSurface(
+          surface: BitmapSurface(
+            canvasSize: const CanvasSize(width: 64, height: 64),
+            tileSize: 64,
+          ),
+          sequence: BrushDabSequence([BrushTipStampCache().resolveDab(dab)]),
+        ).surface;
 
-    double halfMass(BrushTipMask mask, {required bool top, bool? left}) {
-      var sum = 0.0;
-      final size = mask.size;
-      for (var y = 0; y < size; y += 1) {
-        for (var x = 0; x < size; x += 1) {
-          final inTop = y < size ~/ 2;
-          final inLeft = x < size ~/ 2;
-          final wanted = left == null ? (inTop == top) : (inLeft == left);
-          if (wanted) {
-            sum += mask.alpha[y * size + x];
+    test('it passes through as it is — its own mask, angle and roundness, '
+        'and nothing in the cache', () {
+      final cache = BrushTipStampCache();
+      final raster = dab(
+        size: 6,
+        tipMask: solid(),
+        angle: 117,
+        roundness: 0.6,
+      );
+      expect(identical(cache.resolveDab(raster), raster), isTrue);
+      expect(cache.entryCount, 0);
+    });
+
+    test('a rotated one keeps its corners', () {
+      // A solid square turned 45° reaches its radius × √2 along the axes —
+      // 14px from the centre of a 20px dab. The baked mask held only the
+      // dab's own box and cut that off at 10.
+      final turned = laid(
+        dab(size: 20, tipMask: solid(), angle: 45, x: 32, y: 32),
+      );
+      expect(alphaAt(turned, 44, 32), greaterThan(0), reason: 'past the box');
+      expect(alphaAt(turned, 32, 44), greaterThan(0), reason: 'past the box');
+      expect(
+        alphaAt(turned, 42, 42),
+        0,
+        reason: 'the box corner is outside the turned square',
+      );
+    });
+
+    test('a 90° turn moves an asymmetric tip onto one side', () {
+      // A 4x4 tip whose TOP half is opaque.
+      final half = BrushTipMask(
+        id: 'half',
+        size: 4,
+        alpha: Uint8List(16)..fillRange(0, 8, 255),
+      );
+      double mass(BitmapSurface surface, bool Function(int x, int y) keep) {
+        var sum = 0.0;
+        for (var y = 22; y < 42; y += 1) {
+          for (var x = 22; x < 42; x += 1) {
+            if (keep(x, y)) {
+              sum += alphaAt(surface, x, y);
+            }
           }
         }
+        return sum;
       }
-      return sum;
-    }
 
-    final uprightMask = upright.tipMask!;
-    expect(
-      halfMass(uprightMask, top: true),
-      greaterThan(halfMass(uprightMask, top: false) * 4),
-      reason: 'upright: mass stays in the top half',
-    );
-    // Visual CCW rotation in y-down canvas space maps the TOP half onto
-    // one side; the mass must have LEFT the top/bottom split entirely.
-    final rotatedMask = rotated.tipMask!;
-    final leftMass = halfMass(rotatedMask, top: true, left: true);
-    final rightMass = halfMass(rotatedMask, top: true, left: false);
-    expect(
-      (leftMass - rightMass).abs(),
-      greaterThan((leftMass + rightMass) * 0.6),
-      reason: '90°: mass concentrates on one horizontal side',
-    );
+      final upright = laid(dab(size: 16, tipMask: half, x: 32, y: 32));
+      expect(
+        mass(upright, (_, y) => y < 32),
+        greaterThan(mass(upright, (_, y) => y >= 32) * 4),
+        reason: 'upright: the mass stays in the top half',
+      );
+      final turned = laid(
+        dab(size: 16, tipMask: half, angle: 90, x: 32, y: 32),
+      );
+      final left = mass(turned, (x, _) => x < 32);
+      final right = mass(turned, (x, _) => x >= 32);
+      expect(
+        (left - right).abs(),
+        greaterThan((left + right) * 0.6),
+        reason: '90°: the mass concentrates on one side',
+      );
+    });
+  });
+
+  test('a circle is one stamp at every angle — an ellipse is not', () {
+    final cache = BrushTipStampCache();
+    final level = cache.resolveDab(dab(size: 30)).tipMask;
+    final turned = cache.resolveDab(dab(size: 30, angle: 137)).tipMask;
+    expect(identical(turned, level), isTrue);
+    final ellipse = cache.resolveDab(dab(size: 30, roundness: 0.5)).tipMask;
+    final turnedEllipse = cache
+        .resolveDab(dab(size: 30, roundness: 0.5, angle: 137))
+        .tipMask;
+    expect(identical(turnedEllipse, ellipse), isFalse);
   });
 
   test('size quantization: 1/4 px steps below 64 px, log steps above, '

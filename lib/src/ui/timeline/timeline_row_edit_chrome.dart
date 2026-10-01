@@ -189,11 +189,14 @@ typedef TimelineChromeGripBlock = ({
 /// each cut's plate: the frames where a plate starts ([cornerStarts]) and
 /// ends ([cornerEnds]), and the corner it wears there. A grip at one of
 /// them is in the plate's round corner; one between panels stands on the
-/// plate's straight edge.
+/// plate's straight edge. Its pictures lie between label bands [band]
+/// deep, and its triangles stand in those bands alone (I-52 —
+/// [timelineBlockEdgeGripPlacement]).
 typedef TimelineGripPaper = ({
   Set<int> cornerStarts,
   Set<int> cornerEnds,
   double cornerRadius,
+  double band,
 });
 
 /// A stretch of a row whose ground is not the row's `gripGround` — one of
@@ -218,13 +221,19 @@ abstract interface class TimelineChromeGrounds {
 /// on the reading that every boundary belonged to the trailing edge on its
 /// left. I-21 retired that: a lead edge trades frames with the block in
 /// front of it, so those boundaries are real front edges again. Only the
-/// FIRST block's is still suppressed ([suppressStartGripAtZero]) — that
+/// FIRST real block's is still suppressed ([suppressFirstStartGrip]) — that
 /// one is the cut's own start and lives on the storyboard's cut row.
+///
+/// ⚠️The first REAL block, not a block at frame 0: a cut an O.L arrives
+/// into starts its conte after the のりしろ it owes (F-227), and the frames
+/// in front are its first panel held back to the O.L's start — derived, so
+/// there is no edge there to grip at all.
 List<TimelineChromeGripBlock> timelineLayerGripBlocks(
   Layer layer, {
-  bool suppressStartGripAtZero = false,
+  bool suppressFirstStartGrip = false,
 }) {
   final blocks = drawingBlocks(layer.timeline);
+  final firstReal = blocks.indexWhere((block) => !block.entry.ghost);
   return [
     for (var ordinal = 0; ordinal < blocks.length; ordinal += 1)
       if (!blocks[ordinal].entry.ghost)
@@ -232,8 +241,7 @@ List<TimelineChromeGripBlock> timelineLayerGripBlocks(
           ordinal: ordinal,
           startIndex: blocks[ordinal].startIndex,
           endIndexExclusive: blocks[ordinal].endIndexExclusive,
-          startGrip: !(suppressStartGripAtZero &&
-              blocks[ordinal].startIndex == 0),
+          startGrip: !(suppressFirstStartGrip && ordinal == firstReal),
           endGrip: true,
         ),
   ];
@@ -292,9 +300,12 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       final rect = timelineFrameSpanRect(
         timelineBlockEdgeGripPlacement(
           edge: edge,
-          startIndex: block.startIndex,
-          endIndexExclusive: block.endIndexExclusive,
+          block: (
+            startIndex: block.startIndex,
+            endIndexExclusive: block.endIndexExclusive,
+          ),
           crossAxisExtent: crossAxisExtent,
+          band: gripPaper?.band,
         ),
         geometry,
         crossAxisExtent: crossAxisExtent,
@@ -429,6 +440,7 @@ class TimelineRowChromeResolver {
       a == null || b == null
       ? a == b
       : a.cornerRadius == b.cornerRadius &&
+            a.band == b.band &&
             setEquals(a.cornerStarts, b.cornerStarts) &&
             setEquals(a.cornerEnds, b.cornerEnds);
 
@@ -919,6 +931,14 @@ class _TimelineRowEditChromeLayerState
     // Drag from the DOWN position: the [+] count must not lose the first
     // cell to the slop.
     _addPan.dragStartBehavior = DragStartBehavior.down;
+    // …and start at the first cel it would add, when that comes before the
+    // slop (F-238 — on narrow cells a pen's first count was already two).
+    _addPan.firstStepAt = (down, now) {
+      final target = _pressed;
+      final travel = now - down;
+      return target is TimelineRowRunAddTarget &&
+          _addCountFor(target, _horizontal ? travel.dx : travel.dy) != 0;
+    };
     _addPan.onStart = (_) => _startAdd();
     _addPan.onUpdate = (details) {
       final panned = _autoPanEdge(details.globalPosition);
@@ -1065,13 +1085,19 @@ class _TimelineRowEditChromeLayerState
       return;
     }
     _addAccumulated += _horizontal ? delta.dx : delta.dy;
+    widget.runEdit?.onAddUpdate(_addCountFor(target, _addAccumulated));
+  }
+
+  /// How many cels a [+] drag of [travel] along the frame axis adds: whole
+  /// cells, counted only outward from the run's edge.
+  int _addCountFor(TimelineRowRunAddTarget target, double travel) {
     final frames = commaDragFrameDelta(
-      accumulatedDelta: _addAccumulated,
+      accumulatedDelta: travel,
       frameCellExtent: widget.geometry.value.frameCellExtent,
     );
-    widget.runEdit?.onAddUpdate(
-      target.atEnd ? (frames < 0 ? 0 : frames) : (frames > 0 ? 0 : -frames),
-    );
+    return target.atEnd
+        ? (frames < 0 ? 0 : frames)
+        : (frames > 0 ? 0 : -frames);
   }
 
   void _endAdd() {

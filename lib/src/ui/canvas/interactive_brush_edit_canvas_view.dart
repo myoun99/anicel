@@ -7,18 +7,17 @@ import 'package:flutter/scheduler.dart';
 
 import '../../models/bitmap_surface.dart';
 import '../../native/qa_pen_ledger.dart';
+import '../../services/input/pen_lean.dart';
 import '../../services/input/pen_sidecars.dart';
 import '../debug/input_inspector.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool;
 import '../../models/app_input_settings.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
-import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
@@ -43,6 +42,7 @@ import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
+import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
 part 'brush_edit/brush_edit_opening.dart';
@@ -83,7 +83,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
 
   InteractiveBrushEditCanvasView({
     super.key,
-    required this.sessionState,
+    required this.celNow,
     required this.layerId,
     required this.frameId,
     required this.inputSettings,
@@ -166,7 +166,21 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// nothing.
   final CutGuides guides;
 
-  final BrushEditSessionState sessionState;
+  /// The cel's pixels AS THEY STAND — asked at the moment they are used,
+  /// never kept from the last build.
+  ///
+  /// 🚨★★★F-233 (유저 2026-09-29: 「언두 빠르게하면서 다시 빠르게
+  /// 스트로크하면서 하다보면 … 언두된 스트로크가 다시 1프레임 보였다가
+  /// 사라지는상황」). An undo, a redo or a stroke just landed changes the cel
+  /// inside its own event, and this view learns of it at the next build. It
+  /// used to hold the cel as a SNAPSHOT of that build, so a pen that landed
+  /// in between began its stroke on the cel the last frame showed: the
+  /// undone stroke came back inside every tile the new one touched until
+  /// the pen lifted, and a stroke just lifted vanished under the next. The
+  /// commit and the undo already read the cel as it stands
+  /// (`BrushFrameEditingCoordinator.currentSurfaceOf`); a host hands this
+  /// view the same question, and there is no snapshot left to read.
+  final BitmapSurface Function() celNow;
   final LayerId layerId;
   final FrameId frameId;
 
@@ -298,7 +312,7 @@ class _InteractiveBrushEditCanvasViewState
   /// reading is present or absent as a whole. Null is what a mouse and a
   /// finger report, and it is NOT the same as an upright pen (유저 2026-09-09,
   /// `brush-tilt-no-device-Q1` 답 1).
-  ({double azimuthDegrees, double altitude})? _currentTilt;
+  PenLean? _currentTilt;
 
   /// How fast the pen travelled into the latest sample, 0..1 against the
   /// user's reference speed. A pen that has just landed — and every stroke's
@@ -356,10 +370,6 @@ class _InteractiveBrushEditCanvasViewState
   /// entry (or none) means no replication.
   List<GuideTransform> _symmetryTransforms = const [];
 
-  /// The last RAW pen position (pre-stabilization) — pen-up catches the
-  /// brush up to it with a straight segment through the normal pipeline.
-  CanvasPoint? _lastPenPosition;
-
   /// Live overlay state. Pointer moves blend new dabs into [_liveRasterizer]
   /// (the exact commit-rasterizer math) and picture the touched overlay
   /// tiles inside the same call; the model's notification repaints the
@@ -409,25 +419,38 @@ class _InteractiveBrushEditCanvasViewState
     // state, lineage) flows through the ordinary rebuild.
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
-      // R13-4: this runs inside the build/update phase. The stroke-end
-      // callback reached ancestor setState (the panel's _strokeActive then;
-      // since 2026-09-26 the session's input flag, whose listeners still
-      // rebuild widgets) — firing it synchronously here threw "setState
-      // during build" (the mid-stroke flip red screen). Reset silently,
-      // notify post-frame.
-      final hadActiveStroke = _activeDrawingPointer != null;
-      _stroke.clearStrokeInputState();
+      _endStrokeAfterTheFrame();
       _overlay.resetOverlay();
       // clear() before dropping: the live tiles are native-backed (R21)
       // and return to the engine's free list through it.
       _liveRasterizer?.clear();
       _liveRasterizer = null;
-      if (hadActiveStroke) {
-        final notify = widget.onActiveStrokeChanged;
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          notify?.call(false);
-        });
-      }
+    }
+  }
+
+  /// Ends a stroke in flight from OUTSIDE a pointer event — its cel changed
+  /// under the pen, or the view is going — and says so after the frame.
+  ///
+  /// R13-4: this runs inside the build/update phase. The stroke-end
+  /// callback reached ancestor setState (the panel's _strokeActive then;
+  /// since 2026-09-26 the session's input flag, whose listeners still
+  /// rebuild widgets) — firing it synchronously threw "setState during
+  /// build" (the mid-stroke flip red screen). Reset silently, notify
+  /// post-frame.
+  ///
+  /// 🚨F-232: the teardown reset silently and never said so, trusting the
+  /// panel's own dispose to — but a view can go while its panel stays, and
+  /// then the host kept 「the pen is down」 until some later stroke ended:
+  /// every seek refused, and every undo whose edit lay on another frame
+  /// walking nowhere.
+  void _endStrokeAfterTheFrame() {
+    final hadActiveStroke = _activeDrawingPointer != null;
+    _stroke.clearStrokeInputState();
+    if (hadActiveStroke) {
+      final notify = widget.onActiveStrokeChanged;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notify?.call(false);
+      });
     }
   }
 
@@ -441,7 +464,7 @@ class _InteractiveBrushEditCanvasViewState
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.
-    _stroke.clearStrokeInputState();
+    _endStrokeAfterTheFrame();
     ShownCels.instance.hide(this);
     // Only OUR model — a host-owned one outlives this view (it survives
     // the layer switches that rebuild us).
@@ -476,10 +499,9 @@ class _InteractiveBrushEditCanvasViewState
     // as it did when nothing was built at all.
     //
     // ⛔Still nothing PAINTED while standing down: the cel the playhead has
-    // LEFT must not be drawn (the session state still points at it), which
-    // is what the flag was written for.
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    // LEFT must not be drawn ([celNow] answers with it until the host
+    // builds again), which is what the flag was written for.
+    final canvasSize = widget.celNow().canvasSize;
     return LayoutBuilder(
       builder: (context, constraints) {
         final viewportWidth = constraints.hasBoundedWidth
@@ -518,7 +540,7 @@ class _InteractiveBrushEditCanvasViewState
                     // at final device resolution in one picture —
                     // pixel-stable at fractional zoom.
                     child: BrushEditCanvasView(
-                      sessionState: widget.sessionState,
+                      surface: widget.celNow(),
                       viewport: widget.viewport,
                       showTransparentBackground:
                           widget.showTransparentBackground,
@@ -552,19 +574,15 @@ class _InteractiveBrushEditCanvasViewState
   /// stage rectangle is a crop at composite time, not an input
   /// boundary): strokes, eyedropper picks and fill taps alike.
   bool _isInsidePasteboard(CanvasPoint localPosition) {
-    final canvasSize =
-        widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize = widget.celNow().canvasSize;
     return canvasSize.containsPasteboardPoint(
       x: localPosition.x,
       y: localPosition.y,
     );
   }
 
-  CanvasPoint _canvasPositionFromLocal(Offset localPosition) {
-    return widget.viewport.viewportToCanvas(
-      ViewportPoint(x: localPosition.dx, y: localPosition.dy),
-    );
-  }
+  CanvasPoint _canvasPositionFromLocal(Offset localPosition) =>
+      widget.viewport.viewportOffsetToCanvas(localPosition);
 
   /// Builds a dab carrying the base tool size/opacity and the current input
   /// pressure. Pressure scaling is applied after interpolation (see
@@ -582,9 +600,11 @@ class _InteractiveBrushEditCanvasViewState
       size: settings.size,
       // F-12: a dab carries only its OWN variation (the pressure curve and
       // the jitter multiply this). The tool's opacity is the accumulated
-      // stroke's ceiling and rides `BrushDabSequence.opacity` instead —
-      // per dab it is not a ceiling at all, since dabs pile up source-over
-      // and any factor below 1 still converges on opaque.
+      // stroke's ceiling and rides `BrushDabSequence.opacity` instead.
+      // F-205 (유저 2026-09-28): the variation is a ceiling too — a dab
+      // settles at its opacity where dabs pile up (`qa_dab_source_alpha`).
+      // ↩️Per dab it multiplied like flow, and a light press piled up to the
+      // full slider wherever the stroke crossed itself.
       opacity: 1,
       flow: settings.flow,
       hardness: settings.hardness,
@@ -642,7 +662,7 @@ class _InteractiveBrushEditCanvasViewState
 
   /// Creates or recycles the live stroke rasterizer for the current canvas.
   void _prepareLiveRasterizer() {
-    final surface = widget.sessionState.canvasState.currentSurface;
+    final surface = widget.celNow();
     final canvasSize = surface.canvasSize;
     final existing = _liveRasterizer;
     // The stroke grid IS the cel grid (the promotion round's premise: a

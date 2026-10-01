@@ -30,6 +30,8 @@ import 'timeline_beat_lines.dart'
         timelineRowPaperExtent;
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -37,6 +39,7 @@ import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'timeline_grid_tile_store.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 import 'timeline_tile_raster_source.dart';
 
@@ -44,8 +47,11 @@ const String _holdDashGlyph = timelineHoldDashGlyph;
 
 /// Glyph TextPainters come from the shared timeline cache (UI-R16):
 /// frame numbers and markers repeat heavily across rows and repaints.
-TextPainter _glyphPainter(String text, TextStyle style) =>
-    timelineGlyphPainter(text, style);
+TextPainter _glyphPainter(
+  String text,
+  TextStyle style, {
+  double tightening = 0,
+}) => timelineGlyphPainter(text, style, tightening: tightening);
 
 /// Where a cell of [layer]'s row can paint differently from the cell before
 /// it, ascending — the edges of its STRETCHES: between two edges every cell
@@ -87,7 +93,7 @@ List<int> timelineRowCellEdges(Layer layer) {
 }
 
 class TimelineRowCellsPainter extends CustomPainter
-    with RepaintOnProps
+    with RepaintOnProps, RepaintOnWordBakes
     implements TimelineTileRasterSource {
   TimelineRowCellsPainter({
     required this.layer,
@@ -284,9 +290,9 @@ class TimelineRowCellsPainter extends CustomPainter
   ///
   /// ⛔THE ONE READ SITE, and that is the point. The choice used to be made
   /// by an identical ternary in `timeline_frame_cells_row` AND in
-  /// `timeline_frame_cursor_layer`, which is what a range selection
-  /// measures — so a row could DRAW a block it would not SELECT the day the
-  /// two drifted ([[no-copy-to-share]]).
+  /// `timeline_frame_cursor_layer`, whose outline showed the block you stood
+  /// in — so a row could DRAW a block it would not outline the day the two
+  /// drifted ([[no-copy-to-share]]). The outline went with F-212.
   ///
   /// Read once a pass ([readInOnePass]): a cell's model asks its own state
   /// and both its neighbours', the models beside it ask them again, and a
@@ -310,20 +316,24 @@ class TimelineRowCellsPainter extends CustomPainter
   /// tests and the row's hit-testing share (single source of truth).
   @override
   Rect cellRectFor(int frameIndex) {
-    final main =
-        leadingFrameSpacerWidth +
-        (frameIndex - frameStartIndex) * frameCellExtent;
+    final frames = geometry.value;
+    final main = frames.edgeAt(frameIndex);
+    final extent = frames.edgeAt(frameIndex + 1) - main;
     return axis == Axis.horizontal
-        ? Rect.fromLTWH(main, 0, frameCellExtent, crossAxisExtent)
-        : Rect.fromLTWH(0, main, crossAxisExtent, frameCellExtent);
+        ? Rect.fromLTWH(main, 0, extent, crossAxisExtent)
+        : Rect.fromLTWH(0, main, crossAxisExtent, extent);
   }
 
   /// The frame index under a row-local position (the row Listener's
   /// pointer-down select); clamped non-negative.
   int frameIndexAt(Offset localPosition) {
     final main = axis == Axis.horizontal ? localPosition.dx : localPosition.dy;
-    final cell = ((main - leadingFrameSpacerWidth) / frameCellExtent).floor();
-    final frame = frameStartIndex + cell;
+    final frame = timelineFrameAt(
+      main -
+          leadingFrameSpacerWidth +
+          timelineFrameEdge(frameStartIndex, frameCellExtent),
+      frameCellExtent,
+    );
     return frame < 0 ? 0 : frame;
   }
 
@@ -578,18 +588,22 @@ class TimelineRowCellsPainter extends CustomPainter
       runColor = null;
     }
 
+    // A cell joins the run before it when no corner stands between them and
+    // it is the same paper.
+    bool joins(int frame, Color color) =>
+        color == runColor && cellModelAt(frame).segment.continuesFromPrevious;
+
     // By stretch (I-22): the rest of a stretch is its first cell again, so
     // it joins the run that cell joined or started, or lays nothing.
     for (final (start: frame, :end) in _stretchesIn(from, to)) {
       final color = resolvedCellStyleFor(frame).background;
-      final continues = cellModelAt(frame).segment.continuesFromPrevious;
       assert(
-        end - frame == 1 || continues || color.a == 0,
+        end - frame == 1 ||
+            cellModelAt(frame).segment.continuesFromPrevious ||
+            color.a == 0,
         'a stretch that starts a block is that one cell',
       );
-      // A cell joins the run before it when no corner stands between them
-      // and it is the same paper.
-      if (color == runColor && continues) {
+      if (joins(frame, color)) {
         continue;
       }
       close(frame);
@@ -600,7 +614,19 @@ class TimelineRowCellsPainter extends CustomPainter
         runColor = color;
       }
     }
-    close(to);
+    // 🗣️F-208 (유저 2026-09-29, Android): 「6콤마에 한번 세로선 존재. 줌 할때마다
+    // 위치바뀜」. Through [to] itself when the paper runs on into it: a tile
+    // ending here is as many pixels as its length rounds UP to, so at a
+    // fractional device pixel ratio its last pixel holds a sliver of the
+    // cell at [to]. Paper that stopped at [to] left that pixel part-covered —
+    // a line of ground wherever two tiles of one block met. The lines below
+    // reach through [to] for the same sliver.
+    close(
+      to < frameEndIndexExclusive &&
+              joins(to, resolvedCellStyleFor(to).background)
+          ? to + 1
+          : to,
+    );
 
     final lines = <({Rect rect, Color color})>[];
     if (blockFrameLines) {
@@ -702,7 +728,10 @@ class TimelineRowCellsPainter extends CustomPainter
       );
       if (image != null) {
         final origin = cellRectFor(spanStart);
-        final mainExtent = (spanEnd - spanStart) * frameCellExtent;
+        final end = cellRectFor(spanEnd - 1);
+        final mainExtent = axis == Axis.horizontal
+            ? end.right - origin.left
+            : end.bottom - origin.top;
         final dst = axis == Axis.horizontal
             ? Rect.fromLTWH(origin.left, 0, mainExtent, crossAxisExtent)
             : Rect.fromLTWH(0, origin.top, crossAxisExtent, mainExtent);
@@ -895,7 +924,7 @@ class TimelineRowCellsPainter extends CustomPainter
       baseTextStyle,
       ink: foregroundInkFor(model),
       // 🚨ONE SIZE AT EVERY ZOOM (유저 2026-09-24, B): the word narrows into
-      // its block instead ([cellWordLayoutFor]). ↩️R26 #38/#4 shrank names
+      // its block instead ([cellWordSetFor]). ↩️R26 #38/#4 shrank names
       // and marks with the cell rather than blanking them below ~14px, and
       // #15 shrank them with a squeezed row — both are the narrowing now, on
       // the axis that ran short.
@@ -907,29 +936,51 @@ class TimelineRowCellsPainter extends CustomPainter
     );
   }
 
-  /// Where the word of the cell at [frameIndex] is laid, row-local, and how
-  /// far it is narrowed — the block-word law ([timelineBlockWordLayout]):
+  /// The word [text] of the cell at [frameIndex], set in [style] where it is
+  /// laid, row-local — the block-word law ([timelineBlockWordLayout]):
   /// centred on its cell while it fits, growing on into its block past that
-  /// (F-96), and narrowed only where it would leave the block or its paper
-  /// (B, 유저 2026-09-24: 「이름은 블록안에서만」). PUBLIC: the tile emitter
-  /// bakes its word exactly here.
+  /// (F-96). Where the block runs short its letter gaps give way first
+  /// ([timelineWordSetOnto], F-234-Q1), and only past that is it narrowed,
+  /// where it would leave the block or its paper (B, 유저 2026-09-24:
+  /// 「이름은 블록안에서만」). The room is the one its NATURAL length asks
+  /// for — the block's rest, where tightening happens at all. PUBLIC: the
+  /// tile emitter bakes its word exactly here, this tight.
   @override
-  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word) {
+  ({double tightening, Offset origin, WordFit fit}) cellWordSetFor(
+    int frameIndex,
+    String text,
+    TextStyle style,
+  ) {
+    final slot = _wordSlotFor(
+      frameIndex,
+      _glyphPainter(text, style).size,
+    );
+    final set = timelineWordSetOnto(text, style, slot.room.width);
+    final layout = timelineBlockWordLayout(set.glyph.size, slot);
+    return (
+      tightening: set.tightening,
+      origin: layout.origin,
+      fit: layout.fit,
+    );
+  }
+
+  TimelineBlockWordSlot _wordSlotFor(int frameIndex, Size word) {
     final cell = cellRectFor(frameIndex);
     final horizontal = axis == Axis.horizontal;
     final cellStart = horizontal ? cell.left : cell.top;
     final roomEnd = _wordRoomEnd(frameIndex, extentAlong(axis, word));
     final paper = timelineRowPaperExtent(crossAxisExtent);
-    return timelineBlockWordLayout(word, (
+    return (
       axis: axis,
       room: horizontal
           ? Rect.fromLTRB(cellStart, 0, roomEnd, paper)
           : Rect.fromLTRB(0, cellStart, paper, roomEnd),
       cellStart: cellStart,
-      cellExtent: frameCellExtent,
+      // The cell the law laid (F-220), not the zoom's nominal width.
+      cellExtent: extentAlong(axis, cell.size),
       growth: TimelineBlockWordGrowth.towardBlockEnd,
       acrossAlignment: 0,
-    ));
+    );
   }
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
@@ -946,7 +997,9 @@ class TimelineRowCellsPainter extends CustomPainter
       center: paper.center,
       radius: timelineInbetweenMarkRadius(
         baseTextStyle.fontSize ?? 12,
-        cellExtent: frameCellExtent,
+        // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and
+        // 2, and a mark sized from 1.3 left the 1px ones.
+        cellExtent: extentAlong(axis, cellRectFor(frameIndex).size),
         crossExtent: axis == Axis.horizontal ? paper.height : paper.width,
       ),
     );
@@ -961,17 +1014,23 @@ class TimelineRowCellsPainter extends CustomPainter
   /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
   /// and its name stays inside that run as a drawn block's does.
   double _wordRoomEnd(int frameIndex, double extent) {
+    final horizontal = axis == Axis.horizontal;
+    double endOf(int index) {
+      final cell = cellRectFor(index);
+      return horizontal ? cell.right : cell.bottom;
+    }
+
     final cell = cellRectFor(frameIndex);
-    final start = axis == Axis.horizontal ? cell.left : cell.top;
-    var end = start + frameCellExtent;
+    final start = horizontal ? cell.left : cell.top;
     var index = frameIndex;
+    var end = endOf(index);
     while (end - start < extent &&
         timelineExposureBlockSegmentAt(
           frameIndex: index,
           stateAt: _stateAt,
         ).continuesToNext) {
       index += 1;
-      end += frameCellExtent;
+      end = endOf(index);
     }
     return end;
   }
@@ -1023,20 +1082,20 @@ class TimelineRowCellsPainter extends CustomPainter
       _paintHoldDash(canvas, cellRectFor(frameIndex), foregroundInkFor(model));
       return;
     }
-    final glyph = _glyphPainter(model.glyph, glyphStyleFor(model));
     // Snap the draw to the PHYSICAL pixel grid (UI-R20 #6): the tile
     // path blits glyphs at integer physical positions, so the classic
     // pass must land on the same grid — otherwise the classic↔tile
     // swap on row activation reads as the text thinning/thickening.
     // F-96: centred while the word fits its cell, growing on into the
-    // block when it does not, narrowed only past the block
-    // ([cellWordLayoutFor]).
-    final layout = cellWordLayoutFor(frameIndex, glyph.size);
+    // block when it does not, its letter gaps giving way and only then
+    // narrowed past the block ([cellWordSetFor]).
+    final style = glyphStyleFor(model);
+    final layout = cellWordSetFor(frameIndex, model.glyph, style);
     final raw = layout.origin;
     final dpr = devicePixelRatio <= 0 ? 1.0 : devicePixelRatio;
     paintFittedText(
       canvas,
-      glyph,
+      _glyphPainter(model.glyph, style, tightening: layout.tightening),
       Offset(
         (raw.dx * dpr).roundToDouble() / dpr,
         (raw.dy * dpr).roundToDouble() / dpr,

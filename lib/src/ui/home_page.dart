@@ -19,6 +19,7 @@ import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/save_failure.dart' show SaveFailure;
 import '../services/persistence/app_accent_settings_store.dart';
+import '../services/persistence/app_frame_count_settings_store.dart';
 import '../services/persistence/app_frame_grid_settings_store.dart';
 import '../services/persistence/app_onion_skin_settings_store.dart';
 import '../services/persistence/app_ui_scale_store.dart';
@@ -61,6 +62,7 @@ import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_settings_store.dart';
+import 'timeline/instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
@@ -74,6 +76,8 @@ import 'session/editor_app_settings.dart';
 import 'open_projects.dart';
 import 'session/project_file_door.dart' show SaveAsked;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
+import 'timeline/memo_token.dart' show ByList;
+import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
@@ -183,6 +187,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     uiScaleStore: _unlessTesting(AppUiScaleStore.new),
     onionSkinSettingsStore: _unlessTesting(AppOnionSkinSettingsStore.new),
     frameGridSettingsStore: _unlessTesting(AppFrameGridSettingsStore.new),
+    frameCountSettingsStore: _unlessTesting(AppFrameCountSettingsStore.new),
   )..restore();
   final WorkspacePanelsMenuController _panelsMenu =
       WorkspacePanelsMenuController();
@@ -299,7 +304,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// FLUTTER_TEST like the workspace layout.
   late final EditorShortcutBindings _shortcuts = EditorShortcutBindings(
     store: _unlessTesting(ShortcutSettingsStore.new),
-  );
+  )..sheet = _flipHud;
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
   /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
@@ -410,6 +415,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     GestureBinding.instance.pointerRouter.addGlobalRoute(_noteUserActivity);
     _lifecycle = AppLifecycleListener(
       onExitRequested: _handleExitRequested,
+      onInactive: _letGoOfEverythingPressed,
       // Every way the app can stop being in front of the user, because the
       // platforms disagree about which of these they send and in what
       // order — and on mobile the process may simply never wake up again.
@@ -640,6 +646,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _autosaveClock.noteActivity(strokeInFlight: _pointersDown.isNotEmpty);
   }
 
+  /// The window lost the OS's focus — a notification took it, another app
+  /// came forward. Whatever is PRESSED in it will be let go somewhere else,
+  /// where this window never hears it: a pen lifted over the other window,
+  /// a key released in it. So what is pressed here lets go NOW — a pointer
+  /// still down is cancelled (a stroke in flight ends the way a cancelled
+  /// one does), and every held key's hold ends.
+  ///
+  /// 🗣️F-232 (유저 2026-09-30): 「클로드 통해서 오는 윈도우 알림이 발생하면
+  /// 언두가 안먹기시작하는거같음 … 그상태에서 환경설정창 열어도 언두
+  /// 되기시작」. Measured: a pen down when the window loses focus, whose
+  /// lift never comes back, leaves a stroke in flight for good — and a
+  /// stroke in flight refuses every undo (I-41's walk) and holds the
+  /// autosave clock ([_noteUserActivity]).
+  ///
+  /// ⛔Not the lifecycle SNAPSHOT that F-1 took out (above): nothing is
+  /// saved here. It only lets go of input.
+  void _letGoOfEverythingPressed() {
+    for (final pointer in [..._pointersDown]) {
+      GestureBinding.instance.cancelPointer(pointer);
+    }
+    _keyHolds.letGoOfEverything();
+  }
+
   /// The OS says memory is tight: EVERY open project stands its caches
   /// down — hot cels halve and cool, playback re-runs its budget — the tabs
   /// behind the one on screen as much as it (I-7).
@@ -768,60 +797,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     return true;
   }
 
-  /// One arrow step through the timeline, resolved by the AXIS it came from.
-  ///
-  /// 🚨★★★THE SAME QUESTION THE FLIP ASKS. 유저 2026-08-27: 「플립이랑
-  /// 화살표랑 **입구는 달라도 통하는건 하나**니까 둘 다 적용해야하는거지」.
-  ///
-  /// The frame axis is sideways on the timeline and downward on the X-sheet
-  /// (F-28), and the flip gesture already follows the sheet the user is
-  /// reading — `CanvasViewportGestureLayer._flipsFrames`. The keyboard did
-  /// not: left/right always walked drawings and up/down always walked rows,
-  /// so on an X-sheet the arrows moved across the grid the flip moved along.
-  ///
-  /// Both entrances land in the one switch below — the flip invokes these
-  /// very action ids — so the disagreement was never two mechanisms. It was
-  /// one mechanism asked the question in only one of its two doorways.
-  ///
-  /// ↩️「⛔The canvas NUDGE never reaches here and stays keyed to the arrow's
-  /// own direction」 — there is no nudge any more (F-86, 유저 2026-09-12:
-  /// 「기능부터 잔존코드 싹 삭제」), so every plain arrow comes here.
-  /// [byFrame] is the SIZE of the step along the frame axis — one FRAME
-  /// (Ctrl+arrows, F-28) or one DRAWING (the plain arrows). It changes
-  /// nothing about the axis question, which is exactly why it is a
-  /// parameter here rather than a second walker: 유저 2026-08-28 asked for
-  /// Ctrl+arrows to follow the sheet the way the plain ones already do,
-  /// and a copy of this `if` is what `the_frame_axis_is_asked_in_one_place`
-  /// exists to forbid.
-  ///
-  /// ⛔Across the axis both sizes mean the same thing — one ROW. A frame
-  /// has no meaning perpendicular to the frames.
-  void _walkTimeline({
-    required bool horizontal,
-    required bool forward,
-    bool byFrame = false,
-  }) {
-    if (_flipHud.framesRunAlong(horizontal: horizontal)) {
-      // Along the frame axis: one DRAWING, which is the plain arrow's step.
-      if (byFrame) {
-        if (forward) {
-          _session.frameVerbs.selectNextFrame();
-        } else {
-          _session.frameVerbs.selectPreviousFrame();
-        }
-      } else if (forward) {
-        _session.frameVerbs.flipRow(forward: true);
-      } else {
-        _session.frameVerbs.flipRow(forward: false);
-      }
-    } else {
-      // Across it: the row stack, in the direction the sheet lays it out
-      // (F-28, 유저 2026-08-31: 「좌우가 방향이 반대임」).
-      _timelineLayerNav.step(_flipHud.rowStepAcross(forward: forward));
-    }
-    _session.revealSelection();
-  }
-
   void _invokeAction(String actionId) {
     // 🚨T28-c — 「재생 중 첫 작동은 정지이고, **정지일 뿐이다**」.
     //
@@ -857,58 +832,66 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // presses, through the one [pressTool]; a colour edit action runs its
     // row's verb behind the gate that row opens behind.
     if (definition?.toolPress case final press?) {
-      pressTool(press, tool: _brushTool, transform: _transformOptions);
+      pressTool(
+        press,
+        tool: _brushTool,
+        transform: _transformOptions,
+        cutWhole: _session.pixelVerbs.cutWhole,
+      );
       return;
     }
     if (definition?.pixelVerb case final verb?) {
-      if (_session.cells.canRunPixelVerb) {
-        _session.cells.runPixelVerb(verb);
+      if (_session.pixelVerbs.canRunPixelVerb) {
+        _session.pixelVerbs.runPixelVerb(verb);
+      }
+      return;
+    }
+    if (definition?.pixelClipboardVerb case final verb?) {
+      if (_session.pixelVerbs.canRunPixelClipboardVerb(verb)) {
+        _session.pixelVerbs.runPixelClipboardVerb(verb);
+      }
+      return;
+    }
+    // 🗣️I-31: a blend action picks what the strip's blend chooser picks, and
+    // only where that chooser can — a tool that composites nothing keeps the
+    // brush's blend untouched, and the eraser stays the erase blend.
+    if (definition?.blendMode case final mode?) {
+      final state = _brushTool.value;
+      if (state.blendIsAChoice) {
+        _brushTool.value = state.withActiveBlendMode(mode);
       }
       return;
     }
     switch (actionId) {
+      // 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
+      // 레이어 이렇게 개편」 — the six moves are MEANINGS. Which way the
+      // sheet runs is answered before they get here: a key arrives already
+      // turned to the timeline's reading (`SheetTurnedActivator`), and so
+      // does the canvas flip (`CanvasViewportGestureLayer._updateFlip`) —
+      // both through `FlipHudController.timelineArrowFor`.
+      // ↩️Four direction actions (F-28's Ctrl+arrows) and a walker here
+      // resolved the axis for them; 「이전프레임이랑 왼쪽으로 한걸음이랑
+      // 똑같은데 … 싹 삭제」.
+      //
+      // R5: and the rails bring it back into view. These are the moves that
+      // happen WITHOUT a pointer, so they are the ones that could walk the
+      // selection off screen (user, 2026-08-09).
       case EditorActionIds.framePrevious:
-        // PEN-7c: the one-frame step — always a frame flip, never a nudge.
-        //
-        // ⛔The COMMA and PERIOD keep this arm and stay axis-blind, which
-        // is the point of F-28's split: they say "previous / next frame",
-        // not a direction, so an X-sheet must not turn them into row
-        // moves. The Ctrl+ARROWS moved to the four cases below, where a
-        // direction is what the key means.
-        //
-        // R5: and the rails bring it back into view. These are the moves
-        // that happen WITHOUT a pointer, so they are the ones that could
-        // walk the selection off screen (user, 2026-08-09).
         _session.frameVerbs.selectPreviousFrame();
         _session.revealSelection();
       case EditorActionIds.frameNext:
         _session.frameVerbs.selectNextFrame();
         _session.revealSelection();
-      // F-28 (유저 2026-08-28, Q2=2): Ctrl+arrows read the SHEET, exactly
-      // as the plain arrows already do — along the frame axis one frame,
-      // across it one row. On an X-sheet that makes Ctrl+↑↓ the frame step
-      // and Ctrl+←→ the row step; on the horizontal timeline it is the
-      // arrangement it always was.
-      case EditorActionIds.frameWalkLeft:
-        _walkTimeline(horizontal: true, forward: false, byFrame: true);
-      case EditorActionIds.frameWalkRight:
-        _walkTimeline(horizontal: true, forward: true, byFrame: true);
-      case EditorActionIds.frameWalkUp:
-        _walkTimeline(horizontal: false, forward: false, byFrame: true);
-      case EditorActionIds.frameWalkDown:
-        _walkTimeline(horizontal: false, forward: true, byFrame: true);
-      // The plain arrows WALK the sheet (TVP layer nav, UI-R20 #14; which
-      // way the frames run is the sheet's answer inside `_walkTimeline`,
-      // F-28). ↩️With a live canvas selection they used to NUDGE it instead
-      // — PS arbitration, standing down while a stroke was live (R16-③).
-      // 유저 2026-09-12: 「선택툴 선택한채로 화살표키누르면 그림 이동되는데 왜
-      // 멋대로 넣은거지? 기능부터 잔존코드 싹 삭제」 · 「화살표 이동하는거
-      // 변형툴일때도 작동하는거같은데 제발 멋대로 하지말고 그냥 싹 잔존 삭제」
-      // (F-86).
+      // ↩️With a live canvas selection the arrows used to NUDGE it instead —
+      // PS arbitration (R16-③). 유저 2026-09-12: 「선택툴 선택한채로
+      // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드
+      // 싹 삭제」 (F-86).
       case EditorActionIds.drawingPrevious:
-        _walkTimeline(horizontal: true, forward: false);
+        _session.frameVerbs.flipRow(forward: false);
+        _session.revealSelection();
       case EditorActionIds.drawingNext:
-        _walkTimeline(horizontal: true, forward: true);
+        _session.frameVerbs.flipRow(forward: true);
+        _session.revealSelection();
       case EditorActionIds.playbackToggle:
         _togglePlayback();
       case EditorActionIds.voiceRecordToggle:
@@ -957,9 +940,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.selectionDeselect:
         _canvasSelectionCommands.deselect();
       case EditorActionIds.layerUp:
-        _walkTimeline(horizontal: false, forward: false);
+        _timelineLayerNav.step(-1);
+        _session.revealSelection();
       case EditorActionIds.layerDown:
-        _walkTimeline(horizontal: false, forward: true);
+        _timelineLayerNav.step(1);
+        _session.revealSelection();
       case EditorActionIds.confirm:
         _confirm.confirm();
       case EditorActionIds.selectionTransformCancel:
@@ -980,6 +965,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           unawaited(
             showTimelineCommaCountDialog(context, _session, panel: panel),
           );
+        }
+      // I-18: 자동 이름 지정, pressed by key — the shared pill's button on the
+      // panel being worked in, behind the gate that button reads.
+      case EditorActionIds.editAutoName:
+        final panel = _workingPanel;
+        if (panel.canAutoName) {
+          unawaited(autoNameWithWindow(context, _session, panel: panel));
         }
       // 🗣️I-19: the shared pill's own buttons, pressed by key — through the
       // very getters the buttons fire, so a key cannot act where its button
@@ -1198,17 +1190,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         ),
                                       ),
                                     ),
-                                    // Re-reads per notify: the panels bridge
-                                    // drives the visibility checks, the open
-                                    // projects their tabs — every one of them,
-                                    // since a tab behind this one is renamed
-                                    // by its own save — and the session on
-                                    // screen the export gate.
-                                    child: ListenableBuilder(
-                                      listenable: Listenable.merge([
-                                        _projects,
-                                        ..._projects.sessions,
-                                        _panelsMenu,
+                                    // What the strip shows of the open
+                                    // projects is their TABS. A tab opened,
+                                    // closed or brought on screen rebuilds
+                                    // this page ([_followProjectOnScreen]);
+                                    // what a PROJECT changes of its own tab
+                                    // is its name, by its own save — every
+                                    // one of them, a tab behind this one
+                                    // too. 🚨F-244: the strip rebuilt on
+                                    // every notify, and so on every commit —
+                                    // the release frame's whole build phase
+                                    // on the user's own cut. The flyouts (the
+                                    // panels' checks, the export gate) build
+                                    // their entries when they open; the floor
+                                    // switch and the brush bars hear their
+                                    // own.
+                                    child: SlicedListenableBuilder<Object>(
+                                      listenable: Listenable.merge(
+                                        _projects.sessions,
+                                      ),
+                                      slice: () => ByList([
+                                        for (final session
+                                            in _projects.sessions)
+                                          projectTabLabel(_projects, session),
                                       ]),
                                       builder: (context, _) => EditorTopStrip(
                                         projects: _projects,

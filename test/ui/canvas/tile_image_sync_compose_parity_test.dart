@@ -11,8 +11,11 @@ import 'package:anicel/src/models/brush_dab_sequence.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// THE FORK IN THE ROAD FOR N4.
@@ -76,6 +79,19 @@ void main() {
         sequence: BrushDabSequence(dabs),
       ).surface;
 
+  /// What the COMMIT lands on [on]: the stroke piled up on an empty buffer
+  /// and composited once. ↩️The truth here was [materialize] — the dabs
+  /// laid on the tile one by one — which is not how a stroke lands since
+  /// erase-live-and-dab-route-round-apart, and against which a dab under
+  /// 100% now settles at the tile's alpha instead of its stroke's (F-205).
+  BitmapSurface commit(BitmapSurface on, List<BrushDab> dabs) =>
+      brushCommitResultForBrushDabSequenceOnBitmapSurface(
+        surface: on,
+        sequence: BrushDabSequence(dabs),
+        layerId: const LayerId('l'),
+        frameId: const FrameId('f'),
+      ).afterSurface;
+
   Future<ui.Image> decodeTile(BitmapTile tile) {
     final upload = BitmapTileImageCache.premultipliedTileUpload(tile);
     final completer = Completer<ui.Image>();
@@ -127,7 +143,7 @@ void main() {
 
       // POST: the same tile after a SECOND, semi-transparent stroke — this
       // is the byte truth the commit produced, blended by the real kernel.
-      final post = materialize(pre, [
+      final post = commit(pre, [
         dab(x: 5, y: 4, color: 0xFFE04020, opacity: 0.5, size: 5, sequence: 1),
       ]);
       final postTile = post.tileAt(coord)!;
@@ -261,7 +277,7 @@ void main() {
               size: 6,
               sequence: 1,
             );
-            final post = materialize(pre, [inkDab]);
+            final post = commit(pre, [inkDab]);
             final overlayOnly = materialize(blankSurface(), [inkDab]);
 
             final preTile = pre.tileAt(coord);

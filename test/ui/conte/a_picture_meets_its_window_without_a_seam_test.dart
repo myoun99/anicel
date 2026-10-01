@@ -136,7 +136,7 @@ Future<_Shot> _print(
     source: source,
     words: conteWordsIn(AppLanguage.ja),
     viewport: view,
-    pictureFor: (_, _, _) => image,
+    pictureFor: (_, _) => image,
   ).paint(Canvas(recorder, Offset.zero & size), size);
   final picture = recorder.endRecording();
   final shot = await picture.toImage(size.width.round(), size.height.round());

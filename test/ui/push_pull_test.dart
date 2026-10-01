@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/cut_shift.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
@@ -167,6 +168,40 @@ void main() {
       expect(blocksOf(s), [(0, 4), (6, 7)]);
     });
 
+    // 🗣️F-237 (유저 2026-09-29): 「뒤 성질 홀드인 블록의 뒤 갭부분에서 앞으로
+    // 당기기가 안됨. 몇번이나 말하지만 홀드든 리피트든 성질로 만들어진
+    // 공간이라도 빈공간으로 작동은 해야함」 — F-137's law, on the pull.
+    for (final mode in [TimelineRunEdgeMode.hold, TimelineRunEdgeMode.repeat]) {
+      test('🚨F-237: an end ${mode.name}\'s cells are empty space to the pull '
+          '— standing in them, it closes them like any gap', () {
+        final s = twoBlockSession();
+        s.rangeMove.setRunEdgeBehavior(
+          layerId: s.activeLayerId!,
+          blockStartIndex: 0,
+          side: TimelineRunEdgeSide.end,
+          mode: mode,
+        );
+        expect(
+          ghostCellsOf(s),
+          [1, 2, 3],
+          reason: '⛔전제: the ${mode.name} fills up to the second block',
+        );
+
+        s.selectFrameIndex(2);
+        expect(
+          s.blockShift.framePullSlack(),
+          3,
+          reason: '🚨↩️0 — the ghosts were a block the pull could not close',
+        );
+        s.blockShift.pullFrames(3);
+
+        // The two blocks touch now: one run, whose end is carried by the
+        // mark nearest it (F-134's resolution) — so where its ghosts go next
+        // is that law's, not the pull's.
+        expect(authoredBlocksOf(s), [(0, 1), (1, 2)]);
+      });
+    }
+
     test('the SELECTION decides the rows AND the anchor', () {
       final s = twoBlockSession();
       final layerId = s.activeLayerId!;
@@ -192,6 +227,20 @@ List<(int, int)> blocksOf(EditorSessionManager s) {
       (entry.key, entry.key + entry.value.length!),
   ];
 }
+
+/// The active layer's AUTHORED blocks — its ghosts left out.
+List<(int, int)> authoredBlocksOf(EditorSessionManager s) => [
+  for (final entry in s.activeLayer!.timeline.entries)
+    if (!entry.value.ghost) (entry.key, entry.key + entry.value.length!),
+];
+
+/// The cells the active layer's ghosts cover.
+List<int> ghostCellsOf(EditorSessionManager s) => [
+  for (final entry in s.activeLayer!.timeline.entries)
+    if (entry.value.ghost)
+      for (var at = entry.key; at < entry.key + entry.value.length!; at += 1)
+        at,
+];
 
 /// The collaborator that owns the laws above, under its OWN name.
 ///

@@ -22,6 +22,7 @@ class _SurfacePaintPass {
   late final Paint _tileImagePaint;
   late final int _level;
   late final Rect _visibleRect;
+  late final RowFloat? _float;
 
   /// The one answer to what a coordinate shows ([_CoordinatePicture]).
   late final _CoordinatePicture _coordinates = _CoordinatePicture(this);
@@ -50,10 +51,18 @@ class _SurfacePaintPass {
   ///
   /// [level] is the display pyramid's level this paint composes at
   /// ([BitmapSurfacePainter.paintContentInto]).
-  void paintContentInto(Canvas canvas, {Paint? layerPaint, int level = 0}) {
+  void paintContentInto(
+    Canvas canvas, {
+    Paint? layerPaint,
+    int level = 0,
+    RowFloat? float,
+  }) {
     _canvas = canvas;
     _layerPaint = layerPaint;
     _level = level;
+    _float = float == null || float.preview.drawnWorldRect.isEmpty
+        ? null
+        : float;
     _painter.pictureBudget.paintBegan(_painter.lineage);
     if (_level > 0) {
       TilePyramid.instance.paintBegan(_painter.lineage);
@@ -126,24 +135,44 @@ class _SurfacePaintPass {
     // at 88, 82.7 ms per walk at the 1024 tiles the _canvas dialog allows —
     // a cliff, not a smoothness question. 2d0478fb (2026-09-09) stopped the
     // copy, so both lookups are O(1) now; `tileAt` stays the one meant here.
+    //
+    // 🚨★★★F-240: below 100% what a landing preview covers is not drawn
+    // here but made whole below ([_paintLandingAtLevel]).
+    final landing = _level > 0 ? _landingRegion() : null;
+    if (landing != null) {
+      _canvas.save();
+      _canvas.clipRect(
+        landing,
+        clipOp: ui.ClipOp.difference,
+        doAntiAlias: false,
+      );
+    }
     _paintVisibleTiles();
 
     _paintOverlay();
 
+    if (landing != null) {
+      _canvas.restore();
+    }
     if (_overlayBlendsInLayer) {
       _canvas.restore();
     }
 
-    // 🚨★★★F-33: the STAMP's ghost, and it is drawn HERE rather than in a
-    // widget above the _canvas so [_layerPaint] reaches it — the layer's
-    // opacity, its blend and its group buffer, which is the whole of the
-    // user's ask (「레이어 블렌드모드나 **합성같은게 다** 반영되는」).
-    //
-    // ⚠️AFTER the _overlay's restore on purpose. `_overlayBlendsInLayer`
-    // opens an isolation layer for the STROKE's own blend; a ghost that
-    // is not part of that stroke must not be inside it, or the stroke's
-    // brush blend would apply to the preview as well.
-    _paintStampPreview();
+    if (landing != null) {
+      _paintLandingAtLevel(landing);
+    } else {
+      // 🚨★★★F-33: the STAMP's ghost, and it is drawn HERE rather than in a
+      // widget above the _canvas so [_layerPaint] reaches it — the layer's
+      // opacity, its blend and its group buffer, which is the whole of the
+      // user's ask (「레이어 블렌드모드나 **합성같은게 다** 반영되는」).
+      //
+      // ⚠️AFTER the _overlay's restore on purpose. `_overlayBlendsInLayer`
+      // opens an isolation layer for the STROKE's own blend; a ghost that
+      // is not part of that stroke must not be inside it, or the stroke's
+      // brush blend would apply to the preview as well.
+      _paintStampPreview();
+      _paintFloat();
+    }
 
     // No pasteboard dim (user decision, Flash-style): off-_canvas artwork
     // shows at full brightness — the paper edge against the backdrop is
@@ -258,7 +287,8 @@ class _SurfacePaintPass {
             ..blendMode = BlendMode.dstOut)
         : blendMode.previewBlendMode != BlendMode.srcOver
         // BB-1: the brush blend previews live (tiles never overlap,
-        // so per-tile draws blend each pixel exactly once).
+        // so per-tile draws blend each pixel exactly once — each held
+        // to its own rect where the blend does not act in place, F-243).
         ? (Paint()
             ..filterQuality = FilterQuality.none
             ..isAntiAlias = false
@@ -300,6 +330,116 @@ class _SurfacePaintPass {
           replacesCoords: false,
         ).blendMode,
       );
+    }
+  }
+
+  /// The selection's lifted float, over everything this surface drew. It
+  /// is CANVAS space, so into a posed row it goes through the row's matrix.
+  void _paintFloat() {
+    final float = _float;
+    if (float == null) {
+      return;
+    }
+    final toRow = float.canvasToRow;
+    if (toRow == null) {
+      float.preview.paintInto(_canvas);
+      return;
+    }
+    _canvas.save();
+    _canvas.transform(toRow.storage);
+    float.preview.paintInto(_canvas);
+    _canvas.restore();
+  }
+
+  /// Where this paint's landing previews — the stamp's ghost, the float —
+  /// draw, in this paint's own space and inside what it shows, grown out to
+  /// whole pixels of [_level]; null when none draws.
+  Rect? _landingRegion() {
+    Rect? covered;
+    final ghost = _painter.stampPreview?.value;
+    if (ghost != null && ghost.image != null) {
+      covered = ghost.canvasRect;
+    }
+    final float = _float;
+    if (float != null) {
+      final toRow = float.canvasToRow;
+      final drawn = float.preview.drawnWorldRect;
+      final inRow = toRow == null
+          ? drawn
+          : MatrixUtils.transformRect(toRow, drawn);
+      covered = covered?.expandToInclude(inRow) ?? inRow;
+    }
+    if (covered == null) {
+      return null;
+    }
+    final shown = covered.intersect(_visibleRect);
+    return shown.isEmpty ? null : wholeLevelPixelsOutward(shown, _level);
+  }
+
+  /// 🚨★★★F-240 (유저 2026-09-29: 「변형툴 변형도중이랑 확정이랑 그림 바뀌는
+  /// 문제. 100%줌일땐 괜찮은데 50%에서 변형중에 필터 없음으로 보임 …
+  /// 변형중에도 필터 통일적용하도록 근본/구조적 해결」): what a landing
+  /// preview covers, below 100%, is made THE WAY ITS LANDING WILL BE SHOWN.
+  ///
+  /// A landed cel shows here as level tiles — every level pixel the exact
+  /// mean of a 2×2 block of the level above, down from the coordinates'
+  /// own pictures ([TilePyramid], one halving law in `level_image.dart`).
+  /// The float and the stamp ghost were drawn over those tiles 1:1 at
+  /// `none` instead, which at a level is nearest sampling — one canvas
+  /// pixel in two at 50% — so a transform looked sharp while it was open
+  /// and softened the moment it landed.
+  ///
+  /// So [region], aligned to the level's pixels, is painted by this same
+  /// pass at level 0 — the coordinates, the stroke, the ghost and the float
+  /// exactly as 100% shows them — and halved [_level] times through that
+  /// one halving law, then drawn 1:1. Every level pixel in it is the mean
+  /// the landed cel's level tile will hold there: the same bytes on the
+  /// Windows app and the test runner, the ≤2/255 Vulkan gap of any level
+  /// aside (board `halving-rounds-differently-per-engine`).
+  void _paintLandingAtLevel(Rect region) {
+    var image = _rasterAtLevelZero(region);
+    try {
+      for (var halvings = 0; halvings < _level; halvings += 1) {
+        final halved = _halved(image);
+        image.dispose();
+        image = halved;
+      }
+      // 1:1 in the level's pixels, the blit a level tile gets.
+      _canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+        region,
+        _tileImagePaint,
+      );
+    } finally {
+      // Safe once drawn: the draw holds its own claim on the pixels.
+      image.dispose();
+    }
+  }
+
+  /// [region] as level 0 shows it — this same pass, one canvas pixel to one
+  /// raster pixel.
+  ui.Image _rasterAtLevelZero(Rect region) {
+    final recorder = ui.PictureRecorder();
+    final atFull = Canvas(recorder)
+      ..translate(-region.left, -region.top)
+      ..clipRect(region);
+    _SurfacePaintPass(_painter).paintContentInto(atFull, float: _float);
+    final picture = recorder.endRecording();
+    try {
+      return picture.toImageSync(region.width.round(), region.height.round());
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  /// [image] halved once through the one halving law.
+  static ui.Image _halved(ui.Image image) {
+    final halving = halvingPicture([(image: image, at: Offset.zero)]);
+    try {
+      return halving.toImageSync(image.width ~/ 2, image.height ~/ 2);
+    } finally {
+      halving.dispose();
     }
   }
 }

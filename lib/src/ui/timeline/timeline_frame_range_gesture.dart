@@ -14,6 +14,9 @@ import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_double_tap.dart';
 import 'timeline_edge_auto_pan.dart' show edgeAutoPanApply;
+import '../input/finger_mode_devices.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -289,7 +292,8 @@ class TimelineFrameRangeGestureLayer extends StatefulWidget {
 }
 
 class _TimelineFrameRangeGestureLayerState
-    extends State<TimelineFrameRangeGestureLayer> {
+    extends State<TimelineFrameRangeGestureLayer>
+    with _RangeDragFirstStep {
   _RangeDragMode _mode = _RangeDragMode.none;
   int _anchorIndex = 0;
   double _mainDelta = 0;
@@ -310,6 +314,7 @@ class _TimelineFrameRangeGestureLayerState
   /// the release below does not say the same thing a second time.
   bool _clearedOnDown = false;
 
+  @override
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
@@ -321,6 +326,19 @@ class _TimelineFrameRangeGestureLayerState
     final frame = widget.geometry.value.frameStartIndex + cell;
     return frame < 0 ? 0 : frame;
   }
+
+  @override
+  bool _pressedInSelection(int frame) =>
+      widget.callbacks.isInSelection(widget.row, frame);
+
+  @override
+  Axis get _dragAxis => widget.axis;
+
+  @override
+  double get _dragCellExtent => widget.geometry.value.frameCellExtent;
+
+  @override
+  double get _dragRowExtent => widget.crossAxisExtent;
 
   void _startDrag(Offset localPosition) {
     _scrolledMain = 0;
@@ -517,6 +535,7 @@ class _TimelineFrameRangeGestureLayerState
           child: _eagerPanDetector(
             context: context,
             debugOwner: this,
+            firstStepAt: _firstStepAt,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -548,16 +567,14 @@ class TimelineLaneRangeHooks {
   /// The session's live LANE selection.
   final ValueListenable<TimelineLaneSelection?> selection;
 
-  /// A select-drag step. [headLaneId] is the lane row the pointer is over
-  /// (null = the anchor lane) — resolved by the MOUNT against the rows it
-  /// actually draws, so the hosts' hand-kept lane lists (which drifted on
-  /// the storyboard) are gone.
+  /// A select-drag step. The lanes it covers are resolved by the MOUNT
+  /// against the rows it actually draws, so the hosts' hand-kept lane lists
+  /// (which drifted on the storyboard) are gone.
   final void Function(
     LayerId layerId,
     String laneId,
     int anchorIndex,
     int headIndex,
-    String? headLaneId,
     // The lane ids the drag covers, sliced out of the rows the rail DREW
     // — 절대명령 2「선택범위는 레이어 불문 자유롭게」. The rail is the only
     // thing that knows what is on screen, so it is the thing that answers.
@@ -707,7 +724,8 @@ class TimelineLaneRangeGestureLayer extends StatefulWidget {
 }
 
 class _TimelineLaneRangeGestureLayerState
-    extends State<TimelineLaneRangeGestureLayer> {
+    extends State<TimelineLaneRangeGestureLayer>
+    with _RangeDragFirstStep {
   _RangeDragMode _mode = _RangeDragMode.none;
   int _anchorIndex = 0;
   double _mainDelta = 0;
@@ -721,14 +739,17 @@ class _TimelineLaneRangeGestureLayerState
   // Lane rows are not memoized (their bands rebuild on every host pass), so
   // this layer keeps the plain scalars — the live-geometry treatment buys
   // nothing where the widget rebuilds anyway.
+  @override
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
         : localPosition.dy;
-    final cell =
-        ((main - widget.leadingFrameSpacerWidth) / widget.frameCellExtent)
-            .floor();
-    final frame = widget.frameStartIndex + cell;
+    final frame = timelineFrameAt(
+      main -
+          widget.leadingFrameSpacerWidth +
+          timelineFrameEdge(widget.frameStartIndex, widget.frameCellExtent),
+      widget.frameCellExtent,
+    );
     return frame < 0 ? 0 : frame;
   }
 
@@ -744,19 +765,31 @@ class _TimelineLaneRangeGestureLayerState
   TimelineRowAddress get _rowAddress =>
       LaneRowAddress(widget.layer.id, widget.laneId);
 
-  void _startDrag(Offset localPosition) {
-    _scrolledMain = 0;
-    _scrolledCross = 0;
-    final frame = _frameAt(localPosition);
+  @override
+  bool _pressedInSelection(int frame) {
     final selection = widget.callbacks.selection.value;
     // R26 #3 follow-up: the HEADER band counts as inside a whole-group
     // selection, so one drag on it grabs every member lane's keys (user
     // rule: "한번에 잡아 이동" — the shared band-row predicate).
-    final insideSelection =
-        selection != null &&
+    return selection != null &&
         laneSelectionCoversBandRow(selection, widget.layer.id, widget.laneId) &&
         selection.contains(frame);
-    if (insideSelection && widget.callbacks.onMoveBegin()) {
+  }
+
+  @override
+  Axis get _dragAxis => widget.axis;
+
+  @override
+  double get _dragCellExtent => widget.frameCellExtent;
+
+  @override
+  double get _dragRowExtent => widget.crossAxisExtent;
+
+  void _startDrag(Offset localPosition) {
+    _scrolledMain = 0;
+    _scrolledCross = 0;
+    final frame = _frameAt(localPosition);
+    if (_pressedInSelection(frame) && widget.callbacks.onMoveBegin()) {
       _mode = _RangeDragMode.move;
       _mainDelta = 0;
       _lastFrames = 0;
@@ -934,6 +967,7 @@ class _TimelineLaneRangeGestureLayerState
           child: _eagerPanDetector(
             context: context,
             debugOwner: this,
+            firstStepAt: _firstStepAt,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -951,29 +985,77 @@ class _TimelineLaneRangeGestureLayerState
 Widget _eagerPanDetector({
   required BuildContext context,
   required Object debugOwner,
+  required bool Function(Offset down, Offset now) firstStepAt,
   required void Function(Offset localPosition) onStart,
   required GestureDragUpdateCallback onUpdate,
   required VoidCallback onEnd,
   required VoidCallback onCancel,
 }) {
-  return RawGestureDetector(
-    behavior: HitTestBehavior.translucent,
-    gestures: <Type, GestureRecognizerFactory>{
-      EagerPanGestureRecognizer:
-          GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-            () => EagerPanGestureRecognizer(debugOwner: debugOwner),
-            (recognizer) {
-              recognizer.supportedDevices = AppInput.timelineEditPanDevices;
-              recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(
-                context,
-              );
-              recognizer.dragStartBehavior = DragStartBehavior.down;
-              recognizer.onStart = (details) => onStart(details.localPosition);
-              recognizer.onUpdate = onUpdate;
-              recognizer.onEnd = (_) => onEnd();
-              recognizer.onCancel = onCancel;
-            },
-          ),
-    },
+  return FingerModeDevices.timelineEditPan(
+    builder: (context, devices) => RawGestureDetector(
+      behavior: HitTestBehavior.translucent,
+      gestures: <Type, GestureRecognizerFactory>{
+        EagerPanGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+              () => EagerPanGestureRecognizer(debugOwner: debugOwner),
+              (recognizer) {
+                recognizer.firstStepAt = firstStepAt;
+                recognizer.supportedDevices = devices;
+                recognizer.gestureSettings =
+                    MediaQuery.maybeGestureSettingsOf(context);
+                recognizer.dragStartBehavior = DragStartBehavior.down;
+                recognizer.onStart = (details) =>
+                    onStart(details.localPosition);
+                recognizer.onUpdate = onUpdate;
+                recognizer.onEnd = (_) => onEnd();
+                recognizer.onCancel = onCancel;
+              },
+            ),
+      },
+    ),
   );
+}
+
+/// A range drag's FIRST STEP ([EagerPanGestureRecognizer.firstStepAt]) — the
+/// question both range layers ask, answered once (F-238). Each layer says
+/// where a press lands and how big its cells are; this says when the drag
+/// has begun.
+mixin _RangeDragFirstStep {
+  Axis get _dragAxis;
+
+  /// A cell's extent along the frame axis.
+  double get _dragCellExtent;
+
+  /// The row's extent across it.
+  double get _dragRowExtent;
+
+  int _frameAt(Offset localPosition);
+
+  bool _pressedInSelection(int frame);
+
+  /// Whether a press at [down], now at [now], has stepped. A press inside the
+  /// selection steps when the block would leave its seat, by the nearest-cell
+  /// step every frame drag reads ([commaDragFrameDelta]); any other press
+  /// when the pointer has left the cell it pressed — along the frame axis, or
+  /// off its row across it (F-138-Q1 「누른 상자 벗어나면 시작」).
+  ///
+  /// ⛔A move's ROW step is not asked: its deadband is three quarters of a
+  /// row ([timelineRowStepDelta]), which on any row 24px or taller lies past
+  /// the 18px hit slop — the slop comes first there.
+  bool _firstStepAt(Offset down, Offset now) {
+    final horizontal = _dragAxis == Axis.horizontal;
+    final pressed = _frameAt(down);
+    if (_pressedInSelection(pressed)) {
+      final travel = now - down;
+      return commaDragFrameDelta(
+            accumulatedDelta: horizontal ? travel.dx : travel.dy,
+            frameCellExtent: _dragCellExtent,
+          ) !=
+          0;
+    }
+    final crossNow = horizontal ? now.dy : now.dx;
+    return _frameAt(now) != pressed ||
+        crossNow < 0 ||
+        crossNow >= _dragRowExtent;
+  }
 }

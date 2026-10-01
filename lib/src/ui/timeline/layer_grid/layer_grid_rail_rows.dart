@@ -73,68 +73,47 @@ class _LayerGridRailRows {
   // unification), so the rail and the walks can no longer disagree about
   // where the selection is.
 
-  /// The memo gate for [_railRow] (UI-R7 #1): a controls row whose inputs
-  /// match hands back the CACHED widget instance — a zoom step (or any
+  /// The memo gate for the rail's rows (UI-R7 #1): a controls row whose
+  /// facts match hands back the CACHED widget instance — a zoom step (or any
   /// rebuild that didn't touch the row) skips its whole Material subtree.
   /// Lane label rows stay unmemoized: they subscribe to the frame cursor
   /// themselves and their lane models churn identity per build.
-  /// R28 #11: ONE selection — and now there is only one THING that can be
-  /// selected. A folder is a layer, so `activeLayerId` answers for both
-  /// and two rows can no longer read as selected at once by construction.
-  bool _layerRowIsActive(Layer layer) =>
-      layer.id == _state.widget.hooks.activeLayerId;
-
+  ///
+  /// The memo is the x-sheet header's too ([keptLayerControlsRow]) — one
+  /// reading of a controls row, one keeping of it, for both grids (F-244).
   Widget _railRowMemoized(TimelineDisplayRow row) {
     if (row.isLane) {
-      return _state._rowDrags.draggable(row, _railRow(row));
+      return _state._rowDrags.draggable(row, _laneRow(row));
     }
+    final grid = _controlsRowGrid;
     final fold = _groupFoldFor(row);
-    final inputs = (
-      layer: ControlsRowFace(row.layer),
-      active: _layerRowIsActive(row.layer),
-      selected: _state.widget.hooks.selectedRows.contains(row.address),
+    final facts = layerControlsRowFacts(
+      row,
+      grid,
+      fold: fold,
       hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: _state.widget.hooks.expandedLaneLayerIds.contains(
-        row.layer.id,
-      ),
-      depth: row.depth,
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      fxState:
-          _state.widget.hooks.layerFxStateOf?.call(row.layer.id) ??
-          LayerFxState.on,
-      onionSkinEnabled:
-          _state.widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ??
-          false,
-      linkPartners: ByList(
-        _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
-            const <String>[],
-      ),
-      // Solo is SESSION state, not a Layer field, so the layer comparison
-      // cannot see it: the speaker's accent tint went stale the moment
-      // solo moved anywhere but this row. It has always been shown here —
-      // R10 R3 only made it settable from every rail, which is what turned
-      // a latent staleness into one a user would hit.
-      soloed: _state.widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
-      // The arrow reads the STACK (a folder's direction is its position
-      // against its base), so the Layer comparison cannot see it change.
-      attachArrow: _state.widget.hooks.attachArrowPlacementOf?.call(
-        row.layer.id,
-      ),
-      layerRowHeight: _state._metrics.layerRowHeight,
-      layerControlsWidth: _state._metrics.layerControlsWidth,
-      sectionLabelGutterWidth: _state._metrics.sectionLabelGutterWidth,
-      opacityDragPreview: ByIdentity(_state.widget.hooks.opacityDragPreview),
-      language: AppText.language,
     );
-    final cached = _state._railRowMemo[row.layer.id];
-    if (cached != null && cached.inputs == inputs) {
-      return _state._rowDrags.draggable(row, cached.row);
-    }
-    final built = _railRow(row);
-    _state._railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return _state._rowDrags.draggable(row, built);
+    return keptLayerControlsRow(
+      _state._railRowMemo,
+      row,
+      (facts: facts, drag: _state._rowDrags.inputsFor(row)),
+      () => _state._rowDrags.draggable(
+        row,
+        layerControlsRowFrom(facts, row, grid, fold),
+      ),
+    );
   }
+
+  /// The rail as its controls rows see it — the x-sheet's header strip is
+  /// the same record turned on its side.
+  LayerControlsRowGrid get _controlsRowGrid => (
+    hooks: _state.widget.hooks,
+    layers: _state.widget.layers,
+    metrics: _state._metrics,
+    axis: Axis.horizontal,
+    keyPrefix: 'timeline',
+    mainExtent: null,
+  );
 
   /// The rail row's element key — ONE builder for the window loop and the
   /// A5 pin site, so the two can never drift and the pinned element
@@ -199,104 +178,44 @@ class _LayerGridRailRows {
     return header;
   }
 
-  /// One rail row (layer controls or a lane label), extracted so the
-  /// windowed rail loop stays readable. Rows reserve an empty leading
-  /// section slot — the section ZONES overlay whole runs (UI-R7 #2).
-  Widget _railRow(TimelineDisplayRow row) {
-    if (row.isLane) {
-      // Lane labels show the value AT the cursor: the row subscribes to it
-      // itself, on a layer of its own, so a tick rebuilds only these small
-      // cells and lays out nothing around them ([TimelineLaneControlsRow]).
-      //
-      // R10: and through the drag gate, so the blue value column follows a
-      // key move per step. The band moved live while the number beside it
-      // still read the committed track — the label is where you WATCH the
-      // value, so it is the half that most needed to be live.
-      return TimelineDragPreviewRowGate(
-        dragPreview: _state.widget.hooks.dragPreview,
-        layer: row.layer,
-        rowBuilder: (context, layer) => TimelineLaneControlsRow(
-          layer: layer,
-          lane: previewedLaneRow(
-            row: row,
-            previewLayer: layer,
-            lanesForLayer: _state._lanes.lanesFor,
-          ),
-          metrics: _state._metrics,
-          frameCursor: _state.widget.hooks.frameCursor,
-          onSelectFrame: _state.widget.hooks.onSelectFrame,
-          laneEdit: _state.widget.hooks.laneEdit,
-          onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
-          onToggleLaneGroupEnabled:
-              _state.widget.hooks.onToggleLaneGroupEnabled,
-          onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
-          currentRowHooks: _state.widget.hooks.currentRowHooks,
-          leadingInset: layerSectionLabelSlotWidth,
-          // The SAME flags the layer row below passes, so a group
-          // header's fx lands in the layer rows' fx column (R5 #7).
-          hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
-          hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
-        ),
-      );
-    }
-    final fold = _groupFoldFor(row);
-    return TimelineLayerControlsRow(
+  /// One lane label row, extracted so the windowed rail loop stays
+  /// readable. Rows reserve an empty leading section slot — the section
+  /// ZONES overlay whole runs (UI-R7 #2). A layer row is the controls row
+  /// both grids build ([layerControlsRowFrom]).
+  Widget _laneRow(TimelineDisplayRow row) {
+    // Lane labels show the value AT the cursor: the row subscribes to it
+    // itself, on a layer of its own, so a tick rebuilds only these small
+    // cells and lays out nothing around them ([TimelineLaneControlsRow]).
+    //
+    // R10: and through the drag gate, so the blue value column follows a
+    // key move per step. The band moved live while the number beside it
+    // still read the committed track — the label is where you WATCH the
+    // value, so it is the half that most needed to be live.
+    return TimelineDragPreviewRowGate(
+      dragPreview: _state.widget.hooks.dragPreview,
       layer: row.layer,
-      wearsBaseComposite: attachRowWearsBaseComposite(
-        row.layer,
-        _state.widget.layers,
-      ),
-      active: _layerRowIsActive(row.layer),
-      // ⑨: in the row selection the row verbs act on.
-      selected: _state.widget.hooks.selectedRows.contains(row.address),
-      metrics: _state._metrics,
-      onSelectLayer: _state.widget.hooks.onSelectLayer,
-      // T10: the rail row and the frame cells take the SAME settled-tap
-      // clear, because 「행이든 뭐든 동일하게」.
-      onSettledPress: _state.widget.hooks.onSettledPress,
-      labelDoubleClick: _state.widget.hooks.labelDoubleClick,
-      onToggleLayerVisibility: _state.widget.hooks.onToggleLayerVisibility,
-      onLayerOpacityChanged: _state.widget.hooks.onLayerOpacityChanged,
-      onLayerOpacityChangeEnd: _state.widget.hooks.onLayerOpacityChangeEnd,
-      onToggleLayerTimesheet: _state.widget.hooks.onToggleLayerTimesheet,
-      fxState:
-          _state.widget.hooks.layerFxStateOf?.call(row.layer.id) ??
-          LayerFxState.on,
-      onToggleLayerFx: _state.widget.hooks.onToggleLayerFx,
-      onionSkinEnabled:
-          _state.widget.hooks.layerOnionSkinEnabledOf?.call(row.layer.id) ??
-          false,
-      onToggleLayerOnionSkin: _state.widget.hooks.onToggleLayerOnionSkin,
-      onLayerMarkSelected: _state.widget.hooks.onLayerMarkSelected,
-      onToggleLayerFillReference:
-          _state.widget.hooks.onToggleLayerFillReference,
-      onOpenLayerMixer: _state.widget.hooks.onOpenLayerMixer,
-      onOpenLayerReference: _state.widget.hooks.onOpenLayerReference,
-      isReferenceSourceShort:
-          _state.widget.hooks.layerSourceIsShortOf?.call(row.layer.id) ?? false,
-      isLayerSoloed:
-          _state.widget.hooks.isLayerSoloed?.call(row.layer.id) ?? false,
-      attachArrowPlacement: _state.widget.hooks.attachArrowPlacementOf?.call(
-        row.layer.id,
-      ),
-      hasLanes: _state._lanes.lanesFor(row.layer).isNotEmpty,
-      lanesExpanded: _state.widget.hooks.expandedLaneLayerIds.contains(
-        row.layer.id,
-      ),
-      onToggleLanes: _state.widget.hooks.onToggleLayerLanes,
-      depth: row.depth,
-      // One fold twirl: a folder folds its members, an attach base folds
-      // its attach rows — the one answer both grids ask for.
-      hasGroupFold: fold.has,
-      groupFoldExpanded: fold.expanded,
-      onToggleGroupFold: fold.onToggle,
-      opacityDragPreview: _state.widget.hooks.opacityDragPreview,
-      linkPartners:
-          _state.widget.hooks.layerLinkPartnersOf?.call(row.layer.id) ??
-          const [],
-      onLayerBlendModeSelected: _state.widget.hooks.onLayerBlendModeSelected,
-      opacityOverride: _state.widget.hooks.layerOpacityOverrideOf?.call(
-        row.layer.id,
+      slice: (layer) => laneRowSlice(layer, row.lane!.laneId),
+      rowBuilder: (context, layer) => TimelineLaneControlsRow(
+        layer: layer,
+        lane: previewedLaneRow(
+          row: row,
+          previewLayer: layer,
+          lanesForLayer: _state._lanes.lanesFor,
+        ),
+        metrics: _state._metrics,
+        frameCursor: _state.widget.hooks.frameCursor,
+        onSelectFrame: _state.widget.hooks.onSelectFrame,
+        laneEdit: _state.widget.hooks.laneEdit,
+        onToggleLaneGroup: _state.widget.hooks.onToggleLaneGroup,
+        onToggleLaneGroupEnabled:
+            _state.widget.hooks.onToggleLaneGroupEnabled,
+        onResetLaneGroup: _state.widget.hooks.onResetLaneGroup,
+        currentRowHooks: _state.widget.hooks.currentRowHooks,
+        leadingInset: layerSectionLabelSlotWidth,
+        // The SAME flags the layer row passes, so a group
+        // header's fx lands in the layer rows' fx column (R5 #7).
+        hasOnionColumn: _state.widget.hooks.onToggleLayerOnionSkin != null,
+        hasBlendColumn: _state.widget.hooks.onLayerBlendModeSelected != null,
       ),
     );
   }

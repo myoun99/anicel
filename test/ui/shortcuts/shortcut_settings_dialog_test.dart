@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
+import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 
 void main() {
   Future<EditorShortcutBindings> pump(WidgetTester tester) async {
@@ -101,5 +102,28 @@ void main() {
       bindings.activatorsFor(id).map((a) => a.trigger),
       defaults.map((a) => a.trigger),
     );
+  });
+
+  // F-230: the touch column picks from the shared list, 「없음」 first.
+  testWidgets('a touch gesture is picked from the list, and 「none」 unbinds '
+      'it', (tester) async {
+    final bindings = await pump(tester);
+    final id = bindings.definitions.first.id;
+    final trigger = find.byKey(ValueKey<String>('shortcut-touch-$id'));
+
+    Future<void> pick(String row) async {
+      await tester.tap(trigger);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<String>('shortcut-touch-$id-$row')));
+      await tester.pumpAndSettle();
+    }
+
+    final other = TouchGesture.values.firstWhere(
+      (gesture) => gesture != bindings.touchGestureFor(id),
+    );
+    await pick(other.name);
+    expect(bindings.touchGestureFor(id), other);
+    await pick('none');
+    expect(bindings.touchGestureFor(id), isNull);
   });
 }

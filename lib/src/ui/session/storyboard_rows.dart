@@ -23,12 +23,10 @@ class StoryboardRows {
   StoryboardRows({
     required ProjectAccess project,
     required SelectionAccess selection,
-    required TimelineAccess timeline,
     required ProjectSettings projectSettings,
     required RailView railView,
   }) : _project = project,
        _selection = selection,
-       _timeline = timeline,
        _projectSettings = projectSettings,
        _railView = railView;
 
@@ -38,7 +36,6 @@ class StoryboardRows {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
-  final TimelineAccess _timeline;
   final ProjectSettings _projectSettings;
 
   /// The cut after [cutId] in storyboard order, or null at the end.
@@ -60,7 +57,7 @@ class StoryboardRows {
         !selection.coversRow(TrackRowAddress(selection.trackId))) {
       return const [];
     }
-    return _timeline
+    return _projectSettings
         .axisForTrack(selection.trackId)
         .cutsIn(selection.startFrame, selection.endFrameExclusive);
   }

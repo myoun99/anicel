@@ -18,6 +18,21 @@ import 'psd_reader.dart';
 /// that is a frozen window, and this app's bar is that a tablet must not
 /// stutter.
 Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
+  final composite = await readPsdComposite(bytes);
+  return decodeStraightRgbaImage(
+    rgba: composite.rgba,
+    width: composite.width,
+    height: composite.height,
+  );
+}
+
+/// The composite itself — the straight RGBA the reader produces, at the
+/// document's own size — for a holder that renders it more than once at
+/// sizes of its own ([PsdCompositeDocument]). Read OFF the UI isolate, for
+/// the reason above.
+Future<({Uint8List rgba, int width, int height})> readPsdComposite(
+  Uint8List bytes,
+) async {
   final document = await Isolate.run(
     () => readPsdDocument(bytes, withLayers: false),
   );
@@ -30,9 +45,5 @@ Future<ui.Image> decodePsdCompositeImage(Uint8List bytes) async {
       'This Photoshop file was saved without a composite image.',
     );
   }
-  return decodeStraightRgbaImage(
-    rgba: composite,
-    width: document.width,
-    height: document.height,
-  );
+  return (rgba: composite, width: document.width, height: document.height);
 }

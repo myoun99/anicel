@@ -209,20 +209,30 @@ class _CutCommands {
     );
   }
 
-  void renameCut({required CutId cutId, required String newName}) {
-    _coordinator.historyManager.execute(
-      RenameCutCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        newName: newName,
-      ),
-    );
-  }
+  void renameCut({required CutId cutId, required String newName}) =>
+      renameCuts({cutId: newName});
+
+  /// Names each cut of [names] as ONE undo step — the rename's one body,
+  /// which 자동 이름 지정 (I-18) hands a whole run of cuts. A cut already
+  /// wearing its name adds nothing, and a press that changes nothing adds
+  /// no step ([HistoryManager.executeAsOneStep]).
+  void renameCuts(Map<CutId, String> names) =>
+      _coordinator.historyManager.executeAsOneStep('Rename cuts', [
+        for (final MapEntry(key: cutId, value: name) in names.entries)
+          if (_coordinator._requireCut(cutId).name != name)
+            RenameCutCommand(
+              repository: _coordinator.repository,
+              cutId: cutId,
+              newName: name,
+            ),
+      ]);
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
   /// trims) and leading gaps (start slides / gap consumption) together.
-  /// The fade re-anchor rewrites are gone (R4: fade keys are TRACK data
-  /// on the global axis — a trim moves none of them).
+  /// The fade re-anchor rewrites are gone (R4: the V lanes' keys are TRACK
+  /// data on the global axis — a trim moves none of them). The transition
+  /// row's spans ride their front cut inside the command itself
+  /// ([UpdateCutDurationsCommand]).
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
@@ -267,7 +277,7 @@ class _CutCommands {
       for (final cutId in LinkedCutFieldCommand.linkedCutsOf(project, cutIds))
         requireCut(project, cutId),
     ];
-    final commands = [
+    _coordinator.historyManager.executeAsOneStep('Set cut staff', [
       for (final MapEntry(key: mark, value: name) in names.entries)
         if (cuts.any((cut) => cut.metadata.staffNameFor(mark) != name))
           UpdateCutStaffNameCommand(
@@ -276,15 +286,40 @@ class _CutCommands {
             mark: mark,
             name: name,
           ),
-    ];
-    if (commands.isEmpty) {
-      return;
-    }
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: 'Set cut staff', commands: commands),
-    );
+    ]);
+  }
+
+  /// The 타임시트 서식 window's save: the work's sheet format and the paper
+  /// of the cut the sheet shows ([cutId]; none in the gap) — each only if
+  /// it changed, ONE undo step together ([HistoryManager.runAsOneStep]).
+  void setTimesheetFormat({
+    required TimesheetInfo info,
+    CutId? cutId,
+    TimesheetSheetKind? kind,
+  }) {
+    final repository = _coordinator.repository;
+    final history = _coordinator.historyManager;
+    final project = repository.requireProject();
+    history.runAsOneStep('Set timesheet format', () {
+      if (project.timesheetInfo != info) {
+        history.execute(
+          UpdateTimesheetInfoCommand(repository: repository, info: info),
+        );
+      }
+      if (cutId != null &&
+          kind != null &&
+          LinkedCutFieldCommand.linkedCutsOf(project, [cutId]).any(
+            (id) => requireCut(project, id).metadata.sheetKind != kind,
+          )) {
+        history.execute(
+          UpdateCutSheetKindCommand(
+            repository: repository,
+            cutIds: [cutId],
+            kind: kind,
+          ),
+        );
+      }
+    });
   }
 
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
@@ -355,37 +390,29 @@ class _CutCommands {
   /// sequence plus the position gaps its cuts took over (the gaps stay
   /// with the position, R5 #13 — each cut carries its own leading gap, so
   /// a bare permutation would let the gaps travel with the cuts). On a
-  /// packed track the gaps map is empty and this stays a plain
-  /// [setCutOrder].
+  /// packed track the gaps map is empty and the step is the order alone,
+  /// as [setCutOrder] writes it.
   void commitCutMoveReorder({
     required TrackId trackId,
     required List<CutId> order,
     required Map<CutId, int> beforeGaps,
     required Map<CutId, int> afterGaps,
   }) {
-    if (afterGaps.isEmpty) {
-      setCutOrder(trackId: trackId, order: order);
-      return;
-    }
-    _coordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Move cut',
-        commands: [
-          SetCutOrderCommand(
-            repository: _coordinator.repository,
-            trackId: trackId,
-            order: order,
-          ),
-          UpdateCutDurationsCommand(
-            repository: _coordinator.repository,
-            before: const {},
-            after: const {},
-            beforeGaps: beforeGaps,
-            afterGaps: afterGaps,
-          ),
-        ],
+    _coordinator.historyManager.executeAsOneStep('Move cut', [
+      SetCutOrderCommand(
+        repository: _coordinator.repository,
+        trackId: trackId,
+        order: order,
       ),
-    );
+      if (afterGaps.isNotEmpty)
+        UpdateCutDurationsCommand(
+          repository: _coordinator.repository,
+          before: const {},
+          after: const {},
+          beforeGaps: beforeGaps,
+          afterGaps: afterGaps,
+        ),
+    ]);
   }
 
   /// R28 #14: deleting the LAST cut leaves the track empty rather than
@@ -411,28 +438,15 @@ class _CutCommands {
   /// Deletes a batch of cuts as ONE undo step; emptying the track is
   /// allowed (R28 #14).
   void deleteCuts({required List<CutId> cutIds}) {
-    if (cutIds.isEmpty) {
-      return;
-    }
-    if (cutIds.length == 1) {
-      deleteCut(cutId: cutIds.single);
-      return;
-    }
-
-    _coordinator.historyManager.execute(
-      CompositeCommand(
-        description: 'Delete cuts',
-        commands: [
-          for (final cutId in cutIds)
-            DeleteCutCommand(
-              repository: _coordinator.repository,
-              editingSession: _coordinator.editingSession,
-              cutId: cutId,
-              brushFrameStore: _coordinator.brushFrameStore,
-            ),
-        ],
-      ),
-    );
+    _coordinator.historyManager.executeAsOneStep('Delete cuts', [
+      for (final cutId in cutIds)
+        DeleteCutCommand(
+          repository: _coordinator.repository,
+          editingSession: _coordinator.editingSession,
+          cutId: cutId,
+          brushFrameStore: _coordinator.brushFrameStore,
+        ),
+    ]);
   }
 
   DuplicatedCut duplicateCut({

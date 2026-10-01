@@ -65,6 +65,33 @@ BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
       borderRadius: borderRadius,
     );
 
+/// THE standing wash — what the unit the playhead stands on wears, on the
+/// row you stand on: its block, or its one cell when it has none.
+///
+/// 🗣️F-248 (유저 2026-09-30): 「선택되있는 블럭 다시 표시하게하고싶음. 우선
+/// 외곽라인말고 블럭을 바탕색으로서 강조색 표시. 전처럼 연하게」, and of the
+/// block you stand on or the blocks you select (10-01): 「재생헤드가 선 블록」.
+/// F-212 took the outlines and this wash together; the wash alone comes back.
+/// 「전처럼」 is the plate the cut you stood in wore on the conte — the
+/// accent's container colour, the accent at 26%.
+Color get timelineStandingWashColor =>
+    timelineSelectedFrameBorderColor.withValues(alpha: 0.26);
+
+/// The standing wash over frame cells of [cellExtent] × [crossExtent]: the
+/// blocks' own corner, as the selection band wears it — a fill and no line.
+BoxDecoration timelineStandingWashDecorationAt({
+  required double cellExtent,
+  required double crossExtent,
+}) => BoxDecoration(
+  color: timelineStandingWashColor,
+  borderRadius: BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: cellExtent,
+      crossExtent: crossExtent,
+    ),
+  ),
+);
+
 /// The same band with SQUARE corners — the one the LAYER area wears.
 ///
 /// 🚨F-26 (유저 2026-08-24): 「레이어영역의 선택범위 ui, 프레임은 블록
@@ -78,19 +105,6 @@ BoxDecoration _timelineSelectionBand(BorderRadius borderRadius) =>
 /// stroke width — stays the single value above.
 BoxDecoration get timelineRowSelectionBandDecoration =>
     _timelineSelectionBand(BorderRadius.zero);
-
-/// The ring on the cell you are STANDING on, wherever that is: a layer's
-/// row, an fx header, a property lane.
-///
-/// ONE decoration, because standing is ONE thing (user, 2026-08-08). A
-/// lane used to borrow [timelineRangeSelectionBandDecorationAt] for this —
-/// filled, 2px, 6px corners against this unfilled 3px 4px one — so
-/// standing on a property read as a one-cell SELECTION rather than as
-/// standing, and you could see the difference in the stroke weight.
-BoxDecoration get timelineStandingCellDecoration => BoxDecoration(
-  border: Border.all(color: timelineSelectedFrameBorderColor, width: 3),
-  borderRadius: const BorderRadius.all(Radius.circular(4)),
-);
 
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
@@ -437,8 +451,8 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// These live beside the cell colours rather than in a block widget of
 /// their own: the row paints its blocks now, and a painter reaching into a
 /// widget's private styling would have been a copy of it. Same vocabulary,
-/// one place — the active accent and the hover lift (R27 #11: a faint
-/// surface lift rather than a thicker border, so nothing reflows).
+/// one place — the hover lift (R27 #11: a faint surface lift rather than a
+/// thicker border, so nothing reflows).
 ///
 /// 🗣️유저 2026-09-26: 「바탕색을 콘티프리뷰패널의 픽쳐의 실루엣이랑 똑같이
 /// 검정색으로 한다던가?」 — the resting plate is the conte sheet's ink
@@ -446,30 +460,47 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// ([storyboardCutBandColor]). ↩️It was the rows body's lifted shade
 /// ([AppColors.washUp]), close enough to the body that it needed a white
 /// outline to read — and the outline went (「심플이즈베스트」).
+///
+/// 🗣️F-212 (유저 2026-09-28): 「현재 블록을 알리는 바탕색 오버레이도 일단
+/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wears the plate
+/// every cut wears. ↩️Its plate was the accent's container colour. F-248
+/// gives the cut you stand on its wash back on its BANDS, not here
+/// ([storyboardCutBandColor]).
 Color storyboardCutBlockBackgroundColor(
   ColorScheme colorScheme, {
-  required bool active,
   required bool hovered,
-}) {
-  final resting = active ? colorScheme.primaryContainer : conteSheetInk;
-  return hovered && !active
-      ? Color.alphaBlend(colorScheme.onSurface.withValues(alpha: 0.10), resting)
-      : resting;
-}
+}) => hovered
+    ? Color.alphaBlend(
+        colorScheme.onSurface.withValues(alpha: 0.10),
+        conteSheetInk,
+      )
+    : conteSheetInk;
 
 /// A cut block's BAND in its label's colour [label] — under the colour-only
 /// range tint when the block is range-selected: a cut selection colours
 /// what is not the picture (design), and the bands are that.
-Color storyboardCutBandColor(Color label, {required bool rangeSelected}) =>
-    rangeSelected
-    // 0.12 = the timeline's selected-CELL tint: the shared range-selection
-    // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above
-    // this, and the pair must sum to the timeline's look, not overshoot it.
-    ? Color.alphaBlend(
-        timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-        label,
-      )
-    : label;
+///
+/// 🗣️F-248 (유저 2026-10-01 「썸네일 제외한 띠 부분. 컷이나 콘티블록 띠만
+/// 칠해지고싶은데」): the cut you stand on ([standing]) wears the standing
+/// wash on the same four bands — never on its pictures or its plate.
+Color storyboardCutBandColor(
+  Color label, {
+  required bool rangeSelected,
+  required bool standing,
+}) {
+  final ground = standing
+      ? Color.alphaBlend(timelineStandingWashColor, label)
+      : label;
+  return rangeSelected
+      // 0.12 = the timeline's selected-CELL tint: the shared range-selection
+      // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above
+      // this, and the pair must sum to the timeline's look, not overshoot it.
+      ? Color.alphaBlend(
+          timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+          ground,
+        )
+      : ground;
+}
 
 /// The effective ground of the strip's PANEL PICTURES (B1 2026-08-17) —
 /// what writing laid over the pictures reads against.
@@ -551,7 +582,8 @@ const Radius _timelineBlockCornerRadius = Radius.circular(6);
 /// 타임라인 줌이 100%일땐 외곽 강조실루엣이랑 블록의 실루엣이랑 동일한데 줌이
 /// 33%등 작아질수록 점점 어긋남. 강조 실루엣이 더 모서리가 동그람」. The ring
 /// around the current block wraps the whole run, so its rounded rect never met
-/// that clamp: at 33% the blocks' corners were 4px and the ring kept 6.
+/// that clamp: at 33% the blocks' corners were 4px and the ring kept 6. (The
+/// ring itself went with F-212; every other block corner still reads this.)
 Radius timelineBlockCornerRadiusAt({
   required double cellExtent,
   required double crossExtent,

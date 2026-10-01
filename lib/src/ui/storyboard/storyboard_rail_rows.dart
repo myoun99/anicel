@@ -21,42 +21,38 @@ class _StoryboardRailRows {
       _state.widget.railExtent ??
       (_state._ownedRailExtent ??= LayerRailExtent());
 
-  /// Rebuilds [builder] with the cut under the storyboard playhead on track
-  /// [trackIndex] whenever THAT cut changes — the cursor-layer subscription
-  /// the ruler and the playhead overlay already take (F-19), asking only
-  /// what the row shows of it.
+  /// Follows the cut under the storyboard playhead on track [trackIndex],
+  /// for the one cell of the V row that shows it — the eye
+  /// ([StoryboardTrackLabelRow.followsSubject]) — rebuilding it whenever
+  /// THAT cut changes: the cursor-layer subscription the ruler and the
+  /// playhead overlay already take (F-19), asking only what the row shows
+  /// of it. A gap follows as the active cut, as the row always did.
   ///
   /// I-22 ③: it rebuilt on every move of the playhead, so the row — its
   /// buttons, their faces and tooltips — was rebuilt at the playback rate
   /// while a cut of 96 frames kept the same subject for four seconds.
+  /// 🚨And it rebuilt the WHOLE row per crossing — at a far zoom a scrub
+  /// crosses into another cut on nearly every move, and the eye is the only
+  /// cell that shows which cut stands there (09-28): the row stands now,
+  /// and the eye follows on a tick layer of its own
+  /// ([StoryboardTrackLabelRow]'s — a layer because the row rebuilt bare in
+  /// the body's layout scope laid the body out again and repainted the
+  /// whole panel on each move, measured at 0.16px: 30ms of a 366ms scrub
+  /// sample).
   ///
-  /// Returns the built widget UNWRAPPED when there is no playhead channel:
-  /// a host that never publishes one has nothing for the subscription to
-  /// listen to, and a builder that never fires is a rebuild boundary paid
-  /// for nothing.
-  Widget _cutAtPlayheadFollowing(
-    int trackIndex,
-    Widget Function(Cut? subject) builder,
-  ) {
+  /// Null when there is no playhead channel: a host that never publishes
+  /// one has nothing for the subscription to listen to, and a builder that
+  /// never fires is a rebuild boundary paid for nothing.
+  Widget Function(Widget Function(Cut? subject) eye)?
+  _followsTheCutUnderThePlayhead(int trackIndex, Cut? activeCut) {
     final playhead = _state.widget.playheadFrame;
     if (playhead == null) {
-      return builder(null);
+      return null;
     }
-    // 🚨A TICK LAYER (I-22 ③): at a far zoom a scrub crosses into another
-    // cut on nearly every move, and the row rebuilt bare in the body's
-    // layout scope laid the body out again and repainted the whole panel on
-    // each (measured at 0.16px: 30ms of a 366ms scrub sample). The row is
-    // the V rail row — the rail's width by the V lane's height.
-    return SizedBox(
-      width: StoryboardPanel.railWidthIn(_state.context),
-      height: _state.widget.trackLaneHeight,
-      child: TickLayer(
-        child: _FollowsTheCutUnderThePlayhead(
-          playhead: playhead,
-          cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
-          builder: builder,
-        ),
-      ),
+    return (eye) => _FollowsTheCutUnderThePlayhead(
+      playhead: playhead,
+      cutAt: () => _state._standing.cutAtPlayheadOn(trackIndex),
+      builder: (subject) => eye(subject ?? activeCut),
     );
   }
 
@@ -114,9 +110,12 @@ class _StoryboardRailRows {
   /// timeline twin never draws.
   List<PropertyLaneRow> _seLanes(Track track, int slot) {
     final layer = _trackSeAt(track, slot);
-    if (layer == null) {
-      return const [];
-    }
+    return layer == null ? const [] : _seLanesOf(track, layer);
+  }
+
+  /// [_seLanes] read off [layer] — the S row as committed, or as a lane edit
+  /// in flight shows it (its labels re-derive through here, F-195).
+  List<PropertyLaneRow> _seLanesOf(Track track, Layer layer) {
     return propertyLanesForRow(
       layer: layer,
       rows: track.seLayers,
@@ -622,6 +621,20 @@ class _StoryboardRailRows {
       carrier: layer,
       groupKeyOf: (lane) => laneGroupKey(layer.id, lane.laneId),
       lanes: _seLanes(track, slot),
+      // F-195: a value scrubbed here, or on the timeline's copy of this row,
+      // is shown in its GLOBAL form — the axis this rail draws.
+      follow: (_, lane, row) => TimelineDragPreviewRowGate(
+        dragPreview: _state.widget.dragPreview,
+        layer: layer,
+        useGlobalForm: true,
+        slice: (shown) => laneRowSlice(shown, lane.laneId),
+        rowBuilder: (context, shown) => row(
+          shown,
+          identical(shown, layer)
+              ? lane
+              : laneAsPreviewed(lane, _seLanesOf(track, shown)),
+        ),
+      ),
       laneEdit: _state.widget.layerLaneEdit,
       onToggleGroupEnabled: onToggleEnabled == null
           ? null
@@ -690,10 +703,12 @@ class _StoryboardRailRows {
           // frame had been at the last panel rebuild, which during a drag is
           // where the drag STARTED.
           //
-          // ★So this row subscribes, the way the overlay does. One row per
-          // track rebuilds per move — the cost the ruler beside it already
-          // pays — and the alternative (rebuilding the panel) is the very
-          // thing the split exists to avoid.
+          // ★So this row subscribes, the way the overlay does — through the
+          // one cell that shows which cut stands there, the eye (09-28: it
+          // was the whole row). One eye per track rebuilds per crossing —
+          // less than the ruler beside it already pays — and the
+          // alternative (rebuilding the panel) is the very thing the split
+          // exists to avoid.
           //
           // ⛔NOT by making the ruler switch the active cut, which is what the
           // report wondered aloud about (「애초에 룰러에 따라 액티브컷 전환하도록
@@ -701,53 +716,51 @@ class _StoryboardRailRows {
           // preview machinery (D6's no-flash rules, the territory flag) exists
           // because the active cut does not follow a drag — and switching it
           // per move would put a cut activation on every pointer move.
-          _cutAtPlayheadFollowing(
-            index,
-            (subject) => StoryboardTrackLabelRow(
-              track: track,
-              trackLabel: _vRowName(index),
-              laneHeight: _state.widget.trackLaneHeight,
-              laneExpanded: _state.widget.expandedTransformTracks.contains(
-                track.id.value,
-              ),
-              onToggleLane: _state.widget.onToggleTrackLane == null
-                  ? null
-                  : () => _state.widget.onToggleTrackLane!(track),
-              // V-track selection (UI-R18 #6): tapping selects the track (its
-              // playhead-index cut becomes active). The highlight says THIS ROW
-              // IS SELECTED — not "the active cut lives here", which is what the
-              // cut block's own active border already says, and which could light
-              // at the same time as an S row.
-              active: _state.widget.selectedRow == TrackRowAddress(track.id),
-              onSelectTrack: _state.widget.onSelectTrack == null
-                  ? null
-                  : () => _state.widget.onSelectTrack!(track.id),
-              activeCut: activeCut,
-              // UI-R13 #2: the fx/eye act on THIS track's cut at the current
-              // global index (each track independently) — no stand-down, no
-              // parked look. A gap simply means no cut exists there: the
-              // buttons stay normal and a press is a no-op.
-              subjectCut: subject ?? activeCut,
-              cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
-              onToggleCutPictureVisibility:
-                  _state.widget.onToggleCutPictureVisibility,
-              // R9 #21: the track's own display columns.
-              trackFxState:
-                  _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
-              onToggleTrackFx: _state.widget.onToggleTrackFx == null
-                  ? null
-                  : () => _state.widget.onToggleTrackFx!(track),
-              trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
-              onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
-                  ? null
-                  : (opacity) =>
-                        _state.widget.onTrackOpacityChanged!(track, opacity),
-              onTrackOpacityChangeEnd:
-                  _state.widget.onTrackOpacityChangeEnd == null
-                  ? null
-                  : (opacity) =>
-                        _state.widget.onTrackOpacityChangeEnd!(track, opacity),
+          StoryboardTrackLabelRow(
+            track: track,
+            trackLabel: _vRowName(index),
+            laneHeight: _state.widget.trackLaneHeight,
+            laneExpanded: _state.widget.expandedTransformTracks.contains(
+              track.id.value,
             ),
+            onToggleLane: _state.widget.onToggleTrackLane == null
+                ? null
+                : () => _state.widget.onToggleTrackLane!(track),
+            // V-track selection (UI-R18 #6): tapping selects the track (its
+            // playhead-index cut becomes active). The highlight says THIS ROW
+            // IS SELECTED — not "the active cut lives here", which is what the
+            // cut block's own active border already says, and which could light
+            // at the same time as an S row.
+            active: _state.widget.selectedRow == TrackRowAddress(track.id),
+            onSelectTrack: _state.widget.onSelectTrack == null
+                ? null
+                : () => _state.widget.onSelectTrack!(track.id),
+            activeCut: activeCut,
+            // UI-R13 #2: the fx/eye act on THIS track's cut at the current
+            // global index (each track independently) — no stand-down, no
+            // parked look. A gap simply means no cut exists there: the
+            // buttons stay normal and a press is a no-op.
+            subjectCut: activeCut,
+            followsSubject: _followsTheCutUnderThePlayhead(index, activeCut),
+            cutPictureVisibleOf: _state.widget.cutPictureVisibleOf,
+            onToggleCutPictureVisibility:
+                _state.widget.onToggleCutPictureVisibility,
+            // R9 #21: the track's own display columns.
+            trackFxState:
+                _state.widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+            onToggleTrackFx: _state.widget.onToggleTrackFx == null
+                ? null
+                : () => _state.widget.onToggleTrackFx!(track),
+            trackOpacity: _state.widget.trackOpacityOf?.call(track) ?? 1.0,
+            onTrackOpacityChanged: _state.widget.onTrackOpacityChanged == null
+                ? null
+                : (opacity) =>
+                      _state.widget.onTrackOpacityChanged!(track, opacity),
+            onTrackOpacityChangeEnd:
+                _state.widget.onTrackOpacityChangeEnd == null
+                ? null
+                : (opacity) =>
+                      _state.widget.onTrackOpacityChangeEnd!(track, opacity),
           ),
         ),
       ),
@@ -776,6 +789,20 @@ class _StoryboardRailRows {
                     );
             },
             lanes: _trackEffectLanes(track),
+            // F-195: the V row's chain as an edit in flight shows it — the
+            // one function its key strips read too.
+            follow: (carrier, lane, row) => _followingTrackEffects(
+              track,
+              (previewed) => row(
+                carrier,
+                previewed == null
+                    ? lane
+                    : laneAsPreviewed(
+                        lane,
+                        _trackEffectLanes(track.copyWith(effects: previewed)),
+                      ),
+              ),
+            ),
             laneEdit: _state.widget.trackLaneEditFor?.call(track),
             onToggleGroupEnabled:
                 _state.widget.onToggleTrackEffectEnabled == null
@@ -861,36 +888,27 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
-    final dragPreview = _state.widget.dragPreview;
+    final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
     return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: dragPreview == null
-              ? _stripRowsForTrack(
-                  track,
-                  index,
-                  entries,
-                  width,
-                  scale,
-                  trackGlobalRows,
-                )
-              : [
-                  ValueListenableBuilder<TimelineDragPreview?>(
-                    valueListenable: dragPreview,
-                    builder: (context, preview, _) => Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _stripRowsForTrack(
-                        track,
-                        index,
-                        _previewedEntriesFor(index, preview, entries),
-                        width,
-                        scale,
-                        trackGlobalRows,
-                      ),
-                    ),
-                  ),
-                ],
+        // Rebuilt only where the preview moves this track's cuts
+        // ([_TrackStrip]).
+        SlicedListenableBuilder<_TrackStrip>(
+          listenable: dragPreview,
+          slice: () => _TrackStrip(
+            _previewedEntriesFor(index, dragPreview.value, entries),
+          ),
+          builder: (context, strip) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _stripRowsForTrack(
+              track,
+              index,
+              strip.entries,
+              width,
+              scale,
+              trackGlobalRows,
+            ),
+          ),
         ),
         Positioned.fill(
           child: IgnorePointer(child: _trackRangeBand(track, scale)),
@@ -898,20 +916,18 @@ class _StoryboardRailRows {
         Positioned.fill(
           child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
         ),
-        // Above both bands: standing and selected are two statements, and
-        // the ring must stay readable inside a span that covers its row.
-        //
-        // 🚨On its OWN layer (I-22 ③): the ring follows the playhead, and the
-        // strips around it are one RepaintBoundary precisely so a playhead
-        // move re-rasterizes none of them (R12-⑥). Mounted bare inside it,
-        // every move repainted every strip — at ten minutes every edge grip
-        // of the film and the plate grounds under them, on every playback
-        // frame. The timeline's cursor layer rides its own the same way —
-        // and a layout of its own besides ([TickLayer]).
+        // 🚨On its OWN layer (I-22 ③): the standing cell follows the
+        // playhead, and the strips around it are one RepaintBoundary
+        // precisely so a playhead move re-rasterizes none of them (R12-⑥).
+        // Mounted bare inside it, every move repainted every strip — at ten
+        // minutes every edge grip of the film and the plate grounds under
+        // them, on every playback frame. The timeline's cursor layer rides
+        // its own the same way — and a layout of its own besides
+        // ([TickLayer]).
         Positioned.fill(
           child: IgnorePointer(
             child: TickLayer(
-              child: _state._standing.trackStandingCellRing(track, scale),
+              child: _state._standing.trackStandingCell(track, scale),
             ),
           ),
         ),
@@ -1073,9 +1089,10 @@ class _StoryboardRailRows {
             },
             span: (
               left: scale.leftForFrame(selection.startIndex),
-              width:
-                  (selection.endIndexExclusive - selection.startIndex) *
-                  scale.pixelsPerFrame,
+              width: scale.spanWidth(
+                selection.startIndex,
+                selection.endIndexExclusive,
+              ),
             ),
             label: (
               key: 'storyboard-lane-range-selection',
@@ -1109,7 +1126,10 @@ class _StoryboardRailRows {
             },
             span: (
               left: scale.leftForFrame(selection.startFrame),
-              width: selection.lengthFrames * scale.pixelsPerFrame,
+              width: scale.spanWidth(
+                selection.startFrame,
+                selection.startFrame + selection.lengthFrames,
+              ),
             ),
             label: (
               key: 'storyboard-frame-range-selection',
@@ -1207,12 +1227,6 @@ class _StoryboardRailRows {
                 laneId,
                 anchorIndex,
                 headIndex,
-                resolveInGroupHeadLane(
-                  rows: addresses,
-                  layerId: layerId,
-                  laneId: laneId,
-                  rowDelta: rowDelta,
-                ),
                 // The span off the SAME drawn rows — 절대명령 2.
                 laneSpanOverDrawnRows(
                   rows: addresses,
@@ -1378,7 +1392,6 @@ class _StoryboardRailRows {
       _StoryboardTrackRow(
         track: track,
         layoutEntries: entries,
-        activeCutId: _state.widget.activeCutId,
         onRowFramePress: _state.widget.onRowFramePress,
         onDropMediaAsset: _state.widget.onDropMediaAsset,
         acceptsMediaAsset: _state.widget.acceptsMediaAsset,
@@ -1392,6 +1405,7 @@ class _StoryboardRailRows {
         timelineScale: scale,
         frameGeometry: _state._frameGeometry,
         hoveredCutId: _state._hoveredCutId,
+        standingCutId: _state._standing.standingCutOn(track),
         windowBucket: _state._horizontalWindowBucket,
         viewportWidth: _state._stripViewportWidth,
         railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
@@ -1402,6 +1416,8 @@ class _StoryboardRailRows {
         showSeconds: _state.widget.showSeconds,
         projectFrameRate: _state.widget.projectFrameRate,
         onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+        linkedCutIds: _state.widget.linkedCutIds,
+        onOpenCutLinks: _state.widget.onOpenCutLinks,
       ),
       if (_state.widget.expandedTransformTracks.contains(track.id.value))
         for (final strip in _trackTransformLaneStrips(
@@ -1441,6 +1457,10 @@ class _StoryboardRailRows {
       height: heights.se,
       timelineScale: scale,
       projectFrameRate: _state.widget.projectFrameRate,
+      frameGeometry: _state._frameGeometry,
+      windowBucket: _state._horizontalWindowBucket,
+      viewportWidth: _state._stripViewportWidth,
+      showSeconds: _state.widget.showSeconds,
       audioPeaksFor: _state.widget.audioPeaksFor,
       seClipMarkerTooltip: _state.widget.seClipMarkerTooltip,
       onRowFramePress: _state.widget.onRowFramePress,
@@ -1449,7 +1469,6 @@ class _StoryboardRailRows {
       onEditSeEntry: _state.widget.onEditSeEntry,
       seCommaDrag: _state.widget.seCommaDrag,
       seSelect: _state.widget.seSelect,
-      frameGeometry: _state._frameGeometry,
     );
     return [
       for (final slot in _shownSeSlots(track)) ...[
@@ -1505,15 +1524,9 @@ class _StoryboardRailRows {
       // before 2026-08-08 because nothing could MOVE here: the lane-move path
       // looked at a track's transform and never at its effects, so the drag
       // answered "nothing to move" and refused in silence.
-      ValueListenableBuilder(
-        valueListenable:
-            _state.widget.dragPreview ??
-            const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
-        builder: (context, preview, _) {
-          final previewEffects = preview is BlockMoveDragPreview
-              ? preview.previewTrackEffects
-              : null;
-          final previewed = previewEffects?[track.id];
+      _followingTrackEffects(
+        track,
+        (previewed) {
           final lanes = previewed == null
               ? _trackEffectLanes(track)
               : _trackEffectLanes(track.copyWith(effects: previewed));
@@ -1539,6 +1552,22 @@ class _StoryboardRailRows {
       ),
     ];
   }
+
+  /// [build] with [track]'s EFFECT chain as the drag channel shows it — a
+  /// key range slid along it, a value scrubbed in it — or null as
+  /// committed, rebuilt whenever the channel moves. The V row's strips and
+  /// its labels both read the chain through here, so the two cannot come to
+  /// show different chains mid-drag.
+  Widget _followingTrackEffects(
+    Track track,
+    Widget Function(List<LayerEffect>? previewed) build,
+  ) => ValueListenableBuilder<TimelineDragPreview?>(
+    valueListenable:
+        _state.widget.dragPreview ??
+        const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
+    builder: (context, preview, _) =>
+        build(timelineDragPreviewTrackEffectsFor(preview, track.id)),
+  );
 
   /// One S row's lane strips, row for row with [_seLaneLabels]: CONTINUOUS
   /// rows on the slot layer's OWN track-global axis (R4b — the per-cut spans
@@ -1619,7 +1648,7 @@ class _StoryboardRailRows {
 
 /// Rebuilds [builder] when the cut under the playhead changes — never on a
 /// playhead move that stays inside it ([_StoryboardRailRows.
-/// _cutAtPlayheadFollowing]).
+/// _followsTheCutUnderThePlayhead]).
 class _FollowsTheCutUnderThePlayhead extends StatefulWidget {
   const _FollowsTheCutUnderThePlayhead({
     required this.playhead,
@@ -1671,4 +1700,37 @@ class _FollowsTheCutUnderThePlayheadState
 
   @override
   Widget build(BuildContext context) => widget.builder(_subject);
+}
+
+/// A track's cuts as a drag preview lays them — what its rows are built
+/// from ([_StoryboardRailRows.trackGroupSection]): the same strip while it
+/// is the same cut objects in the same order, which is all a layout is
+/// made of ([cutSpansOfCuts]).
+///
+/// So a step that moves none of them — an SE row's comma, whose rows are
+/// built outside (R10-③) — rebuilds none of its rows. 🔬Measured
+/// (storyboard-drags-lay-out-alone, 10-01): it rebuilt every one of them at
+/// every step.
+final class _TrackStrip {
+  const _TrackStrip(this.entries);
+
+  final List<StoryboardTimelineLayoutEntry> entries;
+
+  @override
+  bool operator ==(Object other) {
+    if (other is! _TrackStrip || other.entries.length != entries.length) {
+      return false;
+    }
+    for (var i = 0; i < entries.length; i += 1) {
+      if (!identical(entries[i].cut, other.entries[i].cut)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  @override
+  int get hashCode => Object.hashAll([
+    for (final entry in entries) identityHashCode(entry.cut),
+  ]);
 }

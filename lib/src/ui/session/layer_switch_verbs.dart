@@ -4,6 +4,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
+import '../../models/track_transitions.dart' show cutTransitionHandlesIn;
 import '../../services/commands/update_layer_fill_reference_command.dart';
 import '../../services/commands/update_layer_timesheet_command.dart';
 import '../../services/project_lookup.dart' show requireLayerAnywhere;
@@ -29,14 +30,12 @@ class LayerSwitchVerbs {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required StoryboardCursor storyboardCursor,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _storyboardCursor = storyboardCursor;
 
   final StoryboardCursor _storyboardCursor;
@@ -46,7 +45,6 @@ class LayerSwitchVerbs {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
 
   void toggleLayerVisibility(LayerId layerId) {
     _controllers.layerController.toggleLayerVisibility(layerId);
@@ -260,7 +258,7 @@ class LayerSwitchVerbs {
   }
 
   bool get canToggleTargetLayerKind {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     // Only the animation ⇄ storyboard pair; other kinds have their own
     // toggles (SE) or are fixed (camera/instruction/attach rows).
     if (targetLayer == null ||
@@ -280,7 +278,7 @@ class LayerSwitchVerbs {
   }
 
   void toggleTargetLayerKind() {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     if (targetLayer == null ||
         _storyboardCursor.targetLayerStoryboardRefusal != null) {
       return;
@@ -299,6 +297,13 @@ class LayerSwitchVerbs {
       final filled = storyboardTimelineFilledToCover(
         timeline: targetLayer.timeline,
         cutDuration: cut.duration,
+        // The row's drawings stay where they are in the cut's frames; its
+        // panels take the conte's timing from where the conte starts in
+        // them — after the のりしろ an arriving O.L asks for (F-227).
+        conteStart: cutTransitionHandlesIn(
+          _project.repository.requireProject(),
+          cut.id,
+        ).head,
       );
       final covered = filled == null
           ? createStoryboardLayer(

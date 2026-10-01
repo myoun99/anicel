@@ -75,8 +75,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
-              position: position,
-              onPositionChanged: (next) => slot.position.value = next,
+              position: slot.position,
             ),
           ),
         ),
@@ -101,12 +100,20 @@ void main() {
     final paint = tester.widget<CustomPaint>(
       find.byKey(const ValueKey<String>('media-viewer-page')),
     );
-    return (paint.painter as dynamic).image as ui.Image?;
+    // One page — a sound's waveform, a movie's frame: the painter's
+    // pages are the ones on screen, and these documents show one.
+    final pages =
+        (paint.painter as dynamic).pages
+            as List<({Rect rect, ui.Image? image})>;
+    return pages.single.image;
   }
 
   testWidgets('🚨a page whose raster has not landed draws NOTHING — never '
       'the page before it', (tester) async {
-    final fake = await open(tester, pages: 3);
+    // A document that shows ONE page at a time — a movie's frame. A book's
+    // pages each draw at their own place (F-201), so no page there can
+    // stand in for another.
+    final fake = await open(tester, pages: 3, framesPerSecond: 24);
     final first = drawnImage(tester);
     expect(first, isNotNull, reason: 'fixture: page 0 landed');
 
@@ -179,6 +186,42 @@ void main() {
       slot.position.value,
       greaterThan(parkedAt),
       reason: 'a parked playhead is parked, not stopped',
+    );
+  });
+
+  testWidgets('🚨ONE frame landing does not unpark it — it waits for the '
+      'cushion', (tester) async {
+    final fake = await open(tester, pages: 12, framesPerSecond: 24);
+    for (var page = 1; page < 12; page += 1) {
+      fake.holdRender(page);
+    }
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+    );
+    await tester.pump();
+    // Parked first: a frame that is ready before the first tick is simply
+    // played, with no cushion to wait for.
+    for (var frame = 0; frame < 3; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+    final parkedAt = slot.position.value;
+
+    fake.releaseRender(1);
+    for (var frame = 0; frame < 10; frame += 1) {
+      await tester.pump(const Duration(milliseconds: 42));
+    }
+    expect(
+      fake.renderRequests.map((request) => request.$1),
+      contains(2),
+      reason: 'fixture: frame 1 landed and the read-ahead moved on',
+    );
+    expect(
+      slot.position.value,
+      parkedAt,
+      reason:
+          '🚨「로드가 안되고있으면 5초분만큼? 로드될떄까지 멈추는?」 — moving '
+          'on ONE ready frame plays it, runs dry and parks again: a '
+          'stutter, not playback',
     );
   });
 }

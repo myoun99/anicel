@@ -46,8 +46,7 @@ void main() {
         viewerId: 'media-viewer',
         session: session,
         request: slot.request,
-        position: slot.position.value,
-        onPositionChanged: (next) => slot.position.value = next,
+        position: slot.position,
         // The workspace owns these — the whole point of the slot.
         viewportController: slot.viewport,
         framedFor: slot.framedFor,
@@ -122,7 +121,9 @@ void main() {
     );
     await tester.pumpWidget(host());
     await settleLoaded(tester);
-    await tester.pump(const Duration(milliseconds: 32));
+    // Read in the frame the document first showed in: the request goes out
+    // with that frame's build, and the builds after it — the fit landing,
+    // the pages asked for through the fitted view — carry none.
     expect(
       autoFrameNow(tester),
       isNotNull,
@@ -130,6 +131,7 @@ void main() {
           'the reframe exists for, and the fixture has to see it happen or '
           'the reopen assertion is measuring an empty viewer',
     );
+    await tester.pump(const Duration(milliseconds: 32));
 
     // The user zooms in and reads at that scale.
     final zoomed = CanvasViewport().zoomedAround(

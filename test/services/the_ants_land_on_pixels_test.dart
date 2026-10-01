@@ -188,6 +188,65 @@ void main() {
     );
   });
 
+  // I-23: an inverse's box is the whole pasteboard wall, so the outline is
+  // walked from each row's runs rather than from a mask over that box. The
+  // two pins below are what the runs have to get right.
+  test('an inverse traces the wall and its hole — two contours of four', () {
+    const wall = ui.Rect.fromLTRB(0, 0, 64, 64);
+    final inverse = CanvasSelectionRegion.invertedWithin(
+      fractionalRect(),
+      wall,
+    )!;
+    final contours = inverse.pixelOutlineContours;
+
+    expect(contours, hasLength(2), reason: 'the wall, and the hole in it');
+    for (final contour in contours) {
+      expect(contour, hasLength(4), reason: 'both are rectangles');
+    }
+    final outline = inverse.pixelOutlineIn(
+      (point) => ui.Offset(point.x, point.y),
+    );
+    final pixels = selectedPixels(
+      inverse,
+      left: -2,
+      top: -2,
+      width: 68,
+      height: 68,
+    );
+    expect(pixels.contains((20, 30)), isFalse, reason: 'the premise: a hole');
+    for (var y = -2; y < 66; y += 1) {
+      for (var x = -2; x < 66; x += 1) {
+        expect(
+          outline.contains(ui.Offset(x + 0.5, y + 0.5)),
+          pixels.contains((x, y)),
+          reason: 'pixel ($x, $y)',
+        );
+      }
+    }
+  });
+
+  test('two spans a gap too thin for a pixel centre keeps apart are ONE '
+      'run — one rectangle, not a wall down its middle', () {
+    // 10.3 → 10.4 holds no centre (10.5 is past it), so the pixels either
+    // side are neighbours. Read as two runs, their ends would be a pair of
+    // edges between two selected pixels.
+    final region = CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 0.2, top: 0.2, right: 20.2, bottom: 9.8),
+    ).combinedWith(
+      CanvasSelectionShape.rect(left: 10.3, top: -1, right: 10.4, bottom: 11),
+      SelectionCombineMode.subtract,
+    )!;
+
+    expect(
+      selectedPixels(region),
+      hasLength(200),
+      reason: 'the premise: the sliver took no pixel — 20 × 10',
+    );
+    final contours = region.pixelOutlineContours;
+    expect(contours, hasLength(1));
+    expect(contours.single, hasLength(4));
+  });
+
   test('an empty fold traces nothing rather than throwing', () {
     final region = CanvasSelectionRegion([
       CanvasSelectionStep.copies([

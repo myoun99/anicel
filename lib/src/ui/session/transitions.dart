@@ -1,4 +1,5 @@
 import 'dart:collection' show SplayTreeMap;
+import 'package:flutter/foundation.dart' show ValueListenable;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
@@ -9,10 +10,14 @@ import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../text/app_strings.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../../models/track_transitions.dart';
 import '../../services/commands/track_transition_commands.dart';
 import '../timeline/instruction_span_editing.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, timelineDragPreviewGlobalLayerFor;
 import 'session_roles.dart';
 import 'camera.dart';
+import 'transition_row_names.dart';
 
 /// The TRANSITIONS — the spans a track carries between cuts, the display
 /// layer they are drawn through, their instruction set and the warnings for
@@ -28,16 +33,19 @@ class Transitions {
     required SelectionAccess selection,
     required ChangeSink changes,
     required Camera camera,
+    required ValueListenable<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _camera = camera;
+       _camera = camera,
+       _dragPreview = dragPreview;
 
   final Camera _camera;
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
+  final ValueListenable<TimelineDragPreview?> _dragPreview;
 
   /// The two forms a drag of the transition row previews, in the track-SE
   /// rows' shape (`TrackSe.previewFormsOf`): [row] projected onto the active
@@ -54,7 +62,7 @@ class Transitions {
   /// 적용해도 문제되나?」).
   ({Layer shown, Layer? global}) previewFormsOf(Layer row) => (
     shown: _projectOntoCut(
-      row,
+      names.rowNamed(_selection.activeTrack, row),
       cutStart: _project.activeCutGlobalStartFrame,
       duration: _project.activeCutOrNull?.duration ?? 0,
     ).display,
@@ -68,10 +76,18 @@ class Transitions {
   /// behind them — start, length and the TERM'S MARK, which is what says
   /// whether the span moves both cuts or only its own.
   List<TransitionSpan> get activeTrackTransitionSpans => [
-    for (final entry
-        in _selection.activeTrack.transitionLayer.instructions.entries)
+    for (final entry in activeTrackTransitionRowShown.instructions.entries)
       transitionSpanOf(entry),
   ];
+
+  /// The active track's transition row as a drag in flight shows it, so the
+  /// canvas's fade and the ruler's margin and name follow the hand
+  /// (canvas-follows-block-moves) as `Camera.activeCutCameraTrack` follows its
+  /// keys. Its readers display; a drag reads its row at its press.
+  Layer get activeTrackTransitionRowShown {
+    final row = _selection.activeTrack.transitionLayer;
+    return timelineDragPreviewGlobalLayerFor(_dragPreview.value, row.id) ?? row;
+  }
 
   /// The track that owns [layerId] as its TRANSITION row, on any track.
   Track? trackTransitionOwner(LayerId layerId) {
@@ -85,6 +101,10 @@ class Transitions {
 
   bool isTrackTransitionLayerId(LayerId layerId) =>
       trackTransitionOwner(layerId) != null;
+
+  /// The row as its readers SHOW it — every span named by the cuts it joins
+  /// (F-229). ⛔Only for showing: this object's edits never read a name.
+  late final names = TransitionRowNames(camera: _camera, selection: _selection);
 
   /// The track's TRANSITION row as a cut-local display clone — the camera
   /// section's third row.
@@ -100,7 +120,8 @@ class Transitions {
   /// Cached on the same terms as the SE clones: same source layer + same
   /// window = the same instance back, so identity-keyed row memos hold.
   Layer get trackTransitionDisplayLayer {
-    final source = _selection.activeTrack.transitionLayer;
+    final track = _selection.activeTrack;
+    final source = names.rowNamed(track, track.transitionLayer);
     final cutStart = _project.activeCutGlobalStartFrame;
     final duration = _project.activeCutOrNull?.duration ?? 0;
     final cached = _transitionDisplayClone;
@@ -225,12 +246,16 @@ class Transitions {
   ///
   /// F-90: for the cut the sheet PRINTS — a scrub over another cut makes it
   /// a different one from the cut open for editing.
+  ///
+  /// [olWord] is the sheet's: it prints in the NOTATION language (F-229).
   Layer trackTransitionSheetLayerFor({
     required int cutStart,
     required int duration,
+    required String olWord,
   }) {
+    final track = _selection.activeTrack;
     final (:display, :crossing, origins: _) = _projectOntoCut(
-      _selection.activeTrack.transitionLayer,
+      names.rowNamed(track, track.transitionLayer, olWord: olWord),
       cutStart: cutStart,
       duration: duration,
     );
@@ -577,33 +602,19 @@ class Transitions {
   /// `hidden_folder_is_hidden_test`); the fixture lives in no folder, so
   /// the singleton stack it stands in is its own.
   List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
-    for (final track in _project.repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        final transition = track.transitionLayer;
-        if (!<Layer>[transition].rowVisible(transition)) {
-          return const [];
-        }
-        return [
-          for (final entry in transition.instructions.entries)
-            transitionSpanOf(entry),
-        ];
-      }
+    final transition = _project.trackById(trackId)?.transitionLayer;
+    if (transition == null || !<Layer>[transition].rowVisible(transition)) {
+      return const [];
     }
-    return const [];
+    return [
+      for (final entry in transition.instructions.entries)
+        transitionSpanOf(entry),
+    ];
   }
 
-  /// One instruction event as a geometry span, WITH its term's mark.
-  ///
-  /// 🚨The mark is what tells O.L from F.O downstream. Dropping it here — which
-  /// this used to do — made `cutOpacityAt` treat every span as a symmetric
-  /// cross-dissolve, so an F.O faded the next cut IN and behaved as an O.L
-  /// (user 2026-08-11). An id the vocabulary no longer holds falls back to the
-  /// bowtie ([transitionMarkOf]).
-  TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) => (
-    start: entry.key,
-    length: entry.value.length,
-    mark: transitionMarkOf(
-      _camera.cameraInstructionSet.defById(entry.value.instructionId),
-    ),
-  );
+  /// One instruction event as a geometry span, WITH its term's mark — the
+  /// project's one reading ([transitionSpanOfEvent], whose note says why the
+  /// mark is load-bearing), in the project's vocabulary.
+  TransitionSpan transitionSpanOf(MapEntry<int, InstructionEvent> entry) =>
+      transitionSpanOfEvent(entry, _camera.cameraInstructionSet);
 }

@@ -67,7 +67,7 @@ void main() {
   /// A view zoomed in past the page — one a pan can move: the view stops
   /// at the paper (F-201), so a page smaller than the viewer stands still
   /// in its middle whatever the hand does.
-  final pannable = CanvasViewport(zoom: 3, panX: -600, panY: -600);
+  final pannable = CanvasViewport(zoom: 3, panX: -300, panY: -300);
 
   Future<void> pumpViewer(WidgetTester tester, {CanvasViewport? view}) async {
     slot.framedFor.value = path;
@@ -82,8 +82,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
-              position: position,
-              onPositionChanged: (next) => slot.position.value = next,
+              position: slot.position,
               viewportController: slot.viewport,
               framedFor: slot.framedFor,
               brushTool: tool,

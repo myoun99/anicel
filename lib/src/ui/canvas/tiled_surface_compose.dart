@@ -8,6 +8,7 @@ import '../../models/playback_quality.dart';
 import '../../core/dev_profile.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
+import 'display_resample.dart';
 import 'raster_picture.dart';
 import 'tile_origin.dart';
 
@@ -52,18 +53,16 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
   if (tiles == null) {
     return content;
   }
-  final grid = (1 << PlaybackQuality.deepestLevel).toDouble();
-  double outward(double value, double origin, {required bool up}) {
-    final blocks = (value - origin) / grid;
-    return origin +
-        (up ? blocks.ceilToDouble() : blocks.floorToDouble()) * grid;
-  }
-
+  final grid = rectOutwardOnGrid(
+    tiles,
+    1.0 / (1 << PlaybackQuality.deepestLevel),
+    origin: content.topLeft,
+  );
   return ui.Rect.fromLTRB(
-    outward(tiles.left, content.left, up: false),
-    outward(tiles.top, content.top, up: false),
-    math.min(content.right, outward(tiles.right, content.left, up: true)),
-    math.min(content.bottom, outward(tiles.bottom, content.top, up: true)),
+    grid.left,
+    grid.top,
+    math.min(content.right, grid.right),
+    math.min(content.bottom, grid.bottom),
   );
 }
 

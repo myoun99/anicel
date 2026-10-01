@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -36,10 +37,10 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/native_engine_path.dart';
@@ -194,19 +195,22 @@ void main() {
     await tester.pump();
   }
 
-  /// The preview [tab] shows in the face [family], its bytes.
+  /// The preview [tab] shows in the face [family], its bytes — of
+  /// [session], or of a fresh [exportSession].
   Future<List<int>> previewIn(
     WidgetTester tester, {
     required String tab,
     required String family,
+    EditorSessionManager? session,
   }) async {
     final state = await pumpDialog(
       tester,
-      exportSession(),
+      session ?? exportSession(),
       face: TextStyle(fontFamily: family),
       dialogKey: ValueKey<String>(
         'preview-$tab-$family-'
-        '${AppText.settings.value.notationLanguage.name}',
+        '${AppText.settings.value.notationLanguage.name}-'
+        '${session == null ? '' : identityHashCode(session)}',
       ),
     );
     await switchTab(tester, tab);
@@ -751,6 +755,34 @@ void main() {
       expect(statusText(tester), 'Exported 1 sheet page.');
     });
 
+    // export-sheet-lacks-transitions (2026-09-30): the panel printed an O.L
+    // and the のりしろ it asks for; the export gathered the sheet's inputs
+    // on its own and stopped short of both, so its sheet came out as if
+    // there were none.
+    testWidgets('an O.L across the cut\'s end prints on the exported sheet',
+        (tester) async {
+      Future<List<int>> sheetPrinted({required bool withOl}) {
+        final session = exportSession();
+        addTearDown(session.dispose);
+        if (withOl) {
+          session.transitions.updateTransitionInstructions({
+            1: const InstructionEvent(instructionId: 'ol', length: 2),
+          });
+        }
+        return previewIn(
+          tester,
+          tab: 'timesheet',
+          family: 'BIZ UDPGothic',
+          session: session,
+        );
+      }
+
+      expect(
+        await sheetPrinted(withOl: true),
+        isNot(await sheetPrinted(withOl: false)),
+      );
+    });
+
     // 유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」 — the sheet
     // exported no ink at all, where the conte's and the envelope's rode.
     testWidgets('what was written on the sheet rides its PNG, where it was '
@@ -1073,7 +1105,7 @@ void main() {
       // The tap is a no-op on a grayed chip — H.264 stays selected.
       await tester.tap(h265);
       await tester.pump();
-      final h264Chip = tester.widget<ExportPill>(
+      final h264Chip = tester.widget<Pill>(
         find.byKey(const ValueKey<String>('export-format-codec-h264')),
       );
       expect(h264Chip.selected, isTrue);
@@ -1202,9 +1234,8 @@ void main() {
       );
       await store.save(
         AppExportSettings(
-          lastLocation: const GrantedDirectory(
-            path: '/old/deliver',
-            bookmark: 'TOK==',
+          lastDestination: const ExportIntoFolder(
+            GrantedDirectory(path: '/old/deliver', bookmark: 'TOK=='),
           ),
         ),
       );
@@ -1221,8 +1252,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       expect(
-        AppExport.settings.value.lastLocation,
-        const GrantedDirectory(path: '/mounted/deliver', bookmark: 'FRESH=='),
+        AppExport.settings.value.lastDestination,
+        const ExportIntoFolder(
+          GrantedDirectory(path: '/mounted/deliver', bookmark: 'FRESH=='),
+        ),
         reason: 'the pair moved together — a fresh token for the folder the '
             'user renamed, persisted so the NEXT launch starts right',
       );

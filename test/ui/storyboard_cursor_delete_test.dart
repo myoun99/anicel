@@ -102,7 +102,7 @@ void main() {
     s.selectGlobalFrame(3);
     s.frameScrub.scrubGlobalFrame(10);
     expect(
-      [s.editingPlayheadInGap, s.activeCutOrNull?.id],
+      [s.editingSession.playheadInGap, s.activeCutOrNull?.id],
       [true, const CutId('cut-1')],
       reason: '⛔fixture premise: parked in the gap, cut-1 still active',
     );

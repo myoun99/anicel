@@ -8,11 +8,13 @@ import 'frame_window_semantics.dart';
 
 import 'timeline_beat_lines.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_frame_coordinate_policy.dart' show frameVisibleX;
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_second.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../text/word_condensation.dart';
 
 /// The ruler's top-line SECOND mark at [frameIndex], or '' off a boundary.
@@ -73,10 +75,15 @@ String timelineRulerSecondOf({
 /// answer to crowding.
 const double timelineNumberNarrowestEm = 0.5;
 
-/// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, on the
-/// full-strength text colour — one answer for the ruler and the rail.
+/// The playhead's own ink on a ruler strip (I-16 「볼드체로」): bold, in the
+/// accent — one answer for the ruler and the rail, the timeline's, the
+/// storyboard's and the sheet's alike.
+///
+/// 🗣️F-239 (유저 2026-09-29): 「재생헤드의 초수/코마 텍스트, 좀 더
+/// 눈에띄게하고싶으니 색을 흰색이아니라 강조색으로」. ↩️It was the
+/// full-strength text colour.
 TextStyle timelineRulerPlayheadInk(ColorScheme colorScheme) =>
-    TextStyle(fontWeight: FontWeight.w700, color: colorScheme.onSurface);
+    TextStyle(fontWeight: FontWeight.w700, color: colorScheme.primary);
 
 /// The resolved per-header model — THE probe surface for ruler tests
 /// (labels, states and colors live here, not in widget trees), the ruler
@@ -86,7 +93,6 @@ class TimelineRulerHeaderModel {
     required this.frameIndex,
     required this.label,
     required this.secondsLabel,
-    required this.selected,
     required this.outsidePlaybackRange,
     required this.background,
   });
@@ -99,7 +105,6 @@ class TimelineRulerHeaderModel {
   /// The top-line second index ('' off second boundaries).
   final String secondsLabel;
 
-  final bool selected;
   final bool outsidePlaybackRange;
   final Color background;
 }
@@ -111,7 +116,8 @@ class TimelineRulerHeaderModel {
 /// gone. Shared by the timeline header and the storyboard ruler (which
 /// already share [TimelineFrameHeaderRow]); scrubbing stays on the
 /// viewport-level listeners (G8) — the strip itself is passive.
-class TimelineFrameRulerPainter extends CustomPainter with RepaintOnProps {
+class TimelineFrameRulerPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   TimelineFrameRulerPainter({required this.scale})
     : super(repaint: scale.windowBucket);
 
@@ -287,7 +293,6 @@ final class TimelineRulerScale {
     required this.axis,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
-    required this.currentFrameIndex,
     required this.playbackFrameCount,
     required this.leadingFrameSpacer,
     required this.crossExtent,
@@ -309,7 +314,6 @@ final class TimelineRulerScale {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
-  final int currentFrameIndex;
   final int playbackFrameCount;
 
   /// The spacer before frame [frameStartIndex] along the strip's MAIN axis
@@ -377,16 +381,15 @@ final class TimelineRulerScale {
   /// plus its own frames along the axis and spans the whole [crossExtent]
   /// across it.
   Rect cellRectFor(int frameIndex) {
-    final along =
-        leadingFrameSpacer +
-        (frameIndex - frameStartIndex) * metrics.frameCellWidth;
+    double edge(int frame) => frameVisibleX(
+      frameIndex: frame,
+      frameStartIndex: frameStartIndex,
+      frameCellWidth: metrics.frameCellWidth,
+      leadingFrameSpacerWidth: leadingFrameSpacer,
+    );
     return Rect.fromPoints(
-      offsetAlong(axis, along: along, across: 0),
-      offsetAlong(
-        axis,
-        along: along + metrics.frameCellWidth,
-        across: crossExtent,
-      ),
+      offsetAlong(axis, along: edge(frameIndex), across: 0),
+      offsetAlong(axis, along: edge(frameIndex + 1), across: crossExtent),
     );
   }
 
@@ -522,9 +525,9 @@ final class TimelineRulerScale {
   ///
   /// 🚨I-22 (the ten-minute floor): at an eighth of a pixel a window is
   /// ~19,000 cells, and a rect and a line check for every one of them was
-  /// this strip's whole cost. A cell's ground moves only at the selected
-  /// cell and at the end of playback ([modelAt]), so those are the only
-  /// edges a stretch has; the lines walk [timelineFrameLineStep]. ↩️The
+  /// this strip's whole cost. A cell's ground moves only at the end of
+  /// playback ([modelAt]), so that is the only edge a stretch has inside
+  /// the window; the lines walk [timelineFrameLineStep]. ↩️The
   /// writing kept laying its paper a cell at a time until 09-27 — hundreds
   /// of rects under one glyph on every playback tick at that floor.
   ///
@@ -551,8 +554,6 @@ final class TimelineRulerScale {
     final edges = <int>{
       from,
       to,
-      currentFrameIndex,
-      currentFrameIndex + 1,
       playbackFrameCount,
     }.where((edge) => edge >= from && edge <= to).toList()..sort();
     final step = timelineFrameLineStep(metrics.frameCellWidth, framesPerSecond);
@@ -671,13 +672,14 @@ final class TimelineRulerScale {
   /// so zooming out crowded every row's number into the next, while the
   /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
   /// content: the "never disappears" rule is about what a cell holds.
+  ///
+  /// ⛔No current frame: the playhead's cell is the cursor overlay's, on a
+  /// layer of its own ([TimelineRulerCursorOverlayPainter], F-212). ↩️The
+  /// strip was handed one and tinted its cell 12% — every mount handed it
+  /// -1 once the overlay took the tint, so only the tests ever saw it.
   TimelineRulerHeaderModel modelAt(int frameIndex) {
-    final selected = frameIndex == currentFrameIndex;
     final outside = frameIndex >= playbackFrameCount;
     final labeled = frameIndex % labelEveryFrames == 0;
-    final ground = outside
-        ? (pastPlaybackWash ?? colorScheme.surface)
-        : colorScheme.surface;
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
       label: labeled ? frameNumberLabel(frameIndex) : '',
@@ -686,14 +688,10 @@ final class TimelineRulerScale {
         frameIndex: frameIndex,
         framesPerSecond: framesPerSecond,
       ),
-      selected: selected,
       outsidePlaybackRange: outside,
-      background: selected
-          ? Color.alphaBlend(
-              timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-              colorScheme.surface,
-            )
-          : ground,
+      background: outside
+          ? (pastPlaybackWash ?? colorScheme.surface)
+          : colorScheme.surface,
     );
   }
 
@@ -750,7 +748,6 @@ final class TimelineRulerScale {
           other.pastPlaybackWash == pastPlaybackWash &&
           other.frameStartIndex == frameStartIndex &&
           other.frameEndIndexExclusive == frameEndIndexExclusive &&
-          other.currentFrameIndex == currentFrameIndex &&
           other.playbackFrameCount == playbackFrameCount &&
           other.leadingFrameSpacer == leadingFrameSpacer &&
           other.metrics == metrics &&
@@ -770,7 +767,6 @@ final class TimelineRulerScale {
     pastPlaybackWash,
     frameStartIndex,
     frameEndIndexExclusive,
-    currentFrameIndex,
     playbackFrameCount,
     leadingFrameSpacer,
     metrics,

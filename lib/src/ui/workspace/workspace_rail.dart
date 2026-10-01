@@ -276,27 +276,6 @@ class _WorkspaceRail {
     expanded.value = next;
   }
 
-  void _toggleAttachGroup(LayerId baseId) {
-    final folded = _state.widget.session.railView.collapsedAttachBaseIds;
-    final next = Set<LayerId>.of(folded.value);
-    if (!next.remove(baseId)) {
-      next.add(baseId);
-      // FOLDING while one of the group's attach rows is active (UI-R24
-      // #4): hand the selection to the BASE so the group actually
-      // disappears — the active-attach-stays-visible rule otherwise kept
-      // the fold from taking effect until some other row was picked.
-      //
-      // ↩️Through the session's fold law since F-81, which asks what the
-      // group holds — the organizer folder and a nested one too — instead
-      // of 「is the active row an attach row of this base」.
-      //
-      // ↩️F-169: that rule is gone (nothing stands inside a shut group), so
-      // this hand-off is what keeps the fold from shutting over you.
-      _state.widget.session.handOffCurrentRowOnAttachFold(baseId);
-    }
-    folded.value = next;
-  }
-
   /// Putting a panel somewhere OPENS that somewhere.
   ///
   /// A rail group can be closed, and a panel placed into a closed one is a

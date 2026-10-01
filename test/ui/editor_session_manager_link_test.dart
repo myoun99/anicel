@@ -28,11 +28,13 @@ void main() {
   });
 
   test('linkDuplicateActiveLayer links; the badge query sees both members; '
-      'unlinkActiveLayer forks back out', () {
+      'unlinking the row forks back out', () {
     final activeLayer = session.activeLayer!;
+    bool groupLinked() =>
+        layerVerbs.groupIsLinked(session.activeLayer!, session.requireActiveCut);
     final layersBefore = session.requireActiveCut.layers.length;
     expect(layerVerbs.isLayerLinked(activeLayer.id), isFalse);
-    expect(layerVerbs.canUnlinkActiveLayer, isFalse);
+    expect(groupLinked(), isFalse);
 
     layerVerbs.linkDuplicateActiveLayer();
 
@@ -44,12 +46,12 @@ void main() {
           layer.name == activeLayer.name && layer.id != activeLayer.id,
     );
     expect(layerVerbs.isLayerLinked(copy.id), isTrue);
-    expect(layerVerbs.canUnlinkActiveLayer, isTrue);
+    expect(groupLinked(), isTrue);
 
-    layerVerbs.unlinkActiveLayer();
+    layerVerbs.unlinkLayers([activeLayer.id]);
     expect(layerVerbs.isLayerLinked(activeLayer.id), isFalse);
     expect(layerVerbs.isLayerLinked(copy.id), isFalse);
-    expect(layerVerbs.canUnlinkActiveLayer, isFalse);
+    expect(groupLinked(), isFalse);
   });
 
   test('🗣️the badge NAMES the partner — its cut and its name — and a '

@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import 'bitmap_surface_painter.dart';
+import 'landing_preview.dart';
 import 'viewport_canvas_transform.dart';
 import '../repaint_props.dart';
 
@@ -31,7 +32,7 @@ import '../repaint_props.dart';
 /// above everything, because they are about the drawing rather than part of
 /// it.
 @immutable
-class SelectionFloatPaint {
+class SelectionFloatPaint implements LandingPreview {
   SelectionFloatPaint({
     this.surface,
     CanvasPoint? surfaceOffset,
@@ -67,6 +68,7 @@ class SelectionFloatPaint {
   /// alone, and a float carried past that surface's ink was cut at the edge.
   /// The same two draws [paintInto] makes, in the same order, under the same
   /// clip.
+  @override
   Rect get drawnWorldRect {
     final image = this.image;
     final surface = this.surface;
@@ -89,6 +91,7 @@ class SelectionFloatPaint {
     return bounds == null ? drawn : drawn.intersect(bounds);
   }
 
+  @override
   void paintInto(Canvas canvas) {
     if (isEmpty) {
       return;
@@ -100,6 +103,19 @@ class SelectionFloatPaint {
     }
     final image = this.image;
     if (image != null) {
+      // The transform preview (P3a): the RESAMPLED float, drawn at the
+      // canvas rect it will land in, through the ordinary viewport
+      // transform.
+      //
+      // `FilterQuality.none` is not a performance choice — it is the
+      // contract. The image already holds the destination pixels, one for
+      // one, so any filtering here would show the user something other than
+      // the bytes Enter is about to write. Zoomed in that means visible
+      // blocks, which is correct: those blocks ARE the result. This replaced
+      // three different screen approximations (a widget `Transform` for the
+      // affine, a homography matrix for the quad, and a `drawVertices` mesh
+      // at `FilterQuality.medium`), none of which agreed with the commit and
+      // none of which agreed with each other.
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),

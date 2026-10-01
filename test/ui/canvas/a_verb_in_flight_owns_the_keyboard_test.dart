@@ -78,7 +78,7 @@ void main() {
     final workspace = tester.widget<EditorWorkspace>(
       find.byType(EditorWorkspace),
     );
-    final surface = workspace.session.pixelEditingCoordinator!.currentSurfaceOf(
+    final surface = workspace.session.pixelEditing.coordinator!.currentSurfaceOf(
       const BrushFrameKey(
         projectId: ProjectId('vf-project'),
         trackId: TrackId('vf-track'),

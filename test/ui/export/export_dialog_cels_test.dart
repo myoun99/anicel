@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 /// The Cels tab, v3 (유저 2026-09-09): one label picked through the
 /// timeline's own flyout, a take picker with 「최신」 added, 적용/추가 pills,
@@ -214,8 +215,8 @@ void main() {
   ExportIncludeDot dot(WidgetTester tester, String key) =>
       tester.widget<ExportIncludeDot>(find.byKey(ValueKey<String>(key)));
 
-  ExportPill pill(WidgetTester tester, String key) =>
-      tester.widget<ExportPill>(find.byKey(ValueKey<String>(key)));
+  Pill pill(WidgetTester tester, String key) =>
+      tester.widget<Pill>(find.byKey(ValueKey<String>(key)));
 
   ExportCelsCutDelta? deltaOf(EditorSessionManager session) =>
       session.repository.requireProject().exportOverrides.deltaFor(cut1);

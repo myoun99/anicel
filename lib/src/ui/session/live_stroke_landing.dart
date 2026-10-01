@@ -4,10 +4,11 @@ import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 /// pen is in the middle of.
 ///
 /// 🚨★★★**A SIBLING, NOT A NAME ON THE SESSION.** `SessionInternals` only
-/// shrinks (`the_session_collaborators_are_libraries_test`), and its rule
-/// says what to do instead: 「a host name a collaborator needs is either a
-/// ROLE, a SIBLING it takes by constructor, or code that moves INTO the
-/// collaborator」. This is the sibling — `ProjectFileDoor` takes it, the
+/// shrank — to nothing, and it was deleted (2026-09-28;
+/// `the_session_collaborators_are_libraries_test` keeps it gone) — and its
+/// rule still says what to do instead: 「a host name a collaborator needs is
+/// either a ROLE, a SIBLING it takes by constructor, or code that moves INTO
+/// the collaborator」. This is the sibling — `ProjectFileDoor` takes it, the
 /// canvas fills it in, and nothing else has to know either of them exists.
 ///
 /// 🚨★★★**WHY A SAVE WANTS IT AT ALL.** The store's save snapshot records

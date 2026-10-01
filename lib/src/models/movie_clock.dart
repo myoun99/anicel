@@ -94,6 +94,8 @@ typedef ProjectClock = ({
 /// preview's IN/OUT is what lands, and a bake has to land on exactly the
 /// frames the reference was showing. Nothing here decides anything; it
 /// exists so that the unpacking is written once, beside the law it feeds.
+/// (The preview's clock is assembled here too, by the document that shows
+/// a movie on the project's clock — `ProjectClockDocument.of`.)
 MovieClock movieClockFor({
   required ProjectFrameRate projectRate,
   required ({int numerator, int denominator}) audioSpeed,

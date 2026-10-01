@@ -65,6 +65,7 @@ class CanvasTrackStackView extends StatefulWidget {
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
     this.backdropNone = false,
+    this.paintsFloor = true,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.pasteboardNone = false,
     this.transformTrackOf,
@@ -140,6 +141,13 @@ class CanvasTrackStackView extends StatefulWidget {
   final bool backdropNone;
   final bool pasteboardNone;
 
+  /// Whether the stack stands on its own backdrop floor. False lays it OVER
+  /// whatever is under it: the editing canvas's O.L partner (F-227) is
+  /// painted over the LIVE cut, which is that partner's floor — the share
+  /// the partner leaves is the live cut showing through, exactly the mix
+  /// [sourceOverWeights] describes.
+  final bool paintsFloor;
+
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
   final TransformTrack Function(CutId cutId)? transformTrackOf;
@@ -186,16 +194,45 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
   }
 
-  /// ONE in-flight compose per track (per cut), latest-frame-wins: a fast
-  /// gap scrub crosses many cold frames, and unbounded fire-and-forget
-  /// composes would contend with the live drag long after the parking
-  /// moved on. The abort hook stands a stale compose down mid-build; the
-  /// completion repaint re-requests whatever frame is current then.
+  /// ONE in-flight compose per track (per cut): a fast gap scrub crosses
+  /// many cold frames, and unbounded fire-and-forget composes would contend
+  /// with the live drag long after the parking moved on.
+  ///
+  /// 🚨F-206 (유저 2026-09-28: 「스크럽하던 뭐던 존재하는게 보여야함」): the
+  /// compose in flight is FINISHED and shown even when the scrub has moved
+  /// on — only a cut that left the view stands it down. It used to stand
+  /// down the moment the wanted frame changed (latest-frame-wins, #768), so
+  /// a drag that kept moving faster than one compose threw every compose
+  /// away: a cut the drag entered never showed its picture, only the paper
+  /// and — over an F.I — a screen of black, until the release handed the
+  /// canvas back. The completion repaint still asks for whatever frame is
+  /// current then, so the picture trails the pointer by one compose at most
+  /// instead of never arriving.
   final Map<CutId, int> _inFlightFrame = <CutId, int>{};
 
-  /// What each covered cut should show right now — the abort hook's
-  /// comparison target, refreshed every build.
+  /// What each covered cut should show right now, refreshed every build — a
+  /// cut missing here has left the view, which is what stands its compose
+  /// down.
   final Map<CutId, int> _wantedFrame = <CutId, int>{};
+
+  /// Holds [composite] — [cut]'s picture at [frameIndex] — as what the view
+  /// shows for the cut until a newer one lands: our own clone, and a pin on
+  /// its cache slot. Cloning happens only when the source changes.
+  void _hold(
+    Cut cut,
+    int frameIndex,
+    PlaybackQuality quality,
+    ui.Image composite,
+  ) {
+    if (identical(composite, _heldSources[cut.id])) {
+      return;
+    }
+    _heldFrames[cut.id]?.dispose();
+    _heldSources[cut.id] = composite;
+    _heldFrames[cut.id] = composite.clone();
+    _heldCanvasSizes[cut.id] = cut.canvasSize;
+    _swapHeldPin(cut.id, (cut.id, frameIndex, quality));
+  }
 
   @override
   void initState() {
@@ -238,18 +275,23 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           cut: cut,
           frameIndex: frameIndex,
           quality: quality,
-          shouldAbort: () =>
-              !mounted || _wantedFrame[cut.id] != frameIndex,
+          shouldAbort: () => !mounted || !_wantedFrame.containsKey(cut.id),
         )
         .then(
           (image) {
             _inFlightFrame.remove(cut.id);
+            // Held BEFORE the budget trim below: the pin is what keeps the
+            // trim from evicting the frame that just landed.
+            if (image != null &&
+                mounted &&
+                _wantedFrame.containsKey(cut.id)) {
+              _hold(cut, frameIndex, quality, image);
+            }
             if (image != null) {
               widget.onFrameCached?.call();
             }
             // Repaint either way (when still mounted): a landed image
-            // shows, an aborted one lets the build re-request the frame
-            // that is wanted NOW.
+            // shows, and the build asks for the frame that is wanted NOW.
             if (mounted) {
               setState(() {});
             }
@@ -288,7 +330,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     // shows the stage's floor, exactly what an opaque export bakes there.
     // An ABSENT backdrop (F-114) is the checkerboard, as on the editing
     // canvas.
-    final floor = widget.backdropNone
+    final Widget? floor = !widget.paintsFloor
+        ? null
+        : widget.backdropNone
         ? const CustomPaint(
             key: ValueKey<String>('canvas-track-stack-floor'),
             painter: AlphaCheckerboardPainter(),
@@ -306,7 +350,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
 
     final quality = widget.qualityOf();
-    final layers = <Widget>[floor];
+    final layers = <Widget>[?floor];
     // The unit alpha of each contribution: its transition share times the
     // track's own opacity and fade. The weights that follow turn those into
     // source-over alphas — see [sourceOverWeights] for why they are not the
@@ -330,12 +374,8 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       );
       if (composite == null) {
         _prepare(cut, localFrame, quality);
-      } else if (!identical(composite, _heldSources[cut.id])) {
-        _heldFrames[cut.id]?.dispose();
-        _heldSources[cut.id] = composite;
-        _heldFrames[cut.id] = composite.clone();
-        _heldCanvasSizes[cut.id] = cut.canvasSize;
-        _swapHeldPin(cut.id, (cut.id, localFrame, quality));
+      } else {
+        _hold(cut, localFrame, quality, composite);
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;

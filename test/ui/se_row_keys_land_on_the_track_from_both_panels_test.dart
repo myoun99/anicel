@@ -23,7 +23,7 @@ EditorSessionManager _sessionOf(WidgetTester tester) =>
 /// second cut's global start.
 int _keyInCut1ThenStandInCut2(EditorSessionManager session) {
   final se = session.activeTrack.seLayers.first;
-  session.updateLayerTransformTrack(
+  session.laneVerbs.updateLayerTransformTrack(
     se.id,
     TransformTrack.empty().copyWith(
       rotation: PropertyTrack(keys: {2: const PropertyKey(30.0)}),

@@ -2,6 +2,7 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/services.dart';
 
 import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
 import '../../services/input/pen_sidecars.dart';
@@ -10,6 +11,7 @@ import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../canvas/canvas_touch_contacts.dart' show CanvasTouchContacts;
 import '../theme/app_theme.dart' show AppColors, AppShapes;
+import 'key_trace.dart';
 
 /// The cross-platform INPUT INSPECTOR (pen program, PEN-1).
 ///
@@ -28,7 +30,48 @@ abstract final class InputInspector {
   /// Whether the overlay is shown (Settings ▸ Input Inspector). Static like
   /// the other app-level input state ([AppColors.accentSettings] idiom);
   /// tests flip it and MUST tearDown-reset via [reset].
-  static final ValueNotifier<bool> visible = ValueNotifier<bool>(false);
+  static final ValueNotifier<bool> visible = ValueNotifier<bool>(false)
+    ..addListener(_watchKeys);
+
+  /// 🗣️F-241 (유저 2026-09-29): 「컨트롤 좌우 화살표 … 됏다가 안됏다가
+  /// 이상함」 — a key that sometimes does nothing, and not on the X-sheet
+  /// (F-241-Q1: 「가로 타임라인에서 안먹혓음」). Nothing on screen could say
+  /// where a key went, so three lines follow each one, stamped with the
+  /// KEY'S OWN time so they pair up whatever order they are written in:
+  ///
+  /// * `key` — it ARRIVED ([HardwareKeyboard], ahead of focus dispatch),
+  ///   with every key the app believes is held and where focus is;
+  /// * `bind` — the editor's shortcut table answered: the action it ran,
+  ///   no binding, or a focused text field keeping it. A `bind` still on an
+  ///   older stamp means the key never reached the table;
+  /// * `eat` — playback spent it on a stop.
+  ///
+  /// The table and the gate write theirs through [KeyTrace], which this
+  /// plugs in while shown.
+  static void _watchKeys() {
+    final keyboard = HardwareKeyboard.instance;
+    keyboard.removeHandler(_noteKey);
+    KeyTrace.sink = null;
+    if (visible.value) {
+      keyboard.addHandler(_noteKey);
+      KeyTrace.sink = note;
+    }
+  }
+
+  static bool _noteKey(KeyEvent event) {
+    if (event is! KeyUpEvent) {
+      final focus = FocusManager.instance.primaryFocus;
+      final held = [
+        for (final key in HardwareKeyboard.instance.logicalKeysPressed)
+          key.debugName ?? key.keyLabel,
+      ];
+      note(
+        'key ${KeyTrace.stamp(event)} held [${held.join(', ')}] · focus '
+        '${focus?.debugLabel ?? focus?.context?.widget.runtimeType}',
+      );
+    }
+    return false;
+  }
 
   /// Bumped once per recorded event — the card listens to this, nothing
   /// else rebuilds.

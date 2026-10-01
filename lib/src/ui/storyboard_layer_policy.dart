@@ -120,12 +120,17 @@ int minimumCutDurationFor(Cut cut) {
 /// end is what let a shrink pin the duration ABOVE the row's end and commit
 /// the pair out of sync; the same drag then read as flapping, and the next
 /// one collapsed the cut onto the row it had already broken.
+///
+/// Counted in the CONTE's frames: a cut an O.L arrives into keeps its
+/// panels after the のりしろ it owes ([storyboardConteStart], F-227), and
+/// those frames are its first panel held back, not length to trim.
 int minimumCutDurationForStoryboardRow(Layer row) {
-  var lastDivision = 0;
+  final conteStart = storyboardConteStart(row.timeline);
+  var lastDivision = conteStart;
   for (final entry in row.timeline.entries) {
     if (entry.value.isDrawing && !entry.value.ghost) {
       lastDivision = entry.key > lastDivision ? entry.key : lastDivision;
     }
   }
-  return lastDivision + 1;
+  return lastDivision - conteStart + 1;
 }

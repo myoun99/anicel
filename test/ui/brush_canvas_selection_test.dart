@@ -37,6 +37,9 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/float_warp.dart'
+    show debugLastResampledFloat;
+import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -838,6 +841,37 @@ void main() {
     await pumpSelectionPanel(tester);
     expect(find.byKey(layerKey), findsOneWidget);
     expect(find.byType(CanvasSelectionLayer), findsOneWidget);
+  });
+
+  // 🗣️F-231 ② (유저 2026-09-29): 「선택도구 쓴채로 변형하고, 언두하면 선택도구
+  // 개미행렬 라인이 과거로 안돌아가고 그것만 남아있는데 그거도 같이 한번에
+  // 언두되도록」. The entry has carried the selection since F-38c — but it was
+  // told the shape the box had ALREADY moved, so the undo put that one back.
+  testWidgets('a moved selection comes back with its pixels in the one undo '
+      'the confirm made — and a redo moves it again', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    final selected = env.commands.region!.selectedBounds;
+
+    await env.setTool(CanvasTool.move);
+    await moveBoxBy(tester, const Offset(10, 5));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    final moved = env.commands.region!.selectedBounds;
+    expect(moved.left, selected.left + 10, reason: 'the outline went too');
+
+    env.history.undo();
+    await tester.pump();
+    expect(env.commands.region!.selectedBounds, selected);
+    expect(
+      inkAt(env.coordinator, 30, 30),
+      isNonZero,
+      reason: 'and the pixels, in the same step',
+    );
+
+    env.history.redo();
+    await tester.pump();
+    expect(env.commands.region!.selectedBounds, moved);
   });
 
   testWidgets('marquee selects; the MOVE tool floats a session and the '
@@ -2118,6 +2152,48 @@ void main() {
     );
   });
 
+  // F-222 ①: the snap belongs to the ENTRANCE — a hand on the canvas — so it
+  // cannot depend on whether the box was already open. The first drag
+  // opens the box (the move path); the second lands on the OPEN box, a
+  // different path that did not round.
+  testWidgets('a SECOND drag inside the box the first one opened asks for '
+      'whole canvas pixels too', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+      sourceDabs: [dab(40, 40)],
+    );
+    await dragOnLayer(tester, const Offset(90, 90), const Offset(180, 180));
+    await env.setTool(CanvasTool.move);
+    // 10 screen px = 3.33… canvas px each time: fractional by construction.
+    await dragOnLayer(
+      tester,
+      const Offset(112.5, 112.5),
+      const Offset(122.5, 112.5),
+    );
+    expect(
+      env.commands.transformValues!.tx,
+      3,
+      reason: 'precondition: the drag that opened the box snapped',
+    );
+
+    await dragOnLayer(
+      tester,
+      const Offset(122.5, 112.5),
+      const Offset(132.5, 112.5),
+    );
+
+    final moved = env.commands.transformValues!.tx;
+    expect(
+      moved,
+      6,
+      reason:
+          '유저: 「캔버스쪽 직접 손으로 끌어서 이동하는거는 소수점은 '
+          '이동안되게. 즉 스냅. 15다음이 15.2 이런식말고 16되도록」 — '
+          'the open box took 3.33… as it came',
+    );
+  });
+
   testWidgets('R26 #13: the MOVE tool with NO selection drags the WHOLE '
       'picture — implicit whole-canvas session, ONE confirmed entry, and '
       'the end returns to no selection', (tester) async {
@@ -2316,9 +2392,9 @@ void main() {
     await moveBoxBy(tester, const Offset(15, 5));
     expect(
       antsOnScreen(tester)?.startShape,
-      same(started),
+      started,
       reason:
-          '🚨it is the shape the SESSION began with, not the live one — a '
+          '🚨it is the box the SESSION began with, not the live one — a '
           'line that followed the drag would be saying nothing',
     );
 
@@ -2809,11 +2885,15 @@ void main() {
     expect(env.commands.hasSelection, isTrue);
   });
 
-  testWidgets('I-38: and it is whatever shape the session began with — a '
-      'LASSO starts as a lasso', (tester) async {
-    // 🎯유저: 「사각형 라인이나 메시워프든 **낡지 않을 구조로**」. Nothing in
-    // the painter knows the shapes apart, which is what makes that true —
-    // so the case that would break a rectangle assumption is the pin.
+  testWidgets('F-231 ①: over a LASSO the line is still the box the transform '
+      'began from — the tool\'s rectangle, not the selection\'s outline', (
+    tester,
+  ) async {
+    // 🎯유저 I-38: 「사각형 라인이나 메시워프든 **낡지 않을 구조로**」, and
+    // F-231 ① (2026-09-29): 「기존 초록 프리뷰는 항상 사각형 변형도구
+    // 실루엣만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고 … 잔재 삭제」.
+    // ↩️This pinned the opposite — a lasso started as a lasso — which is the
+    // rule the user named and asked gone.
     final env = await pumpSelectionPanel(
       tester,
       shapeKind: CanvasShapeKind.lasso,
@@ -2836,14 +2916,15 @@ void main() {
 
     final started = antsOnScreen(tester)?.startShape;
     expect(started, isNotNull);
+    final corners = started!.singleShape!.points;
+    expect(corners, hasLength(4), reason: 'the box, not the triangle');
+    final bounds = env.commands.region!.selectedBounds;
     expect(
-      started!.singleShape?.points.length,
-      3,
-      reason:
-          '⛔the TRIANGLE the drag traced, corner for corner. A rectangle '
-          'would read 4, so this is what says nothing between the session '
-          'and the painter flattened the shape into a box',
+      {for (final point in corners) point.x},
+      {bounds.left, bounds.right},
+      reason: 'the triangle\'s own box, edge to edge',
     );
+    expect({for (final point in corners) point.y}, {bounds.top, bounds.bottom});
   });
 
   testWidgets('H28: an OPEN box that has moved already reads as changed — 유저: '
@@ -6510,6 +6591,177 @@ void main() {
         isFalse,
         reason: '리두도 같은 순서 문제를 갖는다 — 되살릴 선택이 애초에 없다',
       );
+    });
+  });
+
+  /// 🚨I-23 — 유저 2026-09-30: 「근데 지금 보니까 페이스트보드 밖도
+  /// 선택가능하네? 해당부분 안으로만 가능하게 구조적으로 변경하면서 작업」.
+  ///
+  /// The doors, driven through the real panel: a drawn outline and a
+  /// transform's landing are cut at the pasteboard wall. A 200×150 canvas
+  /// puts the right wall at x = 400, which a pointer on the 800-wide test
+  /// view can reach — and the viewport is identity, so widget offsets ARE
+  /// canvas coordinates.
+  group('a selection stops at the pasteboard wall', () {
+    const small = CanvasSize(width: 200, height: 150);
+    final wall = small.pasteboardRect;
+
+    void expectInsideTheWall(
+      ({double left, double top, double right, double bottom}) box,
+    ) {
+      expect(box.left, greaterThanOrEqualTo(wall.left));
+      expect(box.top, greaterThanOrEqualTo(wall.top));
+      expect(box.right, lessThanOrEqualTo(wall.right));
+      expect(box.bottom, lessThanOrEqualTo(wall.bottom));
+    }
+
+    testWidgets('a marquee dragged past the wall lands cut at it, and the '
+        'live outline shows the cut before the release', (tester) async {
+      final env = await pumpSelectionPanel(tester, canvasSize: small);
+      expect(wall.right, 400, reason: 'the premise: the wall is reachable');
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(
+        origin + const Offset(300, 100),
+      );
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(480, 200));
+      await tester.pump();
+
+      final live = antsOnScreen(tester)!.marqueeShapes;
+      expect(live, isNotEmpty, reason: 'the drag is tracing');
+      for (final point in [for (final shape in live) ...shape.points]) {
+        expect(point.x, lessThanOrEqualTo(wall.right), reason: '$point');
+      }
+
+      await gesture.up();
+      await tester.pump();
+      final region = env.commands.region!;
+      expectInsideTheWall(region.selectedBounds);
+      expect(region.selectedBounds.left, 300, reason: 'the near side stays');
+      expect(region.selectedBounds.right, wall.right);
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 150.5)), isTrue);
+      expect(
+        region.containsPoint(CanvasPoint(x: 410.5, y: 150.5)),
+        isFalse,
+        reason: 'past the wall',
+      );
+    });
+
+    testWidgets('a lasso dragged past the wall lands cut at it', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        canvasSize: small,
+        shapeKind: CanvasShapeKind.lasso,
+      );
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + const Offset(350, 50));
+      await tester.pump();
+      for (final point in const [
+        Offset(450, 80),
+        Offset(460, 180),
+        Offset(340, 200),
+      ]) {
+        await gesture.moveTo(origin + point);
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      final region = env.commands.region!;
+      expectInsideTheWall(region.selectedBounds);
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 120.5)), isTrue);
+      expect(
+        region.containsPoint(CanvasPoint(x: 420.5, y: 120.5)),
+        isFalse,
+        reason: 'the lasso went there; the selection does not',
+      );
+    });
+
+    testWidgets('a move carried past the wall SHOWS the whole drag and '
+        'LANDS cut at the wall', (tester) async {
+      // Ink under the selection, so the move has pixels to lift.
+      final env = await pumpSelectionPanel(
+        tester,
+        canvasSize: small,
+        sourceDabs: [dab(340, 70), dab(360, 90)],
+      );
+      await dragOnLayer(tester, const Offset(320, 50), const Offset(380, 110));
+      await env.setTool(CanvasTool.move);
+
+      // A quadrant midpoint of the 60×60 box — clear of every handle and of
+      // the anchor cross (see [insideOffTheCross]).
+      final origin = tester.getTopLeft(find.byKey(layerKey));
+      final gesture = await tester.startGesture(origin + const Offset(335, 65));
+      await tester.pump();
+      await gesture.moveTo(origin + const Offset(385, 65));
+      await tester.pump();
+      expect(
+        env.commands.transformValues?.tx,
+        50,
+        reason:
+            '「편집값은 절대값」: the box carries the whole drag, the part past '
+            'the wall included',
+      );
+      await gesture.up();
+      await tester.pump();
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final region = env.commands.region!;
+      expect(region.selectedBounds.left, 370, reason: 'moved +50');
+      expect(region.selectedBounds.right, wall.right, reason: 'cut there');
+      expect(region.containsPoint(CanvasPoint(x: 390.5, y: 80.5)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 410.5, y: 80.5)), isFalse);
+    });
+
+    testWidgets('a whole-wall selection scaled up lands as the wall itself, '
+        'and the next box opens inside it', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        canvasSize: small,
+      );
+      env.commands.applyRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: wall.left,
+            top: wall.top,
+            right: wall.right,
+            bottom: wall.bottom,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 2,
+      );
+      await tester.pump();
+      env.commands.applyTransform();
+      await tester.pump();
+
+      final box = env.commands.region!.selectedBounds;
+      expect(
+        (box.left, box.top, box.right, box.bottom),
+        (wall.left, wall.top, wall.right, wall.bottom),
+        reason: 'twice the wall, cut at the wall, is the wall',
+      );
+
+      env.commands.beginTransform();
+      await tester.pump();
+      final chrome = chromeOnScreen(tester);
+      expect(chrome, isNotNull, reason: 'a second box opened');
+      for (final corner in chrome!.box) {
+        expect(corner.dx, inInclusiveRange(wall.left - 1, wall.right + 1));
+        expect(corner.dy, inInclusiveRange(wall.top - 1, wall.bottom + 1));
+      }
     });
   });
 }

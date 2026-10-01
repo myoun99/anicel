@@ -64,7 +64,7 @@ void main() {
       final view = tester.widget<InteractiveBrushEditCanvasView>(
         find.byType(InteractiveBrushEditCanvasView),
       );
-      expect(identical(view.sessionState, sessionState), isTrue);
+      expect(_shows(tester, sessionState), isTrue);
       expect(view.layerId, layerId);
       expect(view.frameId, frameId);
       expect(view.inputSettings(), inputSettings);
@@ -100,12 +100,9 @@ void main() {
       final view = tester.widget<InteractiveBrushEditCanvasView>(
         find.byType(InteractiveBrushEditCanvasView),
       );
-      expect(identical(view.sessionState, sessionState), isTrue);
-      expect(view.sessionState.canvasState.currentSurface.tiles, isEmpty);
-      expect(
-        view.sessionState.materializationHistoryState.undoEntries,
-        isEmpty,
-      );
+      expect(_shows(tester, sessionState), isTrue);
+      expect(view.celNow().tiles, isEmpty);
+      expect(sessionState.materializationHistoryState.undoEntries, isEmpty);
       expect(sink.totalCalls, 0);
 
       expect(identical(sessionState.canvasState, originalCanvasState), isTrue);
@@ -140,7 +137,7 @@ void main() {
             ),
           ),
         );
-        expect(identical(_view(tester).sessionState, firstState), isTrue);
+        expect(_shows(tester, firstState), isTrue);
 
         await tester.pumpWidget(
           _app(
@@ -155,9 +152,9 @@ void main() {
           ),
         );
 
-        expect(identical(_view(tester).sessionState, secondState), isTrue);
+        expect(_shows(tester, secondState), isTrue);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.canvasSize,
+          _view(tester).celNow().canvasSize,
           const CanvasSize(width: 10, height: 10),
         );
       },
@@ -182,8 +179,8 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
+        final strokedCel = _view(tester).celNow();
+        expect(strokedCel.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -197,9 +194,9 @@ void main() {
           ),
         );
 
-        expect(identical(_view(tester).sessionState, strokedState), isTrue);
+        expect(identical(_view(tester).celNow(), strokedCel), isTrue);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).celNow().tiles,
           isEmpty,
         );
         expect(sessionState.canvasState.currentSurface.tiles, isEmpty);
@@ -227,8 +224,8 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
+        final strokedCel = _view(tester).celNow();
+        expect(strokedCel.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -243,9 +240,9 @@ void main() {
           ),
         );
 
-        expect(identical(_view(tester).sessionState, strokedState), isTrue);
+        expect(identical(_view(tester).celNow(), strokedCel), isTrue);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).celNow().tiles,
           isEmpty,
         );
         expect(secondState.canvasState.currentSurface.tiles, isEmpty);
@@ -271,8 +268,8 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final strokedState = _view(tester).sessionState;
-        expect(strokedState.canvasState.currentSurface.tiles, isEmpty);
+        final strokedCel = _view(tester).celNow();
+        expect(strokedCel.tiles, isEmpty);
 
         await tester.pumpWidget(
           _app(
@@ -287,9 +284,9 @@ void main() {
           ),
         );
 
-        expect(identical(_view(tester).sessionState, strokedState), isTrue);
+        expect(identical(_view(tester).celNow(), strokedCel), isTrue);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).celNow().tiles,
           isEmpty,
         );
       },
@@ -299,11 +296,12 @@ void main() {
       'repeated strokes do not mutate bitmap materialization session state',
       (tester) async {
         final sink = FakeCacheInvalidationSink();
+        final session = _sessionState();
 
         await tester.pumpWidget(
           _app(
             InteractiveBrushCanvasSmokeHost(
-              initialSessionState: _sessionState(),
+              initialSessionState: session,
               layerId: layerId,
               frameId: frameId,
               inputSettings: inputSettings,
@@ -313,13 +311,14 @@ void main() {
         );
 
         await tapCanvas(tester, const Offset(1.5, 1.5));
-        final firstState = _view(tester).sessionState;
+        final firstCel = _view(tester).celNow();
         await tapCanvas(tester, const Offset(2.5, 1.5));
-        final secondState = _view(tester).sessionState;
+        final secondCel = _view(tester).celNow();
 
-        expect(identical(secondState, firstState), isTrue);
-        expect(secondState.canvasState.currentSurface.tiles, isEmpty);
-        expect(secondState.materializationHistoryState.undoEntries, isEmpty);
+        expect(identical(secondCel, firstCel), isTrue);
+        expect(_shows(tester, session), isTrue);
+        expect(secondCel.tiles, isEmpty);
+        expect(session.materializationHistoryState.undoEntries, isEmpty);
         expect(sink.totalCalls, 0);
       },
     );
@@ -345,7 +344,7 @@ void main() {
         );
         await tapCanvas(tester, const Offset(1.5, 1.5));
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).celNow().tiles,
           isEmpty,
         );
 
@@ -362,13 +361,13 @@ void main() {
           ),
         );
 
-        expect(identical(_view(tester).sessionState, secondState), isTrue);
+        expect(_shows(tester, secondState), isTrue);
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.tiles,
+          _view(tester).celNow().tiles,
           isEmpty,
         );
         expect(
-          _view(tester).sessionState.canvasState.currentSurface.canvasSize,
+          _view(tester).celNow().canvasSize,
           const CanvasSize(width: 10, height: 10),
         );
       },
@@ -471,3 +470,8 @@ InteractiveBrushEditCanvasView _view(WidgetTester tester) {
     find.byType(InteractiveBrushEditCanvasView),
   );
 }
+
+/// Whether the view draws on [state]'s cel — the view is handed the cel
+/// itself now, so the session it came from is recognised by its surface.
+bool _shows(WidgetTester tester, BrushEditSessionState state) =>
+    identical(_view(tester).celNow(), state.canvasState.currentSurface);

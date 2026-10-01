@@ -1,10 +1,9 @@
-import 'dart:ffi' show Pointer, Uint8;
+import 'dart:ffi' show Pointer, Uint16, Uint8;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../core/argb_channels.dart';
 import '../core/floor_math.dart';
-import '../models/brush_anti_alias.dart';
 import '../models/brush_dab.dart';
 import '../models/brush_tip_mask.dart';
 import '../models/separable_blend_mode.dart';
@@ -14,6 +13,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_dab_share.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_tip_mask_sampling.dart';
@@ -52,6 +52,19 @@ import 'native_tile_span_batch.dart';
 /// The C kernel (`qa_dab_blend_tile`) is a THIRD transcription and stays
 /// one: it is a different language, gated behind the ABI version, and
 /// pinned byte-exact by its own parity suite.
+
+/// One stroke tile as the Dart route holds it: the RGBA [bytes] everything
+/// downstream reads, and the [wide] plane — RGBA at 16 bits, alpha * 65535
+/// and a channel * 257 — that its dabs pile up in.
+///
+/// 🚨The law and its reasons are written once, beside `qa_dab_store` in
+/// qa_engine.c (ABI 40, 유저 2026-10-01 「a는 제안한대로 16비트?」): a dab
+/// reads what is under it from [wide] and writes both planes from the same
+/// double, so [bytes] is [wide]'s view and nothing downstream changes.
+typedef BrushDabTileBuffers = ({Uint8List bytes, Uint16List wide});
+
+/// The same two planes as the C route holds them.
+typedef BrushDabTilePointers = ({Pointer<Uint8> pixels, Pointer<Uint16> wide});
 
 /// Everything one dab needs, resolved once: the clipped bounds, the tip
 /// geometry, and the axis lattices the samplers read.
@@ -107,6 +120,7 @@ class BrushDabPlan {
     required this.dualVLattice,
     required this.textureULattice,
     required this.textureVLattice,
+    required this.evening,
   });
 
   /// The dab's region after the PASTEBOARD clip (canvas + one canvas size
@@ -132,12 +146,13 @@ class BrushDabPlan {
   final double centerX;
   final double centerY;
 
-  /// The edge step, hoisted out of the pixel loop (see [BrushAntiAlias]).
+  /// The edge step, hoisted out of the pixel loop ([brushDabEdgeLaw]).
   /// [aaThreshold] is 없음 — a hard cut at half coverage; otherwise
   /// [aaContrast] scales the ramp about 0.5, and 1.0 leaves it alone.
-  /// ⛔TWO FIELDS FOR ONE ENUM ON PURPOSE: this is the per-pixel form of
-  /// [BrushAntiAlias.applyTo], derived once here so the loop needs no
-  /// switch. The enum stays the definition.
+  /// ⛔TWO FIELDS FOR ONE LAW ON PURPOSE: this is the per-pixel form of
+  /// [brushEdgeApplied], derived once here so the loop needs no switch.
+  /// ↩️It was the anti-alias step's own `applyTo` until I-50 made the answer
+  /// depend on the tip as well as the step.
   final bool aaThreshold;
   final double aaContrast;
   final double radius;
@@ -183,6 +198,10 @@ class BrushDabPlan {
   final TiledMaskAxisLattice? textureULattice;
   final TiledMaskAxisLattice? textureVLattice;
 
+  /// The table the dab lays its share through ([evenedLaid]), or null where
+  /// it lays whole — the law is beside [stampShareOf].
+  final Float64List? evening;
+
   /// Resolves [dab] against the pasteboard, or null when it paints nothing.
   ///
   /// [erase] is the caller's, not the dab's, on purpose: the two routes
@@ -219,6 +238,7 @@ class BrushDabPlan {
       :tipSin,
       :inverseRoundness,
     ) = brushDabTipGeometry(dab);
+    final edge = brushDabEdgeLaw(dab);
     final centerX = dab.center.x;
     final centerY = dab.center.y;
 
@@ -265,8 +285,8 @@ class BrushDabPlan {
       radius: radius,
       hardRadius: hardRadius,
       edgeSpan: radius - hardRadius,
-      aaThreshold: dab.antiAlias == BrushAntiAlias.none,
-      aaContrast: dab.antiAlias.contrast ?? 1.0,
+      aaThreshold: edge.threshold,
+      aaContrast: edge.contrast,
       minorRadius: minorRadius,
       radiusSqSkip: radius * radius * (1.0 + 1e-12),
       tipCos: tipCos,
@@ -345,6 +365,7 @@ class BrushDabPlan {
               period: textureMask.size * dab.textureScale,
               offset: 0.0,
             ),
+      evening: eveningTableOf(dab),
     );
   }
 }
@@ -371,16 +392,16 @@ class NativeDabBatcher {
   NativeDabBatcher(
     this.native, {
     required this.tileSize,
-    required this.pointerFor,
+    required this.planesFor,
     this.onTileChanged,
   });
 
   final QaNativeEngine native;
   final int tileSize;
 
-  /// The tile's native scratch pointer, CREATED if this batch is the first
-  /// to touch the tile.
-  final Pointer<Uint8> Function(TileCoord coord) pointerFor;
+  /// The tile's native planes, CREATED if this batch is the first to touch
+  /// the tile.
+  final BrushDabTilePointers Function(TileCoord coord) planesFor;
 
   /// Each tile a batch changed — the commit adopts exactly those; the live
   /// overlay passes null.
@@ -441,7 +462,7 @@ class NativeDabBatcher {
       _pending,
       native,
       tileSize: tileSize,
-      pointerFor: pointerFor,
+      planesFor: planesFor,
     );
     _pending.clear();
     _masks.clear();
@@ -466,7 +487,7 @@ class NativeDabBatcher {
   List<BrushDabPlan> plans,
   QaNativeEngine native, {
   required int tileSize,
-  required Pointer<Uint8> Function(TileCoord coord) pointerFor,
+  required BrushDabTilePointers Function(TileCoord coord) planesFor,
 }) {
   native.beginDabBatch(plans.length);
   for (var index = 0; index < plans.length; index += 1) {
@@ -476,7 +497,7 @@ class NativeDabBatcher {
     native,
     clips: [for (final plan in plans) plan.clip],
     tileSize: tileSize,
-    pointerFor: pointerFor,
+    planesFor: planesFor,
   );
   return (
     changed: native.dabBlendBatch(
@@ -557,6 +578,7 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
     // Only the lattice path narrows its rows by the ink (ABI 39).
     tipRowInk: plan.unrotatedTip ? plan.tipMask!.inkedColumns : null,
+    evening: plan.evening,
   );
 }
 
@@ -567,20 +589,20 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
 /// below keeps its exact grouping — the parity suites pin commit == live
 /// == native == the per-pixel reference pipeline.
 ///
-/// [bufferFor] returns the tile's scratch bytes, creating them if needed;
+/// [bufferFor] returns the tile's two planes, creating them if needed;
 /// it is called once per (row, tile), never per pixel. [onTileChanged]
-/// fires for a tile whose bytes actually moved — the commit needs that
+/// fires for a tile whose BYTES actually moved — the commit needs that
 /// set to know which tiles to adopt; the live overlay passes null and the
 /// call disappears.
 ///
-/// Writes are compare-and-swap for BOTH routes: a byte that would not
+/// Writes are compare-and-swap for BOTH routes: a value that would not
 /// change is not stored. That is what makes the changed set the true
 /// change set, and it cannot alter the result — skipping a write of the
 /// value already there is a no-op.
 void blendDabTilesDart(
   BrushDabPlan plan, {
   required int tileSize,
-  required Uint8List Function(int tileX, int tileY) bufferFor,
+  required BrushDabTileBuffers Function(int tileX, int tileY) bufferFor,
   void Function(int tileX, int tileY)? onTileChanged,
 }) {
   // EVERY value the pixel loop reads is hoisted into a local first. The
@@ -628,6 +650,11 @@ void blendDabTilesDart(
   final tileXStart = plan.tileXStart;
   final tileXEnd = plan.tileXEnd;
   final erase = plan.erase;
+  final evening = plan.evening;
+  // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
+  final ownR = sourceR * 257;
+  final ownG = sourceG * 257;
+  final ownB = sourceB * 257;
 
   for (var y = top; y < bottomExclusive; y += 1) {
     final dy = y + 0.5 - centerY;
@@ -641,7 +668,7 @@ void blendDabTilesDart(
     final localRowOffset = (y - tileY * tileSize) * tileSize;
 
     for (var tileX = tileXStart; tileX <= tileXEnd; tileX += 1) {
-      final buffer = bufferFor(tileX, tileY);
+      final (:bytes, :wide) = bufferFor(tileX, tileY);
       final tileLeft = tileX * tileSize;
       final spanLeft = math.max(left, tileLeft);
       final spanRightExclusive = math.min(rightExclusive, tileLeft + tileSize);
@@ -777,84 +804,126 @@ void blendDabTilesDart(
           }
         }
 
-        // Same grouping as the reference path:
-        // effectiveOpacity = dab.opacity * coverage,
-        // sourceAlpha = ((a/255) * effectiveOpacity) * flow.
         final effectiveOpacity = dabOpacity * coverage;
         if (effectiveOpacity == 0.0) {
           continue;
         }
-        final sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
 
         final offset = (localRowOffset + (x - tileLeft)) * 4;
-        final destR = buffer[offset];
-        final destG = buffer[offset + 1];
-        final destB = buffer[offset + 2];
-        final destA = buffer[offset + 3];
-
-        final destinationAlpha = destA / 255.0;
-
-        int outRByte;
-        int outGByte;
-        int outBByte;
-        int outAByte;
-        if (erase) {
-          // Destination-out (same grouping as the reference
-          // rgbaDestinationOut): coverage removes destination alpha.
-          final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
-          if (outAlpha == 0.0) {
-            outRByte = 0;
-            outGByte = 0;
-            outBByte = 0;
-            outAByte = 0;
-          } else {
-            outRByte = destR;
-            outGByte = destG;
-            outBByte = destB;
-            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
-          }
+        // What is under the dab comes off the 16-bit plane (ABI 40).
+        final destinationAlpha = wide[offset + 3] / 65535.0;
+        // 🚨★★★A DAB SETTLES AT ITS OPACITY (F-205) — the law and its
+        // reasons are written once, beside `qa_dab_source_alpha` in
+        // qa_engine.c; this is its arithmetic, operation by operation.
+        // Opacity 1 (or an erase) is the old grouping,
+        // ((a/255) * (dab.opacity * coverage)) * flow. What the dab would
+        // lay whole goes through its share first (`stampShareOf`).
+        final double sourceAlpha;
+        if (erase || dabOpacity >= 1.0) {
+          final whole = sourceAlphaNorm * effectiveOpacity * dabFlow;
+          sourceAlpha = evening == null ? whole : evenedLaid(evening, whole);
+        } else if (destinationAlpha >= dabOpacity) {
+          continue;
         } else {
-          final outAlpha = sourceAlpha + destinationAlpha * (1.0 - sourceAlpha);
-          if (outAlpha == 0.0) {
-            outRByte = 0;
-            outGByte = 0;
-            outBByte = 0;
-            outAByte = 0;
-          } else {
-            // Keep the exact floating-point grouping of the reference
-            // rgbaSourceOver: (dest * destinationAlpha) *
-            // inverseSourceAlpha.
-            final inverseSourceAlpha = 1.0 - sourceAlpha;
-            outRByte =
-                ((sourceR * sourceAlpha +
-                            destR * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outGByte =
-                ((sourceG * sourceAlpha +
-                            destG * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outBByte =
-                ((sourceB * sourceAlpha +
-                            destB * destinationAlpha * inverseSourceAlpha) /
-                        outAlpha)
-                    .round()
-                    .clamp(0, 255);
-            outAByte = (outAlpha * 255.0).round().clamp(0, 255);
-          }
+          final whole = sourceAlphaNorm * coverage * dabFlow;
+          sourceAlpha =
+              (evening == null ? whole : evenedLaid(evening, whole)) *
+              (dabOpacity - destinationAlpha) /
+              (1.0 - destinationAlpha);
         }
 
-        if (outRByte != destR ||
-            outGByte != destG ||
-            outBByte != destB ||
-            outAByte != destA) {
-          buffer[offset] = outRByte;
-          buffer[offset + 1] = outGByte;
-          buffer[offset + 2] = outBByte;
-          buffer[offset + 3] = outAByte;
+        // Destination-out for an erase (the grouping of the reference
+        // strokeDestinationOut), source-over otherwise, keeping the exact
+        // floating-point grouping of the reference strokeSourceOverAt:
+        // (dest * destinationAlpha) * inverseSourceAlpha.
+        final inverseSourceAlpha = 1.0 - sourceAlpha;
+        final double outAlpha;
+        var red = 0.0;
+        var green = 0.0;
+        var blue = 0.0;
+        if (erase) {
+          outAlpha = destinationAlpha * inverseSourceAlpha;
+        } else {
+          outAlpha = sourceAlpha + destinationAlpha * inverseSourceAlpha;
+          // Over nothing or over its own colour the dab lands its own
+          // colour exactly (`qa_dab_over_own_colour`).
+          if (outAlpha != 0.0 &&
+              (wide[offset + 3] == 0 ||
+                  (wide[offset] == ownR &&
+                      wide[offset + 1] == ownG &&
+                      wide[offset + 2] == ownB))) {
+            red = sourceR.toDouble();
+            green = sourceG.toDouble();
+            blue = sourceB.toDouble();
+          } else if (outAlpha != 0.0) {
+            red =
+                (sourceR * sourceAlpha +
+                    wide[offset] / 257.0 *
+                        destinationAlpha *
+                        inverseSourceAlpha) /
+                outAlpha;
+            green =
+                (sourceG * sourceAlpha +
+                    wide[offset + 1] / 257.0 *
+                        destinationAlpha *
+                        inverseSourceAlpha) /
+                outAlpha;
+            blue =
+                (sourceB * sourceAlpha +
+                    wide[offset + 2] / 257.0 *
+                        destinationAlpha *
+                        inverseSourceAlpha) /
+                outAlpha;
+          }
+        }
+        // Both planes from the same doubles, each written only where it
+        // moves — `qa_dab_store`'s arithmetic, operation by operation: the
+        // view rounded from the double, never from the plane, and the
+        // change set the view's.
+        var outR = 0;
+        var outG = 0;
+        var outB = 0;
+        var outA = 0;
+        var wideR = 0;
+        var wideG = 0;
+        var wideB = 0;
+        var wideA = 0;
+        if (outAlpha != 0.0) {
+          if (erase) {
+            outR = bytes[offset];
+            outG = bytes[offset + 1];
+            outB = bytes[offset + 2];
+            wideR = wide[offset];
+            wideG = wide[offset + 1];
+            wideB = wide[offset + 2];
+          } else {
+            outR = red.round().clamp(0, 255);
+            outG = green.round().clamp(0, 255);
+            outB = blue.round().clamp(0, 255);
+            wideR = (red * 257.0).round().clamp(0, 65535);
+            wideG = (green * 257.0).round().clamp(0, 65535);
+            wideB = (blue * 257.0).round().clamp(0, 65535);
+          }
+          outA = (outAlpha * 255.0).round().clamp(0, 255);
+          wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
+        }
+        if (wideR != wide[offset] ||
+            wideG != wide[offset + 1] ||
+            wideB != wide[offset + 2] ||
+            wideA != wide[offset + 3]) {
+          wide[offset] = wideR;
+          wide[offset + 1] = wideG;
+          wide[offset + 2] = wideB;
+          wide[offset + 3] = wideA;
+        }
+        if (outR != bytes[offset] ||
+            outG != bytes[offset + 1] ||
+            outB != bytes[offset + 2] ||
+            outA != bytes[offset + 3]) {
+          bytes[offset] = outR;
+          bytes[offset + 1] = outG;
+          bytes[offset + 2] = outB;
+          bytes[offset + 3] = outA;
           tileChanged = true;
         }
       }

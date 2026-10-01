@@ -325,18 +325,20 @@ class _CanvasPanelLift {
         // 하면 그림만 돌리는게아니라 선택도 이전 선택으로 되돌리기」 — a
         // transform moves the outline as much as the drawing, and one
         // confirm has to come back as one undo.
-        regionBefore: _state.widget.selectionCommands?.region,
+        //
+        // 🚨★★★**THE SELECTION THE SESSION OPENED WITH, NOT THE ONE STANDING
+        // NOW** (F-231 ②, 유저 2026-09-29: 「언두하면 선택도구 개미행렬
+        // 라인이 과거로 안돌아가고 그것만 남아있는데」). This read the
+        // channel here, at the confirm — after the box had already moved
+        // the region onto the landed pixels — so the undo "restored" the
+        // moved outline and only the pixels went back.
+        regionBefore: session.userSelection,
         readRegion: doors.read,
         restoreRegion: doors.restore,
       );
-      final landings = _landingsPerCel(session, stampDab, landOn, affine);
-      historyManager.execute(
-        landings.length == 1
-            ? landOn
-            : CompositeCommand(
-                description: landOn.description,
-                commands: landings.values.toList(),
-              ),
+      historyManager.executeAsOneStep(
+        landOn.description,
+        _landingsPerCel(session, stampDab, landOn, affine).values.toList(),
       );
     }
 
@@ -451,15 +453,16 @@ class _MoveSession {
   /// either way, so with nothing selected they were cut by the STANDING
   /// cel's ink box and their drawing past it stayed behind.
   ///
-  /// ⛔**THE SESSION'S OWN RECORD, NOT THE LIVE CHANNEL** — even though the
-  /// two carry the same shape at confirm time today. 🧪Measured 2026-09-18:
-  /// reading `selectionCommands.region` instead changes nothing, because
-  /// the live region is still the pre-transform one when the confirm runs
-  /// — which is exactly what `regionBefore` depends on to put the outline
-  /// back on undo. That equality is a fact about the current confirm
-  /// ORDER, not about what this field means: what the other cels must be
-  /// cut through is where this session started, and only the session can
-  /// answer that without the order having to stay put.
+  /// ⛔**THE SESSION'S OWN RECORD, NOT THE LIVE CHANNEL.** What the other
+  /// cels must be cut through, and what an undo puts the outline back to
+  /// (`regionBefore`), is where this session STARTED — and only the
+  /// session can answer that without the confirm's order having to stay
+  /// put. ↩️On 2026-09-18 the two were measured equal at confirm time, and
+  /// this note warned that the equality was a fact about the order, not
+  /// about the field. The order changed (the box now moves the region onto
+  /// the landed pixels before the confirm), the live read went on standing
+  /// in for this one in `regionBefore`, and undo stopped bringing the ants
+  /// back — F-231 ②.
   final CanvasSelectionRegion? userSelection;
   final BrushDab eraseDab;
 

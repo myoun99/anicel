@@ -4,7 +4,21 @@ import 'package:anicel/src/models/brush_pixel_coverage.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/models/stroke_pixel.dart';
 import 'package:anicel/src/services/brush_pixel_blend.dart';
+
+/// One dab over [destination]'s bytes widened onto the stroke's 16-bit
+/// plane (ABI 40) — a single step reads back exactly the bytes, so these are
+/// the bytes the byte-level blend always gave.
+RgbaColor blendOverBytes({
+  required BrushDab dab,
+  required BrushPixelCoverage coverage,
+  required RgbaColor destination,
+}) => blendBrushDabStrokePixel(
+  dab: dab,
+  coverage: coverage,
+  destination: StrokePixel.widened(destination),
+).bytes;
 
 void main() {
   BrushDab dab({int color = 0xFFFF0000, double opacity = 1, double flow = 1}) {
@@ -71,10 +85,10 @@ void main() {
     });
   });
 
-  group('blendBrushDabPixelCoverage', () {
+  group('blendBrushDabStrokePixel over bytes', () {
     test('uses dab.color as source color', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(color: 0xFF00FF00),
           coverage: pixelCoverage(),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -85,7 +99,7 @@ void main() {
 
     test('respects dab color alpha', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(color: 0x80FF0000),
           coverage: pixelCoverage(),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -96,7 +110,7 @@ void main() {
 
     test('respects dab opacity', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(opacity: 0.5),
           coverage: pixelCoverage(),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -107,7 +121,7 @@ void main() {
 
     test('respects dab flow', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(flow: 0.5),
           coverage: pixelCoverage(),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -118,7 +132,7 @@ void main() {
 
     test('respects pixel coverage', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(),
           coverage: pixelCoverage(coverage: 0.5),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -130,7 +144,7 @@ void main() {
     test('returns destination when coverage is 0', () {
       final destination = RgbaColor(r: 1, g: 2, b: 3, a: 4);
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(),
           coverage: pixelCoverage(coverage: 0),
           destination: destination,
@@ -142,7 +156,7 @@ void main() {
     test('returns destination when dab opacity is 0', () {
       final destination = RgbaColor(r: 1, g: 2, b: 3, a: 4);
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(opacity: 0),
           coverage: pixelCoverage(),
           destination: destination,
@@ -154,7 +168,7 @@ void main() {
     test('returns destination when dab flow is 0', () {
       final destination = RgbaColor(r: 1, g: 2, b: 3, a: 4);
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(flow: 0),
           coverage: pixelCoverage(),
           destination: destination,
@@ -165,7 +179,7 @@ void main() {
 
     test('blends over transparent destination', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(),
           coverage: pixelCoverage(),
           destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -176,7 +190,7 @@ void main() {
 
     test('blends over opaque destination', () {
       expect(
-        blendBrushDabPixelCoverage(
+        blendOverBytes(
           dab: dab(),
           coverage: pixelCoverage(coverage: 0.5),
           destination: RgbaColor(r: 0, g: 0, b: 255, a: 255),
@@ -188,7 +202,7 @@ void main() {
     test('does not mutate BrushDab', () {
       final value = dab(opacity: 0.5, flow: 0.5);
       final before = value.copyWith();
-      blendBrushDabPixelCoverage(
+      blendOverBytes(
         dab: value,
         coverage: pixelCoverage(coverage: 0.5),
         destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -199,7 +213,7 @@ void main() {
     test('does not mutate BrushPixelCoverage', () {
       final value = pixelCoverage(x: 1, y: 2, coverage: 0.5);
       final before = value.copyWith();
-      blendBrushDabPixelCoverage(
+      blendOverBytes(
         dab: dab(),
         coverage: value,
         destination: RgbaColor(r: 0, g: 0, b: 0, a: 0),
@@ -210,7 +224,7 @@ void main() {
     test('does not mutate destination RgbaColor', () {
       final destination = RgbaColor(r: 1, g: 2, b: 3, a: 4);
       final before = destination.copyWith();
-      blendBrushDabPixelCoverage(
+      blendOverBytes(
         dab: dab(),
         coverage: pixelCoverage(coverage: 0.5),
         destination: destination,

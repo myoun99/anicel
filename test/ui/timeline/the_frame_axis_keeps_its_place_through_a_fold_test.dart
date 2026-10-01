@@ -142,9 +142,9 @@ void main() {
 
   testWidgets('🚨the SHEET keeps its place through a fold too', (tester) async {
     // ⛔THE WHOLE FAMILY, not the reported half. The x-sheet's frame axis
-    // lived in its grid exactly as the timeline's did, and a fold remounts
-    // it the same way — 유저 reported the timeline, and the sheet is the
-    // same grid transposed.
+    // lived in its grid exactly as the timeline's did, and a fold remounted
+    // it the same way (until 09-28) — 유저 reported the timeline, and the
+    // sheet is the same grid transposed.
     await openTimeline(tester);
     await tapToolbarButton(
       tester,
@@ -318,12 +318,17 @@ void main() {
 
     final strip = find.byKey(const ValueKey<String>('collapsed-strip'));
     expect(strip, findsOneWidget, reason: '⛔전제: the strip is what painted');
-    final painter = tester.widget<CustomPaint>(strip).painter!;
+    // The strip's playhead is a layer of its own over it
+    // (folded-row-playhead-during-playback), laid from the same origin.
+    final painter = tester
+        .widget<CustomPaint>(
+          find.byKey(const ValueKey<String>('collapsed-strip-playhead')),
+        )
+        .painter!;
     final size = tester.getSize(strip);
-    final primary = Theme.of(tester.element(strip)).colorScheme.primary;
 
-    // Painted on its own, straight to an image: no 70% glass over it, so
-    // the playhead is the theme's primary exactly.
+    // Painted on its own, straight to an image: the playhead's column is
+    // the only thing on it.
     late ByteData pixels;
     late int width;
     await tester.runAsync(() async {
@@ -339,14 +344,7 @@ void main() {
     final y = size.height ~/ 2;
     final playhead = [
       for (var x = 0; x < width; x++)
-        if (Color.fromARGB(
-              pixels.getUint8((y * width + x) * 4 + 3),
-              pixels.getUint8((y * width + x) * 4),
-              pixels.getUint8((y * width + x) * 4 + 1),
-              pixels.getUint8((y * width + x) * 4 + 2),
-            ) ==
-            primary.withValues(alpha: 1))
-          x,
+        if (pixels.getUint8((y * width + x) * 4 + 3) > 0) x,
     ];
 
     expect(

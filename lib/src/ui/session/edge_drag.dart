@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import '../../models/cut_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
@@ -36,8 +38,9 @@ class EdgeDragVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required FoldersAndAttachments folders,
+    required RetimeLaw retime,
     required RangeSelections rangeSelections,
     required StoryboardCursor storyboardCursor,
     required TrackSeDisplay trackSe,
@@ -47,11 +50,12 @@ class EdgeDragVerbs {
          project: project,
          changes: changes,
          controllers: controllers,
-         internals: internals,
+         dragPreview: dragPreview,
        ),
        _beginRoles = (
          trackSe: trackSe,
          folders: folders,
+         retime: retime,
          selection: selection,
          rangeSelections: rangeSelections,
        ),
@@ -94,7 +98,7 @@ class EdgeDragVerbs {
       spanStartIndex: spanStartIndex,
       edge: edge,
       layerId: layerId,
-      preview: _roles.internals.dragPreview,
+      preview: _roles.dragPreview,
       formsOf: _transitions.previewFormsOf,
       commitInstructions: _transitions.updateTransitionInstructions,
     );

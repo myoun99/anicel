@@ -72,12 +72,17 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
     final pressed = HardwareKeyboard.instance;
     widget.bindings.setActivators(actionId, [
-      SingleActivator(
-        key,
-        control: pressed.isControlPressed,
-        shift: pressed.isShiftPressed,
-        alt: pressed.isAltPressed,
-        meta: pressed.isMetaPressed,
+      // An arrow for a move on the sheet is kept as the timeline reads it
+      // (F-241), so it turns again on the other sheet.
+      widget.bindings.keptActivatorFor(
+        actionId,
+        SingleActivator(
+          key,
+          control: pressed.isControlPressed,
+          shift: pressed.isShiftPressed,
+          alt: pressed.isAltPressed,
+          meta: pressed.isMetaPressed,
+        ),
       ),
     ]);
     setState(() => _recordingActionId = null);
@@ -244,7 +249,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                 padding: const EdgeInsets.only(right: 4),
                 child: Chip(
                   label: Text(
-                    singleActivatorLabel(activator),
+                    singleActivatorLabel(
+                      bindings.shownActivatorFor(definition.id, activator),
+                    ),
                     style: theme.textTheme.labelSmall,
                   ),
                   visualDensity: VisualDensity.compact,
@@ -267,23 +274,21 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             key: ValueKey<String>('shortcut-touch-${definition.id}'),
             tooltip: AppText.strings.shortcutTouch,
             padding: const EdgeInsets.symmetric(horizontal: 4),
-            entriesBuilder: () => [
-              PanelFlyoutItem(
-                keyValue: 'shortcut-touch-${definition.id}-none',
-                label: AppText.strings.commonNone,
-                selected: touchGesture == null,
-                onSelected: () =>
-                    widget.bindings.setTouchGesture(definition.id, null),
-              ),
-              for (final gesture in TouchGesture.values)
-                PanelFlyoutItem(
-                  keyValue: 'shortcut-touch-${definition.id}-${gesture.name}',
-                  label: gesture.label,
-                  selected: gesture == touchGesture,
-                  onSelected: () =>
-                      widget.bindings.setTouchGesture(definition.id, gesture),
-                ),
-            ],
+            entriesBuilder: () =>
+                <TouchGesture?>[null, ...TouchGesture.values]
+                    .asFlyoutValueChoices(
+                      current: touchGesture,
+                      choiceOf: (gesture) => PanelFlyoutChoice(
+                        key:
+                            'shortcut-touch-${definition.id}-'
+                            '${gesture?.name ?? 'none'}',
+                        label: gesture?.label ?? AppText.strings.commonNone,
+                      ),
+                      onPicked: (gesture) => widget.bindings.setTouchGesture(
+                        definition.id,
+                        gesture,
+                      ),
+                    ),
             child: touchGesture == null
                 ? Icon(
                     Icons.touch_app_outlined,

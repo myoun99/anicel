@@ -1,6 +1,7 @@
 import '../../core/collection_equality.dart';
 import '../../models/layer.dart';
 import '../../models/timeline_repeat.dart';
+import '../../models/track_transitions.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -75,7 +76,6 @@ class UpdateLayerTimelineCommand implements Command {
       if (member.cutId == cutId && member.layerId == after.id) {
         continue;
       }
-      final memberCut = requireCut(project, member.cutId);
       final memberBefore = requireLayer(
         project,
         cutId: member.cutId,
@@ -95,7 +95,7 @@ class UpdateLayerTimelineCommand implements Command {
       );
       memberAfter = rederiveRunBehaviors(
         memberAfter,
-        cutFrameCount: memberCut.duration,
+        drawnFrameCount: cutDrawnFrameCount(project, member.cutId)!,
       );
       if (memberAfter == memberBefore) {
         continue;

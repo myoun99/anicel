@@ -219,7 +219,7 @@ void main() {
         path: path,
         settings: const ImportFileSettings(
           mode: ImportFileMode.keepInside,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       ),
     );

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_warm_extent.dart';
+import '../../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_cache.dart';
@@ -125,17 +126,21 @@ class PlaybackCacheBudget {
   /// hypothetical: warming baked the runway past the end line while this
   /// stopped AT the line, so every runway composite was evictable the
   /// moment it landed, by the enforcer that runs after every baked frame.
-  /// The PLAYING branch stays on `entry.duration` on purpose: a playlist
-  /// plays exactly its duration, and protecting more than plays would
-  /// starve the budget during the one activity that needs it most.
+  /// The PLAYING branch protects what a playlist PLAYS of each cut, on
+  /// purpose no more: protecting more than plays would starve the budget
+  /// during the one activity that needs it most. ↩️F-227: that is the cut's
+  /// DRAWN frames ([drawnFrameCountsOf]), not `entry.duration` — an O.L
+  /// composites each cut's のりしろ, and a protection that stopped at the
+  /// red line let the O.L's own frames be evicted mid-play.
   List<PlaybackProtectedRange> _playbackProtectedRanges() {
     if (_run.playback.isActive) {
+      final drawn = drawnFrameCountsOf(_project.repository.requireProject());
       return [
         for (final entry in _run.playback.playlist)
           PlaybackProtectedRange(
             cutId: entry.cutId,
             startFrame: 0,
-            endFrame: math.max(0, entry.duration - 1),
+            endFrame: math.max(0, (drawn[entry.cutId] ?? entry.duration) - 1),
             quality: _run.playbackQuality,
           ),
       ];

@@ -11,10 +11,9 @@ import 'cut_envelope_ink.dart';
 /// The envelope's ink input layer: one brush canvas per MOUNTED box.
 ///
 /// Mounting is gated ([mountedEnvelopeInkWindows]) because the analog form
-/// has 86 inking boxes and each window costs a session — and every mounted
-/// window hears every stroke, keeping only its own box's piece of it
-/// ([sheetInkRegions]). With the gate the count sits at conte's order of
-/// magnitude.
+/// has 86 inking boxes and each window costs a session — and a stroke is
+/// the mounted box's it starts in, kept inside it ([sheetInkRegions]).
+/// With the gate the count sits at conte's order of magnitude.
 ///
 /// The gate is applied by the HOST, not here: the page painter has to skip
 /// exactly the boxes this layer mounts, and one shared list is what keeps

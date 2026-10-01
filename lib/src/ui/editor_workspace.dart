@@ -7,26 +7,27 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:desktop_drop/desktop_drop.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../core/set_toggle.dart';
+import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
-import '../models/cut.dart';
+import '../models/cut_id.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
-import '../models/media_asset.dart' show MediaAsset;
+import '../models/media_asset.dart' show MediaAsset, mediaFileName;
 import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/canvas_read_source.dart';
-import '../services/commands/toggle_id_in_set_command.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../models/brush_tip_entry.dart';
@@ -34,6 +35,7 @@ import '../services/cut_piece_slot.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
+import 'brush/arrange_brush_library_command.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
@@ -60,10 +62,10 @@ import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'session/session_row_button_presses.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
-import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
@@ -92,6 +94,7 @@ import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
 import 'widgets/superellipse_clip.dart';
+import 'widgets/tick_layer.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_ink.dart';
@@ -101,8 +104,10 @@ import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
 import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
-import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
-import 'storyboard_panel.dart' show StoryboardPanel, StoryboardTrackLabelRow;
+import 'storyboard_cut_blocks_painter.dart'
+    show StandingCut, storyboardCutBlocksPainterFor;
+import 'storyboard_panel.dart'
+    show StoryboardPanel, StoryboardPlayheadTint, StoryboardTrackLabelRow;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
@@ -162,6 +167,7 @@ part 'workspace/workspace_tabs.dart';
 part 'workspace/workspace_rail.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
+part 'workspace/workspace_brush_groups.dart';
 part 'workspace/workspace_document_views.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
@@ -505,12 +511,20 @@ class EditorWorkspace extends StatefulWidget {
     timesheetTabId,
   ];
 
-  /// The WIDTH frame-axis panels lay out at when docked somewhere narrower
-  /// (their label rails and toolbars assume a wide region); the tab shell
-  /// hosts them inside a horizontal scroller then. Unchanged by the
-  /// shrink-floor round — in a narrow side dock, scrolling sideways is
-  /// genuinely what helps.
-  static const double _frameAxisMinContentWidth = 640;
+  /// The width the floating region's DEFAULT never squeezes below
+  /// ([_bottomInsetFor]).
+  ///
+  /// ↩️It was also the width the frame-axis panels INSISTED on: docked
+  /// narrower, a panel laid out 640 wide inside the tab shell's sideways
+  /// scroller. 🐛유저 R3 #11 took it off the conte and the envelope — a page
+  /// that scales has no column to protect, and everything pinned to its
+  /// right edge went off the end. 🗣️scrollbar-unify-Q1 (유저 2026-09-30:
+  /// 「640 을 걷는다 — 콘티·컷봉투와 같은 법」) took it off the timeline and
+  /// the storyboard too: in a narrow slot the shell's sideways bar and the
+  /// panel's own frame rail sat on one line at the bottom edge (seen on the
+  /// device 08-08). Every panel draws at its slot's width now, and what a
+  /// narrow timeline loses its own rails take up.
+  static const double _defaultRegionMinWidth = 640;
 
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
@@ -728,8 +742,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// What a rail button or a tile presses — the write a tool shortcut makes
   /// in the shell, through the same [pressTool].
-  void _pressTool(ToolPress press) =>
-      pressTool(press, tool: _brushTool, transform: _transformOptions);
+  void _pressTool(ToolPress press) => pressTool(
+    press,
+    tool: _brushTool,
+    transform: _transformOptions,
+    cutWhole: widget.session.pixelVerbs.cutWhole,
+  );
 
   /// The one piece the cut tool is holding.
   ///
@@ -746,6 +764,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final _WorkspaceBrushPresets _brushPresets = _WorkspaceBrushPresets(
     this,
   );
+
+  // The group each paint tool opens on (F-250, workspace/workspace_brush_
+  // groups.dart) — beside the presets, which take the brush up.
+  late final _WorkspaceBrushGroups _brushGroups = _WorkspaceBrushGroups(this);
 
   // The document views' state (Round 6): what each panel shows and how.
   late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews();
@@ -768,6 +790,38 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     TimelinePanel.defaultPixelsPerFrame,
   );
   final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
+
+  /// The cut [_timelinePixelsPerFrame] was last set for (F-253) — a notify
+  /// that leaves the active cut where it was leaves the zoom alone.
+  CutId? _timelineZoomCut;
+
+  /// The timeline's zoom follows the active cut: each cut shows at the zoom
+  /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
+  /// default — not at the zoom the last cut was left at.
+  void _followTimelineZoomToCut() {
+    final session = widget.session;
+    final cut = session.activeCutId;
+    if (cut == _timelineZoomCut) {
+      return;
+    }
+    _timelineZoomCut = cut;
+    _timelinePixelsPerFrame.value =
+        session.timelineZoom.zoomOf(cut) ?? TimelinePanel.defaultPixelsPerFrame;
+  }
+
+  /// The zoom slider's one writer: the timeline shows [value], and the
+  /// active cut remembers it.
+  void _setTimelineZoom(double value) {
+    _timelinePixelsPerFrame.value = value;
+    widget.session.timelineZoom.remember(widget.session.activeCutId, value);
+  }
+
+  /// The storyboard's zoom slider's one writer — a method like the
+  /// timeline's, so the callback its view cluster is kept by is the same
+  /// across the workspace's rebuilds (a closure here was a new one each).
+  void _setStoryboardZoom(double value) {
+    _storyboardPixelsPerFrame.value = value;
+  }
 
   /// The storyboard's V rows share ONE height (user's rule), kept here so
   /// it survives a tab switch the way the zoom does — as the splitter or a
@@ -830,28 +884,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
   };
 
-  void _toggleLayerLanes(LayerId layerId) {
-    // 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
-    // property-lane twirl — the one the fx lanes live under — is a button
-    // on a layer row like any other.
-    //
-    // ⛔The closing half still runs here and NOT inside the command: the
-    // fold law hands the standing row to the layer when its lanes leave
-    // the screen (R5 #11), and that is a selection move, not part of the
-    // membership this undoes.
-    final expanded = widget.session.railView.expandedLaneLayerIds;
-    final closing = expanded.value.contains(layerId);
-    widget.session.historyManager.execute(
-      ToggleIdInSetCommand(
-        notifier: expanded,
-        layerId: layerId,
-        debugLabel: 'Toggle layer lanes',
-      ),
-    );
-    if (closing) {
-      widget.session.handOffCurrentRowOnFold(layerId);
-    }
-  }
+  // The lane twirl and the group fold are pressed through
+  // `SessionRowButtonPresses` — a press inside the row selection folds every
+  // selected row (I-32).
 
   // The hidden sections, the row filter, the folded attach groups and the
   // lane twirls are the SESSION's (`RailView`, F-169 and I-7): the standing
@@ -1098,11 +1133,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // publisher was missing it. 유저 확정 2026-09-09
     // (`pixel-verbs-mask-options` = 가): 「선택툴로 선택한채로 사용할때 …
     // 선택의 aa 따르게」.
-    session.cells.pixelVerbCanvas = () => (
+    session.pixelVerbs.pixelVerbCanvas = () => (
       region: widget.canvasSelectionCommands?.region,
       argb: _brushTool.value.color,
       mask: _views._selectionMaskOptions.value,
     );
+    // I-28: where 전체 잘라내기 puts what it cuts — this window's cut tool.
+    session.pixelVerbs.cutToolHand = _cutPieceSlot.hold;
     // The marquee, as the fifth selection kind — so one 선택 해제 can let go
     // of everything rather than half of it.
     // ⛔Not a cascade: an arrow closure swallows the next `..` section.
@@ -1133,15 +1170,41 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // whenever a different one is opened under us.
     _viewersSeededFrom = null;
     _syncViewersWithProject();
+    // F-253: the zoom is the cut's — this project's active cut's, from now.
+    _timelineZoomCut = null;
+    _followTimelineZoomToCut();
+    session.addListener(_followTimelineZoomToCut);
     session.addListener(_syncViewersWithProject);
   }
 
   /// The panel pictures [session]'s storyboard and conte draw — rendered
   /// through its camera, never past the camera frame's own size.
+  ///
+  /// A picture renders the cut's thumbnail frame THROUGH THE CAMERA (what
+  /// the shot actually frames — conte-sheet style), scaled to a small
+  /// output; always current (a fresh renderer replays surfaces straight
+  /// from the brush store).
+  /// The frame asked for is the PANEL's frame — the store keys by it, and
+  /// the panel resolved which one it is (its own division, or the cut's pin
+  /// when that falls inside it). Clamped here so a later trim can never
+  /// break a request that was legal when it was made.
+  ///
+  /// A region — the canvas a conte cell's moving camera sweeps — is shown
+  /// instead of the camera's view where it is given
+  /// (`ExportFrameRenderer.renderPicture`).
+  ///
+  /// [session] is the project the store was made for, not whichever is on
+  /// screen when a render lands — a render in flight across a tab switch
+  /// finishes for the project that asked (I-7).
   StoryboardCutThumbnailStore _panelPicturesOf(EditorSessionManager session) =>
       StoryboardCutThumbnailStore(
-        render: (cut, frameIndex, width) =>
-            _renderStoryboardThumbnail(session, cut, frameIndex, width),
+        render: (cut, frameIndex, width, region) =>
+            ExportFrameRenderer(session: session).renderPicture(
+              cut,
+              frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
+              width: width,
+              region: region,
+            ),
         originalSize: () {
           final camera = session.camera.cameraFrameSize;
           return ui.Size(camera.width.toDouble(), camera.height.toDouble());
@@ -1158,7 +1221,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.attachFxConfirm.pending.removeListener(_showAttachFxConfirm);
     // A project behind the one on screen has no canvas: its marquee is not
     // this window's to report or to clear.
-    session.cells.pixelVerbCanvas = null;
+    session.pixelVerbs.pixelVerbCanvas = null;
+    session.pixelVerbs.cutToolHand = null;
     session.rangeSelections
       ..canvasHasSelection = null
       ..clearCanvasSelection = null;
@@ -1170,6 +1234,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
+    session.removeListener(_followTimelineZoomToCut);
   }
 
   // ── the flip HUD: its own object, in its own file ───────────────────
@@ -1484,36 +1549,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     super.dispose();
   }
 
-  /// Thumbnails render the cut's thumbnail frame THROUGH THE CAMERA (what
-  /// the shot actually frames — conte-sheet style), scaled to a small
-  /// output; always current (a fresh renderer replays surfaces straight
-  /// from the brush store).
-  /// [frameIndex] is the PANEL's frame — the store keys by it, and the
-  /// panel resolved which one it is (its own division, or the cut's pin
-  /// when that falls inside it). Clamped here so a later trim can never
-  /// break a request that was legal when it was made.
-  ///
-  /// [session] is the project the store was made for, not whichever is on
-  /// screen when a render lands — a render in flight across a tab switch
-  /// finishes for the project that asked (I-7).
-  Future<ui.Image?> _renderStoryboardThumbnail(
-    EditorSessionManager session,
-    Cut cut,
-    int frameIndex,
-    int thumbnailWidth,
-  ) {
-    final cameraSize = session.camera.cameraFrameSize;
-    final output = cameraSize.scaledToWidth(thumbnailWidth);
-    return ExportFrameRenderer(session: session).renderComposite(
-      ExportFrameTask(
-        cut: cut,
-        frameIndex: frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
-      ),
-      ExportSizeMode.camera,
-      outputSize: output,
-    );
-  }
-
   /// Runs a layout mutation and clamps the playhead when the storyboard
   /// just came on screen (over-end playheads on non-last cuts must land
   /// back on the counter frame — timeline parity).
@@ -1613,21 +1648,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// dock. The shell's scroller is left as the guard for what neither can
   /// reach: an unbounded parent, or a dock too small to pay every section's
   /// floor at once.
-  /// The WIDTH a frame-axis panel insists on, or null for one that has no
-  /// opinion.
-  ///
-  /// 🐛유저, R3 #11: the conte and the envelope had one, and they should
-  /// not. A panel narrower than its minimum renders at the minimum inside a
-  /// horizontal scroller, so in a 260px rail the page laid out 640 wide and
-  /// everything pinned to its right edge went off the end — the vertical
-  /// panbar vanished outright and the horizontal one lost its tail. That is
-  /// correct for a sheet made of COLUMNS, where scrolling sideways is what
-  /// helps; it is wrong for a page that scales, which has no column to
-  /// protect and a Fit button to answer with instead.
-  double? _minContentWidthFor(String tabId) => switch (tabId) {
-    EditorWorkspace.conteTabId || EditorWorkspace.envelopeTabId => null,
-    _ => EditorWorkspace._frameAxisMinContentWidth,
-  };
+  // No panel insists on a WIDTH any more — see [_defaultRegionMinWidth] for
+  // the two decisions (R3 #11, scrollbar-unify-Q1) that took it off.
 
   double? _minContentHeightFor(String tabId) => switch (tabId) {
     // NOT one number for this tab: the x-sheet is the timeline toggled on
@@ -1713,15 +1735,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return chosen;
     }
     final wanted = windowWidth * (1 - _defaultBottomRegionWidthFraction) / 2;
-    // …but the DEFAULT never squeezes the region below what its panels lay
-    // out at. Under that width the timeline renders at its own minimum
-    // inside a sideways scroller — which is a fine answer to a window
-    // somebody made small, and a terrible one to arrive at by itself. Drag
-    // the edge in past here and you get it; the app does not choose it.
-    final floor = math.min(
-      windowWidth,
-      EditorWorkspace._frameAxisMinContentWidth,
-    );
+    // …but the DEFAULT never squeezes the region below 640. A narrower
+    // timeline is a fine answer to a window somebody made small, and a poor
+    // one to arrive at by itself. Drag the edge in past here and you get it;
+    // the app does not choose it.
+    final floor = math.min(windowWidth, EditorWorkspace._defaultRegionMinWidth);
     return math.max(0.0, math.min(wanted, (windowWidth - floor) / 2));
   }
 
@@ -1830,6 +1848,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return;
     }
     _openImportWindow(initialPaths: paths);
+  }
+
+  /// A reference row shows [path] instead of its file (I-47) — no window:
+  /// the row keeps every answer it already gave (Q1 2026-09-27: 「창 없이
+  /// 바로 바꾼다 (언두 하나)」). A file that would not come in is said, as the
+  /// window would have said it.
+  Future<void> _swapReference(LayerId layerId, String path) async {
+    final swapped = await widget.session.importDoors.swapReference(
+      layerId: layerId,
+      path: path,
+    );
+    if (swapped || !mounted) {
+      return;
+    }
+    await showAppNotice(
+      context,
+      title: AppText.strings.commonNotice,
+      message: AppText.strings.imUnreadable(mediaFileName(path)),
+    );
   }
 
   /// The one import window, from whichever entrance asked for it.
@@ -2264,6 +2301,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Positioned _bottomDock(_WorkspaceFrame frame, Widget? bottomContent) {
     return Positioned(
+      // ★KEYED, because the folded row is laid into this stack just before
+      // it: unkeyed, the region's slot was matched to the row's by position
+      // and every fold and every unfold built the whole region afresh
+      // (measured 09-27: a new grid, host and storyboard each time).
+      key: const ValueKey<String>('workspace-bottom-region'),
       left: frame.bottomInset,
       right: frame.bottomInset,
       top: frame.onTop ? 0 : null,

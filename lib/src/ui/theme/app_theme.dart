@@ -1,5 +1,6 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
-import '../../core/app_corner_radii.dart';
+import '../../core/identity_memo.dart';
 import '../../models/app_language.dart';
 import '../text/app_strings.dart';
 
@@ -215,7 +216,7 @@ abstract final class AppColors {
 ///    ratio would give a 350px-tall timeline a 98px corner.
 abstract final class AppShapes {
   /// A control's corner as a fraction of its short axis.
-  static const double controlCornerRatio = AppCornerRadii.controlRatio;
+  static const double controlCornerRatio = 0.28;
 
   /// The three control sizes: the rail/strip button, the dialog action and
   /// chip, the dense inline control.
@@ -227,17 +228,17 @@ abstract final class AppShapes {
   static double controlRadius(double size) => size * controlCornerRatio;
 
   /// A window that the pointer summoned: dialogs, menus, popovers.
-  static const double windowRadius = AppCornerRadii.window;
+  static const double windowRadius = 6;
 
   /// A well cut into a surface: text fields, swatches, inline plates. The
   /// smallest corner the app draws.
-  static const double wellRadius = AppCornerRadii.well;
+  static const double wellRadius = 4;
 
   /// A panel FLOATING over the artwork — the timeline, and whatever else
   /// comes to rest on the canvas rather than beside it. Deliberately larger
   /// than [windowRadius]: a floating panel has to read as a separate object
   /// lying on the drawing, not as a region of chrome that happens to end.
-  static const double floatingPanelRadius = AppCornerRadii.floatingPanel;
+  static const double floatingPanelRadius = 14;
 
   /// The shape of a control whose short axis is [size].
   static RoundedSuperellipseBorder control(
@@ -520,7 +521,32 @@ class _NoPageTransition extends PageTransitionsBuilder {
   ) => child;
 }
 
-ThemeData buildAppTheme() {
+/// The app theme for the live accent and language — the SAME instance for
+/// as long as both hold.
+///
+/// 🚨auto-frame-toggle-hitch (유저 2026-09-11: 「자동생성 누르면 0.5초정도
+/// 버벅임이 생겻어」). The root rebuilds for more than the theme — the
+/// timing overlay, the UI scale, and until this the input settings — and a
+/// theme built afresh is never `==` the last one (its scrollbar thumb
+/// resolves through a closure). Every such rebuild handed `AnimatedTheme` a
+/// "new" theme to lerp to, and the whole app rebuilt on each frame of the
+/// lerp: 7,777 widgets over four frames for one toggle, measured in the
+/// test harness 2026-09-29 (the first frame alone showed 117). Same inputs,
+/// same instance: the theme animates only when it changes.
+/// ⚠️A reader that took a setting at BUILD time rode that cascade without
+/// saying so; it listens for itself now (the timeline's edit pans).
+/// ⚠️The PLATFORM is an input too: a theme takes `defaultTargetPlatform`
+/// when it is built, and the scroll behaviour reads it back. It never moves
+/// in the app; a test that varies it must get that platform's theme.
+ThemeData buildAppTheme() => _appTheme.resolve(
+  identity: AppColors.accentSettings.value,
+  key: (AppText.language, defaultTargetPlatform),
+  build: _buildAppTheme,
+);
+
+final _appTheme = IdentityMemo<ThemeData>();
+
+ThemeData _buildAppTheme() {
   final colorScheme = _buildColorScheme();
   return ThemeData(
     useMaterial3: true,
@@ -671,9 +697,10 @@ ThemeData buildAppTheme() {
     // from Flutter's defaults.
     //
     // What this theme still governs after the scroll BEHAVIOUR takes over
-    // the rest: the dropdown and MenuAnchor menus. Both wrap themselves in
-    // `copyWith(scrollbars: false)` and build their own Scrollbar, so no
-    // ScrollBehavior can reach them and this is their only styling.
+    // the rest: the framework surfaces that build their own Scrollbar, so
+    // no ScrollBehavior can reach them and this is their only styling — the
+    // About dialog's license page, now that every picker is the shared
+    // flyout (F-230) rather than a dropdown or MenuAnchor menu.
     scrollbarTheme: ScrollbarThemeData(
       thumbVisibility: const WidgetStatePropertyAll<bool>(true),
       trackVisibility: const WidgetStatePropertyAll<bool>(false),

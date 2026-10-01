@@ -36,6 +36,11 @@ void main() {
     timeline: timeline ?? const {},
   );
 
+  /// The normalization with nothing crossing the cut — its drawn end is
+  /// its own length.
+  Cut normalized(Cut cut) =>
+      cutWithCoveringImageRows(cut, drawnFrameCount: cut.duration);
+
   Cut cutWith(Layer layer, {int duration = 24}) => Cut(
     id: const CutId('cut-1'),
     name: '1',
@@ -53,7 +58,7 @@ void main() {
         },
       ),
     );
-    final shaped = cutWithCoveringImageRows(short);
+    final shaped = normalized(short);
     final layer = shaped.layers.single;
     expect(layer.timeline[0]!.frameId, const FrameId('bg-cel'));
     expect(layer.timeline[0]!.length, 1, reason: '「블록은 1칸」');
@@ -76,11 +81,11 @@ void main() {
     expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
     expect(layer.timeline[0]!.startEdge.isNone, isTrue);
 
-    final noTimeline = cutWithCoveringImageRows(cutWith(imageLayer()));
+    final noTimeline = normalized(cutWith(imageLayer()));
     expect(noTimeline.layers.single.timeline[0]!.length, 1);
 
     expect(
-      identical(shaped, cutWithCoveringImageRows(shaped)),
+      identical(shaped, normalized(shaped)),
       isTrue,
       reason: 'no-op writes stay no-ops for dirty tracking',
     );
@@ -98,14 +103,14 @@ void main() {
         },
       ),
     );
-    final layer = cutWithCoveringImageRows(unmarked).layers.single;
+    final layer = normalized(unmarked).layers.single;
     expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
     expect(layer.timeline[1]?.ghost, isTrue, reason: 'and the hold fills');
   });
 
   test('a cel-less image row stays empty; non-image rows are untouched', () {
     final empty = cutWith(imageLayer(frames: const []));
-    expect(identical(cutWithCoveringImageRows(empty), empty), isTrue);
+    expect(identical(normalized(empty), empty), isTrue);
 
     final animation = cutWith(
       Layer(
@@ -119,7 +124,7 @@ void main() {
         },
       ),
     );
-    expect(identical(cutWithCoveringImageRows(animation), animation), isTrue);
+    expect(identical(normalized(animation), animation), isTrue);
   });
 
   test('the REPOSITORY keeps the invariant through duration changes — any '

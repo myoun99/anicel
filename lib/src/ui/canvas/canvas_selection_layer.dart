@@ -8,8 +8,7 @@ import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 
-import '../../services/straight_rgba_image.dart'
-    show decodeStraightRgbaImage, decodedImageStillWanted;
+import '../../core/point_bounds.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
@@ -29,9 +28,13 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/transform_box_law.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
+import 'box_chrome.dart' show SelectionTransformChrome;
+import 'box_on_screen.dart';
+import 'float_warp.dart';
 import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
@@ -42,6 +45,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
 import '../widgets/app_icon_button.dart';
+import 'canvas_viewport_offset.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
 /// selection tool is active (Photoshop/CSP language):
@@ -263,269 +267,6 @@ enum CanvasSelectionTool {
   fillShape,
 }
 
-/// The float the transform preview last resampled.
-///
-/// A test hook. It exists because the contract P3a is built around — "what
-/// the preview showed is what Enter writes" — is otherwise unobservable
-/// from outside: the preview holds a decoded image and the commit writes
-/// bytes, and only the layer sees that both came from one buffer.
-///
-/// Written and cleared inside `assert(() { ... }())`, which is stripped in
-/// release. `@visibleForTesting` is an analyzer annotation and removes
-/// nothing from a build, so an unguarded assignment here would pin the
-/// last transform's straight-alpha buffer — tens of megabytes for a
-/// whole-picture Ctrl+T — for the rest of the process, in every shipped
-/// app, released by nothing.
-@visibleForTesting
-BrushDab? debugLastResampledFloat;
-
-/// Records [dab] for the test hook and returns true, so it can sit inside
-/// an assert and vanish from release builds.
-bool _recordResampledFloat(BrushDab? dab) {
-  debugLastResampledFloat = dab;
-  return true;
-}
-
-/// What a cached resample belongs to: the mode, the source buffer, and the
-/// warp's numbers.
-///
-/// The source is compared by IDENTITY. A lift stamp's bytes never change
-/// in place — a new lift means a new buffer — so identity is the exact
-/// question, and comparing multi-megabyte cels by value on every drag
-/// frame would cost more than the resample this is guarding.
-class _ResampleKey {
-  const _ResampleKey(this.mode, this.source, this.shape);
-
-  final ResampleMode mode;
-  final Uint8List source;
-  final String shape;
-
-  @override
-  bool operator ==(Object other) =>
-      other is _ResampleKey &&
-      other.mode == mode &&
-      identical(other.source, source) &&
-      other.shape == shape;
-
-  @override
-  int get hashCode => Object.hash(mode, identityHashCode(source), shape);
-}
-
-/// What the resample preview asks of the layer: the open warp as the layer
-/// holds it, and a way to say the picture changed.
-abstract interface class _OpenWarp {
-  bool get mounted;
-
-  /// What a resample of the open warp belongs to — null when there is
-  /// nothing to resample (identity, or no box at all).
-  _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible});
-
-  /// The visible rect the PREVIEW clips to mid-drag; null means all of it.
-  SelectionVisibleRect? _previewVisibleRect();
-
-  /// The pending stamp through the open warp, or its [visible] window.
-  BrushDab? _resampleOpenTransform({SelectionVisibleRect? visible});
-
-  /// The decoded picture changed — repaint.
-  void _previewChanged();
-}
-
-/// The float's RESAMPLED preview while a warp is open (Ctrl+T, a quad, a
-/// mesh): the newest resample of the pending stamp through the warp, and
-/// the decoded copy of the last resample that finished — the picture the
-/// screen draws.
-///
-/// Owned by the layer for the layer's lifetime, and EMPTY outside a warp
-/// session: every session end calls [discard], which is also what lets go
-/// of a whole-picture image (tens of megabytes on a big cel). The layer
-/// keeps the warp's geometry and answers for it through [_OpenWarp]; this
-/// keeps the pictures, and the coalescing that makes them.
-class _FloatResamplePreview {
-  _FloatResamplePreview(this._warp);
-
-  final _OpenWarp _warp;
-
-  /// The newest resample, keyed by what it belongs to. Computed and stored
-  /// before its decode is even requested.
-  ({_ResampleKey key, BrushDab dab})? _resampled;
-
-  /// The premultiplied copy for display, and the dab it was decoded FROM.
-  ///
-  /// Kept as a pair, and deliberately NOT compared against [_resampled]:
-  /// the newest resample is computed and stored before its decode is even
-  /// requested, so a guard demanding the two agree would hide the preview
-  /// for the whole time a decode is in flight — which is most of a drag.
-  /// The float would blink back to its untransformed self on every
-  /// pointer move.
-  ///
-  /// Showing the last COMPLETED resample instead is both the honest
-  /// picture (it is a real state the transform passed through) and the
-  /// whole point of coalescing. The last scheduling always runs, so the
-  /// picture just before Enter is always the exact one.
-  ui.Image? _image;
-  BrushDab? _imageDab;
-
-  /// The decoded picture, or null while nothing has decoded.
-  ui.Image? get image => _image;
-
-  /// The dab [image] was decoded from — where it goes, and what it is.
-  BrushDab? get imageDab => _imageDab;
-
-  int _imageRequest = 0;
-  bool _inFlight = false;
-  bool _dirty = false;
-
-  /// Ask for the preview to catch up.
-  ///
-  /// Safe to call from inside a setState: it never calls setState itself.
-  /// The decode callback does, and that is always a later turn.
-  void schedule() {
-    _dirty = true;
-    _runIfIdle();
-  }
-
-  /// Coalescing is the whole design. One resample may be in flight; every
-  /// pointer move that arrives while it is only sets the dirty flag, and
-  /// the decode callback runs the LAST state rather than each intermediate
-  /// one. Without it a drag would queue one full-canvas resample per
-  /// pointer event and fall further behind with every frame.
-  ///
-  /// It also degrades honestly. On a machine with no native engine the
-  /// Dart reference is roughly fifteen times slower, so the preview
-  /// updates a few times a second while the handles and the ants stay at
-  /// 60 fps — and the state just before Enter is always the exact one,
-  /// because the last scheduling always runs.
-  void _runIfIdle() {
-    if (_inFlight || !_dirty) {
-      return;
-    }
-    // The PREVIEW clips to the viewport (ABI 26). A whole-picture
-    // transform is millions of pixels and the screen holds under one, so
-    // most of every pointer move used to go into pixels nobody could see.
-    // The window keeps the whole rect's pixel grid, so what is drawn is
-    // exactly what the commit will land there — measured byte for byte
-    // over 70 transforms in `resample_clip_parity_test.dart`.
-    //
-    // A selection that already fits gets no window at all, and stays on
-    // the path where the commit reuses this very buffer.
-    final visible = _warp._previewVisibleRect();
-    final key = _warp._currentResampleKey(visible: visible);
-    if (key == null) {
-      _dirty = false;
-      if (_resampled != null || _image != null) {
-        discard();
-      }
-      return;
-    }
-    if (_resampled?.key == key) {
-      _dirty = false;
-      return;
-    }
-    _dirty = false;
-    final dab = _warp._resampleOpenTransform(visible: visible);
-    final stamp = dab?.stamp;
-    if (dab == null || stamp == null) {
-      return;
-    }
-    _resampled = (key: key, dab: dab);
-    assert(_recordResampledFloat(dab));
-
-    // decodeImageFromPixels wants premultiplied bytes; the resampler
-    // produces straight alpha, which is the app's storage convention and
-    // must stay that way — premultiplying the RESULT would round the very
-    // colours Pick exists to carry through untouched. So the copy is for
-    // display only and the dab keeps its own bytes.
-    //
-    // The copy and the multiply are ONE native pass into native memory,
-    // the same fused kernel the fill overlay uses. Doing it as a Dart
-    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
-    // allocation and a second full traversal on every frame of a drag,
-    // which on a whole-picture transform is tens of megabytes per pointer
-    // move.
-    //
-    // 🪦It was written out here until 2026-09-09, ending 「The scratch is
-    // freed in the decode callback, on every path」 — which was true of
-    // every path THROUGH the callback, and the callback has a road that
-    // never reaches it. [decodeStraightRgbaImage] is the same pass with
-    // the release in a `finally`, and hand-rolling it beside it was a copy.
-    final request = ++_imageRequest;
-    _inFlight = true;
-    unawaited(() async {
-      final ui.Image? image;
-      try {
-        image = await decodedImageStillWanted(
-          decodeStraightRgbaImage(
-            rgba: stamp.rgba,
-            width: stamp.width,
-            height: stamp.height,
-          ),
-          wanted: () => _warp.mounted && request == _imageRequest,
-        );
-      } finally {
-        // 🚨★★★**THE GATE IS EXACTLY THE UPLOAD'S LIFETIME, and it is
-        // released structurally so it cannot be skipped.** A refused
-        // decode used to leave it closed for ever: the handles and the
-        // marching ants kept running at 60 fps while the transformed
-        // pixels stopped, permanently, for that widget.
-        //
-        // ⛔It is NOT folded into [_imageRequest], and the two are not two
-        // spellings of one fact. The request says WHICH ask is current;
-        // this says whether an upload is outstanding — see the throughput
-        // rule this function's header states. That is why [discard]
-        // invalidates the ask and deliberately leaves the gate CLOSED: a
-        // discarded upload is still holding a whole-picture scratch and
-        // still occupying the engine. Making one field answer both would
-        // start a second full-canvas upload on every crossing back
-        // through identity.
-        _inFlight = false;
-      }
-      if (image == null) {
-        return;
-      }
-      _image?.dispose();
-      _image = image;
-      _imageDab = dab;
-      _warp._previewChanged();
-      _runIfIdle();
-    }());
-  }
-
-  /// Lets go of everything: the cache, the decoded image, an in-flight
-  /// decode's claim on the result. Every session end, and the layer's
-  /// dispose — the image is a GPU allocation the size of the selection.
-  void discard() {
-    _imageRequest += 1; // Invalidate an in-flight decode.
-    _dirty = false;
-    _resampled = null;
-    _imageDab = null;
-    _image?.dispose();
-    _image = null;
-    // The hook holds a whole resampled cel. Letting it outlive the session
-    // that made it would keep that buffer resident for as long as the app
-    // runs, which is the same defect in a debug build that the assert
-    // guard prevents in a release one.
-    assert(_recordResampledFloat(null));
-  }
-
-  /// The cached resample, or a fresh one — what every COMMIT path calls.
-  ///
-  /// Deliberately asks for no window. The preview clips to the viewport
-  /// and its cache entry is keyed on that, so this cannot hit it: the
-  /// commit gets the whole picture or computes it, and never lands a
-  /// rectangle of one.
-  BrushDab? warped() {
-    final key = _warp._currentResampleKey();
-    if (key == null) {
-      return null;
-    }
-    final cached = _resampled;
-    if (cached != null && cached.key == key) {
-      return cached.dab;
-    }
-    return _warp._resampleOpenTransform();
-  }
-}
-
 /// Why a move session ended. ⛔Not a flag: the three are three different
 /// things to tell the HOST, and the whole of F-164 was one of them being
 /// told nothing.
@@ -624,7 +365,7 @@ enum SessionInterruption {
 
 class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     with SingleTickerProviderStateMixin
-    implements _OpenWarp {
+    implements FloatWarpHost {
   /// The live selection, mirrored from [CanvasSelectionCommands.region]
   /// (R28-S: the channel OWNS it, so it survives this layer unmounting on
   /// a tool switch — see the channel's own note).
@@ -661,8 +402,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// whole-picture box was reinstalled as a REAL selection the moment the
   /// transform committed, right before the confirm that was supposed to end
   /// it. 🔬Measured: pending `region=null`, confirmed `region=4pts`.
-  void _moveRegion(CanvasSelectionRegion region) =>
-      _setRegion(region, implicit: _shapeIsImplicitWholePicture);
+  ///
+  /// 🚨And it lands through the stage door (I-23): whatever a transform
+  /// carries past the pasteboard wall is cut there, as the landing already
+  /// cuts the pixels it carried. Only the LANDING — the box, its affine and
+  /// the outline riding it keep their absolute values until then (the
+  /// tool law: 「편집값은 절대값」).
+  void _moveRegion(CanvasSelectionRegion region) => _setRegion(
+    region.clippedTo(widget.canvasSize.pasteboardRect),
+    implicit: _shapeIsImplicitWholePicture,
+  );
 
   /// True whenever the shape's pixels are NOT already floating: from a
   /// USER selection (marquee commit, shape channel apply) until a Move
@@ -917,8 +666,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   BitmapSurface? _floatSurface;
 
   /// The float through the open warp, resampled and decoded for the
-  /// screen — see [_FloatResamplePreview]. Empty outside a warp session.
-  late final _FloatResamplePreview _preview = _FloatResamplePreview(this);
+  /// screen — see [FloatResamplePreview]. Empty outside a warp session.
+  late final FloatResamplePreview _preview = FloatResamplePreview(this);
 
   /// The drag so far in WHOLE CANVAS PIXELS — what a move can actually
   /// land on (TP5).
@@ -938,13 +687,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// The cost is deliberate: zoomed in, the drag steps by canvas pixels
   /// instead of gliding. That is the truth about where pixels can go.
-  CanvasPoint get _moveCanvasDelta {
-    final raw = widget.viewport.viewportDeltaToCanvasDelta(
+  CanvasPoint get _moveCanvasDelta => TransformBoxLaw.wholePixels(
+    widget.viewport.viewportDeltaToCanvasDelta(
       dx: _moveScreenDelta.dx,
       dy: _moveScreenDelta.dy,
-    );
-    return CanvasPoint(x: raw.x.roundToDouble(), y: raw.y.roundToDouble());
-  }
+    ),
+  );
 
   // Ctrl+T free-transform session (P9b): the open box, or none — see
   // [TransformBox]. The per-drag solving context is NOT here — it lives on
@@ -953,9 +701,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The open box's affine; null when no box is up.
   SelectionAffine? get _transform => _box?.affine;
-
-  /// Screen-space hit slack around a handle (≥ touch-friendly).
-  static const double _handleHitRadius = 16;
 
 
   late final AnimationController _ants = AnimationController(
@@ -1062,24 +807,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _shapeNeedsLift = channelRegion != null;
       _shapeIsImplicitWholePicture = false;
       // 🚨★★★THIS DROPS A PENDING MOVE WITHOUT LANDING IT, and what makes
-      // that safe is not visible from here. [_clearLiftState] forgets the
-      // token and the floating stamp; the lift's ERASE is already
-      // committed, so a pending session reaching this line loses the
-      // user's pixels outright and leaks its anchor in `_liftAnchors`.
+      // that safe is not visible from here. [_letGoOfSession] lets the
+      // float go, so a pending session reaching this line loses the user's
+      // unconfirmed edit. ↩️It lost their PIXELS while the lift's erase was
+      // committed up front; a session writes nothing until it lands now
+      // (`314aa6e8`), and the helpers this named are gone.
       //
-      // Two facts keep it unreachable, and BOTH are one edit away from
-      // stopping being true (checked 2026-09-08):
-      //  - `CanvasSelectionCommands.setRegion` has exactly TWO callers,
-      //    both in this layer's own path, and a write that came from here
-      //    echoes back equal and stops at the guard above.
-      //  - The one outside writer is the history command's `restoreRegion`,
-      //    and every undo/redo confirms first — `home_page.dart` wires
+      // What keeps it unreachable — each line one edit away from stopping
+      // being true (re-checked 2026-10-01 for I-23: the 09-08 count of
+      // 「exactly TWO callers」 no longer held):
+      //  - `CanvasSelectionCommands.setRegion` has four callers. This
+      //    layer's `_setRegion` echoes back equal and stops at the guard
+      //    above. The channel's `applyRegion` hands the region on to
+      //    [applyCommittedRegion], which confirms first — the path the
+      //    selection history and the inverse take. The channel's
+      //    `deselect` writes only while no layer is bound.
+      //  - The one writer from outside is the lift command's
+      //    `restoreRegion` (`canvas_panel_lift.dart`), and every undo/redo
+      //    confirms first — `home_page.dart` wires
       //    `historyManager.onBeforeUndoRedo` to `confirmPendingMove`.
       //
-      // ⛔So a THIRD caller of `setRegion` opens this hole. If you are that
-      // caller, confirm the session first (`_confirmMoveSession()`, the way
-      // the committed-region path below does) rather than widening this
-      // comment.
+      // ⛔So a NEW caller of `setRegion` opens this hole. If you are that
+      // caller, go through `applyRegion`, or confirm the session first
+      // (`_confirmMoveSession()`, the way the committed-region path below
+      // does), rather than widening this comment.
       _letGoOfSession();
       if (channelRegion == null) {
         _clearTransform();
@@ -1717,131 +1468,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   // --- Freedom above the affine: perspective and mesh ------------------
   //
-  // The box's warp and its law live on [BoxWarp]; what stays here is where
-  // the points sit on the canvas and on screen.
+  // The box's warp and its law live on [BoxWarp], and where that warp puts
+  // the float on the canvas is [FloatWarp]; what stays here is where the
+  // points sit on screen.
 
   TransformMode get _mode => widget.transformOptions.mode;
   int get _meshColumns => widget.transformOptions.meshColumns;
   int get _meshRows => widget.transformOptions.meshRows;
 
-  /// The pending stamp's canvas rect corners (TL/TR/BR/BL) — the quad's
-  /// BASE. Initializing corners as affine(base) makes an untouched quad
-  /// exactly identity for [transformStampDabQuad].
-  List<CanvasPoint>? _stampRectCorners() {
-    final pending = _pendingLiftStamp;
-    final stamp = pending?.stamp;
-    if (pending == null || stamp == null) {
-      return null;
-    }
-    final left = pending.center.x - stamp.width / 2;
-    final top = pending.center.y - stamp.height / 2;
-    return [
-      CanvasPoint(x: left, y: top),
-      CanvasPoint(x: left + stamp.width, y: top),
-      CanvasPoint(x: left + stamp.width, y: top + stamp.height),
-      CanvasPoint(x: left, y: top + stamp.height),
-    ];
-  }
+  /// The open box laid over the float as the layer holds it right now: the
+  /// box, the pending stamp and the tool's knobs, read at the call.
+  @override
+  FloatWarp get floatWarp => FloatWarp(
+    box: _box,
+    float: _pendingLiftStamp,
+    options: widget.transformOptions,
+    pasteboard: widget.canvasSize.pasteboardRegion,
+  );
 
-  static const List<TransformHandle> _cornerHandles = [
-    TransformHandle.topLeft,
-    TransformHandle.topRight,
-    TransformHandle.bottomRight,
-    TransformHandle.bottomLeft,
-  ];
-
-  /// The mesh grid's BASE points over the pending stamp's rect, row-major
-  /// — the mesh's equivalent of [_stampRectCorners].
-  List<CanvasPoint>? _meshBasePoints({
-    required int columns,
-    required int rows,
-  }) {
-    final base = _stampRectCorners();
-    if (base == null) {
-      return null;
-    }
-    final left = base[0].x;
-    final top = base[0].y;
-    final width = base[1].x - base[0].x;
-    final height = base[3].y - base[0].y;
-    return [
-      for (var row = 0; row <= rows; row += 1)
-        for (var column = 0; column <= columns; column += 1)
-          CanvasPoint(
-            x: left + column * width / columns,
-            y: top + row * height / rows,
-          ),
-    ];
-  }
-
-  /// Base points + offsets through the affine — the control points as they
-  /// sit on the canvas. Used for the chrome and hit-testing, which have to
-  /// show handles even when every offset is still zero.
-  List<CanvasPoint>? _placedPoints(
-    List<CanvasPoint>? base,
-    List<CanvasPoint>? offsets,
-  ) {
-    final affine = _transform;
-    if (affine == null || base == null) {
-      return null;
-    }
-    return [
-      for (var i = 0; i < base.length; i += 1)
-        affine.apply(
-          offsets == null || i >= offsets.length
-              ? base[i]
-              : CanvasPoint(
-                  x: base[i].x + offsets[i].x,
-                  y: base[i].y + offsets[i].y,
-                ),
-        ),
-    ];
-  }
-
-  /// The four quad corners as drawn — present whenever 퍼스 is armed over
-  /// an open box, warped or not.
-  List<CanvasPoint>? get _placedCorners {
-    final corners = _box?.warp.corners;
-    return _mode != TransformMode.perspective || corners == null
-        ? null
-        : _placedPoints(_stampRectCorners(), corners);
-  }
-
-  /// The mesh control points as drawn.
-  List<CanvasPoint>? get _placedMeshPoints {
-    final warp = _box?.warp;
-    final mesh = warp?.mesh;
-    return _mode != TransformMode.mesh || warp == null || mesh == null
-        ? null
-        : _placedPoints(
-            _meshBasePoints(columns: warp.meshColumns, rows: warp.meshRows),
-            mesh,
-          );
-  }
-
-  /// The quad the RESAMPLE runs through, or null when the offsets are all
-  /// zero and the affine path is exactly equivalent — see [BoxWarp] on why
-  /// an untouched perspective box must not take the quad path.
-  List<CanvasPoint>? get _warpCorners =>
-      BoxWarp.offsetsAreZero(_box?.warp.corners) ? null : _placedCorners;
-
-  /// The mesh the RESAMPLE runs through; null on all-zero offsets, same
-  /// reasoning as [_warpCorners].
-  List<CanvasPoint>? get _meshPoints =>
-      BoxWarp.offsetsAreZero(_box?.warp.mesh) ? null : _placedMeshPoints;
-
-  int? _hitTestPlacedPoint(Offset local, List<CanvasPoint>? points) {
-    if (points == null) {
-      return null;
-    }
-    for (var i = 0; i < points.length; i += 1) {
-      final mapped = widget.viewport.canvasToViewport(points[i]);
-      if ((local - Offset(mapped.x, mapped.y)).distance <= _handleHitRadius) {
-        return i;
-      }
-    }
-    return null;
-  }
+  /// The box as the screen shows it now — its handles, what a press lands
+  /// on and the chrome over it, read at the call. See [BoxOnScreen].
+  BoxOnScreen get _onScreen => BoxOnScreen(
+    viewport: widget.viewport,
+    canvasSize: widget.canvasSize,
+    mode: _mode,
+    boxOpen: _transform != null,
+    warp: floatWarp,
+  );
 
   /// Brings the open box's warp in line with [_mode] and the armed grid
   /// ([BoxWarp.syncToMode]). Callers wrap in setState.
@@ -1851,36 +1504,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     rows: _meshRows,
   );
 
-  // ---------------------------------------------------------------
-  // The transform preview (P3a).
-  //
-  // What is on screen while a box is open is the RESAMPLED float —
-  // literally the bytes Enter will write — drawn at the rect it will
-  // land in, with no filtering. It used to be a Skia transform of the
-  // UNtransformed float: the affine and quad previews were a widget
-  // `Transform` over tiles drawn at FilterQuality.none, and the mesh
-  // preview was drawVertices through an ImageShader at
-  // FilterQuality.medium. So the picture on screen was nearest where
-  // the commit was bicubic, and smooth where the commit was hard.
-  //
-  // With a resampler that can elect to preserve colours exactly, that
-  // gap stops being cosmetic: the whole reason to turn AA off is to
-  // SEE what you are going to get, and a preview that shows something
-  // else defeats the feature it is previewing.
-  //
-  // Byte identity is made structural rather than numerical. The commit
-  // does not recompute — it reuses this exact dab when the key still
-  // matches. Two computations that ought to agree is a weaker promise,
-  // and its failure mode (native on one side, Dart on the other; two
-  // radius floors) is silent.
-
-  /// What a resampled float belongs to. Any change here means the cached
-  /// result is stale.
-  ///
-  /// The source is compared by IDENTITY, not equality: the lift stamp's
-  /// buffer is immutable for its lifetime, and a value comparison of a
-  /// multi-megabyte cel on every drag frame would cost more than the
-  /// resample it is guarding.
   /// The canvas rectangle the user can actually SEE, or null when it
   /// cannot be worked out (no layout yet) — in which case the preview
   /// falls back to computing everything, which is what it always did.
@@ -1909,59 +1532,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (size.isEmpty) {
       return null;
     }
-    var minX = double.infinity;
-    var minY = double.infinity;
-    var maxX = double.negativeInfinity;
-    var maxY = double.negativeInfinity;
-    for (final corner in <ViewportPoint>[
-      ViewportPoint(x: 0, y: 0),
-      ViewportPoint(x: size.width, y: 0),
-      ViewportPoint(x: size.width, y: size.height),
-      ViewportPoint(x: 0, y: size.height),
-    ]) {
-      final point = widget.viewport.viewportToCanvas(corner);
-      minX = math.min(minX, point.x);
-      maxX = math.max(maxX, point.x);
-      minY = math.min(minY, point.y);
-      maxY = math.max(maxY, point.y);
-    }
-    if (!minX.isFinite || !minY.isFinite || !maxX.isFinite || !maxY.isFinite) {
-      return null;
-    }
-    return (
-      left: minX - _previewClipPadding,
-      top: minY - _previewClipPadding,
-      right: maxX + _previewClipPadding,
-      bottom: maxY + _previewClipPadding,
+    return canvasShownPadded(
+      size,
+      widget.viewport.viewportToCanvas,
+      _previewClipPadding,
     );
-  }
-
-  /// The output rect the open warp would produce — the same rect the
-  /// three transform functions compute for themselves.
-  ///
-  /// The layer needs it to answer one question before resampling: would a
-  /// window actually be smaller than the whole? If not, it asks for NO
-  /// window, and then the cache entry is one the commit can reuse. Most
-  /// selections are that case, and losing the reuse for all of them
-  /// would have traded a big win on the whole picture for a second full
-  /// resample on every ordinary Enter.
-  ({int left, int top, int width, int height})? _currentOutputRect() {
-    final mesh = _placedMeshPoints;
-    if (mesh != null) {
-      return selectionWarpOutputRect(mesh);
-    }
-    final quad = _placedCorners;
-    if (quad != null && !BoxWarp.offsetsAreZero(_box?.warp.corners)) {
-      return selectionWarpOutputRect(quad);
-    }
-    final affine = _transform;
-    final base = _stampRectCorners();
-    if (affine == null || base == null || affine.isIdentity) {
-      return null;
-    }
-    return selectionWarpOutputRect([
-      for (final corner in base) affine.apply(corner),
-    ]);
   }
 
   /// The visible rect the PREVIEW clips to — or null, which means "do not
@@ -1985,7 +1560,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the whole rect, and the commit reuses that very buffer — so the
   /// byte-identity path the tool has always had survives untouched.
   @override
-  SelectionVisibleRect? _previewVisibleRect() {
+  SelectionVisibleRect? previewVisibleRect() {
     if (_drag is! TransformDrag) {
       return null;
     }
@@ -1999,7 +1574,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       right: rect.right.ceilToDouble(),
       bottom: rect.bottom.ceilToDouble(),
     );
-    final out = _currentOutputRect();
+    final out = floatWarp.outputRect();
     if (out == null) {
       return null;
     }
@@ -2011,136 +1586,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   @override
-  _ResampleKey? _currentResampleKey({SelectionVisibleRect? visible}) {
-    final stamp = _pendingLiftStamp?.stamp;
-    if (stamp == null) {
-      return null;
-    }
-    final mesh = _meshPoints;
-    final quad = _warpCorners;
-    final affine = _transform;
-    final shape = StringBuffer();
-    if (mesh != null) {
-      final warp = _box!.warp;
-      shape.write('m${warp.meshColumns},${warp.meshRows}');
-      for (final point in mesh) {
-        shape.write(':${point.x},${point.y}');
-      }
-    } else if (quad != null) {
-      shape.write('q');
-      for (final point in quad) {
-        shape.write(':${point.x},${point.y}');
-      }
-    } else if (affine != null && !affine.isIdentity) {
-      // ⛔THE AFFINE SPELLS ITSELF. This used to list its fields here, and
-      // the list went stale the day the class grew an anchor — see
-      // [SelectionAffine.cacheKey].
-      shape.write('a${affine.cacheKey}');
-    } else {
-      // Identity, or no box at all: the untransformed float is already
-      // the right picture and the resampler has nothing to do.
-      return null;
-    }
-    // The window is PART of the key. A preview asks for one and a commit
-    // does not, so the commit can never be handed the preview's window by
-    // a cache hit — which matters, because a window holds only the pixels
-    // on screen and landing it would drop the rest of the picture.
-    if (visible != null) {
-      shape.write(
-        '|v${visible.left},${visible.top},${visible.right},${visible.bottom}',
-      );
-    }
-    return _ResampleKey(widget._resampleMode, stamp.rgba, shape.toString());
-  }
-
-  /// The float through whatever warp is open — the ONE place the three
-  /// warp functions are called from during a session.
-  @override
-  BrushDab? _resampleOpenTransform({SelectionVisibleRect? visible}) {
-    final pending = _pendingLiftStamp;
-    if (pending == null) {
-      return null;
-    }
-    // 🚨Nothing is resampled past the pasteboard wall, because nothing
-    // lands past it (C-ipad-crash, 2026-09-11). The landing clips at the
-    // wall (`bitmap_surface_brush_commit`), but the resample covered the
-    // WHOLE transformed box: a picture scaled past the stage built,
-    // uploaded and decoded pixels the commit then threw away — 1.9× of a
-    // pasteboard-wide lift was a 13338×9428 buffer, 503MB, and every
-    // larger scale a larger one. A preview's window is cut to it as well.
-    final window = _withinPasteboard(visible);
-    final mesh = _meshPoints;
-    if (mesh != null) {
-      return transformStampDabMesh(
-        pending,
-        columns: _box!.warp.meshColumns,
-        rows: _box!.warp.meshRows,
-        points: mesh,
-        mode: widget._resampleMode,
-        visible: window,
-      );
-    }
-    final quad = _warpCorners;
-    if (quad != null) {
-      return transformStampDabQuad(
-        pending,
-        quad,
-        mode: widget._resampleMode,
-        visible: window,
-      );
-    }
-    final affine = _transform;
-    if (affine != null && !affine.isIdentity) {
-      return transformStampDab(
-        pending,
-        affine,
-        mode: widget._resampleMode,
-        visible: window,
-      );
-    }
-    return null;
-  }
-
-  /// [visible] cut down to the pasteboard, or the whole pasteboard when
-  /// the caller wants everything.
-  SelectionVisibleRect _withinPasteboard(SelectionVisibleRect? visible) {
-    final wall = widget.canvasSize.pasteboardRegion;
-    final left = wall.left.toDouble();
-    final top = wall.top.toDouble();
-    final right = wall.rightExclusive.toDouble();
-    final bottom = wall.bottomExclusive.toDouble();
-    if (visible == null) {
-      return (left: left, top: top, right: right, bottom: bottom);
-    }
-    return (
-      left: math.max(visible.left, left),
-      top: math.max(visible.top, top),
-      right: math.min(visible.right, right),
-      bottom: math.min(visible.bottom, bottom),
-    );
-  }
-
-  @override
-  void _previewChanged() {
+  void previewChanged() {
     setState(() {});
-  }
-
-  /// The mesh's outer boundary ring (top row → right column → bottom row
-  /// reversed → left column reversed) — the warped region polygon.
-  ///
-  /// Reads the grid the POINTS were built for, not the current setting:
-  /// changing the grid size rebuilds the points, and until it does the two
-  /// disagree by exactly enough to index out of the list.
-  List<CanvasPoint> _meshBoundary(List<CanvasPoint> points) {
-    final columns = _box!.warp.meshColumns;
-    final rows = _box!.warp.meshRows;
-    CanvasPoint at(int column, int row) => points[row * (columns + 1) + column];
-    return [
-      for (var column = 0; column <= columns; column += 1) at(column, 0),
-      for (var row = 1; row <= rows; row += 1) at(columns, row),
-      for (var column = columns - 1; column >= 0; column -= 1) at(column, rows),
-      for (var row = rows - 1; row >= 1; row -= 1) at(0, row),
-    ];
   }
 
   /// Closes the transform box.
@@ -2308,7 +1755,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // `_preview.warped()` returns the buffer the PREVIEW is already showing
     // when nothing has changed since, so Enter lands the same bytes the
     // screen held rather than a second computation that ought to match.
-    final meshPoints = _meshPoints;
+    final meshPoints = floatWarp.meshPoints;
     if (meshPoints != null && pending != null) {
       final warped = _preview.warped() ?? pending;
       if (identical(warped, pending)) {
@@ -2317,7 +1764,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       _recordTransformRecall(box);
-      final boundary = _meshBoundary(meshPoints);
+      final boundary = floatWarp.meshBoundary(meshPoints);
       setState(() {
         _session?.stamp = warped;
         // A warped region collapses to its boundary polygon: the mesh
@@ -2333,7 +1780,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     // R20-D2: an open quad resamples through the homography instead.
-    final warpCorners = _warpCorners;
+    final warpCorners = floatWarp.warpCorners;
     if (warpCorners != null && pending != null) {
       final warped = _preview.warped() ?? pending;
       if (identical(warped, pending)) {
@@ -2343,7 +1790,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       _recordTransformRecall(box);
-      final base = _stampRectCorners();
+      final base = floatWarp.stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       setState(() {
         _session?.stamp = warped;
@@ -2637,7 +2084,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   CanvasPoint _toCanvas(Offset local) =>
-      widget.viewport.viewportToCanvas(ViewportPoint(x: local.dx, y: local.dy));
+      widget.viewport.viewportOffsetToCanvas(local);
 
   void _handlePointerDown(PointerDownEvent event) {
     // 🚨★★★**A PRESS THAT LANDED ON A CONTROL IS THAT CONTROL'S.**
@@ -2791,7 +2238,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       baseWidth: bounds.width,
       baseHeight: bounds.height,
     );
-    final handle = _hitTestTransformHandle(event.localPosition, candidate);
+    final handle = _onScreen.hitTestTransformHandle(
+      event.localPosition,
+      candidate,
+    );
     if (handle == null || handle == TransformHandle.inside) {
       // Inside/miss: fall through to the ordinary move-drag flow — but
       // remember WHICH (TP4). "Inside" is the box the user can see, and
@@ -2807,10 +2257,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (_region == null) {
       setState(
         // The implicit region IS the whole-canvas shape on this branch
-        // (`_region` is null), so its one step has one copy.
-        () => _adoptImplicitWholePictureShape(
-          implicitRegion.steps.first.shapes.first,
-        ),
+        // (`_region` is null), so it is one polygon.
+        () => _adoptImplicitWholePictureShape(implicitRegion.singleShape!),
       );
     }
     final hadPendingLift = _pendingLiftStamp != null;
@@ -2845,7 +2293,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       //
       // The pasteboard, not the canvas rect: the box this press opens
       // frames pasteboard ink now, and its HANDLES were already
-      // grabbable out there (_hitTestTransformHandle has no such
+      // grabbable out there (BoxOnScreen.hitTestTransformHandle has no such
       // gate), so a canvas-only gate meant the drawing you could see
       // framed was one you could not grab by pressing on it.
       final onStage = widget.canvasSize.containsPasteboardPoint(
@@ -2915,12 +2363,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final openTransform = box.affine;
     // 메쉬: the control points ARE the handles. Nothing else on the box
     // has a grid meaning, so a press is either a point or inside.
-    final meshPlaced = _placedMeshPoints;
+    final meshPlaced = floatWarp.placedMeshPoints;
     if (meshPlaced != null) {
-      final pointIndex = _hitTestPlacedPoint(event.localPosition, meshPlaced);
+      final pointIndex = _onScreen.hitTestPlacedPoint(
+        event.localPosition,
+        meshPlaced,
+      );
       if (pointIndex == null &&
           !CanvasSelectionShape(
-            _meshBoundary(meshPlaced),
+            floatWarp.meshBoundary(meshPlaced),
           ).containsPoint(canvasPoint)) {
         return;
       }
@@ -2943,10 +2394,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // ↩️「The edge handles … keep their affine meaning」 stopped being true
     // with F-42-Q1 (an edge carries its two quad corners), and F-42's 08-31
     // report moved where they STAND too: the middle of their quad edge
-    // ([_scaleHandleViewport]). The rotate knob keeps the affine box's.
-    final cornersPlaced = _placedCorners;
+    // ([BoxOnScreen.scaleHandleViewport]). The rotate knob keeps the affine
+    // box's.
+    final cornersPlaced = floatWarp.placedCorners;
     if (cornersPlaced != null) {
-      final cornerIndex = _hitTestPlacedPoint(
+      final cornerIndex = _onScreen.hitTestPlacedPoint(
         event.localPosition,
         cornersPlaced,
       );
@@ -2965,12 +2417,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // handles frame — a press in the gap between them is a miss.
       if (!BoxWarp.offsetsAreZero(box.warp.corners) &&
           !CanvasSelectionShape(cornersPlaced).containsPoint(canvasPoint) &&
-          _hitTestTransformHandle(event.localPosition, box) ==
+          _onScreen.hitTestTransformHandle(event.localPosition, box) ==
               TransformHandle.inside) {
         return;
       }
     }
-    final handle = _hitTestTransformHandle(event.localPosition, box);
+    final handle = _onScreen.hitTestTransformHandle(event.localPosition, box);
     if (handle == null) {
       return;
     }
@@ -2989,7 +2441,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // job in 퍼스. It is two corners dragged together, which is the same
     // move with the same result and one more gesture.
     final edgePair = _mode == TransformMode.perspective
-        ? _edgeCornerPair(handle)
+        ? BoxOnScreen.edgeCornerPair(handle)
         : null;
     if (edgePair != null && cornersPlaced != null) {
       _startTransformDrag(
@@ -3012,7 +2464,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // was at so the first move is a delta rather than a jump.
         modifierHeld: _scaleModifierHeld,
         lastAngle: handle == TransformHandle.rotate
-            ? _pointerAngleAbout(canvasPoint, openTransform)
+            ? TransformBoxLaw.angleAbout(
+                _turnCentreOf(openTransform),
+                canvasPoint,
+              )
             : 0,
       ),
     );
@@ -3157,10 +2612,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final start = drag.start;
     switch (drag.handle) {
       case TransformHandle.inside:
+        // A hand on the canvas moves in whole pixels, as the drag that
+        // opened this box did ([TransformBoxLaw.wholePixels]).
+        final moved = TransformBoxLaw.wholePixels(
+          CanvasPoint(
+            x: pointer.x - drag.startPointer.x,
+            y: pointer.y - drag.startPointer.y,
+          ),
+        );
         setState(() {
           box.affine = start.copyWith(
-            tx: start.tx + pointer.x - drag.startPointer.x,
-            ty: start.ty + pointer.y - drag.startPointer.y,
+            tx: start.tx + moved.x,
+            ty: start.ty + moved.y,
           );
         });
       case TransformHandle.anchor:
@@ -3180,22 +2643,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           );
         });
       case TransformHandle.rotate:
-        // Wrapped-delta accumulation (the camera lever rule): continuous
-        // across the ±180° seam. Canvas-space angles, so the P8 view
-        // rotation/flip never skews the feel.
+        // Every box turns by the one turn law ([TransformBoxLaw.turn]):
+        // wrapped deltas, canvas-space angles.
         final current = box.affine;
-        final angle = _pointerAngleAbout(pointer, current);
-        var delta = angle - drag.lastAngle;
-        while (delta > 180) {
-          delta -= 360;
-        }
-        while (delta < -180) {
-          delta += 360;
-        }
-        drag.lastAngle = angle;
+        final step = TransformBoxLaw.turn(
+          centre: _turnCentreOf(current),
+          pointer: pointer,
+          lastAngle: drag.lastAngle,
+        );
+        drag.lastAngle = step.angle;
         setState(() {
           box.affine = current.copyWith(
-            rotationDegrees: current.rotationDegrees + delta,
+            rotationDegrees: current.rotationDegrees + step.turned,
           );
         });
       case TransformHandle.topLeft:
@@ -3233,170 +2692,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           box.baseWidth,
           box.baseHeight,
         )!;
+        // Which point stays put comes from [_scaleModifierHeld] and nothing
+        // else: the box's centre by default, the opposite handle while the
+        // modifier is held ([TransformBoxLaw.scaled]). The tablet is why the
+        // modifier has two entrances — the pen is already on the handle, so
+        // "hold Alt" there means a second hand on the glass, and that hand
+        // IS the entrance.
         setState(
-          () => box.affine = _solveScaleDrag(
+          () => box.affine = TransformBoxLaw.scaled(
             from,
             grabbed,
-            _pressDisplaced(from, grabbed, drag.startPointer, pointer),
+            TransformBoxLaw.pressDisplaced(
+              from,
+              grabbed,
+              drag.startPointer,
+              pointer,
+            ),
+            aboutCentre: !held,
+            uniform: widget.transformOptions.isUniform,
           ),
         );
     }
     _publishTransformValues();
   }
 
-  /// Where the [grabbed] handle (its base-local position) would be if it
-  /// moved exactly as far as the pointer has since the press — the point
-  /// [_solveScaleDrag] is handed, so a press that landed off the handle
-  /// moves it by the hand's travel and not onto the hand (F-127).
-  CanvasPoint _pressDisplaced(
-    SelectionAffine start,
-    CanvasPoint grabbed,
-    CanvasPoint startPointer,
-    CanvasPoint pointer,
-  ) {
-    final atPress = start.apply(
-      CanvasPoint(x: start.pivot.x + grabbed.x, y: start.pivot.y + grabbed.y),
-    );
-    return CanvasPoint(
-      x: atPress.x + pointer.x - startPointer.x,
-      y: atPress.y + pointer.y - startPointer.y,
-    );
-  }
-
-  /// Solves the scale drag: the grabbed handle lands on [pointer] — the
-  /// press-displaced point ([_pressDisplaced]) — while the ANCHOR stays
-  /// fixed (its motion folds into the translation).
+  /// The TURN's fixed point: the anchor ([SelectionAffine.anchorCanvas]),
+  /// which a turn leaves where it is.
   ///
-  /// Which point that is comes from [_scaleModifierHeld] and nothing else:
-  /// the box's centre by default, the opposite corner while the modifier
-  /// is held. The tablet is why the modifier has two entrances — the pen
-  /// is already on the handle, so "hold Alt" there means a second hand on
-  /// the glass, and that hand IS the entrance.
-  ///
-  /// The aspect ratio is locked by the MODE, not by a modifier. 일반변형
-  /// preserves it by definition. Shift used to lock it here and no longer
-  /// does anything — 유저 08-13, once 일반 became the default: "어차피
-  /// 일반변형이 종횡비 유지해서 수정자 기능 필요없을거같은데".
-  ///
-  /// ⚠️This used to add "non-uniform scaling lives on 퍼스's edge handles".
-  /// It does not any more (F-42): in 퍼스 an edge handle carries the edge's
-  /// two quad corners, so this solver never sees one. The sentence is
-  /// corrected rather than deleted, because a reader who remembers it
-  /// would otherwise look here for a path that has moved.
-  SelectionAffine _solveScaleDrag(
-    SelectionAffine start,
-    CanvasPoint grabbed,
-    CanvasPoint pointer,
-  ) {
-    // 🚨★★★**CENTRE BY DEFAULT, OPPOSITE CORNER ON THE MODIFIER.**
-    //
-    // 🗣️유저 2026-09-22: 「**확대/축소의 기준점은 항상 상자의 중심**이야 …
-    // 일반변형에서 꼭짓점 이동하면 **그림 자체가 중심점 기준으로 커져** …
-    // 지금 반대쪽 꼭짓점 그대로 두고 현재 꼭짓점만 키우는게 클튜방식이야.
-    // 그래서 **tvp방식인 전체 크게하도록** … 그걸 **수정자가아니라 일반
-    // 로직으로 적용**하고, **수정자로서 클튜방식의 현재꼭짓점만 늘리는
-    // 로직** 두도록」.
-    //
-    // ↩️It was a persistent SETTING (`TransformAnchor`) that Alt inverted,
-    // because a hold 「cannot be the whole answer on a tablet」 (2026-08-29).
-    // 유저 answered that differently on 09-22 — the modifier gets a TOUCH
-    // entrance instead — so the setting is gone and the default is the one
-    // they named.
-    final centerPivot = !_scaleModifierHeld;
-    final anchorLocal = centerPivot
-        ? CanvasPoint(x: 0, y: 0)
-        : CanvasPoint(x: -grabbed.x, y: -grabbed.y);
-    final anchorCanvas = start.apply(
-      CanvasPoint(
-        x: start.pivot.x + anchorLocal.x,
-        y: start.pivot.y + anchorLocal.y,
-      ),
-    );
-    final radians = start.rotationDegrees * math.pi / 180;
-    final cos = math.cos(radians);
-    final sin = math.sin(radians);
-    // v = R(−θ)·(pointer − anchor): the pointer in the box's local frame.
-    final dx = pointer.x - anchorCanvas.x;
-    final dy = pointer.y - anchorCanvas.y;
-    final vx = dx * cos + dy * sin;
-    final vy = -dx * sin + dy * cos;
-
-    var sx = start.sx;
-    var sy = start.sy;
-    if (grabbed.x != anchorLocal.x) {
-      sx = vx / (grabbed.x - anchorLocal.x);
-    }
-    if (grabbed.y != anchorLocal.y) {
-      sy = vy / (grabbed.y - anchorLocal.y);
-    }
-    if (widget.transformOptions.isUniform &&
-        grabbed.x != anchorLocal.x &&
-        grabbed.y != anchorLocal.y) {
-      // One scale for both axes, chosen as the least-squares projection of
-      // the pointer onto the anchor→handle diagonal: the s that puts the
-      // handle as close to the pointer as a uniform scale can.
-      //
-      // It used to take max(|sx|, |sy|), which is the LARGER axis rather
-      // than the closest fit — so a drag that was not exactly along the
-      // diagonal pulled the short axis up to the long one. That grows the
-      // box past where the hand is, and it grows the resample with it: the
-      // output area a pointer move costs is proportional to sx·sy, and the
-      // measured penalty was 1.11× ten degrees off the diagonal, 1.33× at
-      // twenty-five, 2× at fifty
-      // (`test/services/transform_drag_cost_benchmark_test.dart`).
-      //
-      // The projection is a weighted mean of the two axis scales instead
-      // of their max, so it always sits BETWEEN them: the box follows the
-      // hand, and the cost follows the box. Signs need no special case
-      // either — dragging past the anchor makes the projection negative
-      // on its own, which is the mirror it should be.
-      final gx = grabbed.x - anchorLocal.x;
-      final gy = grabbed.y - anchorLocal.y;
-      final projected = (vx * gx + vy * gy) / (gx * gx + gy * gy);
-      sx = projected;
-      sy = projected;
-    }
-    sx = _clampScale(sx);
-    sy = _clampScale(sy);
-
-    // Anchor compensation: R·(S_old∘o − S_new∘o) folds into t.
-    final dLocalX = start.sx * anchorLocal.x - sx * anchorLocal.x;
-    final dLocalY = start.sy * anchorLocal.y - sy * anchorLocal.y;
-    return start.copyWith(
-      sx: sx,
-      sy: sy,
-      tx: start.tx + dLocalX * cos - dLocalY * sin,
-      ty: start.ty + dLocalX * sin + dLocalY * cos,
-    );
-  }
-
-  static double _clampScale(double scale) {
-    if (scale.isNaN || !scale.isFinite) {
-      return 0.01;
-    }
-    if (scale.abs() < 0.01) {
-      return scale.isNegative ? -0.01 : 0.01;
-    }
-    return scale;
-  }
-
-  /// The pointer's canvas-space angle about the transformed box center.
-  /// The pointer's angle about the ROTATION'S FIXED POINT — the anchor
-  /// ([SelectionAffine.anchorCanvas]), which a turn leaves where it is.
-  ///
-  /// 🚨It measured about the BOX CENTRE (`apply(pivot)`) until 2026-09-25:
-  /// right while the box turned about its centre, wrong from the day it
-  /// turned about the anchor (09-20). The centre orbits the anchor, so
-  /// each move read the hand against a centre the last move had carried
-  /// off — the box lagged the hand, and a hand held still kept turning it
-  /// (유저: 「십자 앵커 위치 바꾸고 사각형 바깥 조작해서 회전시킬때 아직도
-  /// 전위치랑 현위치랑 순간이동」). Measured: a still pen turned it 2.3°.
-  double _pointerAngleAbout(CanvasPoint pointer, SelectionAffine affine) {
-    final center = affine.anchorCanvas;
-    return math.atan2(pointer.y - center.y, pointer.x - center.x) *
-        180 /
-        math.pi;
-  }
+  /// 🚨It was the BOX CENTRE (`apply(pivot)`) until 2026-09-25: right while
+  /// the box turned about its centre, wrong from the day it turned about the
+  /// anchor (09-20). The centre orbits the anchor, so each move read the
+  /// hand against a centre the last move had carried off — the box lagged
+  /// the hand, and a hand held still kept turning it (유저: 「십자 앵커 위치
+  /// 바꾸고 사각형 바깥 조작해서 회전시킬때 아직도 전위치랑 현위치랑
+  /// 순간이동」). Measured: a still pen turned it 2.3°.
+  CanvasPoint _turnCentreOf(SelectionAffine affine) => affine.anchorCanvas;
 
   void _handlePointerUp(PointerUpEvent event) {
     // The modifier finger lifting is not the drag ending — it changes what
@@ -3601,16 +2931,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R26 #16: the drawn polygon FOLDS into the region under the active
     // mode. A click (degenerate polygon) still deselects in 갱신 mode —
     // Photoshop's click-away — and is inert in the other three.
-    final after = CanvasSelectionRegion.combineCopies(
+    final folded = CanvasSelectionRegion.combineCopies(
       before,
       _symmetryCopies(drawn),
       _marqueeMode(),
     );
-    if (before == null && after == null) {
+    if (identical(folded, before)) {
+      // Nothing folded (a click in add/subtract/intersect, or with nothing
+      // selected): no history — and no door either, so a selection kept
+      // from a larger cut's wall is not cut by a click.
       return;
     }
+    // 🚨THE STAGE DOOR (I-23): what lands is cut at the pasteboard wall —
+    // marquee, ellipse and lasso on release, the polygon on its close.
+    final after = folded?.clippedTo(widget.canvasSize.pasteboardRect);
     if (before == after) {
-      // Nothing folded (a click in add/subtract/intersect): no history.
+      // The wall left nothing to change (an 추가 wholly past it).
       return;
     }
     // The change routes through ONE undoable step (R11-⑧: selecting is
@@ -3631,6 +2967,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// A copy that lands entirely off the canvas is kept, not dropped: a
   /// selection may extend past the edge (the pasteboard is a real place),
   /// and dropping it would make the mirror silently asymmetric.
+  ///
+  /// ⚠️Past the pasteboard WALL is another matter (I-23): the stage door in
+  /// [_commitDrawnOutline] cuts every copy there alike, and drops one with
+  /// nothing inside — the wall is the edge of the world for a mirror's
+  /// copy as much as for the drag that made it.
   List<CanvasSelectionShape> _symmetryCopies(CanvasSelectionShape? drawn) {
     if (drawn == null) {
       return const [];
@@ -3693,107 +3034,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  /// A base-local point mapped through [affine] into viewport space.
-  Offset _mapLocalToViewport(SelectionAffine affine, CanvasPoint local) {
-    final canvasPoint = affine.apply(
-      CanvasPoint(x: affine.pivot.x + local.x, y: affine.pivot.y + local.y),
-    );
-    final mapped = widget.viewport.canvasToViewport(canvasPoint);
-    return Offset(mapped.x, mapped.y);
-  }
-
-  static const List<TransformHandle> _edgeHandles = [
-    TransformHandle.topEdge,
-    TransformHandle.rightEdge,
-    TransformHandle.bottomEdge,
-    TransformHandle.leftEdge,
-  ];
-
-  /// The two QUAD corners an edge handle carries in 퍼스 (F-42).
-  ///
-  /// Corner order is the quad's own — TL/TR/BR/BL, as [_stampRectCorners]
-  /// builds it — so an edge is the pair that bounds it. Null for anything
-  /// that is not an edge, which is how the caller falls through to the
-  /// affine path for the rotate knob and the inside grab.
-  static List<int>? _edgeCornerPair(TransformHandle handle) =>
-      switch (handle) {
-        TransformHandle.topEdge => const [0, 1],
-        TransformHandle.rightEdge => const [1, 2],
-        TransformHandle.bottomEdge => const [2, 3],
-        TransformHandle.leftEdge => const [3, 0],
-        _ => null,
-      };
-
-  /// The scale handles the armed mode offers.
-  ///
-  /// 일반 shows the four corners and nothing else — TVPaint's rule, and
-  /// the honest one: a mid-edge handle can only mean "stretch one axis",
-  /// which is exactly what this mode does not do. Offering it and then
-  /// scaling both axes anyway would be a control that lies.
-  ///
-  /// 퍼스 keeps the edges and drops the corners from THIS list — in that
-  /// mode a corner is a quad point, hit-tested before this runs.
-  ///
-  /// 🚨THE EDGES ARE NO LONGER SCALE THERE EITHER (F-42, 유저 2026-08-29).
-  /// They stay in this list because it decides what is DRAWN and grabbable;
-  /// what a grab then means is decided at the press, where 퍼스 routes an
-  /// edge to its two quad corners. Non-uniform scale in 퍼스 is now "drag
-  /// the two corners", which is what the user asked for — the old
-  /// one-axis scale could not move the edge off its own axis at all.
-  ///
-  /// With NO session open the corners are added back whatever the mode,
-  /// because the mode describes what an OPEN box does and something has to
-  /// be grabbable to open one. Otherwise 메쉬 — whose handles are grid
-  /// points that do not exist until the box does — would be a mode you
-  /// could select and then never enter.
-  List<TransformHandle> get _scaleHandles {
-    final open = switch (_mode) {
-      // 🚨★★★**일반변형도 변 중앙을 잡는다** — 유저 2026-09-22: 「**일반변형도
-      // 자유변형처럼 각 변 중앙에 버튼? 두도록. 자유변형이랑 법 통일**해서.
-      // 이제 기본조작은 어떤 꼭짓점 편집하든 중심기준 크기변형이지만,
-      // **수정자통한 조작이 변 중앙의 꼭짓점 조작이 필요**해진다는게 이유임」.
-      //
-      // ⛔Nothing else had to change: `_dragBoxHandle` already solves all
-      // eight through `_solveScaleDrag`, and the edges were only ever
-      // withheld from this mode.
-      TransformMode.normal => const [..._cornerHandles, ..._edgeHandles],
-      TransformMode.perspective => _edgeHandles,
-      TransformMode.mesh => const <TransformHandle>[],
-    };
-    if (_transform != null) {
-      return open;
-    }
-    return [
-      ..._cornerHandles,
-      ...open.where((handle) => !_cornerHandles.contains(handle)),
-    ];
-  }
-
-  /// The transformed box as a canvas-space polygon (inside = translate).
-  CanvasSelectionShape _transformedBoxShape(TransformBox box) =>
-      _boxShapeFor(box.affine, box.baseWidth, box.baseHeight);
-
-  CanvasSelectionShape _boxShapeFor(
-    SelectionAffine affine,
-    double width,
-    double height,
-  ) {
-    return CanvasSelectionShape([
-      for (final corner in [
-        CanvasPoint(x: -width / 2, y: -height / 2),
-        CanvasPoint(x: width / 2, y: -height / 2),
-        CanvasPoint(x: width / 2, y: height / 2),
-        CanvasPoint(x: -width / 2, y: height / 2),
-      ])
-        affine.apply(
-          CanvasPoint(
-            x: affine.pivot.x + corner.x,
-            y: affine.pivot.y + corner.y,
-          ),
-        ),
-    ]);
-  }
-
   /// The region's axis-aligned bounds (box geometry for the transform
   /// chrome — R17-U always-on handles use it without opening a session).
   ///
@@ -3812,72 +3052,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         y: (bounds.top + bounds.bottom) / 2,
       ),
     );
-  }
-
-  /// Where [handle] stands on screen — the ONE answer the chrome draws and the
-  /// press hits.
-  ///
-  /// 🚨F-42 (유저 2026-08-31): 「작동은 하는데 변형툴 ui의 사각형, 상하좌우
-  /// 중앙의 사각형이 따라서 안움직임. 로직통일」. In 퍼스 an edge handle
-  /// carries its two QUAD corners, but it was drawn and hit at the AFFINE
-  /// box's edge, so once a corner moved the handle stayed behind on a box no
-  /// longer shown. Its place is its quad edge's middle now; every other handle
-  /// keeps the affine box's.
-  Offset _scaleHandleViewport(
-    TransformHandle handle,
-    SelectionAffine affine,
-    double width,
-    double height,
-  ) {
-    final corners = _placedCorners;
-    final pair = _edgeCornerPair(handle);
-    if (corners != null && pair != null) {
-      final a = _mapCanvasToViewportOffset(corners[pair[0]]);
-      final b = _mapCanvasToViewportOffset(corners[pair[1]]);
-      return (a + b) / 2;
-    }
-    return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
-  }
-
-  TransformHandle? _hitTestTransformHandle(Offset local, TransformBox box) {
-    final affine = box.affine;
-    // ⚠️THE CROSS IS ON TOP, SO IT IS GRABBED FIRST. It is painted over
-    // everything else, and 「what you see is what you grab」 is the only
-    // rule that survives the user dragging it onto a scale handle — which
-    // nothing stops them doing, because nothing clamps it.
-    if ((local - _mapCanvasToViewportOffset(affine.anchorCanvas)).distance <=
-        _handleHitRadius) {
-      return TransformHandle.anchor;
-    }
-    for (final handle in _scaleHandles) {
-      final position = _scaleHandleViewport(handle, affine, box.baseWidth, box.baseHeight);
-      if ((local - position).distance <= _handleHitRadius) {
-        return handle;
-      }
-    }
-    final canvasPoint = _toCanvas(local);
-    if (_transformedBoxShape(box).containsPoint(canvasPoint)) {
-      return TransformHandle.inside;
-    }
-    // 🚨★★★**OUTSIDE THE BOX IS THE ROTATION.** 유저 2026-09-22: 「우선
-    // **사각형 밖 조작은 회전으로 통하도록**. 지금 있는 **회전 꼭짓점은
-    // 잔재 싹 삭제**하고. 사각형 내부 조작은 지금처럼 위치이동」.
-    //
-    // ↩️A knob stuck out of the top edge and was hit-tested first. It is
-    // gone with everything that drew it — the lever, the circle, the
-    // offsets that placed it — because a whole half-plane is a bigger
-    // target than a 5px circle and needs no aiming.
-    //
-    // ⚠️On stage only. Off the pasteboard the press is not this tool's at
-    // all, which is the gate the move already asked for — see the
-    // `onStage` check on the move path. ⛔Not a new rule: the same
-    // sentence, asked once instead of twice.
-    return widget.canvasSize.containsPasteboardPoint(
-          x: canvasPoint.x,
-          y: canvasPoint.y,
-        )
-        ? TransformHandle.rotate
-        : null;
   }
 
   /// The float's surface: the pending stamp's IMAGE materialized once, at
@@ -3964,7 +3138,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final floatSurface = _floatSurface;
     final transform = _transform;
     final region = _region;
-    final warpCorners = _warpCorners;
+    final warpCorners = floatWarp.warpCorners;
     // The image and the dab it was decoded from travel together, so the
     // rect the preview draws into always belongs to the pixels in it.
     final resampledImage = _preview.image;
@@ -4000,9 +3174,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // Both read the PLACED points rather than the resample's, so the
     // handles are on screen from the moment the mode is armed instead of
     // appearing only once the first offset makes the warp real.
-    final placedMesh = _placedMeshPoints;
-    final placedCorners = _placedCorners;
-    final chrome = _transformChrome(placedMesh, placedCorners, chromeAffine, chromeWidth, chromeHeight);
+    final placedMesh = floatWarp.placedMeshPoints;
+    final placedCorners = floatWarp.placedCorners;
+    final chrome = _onScreen.transformChrome(
+      placedMesh,
+      placedCorners,
+      chromeAffine,
+      chromeWidth,
+      chromeHeight,
+    );
     // While a hold is up, whichever float is drawn is drawn ONLY over the
     // tiles the base cannot paint yet — screen space, because it wraps
     // the painters rather than living inside one of them, and both
@@ -4177,13 +3357,23 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             //
             // ⛔The condition is the BOX, not the float: 「변형중」 is what
             // the user said, and a confirm closes the box, which is what
-            // makes it go. The session already carries the shape it began
-            // with — nothing new is remembered for this.
+            // makes it go.
             // ⚠️Since 확정 became one verb (confirm-button) no door leaves a
             // session without its box — Enter on an untouched box used to —
             // so this states the law rather than guarding a case a user can
             // reach.
-            startShape: _transform == null ? null : _moveSessionStartShape,
+            //
+            // 🗣️F-231 ① (유저 2026-09-29): 「기존 초록 프리뷰는 항상 사각형
+            // 변형도구 실루엣만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고
+            // 기존거에 맞춰서 법 통일하고 잔재 삭제」 — the line is the
+            // TRANSFORM TOOL's silhouette, the box it began from, whatever
+            // shape the selection has.
+            startShape: switch (_box) {
+              null => null,
+              final box => CanvasSelectionRegion.shape(
+                _onScreen.startSilhouette(box),
+              ),
+            },
             // 🚨F-65: 「라이브로 선택중일땐 … 벡터로 보여도 상관없는데,
             // 선택 커밋될떈 픽셀에 제대로 안착한 상태로」.
             //
@@ -4204,7 +3394,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // already carries it — and adding the drag on top would
             // step the ants twice.
             screenOffset: Offset.zero,
-            marqueeShapes: _symmetryCopies(_marqueeDrag?.shape()),
+            // What the release will land: each copy cut at the wall by the
+            // same door [_commitDrawnOutline] takes (I-23).
+            marqueeShapes: [
+              for (final copy in _symmetryCopies(_marqueeDrag?.shape()))
+                ?copy.clippedTo(widget.canvasSize.pasteboardRect),
+            ],
             openTrail: _tapsVertices
                 ? (widget.selectionCommands?.polygonPoints ?? const [])
                 : (_marqueeDrag?.openTrail ?? const []),
@@ -4269,111 +3464,22 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  /// What the ants painter draws over the box: the outline, the grips and
-  /// the anchor cross, in viewport space.
-  ///
-  /// THREE SHAPES, one per what the box currently IS — a mesh's warped
-  /// boundary, a 퍼스 quad, or the plain affine box — and each is its own
-  /// builder. ↩️They were one nested ternary holding all three record
-  /// literals, which scored 29 against a warning line of 15: every reader
-  /// had to unwind the whole chain to find out what one mode draws.
-  SelectionTransformChrome? _transformChrome(
-    List<CanvasPoint>? placedMesh,
-    List<CanvasPoint>? placedCorners,
-    SelectionAffine? chromeAffine,
-    double chromeWidth,
-    double chromeHeight,
-  ) {
-    // ⚠️ONE anchor for all three chromes. The cross is the ROTATION's
-    // centre and every mode can be turned (outside the box is the
-    // rotation, whatever mode is armed), so hiding it in 퍼스/메쉬 would
-    // be a rule about the modes that the rotation does not have.
-    final anchor = chromeAffine == null
-        ? null
-        : _mapCanvasToViewportOffset(chromeAffine.anchorCanvas);
-    if (placedMesh != null) {
-      return _meshChrome(placedMesh, anchor);
-    }
-    if (chromeAffine == null) {
-      return null;
-    }
-    // The affine box's own grips, which BOTH remaining shapes wear: 퍼스
-    // keeps them under its quad, because non-uniform scaling lives there
-    // and hiding them would hide half the tool.
-    final grips = [
-      for (final handle in _scaleHandles)
-        _scaleHandleViewport(handle, chromeAffine, chromeWidth, chromeHeight),
-    ];
-    if (placedCorners != null) {
-      return _quadChrome(placedCorners, grips, anchor);
-    }
-    return _boxChrome(chromeAffine, chromeWidth, chromeHeight, grips, anchor);
-  }
-
-  /// 메쉬: the control points ARE the handles, and the outline is the grid's
-  /// warped boundary.
-  SelectionTransformChrome _meshChrome(
-    List<CanvasPoint> placedMesh,
-    ui.Offset? anchor,
-  ) => (
-    box: [
-      for (final point in _meshBoundary(placedMesh))
-        _mapCanvasToViewportOffset(point),
-    ],
-    handles: [
-      for (final point in placedMesh) _mapCanvasToViewportOffset(point),
-    ],
-    anchor: anchor,
-  );
-
-  /// 퍼스: the quad, its four corners, and the affine box's grips beneath.
-  SelectionTransformChrome _quadChrome(
-    List<CanvasPoint> placedCorners,
-    List<ui.Offset> grips,
-    ui.Offset? anchor,
-  ) => (
-    box: [
-      for (final point in placedCorners) _mapCanvasToViewportOffset(point),
-    ],
-    handles: [
-      for (final point in placedCorners) _mapCanvasToViewportOffset(point),
-      ...grips,
-    ],
-    anchor: anchor,
-  );
-
-  /// 일반: the affine box and nothing else.
-  SelectionTransformChrome _boxChrome(
-    SelectionAffine affine,
-    double width,
-    double height,
-    List<ui.Offset> grips,
-    ui.Offset? anchor,
-  ) => (
-    box: [
-      for (final point in _boxShapeFor(affine, width, height).points)
-        _mapCanvasToViewportOffset(point),
-    ],
-    handles: grips,
-    anchor: anchor,
-  );
-
   CanvasSelectionRegion? _displayShape(SelectionAffine? transform, CanvasSelectionRegion? region, List<CanvasPoint>? warpCorners) {
     var displayShape = transform != null && region != null
         ? region.mapped(transform.apply)
         : region;
     if (warpCorners != null && region != null) {
-      final base = _stampRectCorners();
+      final base = floatWarp.stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
       displayShape = h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
           : region.mapped((point) => _applyHomography(h, point));
     }
-    final meshPoints = _meshPoints;
+    final meshPoints = floatWarp.meshPoints;
     if (meshPoints != null) {
       // Mesh session: the ants trace the grid's warped boundary.
       displayShape = CanvasSelectionRegion.shape(
-        CanvasSelectionShape(_meshBoundary(meshPoints)),
+        CanvasSelectionShape(floatWarp.meshBoundary(meshPoints)),
       );
     }
     return displayShape;
@@ -4414,24 +3520,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  Offset _mapCanvasToViewportOffset(CanvasPoint point) {
-    final mapped = widget.viewport.canvasToViewport(point);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset _mapCanvasToViewportOffset(CanvasPoint point) =>
+      widget.viewport.canvasToViewportOffset(point);
 }
 
-/// The transform preview (P3a): the RESAMPLED float, drawn at the canvas
-/// rect it will land in, through the ordinary viewport transform.
-///
-/// `FilterQuality.none` is not a performance choice — it is the contract.
-/// The image already holds the destination pixels, one for one, so any
-/// filtering here would show the user something other than the bytes Enter
-/// is about to write. Zoomed in that means visible blocks, which is
-/// correct: those blocks ARE the result. This replaced three different
-/// screen approximations (a widget `Transform` for the affine, a
-/// homography matrix for the quad, and a `drawVertices` mesh at
-/// `FilterQuality.medium`), none of which agreed with the commit and none
-/// of which agreed with each other.
 // (The fallback float painter moved to selection_float_overlay.dart, beside
 // the description it draws — one file owns "what is floating and how it is
 // drawn", and the pixel tests can name it.)
@@ -4439,3 +3531,37 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 // (The hold's clip used to be a `ClipPath` around the float's widget, in
 // screen space. TS1 turned the float into a canvas-space description, so the
 // clip travels inside it and the clipper class is gone.)
+
+/// The canvas a view [size] big shows through [toCanvas], [padding] wider
+/// every way.
+///
+/// All four corners are mapped, not two: the canvas turns and flips, and
+/// the bounds of a turned view are the bounds of its mapped corners.
+/// ↩️It asked whether a corner mapped to a finite point, and answered null
+/// if not — a check nothing could reach: a [CanvasPoint] refuses any other
+/// (since 06-21, before the check came in on 08-13).
+@visibleForTesting
+SelectionVisibleRect canvasShownPadded(
+  Size size,
+  CanvasPoint Function(ViewportPoint corner) toCanvas,
+  double padding,
+) {
+  final corners = [
+    for (final corner in <ViewportPoint>[
+      ViewportPoint(x: 0, y: 0),
+      ViewportPoint(x: size.width, y: 0),
+      ViewportPoint(x: size.width, y: size.height),
+      ViewportPoint(x: 0, y: size.height),
+    ])
+      toCanvas(corner),
+  ];
+  final bounds = pointsBounds([
+    for (final point in corners) Offset(point.x, point.y),
+  ]);
+  return (
+    left: bounds.left - padding,
+    top: bounds.top - padding,
+    right: bounds.right + padding,
+    bottom: bounds.bottom + padding,
+  );
+}

@@ -183,4 +183,29 @@ void main() {
           '스크롤 불가해지는거지 … 그걸 원해서 한 말이야」',
     );
   });
+
+  // The rows take their devices when they BUILD. They were rebuilt on a mode
+  // change only because the app root rebuilt the theme and the theme lerp
+  // rebuilt everything (auto-frame-toggle-hitch, 2026-09-29) — so the mode
+  // flips here with the timeline already on screen, and nothing else moves.
+  testWidgets('switching to 1-finger DRAWING with the rail already up '
+      'reaches its rows at once', (tester) async {
+    AppInput.settings.value = const AppInputSettings();
+    await pump(tester);
+    final controller = railScroll(tester);
+    final session = sessionOf(tester);
+
+    AppInput.settings.value = AppInputSettings.testCorpusBaseline.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+    await tester.pump();
+    await fingerDrag(tester, railRowGrip('l13'), const Offset(0, -120));
+
+    expect(
+      session.rowSelection.value.length,
+      greaterThan(1),
+      reason: 'the finger is the drawing hand now, so it selects',
+    );
+    expect(controller.offset, 0, reason: 'and scrolls nothing');
+  });
 }

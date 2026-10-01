@@ -4,8 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -13,8 +17,11 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
 import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_norishiro_boundary.dart';
 
 /// The ruler's のりしろ mark: a second end-line saying how much is DRAWN, past
@@ -511,6 +518,132 @@ void main() {
             )
             .drawnEnd,
         moreOrLessEquals(bodyLine.left),
+      );
+    });
+
+    // 🔎`ruler-norishiro-follows-drags` (09-29): the canvas's fade followed an
+    // O.L dragged over the cut's end while the ruler kept the committed
+    // margin until the release — the host handed it over when it built, and
+    // never rebuilds for a drag step.
+    testWidgets('an O.L dragged over the cut\'s end draws and names its '
+        'margin while it is dragged, on the ruler and through the body', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      final end = session.activeCutSpan.activeCutPlaybackFrameCount;
+      session.transitions.updateTransitionInstructions(
+        SplayTreeMap<int, InstructionEvent>.from({
+          end - 4: const InstructionEvent(instructionId: 'ol', length: 3),
+        }),
+      );
+      await tester.pumpAndSettle();
+      TimelineRulerNoriShiroBoundary ruler() =>
+          tester.widget(find.byType(TimelineRulerNoriShiroBoundary));
+      TimelineBodyNoriShiroBoundary body() =>
+          tester.widget(find.byType(TimelineBodyNoriShiroBoundary));
+      expect(ruler().drawnEnd, ruler().cutEnd, reason: 'fixture: inside');
+
+      expect(
+        session.edgeDrag.beginTransitionEdgeDrag(
+          spanStartIndex: end - 4,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+      session.edgeDrag.updateTransitionEdgeDrag(3);
+      await tester.pump();
+
+      expect(
+        ruler().drawnEnd,
+        greaterThan(ruler().cutEnd),
+        reason: 'the margin follows the hand',
+      );
+      expect(ruler().label, startsWith('O.L'), reason: 'named before release');
+      expect(body().left, ruler().drawnEnd, reason: 'one line, the body too');
+
+      session.edgeDrag.cancelTransitionEdgeDrag();
+      await tester.pumpAndSettle();
+      expect(ruler().drawnEnd, ruler().cutEnd, reason: 'a cancel takes it back');
+    });
+
+    // The X-sheet's rail asks the same margin the same way. ↩️It did not
+    // follow even a trim: the rail's red line rode the drag, its blue line
+    // stood still.
+    testWidgets('the X-sheet rail asks its margin again when a drag steps', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final cursor = ValueNotifier<int>(0);
+      addTearDown(cursor.dispose);
+      final drag = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(drag.dispose);
+      var margin = (drawnFrameCount: 12, label: '');
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TimelinePanel(
+              layers: [
+                Layer(
+                  id: const LayerId('a'),
+                  name: 'A',
+                  kind: LayerKind.animation,
+                  frames: const [],
+                ),
+              ],
+              activeLayerId: const LayerId('a'),
+              frameCursor: cursor,
+              playbackFrameCount: 12,
+              noriShiro: () => margin,
+              dragPreview: drag,
+              cutEndDrag: TimelineCutEndDragCallbacks(
+                cutId: const CutId('cut'),
+                onBegin: () => true,
+                onUpdate: (_) {},
+                onEnd: () {},
+                onCancel: () {},
+              ),
+              exposureStateForLayer: (_, _) =>
+                  TimelineCellExposureState.uncovered,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              orientation: TimelineOrientation.vertical,
+              onOrientationChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      TimelineRulerNoriShiroBoundary rail() =>
+          tester.widget(find.byType(TimelineRulerNoriShiroBoundary));
+      expect(rail().drawnEnd, rail().cutEnd, reason: 'fixture: no margin');
+
+      margin = (drawnFrameCount: 18, label: 'O.L のりしろ');
+      drag.value = const CutTrimDragPreview(previewDurations: {});
+      await tester.pump();
+      expect(rail().drawnEnd, greaterThan(rail().cutEnd));
+      expect(rail().label, 'O.L のりしろ');
+      expect(
+        tester
+            .widget<TimelineBodyNoriShiroBoundary>(
+              find.byType(TimelineBodyNoriShiroBoundary),
+            )
+            .left,
+        rail().drawnEnd,
+        reason: 'one line, down the body too',
       );
     });
   });

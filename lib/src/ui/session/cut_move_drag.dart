@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/cut_move_drag.dart';
 import '../../models/cut_id.dart';
 import 'session_roles.dart';
@@ -16,12 +18,12 @@ class CutMoveDragVerbs {
     required ProjectAccess project,
     required SelectionAccess selection,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required StoryboardRows storyboardRows,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
-       _internals = internals,
+       _dragPreview = dragPreview,
        _storyboardRows = storyboardRows;
 
   final StoryboardRows _storyboardRows;
@@ -29,7 +31,7 @@ class CutMoveDragVerbs {
   final ProjectAccess _project;
   final SelectionAccess _selection;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The in-flight whole-block move ([CutMoveDrag]), or null. The move's
   /// own doc — re-time vs reorder, the contiguous-run rule — lives on the
@@ -39,9 +41,9 @@ class CutMoveDragVerbs {
   bool beginCutMoveDrag(CutId cutId) {
     final drag = CutMoveDrag.begin(
       cutId: cutId,
-      tracks: _project.repository.requireProject().tracks,
+      repository: _project.repository,
       selectedCutIds: _storyboardRows.storyboardSelectedCutIds,
-      preview: _internals.dragPreview,
+      preview: _dragPreview,
       selection: _selection.trackFrameRangeSelection.value,
       publishSelection: (selection) =>
           _selection.trackFrameRangeSelection.value = selection,

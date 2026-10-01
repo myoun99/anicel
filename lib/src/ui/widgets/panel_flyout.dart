@@ -164,20 +164,9 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   final List<String> shortcuts;
 }
 
-/// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'`, the
-/// one equal to [current] marked as current, and a pick reported through
-/// [onPicked].
-///
-/// ★THE VALUE PICKER, WRITTEN ONCE. Six lists spelled this loop out — the
-/// brush's tip rotation and dual blend, the strip's blend, the onion skin's
-/// step and colour mode, a row's blend — and the clone ratchet named the
-/// pair that made the count rise. What differs between them is the label and
-/// what a pick writes, which is exactly what the parameters are.
-///
-/// 🚨CURRENT IS [PanelFlyoutItem.selected], NEVER [PanelFlyoutItem.checked].
-/// All six copies said `checked`, which drew a check glyph on the current
-/// row — the mark 「선택 표시는 색상만」 forbids and the one that widens
-/// the row it lands on. `checked` is a toggle's field; none of these is one.
+/// One [PanelFlyoutItem] per value, keyed `'$keyPrefix${value.name}'` —
+/// the enum spelling of [PanelFlyoutValueChoices.asFlyoutValueChoices],
+/// whose key is the value's own name.
 ///
 /// An extension on the values because they ARE the subject:
 /// `BrushBlendMode.values.asFlyoutChoices(…)` reads as what it builds.
@@ -187,14 +176,60 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required String keyPrefix,
     required String Function(T value) labelOf,
     required ValueChanged<T> onPicked,
+  }) => asFlyoutValueChoices(
+    current: current,
+    choiceOf: (value) => PanelFlyoutChoice(
+      key: '$keyPrefix${value.name}',
+      label: labelOf(value),
+    ),
+    onPicked: onPicked,
+  );
+}
+
+/// How a picker shows one value: the key its row is found by, the words it
+/// reads, and the glyph it wears when it has one.
+class PanelFlyoutChoice {
+  const PanelFlyoutChoice({required this.key, required this.label, this.icon});
+
+  final String key;
+  final String label;
+  final IconData? icon;
+}
+
+/// One [PanelFlyoutItem] per value, the one equal to [current] marked as
+/// current (none, when [current] is not among them), and a pick reported
+/// through [onPicked].
+///
+/// ★THE VALUE PICKER, WRITTEN ONCE. Six lists spelled this loop out — the
+/// brush's tip rotation and dual blend, the strip's blend, the onion skin's
+/// step and colour mode, a row's blend — and the clone ratchet named the
+/// pair that made the count rise. What differs between them is the label and
+/// what a pick writes, which is exactly what the parameters are.
+///
+/// Any value, not only an enum's (F-230, 유저 2026-09-29: 「선택하는 ui가
+/// 구식 ui 쓰는곳있는데 … 공용화된 ui 통일적용. 다른곳도 확인해서」): an audio
+/// device's name, a cut, an instruction definition are picked from the same
+/// list — [choiceOf] names each one's key and words, and its glyph if any.
+///
+/// 🚨CURRENT IS [PanelFlyoutItem.selected], NEVER [PanelFlyoutItem.checked].
+/// All six copies said `checked`, which drew a check glyph on the current
+/// row — the mark 「선택 표시는 색상만」 forbids and the one that widens
+/// the row it lands on. `checked` is a toggle's field; none of these is one.
+extension PanelFlyoutValueChoices<T> on Iterable<T> {
+  List<PanelFlyoutEntry> asFlyoutValueChoices({
+    required T? current,
+    required PanelFlyoutChoice Function(T value) choiceOf,
+    required ValueChanged<T> onPicked,
   }) => [
     for (final value in this)
-      PanelFlyoutItem(
-        keyValue: '$keyPrefix${value.name}',
-        label: labelOf(value),
-        selected: value == current,
-        onSelected: () => onPicked(value),
-      ),
+      if (choiceOf(value) case final choice)
+        PanelFlyoutItem(
+          keyValue: choice.key,
+          label: choice.label,
+          icon: choice.icon,
+          selected: value == current,
+          onSelected: () => onPicked(value),
+        ),
   ];
 }
 
@@ -920,7 +955,12 @@ class PanelFlyoutButton extends StatelessWidget {
     this.expand = false,
     this.axis = Axis.horizontal,
     this.enabled = true,
+    this.icon,
   });
+
+  /// A glyph before the label — what the picked value wears in the list,
+  /// so the button shows the same thing (an instruction's kind).
+  final IconData? icon;
 
   /// False = the button says what it holds and refuses to open.
   ///
@@ -1004,6 +1044,13 @@ class PanelFlyoutButton extends StatelessWidget {
               mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                if (icon case final glyph?) ...[
+                  Icon(glyph, size: 16, color: labelStyle.color),
+                  SizedBox(
+                    width: vertical ? null : 6,
+                    height: vertical ? 6 : null,
+                  ),
+                ],
                 if (expand) Flexible(child: text) else text,
                 if (showCaret) ...[
                   SizedBox(

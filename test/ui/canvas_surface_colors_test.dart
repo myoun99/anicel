@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/models/app_workspace_colors.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
@@ -99,7 +100,14 @@ void main() {
     // apron — that is the BACKDROP, and it used to be unreachable because
     // the pasteboard was painted over the whole box.
     expect(rgbAt(2, 2), backdrop & 0xFFFFFF, reason: 'top-left corner');
-    expect(rgbAt(897, 597), backdrop & 0xFFFFFF, reason: 'bottom-right');
+    // The bottom-right corner of what the lanes leave: a docked panel's
+    // scrollbars stand in lanes of their own on those edges (F-209).
+    const lane = AppScrollbarLane.wide;
+    expect(
+      rgbAt((897 - lane).toInt(), (597 - lane).toInt()),
+      backdrop & 0xFFFFFF,
+      reason: 'bottom-right',
+    );
     // Just outside the paper, still inside the apron: the PASTEBOARD.
     expect(
       rgbAt(450 - 12, 300 - 12),

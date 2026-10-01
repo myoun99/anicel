@@ -19,13 +19,25 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'timeline_frame_rows_scroll_body.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_filter.dart';
 import 'timeline_ruler_cursor_overlay.dart' show ReadyRunsIn;
 import 'timeline_section_policy.dart';
 import '../../models/project_frame_rate.dart';
+
+/// See [TimelineGridHooks.memoAux].
+class TimelineRowMemoAux {
+  const TimelineRowMemoAux({this.cameraTrack, this.instructionDefs});
+
+  /// The active cut's camera track object (immutable — a key edit is a
+  /// new instance).
+  final Object? cameraTrack;
+
+  /// The camera-instruction registry object.
+  final Object? instructionDefs;
+}
+
 
 /// What the session answers to a timeline grid — the hooks, resolvers and
 /// live reads a grid needs to show a cut and act on it — as ONE bundle that
@@ -54,8 +66,7 @@ class TimelineGridHooks {
     this.revealSelectionTick,
     this.playbackFrame,
     required this.playbackFrameCount,
-    this.drawnFrameCount,
-    this.noriShiroLabel = '',
+    this.noriShiro,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -82,6 +93,7 @@ class TimelineGridHooks {
     this.isLayerSoloed,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.onOpenLayerLinks,
     this.layerSourceIsShortOf,
     this.attachArrowPlacementOf,
     required this.onToggleLayerVisibility,
@@ -125,6 +137,7 @@ class TimelineGridHooks {
     this.spillInLeadFrames = const {},
     this.cutEndDrag,
     this.substrateGeneration = '',
+    this.memoAux = const TimelineRowMemoAux(),
     this.onLayerBlendModeSelected,
     this.layerOpacityOverrideOf,
   });
@@ -161,22 +174,29 @@ class TimelineGridHooks {
 
   final int playbackFrameCount;
 
-  /// How many frames the cut is DRAWN for (尺 + のりしろ). Null keeps the
-  /// ruler's blue handle boundary off, which is every cut no transition
-  /// crosses.
-  final int? drawnFrameCount;
-
-  /// The word the ruler spells across the handle.
-  final String noriShiroLabel;
+  /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
+  /// ruler spells across the handle, as the timeline shows them NOW. Null
+  /// keeps the ruler's blue handle boundary off.
+  ///
+  /// 🚨Asked, not handed over: every surface that draws the margin asks it
+  /// again wherever it hears a drag, so the blue line, the wash's edge and
+  /// the name across the margin ride a transition span dragged over the
+  /// cut's boundary. ↩️They were two values the host handed over when it
+  /// built, and the host never rebuilds for a drag step — the ruler stood
+  /// on the committed margin until the release
+  /// (`ruler-norishiro-follows-drags`).
+  final TimelineNoriShiro Function()? noriShiro;
 
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
 
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
-  /// R26 #44: the unworked-block tint's fact source + its memo token
-  /// (see [TimelineFrameRowsScrollBody]); null = no tint.
-  /// R26 #44: the unworked-block tint's fact and its event.
+  /// R26 #44: the unworked-block tint's fact AND its event (null = no
+  /// tint). The event replaced a per-layer "empty cels" token that joined
+  /// the memo key: the token forced a row REBUILD and only when something
+  /// else already announced, while the revision repaints the row painter
+  /// the moment a cel gains pixels — and costs no per-row string build.
   final TimelineCelContentSource? celContent;
 
   final ValueChanged<LayerId> onSelectLayer;
@@ -208,7 +228,10 @@ class TimelineGridHooks {
   instructionDefById;
 
   /// D26: crossing-fade warning resolver, by span start key (the display
-  /// clone's projected key on this cut-local surface).
+  /// clone's projected key on this cut-local surface). A callback, so it
+  /// stays OUT of the row memo token (R13-2); its ANSWERS are covered —
+  /// instruction edits move the [memoAux] identity and the display clone's
+  /// layer identity, and a cut-duration change moves [playbackFrameCount].
   final String? Function(int spanStartKey)? instructionCrossingTooltip;
 
   /// Waveform peaks for SE rows' audio clips + the removal hook.
@@ -220,7 +243,8 @@ class TimelineGridHooks {
   final ProjectFrameRate projectFrameRate;
 
   /// The ruler's bottom-line mode (UI-R10 #27): seconds display repeats
-  /// 1..fps per second instead of absolute frame numbers.
+  /// 1..fps per second instead of absolute frame numbers. The block
+  /// duration labels share it (R26 #7).
   final bool showSeconds;
 
   /// The seconds toggle moved OUT of the command bar and onto the grid's
@@ -269,6 +293,11 @@ class TimelineGridHooks {
   /// 라운드 3). Null hides the button.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// A linked row's badge: the link window (I-25). Null leaves the badge a
+  /// picture.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerLinks;
 
   /// Whether that row asks its file for more than the file can show — the
   /// button goes red and the popover says by how much (유저 2026-09-12).
@@ -396,10 +425,16 @@ class TimelineGridHooks {
 
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
+  /// The host's lane provider — THE one the display rows were built with.
+  /// A lane row re-derives through it when the drag gate hands it a
+  /// previewed layer (R10), so the band's keys follow the drag per step
+  /// instead of sitting where they were when the row was built.
   final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
-  /// The union-summary provider (the CAMERA row's key markers, B4) — see
-  /// [TimelineFrameRowsScrollBody.unionLaneForLayer].
+  /// The union-summary provider (the CAMERA row's key markers, B4) —
+  /// resolved per row BUILD, so the drag gate's per-step rebuild re-derives
+  /// the union from the session's preview-aware camera track exactly as
+  /// [lanesForLayer] re-derives the member lanes. Null = no union overlays.
   final PropertyLaneRow? Function(Layer layer)? unionLaneForLayer;
 
   /// Lane key editing hooks (navigator toggle, marker drags, hold/delete).
@@ -458,8 +493,20 @@ class TimelineGridHooks {
   final TimelineCutEndDragCallbacks? cutEndDrag;
 
   /// #29: the (project, cut) world the rows' resolvers answer from — see
-  /// [TimelineRowCellsPainter.substrateGeneration].
+  /// [TimelineRowCellsPainter.substrateGeneration]. Joins the row MEMO key
+  /// too: linked cuts can share Layer instances, and a memoized row from
+  /// another generation would carry its old token into the tile store's
+  /// live-generation tracking.
   final String substrateGeneration;
+
+  /// Identity tokens for the sparse rows' EXTERNAL inputs (UI-R20 #4):
+  /// the camera row reads the cut's camera track and instruction rows
+  /// read the instruction registry — both outside the Layer value, so
+  /// their identities join the memo key and the painter's coverage
+  /// ([timelineRowCoverageIdentity]). Hosts pass the live objects; a key
+  /// change is exactly an edit. (x-sheet) The sheet was handed none, so a
+  /// camera key never redrew its camera column — ㉘ on the timeline only.
+  final TimelineRowMemoAux memoAux;
 
   /// R27 #6: the label's blend-mode dropdown (rightmost column) and the
   /// legend's bulk pick both commit through this.

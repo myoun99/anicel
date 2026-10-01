@@ -114,12 +114,14 @@ class VideoExportService {
   /// The even-dimension pad H.264/H.265 require gains white pixels —
   /// TRANSPARENT ones under alpha, where a paper hairline would read as
   /// content. The rate goes out as ffmpeg's own fraction (`24000/1001`).
+  ///
+  /// The container is [outputFilePath]'s: ffmpeg muxes by the extension,
+  /// which the export dialog names from the container it was given.
   @visibleForTesting
   static List<String> buildFfmpegArguments({
     required ProjectFrameRate frameRate,
     required String outputFilePath,
     String? audioMixPath,
-    ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
@@ -242,7 +244,6 @@ class VideoExportService {
       outputFilePath: outputFilePath,
       frameRate: frameRate,
       audioMixPath: audioMixPath,
-      container: container,
       codec: codec,
       alpha: alpha,
       bitrateBps: bitrateBps,
@@ -417,7 +418,6 @@ class VideoExportService {
     required String outputFilePath,
     required ProjectFrameRate frameRate,
     String? audioMixPath,
-    ExportVideoContainer container = ExportVideoContainer.mp4,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
     int bitrateBps = 0,
@@ -432,7 +432,6 @@ class VideoExportService {
           frameRate: frameRate,
           outputFilePath: outputFilePath,
           audioMixPath: audioMixPath,
-          container: container,
           codec: codec,
           alpha: alpha,
           bitrateBps: bitrateBps,

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../../services/persistence/app_accent_settings_store.dart';
+import '../../services/persistence/app_frame_count_settings_store.dart';
 import '../../services/persistence/app_frame_grid_settings_store.dart';
 import '../../services/persistence/app_onion_skin_settings_store.dart';
 import '../../services/persistence/app_input_settings_store.dart';
@@ -20,6 +21,7 @@ import '../../models/app_input_settings.dart';
 import '../../models/audio_sync_settings.dart';
 import '../text/app_strings.dart';
 import '../../models/app_accents.dart';
+import '../../models/app_frame_count_settings.dart';
 import '../../models/app_frame_grid_settings.dart';
 import '../../models/onion_skin_settings.dart';
 import '../theme/app_theme.dart' show AppColors;
@@ -60,6 +62,7 @@ class EditorAppSettings {
     AppUiScaleStore? uiScaleStore,
     AppOnionSkinSettingsStore? onionSkinSettingsStore,
     AppFrameGridSettingsStore? frameGridSettingsStore,
+    AppFrameCountSettingsStore? frameCountSettingsStore,
     Iterable<String> Function()? deviceLanguageCodes,
   }) : _languageSettingsStore = languageSettingsStore,
        _deviceLanguageCodes = deviceLanguageCodes ?? _platformLanguageCodes,
@@ -71,7 +74,8 @@ class EditorAppSettings {
        _audioSyncSettingsStore = audioSyncSettingsStore,
        _uiScaleStore = uiScaleStore,
        _onionSkinSettingsStore = onionSkinSettingsStore,
-       _frameGridSettingsStore = frameGridSettingsStore;
+       _frameGridSettingsStore = frameGridSettingsStore,
+       _frameCountSettingsStore = frameCountSettingsStore;
 
   /// Starts every restore, in the order the session started them in.
   ///
@@ -88,6 +92,7 @@ class EditorAppSettings {
     unawaited(_restoreAudioSyncSettings());
     unawaited(_restoreOnionSkinSettings());
     unawaited(_restoreFrameGridSettings());
+    unawaited(_restoreFrameCountSettings());
   }
 
   // --- Frame grid (block frame lines, 2026-09-24) ---------------------------
@@ -108,6 +113,26 @@ class EditorAppSettings {
     AppFrameGridSettings.settings,
     settings,
     _frameGridSettingsStore?.save,
+  );
+
+  // --- Frame count entry (I-24-open-entry, 2026-10-01) ----------------------
+
+  /// Injectable persistence; null (tests) keeps the in-memory defaults.
+  final AppFrameCountSettingsStore? _frameCountSettingsStore;
+
+  /// The LIVE value lives app-wide on [AppFrameCountSettings.settings] — the
+  /// count window opens on it; the session only restores/persists.
+  Future<void> _restoreFrameCountSettings() async {
+    _restored(
+      AppFrameCountSettings.settings,
+      await _frameCountSettingsStore?.load(),
+    );
+  }
+
+  void setFrameCountSettings(AppFrameCountSettings settings) => _publish(
+    AppFrameCountSettings.settings,
+    settings,
+    _frameCountSettingsStore?.save,
   );
 
 

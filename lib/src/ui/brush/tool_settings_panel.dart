@@ -1,9 +1,12 @@
 import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 
+import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
+
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
@@ -29,6 +32,7 @@ import '../text/trimmed_decimal.dart';
 import '../widgets/empty_state_text.dart';
 import '../widgets/fill_reference_button.dart';
 import '../listenable_rebind.dart';
+import '../widgets/pill_strip.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
 /// knobs for the ACTIVE tool. Painting tools show the brush settings, the
@@ -47,6 +51,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
     this.selectionCommands,
+    this.canvasSize,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
     this.onEyedropperSourceChanged,
@@ -109,6 +114,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// The canvas on screen, whose pasteboard wall the selection tool's
+  /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
+  /// and the button keeps its place, greyed.
+  final CanvasSize? canvasSize;
 
   /// The piece the cut tool is holding — the stamp tile's knobs pose it.
   final CutPieceSlot? cutPieceSlot;
@@ -230,6 +240,7 @@ class ToolSettingsPanel extends StatelessWidget {
           maskOptions: selectionMaskOptions,
           onMaskOptionsChanged: onSelectionMaskOptionsChanged,
           selectionCommands: selectionCommands,
+          canvasSize: canvasSize,
           language: language,
         ),
         // The CUT grab: nothing to set whatever shape it is wearing (the
@@ -524,6 +535,7 @@ class _SelectionSettings extends StatelessWidget {
     required this.maskOptions,
     required this.onMaskOptionsChanged,
     required this.selectionCommands,
+    required this.canvasSize,
     required this.language,
   });
 
@@ -532,12 +544,17 @@ class _SelectionSettings extends StatelessWidget {
   final SelectionMaskOptions maskOptions;
   final ValueChanged<SelectionMaskOptions>? onMaskOptionsChanged;
   final CanvasSelectionCommands? selectionCommands;
+  final CanvasSize? canvasSize;
   final AppLanguage language;
 
   @override
   Widget build(BuildContext context) {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
+    final canvas = canvasSize;
+    final invert = commands == null || canvas == null
+        ? null
+        : () => commands.invertSelection(canvasSize: canvas);
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
     // (two tools there), so the settings panel no longer duplicates
     // it — only the mask knobs remain.
@@ -559,6 +576,21 @@ class _SelectionSettings extends StatelessWidget {
               mode: commands.combineMode,
               language: language,
               onChanged: (mode) => commands.combineMode = mode,
+            ),
+          ),
+          const SizedBox(height: 8),
+          // 선택 반전 — 유저 2026-09-12 (I-23): 「선택반전기능 … 위치는
+          // 선택툴일때의 툴설정. 버튼.」 In its place whatever is selected
+          // (with nothing selected it selects the whole wall), and greyed —
+          // never gone — when there is no canvas to take the wall from.
+          // The press is the button's own (control_press_claim): a drag that
+          // starts on it never scrolls the panel.
+          ControlPressClaim(
+            onPressed: invert,
+            child: OutlinedButton(
+              key: const ValueKey<String>('selection-invert-button'),
+              onPressed: silentPress(invert),
+              child: Text(AppText.strings.selectionInvert),
             ),
           ),
         ],
@@ -1140,22 +1172,20 @@ class _ReadSourceControl extends StatelessWidget {
         //
         // STOOD UP, one answer per line: side by side, three answers in the
         // panel's width folded 「References」 onto four lines (measured in
-        // the real panel, 2026-09-24). Both tools wear the one shape.
-        SegmentedButton<CanvasReadSource>(
+        // the real panel, 2026-09-24). Both tools wear the one shape — the
+        // app's one grouped choice (board pill-group-everywhere), down.
+        PillStrip(
           key: ValueKey<String>('$tool-source-segments'),
-          direction: Axis.vertical,
-          showSelectedIcon: false,
-          segments: [
+          axis: Axis.vertical,
+          items: [
             for (final offer in offered)
-              ButtonSegment<CanvasReadSource>(
-                value: offer,
-                label: Text(_label(offer)),
+              PillItem(
+                keyValue: '$tool-source-${offer.name}',
+                label: _label(offer),
+                selected: offer == source,
+                onTap: handler == null ? null : () => handler(offer),
               ),
           ],
-          selected: {source},
-          onSelectionChanged: handler == null
-              ? null
-              : (selection) => handler(selection.first),
         ),
         const SizedBox(height: 4),
         Row(

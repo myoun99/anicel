@@ -266,11 +266,15 @@ void main() {
       follower.handleScroll();
       expect(offset.value, 120, reason: 'fixture: the copy heard the scroll');
 
-      // The copy goes stale — however it got that way, silently or late.
-      offset.value = 999;
+      // The copy goes stale: the position moves and nobody is told — what a
+      // layout's correction does (`correctBy`). ↩️This wrote the copy
+      // instead, which since 09-28 is someone else turning the axis (the
+      // folded row does), and the scrollable follows it.
+      controller.position.correctPixels(40);
+      expect(offset.value, 120, reason: 'fixture: the copy was not told');
       expect(
         follower.paintedOffset,
-        120,
+        40,
         reason: 'what paints reads the POSITION, never the copy',
       );
 
@@ -278,7 +282,7 @@ void main() {
       await tester.pump();
       expect(
         offset.value,
-        120,
+        40,
         reason: 'the copy catches up the frame after the layout that asked',
       );
     });

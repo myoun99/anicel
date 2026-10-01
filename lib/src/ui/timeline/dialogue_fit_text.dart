@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../text/app_face.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/dialogue_fit_paint.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../text/word_condensation.dart';
 import 'axis_turn.dart';
 import '../repaint_props.dart';
@@ -46,11 +47,7 @@ class DialogueFitText extends StatelessWidget {
         painter: _DialogueFitPainter(
           text: text,
           axis: axis,
-          style: appFaceOf(DefaultTextStyle.of(context).style).copyWith(
-            color: color,
-            fontSize: fontSize,
-            fontWeight: FontWeight.w600,
-          ),
+          style: dialogueFitStyle(context, color: color, fontSize: fontSize),
         ),
         child: const SizedBox.expand(),
       ),
@@ -58,7 +55,20 @@ class DialogueFitText extends StatelessWidget {
   }
 }
 
-class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
+/// The dialogue's print — what [DialogueFitText] paints it in, and what a
+/// host measuring it before laying it out has to measure it in.
+TextStyle dialogueFitStyle(
+  BuildContext context, {
+  required Color color,
+  double fontSize = 12,
+}) => appFaceOf(DefaultTextStyle.of(context).style).copyWith(
+  color: color,
+  fontSize: fontSize,
+  fontWeight: FontWeight.w600,
+);
+
+class _DialogueFitPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   _DialogueFitPainter({
     required this.text,
     required this.axis,
@@ -78,6 +88,7 @@ class _DialogueFitPainter extends CustomPainter with RepaintOnProps {
         topCenter: Offset(size.width / 2, 0),
         extent: size.height,
         style: style,
+        setWord: paintFittedText,
         maxCrossExtent: size.width,
       );
       return;

@@ -64,7 +64,7 @@ void main() {
         },
       );
 
-      final derived = rederiveRunBehaviors(layer, cutFrameCount: 8);
+      final derived = rederiveRunBehaviors(layer, drawnFrameCount: 8);
       expect(derived.timeline[1]!.ghostOf, endHoldGhost);
       expect(derived.timeline[1]!.length, 3, reason: 'A holds up to B');
       for (final index in [5, 6, 7]) {

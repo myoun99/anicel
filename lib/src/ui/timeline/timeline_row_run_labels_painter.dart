@@ -14,6 +14,7 @@ import 'timeline_frame_range_policy.dart'
 import 'timeline_frame_window.dart' show visibleFrameWindowFor;
 import 'timeline_glyph_cache.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import 'memo_token.dart';
 
 /// One block's printed length and where it sits — the probe surface tests
@@ -70,7 +71,8 @@ const double timelineRunLabelFontSize = 9;
 ///
 /// Ghost blocks stay unlabeled: their timing is derived, the same rule the
 /// run-edge clusters follow.
-class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
+class TimelineRowRunLabelsPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   TimelineRowRunLabelsPainter({
     required this.layer,
     required this.geometry,
@@ -162,16 +164,33 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
     return _labelsIn(window.startIndex, window.endIndexExclusive);
   }
 
+  /// The row's blocks as `(start, length)`, in order — whatever the row.
+  ///
+  /// 🗣️F-228 (유저 2026-09-29): 「디렉션레이어나 트랜지션레이어만
+  /// 코마텍스트가 없는데, 블록이라면 전부 코마텍스트가 존재해야함.
+  /// 통일해서 적용」. A transition row has no timeline of its own — its
+  /// blocks are the spans it stores ([LayerKind.bandIsInstructionsOnly]);
+  /// every other row keeps its blocks on the timeline, the direction row's
+  /// included (R27: its spans ride its blocks). Ghosts stay unlabeled.
+  Iterable<(int, int)> get _blocks sync* {
+    if (layer.kind.bandIsInstructionsOnly) {
+      for (final MapEntry(:key, :value) in layer.instructions.entries) {
+        yield (key, value.length);
+      }
+      return;
+    }
+    for (final MapEntry(:key, :value) in layer.timeline.entries) {
+      if (value.isDrawing && !value.ghost) {
+        yield (key, value.length ?? 1);
+      }
+    }
+  }
+
   /// The labels of the blocks that reach frames [from, to), in block order.
   List<TimelineRunLabel> _labelsIn(int from, int to) {
     final labels = <TimelineRunLabel>[];
-    for (final key in layer.timeline.keys) {
-      final entry = layer.timeline[key]!;
-      if (!entry.isDrawing || entry.ghost) {
-        continue;
-      }
-      final startIndex = key;
-      final endIndexExclusive = key + (entry.length ?? 1);
+    for (final (startIndex, length) in _blocks) {
+      final endIndexExclusive = startIndex + length;
       if (!frameRangesOverlap(startIndex, endIndexExclusive, from, to)) {
         continue;
       }
@@ -187,8 +206,9 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       }
       final start = _edge(startIndex);
       final end = _edge(endIndexExclusive);
-      // The centre of the block's LAST cell, row-local.
-      final lastCellCentre = end - frameCellExtent / 2;
+      // The centre of the block's LAST cell, row-local — the cell the law
+      // laid (F-220), not the zoom's nominal width.
+      final lastCellCentre = (_edge(endIndexExclusive - 1) + end) / 2;
       labels.add(
         TimelineRunLabel(
           startIndex: startIndex,
@@ -212,7 +232,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
   void paint(Canvas canvas, Size size) {
     final style = labelStyle;
     for (final label in runLabelsInWindow()) {
-      final glyph = timelineGlyphPainter(label.text, style);
       // Clipped to its OWN block: a number wider than one cell spills back
       // over its own block, never into the neighbour's.
       final blockStart = _edge(label.startIndex);
@@ -228,23 +247,27 @@ class TimelineRowRunLabelsPainter extends CustomPainter with RepaintOnProps {
       // right. The cross axis is what keeps the badge clear of the cel
       // name, which centres in the cell.
       // ↩️F-96: centred while it fits; a number wider than the cell ends at
-      // the cell and grows back into its block — and (B) narrows only once
-      // it would leave the block ([timelineBlockWordLayout]).
+      // the cell and grows back into its block — and (B) gives up its
+      // letter gaps, then narrows, only once it would leave the block
+      // ([timelineWordSetOnto], [timelineBlockWordLayout]).
       final paper = timelineRowPaperExtent(crossAxisExtent);
-      final layout = timelineBlockWordLayout(glyph.size, (
+      final lastCellStart = _edge(label.endIndexExclusive - 1);
+      final slot = (
         axis: axis,
         room: axis == Axis.horizontal
             ? Rect.fromLTRB(blockStart, 0, blockEnd, paper)
             : Rect.fromLTRB(0, blockStart, paper, blockEnd),
-        cellStart: blockEnd - frameCellExtent,
-        cellExtent: frameCellExtent,
+        cellStart: lastCellStart,
+        cellExtent: blockEnd - lastCellStart,
         growth: TimelineBlockWordGrowth.towardBlockStart,
-        acrossAlignment: 1,
-      ));
+        acrossAlignment: 1.0,
+      );
+      final set = timelineWordSetOnto(label.text, style, slot.room.width);
+      final layout = timelineBlockWordLayout(set.glyph.size, slot);
       // 🚨F-24: the block's OWN ink, the one the cel name inside the block
       // already wears — not the ground law. The number and the name sit on
       // the same paper and now say so in the same colour.
-      paintFittedText(canvas, glyph, layout.origin, layout.fit);
+      paintFittedText(canvas, set.glyph, layout.origin, layout.fit);
       canvas.restore();
     }
   }

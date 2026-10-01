@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 
 /// The two-language settings (UI-R10 #7): program language (the app
@@ -79,22 +80,15 @@ class _LanguageRow extends StatelessWidget {
           children: [
             Text(label, style: const TextStyle(fontSize: 12)),
             const SizedBox(height: 4),
-            DropdownButton<AppLanguage>(
-              value: value,
-              isExpanded: true,
-              items: [
-                for (final language in AppLanguage.values)
-                  DropdownMenuItem(
-                    key: ValueKey<String>('language-option-${language.name}'),
-                    value: language,
-                    child: Text(language.displayName),
-                  ),
-              ],
-              onChanged: (language) {
-                if (language != null) {
-                  onChanged(language);
-                }
-              },
+            PanelFlyoutButton(
+              label: value.displayName,
+              expand: true,
+              entriesBuilder: () => AppLanguage.values.asFlyoutChoices(
+                current: value,
+                keyPrefix: 'language-option-',
+                labelOf: (language) => language.displayName,
+                onPicked: onChanged,
+              ),
             ),
           ],
         ),

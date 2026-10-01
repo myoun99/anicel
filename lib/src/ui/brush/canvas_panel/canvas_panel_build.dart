@@ -59,6 +59,8 @@ class _PanelBuild {
   late Widget _canvasView;
   late Widget Function(BuildContext context, CanvasViewport viewport)?
   _overlayBuilder;
+  late Widget Function(BuildContext context, CanvasViewport viewport)?
+  _controlsBuilder;
   late CanvasUnderlayBuilder? _underlayBuilder;
   late ValueListenable<bool>? _contentStrokeActive;
   late bool _selectionLayerActive;
@@ -76,6 +78,7 @@ class _PanelBuild {
 
     _canvasView = _state._buildViewportContent(context);
     _overlayBuilder = _state.widget.viewportOverlayBuilder;
+    _controlsBuilder = _state.widget.viewportControlsBuilder;
     _underlayBuilder = _state.widget.viewportUnderlayBuilder;
     _contentStrokeActive = _state.widget.contentStrokeActive;
 
@@ -135,15 +138,8 @@ class _PanelBuild {
   /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
   /// deck takes no pointer at all, so every tool stands down for the pan at
   /// once, and the hand says what a press will do.
-  Widget _cursorDeck(BuildContext context) => ValueListenableBuilder<bool>(
-    valueListenable: CanvasPanHold.held,
-    builder: (context, held, deck) => MouseRegion(
-      opaque: false,
-      cursor: held ? SystemMouseCursors.grab : MouseCursor.defer,
-      child: IgnorePointer(ignoring: held, child: deck),
-    ),
-    child: _toolDeck(context),
-  );
+  Widget _cursorDeck(BuildContext context) =>
+      PanHoldGate(child: _toolDeck(context));
 
   /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
   /// the selection layer and the idle ants.
@@ -156,6 +152,7 @@ class _PanelBuild {
   /// switch was touched.
   Widget _toolDeck(BuildContext context) {
     final overlayBuilder = _overlayBuilder;
+    final controlsBuilder = _controlsBuilder;
     final underlayBuilder = _underlayBuilder;
     final idleSelection = _idleSelection;
     return Stack(
@@ -220,6 +217,15 @@ class _PanelBuild {
         // above owns all interaction.
         if (idleSelection != null)
           _state._idleSelectionAnts(idleSelection),
+        // F-222: the standing row's box sits over every tool, and claims the
+        // presses that are its own ([BrushCanvasPanel.viewportControlsBuilder]).
+        // Keyed: the tool layers above come and go with the tool, and a grab
+        // in flight must not lose its State when one does.
+        if (controlsBuilder != null)
+          Positioned.fill(
+            key: const ValueKey<String>('viewport-controls'),
+            child: controlsBuilder(context, _state._viewportState._viewport),
+          ),
       ],
     );
   }

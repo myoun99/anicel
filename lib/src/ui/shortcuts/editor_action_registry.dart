@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/app_language.dart';
+import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
+import '../text/model_vocabulary.dart' show BrushBlendModeWords;
 
 /// The single shortcut intent: every editor action dispatches through ONE
 /// intent type carrying its [actionId], so the app mounts exactly one
@@ -35,6 +38,9 @@ class EditorActionDefinition {
     this.zoomsView = false,
     this.toolPress,
     this.pixelVerb,
+    this.blendMode,
+    this.pixelClipboardVerb,
+    this.readsTheSheet = false,
   });
 
   final String id;
@@ -77,6 +83,24 @@ class EditorActionDefinition {
   /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
   final CelPixelVerb? pixelVerb;
+
+  /// The blend mode a BLEND action picks for the tool in hand, or null.
+  ///
+  /// 🗣️I-31 (유저 2026-09-14): 「도구의 블렌드모드(브러시나 채우기나)내용
+  /// 숏컷으로서 등록. 컬러,비하인드 등 리스트 전부」. It picks what the
+  /// strip's blend chooser picks, where that chooser can pick — see
+  /// `BrushToolState.blendIsAChoice`.
+  final BrushBlendMode? blendMode;
+
+  /// The clipboard row of the colour edit list a row runs (I-55), or null —
+  /// the same rule as [pixelVerb], for the list's other kind of verb.
+  final PixelClipboardVerb? pixelClipboardVerb;
+
+  /// A move on the sheet (F-241): its ARROW keys are written as the timeline
+  /// reads them, and on the X-sheet a pressed arrow is turned to the
+  /// timeline's before it is matched, and a bound one is shown turned
+  /// (`SheetArrowTurn`). A key that is not an arrow never turns.
+  final bool readsTheSheet;
 }
 
 /// The action a tool button or tile presses, found by its press — so the
@@ -90,6 +114,15 @@ final Map<ToolPress, String> _toolActionIds = {
 
 /// The action a colour edit row runs, found by its verb.
 String pixelVerbActionIdFor(CelPixelVerb verb) => _pixelVerbActionIds[verb]!;
+
+/// The action a clipboard row of the colour edit list runs (I-55).
+String pixelClipboardActionIdFor(PixelClipboardVerb verb) =>
+    _pixelClipboardActionIds[verb]!;
+
+final Map<PixelClipboardVerb, String> _pixelClipboardActionIds = {
+  for (final definition in editorActionDefinitions)
+    ?definition.pixelClipboardVerb: definition.id,
+};
 
 final Map<CelPixelVerb, String> _pixelVerbActionIds = {
   for (final definition in editorActionDefinitions)
@@ -115,19 +148,61 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
         // 「선택도구의 올가미 선택에 w로 두고싶어」.
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
           const SingleActivator(LogicalKeyboardKey.keyW),
+        // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를
+        // 단축키 c로 두도록 변경하고, 스탬프를 v로」 — 「잘라내기를
+        // 고르고싶으면 올가미 잘라내기의 단축키를 사용할 예정」.
+        if (verb == CanvasTool.cut && shape == CanvasShapeKind.lasso)
+          const SingleActivator(LogicalKeyboardKey.keyC),
       ],
       toolPress: ShapeTilePress(verb, shape),
     ),
 ];
 
+/// The tool blend modes as actions, one per [BrushBlendMode] — the strip's
+/// blend chooser, in its order.
+///
+/// 🗣️I-31: 「그리고 위에서부터 순서대로 F1부터 F12까지 등록할수있는만큼
+/// 초기값으로서 숏컷 등록」 — the first twelve get F1–F12, the rest none.
+///
+/// ★GENERATED from the list, like the shape tiles: a mode added to it
+/// arrives here with it, and its name is composed from the mode's own
+/// ([blendModeActionLabel]), so no table names a mode twice.
+List<EditorActionDefinition> _blendModeActions() => [
+  for (final (index, mode) in BrushBlendMode.values.indexed)
+    EditorActionDefinition(
+      id: 'tool-blend-${mode.name}',
+      label: blendModeActionLabel(mode, AppLanguage.en),
+      category: 'Tools',
+      defaultActivators: [
+        if (index < _functionKeys.length) SingleActivator(_functionKeys[index]),
+      ],
+      blendMode: mode,
+    ),
+];
+
+const _functionKeys = [
+  LogicalKeyboardKey.f1,
+  LogicalKeyboardKey.f2,
+  LogicalKeyboardKey.f3,
+  LogicalKeyboardKey.f4,
+  LogicalKeyboardKey.f5,
+  LogicalKeyboardKey.f6,
+  LogicalKeyboardKey.f7,
+  LogicalKeyboardKey.f8,
+  LogicalKeyboardKey.f9,
+  LogicalKeyboardKey.f10,
+  LogicalKeyboardKey.f11,
+  LogicalKeyboardKey.f12,
+];
+
+/// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
+String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
+    '${AppStrings.of(language).brBlend}: ${mode.labelFor(language)}';
+
 /// Registry ids (referenced from dispatch and menu labels).
 abstract final class EditorActionIds {
   static const framePrevious = 'frame-previous';
   static const frameNext = 'frame-next';
-  static const frameWalkLeft = 'frame-walk-left';
-  static const frameWalkRight = 'frame-walk-right';
-  static const frameWalkUp = 'frame-walk-up';
-  static const frameWalkDown = 'frame-walk-down';
   static const drawingPrevious = 'drawing-previous';
   static const drawingNext = 'drawing-next';
 
@@ -157,6 +232,7 @@ abstract final class EditorActionIds {
   static const toolTransformFree = 'tool-transform-free';
   static const toolTransformMesh = 'tool-transform-mesh';
   static const toolCut = 'tool-cut';
+  static const toolCutWhole = 'tool-cut-whole';
   static const toolCutStamp = 'tool-cut-stamp';
   static const selectionDeselect = 'selection-deselect';
   static const layerUp = 'layer-up';
@@ -192,12 +268,20 @@ abstract final class EditorActionIds {
   static const editPasteIndependent = 'edit-paste-independent';
   static const editDelete = 'edit-delete';
 
+  /// 🗣️I-18 — 자동 이름 지정, the shared pill's button beside Edit.
+  static const editAutoName = 'edit-auto-name';
+
   /// The colour edit list's four verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
   static const editClearPixels = 'edit-clear-pixels';
   static const editDeleteColour = 'edit-delete-colour';
   static const editKeepColour = 'edit-keep-colour';
+
+  /// Its clipboard rows (I-55) — 픽셀 복사 and the two pastes.
+  static const editCopyPixels = 'edit-copy-pixels';
+  static const editPastePixelsAbove = 'edit-paste-pixels-above';
+  static const editPastePixelsBelow = 'edit-paste-pixels-below';
 
   /// 「컨트롤s로 저장 로직 연결, 컨트롤쉬프트s로 다른이름저장」.
   static const fileSave = 'file-save';
@@ -212,88 +296,78 @@ abstract final class EditorActionIds {
   static const canvasZoomOut = 'canvas-zoom-out';
 }
 
-/// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
-/// and drawing jumps on Ctrl+`,`/`.` are the animation-desk core; tools
-/// and transport follow PS/CSP convention.
+/// The default action set. Tools and transport follow PS/CSP convention.
 final List<EditorActionDefinition> editorActionDefinitions = [
-  // Arrows are the PRIMARY flip keys (R10-⑧ — the primary shows as the
-  // PEN-7c: plain arrows walk DRAWINGS (block-to-block — the animator's
-  // flip unit); Ctrl+arrows step ONE frame (the fine unit). Comma/period
-  // keep the frame-step desk-muscle aliases; everything rebinds in the
-  // shortcut settings as always.
+  // 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
+  // 레이어 이렇게 개편」 — SIX moves, named by what they do, all on the
+  // arrows. Their arrows are written as the timeline reads them and turn
+  // with the X-sheet ([EditorActionDefinition.readsTheSheet]).
+  // ↩️The Ctrl+arrows were four DIRECTION actions of their own (F-28: 「Step
+  // Left」 …): 「이전프레임이랑 왼쪽으로 한걸음이랑 똑같은데 … 싹 삭제」.
+  // The one-frame arrow is Shift now: 「컨트롤+화살표가 아니라
+  // 쉬프트+화살표로 변경」 — and it is the frame's ONLY key: 「이전/다음
+  // 프레임은 ,.가 아니라 쉬프트<>만이야. ,.는 삭제」. A block's second key,
+  // Ctrl+`,`/`.`, was never asked for: 「이전원화 다음원화는 왜 단축키
+  // 두개인지? … 컨트롤+, 이런건 삭제. 절대 멋대로 넣지말고 넣을땐 보고할것」.
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.comma)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true),
+    ],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameNext,
     label: 'Next Frame',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.period)],
-  ),
-  // F-28 (유저 2026-08-28): the Ctrl+arrows are DIRECTIONS, so they read
-  // the sheet — along the frame axis one frame, across it one row. That
-  // is why they left the two definitions above: comma and period name a
-  // frame, not a direction, and on an X-sheet they must still step frames.
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkLeft,
-    label: 'Step Left',
-    category: 'Navigation',
     defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft, control: true),
+      SingleActivator(LogicalKeyboardKey.arrowRight, shift: true),
     ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkRight,
-    label: 'Step Right',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowRight, control: true),
-    ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkUp,
-    label: 'Step Up',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowUp, control: true),
-    ],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.frameWalkDown,
-    label: 'Step Down',
-    category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowDown, control: true),
-    ],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingPrevious,
-    label: 'Previous Drawing',
+    label: 'Previous Block',
     category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowLeft),
-      SingleActivator(LogicalKeyboardKey.comma, control: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowLeft)],
+    readsTheSheet: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingNext,
-    label: 'Next Drawing',
+    label: 'Next Block',
     category: 'Navigation',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.arrowRight),
-      SingleActivator(LogicalKeyboardKey.period, control: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowRight)],
+    readsTheSheet: true,
+  ),
+  // The DISPLAYED layer rows (TVP layer nav, UI-R20 #14). ↩️With a live
+  // selection the arrows used to NUDGE it (Photoshop behavior) — 유저
+  // 2026-09-12: 「선택툴 선택한채로 화살표키누르면 그림 이동되는데 왜 멋대로
+  // 넣은거지? 기능부터 잔존코드 싹 삭제」 (F-86).
+  const EditorActionDefinition(
+    id: EditorActionIds.layerUp,
+    label: 'Layer Up',
+    category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
+    readsTheSheet: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDown,
+    label: 'Layer Down',
+    category: 'Navigation',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
+    readsTheSheet: true,
   ),
   // 🗣️I-15 (유저 2026-09-11): 「손바닥 툴을 만들지는 않음. 다만 단축키에
   // 이동? 추가하는건 추가하고, 기본값을 휠클릭이 아니라 스페이스바로
   // 이동」 — held, not pressed: while Space is down a primary drag pans.
+  // 🗣️F-241: 「이동 누르는동안은 프레임관련이아니고 캔버스관련이잖아」 — it
+  // moves the canvas, so it stands with the canvas view's keys.
   const EditorActionDefinition(
     id: EditorActionIds.canvasPanHold,
     label: 'Pan (hold)',
-    category: 'Navigation',
+    category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.space)],
     hold: true,
   ),
@@ -393,6 +467,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.delete)],
   ),
+  // 🗣️I-18 (유저): 「타임라인 공용 알약에 새 버튼 신설 … 버튼은 자동 이름
+  // 지정」 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
+  // key. The label is the button's own, and a bar button's writing carries
+  // no '…' (B9).
+  const EditorActionDefinition(
+    id: EditorActionIds.editAutoName,
+    label: 'Auto Name',
+    category: 'Edit',
+    defaultActivators: [],
+  ),
   // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   // 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야.
   // 버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로 두고
@@ -425,6 +510,29 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.keepColour,
+  ),
+  // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
+  // — actions, in the list's order. No key ships with them: none was named.
+  const EditorActionDefinition(
+    id: EditorActionIds.editCopyPixels,
+    label: 'Copy Pixels',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.copy,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editPastePixelsAbove,
+    label: 'Paste Pixels Above',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.pasteAbove,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.editPastePixelsBelow,
+    label: 'Paste Pixels Below',
+    category: 'Edit',
+    defaultActivators: [],
+    pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
@@ -542,22 +650,37 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     toolPress: TransformModePress(TransformMode.mesh),
   ),
-  // 「잘라내기는 잘라내기 툴 자체에 c로 설정」.
+  // ↩️「잘라내기는 잘라내기 툴 자체에 c로 설정」 (09-13) gave C to the tool
+  // itself; I-53 (09-28) moved it to the lasso cut's tile — see
+  // `_shapeTileActions`.
   const EditorActionDefinition(
     id: EditorActionIds.toolCut,
     label: 'Cut Tool',
     category: 'Tools',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyC)],
+    defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.cut),
   ),
   ..._shapeTileActions(CanvasTool.cut),
+  // 🗣️I-28 (유저 2026-09-30): 「잘라내기 툴의 도구 라이브러리에 전체 잘라내기
+  // 신설」 — a tile that runs at the press (I-28-Q2), and so a key that does.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolCutWhole,
+    label: 'Whole Picture Cut',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: CutWholePress(),
+  ),
+  // 🗣️I-53 (유저 2026-09-28): 「스탬프를 v로」. ↩️V alone was retired from
+  // the move tool on 09-13 (「v 삭제하고 v 관련 잔재있으면 삭제」) — the
+  // key left that tool; this is the user handing it to another.
   const EditorActionDefinition(
     id: EditorActionIds.toolCutStamp,
     label: 'Stamp',
     category: 'Tools',
-    defaultActivators: [],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyV)],
     toolPress: ToolTilePress(CanvasTool.cutStamp),
   ),
+  ..._blendModeActions(),
   const EditorActionDefinition(
     id: EditorActionIds.selectionDeselect,
     label: 'Deselect',
@@ -565,24 +688,6 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyD, control: true),
     ],
-  ),
-  // The arrow keys walk the sheet: on the timeline left/right flip frames
-  // and up/down walk its DISPLAYED layer rows (TVP layer nav, UI-R20 #14),
-  // and the X-sheet swaps the two (F-28). ↩️With a live selection they used
-  // to NUDGE it (Photoshop behavior) — 유저 2026-09-12: 「선택툴 선택한채로
-  // 화살표키누르면 그림 이동되는데 왜 멋대로 넣은거지? 기능부터 잔존코드 싹
-  // 삭제」 (F-86), so the pair lost the nudge's name and category with it.
-  const EditorActionDefinition(
-    id: EditorActionIds.layerUp,
-    label: 'Layer Up',
-    category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
-  ),
-  const EditorActionDefinition(
-    id: EditorActionIds.layerDown,
-    label: 'Layer Down',
-    category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
   ),
   // Enter is 확정 — the last stroke laid down again, or 적용 while the
   // transform tool is up (`ConfirmVerb`); Escape cancels a transform. Text

@@ -24,6 +24,7 @@ void main() {
     double roundness = 1,
     double angleDegrees = 0,
     BrushTipMask? tipMask,
+    double edgeWidth = 0,
   }) => (
     size: size,
     hardness: hardness,
@@ -31,6 +32,7 @@ void main() {
     angleDegrees: angleDegrees,
     tipShape: BrushTipShape.round,
     tipMask: tipMask,
+    edgeWidth: edgeWidth,
   );
 
   group('what the geometry decides once, before the pixel loop', () {
@@ -76,10 +78,10 @@ void main() {
   group('the analytic round coverage', () {
     test('a HARD tip is full inside and nothing outside', () {
       final tip = brushTipGeometry(round());
-      expect(analyticRoundTipCoverage(tip, 0, 0), 1.0);
-      expect(analyticRoundTipCoverage(tip, 9.5, 0), 1.0);
+      expect(tipCoverageAt(tip, 0, 0), 1.0);
+      expect(tipCoverageAt(tip, 9.5, 0), 1.0);
       expect(
-        analyticRoundTipCoverage(tip, 10.5, 0),
+        tipCoverageAt(tip, 10.5, 0),
         0.0,
         reason:
             'past the radius the tip does not reach — callers skip on <= 0, '
@@ -90,20 +92,20 @@ void main() {
     test('a SOFT tip falls off linearly from the hard radius to the rim', () {
       final tip = brushTipGeometry(round(hardness: 0));
       // hardRadius 0, radius 10 — halfway out is half covered.
-      expect(analyticRoundTipCoverage(tip, 5, 0), closeTo(0.5, 1e-12));
-      expect(analyticRoundTipCoverage(tip, 0, 0), 1.0);
-      expect(analyticRoundTipCoverage(tip, 10, 0), closeTo(0, 1e-12));
+      expect(tipCoverageAt(tip, 5, 0), closeTo(0.5, 1e-12));
+      expect(tipCoverageAt(tip, 0, 0), 1.0);
+      expect(tipCoverageAt(tip, 10, 0), closeTo(0, 1e-12));
     });
 
     test('an ELLIPSE reaches further along its major axis than its minor', () {
       final tip = brushTipGeometry(round(roundness: 0.5));
       expect(
-        analyticRoundTipCoverage(tip, 9, 0),
+        tipCoverageAt(tip, 9, 0),
         greaterThan(0),
         reason: 'the major axis is the radius',
       );
       expect(
-        analyticRoundTipCoverage(tip, 0, 9),
+        tipCoverageAt(tip, 0, 9),
         0.0,
         reason: 'the minor axis is squashed by the roundness',
       );
@@ -111,16 +113,66 @@ void main() {
 
     test('a 90 degree ellipse swaps the axes', () {
       final tip = brushTipGeometry(round(roundness: 0.5, angleDegrees: 90));
-      expect(analyticRoundTipCoverage(tip, 0, 9), greaterThan(0));
-      expect(analyticRoundTipCoverage(tip, 9, 0), 0.0);
+      expect(tipCoverageAt(tip, 0, 9), greaterThan(0));
+      expect(tipCoverageAt(tip, 9, 0), 0.0);
     });
 
     test('a zero-width falloff band is FULL, not a divide by zero', () {
       // hardness 1 makes hardRadius == radius, so the band is empty.
       final tip = brushTipGeometry(round());
-      final atRim = analyticRoundTipCoverage(tip, 10, 0);
+      final atRim = tipCoverageAt(tip, 10, 0);
       expect(atRim, 1.0);
       expect(atRim.isFinite, isTrue);
+    });
+  });
+
+  // I-50 (유저 2026-09-30 「경도와 따로 — 단계마다 고정 폭」): the anti-alias
+  // step gives a round tip an edge at least its width wide, INSIDE the rim.
+  group('the anti-alias edge', () {
+    test('it pulls the hard radius in and leaves the rim where it was', () {
+      final tip = brushTipGeometry(round(edgeWidth: 2));
+      expect(tip.radius, 10, reason: 'the rim is the thickness that holds');
+      expect(tip.hardRadius, 8);
+      expect(tipCoverageAt(tip, 7.9, 0), 1.0);
+      expect(tipCoverageAt(tip, 9, 0), closeTo(0.5, 1e-12));
+      expect(tipCoverageAt(tip, 10.01, 0), 0.0);
+    });
+
+    test('a hardness ramp wider than the step stands to the bit', () {
+      final plain = brushTipGeometry(round(hardness: 0.5));
+      final stepped = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
+      expect(stepped.hardRadius, plain.hardRadius);
+      for (var d = 0.0; d <= 10.5; d += 0.25) {
+        expect(
+          tipCoverageAt(stepped, d, 0),
+          tipCoverageAt(plain, d, 0),
+          reason: 'at $d',
+        );
+      }
+    });
+
+    test('it moves continuously with hardness — no jump where the two '
+        'ramps trade places', () {
+      var previous = brushTipGeometry(round(hardness: 0.5, edgeWidth: 2.75));
+      for (var h = 0.501; h <= 1.0; h += 0.001) {
+        final tip = brushTipGeometry(round(hardness: h, edgeWidth: 2.75));
+        expect(tip.hardRadius, greaterThanOrEqualTo(previous.hardRadius));
+        expect(
+          tip.hardRadius - previous.hardRadius,
+          lessThanOrEqualTo(0.001 * 10 + 1e-9),
+          reason: 'at hardness $h',
+        );
+        previous = tip;
+      }
+    });
+
+    test('a tip smaller than its edge is all edge, full only at its centre',
+        () {
+      final tip = brushTipGeometry(round(size: 4, edgeWidth: 2.75));
+      expect(tip.hardRadius, 0.0, reason: 'never past the centre');
+      expect(tipCoverageAt(tip, 0, 0), 1.0);
+      expect(tipCoverageAt(tip, 1, 0), closeTo(0.5, 1e-12));
+      expect(tipCoverageAt(tip, 2.01, 0), 0.0);
     });
   });
 
@@ -134,9 +186,9 @@ void main() {
     test('a solid mask covers the middle and stops at its own square', () {
       final mask = solid(8);
       final tip = brushTipGeometry(round(tipMask: mask));
-      expect(rotatedTipMaskCoverage(tip, mask, 0, 0), greaterThan(0.9));
+      expect(tipCoverageAt(tip, 0, 0), greaterThan(0.9));
       expect(
-        rotatedTipMaskCoverage(tip, mask, 11, 0),
+        tipCoverageAt(tip, 11, 0),
         0.0,
         reason:
             'outside the mask square the sampler is not even asked — the '
@@ -147,7 +199,25 @@ void main() {
     test('an EMPTY mask covers nothing, so a caller skips', () {
       final mask = BrushTipMask(id: 'empty', size: 8, alpha: Uint8List(64));
       final tip = brushTipGeometry(round(tipMask: mask));
-      expect(rotatedTipMaskCoverage(tip, mask, 0, 0), 0.0);
+      expect(tipCoverageAt(tip, 0, 0), 0.0);
     });
+  });
+
+  test('a square tip covers its whole square — its bounds are its edge', () {
+    final tip = brushTipGeometry((
+      size: 20,
+      hardness: 0,
+      roundness: 1,
+      angleDegrees: 0,
+      tipShape: BrushTipShape.square,
+      tipMask: null,
+      edgeWidth: 2.75,
+    ));
+    expect(tipCoverageAt(tip, 0, 0), 1.0);
+    expect(
+      tipCoverageAt(tip, 9.9, 9.9),
+      1.0,
+      reason: 'a corner a round tip would not reach',
+    );
   });
 }

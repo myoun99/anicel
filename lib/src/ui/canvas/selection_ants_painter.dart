@@ -8,23 +8,8 @@ import '../../services/canvas_selection_region.dart';
 import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
-
-/// The Ctrl+T box chrome in viewport space: the transformed box outline,
-/// the scale handles, and the anchor cross.
-///
-/// ↩️A rotate KNOB used to hang off the top edge on a lever, and both are
-/// gone — 유저 2026-09-22: 「**사각형 밖 조작은 회전으로 통하도록.** 지금
-/// 있는 **회전 꼭짓점은 잔재 싹 삭제**하고」. A whole half-plane is a
-/// bigger target than a five-pixel circle and needs no aiming.
-///
-/// ⚠️[anchor] is its own field and not a ninth handle: it is drawn as a
-/// CROSS and the handles are drawn as squares, so folding it into that
-/// list would only make the painter ask which index it was.
-typedef SelectionTransformChrome = ({
-  List<Offset> box,
-  List<Offset> handles,
-  Offset? anchor,
-});
+import 'box_chrome.dart';
+import 'canvas_viewport_offset.dart';
 
 /// Marching ants: dashed outlines whose dash phase rides the animation.
 ///
@@ -68,10 +53,13 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// > **초록색 선**(변형하지 않았다는 그 선 ui 그대로)으로 보여줌. 확정시
   /// > 사라짐. 즉 변형중에는 보이도록」 (유저 2026-09-16)
   ///
-  /// ⛔**NOT A RECTANGLE, and that is the 「낡지 않을 구조로」**: it is the
-  /// session's own [CanvasSelectionRegion], so a lasso starts as a lasso and
-  /// a warped one starts as whatever it was. Nothing here knows the shapes
-  /// apart, which is why nothing here can go stale when a new one arrives.
+  /// 🗣️F-231 ① (유저 2026-09-29): 「기존 초록 프리뷰는 **항상 사각형
+  /// 변형도구 실루엣**만으로 작동됨. 이상한 쓸데없는 규칙 넣지말고 기존거에
+  /// 맞춰서 법 통일하고 잔재 삭제」 — it is the transform box the session
+  /// began from (`BoxOnScreen.startSilhouette`), whatever shape the
+  /// selection has. ↩️It used to be the session's own selection region, so a
+  /// lasso started as a lasso: a reading of 「기존의 실루엣」 as the
+  /// selection's outline rather than the tool's, which the user corrected.
   ///
   /// The colour is the one the ants and the confirm button already speak —
   /// `selectionSession(changed: false)`, the 「hasn't been touched」 green —
@@ -175,10 +163,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// size at every zoom.
   static const double closeTargetRadius = 9;
 
-  Offset _map(CanvasPoint point) {
-    final mapped = viewport.canvasToViewport(point);
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset _map(CanvasPoint point) => viewport.canvasToViewportOffset(point);
 
   /// The committed region's pixel-edge outline, in SCREEN space.
   ///
@@ -295,58 +280,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
 
     final chrome = transformChrome;
     if (chrome != null) {
-      _paintTransformChrome(canvas, chrome);
-    }
-  }
-
-  void _paintTransformChrome(Canvas canvas, SelectionTransformChrome chrome) {
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = _sessionColor;
-
-    canvas.drawPath(Path()..addPolygon(chrome.box, true), stroke);
-    for (final handle in chrome.handles) {
-      canvas.drawRect(
-        Rect.fromCenter(center: handle, width: 9, height: 9),
-        Paint()..color = Colors.white,
-      );
-      canvas.drawRect(
-        Rect.fromCenter(center: handle, width: 9, height: 9),
-        stroke,
-      );
-    }
-    final anchor = chrome.anchor;
-    if (anchor != null) {
-      _paintAnchorCross(canvas, anchor);
-    }
-  }
-
-  /// The rotation centre: a cross, drawn LAST so it reads over the box.
-  ///
-  /// 🗣️유저 2026-09-20 handed CLIP's own as the reference — 「디자인은 별도
-  /// 스샷 확인해줘. **중앙에 십자가**가 있어」.
-  ///
-  /// ⛔A cross rather than a dot, and the reason is the job: the user is
-  /// placing a CENTRE, so the thing has to say exactly which pixel it is
-  /// on. A filled dot hides that pixel under itself.
-  void _paintAnchorCross(Canvas canvas, Offset at) {
-    const arm = 7.0;
-    final white = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = Colors.white;
-    final ink = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5
-      ..color = _sessionColor;
-    // White underneath for the same reason the ants carry it: the artwork
-    // beneath can be any colour, and only the pair reads on both.
-    for (final paint in [white, ink]) {
-      canvas.drawLine(at - const Offset(arm, 0), at + const Offset(arm, 0),
-          paint);
-      canvas.drawLine(at - const Offset(0, arm), at + const Offset(0, arm),
-          paint);
+      paintBoxChrome(canvas, chrome, color: _sessionColor);
     }
   }
 

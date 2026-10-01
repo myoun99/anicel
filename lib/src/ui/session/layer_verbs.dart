@@ -1,3 +1,5 @@
+import 'package:collection/collection.dart' show IterableExtension;
+
 import '../../services/editing/layer_standing_after_change.dart';
 import '../../models/attached_layer_resolve.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
@@ -8,6 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
 import '../../models/timeline_row_address.dart';
+import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
 import 'active_cut_edits.dart';
@@ -33,14 +36,12 @@ class LayerVerbs {
     required ChangeSink changes,
     required ActiveCutControllers controllers,
     required ActiveCutEdits activeCut,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
        _activeCutEdits = activeCut,
-       _internals = internals,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
@@ -48,8 +49,7 @@ class LayerVerbs {
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
 
-  /// Where a duplicate's pictures are, and the keys they go under.
-  final SessionInternals _internals;
+  /// Where a duplicate's pictures are.
   final RenderCaches _renderCaches;
 
   /// The active-row cut-command envelope — the session's one instance,
@@ -63,7 +63,7 @@ class LayerVerbs {
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
   List<LayerId> deletableSelectedLayerIds() =>
-      _selectedLayerIdsWhere(canDeleteLayer);
+      selectedLayerIdsWhere(canDeleteLayer);
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
@@ -71,7 +71,7 @@ class LayerVerbs {
   /// predicates rather than restated: a track-owned SE row has no clipboard
   /// shape, a per-cut singleton cannot have a second, and an attach row's
   /// copy would double-link its base's cels.
-  List<LayerId> duplicatableSelectedLayerIds() => _selectedLayerIdsWhere(
+  List<LayerId> duplicatableSelectedLayerIds() => selectedLayerIdsWhere(
     (layer) =>
         layer.kind.isClipboardCopyable &&
         !layer.kind.isSingletonPerCut &&
@@ -84,7 +84,7 @@ class LayerVerbs {
   /// and it is the one [canDeleteLayer] refuses for the same reason: it has
   /// no row verbs of its own on any surface.
   List<LayerId> renameableSelectedLayerIds() =>
-      _selectedLayerIdsWhere(_nameIsEditable);
+      selectedLayerIdsWhere(_nameIsEditable);
 
   /// Of [ids] — the rows a press acted on — the ones whose NAME may be
   /// edited, by [renameableSelectedLayerIds]'s rule (I-48's double click).
@@ -96,7 +96,11 @@ class LayerVerbs {
   /// The selected LAYER rows whose layer passes [keep], in selection order,
   /// once each — the one walk behind [deletableSelectedLayerIds] and
   /// [renameableSelectedLayerIds] (the audit's clone scan, 2026-09-03).
-  List<LayerId> _selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
+  ///
+  /// Public for the one asker outside this object: 자동 이름 지정's ROWS
+  /// rung (I-18, `BlockNaming`), which names its own predicate rather than
+  /// walking the selection a second time.
+  List<LayerId> selectedLayerIdsWhere(bool Function(Layer layer) keep) =>
       _layerIdsWhere([
         for (final row in _selection.rowSelection.value)
           if (row is LayerRowAddress) row.layerId,
@@ -219,13 +223,13 @@ class LayerVerbs {
     final cut = _project.requireActiveCut;
     final store = _renderCaches.brushFrameStore;
     carryBakedPictures(
-      internals: _internals,
+      project: _project,
       store: store,
       cut: cut,
       to: copy.layerId,
       minted: copy.minted,
       pictureOf: (source) => store.bakedSurfaceOrNull(
-        _internals.brushFrameKeyForCut(cut, layerId, source),
+        _project.brushFrameKeyForCut(cut, layerId, source),
       ),
     );
     final ink = _renderCaches.conteInkRowStore;
@@ -317,15 +321,6 @@ class LayerVerbs {
         .linkDuplicateLayer(cutId: cutId, layerId: layerId),
   );
 
-  bool get canUnlinkActiveLayer {
-    final activeLayer = _selection.activeLayer;
-    final cut = _project.activeCutOrNull;
-    if (activeLayer == null || cut == null) {
-      return false;
-    }
-    return groupIsLinked(activeLayer, cut);
-  }
-
   /// Whether [layer]'s attach group shares its pictures through a link —
   /// the one question 독립시키기 answers, from the layer menu and from the
   /// shared pill alike.
@@ -349,33 +344,56 @@ class LayerVerbs {
     if (cut == null) {
       return const [];
     }
-    return _selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
+    return selectedLayerIdsWhere((layer) => groupIsLinked(layer, cut));
   }
 
-  /// 독립시키기 for every selected linked row, as ONE undo step. Two
-  /// selected rows of one attach group unlink once: the second finds its
-  /// group already forked, and the coordinator's own guard makes it a no-op.
-  void unlinkSelectedLayers() => _eachRowAsOneStep(
-    linkedSelectedLayerIds(),
-    'Unlink rows',
-    (cutId, layerId) {
-      _project.cutCommandCoordinator.unlinkLayer(
-        cutId: cutId,
-        layerId: layerId,
-      );
-      return null;
-    },
-  );
+  /// 독립시키기 for every selected linked row, as ONE undo step.
+  void unlinkSelectedLayers() => unlinkLayers(linkedSelectedLayerIds());
 
-  /// 독립시키기: forks the active layer's group out of its links — the
-  /// pictures stay identical but stop being shared from here on.
-  void unlinkActiveLayer() => _activeCutEdits.onActiveLayer(
-    when: canUnlinkActiveLayer,
-    command: (cutId, layerId) => _project.cutCommandCoordinator.unlinkLayer(
-      cutId: cutId,
-      layerId: layerId,
-    ),
-  );
+  /// 독립시키기 for each of [layerIds] whose group is linked, as ONE undo
+  /// step. Two rows of one attach group unlink once: the second finds its
+  /// group already forked, and the coordinator's own guard makes it a no-op.
+  ///
+  /// The link window's button (I-25) presses this with the rows a press acts
+  /// on (`RowSelection.rowsActedOnBy`), the pill with the selection.
+  void unlinkLayers(Iterable<LayerId> layerIds) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    _eachRowAsOneStep(
+      [
+        for (final id in layerIds)
+          if (cut.layers.firstWhereOrNull((layer) => layer.id == id)
+              case final layer? when groupIsLinked(layer, cut))
+            id,
+      ],
+      'Unlink rows',
+      (cutId, layerId) {
+        _project.cutCommandCoordinator.unlinkLayer(
+          cutId: cutId,
+          layerId: layerId,
+        );
+        return null;
+      },
+    );
+  }
+
+  /// Whether the ACTIVE cut is a linked cut (겸용 — its linked rows all have
+  /// counterparts in another cut, [linkedCutSiblings]): its rows then share
+  /// their pictures as the cut does, and one row cannot leave alone.
+  ///
+  /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
+  /// 표시. 여기서 링크컷일경우엔 링크해제버튼 비활성화하고 툴팁으로 링크컷이기
+  /// 때문에 불가능하다고 띄움. 링크컷아니면 해제해도 되니까 해제버튼 활성화」.
+  bool get activeCutIsLinkedCut {
+    final cut = _project.activeCutOrNull;
+    return cut != null &&
+        linkedCutSiblings(
+          _project.repository.requireProject(),
+          cutId: cut.id,
+        ).isNotEmpty;
+  }
 
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.

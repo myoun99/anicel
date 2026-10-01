@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show Widget;
 
 import '../collection_equality.dart';
 
@@ -70,4 +71,32 @@ final class ByMap<K, V> {
 
   @override
   int get hashCode => mapHash(value);
+}
+
+/// What a memo holds for one key: the widget as built, and the facts it was
+/// built from.
+typedef Kept<F> = ({F facts, Widget built});
+
+/// THE keep (F-244): the widget [held] holds for [key] while [facts] are what
+/// it was built from — else [build]'s, kept. Flutter skips a subtree handed
+/// back the identical widget, so a commit rebuilds nothing whose facts it
+/// left alone.
+///
+/// ONE memo for every kept piece of the frame panels — the rail's rows and
+/// the x-sheet's headers, the grids' cells rows, the view cluster: each says
+/// only what its facts are (a record of them, each field comparing as the
+/// piece needs — [ByIdentity] and kin above).
+Widget keptWhileSame<K, F>(
+  Map<K, Kept<F>> held,
+  K key,
+  F facts,
+  Widget Function() build,
+) {
+  final kept = held[key];
+  if (kept != null && kept.facts == facts) {
+    return kept.built;
+  }
+  final built = build();
+  held[key] = (facts: facts, built: built);
+  return built;
 }

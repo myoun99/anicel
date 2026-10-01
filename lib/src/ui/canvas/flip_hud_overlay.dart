@@ -8,9 +8,11 @@ import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
+import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
 import '../repaint_props.dart';
+import '../text/word_bake.dart' show RepaintOnWordBakes;
 import '../timeline/memo_token.dart';
 import '../text/app_face.dart';
 import '../text/vertical_writing_text.dart';
@@ -37,7 +39,6 @@ abstract final class FlipHudMetrics {
 
   /// The paper body's inset inside its column.
   static const double bodyInset = 3;
-  static const double bodyRadius = 4;
 
   /// How far the end fade eats in, as a fraction of the extent.
   static const double edgeFade = 0.14;
@@ -281,7 +282,8 @@ class FlipHudOverlay extends StatelessWidget {
   }
 }
 
-class FlipHudPainter extends CustomPainter with RepaintOnProps {
+class FlipHudPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   const FlipHudPainter({
     required this.snapshot,
     required this.axis,
@@ -290,7 +292,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     required this.baseTextStyle,
     this.scrollCentre,
     this.standing = false,
-    this.blockFrameLines = true,
+    this.blockFrameLines = false,
   });
 
   /// Whether the frame lines cross a block's body — the user's switch
@@ -459,7 +461,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       if (blockFrameLines) {
         grid();
       }
-      _paintSelection(
+      _paintCurrent(
         canvas,
         Rect.fromLTWH(
           originX + currentIndex * slotWidth,
@@ -519,7 +521,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
         origin: originY,
         step: extent,
       ));
-      _paintSelection(
+      _paintCurrent(
         canvas,
         Rect.fromLTWH(
           stripRect.left,
@@ -684,6 +686,7 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       top: top,
       mainExtent: bottom - top,
       naturalCellExtent: fontSize * 1.15,
+      setWord: paintFittedText,
       cellPadding: fontSize * 0.15,
       maxCellWidth: box.width - 4,
       mainAlignment: 1,
@@ -737,15 +740,21 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
       // The head painted the whole body already.
       return;
     }
+    final bodyHeight = rect.height - FlipHudMetrics.bodyInset * 2;
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(
           rect.left,
           rect.top + FlipHudMetrics.bodyInset,
           spanWidth,
-          rect.height - FlipHudMetrics.bodyInset * 2,
+          bodyHeight,
         ),
-        const Radius.circular(FlipHudMetrics.bodyRadius),
+        // The block law over this slot's cell (F-219: 「법 통일」). ↩️A
+        // fixed 4px, a corner no timeline block wore.
+        timelineBlockCornerRadiusAt(
+          cellExtent: rect.width,
+          crossExtent: bodyHeight,
+        ),
       ),
       Paint()..color = timelineDrawingHeldColor,
     );
@@ -825,9 +834,16 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     bool bold = false,
   }) {
     _upright(canvas, rect, (box) {
+      // Two pixels of air either side, as the ellipsis used to keep.
+      final room = Rect.fromCenter(
+        center: box.center,
+        width: math.max(0, box.width - 4),
+        height: box.height,
+      );
       // The block word's own print — the face, and the box that makes
-      // centring read as centred ([timelineBlockWordStyle]).
-      final painter = timelineGlyphPainter(
+      // centring read as centred ([timelineBlockWordStyle]) — its letter
+      // gaps giving way first, then narrowing (F-234-Q1).
+      final set = timelineWordSetOnto(
         text,
         timelineBlockWordStyle(
           baseTextStyle.copyWith(fontWeight: FontWeight.w400),
@@ -835,17 +851,9 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
           fontSize: bold ? _headWordSize : 12,
           bold: bold,
         ),
+        room.width,
       );
-      // Two pixels of air either side, as the ellipsis used to keep.
-      paintWordCentredIn(
-        canvas,
-        painter,
-        Rect.fromCenter(
-          center: box.center,
-          width: math.max(0, box.width - 4),
-          height: box.height,
-        ),
-      );
+      paintWordCentredIn(canvas, set.glyph, room);
     });
   }
 
@@ -877,19 +885,15 @@ class FlipHudPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
-  /// The timeline's selected-cell reading, verbatim: the accent tint under
+  /// The timeline's reading of where you are, verbatim: the playhead's
+  /// wash over the current slot ([timelinePlayheadWashColor]).
+  ///
+  /// 🗣️F-212 (유저 2026-09-28): 「현재 블록이나 갭 등 위치를 알리는 실루엣
+  /// 라인 … 삭제하고싶음. 현재 재생헤드의 세로 바탕색 오버레이만으로
+  /// 충분」. ↩️The timeline's selected-cell reading: a 12% accent tint under
   /// a two-pixel accent edge.
-  void _paintSelection(Canvas canvas, Rect rect) {
-    final accent = timelineSelectedFrameBorderColor;
-    final inner = rect.deflate(1);
-    canvas.drawRect(inner, Paint()..color = accent.withValues(alpha: 0.12));
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(inner, const Radius.circular(5)),
-      Paint()
-        ..color = accent
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
+  void _paintCurrent(Canvas canvas, Rect rect) {
+    canvas.drawRect(rect, Paint()..color = timelinePlayheadWashColor);
   }
 
   void _fadeEnds(Canvas canvas, Rect rect, {required bool horizontal}) {

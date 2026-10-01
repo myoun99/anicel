@@ -38,6 +38,34 @@ void main() {
     }
   }
 
+  /// [paint]'s asks, made again whenever a picture lands — the way every
+  /// surface that shows these pictures repaints on its landings — until
+  /// nothing is left to render.
+  ///
+  /// ⛔Bounded: a store that never comes to rest fails here in two seconds,
+  /// not at the runner's ten-minute limit (a mutant that never ended a
+  /// render held the machine that long per test).
+  Future<void> shownUntilIdle(
+    WidgetTester tester,
+    StoryboardCutThumbnailStore store,
+    void Function() paint,
+  ) async {
+    store.addListener(paint);
+    try {
+      await tester.runAsync(() async {
+        paint();
+        for (var wait = 0; store.pending; wait += 1) {
+          if (wait == 400) {
+            fail('the store never came to rest');
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+        }
+      });
+    } finally {
+      store.removeListener(paint);
+    }
+  }
+
   Cut cut({bool layerVisible = true}) => Cut(
     id: const CutId('cut'),
     name: 'Cut',
@@ -59,7 +87,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -83,7 +111,7 @@ void main() {
       'landings', (tester) async {
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) => tinyImage(),
+      render: (_, _, _, _) => tinyImage(),
     );
     addTearDown(store.dispose);
     final thumbnails = store.thumbnails;
@@ -113,18 +141,18 @@ void main() {
     final widths = <int>[];
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, width) {
+      render: (_, _, width, _) {
         widths.add(width);
         return tinyImage();
       },
     );
     addTearDown(store.dispose);
 
-    await tester.runAsync(() async {
+    // Three surfaces showing the one panel at three sizes.
+    await shownUntilIdle(tester, store, () {
       store.thumbnailFor(cut(), 0, shownHeight: 60); // a strip block
       store.thumbnailFor(cut(), 0, shownHeight: 400); // a conte cell
       store.thumbnailFor(cut(), 0, shownHeight: 5000); // zoomed far in
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
 
     // 60 of 1080 → the ladder's floor, 1/16; 400 → up to 1/2; 5000 → the
@@ -132,13 +160,112 @@ void main() {
     expect(widths, [120, 960, 1920]);
     // Each width caches on its own, and a height the ladder rounds to a
     // width already held renders nothing new.
-    await tester.runAsync(() async {
+    await shownUntilIdle(tester, store, () {
       store.thumbnailFor(cut(), 0, shownHeight: 60);
       store.thumbnailFor(cut(), 0, shownHeight: 300);
       store.thumbnailFor(cut(), 0, shownHeight: 5000);
-      await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     expect(widths, hasLength(3));
+  });
+
+  testWidgets('🚨ONE render at a time, however many panels a paint asks for '
+      '(유저 09-28: V행을 키우다 튕겼다)', (tester) async {
+    // Measured on the user's film: every panel on screen started its own
+    // render in the paint that asked, and each thaws its cut's cels at the
+    // canvas's full size — 104 at once while the V rows grew for a second.
+    final running = <Completer<ui.Image?>>[];
+    var mostAtOnce = 0;
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, _, _, _) {
+        final render = Completer<ui.Image?>();
+        running.add(render);
+        final open = running.where((each) => !each.isCompleted).length;
+        mostAtOnce = open > mostAtOnce ? open : mostAtOnce;
+        return render.future;
+      },
+    );
+    addTearDown(store.dispose);
+    void paint() {
+      for (var panel = 0; panel < 26; panel += 1) {
+        store.thumbnailFor(cut(), panel, shownHeight: 72);
+      }
+    }
+
+    store.addListener(paint);
+    addTearDown(() => store.removeListener(paint));
+    await tester.runAsync(() async {
+      paint();
+      for (var landed = 0; landed < 26; landed += 1) {
+        await Future<void>.delayed(Duration.zero);
+        // A repaint while it runs (a hover, a scroll) asks again.
+        paint();
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          running.where((each) => !each.isCompleted),
+          hasLength(1),
+          reason: 'render ${landed + 1} of 26 runs alone',
+        );
+        running.last.complete(await tinyImage());
+        await Future<void>.delayed(Duration.zero);
+      }
+    });
+    await tester.pump();
+
+    expect(running, hasLength(26), reason: 'and every panel shown is drawn');
+    expect(mostAtOnce, 1);
+    expect(store.pending, isFalse);
+  });
+
+  testWidgets('🚨a width the hand has passed is never rendered — after each '
+      'render, only what the surfaces show NOW is', (tester) async {
+    final rendered = <(int, int)>[];
+    final running = <Completer<ui.Image?>>[];
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, frame, width, _) {
+        rendered.add((frame, width));
+        final render = Completer<ui.Image?>();
+        running.add(render);
+        return render.future;
+      },
+    );
+    addTearDown(store.dispose);
+    // A V row being dragged taller: every paint shows the four panels at
+    // the height the hand is at.
+    var height = 60.0;
+    void paint() {
+      for (final panel in [0, 8, 16, 24]) {
+        store.thumbnailFor(cut(), panel, shownHeight: height);
+      }
+    }
+
+    store.addListener(paint);
+    addTearDown(() => store.removeListener(paint));
+    await tester.runAsync(() async {
+      paint();
+      await Future<void>.delayed(Duration.zero);
+      // The drag goes on while the first render runs: two more steps of
+      // the picture ladder, and a paint at each.
+      for (final step in [400.0, 5000.0]) {
+        height = step;
+        paint();
+      }
+      await Future<void>.delayed(Duration.zero);
+      while (store.pending) {
+        running.last.complete(await tinyImage());
+        await Future<void>.delayed(Duration.zero);
+      }
+    });
+    await tester.pump();
+
+    expect(rendered, [
+      (0, 120), // begun before the hand moved on
+      (0, 1920),
+      (8, 1920),
+      (16, 1920),
+      (24, 1920),
+    ], reason: 'no panel at 120 or 960 past the first');
   });
 
   testWidgets('until its own width lands, a panel shows the SHARPEST picture '
@@ -161,7 +288,7 @@ void main() {
     final pending = <(int, int), Completer<ui.Image?>>{};
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, frame, width) =>
+      render: (_, frame, width, _) =>
           (pending[(frame, width)] = Completer<ui.Image?>()).future,
     );
     addTearDown(store.dispose);
@@ -169,11 +296,16 @@ void main() {
     late ui.Image small;
     late ui.Image whole;
     await tester.runAsync(() async {
-      store.thumbnailFor(cut(), 0, shownHeight: 60);
-      store.thumbnailFor(cut(), 0, shownHeight: 5000);
-      pending[(0, 120)]!.complete(small = await imageOf(120));
-      pending[(0, 1920)]!.complete(whole = await imageOf(1920));
-      await Future<void>.delayed(Duration.zero);
+      // The panel in a strip, then zoomed far in — one render each, in
+      // turn.
+      for (final (height, width) in [(60.0, 120), (5000.0, 1920)]) {
+        store.thumbnailFor(cut(), 0, shownHeight: height);
+        await Future<void>.delayed(Duration.zero);
+        final image = await imageOf(width);
+        width == 120 ? small = image : whole = image;
+        pending[(0, width)]!.complete(image);
+        await Future<void>.delayed(Duration.zero);
+      }
     });
 
     expect(
@@ -186,12 +318,13 @@ void main() {
       isNull,
       reason: 'another panel\'s picture never stands in',
     );
+    // The 960 render was asked in the test's fake zone, so it starts, and
+    // later lands, in that zone's queue.
+    await tester.pump();
     late ui.Image own;
     await tester.runAsync(() async {
       pending[(0, 960)]!.complete(own = await imageOf(960));
     });
-    // The 960 render was asked in the test's fake zone, so its landing
-    // waits in that zone's queue.
     await tester.pump();
     expect(store.thumbnailFor(cut(), 0, shownHeight: 400), same(own));
     expect(store.thumbnailFor(cut(), 0, shownHeight: 60), same(small));
@@ -201,7 +334,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -225,7 +358,7 @@ void main() {
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) {
+      render: (_, _, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -270,7 +403,7 @@ void main() {
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) => tinyImage(),
+      render: (_, _, _, _) => tinyImage(),
       invalidationHub: hub,
     );
     addTearDown(store.dispose);
@@ -314,7 +447,7 @@ void main() {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) async {
+      render: (_, _, _, _) async {
         renderCount += 1;
         return null;
       },
@@ -342,7 +475,7 @@ void main() {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renderCount += 1;
           return tinyImage();
         },
@@ -425,14 +558,12 @@ void main() {
       'content change retries', (tester) async {
     var renderCount = 0;
     var failFirst = true;
-    final errors = <FlutterErrorDetails>[];
-    final previousHandler = FlutterError.onError;
-    FlutterError.onError = errors.add;
-    addTearDown(() => FlutterError.onError = previousHandler);
-
+    // ⛔The binding's own handler takes the report ([WidgetTester.
+    // takeException]) — an overridden `FlutterError.onError` turns any
+    // failure after it into a ten-minute hang in the binding's assert.
     final store = StoryboardCutThumbnailStore(
       originalSize: _original,
-      render: (_, _, _) async {
+      render: (_, _, _, _) async {
         renderCount += 1;
         if (failFirst) {
           failFirst = false;
@@ -449,9 +580,15 @@ void main() {
       // Same signature: the failure must NOT re-kick on every build.
       store.thumbnailFor(cut(), 0, shownHeight: 72);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(renderCount, 1);
-      expect(errors, hasLength(1), reason: 'failures surface, never vanish');
+    });
+    expect(renderCount, 1);
+    expect(
+      tester.takeException(),
+      isStateError,
+      reason: 'failures surface, never vanish',
+    );
 
+    await tester.runAsync(() async {
       // A content change retries and succeeds.
       store.thumbnailFor(cut(layerVisible: false), 0, shownHeight: 72);
       await Future<void>.delayed(const Duration(milliseconds: 20));
@@ -462,6 +599,36 @@ void main() {
       );
     });
     await tester.pump();
+  });
+
+  testWidgets('a render that throws before it begins is a failed render too '
+      '— the store does not stop', (tester) async {
+    var renders = 0;
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, frame, _, _) {
+        renders += 1;
+        if (frame == 0) {
+          throw StateError('no camera');
+        }
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 72);
+      store.thumbnailFor(cut(), 8, shownHeight: 72);
+    });
+    await tester.pump();
+
+    expect(
+      tester.takeException(),
+      isStateError,
+      reason: 'surfaced, never vanished',
+    );
+    expect(renders, 2, reason: 'the next panel still rendered');
+    expect(store.thumbnailFor(cut(), 8, shownHeight: 72), isNotNull);
   });
 
   // 2026-09-11: the store held every panel ever looked at, uncounted. It is
@@ -494,7 +661,7 @@ void main() {
       final reported = <int>[];
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renders += 1;
           return tinyImage();
         },
@@ -520,7 +687,7 @@ void main() {
       var renders = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) {
+        render: (_, _, _, _) {
           renders += 1;
           return tinyImage();
         },
@@ -548,7 +715,7 @@ void main() {
       var notified = 0;
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) => tinyImage(),
+        render: (_, _, _, _) => tinyImage(),
         onHeldBytesChanged: reported.add,
       );
       addTearDown(store.dispose);
@@ -575,7 +742,7 @@ void main() {
       final reported = <int>[];
       final store = StoryboardCutThumbnailStore(
         originalSize: _original,
-        render: (_, _, _) => tinyImage(),
+        render: (_, _, _, _) => tinyImage(),
         onHeldBytesChanged: reported.add,
       );
       await ask(tester, store, [0]);
@@ -583,5 +750,39 @@ void main() {
       store.dispose();
       expect(reported.last, 0);
     });
+  });
+  testWidgets('the REGION is part of the key: a cell whose camera moves asks '
+      'for the canvas that camera sweeps, as wide as that canvas allows, and '
+      'the camera\'s view never stands in for it', (tester) async {
+    final asks = <(int, ui.Rect?)>[];
+    final store = StoryboardCutThumbnailStore(
+      originalSize: _original,
+      render: (_, _, width, region) {
+        asks.add((width, region));
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+    const swept = ui.Rect.fromLTWH(0, 0, 3840, 1080);
+
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 5000);
+    });
+    await tester.runAsync(() async {
+      expect(
+        store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept),
+        isNull,
+        reason: 'the camera\'s view is another picture of the frame',
+      );
+    });
+    await shownUntilIdle(tester, store, () {
+      store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept);
+    });
+
+    expect(asks, [(1920, null), (3840, swept)]);
+    expect(
+      store.thumbnailFor(cut(), 0, shownHeight: 5000, region: swept),
+      isNotNull,
+    );
   });
 }

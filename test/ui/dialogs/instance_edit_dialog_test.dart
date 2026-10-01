@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_frame_grid_settings.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/se_line_type.dart';
 import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
 import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
@@ -96,6 +97,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(result!.seName, '앨리스');
     expect(result!.dialogue, '그건 아니라고 생각해');
+    expect(result!.seType, SeLineType.on, reason: 'I-20: ON is the default');
+  });
+
+  testWidgets('SE dialog: the delivery is one of three pills, opens on the '
+      'block\'s own and returns the one picked (I-20)', (tester) async {
+    SeInstanceDialogResult? result;
+    await _openDialog<SeInstanceDialogResult>(
+      tester,
+      const SeInstanceDialog(initialSeType: SeLineType.mono),
+      (r) => result = r,
+    );
+    for (final type in SeLineType.values) {
+      expect(
+        find.byKey(ValueKey<String>('se-type-${type.name}')),
+        findsOneWidget,
+      );
+    }
+    await tester.tap(find.byKey(const ValueKey<String>('se-type-off')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(result!.seType, SeLineType.off);
   });
 
   testWidgets('SE dialog cancel pops nothing', (tester) async {

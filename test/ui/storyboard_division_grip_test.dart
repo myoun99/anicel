@@ -21,6 +21,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show TimelineRowChromeResolver, TimelineRowGripTarget;
 
+import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
 /// The cut block has no edge grips of its own besides its panels': the first
@@ -240,16 +241,16 @@ void main() {
 
     Rect grip(String id, String prefix) =>
         timelineRowChromeGlobalRect(tester, _trackId.value, id, prefix: prefix);
-    // I-43: the grip is its triangle's box — the NEAR half of its block for
-    // an end edge, the FAR half for a start edge — in the block's corners.
-    // The conte block is the slot inside the cut's bands.
+    // I-43: the grip is its triangle's box, in the block's corners — the
+    // end edge's at the top, the start edge's at the bottom. I-52: a band
+    // deep, never over the pictures (↩️half the paper). The conte block is
+    // the slot inside the cut's bands.
     final conteEnd = grip('block-edge-grip-end-grip-track-0', 'storyboard');
     final conteStart = grip('block-edge-grip-start-grip-track-0', 'storyboard');
-    final conteHalf = (rowRect.height - band * 2) / 2;
     expect(conteEnd.top, moreOrLessEquals(rowRect.top + band));
-    expect(conteEnd.height, moreOrLessEquals(conteHalf));
+    expect(conteEnd.height, moreOrLessEquals(band));
     expect(conteStart.bottom, moreOrLessEquals(rowRect.bottom - band));
-    expect(conteStart.height, moreOrLessEquals(conteHalf));
+    expect(conteStart.height, moreOrLessEquals(band));
     // The cut with none: the plate, as the cut block's edges stood before.
     final plateEnd = grip(
       'block-edge-grip-end-grip-track-2',
@@ -260,9 +261,9 @@ void main() {
       'storyboard-plate',
     );
     expect(plateEnd.top, moreOrLessEquals(rowRect.top));
-    expect(plateEnd.height, moreOrLessEquals(rowRect.height / 2));
+    expect(plateEnd.height, moreOrLessEquals(band));
     expect(plateStart.bottom, moreOrLessEquals(rowRect.bottom));
-    expect(plateStart.height, moreOrLessEquals(rowRect.height / 2));
+    expect(plateStart.height, moreOrLessEquals(band));
   });
 
   test('a resolver over the same panels but other plates is another '
@@ -288,7 +289,9 @@ void main() {
         );
       }
     }
-    const plate = StoryboardCutBlocksPainter.plateCornerRadius;
+    // The plate's own corner, as its painter rounds it (F-219).
+    final plate = cutBlocksPainter(tester).plateCorner.x;
+    expect(plate, greaterThan(0), reason: '⛔전제: a round plate');
     expect(
       grip('block-edge-grip-start-grip-track-2', 'storyboard-plate')
           .paperCorner,
@@ -325,16 +328,20 @@ void main() {
       'block-edge-grip-end-grip-track-2',
       'storyboard-plate',
     );
+    // A point well inside the round's reach at whatever the law gives this
+    // zoom (the round crosses the diagonal at ~0.29 of its radius).
     expect(
       inkOf('storyboard-plate', plateEnd).contains(
-        plateEnd.rect.topRight.translate(-1.5, 1.5),
+        plateEnd.rect.topRight.translate(-plate / 6, plate / 6),
       ),
       isFalse,
-      reason: 'the plate\'s own round (8) takes the tip',
+      reason: 'the plate\'s own round takes the tip',
     );
+    // Halfway down the right leg: inside the triangle a band deep (I-52),
+    // and inside the round.
     expect(
       inkOf('storyboard-plate', plateEnd).contains(
-        plateEnd.rect.topRight.translate(-1, 12),
+        plateEnd.rect.topRight.translate(-1, plateEnd.rect.height / 2),
       ),
       isTrue,
       reason: '⛔전제: the ink is there, inside the round',
@@ -699,8 +706,11 @@ Future<void> _dragTimelineGrip(
 /// The same panels under other plates — one cut of two panels, or two cuts
 /// of one — are other corners, so the row must not keep the old resolver.
 void _samePanelsOtherPlates() {
-  TimelineRowChromeResolver resolver(Set<int> starts, Set<int> ends) =>
-      TimelineRowChromeResolver(
+  TimelineRowChromeResolver resolver(
+    Set<int> starts,
+    Set<int> ends, {
+    double band = 13,
+  }) => TimelineRowChromeResolver(
         gripBlocks: const [
           (
             ordinal: 0,
@@ -723,11 +733,21 @@ void _samePanelsOtherPlates() {
         crossAxisExtent: 64,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: (cornerStarts: starts, cornerEnds: ends, cornerRadius: 8),
+        gripPaper: (
+          cornerStarts: starts,
+          cornerEnds: ends,
+          cornerRadius: 8,
+          band: band,
+        ),
       );
   final oneCut = resolver({0}, {10});
   expect(oneCut.matches(resolver({0}, {10})), isTrue);
   expect(oneCut.matches(resolver({0, 5}, {5, 10})), isFalse);
+  expect(
+    oneCut.matches(resolver({0}, {10}, band: 20)),
+    isFalse,
+    reason: 'bands of another depth hang the triangles elsewhere (I-52)',
+  );
 }
 
 /// Every path a painter fills, as it filled it.

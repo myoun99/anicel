@@ -1,11 +1,13 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../widgets/tick_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 
 /// A trim in flight: both hooks present. The four cut-end overlays split on
 /// THIS, once — static when there is none, following the preview otherwise.
@@ -35,7 +37,7 @@ class TimelineFrameGridStack extends StatelessWidget {
     this.dragPreview,
     required this.frameCellExtent,
     required this.playbackFrameCount,
-    this.drawnFrameCount,
+    this.noriShiro,
   });
 
   /// The FRAME axis: horizontal in the timeline, vertical in the x-sheet.
@@ -69,7 +71,11 @@ class TimelineFrameGridStack extends StatelessWidget {
   /// transition span crossing one of its boundaries asks for. Null (or equal to
   /// [playbackFrameCount]) is every cut nothing crosses: no blue line, and the
   /// wash starts at the cut end exactly as it always did.
-  final int? drawnFrameCount;
+  ///
+  /// Asked wherever the stack hears a drag, so the blue line and the wash's
+  /// edge ride a transition span dragged over the cut's boundary
+  /// (`TimelineGridHooks.noriShiro`).
+  final TimelineNoriShiro Function()? noriShiro;
 
   _LiveTrim? get _liveTrim {
     final drag = cutEndDrag;
@@ -79,13 +85,14 @@ class TimelineFrameGridStack extends StatelessWidget {
   }
 
   /// Where the cut ends in content pixels, following a live trim.
-  double _cutEndOffset(TimelineDragPreview? preview) =>
-      timelineCutEndPreviewFrameCount(
-        preview: preview,
-        cutId: cutEndDrag?.cutId,
-        playbackFrameCount: playbackFrameCount,
-      ) *
-      frameCellExtent;
+  double _cutEndOffset(TimelineDragPreview? preview) => timelineFrameEdge(
+    timelineCutEndPreviewFrameCount(
+      preview: preview,
+      cutId: cutEndDrag?.cutId,
+      playbackFrameCount: playbackFrameCount,
+    ),
+    frameCellExtent,
+  );
 
   /// Where the DRAWN end sits in content pixels, following a live trim so the
   /// blue line and the wash edge never split from the red line mid-drag.
@@ -94,7 +101,7 @@ class TimelineFrameGridStack extends StatelessWidget {
         preview: preview,
         cutId: cutEndDrag?.cutId,
         playbackFrameCount: playbackFrameCount,
-        drawnFrameCount: drawnFrameCount,
+        drawnFrameCount: noriShiro?.call().drawnFrameCount,
         frameCellExtent: frameCellExtent,
       );
 
@@ -121,16 +128,25 @@ class TimelineFrameGridStack extends StatelessWidget {
           ),
         rowsBody,
         _playheadSlot(),
-        // The out-of-cut wash and the cut-end line are the TOP layers (the
-        // user's layer order 2026-08-02): where the film stops is stated over
-        // everything, cursor and selection included. The wash being its own
-        // layer at all is what lets a cut-length drag repaint one rect
-        // instead of re-baking every row's tiles.
-        _wash(context),
-        // Over the wash, under nothing: one continuous mark with the ruler's.
-        _noriShiro(),
-        _cutEndLine(),
-        ?_grip(),
+        // 🚨F-244: what follows a drag here is asked on EVERY step of every
+        // drag, so it lays out and paints on a layer of its own — rebuilt
+        // bare in the grid's layout scope, a step laid that scope out again
+        // and repainted everything around it.
+        TickOverlay(
+          children: [
+            // The out-of-cut wash and the cut-end line are the TOP layers (the
+            // user's layer order 2026-08-02): where the film stops is stated
+            // over everything, cursor and selection included. The wash being
+            // its own layer at all is what lets a cut-length drag repaint one
+            // rect instead of re-baking every row's tiles.
+            _wash(context),
+            // Over the wash, under nothing: one continuous mark with the
+            // ruler's.
+            _noriShiro(),
+            _cutEndLine(),
+            ?_grip(),
+          ],
+        ),
       ],
     );
   }

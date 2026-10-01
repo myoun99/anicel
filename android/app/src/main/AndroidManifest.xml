@@ -46,6 +46,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- drive-folder-windows-Q1: what a finished export hands over through
+             the share sheet (MainActivity.shareFiles). Not exported: another
+             app reads only the files a share granted it. -->
+        <provider
+            android:name=".OutboxProvider"
+            android:authorities="${applicationId}.outbox"
+            android:exported="false"
+            android:grantUriPermissions="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

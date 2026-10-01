@@ -718,7 +718,7 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
       return null;
     }
     final view = element.widget as BrushEditCanvasView;
-    return view.sessionState.canvasState.currentSurface;
+    return view.surface;
   }
 
   /// The editable surface's geometry + how many tiles sit fully BEYOND

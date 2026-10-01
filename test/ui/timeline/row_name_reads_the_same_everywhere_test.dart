@@ -8,7 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
-import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';

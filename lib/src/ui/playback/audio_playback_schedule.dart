@@ -246,12 +246,12 @@ class _ScheduleRun {
   int _contiguousEndFrom(int entryIndex) {
     var end = playlist[entryIndex].endFrame;
     var trackEnd =
-        (axis.startByCutId[playlist[entryIndex].cutId] ?? 0) +
+        (_trackStartOf(playlist[entryIndex]) ?? 0) +
         playlist[entryIndex].duration;
     final track = axis.trackByCutId[playlist[entryIndex].cutId];
     for (var i = entryIndex + 1; i < playlist.length; i += 1) {
       final next = playlist[i];
-      final nextTrackStart = axis.startByCutId[next.cutId];
+      final nextTrackStart = _trackStartOf(next);
       if (nextTrackStart == null ||
           next.startFrame < end ||
           next.startFrame - end != nextTrackStart - trackEnd ||
@@ -262,6 +262,14 @@ class _ScheduleRun {
       trackEnd = nextTrackStart + next.duration;
     }
     return end;
+  }
+
+  /// The frame on its track [entry]'s first frame shows — its cut's conte
+  /// start, less the のりしろ it plays ahead of it (a single cut's own
+  /// drawn run, F-227 ④); null when no track holds the cut.
+  int? _trackStartOf(StoryboardTimelineLayoutEntry entry) {
+    final conteStart = axis.startByCutId[entry.cutId];
+    return conteStart == null ? null : conteStart - entry.mediaLead;
   }
 
   /// Where playlist entry [entryIndex]'s window sits on its TRACK's axis,
@@ -276,11 +284,11 @@ class _ScheduleRun {
   _EntryWindow _windowAt(int entryIndex) {
     final entry = playlist[entryIndex];
     final track = axis.trackByCutId[entry.cutId];
-    final cutTrackStart = axis.startByCutId[entry.cutId]!;
+    final cutTrackStart = _trackStartOf(entry)!;
     final previous = entryIndex == 0 ? null : playlist[entryIndex - 1];
     final previousTrackStart = previous == null
         ? null
-        : axis.startByCutId[previous.cutId];
+        : _trackStartOf(previous);
     final playlistLead = entry.startFrame - (previous?.endFrame ?? 0);
     final axesAligned = previous == null
         // The playlist head maps straight onto the track axis (all-cuts

@@ -38,6 +38,8 @@ class QaNativeEngine {
     this._preBlendTiles,
     this._premultiplyRgbaCopy,
     this._copyBytes,
+    this._zeroBytes,
+    this._widenBytes,
     this._tileAlloc,
     this._tileFree,
     this._tileFreePointer,
@@ -156,6 +158,23 @@ class QaNativeEngine {
   /// VM's typed-data setRange ran several times slower in debug).
   void copyBytes(Pointer<Uint8> dst, Pointer<Uint8> src, int length) {
     _copyBytes(dst, src, length);
+  }
+
+  final void Function(Pointer<Uint8> dst, int length) _zeroBytes;
+
+  /// A native memset — a zeroed tile without the VM's debug-build
+  /// `fillRange` loop (`qa_zero_bytes`, ABI 40).
+  void zeroBytes(Pointer<Uint8> dst, int length) {
+    _zeroBytes(dst, length);
+  }
+
+  final void Function(Pointer<Uint8> bytes, Pointer<Uint16> wide, int count)
+  _widenBytes;
+
+  /// A stroke tile's 16-bit plane widened from its bytes, natively
+  /// (`qa_widen_bytes`, ABI 40).
+  void widenBytes(Pointer<Uint8> bytes, Pointer<Uint16> wide, int count) {
+    _widenBytes(bytes, wide, count);
   }
 
   final Pointer<Void> Function(int size) _tileAlloc;
@@ -964,6 +983,16 @@ class QaNativeEngine {
             Void Function(Pointer<Uint8>, Pointer<Uint8>, Int64),
             void Function(Pointer<Uint8>, Pointer<Uint8>, int)
           >('qa_copy_bytes');
+      final zeroBytes = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Int64),
+            void Function(Pointer<Uint8>, int)
+          >('qa_zero_bytes');
+      final widenBytes = library
+          .lookupFunction<
+            Void Function(Pointer<Uint8>, Pointer<Uint16>, Int64),
+            void Function(Pointer<Uint8>, Pointer<Uint16>, int)
+          >('qa_widen_bytes');
       final tileAlloc = library
           .lookupFunction<
             Pointer<Void> Function(Int64),
@@ -1212,6 +1241,8 @@ class QaNativeEngine {
         preBlendTiles,
         premultiplyRgbaCopy,
         copyBytes,
+        zeroBytes,
+        widenBytes,
         tileAlloc,
         tileFree,
         tileFreePointer,
@@ -1675,6 +1706,8 @@ class QaNativeEngine {
     Pointer<Uint8>? strokePixels,
     Pointer<Uint8>? maskPixels,
     Pointer<Uint8>? premulOut,
+    // ABI 40 — only the dab batch reads it.
+    Pointer<Uint16>? tileWide,
   }) {
     final span = _tileSpans.pointer[index];
     span.tilePixels = tilePixels;
@@ -1689,6 +1722,7 @@ class QaNativeEngine {
     span.strokePixels = strokePixels ?? nullptr;
     span.maskPixels = maskPixels ?? nullptr;
     span.premulOut = premulOut ?? nullptr;
+    span.tileWide = tileWide ?? nullptr;
   }
 
   /// ABI 24: stages, blends and premultiplies every staged span in ONE
@@ -1842,7 +1876,7 @@ class QaNativeEngine {
     final pointer = tileAlloc(byteLength);
     final view = pointer.asTypedList(byteLength);
     if (zeroed) {
-      view.fillRange(0, byteLength, 0);
+      _zeroBytes(pointer, byteLength);
     }
     return QaNativeTileBuffer._(pointer, view);
   }
@@ -2023,7 +2057,14 @@ class QaNativeEngine {
     _dabClips.ensure(dabCount * 4);
     _arenaChunk = 0;
     _arenaOffset = 0;
+    _batchEvenings.clear();
   }
+
+  /// Each evening table the batch has staged, by identity: a stroke's dabs
+  /// lay a few shares (`eveningTableFor` keeps one table a share), so a
+  /// table is copied into the arena once a batch rather than once a dab.
+  final Map<Float64List, Pointer<Double>> _batchEvenings =
+      Map<Float64List, Pointer<Double>>.identity();
 
   Pointer<Uint8> _arenaAlloc(int bytes) {
     // Keep every array 8-byte aligned (doubles).
@@ -2142,6 +2183,7 @@ class QaNativeEngine {
     Float64List? texVFraction,
     Float64List? texVOneMinus,
     Int32List? tipRowInk,
+    Float64List? evening,
   }) {
     final clip = _dabClips.pointer + index * 4;
     clip[0] = clipLeft;
@@ -2235,6 +2277,9 @@ class QaNativeEngine {
         ? nullptr
         : _arenaFloat64(texVOneMinus);
     spec.tipRowInk = tipRowInk == null ? nullptr : _arenaInt32(tipRowInk);
+    spec.evening = evening == null
+        ? nullptr
+        : _batchEvenings.putIfAbsent(evening, () => _arenaFloat64(evening));
   }
 }
 
@@ -2386,6 +2431,11 @@ final class QaTileSpanStruct extends Struct {
   external Pointer<Uint8> strokePixels;
   external Pointer<Uint8> maskPixels;
   external Pointer<Uint8> premulOut;
+
+  /// ABI 40 — the stroke tile's 16-bit plane on the same grid as
+  /// [tilePixels], what the dab batch piles up in (`qa_dab_store`). Every
+  /// other kernel's spans leave it null.
+  external Pointer<Uint16> tileWide;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY
@@ -2492,6 +2542,10 @@ final class QaDabSpecStruct extends Struct {
 
   /// ABI 39: each tip mask row's first and last inked column, or null.
   external Pointer<Int32> tipRowInk;
+
+  /// ABI 41: the table the dab lays its share through (`qa_dab_even`), or
+  /// null where it lays whole.
+  external Pointer<Double> evening;
 }
 
 /// Mirror of the C `qa_cel_pixel_spec` (ABI 34) — field order/types must

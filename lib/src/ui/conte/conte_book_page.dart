@@ -18,9 +18,10 @@ import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../sheet/sheet_strata.dart';
 import '../sheet/sheet_text_edit_layer.dart';
-import '../sheet_painting.dart' show SheetPictureLookup;
-import '../timeline/timeline_drag_preview.dart'
-    show CutTrimDragPreview, TimelineDragPreview;
+import '../sheet_painting.dart' show SheetPictureLookup, SheetPictureOverInk;
+import '../sliced_value_listenable_builder.dart'
+    show SlicedValueListenableScope;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -53,6 +54,7 @@ class ConteBookPage extends StatelessWidget {
     this.inkController,
     this.pictures = const [],
     this.cels,
+    this.picturesOverInk = const [],
   });
 
   final ContePageLayout page;
@@ -94,6 +96,10 @@ class ConteBookPage extends StatelessWidget {
 
   /// The cels those pictures draw into.
   final ContePictureInkController? cels;
+
+  /// This page's pictures and where each shows its cut's canvas, brush on
+  /// or off: the page's printed ink shows nowhere there (F-216).
+  final List<SheetPictureOverInk> picturesOverInk;
 
   @override
   Widget build(BuildContext context) {
@@ -160,15 +166,15 @@ class ConteBookPage extends StatelessWidget {
             // on paper, but a tap below belongs to the cell there.
             box: Rect.fromLTRB(
               cell.actionRect.left,
-              m.rowTop(cell.rowOnPage),
+              cell.actionRect.top,
               cell.actionRect.right,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan),
+              m.rowTop(cell.rowOnPage + cell.rowSpan),
             ),
             textRect: Rect.fromLTRB(
               cell.actionRect.left + 4,
-              m.rowTop(cell.rowOnPage) + 4,
+              cell.actionRect.top + 4,
               cell.actionRect.right - 4,
-              m.rowTop(cell.rowOnPage + cell.source.rowSpan) - 4,
+              m.rowTop(cell.rowOnPage + cell.rowSpan) - 4,
             ),
             text: cell.source.action,
             style: conteTextStyle(
@@ -196,23 +202,30 @@ class ConteBookPage extends StatelessWidget {
   /// ⚠️REVERSED, so where two pictures overlap (a cell that encroaches with a
   /// horizontal camera move) the EARLIER cell is on top and takes the press,
   /// as the page-wide layer's first-match loop gave it.
+  ///
+  /// A cell of the paper, not a button: a press that drags pans at once,
+  /// on the picture as on the cell's words ([PressFire.upInsideOrPan], H53 ·
+  /// F-214 「픽쳐칸도 똑같음」).
   Positioned _cellTaps() {
     return Positioned.fill(
-      child: Stack(
-        key: const ValueKey<String>('conte-cell-tap-layer'),
-        children: [
-          for (final cell in page.cells.reversed)
-            Positioned.fromRect(
-              rect: _onScreen(cell.pictureRect),
-              child: ControlPressClaim(
-                onPressed: () => onSelectCell(cell),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: silentPress(() => onSelectCell(cell)),
+      child: PressFireScope(
+        fireOn: PressFire.upInsideOrPan,
+        child: Stack(
+          key: const ValueKey<String>('conte-cell-tap-layer'),
+          children: [
+            for (final cell in page.cells.reversed)
+              Positioned.fromRect(
+                rect: _onScreen(cell.pictureRect),
+                child: ControlPressClaim(
+                  onPressed: () => onSelectCell(cell),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: silentPress(() => onSelectCell(cell)),
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -237,6 +250,7 @@ class ConteBookPage extends StatelessWidget {
       SheetStratum stratum, {
       ValueListenable<TimelineDragPreview?>? dragPreview,
       Set<BrushFrameKey> liveInkKeys = const {},
+      List<SheetPictureOverInk> picturesOverInk = const [],
       List<Listenable?> repaint = const [],
     }) => ContePagePainter(
       page: page,
@@ -252,12 +266,12 @@ class ConteBookPage extends StatelessWidget {
       viewport: viewport,
       effectiveRatio: EffectiveDevicePixelRatio.of(context),
       layers: stratum.layers,
-      // Saved sheet ink shows whatever the ink mode says (R5); a live input
-      // window's key stands down so translucent ink never composites twice.
-      inkImageFor: ink == null
-          ? null
-          : (key) => ink.displayImageFor(null, key),
+      // Saved sheet ink shows whatever the ink mode says (R5), as the live
+      // window would draw it (F-215); a live input window's key stands down
+      // so translucent ink never composites twice.
+      inkSurfaceFor: ink == null ? null : (key) => ink.surfaceFor(null, key),
       liveInkKeys: liveInkKeys,
+      picturesOverInk: picturesOverInk,
       dragPreview: dragPreview,
       repaint: repaint.isEmpty ? null : Listenable.merge(repaint),
     );
@@ -270,44 +284,59 @@ class ConteBookPage extends StatelessWidget {
       //
       // The surrounding `Stack` already clips `Clip.hardEdge`, so each bake's
       // own clip is a no-op and the pixels do not move.
-      child: SheetStrata(
-        sheet: 'conte',
-        painters: {
-          SheetStratum.form: painterOf(SheetStratum.form),
-          // F-88: the numbers this page prints follow a cut-length drag, so
-          // the channel is both a VALUE the paint reads and a reason to
-          // repaint. A landed logo — nothing the painter compares changes
-          // for it.
-          SheetStratum.content: painterOf(
-            SheetStratum.content,
-            dragPreview: session.dragPreview,
-            repaint: [session.dragPreview, imageRepaint],
-          ),
-          // A landed thumbnail or cover picture, likewise.
-          SheetStratum.picture: painterOf(
-            SheetStratum.picture,
-            repaint: [picturesLanded, imageRepaint],
-          ),
-          if (ink != null)
-            SheetStratum.ink: painterOf(
-              SheetStratum.ink,
-              liveInkKeys: drawing
-                  ? {for (final window in conteInkWindows(page)) window.key}
-                  : const {},
-              repaint: [ink],
-            ),
+      //
+      // 🚨sheet-prints-only-its-drags: the channel is handed on SLICED to
+      // what the page prints of it ([conteDragPrint]). Heard whole, a lane
+      // value scrubbed on the timeline repainted the numbers every step —
+      // with the bake standing, a capture a step.
+      child: SlicedValueListenableScope<TimelineDragPreview?, Object>(
+        valueListenable: session.dragPreview,
+        slice: (preview) => conteDragPrint(source, preview),
+        builder: (context, printed) {
+          final committed = conteDragPrint(source, null);
+          return SheetStrata(
+            sheet: 'conte',
+            painters: {
+              SheetStratum.form: painterOf(SheetStratum.form),
+              // F-88: the numbers this page prints follow a cut-length
+              // drag, so the channel is both a VALUE the paint reads and a
+              // reason to repaint. A landed logo — nothing the painter
+              // compares changes for it.
+              SheetStratum.content: painterOf(
+                SheetStratum.content,
+                dragPreview: printed,
+                repaint: [printed, imageRepaint],
+              ),
+              // A landed thumbnail or cover picture, likewise. Each picture is
+              // laid where its live composite shows it, by the map of its
+              // cut's canvas (F-215).
+              SheetStratum.picture: painterOf(
+                SheetStratum.picture,
+                picturesOverInk: picturesOverInk,
+                repaint: [picturesLanded, imageRepaint],
+              ),
+              if (ink != null)
+                SheetStratum.ink: painterOf(
+                  SheetStratum.ink,
+                  liveInkKeys: drawing
+                      ? {for (final window in conteInkWindows(page)) window.key}
+                      : const {},
+                  picturesOverInk: picturesOverInk,
+                  repaint: [ink],
+                ),
+            },
+            // ⚠️A stratum stands down while it changes on every step — the
+            // ink while the pen is down, the numbers while a drag re-prints
+            // them (F-88): capturing costs a full paint PLUS a full copy a
+            // step.
+            liveNow: (stratum) => switch (stratum) {
+              SheetStratum.ink => strokeHold.value,
+              SheetStratum.content => printed.slice != committed,
+              SheetStratum.form || SheetStratum.picture => false,
+            },
+            liveChanges: Listenable.merge([strokeHold, printed]),
+          );
         },
-        // ⚠️A stratum stands down while it changes on every step — the ink
-        // while the pen is down, the numbers while a cut-length drag
-        // re-prints them (F-88): capturing costs a full paint PLUS a full
-        // copy a step.
-        liveNow: (stratum) => switch (stratum) {
-          SheetStratum.ink => strokeHold.value,
-          SheetStratum.content =>
-            session.dragPreview.value is CutTrimDragPreview,
-          SheetStratum.form || SheetStratum.picture => false,
-        },
-        liveChanges: Listenable.merge([strokeHold, session.dragPreview]),
       ),
     );
   }

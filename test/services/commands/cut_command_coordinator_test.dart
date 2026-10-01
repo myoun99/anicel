@@ -1336,16 +1336,20 @@ void main() {
         name: 'layer-1',
         kind: LayerKind.animation,
         frames: [frame],
+        // The block at 0 holds: frame 1 is its ghost (derived — the
+        // repository settles run edges on every write, F-227 — so the cut
+        // is two frames long, room for one).
         timeline: {
-          0: TimelineExposure.drawing(frame.id, length: 1),
-          1: TimelineExposure.drawing(
-            frame.id,
-            length: 1,
-            ghostOf: endHoldGhost,
-          ),
+          0: TimelineExposure.drawing(frame.id, length: 1, endEdge: holdMark),
         },
       );
-      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final cutA = Cut(
+        id: const CutId('cut-1'),
+        name: 'Cut A',
+        layers: [layer],
+        duration: 2,
+        canvasSize: const CanvasSize(width: 1280, height: 720),
+      );
       final fixture = _fixture(
         _project(
           tracks: [

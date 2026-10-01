@@ -32,10 +32,12 @@ import '../helpers/dart_sources.dart';
 /// turned out to mean: not swapping the widget, but removing the one that
 /// was doubled.
 ///
-/// ⚠️Two surfaces the behaviour provably cannot reach — `DropdownButton`'s
-/// menu and `MenuAnchor`'s panel — build their own inside the FRAMEWORK, not
-/// here, and `ScrollbarThemeData` in `buildAppTheme` is their styling. They
-/// are not `lib/` files, so this scan does not see them and does not need to.
+/// ⚠️Surfaces the behaviour provably cannot reach build their own inside the
+/// FRAMEWORK, not here, and `ScrollbarThemeData` in `buildAppTheme` is their
+/// styling — the About dialog's license page is the one the app still opens
+/// (`DropdownButton`'s menu and `MenuAnchor`'s panel went with F-230, held by
+/// `the_app_picks_from_one_flyout_test`). They are not `lib/` files, so this
+/// scan does not see them and does not need to.
 ///
 /// ⚠️`test/architecture/` and not `test/tool/`: the pre-push hook treats
 /// `test/tool/` as board-only and pushes it to master without a PR.

@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:anicel/src/models/brush_hand_settings.dart';
 import 'package:anicel/src/ui/brush/picked_file.dart';
 import 'package:anicel/src/services/brush_pack_file.dart';
@@ -18,6 +17,7 @@ import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import 'package:anicel/src/services/brush_preset_defaults.dart';
 import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
 import '../helpers/temp_dir.dart';
@@ -197,13 +197,110 @@ void main() {
       expect(reloaded.groups.last.collapsed, isTrue);
     });
 
-    test('reorderGroups replaces the display order', () async {
+    test('arrange takes a new group order and a preset into another group',
+        () async {
       final library = await seeded();
       addTearDown(library.dispose);
 
-      library.reorderGroups(library.groups.reversed.toList());
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id.value == 'loose')
+              preset.copyWith(groupId: _paint)
+            else
+              preset,
+        ], library.groups.reversed.toList()),
+      );
 
       expect(library.groups.map((group) => group.name), ['Paint', 'Ink']);
+      expect(
+        library.presetsInGroup(_paint).map((preset) => preset.id.value),
+        ['p1', 'loose'],
+      );
+    });
+
+    // F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때 … 해당 그룹의 마지막으로
+    // 선택했던걸 기억해서 그거 자동선택되도록」.
+    test('entering a tab takes the remembered brush while it still shows '
+        'there, the tab\'s first otherwise, nothing in an empty tab', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      const i2 = BrushPresetId('i2');
+
+      expect(library.presetEntering(_ink, remembered: i2), i2);
+      expect(
+        library.presetEntering(_ink)?.value,
+        'i1',
+        reason: 'nothing remembered: the first',
+      );
+      expect(
+        library.presetEntering(_ink, remembered: const BrushPresetId('p1'))
+            ?.value,
+        'i1',
+        reason: 'remembered somewhere else: the first',
+      );
+      expect(
+        library.presetEntering(null)?.value,
+        'loose',
+        reason: 'the root section is a tab like any other',
+      );
+
+      library.arrange(
+        brushLibraryArrangementOf([
+          for (final preset in library.presets)
+            if (preset.id == i2) preset.copyWith(groupId: _paint) else preset,
+        ], library.groups),
+      );
+      expect(
+        library.presetEntering(_ink, remembered: i2)?.value,
+        'i1',
+        reason: 'it moved out of the tab since',
+      );
+
+      library.createGroup('Empty');
+      expect(library.presetEntering(library.groups.last.id), isNull);
+    });
+
+    // F-250: a move is undone by laying the old arrangement back, and the
+    // library may have changed in ways that are not on the stack since.
+    test('🚨an old arrangement laid back keeps a delete and an import made '
+        'since', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final old = library.arrangement;
+      library.arrange(
+        brushLibraryArrangementOf(
+          library.presets.reversed.toList(),
+          library.groups,
+        ),
+      );
+      library.delete(const BrushPresetId('i2'));
+      final imported = library.saveCurrent(BrushSettings(size: 7));
+
+      library.arrange(old);
+
+      expect(library.presets.map((preset) => preset.id.value), [
+        'i1',
+        'p1',
+        'loose',
+        imported.id.value,
+      ]);
+    });
+
+    test('a preset whose group is gone shows in the root tab', () async {
+      final library = await seeded(
+        presets: [
+          _preset('i1', groupId: _ink),
+          _preset('stale', groupId: const BrushGroupId('gone')),
+          _preset('loose'),
+        ],
+      );
+      addTearDown(library.dispose);
+
+      expect(
+        library.presetsInGroup(null).map((preset) => preset.id.value),
+        ['stale', 'loose'],
+      );
     });
 
     test('resetToDefaults restores the built-ins', () async {
@@ -290,6 +387,28 @@ void main() {
       library.rename(const BrushPresetId('not-here'), 'Fine liner');
 
       expect(library.presets.map((p) => p.name), before);
+    });
+  });
+
+  group('what an edit writes', () {
+    // 🚨A MUTANT SURVIVED HERE (2026-09-30): the library could stop writing
+    // altogether and every test in this file stayed green, once the pins
+    // that watched its writes moved to the writer's own test with the
+    // order law (`a_settings_file_holds_the_last_save_test`).
+    test('the file is handed the library as it stands', () async {
+      final library = await seeded();
+      addTearDown(library.dispose);
+      final written = <String>[];
+      debugSettingsFileWrite = (_, text) async => written.add(text);
+      addTearDown(() => debugSettingsFileWrite = null);
+
+      library.rename(const BrushPresetId('i2'), 'Fine liner');
+
+      final presets = (jsonDecode(written.single) as Map)['presets'] as List;
+      expect(
+        [for (final preset in presets) (preset as Map)['name']],
+        ['i1', 'Fine liner', 'p1', 'loose'],
+      );
     });
   });
 
@@ -475,103 +594,6 @@ void main() {
   });
 
   group('brush export', _exportRoundTripTests);
-
-  group('🚨the library writes ONE AT A TIME, in call order', () {
-    test('a second edit does not start a second write', () async {
-      // Eleven mutators persist, and they used to fire each save unawaited
-      // with nothing serializing them. Two edits a frame apart raced, and
-      // "last write wins" meant last to FINISH, not last called — a rename
-      // could land after the delete that followed it and bring the preset
-      // back on the next load.
-      final writer = _RecordingFileService(
-        '${tempDirectory.path}/serialized.json',
-      );
-      final library = BrushPresetLibrary(fileService: writer);
-
-      library.saveCurrent(BrushSettings(size: 5));
-      library.saveCurrent(BrushSettings(size: 6));
-      library.saveCurrent(BrushSettings(size: 7));
-
-      expect(
-        writer.maximumOverlap,
-        1,
-        reason: 'two saves must never be in flight together',
-      );
-
-      await writer.settle();
-
-      // ...and the newest state is what the file ends up holding.
-      expect(writer.applied.last, library.presets.length);
-      library.dispose();
-    });
-
-    test('the states BETWEEN two edits may be skipped, the last may not', () async {
-      final writer = _RecordingFileService(
-        '${tempDirectory.path}/coalesced.json',
-      );
-      final library = BrushPresetLibrary(fileService: writer);
-
-      for (var i = 0; i < 6; i += 1) {
-        library.saveCurrent(BrushSettings(size: 5));
-      }
-      await writer.settle();
-
-      expect(
-        writer.applied.length,
-        lessThan(6),
-        reason: 'the in-between states of a burst are not worth a write each',
-      );
-      expect(writer.applied.last, 6);
-      library.dispose();
-    });
-  });
-}
-
-/// A file service that records what it was asked to write and how many
-/// writes were in flight at once.
-///
-/// ⛔NO TIMER FINISHES A WRITE HERE — the TEST does, one at a time. A fake
-/// that landed its completion on a `Future.delayed` would be betting on how
-/// busy the machine is, which is the race
-/// `tests_do_not_race_the_code_test` exists to refuse.
-class _RecordingFileService extends BrushPresetFileService {
-  _RecordingFileService(String path) : super(filePath: path);
-
-  /// Preset counts, in the order the library ASKED for them.
-  final List<int> applied = [];
-
-  final List<Completer<void>> _open = [];
-
-  /// The most writes this service was ever holding at once.
-  int maximumOverlap = 0;
-
-  @override
-  Future<void> save(BrushPresetLibraryData library) {
-    applied.add(library.presets.length);
-    final completer = Completer<void>();
-    _open.add(completer);
-    if (_open.length > maximumOverlap) {
-      maximumOverlap = _open.length;
-    }
-    return completer.future;
-  }
-
-  /// Finishes the write the library is waiting on and gives it the turn it
-  /// needs to queue whatever is next. False means nothing was in flight —
-  /// positive evidence that the queue is empty, not an observed silence.
-  Future<bool> _finishOne() async {
-    if (_open.isEmpty) {
-      return false;
-    }
-    _open.removeAt(0).complete();
-    await Future<void>.delayed(Duration.zero);
-    return true;
-  }
-
-  /// Runs the queue to exhaustion, one write per turn.
-  Future<void> settle() async {
-    while (await _finishOne()) {}
-  }
 }
 
 /// 🚨유저 (`brush-export-format-Q1` 답 1 + `H25-Q1` 답 both-by-selection):

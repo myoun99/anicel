@@ -15,6 +15,7 @@ import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/sheet_marks.dart' show SheetPicture;
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../../services/project_lookup.dart'
@@ -30,6 +31,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
+import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
 import 'conte_book_page.dart';
@@ -233,7 +235,19 @@ class _ConteTabHostState extends State<ConteTabHost> {
     if (widget.viewport != oldWidget.viewport) {
       _ownView.value = widget.viewport;
     }
+    if (_drawingIn(oldWidget) && !_drawing) {
+      _awaitingPrints = true;
+    }
   }
+
+  /// 🗣️F-215 (유저 2026-09-28): 「on하든off하든 바뀌는게 없어야
+  /// 구조적으로 맞는거아닌가?」 Switched off, the pictures the brush drew
+  /// into stay live until the prints under them have caught up: a stroke
+  /// raised its cut's signature, each of its prints renders again, and
+  /// standing down at once showed the picture from before the stroke until
+  /// the new one landed. The pen goes with the switch; the pictures stay
+  /// until [_PrintsCaughtUp] says the store owes none.
+  bool _awaitingPrints = false;
 
   @override
   void dispose() {
@@ -306,16 +320,23 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// A cell's picture at the size its window shows it — the zoom and the
   /// screen's density decide, not a size of the conte's own (유저
   /// 2026-09-25: 「화면이 필요한 만큼(최대 원본)」). ↩️It asked one fixed
-  /// 640px picture, which a cell zoomed past about 2.4× stretched.
-  ui.Image? _pictureFor(String cutId, int frame, double shownHeight) {
+  /// 640px picture, which a cell zoomed past about 2.4× stretched. A cell
+  /// whose camera moves asks for the canvas that camera sweeps
+  /// ([SheetPicture.canvasRegion]).
+  ui.Image? _pictureFor(SheetPicture picture, double shownHeight) {
     final resolver = widget.thumbnails?.resolve;
     if (resolver == null) {
       return null;
     }
     for (final track in _session.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
-        if (cut.id.value == cutId) {
-          return resolver(cut, frame, shownHeight: shownHeight);
+        if (cut.id.value == picture.cutId) {
+          return resolver(
+            cut,
+            picture.pictureFrame,
+            shownHeight: shownHeight,
+            region: picture.canvasRegion,
+          );
         }
       }
     }
@@ -325,10 +346,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// Whether the sheet takes ink now. ONE gate: the ink layer, the panel's
   /// [SheetCanvasPanel.drawingOn] and the painter's live keys all ask this,
   /// so none can say 「drawing」 while another says not.
-  bool get _drawing =>
-      widget.inkController != null &&
-      widget.brushToolState != null &&
-      widget.brushAllowed;
+  bool get _drawing => _drawingIn(widget);
+
+  static bool _drawingIn(ConteTabHost host) =>
+      host.inkController != null &&
+      host.brushToolState != null &&
+      host.brushAllowed;
 
   /// What the ink windows are mounted with for the pages on screen — or
   /// null while the sheet's drawing is off.
@@ -466,7 +489,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
         ),
     ];
     final ink = _inkMount(shown);
-    final pictures = ink == null ? null : _picturesOf(ink);
+    final awaited = _awaitingPrints ? widget.thumbnails : null;
+    final pictures = ink != null
+        ? _picturesOf(ink.pages, ink.project)
+        : awaited != null
+        ? _picturesOf(shown, _session.repository.requireProject())
+        : null;
     return Stack(
       children: [
         for (var index = 0; index < shown.length; index += 1)
@@ -492,26 +520,41 @@ class _ConteTabHostState extends State<ConteTabHost> {
               inkController: widget.inkController,
               pictures: pictures?[index] ?? const [],
               cels: widget.pictures,
+              picturesOverInk: contePicturesOverInkIn(
+                _session,
+                shown[index].page,
+              ),
             ),
           ),
         if (ink != null) _inkLayer(ink, viewport, pictures!),
+        if (awaited != null) _waitFor(awaited),
       ],
     );
   }
 
-  /// The pictures the brush draws into on each of [ink]'s pages, in the
-  /// pages' order and each in its page's own space — none without the
-  /// cels' controller. Their cuts and cel keys are the project's the pages
-  /// are laid from: the next cut is drawn into on the track it will be made
-  /// on.
-  List<List<ContePicture>> _picturesOf(_InkMount ink) {
+  /// What stands the pictures down once [prints] owes none
+  /// ([_awaitingPrints]).
+  Positioned _waitFor(StoryboardThumbnails prints) => Positioned.fill(
+    child: _PrintsCaughtUp(
+      prints: prints,
+      onCaughtUp: () => setState(() => _awaitingPrints = false),
+    ),
+  );
+
+  /// The pictures the brush draws into on each of [pages], in their order
+  /// and each in its page's own space — none without the cels' controller.
+  /// Their cuts and cel keys are [project]'s, the project the pages are
+  /// laid from: the next cut is drawn into on the track it will be made on.
+  List<List<ContePicture>> _picturesOf(
+    List<ConteShownPage> pages,
+    Project project,
+  ) {
     if (widget.pictures == null) {
-      return [for (final _ in ink.pages) const []];
+      return [for (final _ in pages) const []];
     }
-    final cels = _celsOf(ink.project);
+    final cels = _celsOf(project);
     return [
-      for (final (:page, at: _) in ink.pages)
-        contePictures(page, cels, _strokeOf),
+      for (final (:page, at: _) in pages) contePictures(page, cels, _strokeOf),
     ];
   }
 
@@ -524,18 +567,28 @@ class _ConteTabHostState extends State<ConteTabHost> {
     cameraPoseOf: _session.camera.cameraPoseForCut,
     cameraFrameSize: _session.camera.cameraFrameSize,
     conteCelOf: _session.autoFrame.conteCelFor,
-    rowRefusal: _rowRefusal,
+    refusalOf: _refusalFor,
   );
 
-  /// Why a cell with no block takes no ink, picture and band alike — the
-  /// canvas's notice, word for word, for a press on a cell it may not fill
-  /// (`EditorCanvasArea._drawRefusalFor`); null while its 「프레임 자동
-  /// 생성」 is on and the stroke makes the block.
-  String? get _rowRefusal => _session.autoFrame.autoCreates
-      ? null
-      : AppStrings.of(
-          _session.languageSettings.value.programLanguage,
-        ).noticeNoFrameHere;
+  /// Why a cell of [cutId] with no block takes no ink, picture and band
+  /// alike — the canvas's notice for a press on a cell it may not fill
+  /// (`EditorCanvasArea._drawRefusalFor`), naming what the cut lacks: its
+  /// conte row itself, or a block on it (유저 2026-09-30, H51: 「콘티레이어
+  /// 없으면 프레임이 없다고뜨는데 이런 메시지 제대로 표시. 콘티레이어가
+  /// 없다고」). Null while its 「프레임 자동 생성」 is on and the stroke makes
+  /// what is missing.
+  String? _refusalFor(CutId cutId) {
+    if (_session.autoFrame.autoCreates) {
+      return null;
+    }
+    final strings = AppStrings.of(
+      _session.languageSettings.value.programLanguage,
+    );
+    final cut = _session.cutById(cutId);
+    return cut != null && storyboardLayerForCut(cut) == null
+        ? strings.noticeNoConteLayer
+        : strings.noticeNoFrameHere;
+  }
 
   /// A piece of a stroke landing makes what it was drawn into, in the
   /// stroke's own undo step: the next cut's slot the cut (H44), a cell with
@@ -594,7 +647,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         ],
         pictureInvalidationSink: _session.renderCaches.cacheInvalidationHub,
         unwrittenInkIdOf: _unwrittenInkIdOf,
-        rowRefusal: _rowRefusal,
+        refusalOf: (cell) => _refusalFor(CutId(cell.cutId)),
         beforeLanding: _makeWhatTheStrokeLandsIn,
       ),
     );
@@ -625,4 +678,51 @@ Offset _onDevicePixels(Offset at, CanvasViewport viewport, double ratio) {
     (at.dx * perUnit).roundToDouble() / perUnit,
     (at.dy * perUnit).roundToDouble() / perUnit,
   );
+}
+
+/// Says when [prints] owes no picture any more: the store is asked once the
+/// frame this mounts in has painted, and again once each frame a landing
+/// sets off has — a page asks for its prints as it PAINTS, so a stroke no
+/// paint has reached yet owes a print nobody has asked for, and a landing
+/// empties what was asked until the repaint asks again
+/// ([StoryboardThumbnails.pending]).
+class _PrintsCaughtUp extends StatefulWidget {
+  const _PrintsCaughtUp({required this.prints, required this.onCaughtUp});
+
+  final StoryboardThumbnails prints;
+  final VoidCallback onCaughtUp;
+
+  @override
+  State<_PrintsCaughtUp> createState() => _PrintsCaughtUpState();
+}
+
+class _PrintsCaughtUpState extends State<_PrintsCaughtUp> {
+  // Heard once: the conte is made again for each project
+  // (`EditorPanelTab.builtFor`), and its store is the project's — a wait
+  // never meets another store's landings.
+  late final Listenable _landings = widget.prints.landed;
+
+  @override
+  void initState() {
+    super.initState();
+    _landings.addListener(_askOnceItHasPainted);
+    _askOnceItHasPainted();
+  }
+
+  @override
+  void dispose() {
+    _landings.removeListener(_askOnceItHasPainted);
+    super.dispose();
+  }
+
+  void _askOnceItHasPainted() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !widget.prints.pending()) {
+        widget.onCaughtUp();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

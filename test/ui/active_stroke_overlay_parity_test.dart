@@ -12,8 +12,11 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/brush_commit_builder.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
@@ -150,26 +153,6 @@ void _expectExact(Uint8List actual, Uint8List expected, String reason) {
   }
 }
 
-void _expectClose(
-  Uint8List actual,
-  Uint8List expected,
-  String reason, {
-  required int tolerance,
-}) {
-  expect(actual.length, expected.length);
-  for (var index = 0; index < actual.length; index += 1) {
-    final difference = (actual[index] - expected[index]).abs();
-    if (difference > tolerance) {
-      final pixel = index ~/ 4;
-      fail(
-        '$reason: channel ${index % 4} at pixel '
-        '(${pixel % _canvasWidth}, ${pixel ~/ _canvasWidth}) differs by '
-        '$difference (actual ${actual[index]}, expected ${expected[index]}).',
-      );
-    }
-  }
-}
-
 void main() {
   group('live stroke rasterizer matches the commit rasterizer exactly', () {
     final scenarios = <String, List<BrushDab>>{
@@ -298,7 +281,7 @@ void main() {
   });
 
   group('pen-up composite fast path matches full re-rasterization', () {
-    test('stroke over painted base within one rounding step', () {
+    test('stroke over painted base, byte for byte', () {
       final baseDabs = [
         for (var i = 0; i < 5; i += 1)
           _dab(x: 8.5 + i * 4.0, y: 12.5, color: 0xCC994411, sequence: i),
@@ -320,33 +303,27 @@ void main() {
         strokePixels: rasterizer.strokePixelsWithinBounds()!,
         bounds: rasterizer.strokeBounds!,
       );
-      final reference = materializeBrushDabSequenceOnBitmapSurface(
+      // The stroke re-derived from its dabs, as the commit lands it with no
+      // live buffer to hand.
+      final reference = brushCommitResultForBrushDabSequenceOnBitmapSurface(
         surface: base,
         sequence: BrushDabSequence(strokeDabs),
+        layerId: const LayerId('l'),
+        frameId: const FrameId('f'),
       );
 
       expect(composite.dirtyTiles.isNotEmpty, isTrue);
-      // Source-over is associative in real arithmetic but the two routes
-      // quantize at different points (per-dab onto base vs stroke buffer
-      // then one composite), so translucent overlaps drift by a rounding
-      // step per overlapping dab. The painted pixel SET must match exactly;
-      // channel values may drift slightly. What the user saw while drawing
-      // is the buffer, and the commit composites exactly that buffer, so
-      // the on-screen/committed unification itself is exact by construction.
-      final compositeBytes = _surfaceBytes(composite.surface);
-      final referenceBytes = _surfaceBytes(reference.surface);
-      for (var index = 3; index < compositeBytes.length; index += 4) {
-        expect(
-          compositeBytes[index] > 0,
-          referenceBytes[index] > 0,
-          reason: 'painted pixel set must match at byte ',
-        );
-      }
-      _expectClose(
-        compositeBytes,
-        referenceBytes,
-        'composite vs re-rasterize',
-        tolerance: 8,
+      // ↩️This compared against the same dabs laid on the base one by one
+      // and allowed 8 levels: the two routes rounded at different points.
+      // A stroke re-derived from its dabs piles up on an empty buffer and
+      // composites once now, exactly as the live overlay does
+      // (erase-live-and-dab-route-round-apart), and a dab settles at its
+      // opacity against the STROKE's buffer (F-205) — which the base under
+      // it is not.
+      _expectExact(
+        _surfaceBytes(composite.surface),
+        _surfaceBytes(reference.afterSurface),
+        'composite vs re-derived',
       );
     });
 
@@ -406,7 +383,7 @@ void main() {
       );
     });
 
-    test('translucent erase drifts at most a rounding step per overlap', () {
+    test('translucent erase, byte for byte', () {
       final baseDabs = [
         for (var i = 0; i < 5; i += 1)
           _dab(
@@ -437,19 +414,21 @@ void main() {
         bounds: rasterizer.strokeBounds!,
         erase: true,
       );
-      final reference = materializeBrushDabSequenceOnBitmapSurface(
+      // The erase re-derived from its dabs, as the commit lands it.
+      final reference = brushCommitResultForBrushDabSequenceOnBitmapSurface(
         surface: base,
         sequence: BrushDabSequence(eraseDabs),
+        layerId: const LayerId('l'),
+        frameId: const FrameId('f'),
       );
 
-      // Same quantization-point argument as the paint fast path above; the
-      // committed pixels are exactly the erase the user watched (the buffer
-      // drives both the overlay preview and the commit).
-      _expectClose(
+      // ↩️Compared against per-dab erasing within 8 levels, for the reason
+      // the paint case above gives; the re-derived erase piles its coverage
+      // up and erases once, as the overlay does, so it is the same bytes.
+      _expectExact(
         _surfaceBytes(composite.surface),
-        _surfaceBytes(reference.surface),
-        'erase composite vs per-dab erase',
-        tolerance: 8,
+        _surfaceBytes(reference.afterSurface),
+        'erase composite vs re-derived erase',
       );
     });
 

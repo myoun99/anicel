@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
 import 'timeline_drag_preview.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'axis_turn.dart';
 import '../widgets/owning_axis_grip.dart';
 
@@ -31,6 +32,11 @@ class TimelineCutEndDragCallbacks {
   final VoidCallback onEnd;
   final VoidCallback onCancel;
 }
+
+/// How many frames a cut is DRAWN for — its 尺 plus the のりしろ a transition
+/// span crossing one of its boundaries asks for — and the word the ruler
+/// spells across that margin.
+typedef TimelineNoriShiro = ({int drawnFrameCount, String label});
 
 /// The playbackFrameCount a boundary consumer should DISPLAY: the live
 /// trim preview's duration while a drag targets [cutId]; on a surface whose
@@ -106,14 +112,15 @@ double timelineDrawnEndOffset({
   required int playbackFrameCount,
   required int? drawnFrameCount,
   required double frameCellExtent,
-}) =>
-    timelineDrawnEndPreviewFrameCount(
-      preview: preview,
-      cutId: cutId,
-      playbackFrameCount: playbackFrameCount,
-      drawnFrameCount: drawnFrameCount,
-    ) *
-    frameCellExtent;
+}) => timelineFrameEdge(
+  timelineDrawnEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: playbackFrameCount,
+    drawnFrameCount: drawnFrameCount,
+  ),
+  frameCellExtent,
+);
 
 /// The draggable layer over a cut-end boundary line (UI-R18 #14): a
 /// 12px grip strip centered on the line, axis-aware (vertical line in
@@ -209,7 +216,7 @@ class _TimelineCutEndDragHandleState extends State<TimelineCutEndDragHandle> {
 
     final dragPreview = widget.dragPreview;
     Widget positioned(int frameCount) {
-      final main = frameCount * widget.cellExtent - 5;
+      final main = timelineFrameEdge(frameCount, widget.cellExtent) - 5;
       return stripAlong(widget.axis, along: main, alongExtent: 12, child: grip);
     }
 

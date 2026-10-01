@@ -1,6 +1,7 @@
 import '../../models/project_frame_rate.dart';
 import '../../native/qa_audio_device.dart';
 import '../audio/audio_conform_store.dart';
+import '../editor_session_manager.dart';
 import '../playback/audio_playback_schedule.dart';
 import '../playback/audio_windowed_upload.dart';
 
@@ -31,6 +32,18 @@ class ViewerSound {
     QaAudioDevice? Function()? resolveDevice,
     this.resolveOutputDeviceName,
   }) : _resolveDevice = resolveDevice ?? audioOutputUnlessTesting;
+
+  /// [session]'s sound — every surface that plays a file's sound in it:
+  /// the media viewer, and the import window's preview.
+  ///
+  /// ⚠️The SAME conform store the timeline plays out of, so a file conformed
+  /// for one is conformed for the other and nothing is decoded twice; and
+  /// the output the settings chose.
+  factory ViewerSound.ofSession(EditorSessionManager session) => ViewerSound(
+    conformStore: session.audioConformStore,
+    resolveOutputDeviceName: () =>
+        session.appSettings.audioSyncSettings.value.outputDeviceName,
+  );
 
   final AudioConformStore conformStore;
   final QaAudioDevice? Function() _resolveDevice;
@@ -127,6 +140,28 @@ class ViewerSound {
     startSample: (fromSeconds * _deviceRate).round(),
     stopSample: _endSample,
   );
+
+  /// Moves the streaming window along with the sound — asked every tick of
+  /// a run. A file past two minutes streams from disk, and a window left
+  /// where [play] centred it runs dry half a minute in
+  /// ([AudioStreamingWindow.followPlayback], the timeline's own rule).
+  void keepStreaming() {
+    final device = _device;
+    if (device == null) {
+      return;
+    }
+    _window.followPlayback(
+      positionSamples: device.positionSamples,
+      deviceRate: _deviceRate,
+      conformStore: conformStore,
+      current: () {
+        final carrying = _device;
+        return carrying == null
+            ? null
+            : (device: carrying, deviceRate: _deviceRate);
+      },
+    );
+  }
 
   /// Where the device has got to, or null while nothing is carrying.
   ///

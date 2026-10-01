@@ -212,7 +212,9 @@ void main() {
   });
 
   group('TimesheetInkController', () {
-    test('syncGeometry sizes the band and page surfaces at inkScale', () {
+    test('syncGeometry sizes the band and page surfaces at inkScale — a '
+        'band holds the 6-second strip and, right of it, the eight columns '
+        'only the 3-second sheet prints', () {
       final document = _document();
       final layout = TimesheetDocumentLayout(document: document);
       final controller = TimesheetInkController();
@@ -221,7 +223,10 @@ void main() {
       expect(
         controller.stripBandSurfaceSize,
         CanvasSize(
-          width: (layout.halfWidth * timesheetInkScale).ceil(),
+          width:
+              ((layout.halfWidth + 8 * TimesheetDocumentLayout.celColumnWidth) *
+                      timesheetInkScale)
+                  .ceil(),
           height:
               document.pageFrameCount *
               TimesheetDocumentLayout.rowHeight.toInt() *

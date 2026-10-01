@@ -1,5 +1,6 @@
 // The doors a MEDIA FILE comes in through: one still or animated image, a
-// Photoshop stack expanded into rows, a PDF's pages as cels.
+// Photoshop stack expanded into rows, a PDF's pages as cels — and the file a
+// reference row is swapped to (I-47).
 //
 // Their own object since round 8 (G1, 2026-09-06). All three do the same
 // four things in the same order — pass the destination gate, plan the
@@ -10,6 +11,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'dart:ui' as ui show Image, ImageByteFormat;
 
+import '../../models/bitmap_surface.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut_id.dart';
@@ -21,9 +23,11 @@ import '../../models/media_reference.dart';
 import '../../models/movie_cel.dart';
 import '../../models/movie_clock.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/reference_swap.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
 import '../../native/qa_video_decoder.dart' show QaVideoInfo;
+import '../../services/commands/swap_layer_reference_command.dart';
 import '../../services/commands/update_layer_timeline_command.dart';
 import '../../services/import/import_layer_spot.dart';
 import '../../services/import/media_identity_reader.dart';
@@ -65,7 +69,6 @@ class ProjectImportDoors {
   ProjectImportDoors({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required ImportLanding landing,
     required MediaFingerprintLedger fingerprints,
@@ -75,7 +78,6 @@ class ProjectImportDoors {
     required HoldMediaBytes holdBytes,
   }) : _project = project,
        _changes = changes,
-       _internals = internals,
        _renderCaches = renderCaches,
        _landing = landing,
        _fingerprints = fingerprints,
@@ -86,7 +88,6 @@ class ProjectImportDoors {
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final ImportLanding _landing;
   final MediaFingerprintLedger _fingerprints;
@@ -366,7 +367,7 @@ class ProjectImportDoors {
       for (final cel in expansion.cels) {
         bakeCelSurface(
           _renderCaches.brushFrameStore,
-          _internals.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
+          _project.brushFrameKeyForCut(bakedCut, cel.layerId, cel.frameId),
           cel.surface,
         );
       }
@@ -562,8 +563,9 @@ class ProjectImportDoors {
   /// does — kept as a REFERENCE when the window's bake is off (one cel over
   /// the span, decoded when it is shown), baked into cels when it is on or
   /// when the drop was a picture row's frames (「프레임 영역은 늘
-  /// 굽는다」) — and its SOUND, when [withSound] asks and the movie has
-  /// one, lands on the SE rows by the sound's own law, starting where the
+  /// 굽는다」) — and its SOUND, when the 「소리」 answer
+  /// ([ImportFileSettings.movieParts]) brings it and the movie has one,
+  /// lands on the SE rows by the sound's own law, starting where the
   /// picture starts (「같은 시작 · 같은 구간」). One undo step for the pair;
   /// after that they are two blocks (「짝 = 따로따로」).
   ///
@@ -581,6 +583,9 @@ class ProjectImportDoors {
     /// Where [path] was cut from — see [importImageFile]'s.
     String? sourcePath,
   }) async {
+    if (settings.movieParts == MovieParts.sound) {
+      return _movieSoundAlone(path, settings, spot, sourcePath);
+    }
     // The destination gate runs BEFORE the movie opens — a refused import
     // must not have a document to leak.
     final gate = _landing.arriveAt(settings.into, path: path, spot: spot);
@@ -609,7 +614,7 @@ class ProjectImportDoors {
       // The conform answers whether there is a sound at all — the one the
       // sound's playback will read.
       final withMovieSound =
-          settings.sound &&
+          settings.movieParts == MovieParts.pictureAndSound &&
           await _conforms.ensurePeaksFor(_pool.importAudioFile(source)) !=
               null;
       await _pool.holdCarriedBytes([asset]);
@@ -632,6 +637,25 @@ class ProjectImportDoors {
       await opened.close();
     }
   }
+
+  /// A movie that brings its sound ALONE (🗣️유저 2026-09-27: 「소리만 임포트
+  /// … 고를수있게」) lands the way a sound does, through the sound's own
+  /// door: its SE rows, its trim, and the ONE pool entry the pair shares
+  /// (the door keeps a movie's kind for it). Asked in [importVideoFile], so
+  /// every caller of the movie's door gets the same answer.
+  Future<bool> _movieSoundAlone(
+    String path,
+    ImportFileSettings settings,
+    ImportLayerSpot? spot,
+    String? sourcePath,
+  ) => importSoundFile(
+    path: path,
+    copyIntoProject: settings.mode == ImportFileMode.keepInside,
+    inFrame: settings.inFrame,
+    outFrame: settings.outFrame,
+    spot: spot,
+    sourcePath: sourcePath,
+  );
 
   /// What a placed movie LANDS AS: the span it covers on the sound's clock,
   /// the cut it arrives in — a NEW one is made at the movie's own size,
@@ -816,6 +840,93 @@ class ProjectImportDoors {
     }
   }
 
+  /// I-47: [layerId] — a reference row of the active cut — shows [path]
+  /// instead of the file it points at, as ONE undo step
+  /// ([SwapLayerReferenceCommand]); how it takes the file is
+  /// [referenceSwapFor]'s answer. A still's new picture is baked at the fit
+  /// the row was PLACED with — the pool's fit for the file it showed
+  /// (`Project.mediaFitModeFor`), the answer [rasterizeMovieReference] reads
+  /// for the same reason — so it stands where the old one stood.
+  ///
+  /// False when nothing changed: a row that does not take [path], a file
+  /// that would not read, or a row that changed while it was being read.
+  Future<bool> swapReference({
+    required LayerId layerId,
+    required String path,
+  }) async {
+    final cut = _project.activeCutOrNull;
+    final layer = _project.layerById(layerId);
+    final reference = layer?.mediaReference;
+    if (cut == null || layer == null || reference == null) {
+      return false;
+    }
+    final swap = referenceSwapFor(layer, path);
+    if (swap == null) {
+      return false;
+    }
+    final picture = swap == ReferenceSwap.still
+        ? await _stillPicture(
+            path,
+            cut.canvasSize,
+            _project.repository.requireProject().mediaFitModeFor(
+              reference.assetPath,
+            ),
+          )
+        : null;
+    if ((swap == ReferenceSwap.still && picture == null) ||
+        _project.layerById(layerId) != layer) {
+      return false;
+    }
+    _project.historyManager.execute(
+      SwapLayerReferenceCommand(
+        repository: _project.repository,
+        cutId: cut.id,
+        layerId: layerId,
+        reference: reference.copyWith(assetPath: path),
+        store: _renderCaches.brushFrameStore,
+        pictures: {
+          if (picture != null)
+            for (final frame in layer.frames)
+              _project.brushFrameKeyForCut(cut, layerId, frame.id): picture,
+        },
+        cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+      ),
+    );
+    // The tidy-up every edit that moves the document owes, as its undo gets
+    // it (`_stepHistory`). Where the user stands is the door's to say — a
+    // drop stands on the row it landed on before it swaps.
+    _changes.refreshAfterCutCommand();
+    _changes.notifyChanged();
+    return true;
+  }
+
+  /// [path]'s picture on a [canvas]-sized cel at [fit] — read through the
+  /// project's copy first ([readHeldMediaBytes]), as every door here reads.
+  Future<BitmapSurface?> _stillPicture(
+    String path,
+    CanvasSize canvas,
+    MediaFitMode fit,
+  ) async {
+    final ui.Image? image;
+    try {
+      image = await firstPictureOf(await readHeldMediaBytes(_holdBytes, path));
+    } on Object {
+      return null;
+    }
+    if (image == null) {
+      return null;
+    }
+    try {
+      return await rasterizeImageToSurface(
+        image: image,
+        canvas: canvas,
+        fit: fit,
+      );
+    } finally {
+      image.dispose();
+    }
+  }
+
   /// The sound's clock for a movie the decoder has answered about: the
   /// project's rate, the audio speed's accumulated pull and the file's own
   /// rate — ONE answer for the door that places a movie and the verb that
@@ -971,7 +1082,7 @@ class ProjectImportDoors {
             );
             bakeCelSurface(
               _renderCaches.brushFrameStore,
-              _internals.brushFrameKeyForCut(
+              _project.brushFrameKeyForCut(
                 cut,
                 rowId ?? bake.layerId,
                 bake.frameId,

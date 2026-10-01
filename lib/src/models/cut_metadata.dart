@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import 'layer_mark.dart';
+import 'timesheet_sheet_kind.dart';
 
 class CutMetadata {
   const CutMetadata({
@@ -7,13 +8,15 @@ class CutMetadata {
     this.thumbnailFrameIndex,
     this.mark = LayerMark.none,
     this.staff = const {},
+    this.sheetKind = TimesheetSheetKind.sixSeconds,
   });
 
   const CutMetadata.empty()
     : note = '',
       thumbnailFrameIndex = null,
       mark = LayerMark.none,
-      staff = const {};
+      staff = const {},
+      sheetKind = TimesheetSheetKind.sixSeconds;
 
   final String note;
 
@@ -39,6 +42,12 @@ class CutMetadata {
   /// 컷 설정에는 컷별 이름 ([[project-settings-window]]).
   final Map<String, String> staff;
 
+  /// The paper this cut's timesheet prints on — the cut's own
+  /// (timesheet-sheet-kind-scope-Q1: 「컷마다 따로」). A cut with more cel
+  /// layers than the 6-second sheet holds prints on the 3-second one
+  /// whatever this says ([sheetKindFor]).
+  final TimesheetSheetKind sheetKind;
+
   /// [mark]'s name on this cut itself, or empty when it takes the work's.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
 
@@ -54,6 +63,7 @@ class CutMetadata {
     int? Function()? thumbnailFrameIndex,
     LayerMark? mark,
     Map<String, String>? staff,
+    TimesheetSheetKind? sheetKind,
   }) {
     return CutMetadata(
       note: note ?? this.note,
@@ -62,6 +72,7 @@ class CutMetadata {
           : thumbnailFrameIndex(),
       mark: mark ?? this.mark,
       staff: staff ?? this.staff,
+      sheetKind: sheetKind ?? this.sheetKind,
     );
   }
 
@@ -70,6 +81,8 @@ class CutMetadata {
     if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
     if (!mark.isNone) 'mark': mark.toJson(),
     if (staff.isNotEmpty) 'staff': {...staff},
+    if (sheetKind != TimesheetSheetKind.sixSeconds)
+      'sheetKind': sheetKind.jsonValue,
     // The per-cut fade TARGET (FO/WO) is gone (R3b) — legacy 'fadeTarget'
     // keys are ignored on read. ↩️F-192: the black or white a fade clears
     // from or closes to is the TERM's (F.x black, W.x white —
@@ -82,6 +95,7 @@ class CutMetadata {
       thumbnailFrameIndex: json['thumbnailFrame'] as int?,
       mark: LayerMark.fromJson(json['mark']),
       staff: staffFromJson(json['staff']),
+      sheetKind: TimesheetSheetKind.fromJson(json['sheetKind']),
     );
   }
 
@@ -92,7 +106,8 @@ class CutMetadata {
           other.note == note &&
           other.thumbnailFrameIndex == thumbnailFrameIndex &&
           other.mark == mark &&
-          mapEquals(other.staff, staff);
+          mapEquals(other.staff, staff) &&
+          other.sheetKind == sheetKind;
 
   @override
   int get hashCode => Object.hash(
@@ -102,10 +117,11 @@ class CutMetadata {
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
+    sheetKind,
   );
 
   @override
   String toString() =>
       'CutMetadata(note: $note, thumbnailFrame: $thumbnailFrameIndex, '
-      'mark: $mark, staff: $staff)';
+      'mark: $mark, staff: $staff, sheetKind: $sheetKind)';
 }

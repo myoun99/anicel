@@ -108,16 +108,98 @@ void main() {
       expect(_render(row, 6), 'AAPPBB');
     });
 
-    test('inserting inside a hold splits it rather than landing headless', () {
-      final clip = captureTimelineRun(
-        timeline: _row('P'),
-        index: 0,
-        count: 1,
-      );
+    // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
+    // 법 통일」, and F-236-Q1: 「선택범위로 코마정보가 있을때만 코마대로
+    // 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」. An insert inside a
+    // hold REPLACES the rest of it. ↩️It split the hold and pushed its rest on
+    // behind the clip — `AAAA` + P@2 was `AAPAA`, the same drawing again.
+    group('inside a hold, the insert replaces the rest of it', () {
+      test('an untimed comma takes the rest — the division an added frame '
+          'makes', () {
+        final clip = TimelineClipRow.untimed(
+          const TimelineExposure.drawing(FrameId('P'), length: 1),
+        );
 
-      final row = spliceTimeline(timeline: _row('AAAA'), index: 2, clip: clip);
+        final row = spliceTimeline(
+          timeline: _row('AAAA.BB'),
+          index: 2,
+          clip: clip,
+        );
 
-      expect(_render(row, 5), 'AAPAA');
+        expect(_render(row, 7), 'AAPP.BB', reason: 'nothing behind moves');
+        expect(row.keys, [0, 2, 5]);
+      });
+
+      test('an untimed comma keeps the dots that time those frames, as an '
+          'added frame does', () {
+        final row = spliceTimeline(
+          timeline: {
+            0: const TimelineExposure.drawing(
+              FrameId('A'),
+              length: 6,
+              breakdownOffsets: [1, 3, 5],
+            ),
+          },
+          index: 3,
+          clip: TimelineClipRow.untimed(
+            const TimelineExposure.drawing(FrameId('P'), length: 1),
+          ),
+        );
+
+        expect(row[3]!.frameId, const FrameId('P'));
+        expect(row[3]!.length, 3);
+        expect(row[3]!.breakdownOffsets, [2], reason: '5 - 3');
+        expect(row[0]!.breakdownOffsets, [1]);
+      });
+
+      test('a timed run keeps its commas: a SHORTER one pulls the tail in', () {
+        final clip = captureTimelineRun(
+          timeline: _row('P'),
+          index: 0,
+          count: 1,
+        );
+
+        final row = spliceTimeline(
+          timeline: _row('AAAAAB'),
+          index: 2,
+          clip: clip,
+        );
+
+        expect(_render(row, 6), 'AAPB..');
+      });
+
+      test('a timed run keeps its commas: a LONGER one pushes the tail', () {
+        final clip = captureTimelineRun(
+          timeline: _row('PPPP'),
+          index: 0,
+          count: 4,
+        );
+
+        final row = spliceTimeline(
+          timeline: _row('AAAB'),
+          index: 2,
+          clip: clip,
+        );
+
+        expect(_render(row, 7), 'AAPPPPB');
+      });
+
+      test('at a block\'s HEAD nothing is inside — the insert goes in front '
+          'and the block steps back, untimed or not', () {
+        for (final clip in [
+          TimelineClipRow.untimed(
+            const TimelineExposure.drawing(FrameId('P'), length: 1),
+          ),
+          captureTimelineRun(timeline: _row('P'), index: 0, count: 1),
+        ]) {
+          final row = spliceTimeline(
+            timeline: _row('AABB'),
+            index: 2,
+            clip: clip,
+          );
+          expect(_render(row, 5), 'AAPBB', reason: 'timed: ${clip.timed}');
+        }
+      });
     });
 
     test('a LONGER clip pushes the tail', () {
@@ -200,6 +282,69 @@ void main() {
         _render(row, 7),
         'AAPPCC.',
         reason: 'three out, two in — the row shortens by one and C follows',
+      );
+    });
+
+    // 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+    // 밀려나냐니까?」 · 「겹치는 공간이 전혀 없는 붙여넣기인데도 뒤가
+    // 밀려나니까 하는소리임」.
+    test('🚨F-235: a paste that fits in empty space moves nothing', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PP'),
+        index: 0,
+        count: 2,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA....BB'),
+        index: 3,
+        clip: clip,
+      );
+
+      expect(_render(row, 8), 'AA.PP.BB', reason: '↩️was AA.PP...BB');
+    });
+
+    test('🚨F-235: a paste longer than its empty space pushes only as far as '
+        'it reaches — the next empty cells take the rest', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PPPP'),
+        index: 0,
+        count: 4,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA..BB..CC'),
+        index: 2,
+        clip: clip,
+      );
+
+      expect(
+        _render(row, 12),
+        'AAPPPPBBCC..',
+        reason: 'B moved the two cells the clip overlapped; the gap after it '
+            'took the rest, so C stayed — ↩️AAPPPP..BB..CC',
+      );
+    });
+
+    test('F-235: a push carries on through the blocks that touch, and stops '
+        'at the first empty cell that can take it', () {
+      final clip = captureTimelineRun(
+        timeline: _row('PPP'),
+        index: 0,
+        count: 3,
+      );
+
+      final row = spliceTimeline(
+        timeline: _row('AA.BBCC...DD'),
+        index: 2,
+        clip: clip,
+      );
+
+      expect(
+        _render(row, 12),
+        'AAPPPBBCC.DD',
+        reason: 'B took the push and passed it to C, which touched it; the '
+            'empty cells after C took what was left, and D never moved',
       );
     });
 

@@ -53,6 +53,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: true,
   ),
 
   storyboard(
@@ -80,6 +81,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: true,
   ),
 
   /// A PICTURE layer (BG/BOOK, imported stills): ONE cel by definition,
@@ -112,6 +114,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: true,
   ),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
@@ -146,6 +149,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: false,
   ),
 
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
@@ -179,6 +183,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: false,
+    numbersItsDrawings: false,
   ),
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
@@ -215,6 +220,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: false,
   ),
 
   /// The TRANSITION row: the same instruction events one level up —
@@ -268,6 +274,7 @@ enum LayerKind {
     isTrackFixture: true,
     reordersInCut: false,
     celNameIsIdentity: true,
+    numbersItsDrawings: false,
   ),
 
   /// The cut's camera track: selecting it puts the canvas into camera
@@ -302,6 +309,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: false,
     celNameIsIdentity: true,
+    numbersItsDrawings: false,
   ),
 
   /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
@@ -353,6 +361,7 @@ enum LayerKind {
     isTrackFixture: false,
     reordersInCut: true,
     celNameIsIdentity: true,
+    numbersItsDrawings: false,
   );
 
   const LayerKind(
@@ -377,6 +386,7 @@ enum LayerKind {
     required this.isTrackFixture,
     required this.reordersInCut,
     required this.celNameIsIdentity,
+    required this.numbersItsDrawings,
   });
 
   final String jsonValue;
@@ -617,6 +627,19 @@ enum LayerKind {
   /// the independent-copy kernel, so the two cannot disagree again.
   final bool celNameIsIdentity;
 
+  /// Whether 자동 이름 지정 numbers this kind's drawings (I-18).
+  ///
+  /// 🗣️I-18 targets-Q1 (유저): 「애니메이션 · 콘티 + 이미지 행」 — and never the
+  /// SE, direction or camera rows. An SE entry's name is its dialogue
+  /// ([celNameIsIdentity]), and a direction row's cels carry no name to edit
+  /// (유저 2026-09-12, `FrameVerbs.canRenameFrameAtCurrentFrame`).
+  ///
+  /// ⛔Its own column, though the three trues are the kinds that both hold
+  /// drawings and draw ([holdsDrawings] ∧ [isDrawingCel]) today: which rows a
+  /// press numbers is the user's answer, not a sum of two other answers — a
+  /// kind added later answers it here, by being asked.
+  final bool numbersItsDrawings;
+
   /// Whether this kind contributes PIXELS of its own to the composite (a cel
   /// surface). SE and instruction rows composite (they carry FX and can host
   /// the canvas dialogue) but resolve no artwork today; they still answer
@@ -681,6 +704,19 @@ enum LayerKind {
   /// spans are a stored map) or has one, and then its spans live on it.
   /// ⛔DERIVED, and pinned beside that one, so the halves cannot drift.
   bool get spansRideBlocks => carriesInstructions && isDrawingCel;
+
+  /// Whether this row's content is BLOCKS — the drawing rows' exposures, the
+  /// direction row's blocks, the transition row's spans — so each one prints
+  /// its length. The camera row keeps keys, not blocks.
+  ///
+  /// 🗣️F-228 (유저 2026-09-29): 「디렉션레이어나 트랜지션레이어만
+  /// 코마텍스트가 없는데, 블록이라면 전부 코마텍스트가 존재해야함.
+  /// 통일해서 적용」 — F-40's sentence for the SE row, again: 「블록이면 뭐든
+  /// 반드시 코마블록이 있어야함」. ⛔NOT [holdsDrawings]: that one still
+  /// answers whether a row wears the drawing row's other furniture (R27 #16 —
+  /// the empty cell's X, the comma grips, the media drop), and the user
+  /// widened only the length.
+  bool get hasBlocks => holdsDrawings || carriesInstructions;
 
   /// Whether a row can be GIVEN a cel — a frame authored at a timeline index,
   /// which is the thing a brush then writes into.

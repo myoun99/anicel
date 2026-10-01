@@ -29,9 +29,14 @@ void main() {
   const size = CanvasSize(width: 32, height: 32);
   const tile = 8;
 
-  /// An opaque black box outline [from]..[to] (inclusive) on a clear
-  /// surface.
-  BitmapSurface outline(int from, int to) {
+  /// An opaque black box outline [side] wide from ([left], [top]) on a
+  /// clear [canvas].
+  BitmapSurface box({
+    required int left,
+    required int top,
+    required int side,
+    CanvasSize canvas = size,
+  }) {
     final tiles = <TileCoord, Uint8List>{};
     void ink(int x, int y) {
       final buffer = tiles.putIfAbsent(
@@ -41,14 +46,14 @@ void main() {
       buffer[((y % tile) * tile + (x % tile)) * 4 + 3] = 255;
     }
 
-    for (var i = from; i <= to; i += 1) {
-      ink(i, from);
-      ink(i, to);
-      ink(from, i);
-      ink(to, i);
+    for (var i = 0; i <= side; i += 1) {
+      ink(left + i, top);
+      ink(left + i, top + side);
+      ink(left, top + i);
+      ink(left + side, top + i);
     }
     return BitmapSurface(
-      canvasSize: size,
+      canvasSize: canvas,
       tileSize: tile,
       tiles: {
         for (final entry in tiles.entries)
@@ -57,24 +62,34 @@ void main() {
     );
   }
 
-  Layer cel(String id, {double? scale}) => Layer(
+  /// An opaque black box outline [from]..[to] (inclusive) on a clear
+  /// surface.
+  BitmapSurface outline(int from, int to) =>
+      box(left: from, top: from, side: to - from);
+
+  Layer cel(String id, {double? scale, CanvasPoint? position}) => Layer(
     id: LayerId(id),
     name: id,
     frames: [Frame(id: FrameId(id), duration: 1, strokes: const [])],
     timeline: {0: TimelineExposure.drawing(FrameId(id), length: 1)},
-    transformTrack: scale == null
+    transformTrack: scale == null && position == null
         ? null
         : TransformTrack.empty().copyWith(
-            scale: PropertyTrack<double>.empty().withKey(0, scale),
+            scale: scale == null
+                ? null
+                : PropertyTrack<double>.empty().withKey(0, scale),
+            position: position == null
+                ? null
+                : PropertyTrack<CanvasPoint>.empty().withKey(0, position),
           ),
   );
 
-  Cut cutOf(List<Layer> layers) => Cut(
+  Cut cutOf(List<Layer> layers, {CanvasSize canvas = size}) => Cut(
     id: const CutId('c'),
     name: 'c',
     layers: layers,
     duration: 1,
-    canvasSize: size,
+    canvasSize: canvas,
   );
 
   (int, int) filledAt(
@@ -141,5 +156,25 @@ void main() {
     );
     expect(width, lessThanOrEqualTo(28));
     expect(height, greaterThan(20));
+  });
+  test('a line layer moved sideways walls the fill where it is drawn — a '
+      'compose tile reads the layer across from where it lies, not down', () {
+    // A 512 canvas is two compose tiles a side. The box, artwork x 20..40
+    // and y 220..240, moved 300 right: drawn over canvas 320..340 across,
+    // 220..240 down, in the tile at x 256..512, y 0..256 — which reads the
+    // layer's artwork x −44..212 and y 0..256, the box inside it.
+    const big = CanvasSize(width: 512, height: 512);
+    final (width, height) = filledAt(
+      CanvasPoint(x: 330, y: 230),
+      cutOf([
+        cel('line', position: CanvasPoint(x: 556, y: 256)),
+        cel('paint'),
+      ], canvas: big),
+      {'line': box(left: 20, top: 220, side: 20, canvas: big)},
+      active: 'paint',
+    );
+    expect(width, lessThan(100), reason: 'the walls held');
+    expect(width, inInclusiveRange(17, 21));
+    expect(height, inInclusiveRange(17, 21));
   });
 }

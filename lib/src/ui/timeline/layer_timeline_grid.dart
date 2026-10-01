@@ -1,27 +1,27 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/attached_layer_resolve.dart'
-    show attachRowWearsBaseComposite;
-import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import 'held_row_pin.dart';
 import 'timeline_grid_range_gestures.dart';
 import 'timeline_scroll_offset_sync.dart';
 import 'timeline_frame_axis_follower.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'layer_drop_policy.dart' show rowsWithSilhouette;
 import 'layer_placement_entrance.dart';
+import 'layer_controls_row_facts.dart';
 import 'layer_row_drag.dart';
 import '../listenable_rebind.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
+import 'lane_row_slice.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_scrub.dart';
 import 'timeline_frame_cursor_layer.dart';
@@ -54,7 +54,7 @@ import 'rail_eyes.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
-import 'timeline_selected_exposure_outline.dart' show TimelineRowSelectionBands;
+import 'timeline_row_selection_bands.dart' show TimelineRowSelectionBands;
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
@@ -83,7 +83,6 @@ class LayerTimelineGrid extends StatefulWidget {
     this.legend,
     this.visibilitySoloEnabled = false,
     this.masterOpacityValue = 1.0,
-    this.memoAux = const TimelineRowMemoAux(),
   });
 
   final List<Layer> layers;
@@ -92,10 +91,6 @@ class LayerTimelineGrid extends StatefulWidget {
   /// rail and the sheet read the SAME bundle, so neither can lack an
   /// answer the other has.
   final TimelineGridHooks hooks;
-
-  /// Sparse-row memo identity tokens (UI-R20 #4) — see
-  /// [TimelineFrameRowsScrollBody.memoAux].
-  final TimelineRowMemoAux memoAux;
 
   /// The rail's window size, set by this grid's splitter and persisted by
   /// the workspace. Null = a session-local one of our own (tests, and any
@@ -134,51 +129,6 @@ class LayerTimelineGrid extends StatefulWidget {
   State<LayerTimelineGrid> createState() => _LayerTimelineGridState();
 }
 
-/// The data snapshot a memoized RAIL row was built from (UI-R7 #1) —
-/// zoom-independent by construction: nothing here reads frameCellWidth,
-/// so zoom steps always hit.
-typedef _RailRowMemoInputs = ({
-  // What the row SHOWS gates content, not the Layer's identity: a
-  // timesheet edit rebuilds the edited layer's instance while every
-  // rail-visible field stays put (see the completeness contract on
-  // [ControlsRowFace]).
-  ControlsRowFace layer,
-  bool active,
-  // ㉞: the row selection wash. SESSION state like [active] and invisible to
-  // the Layer comparison — ⑨ passed `selected` to the row without giving the
-  // memo a way to see it change, so the wash never appeared until some other
-  // fact happened to invalidate the entry. The state was right the whole
-  // time; the cache answered "unchanged" (the ㉘ shape).
-  bool selected,
-  bool hasLanes,
-  bool lanesExpanded,
-  int depth,
-  bool hasGroupFold,
-  bool groupFoldExpanded,
-  LayerFxState fxState,
-  bool onionSkinEnabled,
-  // The rows the pictures are shared with — a fresh list every build, so
-  // compared by what it holds ([ByList]).
-  ByList<String> linkPartners,
-  bool soloed,
-  AttachedPlacement? attachArrow,
-  double layerRowHeight,
-  double layerControlsWidth,
-  double sectionLabelGutterWidth,
-  ByIdentity<ValueListenable<({Set<LayerId> layerIds, double opacity})?>?>
-  opacityDragPreview,
-  // R27 #6: the blend chip prints a LANGUAGE-dependent name — a language
-  // switch must invalidate the memo like any other visible fact. Read from
-  // [AppText.language] when the token is made (F-170), not handed down.
-  // ⛔MUTANT SURVIVES HERE (2026-09-23): a fixed language in this slot left
-  // `a_language_that_lands_late_reaches_every_word_test` green — the chip
-  // reads the theme, so it rebuilds itself when the app root rebuilds for
-  // the language, memo or no memo. Kept because the memo's own rule is that
-  // every visible fact is in its token, and a row word that stopped reading
-  // the theme would keep the last language's without it.
-  AppLanguage language,
-});
-
 /// The legend header's memo token (UI-R7 #1): every legend-visible fact.
 /// A new legend-reading cell must join this record — miss one and the
 /// header shows stale state.
@@ -215,11 +165,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// a zoom step re-lays-out the frame grid, but the rail's Material-heavy
   /// control rows (tooltips, ink wells, sliders) don't depend on the zoom
   /// — identical inputs hand the SAME widget instance back so Flutter
-  /// skips their whole subtree rebuild. Layer identity gates content
-  /// (commits swap instances); callbacks follow the R13-2 rule (host
+  /// skips their whole subtree rebuild. What the row shows gates content
+  /// ([LayerControlsRowFacts]); callbacks follow the R13-2 rule (host
   /// callbacks close over the stable session only).
-  final Map<LayerId, ({_RailRowMemoInputs inputs, Widget row})> _railRowMemo =
-      {};
+  final Map<LayerId, KeptLayerControlsRow> _railRowMemo = {};
 
   /// The legend header's memo — same idea, token-gated (R13-2): the
   /// header's ~15 tooltip/flyout cells rebuild only when a legend-visible
@@ -315,8 +264,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // coasting fling stops hiding the cells from hit-testing.
     //
     // 🚨★★BORN WHERE THE AXIS STANDS, NOT AT ZERO (F-143). Folding and
-    // unfolding the panel REMOUNT this grid (measured: a new controller each
-    // time). A controller born at 0 has no clients in its first layout, so
+    // unfolding the panel remounted this grid (measured: a new controller
+    // each time) until the workspace keyed the region (09-28); switching
+    // the orientation still builds it afresh while the axis it shares stands
+    // elsewhere. A controller born at 0 has no clients in its first layout, so
     // the sync there cannot pull it anywhere — and then the follower's
     // after-layout re-read (F-95) found the newborn 0 and recorded it as a
     // scroll, over the position the host had kept. Born at the kept offset,
@@ -488,12 +439,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// One row/cell of margin, so a walk keeps a neighbour in sight and reads
   /// as a walk rather than as a jump to the edge.
   void _revealSelection() => revealSelectionOnBothAxes(
-    (
+    frames: (
       controller: _horizontalScrollController,
       extent: _metrics.frameCellWidth,
       at: widget.hooks.frameCursor.value,
     ),
-    (
+    rows: (
       controller: _verticalScrollController,
       extent: _metrics.layerRowHeight,
       at: indexOfDisplayRow(
@@ -694,8 +645,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ? (pinnedIndex - rowWindow.endIndexExclusive) *
                 _metrics.layerRowHeight
           : 0,
-      dragPreview: widget.hooks.dragPreview,
-      playbackFrameCount: widget.hooks.playbackFrameCount,
+      hooks: widget.hooks,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
@@ -704,34 +654,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
-      frameNameForLayer: widget.hooks.frameNameForLayer,
-      celContent: widget.hooks.celContent,
-      onSelectLayer: widget.hooks.onSelectLayer,
-      onSelectFrame: widget.hooks.onSelectFrame,
-      onSettledPress: widget.hooks.onSettledPress,
-      onActivateCell: widget.hooks.onActivateCell,
-      instructionDefById: widget.hooks.instructionDefById,
-      instructionCrossingTooltip: widget.hooks.instructionCrossingTooltip,
-      audioPeaksFor: widget.hooks.audioPeaksFor,
-      seClipMarkerTooltip: widget.hooks.seClipMarkerTooltip,
-      projectFrameRate: widget.hooks.projectFrameRate,
-      audioLane: widget.hooks.audioLane,
-      onDropMediaAssetOnLayer: widget.hooks.onDropMediaAssetOnLayer,
-      acceptsMediaAssetOnLayer: widget.hooks.acceptsMediaAssetOnLayer,
-      onHoverMediaAssetOnLayer: widget.hooks.onHoverMediaAssetOnLayer,
-      onLeaveMediaAssetOnLayer: widget.hooks.onLeaveMediaAssetOnLayer,
-      showSeconds: widget.hooks.showSeconds,
-      commaDrag: widget.hooks.commaDrag,
       rangeGesture: rangeGesture,
       laneRange: laneRange,
-      lanesForLayer: _lanes.lanesFor,
-      unionLaneForLayer: widget.hooks.unionLaneForLayer,
-      runEdit: widget.hooks.runEdit,
-      laneEdit: widget.hooks.laneEdit,
-      spillInLeadFrames: widget.hooks.spillInLeadFrames,
-      memoAux: widget.memoAux,
-      substrateGeneration: widget.hooks.substrateGeneration,
     );
   }
 
@@ -764,19 +688,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     return TimelineCursorLayer(
       currentRow: widget.hooks.currentRowHooks?.currentRow,
       frameCursor: widget.hooks.frameCursor,
-      dragPreview: widget.hooks.dragPreview,
       frameRangeSelection: rangeHooks?.selection,
       // R27 #14: the lane
       // span draws the SAME
       // band here.
       laneRangeSelection: widget.hooks.laneRange?.selection,
+      dragPreview: widget.hooks.dragPreview,
       rows: rows,
       activeLayerId: widget.hooks.activeLayerId,
       frameStartIndex: 0,
       frameEndIndexExclusive: _renderedFrameCount,
       leadingFrameSpacerWidth: 0,
       metrics: _metrics,
-      exposureStateForLayer: widget.hooks.exposureStateForLayer,
       crossAxisExtent: verticalContentHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportWidth,
@@ -834,8 +757,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               // content-absolutely. A
               // scroll rebuilds NOTHING
               // here.
-              final totalFrameContentWidth =
-                  _renderedFrameCount * _metrics.frameCellWidth;
+              final totalFrameContentWidth = timelineFrameEdge(
+                _renderedFrameCount,
+                _metrics.frameCellWidth,
+              );
               return TimelineFrameScrollViewport(
                 controller: _horizontalScrollController,
                 contentWidth: totalFrameContentWidth,
@@ -867,7 +792,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                   // the body too, and
                   // the wash starts
                   // behind it.
-                  drawnFrameCount: widget.hooks.drawnFrameCount,
+                  noriShiro: widget.hooks.noriShiro,
                   // The cursor layer decides
                   // per frame what to show —
                   // the slot itself is static
@@ -1175,10 +1100,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 0,
                                                             frameEndIndexExclusive:
                                                                 _renderedFrameCount,
-                                                            // The tint lives in the
-                                                            // overlay now.
-                                                            currentFrameIndex:
-                                                                -1,
                                                             playhead: widget
                                                                 .hooks
                                                                 .frameCursor,
@@ -1186,14 +1107,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 widget
                                                                     .hooks
                                                                     .playbackFrameCount,
-                                                            drawnFrameCount:
-                                                                widget
-                                                                    .hooks
-                                                                    .drawnFrameCount,
-                                                            noriShiroLabel:
-                                                                widget
-                                                                    .hooks
-                                                                    .noriShiroLabel,
+                                                            noriShiro: widget
+                                                                .hooks
+                                                                .noriShiro,
                                                             leadingFrameSpacerWidth:
                                                                 0,
                                                             trailingFrameSpacerWidth:
@@ -1257,6 +1173,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                         HitTestBehavior
                                                             .translucent,
                                                     onPointerDown: (event) {
+                                                      // R26 #34: a press that
+                                                      // pans is the pan's.
+                                                      if (canvasPressPans(
+                                                        canvasPressButtons(
+                                                          event,
+                                                        ),
+                                                      )) {
+                                                        return;
+                                                      }
                                                       _rulerScrub.resetTracking();
                                                       _rulerScrub.pressAt(
                                                         event.position,
@@ -1496,9 +1421,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                       : 0.0;
                                   final effectiveFrameCount =
                                       _renderedFrameCount;
-                                  final contentWidth =
-                                      effectiveFrameCount *
-                                      _metrics.frameCellWidth;
+                                  final contentWidth = timelineFrameEdge(
+                                    effectiveFrameCount,
+                                    _metrics.frameCellWidth,
+                                  );
 
                                   return TimelineHorizontalScrollbarRail(
                                     key: const ValueKey<String>(

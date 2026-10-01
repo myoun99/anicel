@@ -36,7 +36,6 @@ class FrameClipboard implements BringsMedia {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required MediaByteSource Function(String poolPath) mediaBytesOf,
     required MediaStagingStore staging,
@@ -46,7 +45,6 @@ class FrameClipboard implements BringsMedia {
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _internals = internals,
        _renderCaches = renderCaches,
        _mediaBytesOf = mediaBytesOf,
        _staging = staging;
@@ -69,7 +67,6 @@ class FrameClipboard implements BringsMedia {
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
 
   _CopiedFrameReference? get _copiedFrame => _board._copy;
@@ -235,7 +232,7 @@ class FrameClipboard implements BringsMedia {
     return picturesShownBy(
       store: _renderCaches.brushFrameStore,
       cels: cels,
-      keyOf: (cel) => _internals.brushFrameKeyForCut(cut, row.id, cel),
+      keyOf: (cel) => _project.brushFrameKeyForCut(cut, row.id, cel),
     );
   }
 
@@ -399,10 +396,8 @@ class FrameClipboard implements BringsMedia {
 
   /// One comma of [frameId] — the whole clip a copy with nothing selected
   /// banks.
-  static TimelineClipRow _oneCellOf(FrameId frameId) => TimelineClipRow(
-    exposures: {0: TimelineExposure.drawing(frameId, length: 1)},
-    length: 1,
-  );
+  static TimelineClipRow _oneCellOf(FrameId frameId) =>
+      TimelineClipRow.untimed(TimelineExposure.drawing(frameId, length: 1));
 
   /// Puts [clip] on the board as the copy of [frame] on [layer] — the
   /// half a copy and a 잘라내기 share. What differs between them is only
@@ -707,7 +702,7 @@ class FrameClipboard implements BringsMedia {
         break; // Gap state: no cut, so no key to store a picture under.
       }
       carryBakedPictures(
-        internals: _internals,
+        project: _project,
         store: _renderCaches.brushFrameStore,
         cut: cut,
         to: targetId,
@@ -741,14 +736,11 @@ class FrameClipboard implements BringsMedia {
     if (respell.isEmpty) {
       return clip;
     }
-    return TimelineClipRow(
-      exposures: {
-        for (final MapEntry(key: index, value: exposure)
-            in clip.exposures.entries)
-          index: respelledExposure(exposure, respell),
-      },
-      length: clip.length,
-    );
+    return clip.withExposures({
+      for (final MapEntry(key: index, value: exposure)
+          in clip.exposures.entries)
+        index: respelledExposure(exposure, respell),
+    });
   }
 
   /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
@@ -790,7 +782,7 @@ class FrameClipboard implements BringsMedia {
 
   /// Where [selection] starts on [layerId]'s own row. A selection is a run of
   /// CELLS — 「the range means exactly its cells」 — so it moves by the row's
-  /// axis offset. ⛔Not [SessionInternals.commitBlockStart]: that names the
+  /// axis offset. ⛔Not `TrackSeDisplay.commitBlockStart`: that names the
   /// BLOCK a display start stands for, and at 0 over a block spilling in from
   /// an earlier cut it answered that block's start there (F-115).
   int _rangeStartOn(LayerId layerId, TimelineFrameRangeSelection selection) =>
@@ -891,13 +883,10 @@ class FrameClipboard implements BringsMedia {
         count: run.count,
       );
       final copies = mintIndependentClip(
-        clip: TimelineClipRow(
-          exposures: {
-            for (final entry in clip.exposures.entries)
-              if (ids.contains(entry.value.frameId)) entry.key: entry.value,
-          },
-          length: clip.length,
-        ),
+        clip: clip.withExposures({
+          for (final entry in clip.exposures.entries)
+            if (ids.contains(entry.value.frameId)) entry.key: entry.value,
+        }),
         from: [(cels: run.layer.frames, sounds: run.layer.audioClips)],
         namesAreIdentity: run.layer.kind.celNameIsIdentity,
         mint: () => _frameIds.mintFrameId(run.layer.id),
@@ -906,10 +895,10 @@ class FrameClipboard implements BringsMedia {
         layerId: run.layer.id,
         index: run.index,
         liftCount: run.count,
-        clip: TimelineClipRow(
-          exposures: {...clip.exposures, ...copies.clip.exposures},
-          length: clip.length,
-        ),
+        clip: clip.withExposures({
+          ...clip.exposures,
+          ...copies.clip.exposures,
+        }),
         bornFrames: copies.born,
         bornSounds: copies.bornSounds,
       ));
@@ -924,13 +913,13 @@ class FrameClipboard implements BringsMedia {
       final store = _renderCaches.brushFrameStore;
       for (final (layerId, minted) in mintedByLayer) {
         carryBakedPictures(
-          internals: _internals,
+          project: _project,
           store: store,
           cut: cut,
           to: layerId,
           minted: minted,
           pictureOf: (source) => store.bakedSurfaceOrNull(
-            _internals.brushFrameKeyForCut(cut, layerId, source),
+            _project.brushFrameKeyForCut(cut, layerId, source),
           ),
         );
       }

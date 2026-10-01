@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/conte/conte_page_painter.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
 
 /// 🗣️F-201 (유저 2026-09-27): 「캔버스 베이스 패널, 뷰어든 콘티 프리뷰든
@@ -222,6 +224,13 @@ void main() {
     );
     expect(readout(tester), '3 / 4', reason: 'the body\'s first page');
     final zoom = view.value!.zoom;
+    // The view's top is the window's, under the pill's band (유저
+    // 2026-09-30: 「판정을 알약까지 포함해서」) — in the stored view's own
+    // device units, as every pan below is.
+    final top = seedFromRender(
+      tester,
+      CanvasViewport(panY: pillBandOf(tester)),
+    ).panY;
 
     await tester.tap(
       find.byKey(const ValueKey<String>('conte-next-page-button')),
@@ -230,7 +239,7 @@ void main() {
     expect(view.value!.zoom, zoom, reason: 'a turn does not zoom');
     expect(
       view.value!.panY,
-      closeTo(-(stack.pageRect(3).top - stack.gap / 2) * zoom, 1e-6),
+      closeTo(top - (stack.pageRect(3).top - stack.gap / 2) * zoom, 1e-6),
     );
     expect(readout(tester), '4 / 4');
 
@@ -243,11 +252,11 @@ void main() {
     // Scrolled by hand until the middle of the second body page is at the
     // top of the view: the readout reads the view, as a PDF reader counts.
     final middle = stack.pageRect(3).center.dy;
-    view.value = view.value!.copyWith(panY: -middle * zoom);
+    view.value = view.value!.copyWith(panY: top - middle * zoom);
     await tester.pumpAndSettle();
     expect(readout(tester), '4 / 4');
     // …and half a gap short of the page, it is still the page above.
-    final short = -(stack.pageRect(3).top - stack.gap * 1.5) * zoom;
+    final short = top - (stack.pageRect(3).top - stack.gap * 1.5) * zoom;
     view.value = view.value!.copyWith(panY: short);
     await tester.pumpAndSettle();
     expect(readout(tester), '3 / 4');
@@ -335,8 +344,16 @@ void main() {
         panX: -stack.margin,
         panY: -stack.pageRect(2).top,
       ),
+      surface: const Size(900, 1000),
     );
     expect(readout(tester), '3 / 4', reason: '⛔전제');
+    final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+    expect(
+      stack.paper.bottom - (stack.pageRect(3).top - stack.gap / 2),
+      lessThan(box.height - pillBandOf(tester) - AppScrollbarLane.wide),
+      reason: '⛔전제: the last page, from half a gap above it to the '
+          'paper\'s end, is shorter than the window',
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('conte-next-page-button')),
@@ -344,10 +361,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(readout(tester), '4 / 4');
     final shown = printedThrough(tester);
-    final box = tester.getSize(find.byType(CanvasViewportGestureLayer));
+    // The view ends where the bottom lane begins (F-209: a docked panel's
+    // scrollbars take their room).
     expect(
       stack.paper.bottom * shown.zoom + shown.panY,
-      closeTo(box.height, 1),
+      closeTo(box.height - AppScrollbarLane.wide, 1),
       reason: 'the paper\'s end on the view\'s',
     );
   });

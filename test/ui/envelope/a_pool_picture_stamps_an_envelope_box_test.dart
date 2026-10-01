@@ -232,8 +232,9 @@ void main() {
   // The bundled forms' inking boxes only meet; a form with a box inside a
   // box is what a stamp over two boxes needs, so it is laid here.
   testWidgets('stamped on a box with another box inside it, the picture is '
-      'one paper: each box keeps the piece it shows, and one undo takes '
-      'both', (tester) async {
+      'the box\'s it was dropped on, kept where that box shows it — none of '
+      'it the inner box\'s, as a stroke started there (H49) — and one undo '
+      'takes it', (tester) async {
     const form = CutEnvelopeForm(
       id: 'nested',
       name: 'nested',
@@ -288,13 +289,32 @@ void main() {
     expect(ink.hasInkFor(null, outer.key), isTrue);
     expect(
       ink.hasInkFor(null, inner.key),
+      isFalse,
+      reason: 'the inner box shows its own there, and takes none of it',
+    );
+    final surface = ink
+        .sessionStateFor(null, outer.key)
+        .canvasState
+        .currentSurface;
+    bool inkUnder(Offset paper) {
+      final pixel = outer.placement.pixelOf(paper);
+      return (surfacePixelRgba(surface, pixel.dx.floor(), pixel.dy.floor()) ??
+              0) !=
+          0;
+    }
+
+    expect(
+      inkUnder(outer.documentRect.topLeft + const Offset(4, 4)),
       isTrue,
-      reason: 'the piece over the inner box is the inner box\'s, as a '
-          'stroke\'s is',
+      reason: 'fixture: the outer box shows it',
+    );
+    expect(
+      inkUnder(inner.documentRect.center),
+      isFalse,
+      reason: 'kept where the outer box shows it — not under the inner box',
     );
     session.historyManager.undo();
-    expect(ink.hasInkFor(null, outer.key), isFalse);
-    expect(ink.hasInkFor(null, inner.key), isFalse, reason: 'ONE undo');
+    expect(ink.hasInkFor(null, outer.key), isFalse, reason: 'ONE undo');
   });
 
   testWidgets('a sound on a box, or a picture where no box takes ink, '

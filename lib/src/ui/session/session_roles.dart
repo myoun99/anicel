@@ -18,11 +18,9 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
-import '../../services/brush_frame_editing_coordinator.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
-import '../../models/working_panel.dart';
 import '../../models/track.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
@@ -31,10 +29,10 @@ import '../../services/commands/cut_command_coordinator.dart';
 import '../../services/history_manager.dart';
 import '../../services/project_repository.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
-import '../timeline/timeline_drag_preview.dart';
 
 abstract interface class ProjectAccess {
   int get activeCutFrameCount;
+  int get activeCutDrawnFrameCount;
   Layer? commitLayerById(LayerId layerId);
   CutCommandCoordinator get cutCommandCoordinator;
   HistoryManager get historyManager;
@@ -46,6 +44,7 @@ abstract interface class ProjectAccess {
   CutId? get activeCutId;
   Cut? get activeCutOrNull;
   Cut? cutById(CutId cutId);
+  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
   bool isTrackSeLayerId(LayerId layerId);
   int rowAxisOffset(LayerId layerId);
   bool isTrackTransitionLayerId(LayerId layerId);
@@ -64,9 +63,6 @@ abstract interface class SelectionAccess {
     )
     inBand,
   );
-  bool get editingPlayheadInGap;
-  int? get gapGlobalFrame;
-  set gapGlobalFrame(int? value);
   Layer? get activeLayer;
   LayerId? get activeLayerId;
   Track get activeTrack;
@@ -103,8 +99,19 @@ abstract interface class ChangeSink {
     bool filterSparesStanding = true,
   });
   void refreshLiveAudioSchedule();
-  bool standsDownFromRetime(LayerId layerId);
   void warmActiveCut();
+}
+
+/// THE RETIME LAW — whether a row's timing is its own to move, asked two
+/// ways: [standsDownFromRetime] by the RESHAPING verbs, [blockMoveEligible]
+/// by a block MOVE. One law's two halves, so one role (the audit's
+/// nineteenth family, 2026-09-28): the first had been sorted into
+/// `ChangeSink` by the role generator, the second sat among the session's
+/// internals, and the session's own comments already read one through the
+/// other.
+abstract interface class RetimeLaw {
+  bool blockMoveEligible(LayerId layerId);
+  bool standsDownFromRetime(LayerId layerId);
 }
 
 abstract interface class FrameIds {
@@ -112,47 +119,9 @@ abstract interface class FrameIds {
 }
 
 abstract interface class TimelineAccess {
-  TrackFrameAxis axisForTrack(TrackId trackId);
   EditingSessionState get editingSession;
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex);
   CanvasPoint layerAnchorPointAtFrame(Layer layer, int frameIndex);
   TransformPose layerPoseAtFrame(Layer layer, int frameIndex);
   TrackFrameAxis trackFrameAxis();
-}
-
-/// What collaborators still reach into the session for beyond the
-/// roles above — the measured remainder of the coupling, and a list
-/// that only shrinks: each member either moves into the one
-/// collaborator that uses it, becomes a role, or is injected as the
-/// sibling it really is. ⛔Nothing is added here.
-abstract interface class SessionInternals {
-  bool blockMoveEligible(LayerId layerId);
-  int commitBlockStart(LayerId layerId, int displayStart);
-  bool get disposed;
-  Layer? get targetLayerForKindToggle;
-  BrushFrameKey brushFrameKeyForCut(Cut cut, LayerId layerId, FrameId frameId);
-  TimelineRowAddress get currentRow;
-  ValueNotifier<TimelineDragPreview?> get dragPreview;
-  ValueNotifier<int> get editingFrameCursor;
-  bool get strokeInFlight;
-  BrushFrameEditingCoordinator? get pixelEditingCoordinator;
-  bool rowIsSelected(TimelineRowAddress row);
-  void selectLayer(LayerId layerId);
-  void selectTrackCutAtPlayhead(TrackId trackId);
-  void selectTrackRow(TrackId trackId);
-  void standOnRow(
-    TimelineRowAddress row, {
-    WorkingPanel panel = WorkingPanel.timeline,
-    int? frameIndex,
-    int? globalFrameIndex,
-  });
-  void updateActiveCutCameraTrack(
-    TransformTrack track, {
-    String description = 'Edit camera keyframes',
-  });
-  void updateLayerTransformTrack(
-    LayerId layerId,
-    TransformTrack track, {
-    String description = 'Edit layer transform',
-  });
 }

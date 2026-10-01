@@ -21,6 +21,8 @@ import 'timeline/layer_label_controls.dart' show layerMarkColor;
 import 'timeline/timeline_cell_marker.dart'
     show TimelineCellWriting, timelineCellWritesNothing;
 import 'timeline/timeline_cell_style.dart';
+import 'timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart'
     show timelineRunLengthLabel;
@@ -29,6 +31,7 @@ import 'timeline/timeline_glyph_cache.dart';
 import 'timeline/timeline_row_edit_chrome.dart'
     show TimelineChromeGround, TimelineChromeGrounds;
 import 'repaint_props.dart';
+import 'text/word_bake.dart' show RepaintOnWordBakes;
 import 'timeline/memo_token.dart';
 
 /// The ground EVERY piece of CARRIED writing on a cut block receives — all
@@ -70,11 +73,11 @@ Color storyboardCarriedWritingGround(
       block.conteLabel ??
           storyboardCutBlockBackgroundColor(
             colorScheme,
-            active: block.isActive,
             hovered: block.isHovered,
           ),
   },
   rangeSelected: block.isRangeSelected,
+  standing: block.isStanding,
 );
 
 /// Which of a cut block's two pairs of bands a piece of writing stands in.
@@ -92,9 +95,9 @@ class StoryboardCutBlockVisual {
   const StoryboardCutBlockVisual({
     required this.cutId,
     required this.rect,
-    required this.isActive,
     required this.isRangeSelected,
     required this.isHovered,
+    required this.isStanding,
     required this.title,
     required this.layerLabel,
     required this.hasStoryboardLayer,
@@ -110,6 +113,7 @@ class StoryboardCutBlockVisual {
     required Rect bottomBand,
     required this.cutLabel,
     required this.conteLabel,
+    this.isLinkedCut = false,
   }) : _topBand = topBand,
        _innerTopBand = innerTopBand,
        _strip = strip,
@@ -164,6 +168,10 @@ class StoryboardCutBlockVisual {
   /// has no storyboard layer — its inner bands are the plate then.
   final Color? conteLabel;
 
+  /// Whether the cut is a LINKED cut (I-25) — its name wears the link
+  /// icon, which opens the link window.
+  final bool isLinkedCut;
+
   /// The cut's panels — the divisions the strip draws, under the coverage
   /// rule. Never empty: a cut with no storyboard row still has one cell.
   final List<StoryboardCoverageCell> cells;
@@ -179,9 +187,11 @@ class StoryboardCutBlockVisual {
   /// bottom band, under the panel's end.
   final List<String> cellCommaLabels;
 
-  final bool isActive;
   final bool isRangeSelected;
   final bool isHovered;
+
+  /// The cut you stand on (F-248) — its bands wear the standing wash.
+  final bool isStanding;
 
   /// The cut's name, drawn top-left.
   final String title;
@@ -220,7 +230,6 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required double minBlockWidth,
-  required CutId? activeCutId,
   required TimelineRowAddress rowAddress,
   required ColorScheme colorScheme,
   required TextStyle baseTextStyle,
@@ -228,9 +237,11 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   required int countingBase,
   ValueListenable<TrackFrameRangeSelection?>? selectedRange,
   ValueListenable<CutId?>? hoveredCutId,
+  ValueListenable<CutId?>? standingCutId,
   StoryboardThumbnails? thumbnails,
   required double devicePixelRatio,
   ValueListenable<int>? windowBucket,
+  Set<CutId> linkedCutIds = const {},
   double viewportMainExtent = 0,
 }) => StoryboardCutBlocksPainter(
   entries: entries,
@@ -245,13 +256,14 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
   // The STRIP's content: the cut's panels, under the coverage rule — the
   // same reading the row's edge grips hang on and its flip steps through.
   storyboardCellsByCut: storyboardCellsByCut(entries),
+  linkedCutIds: linkedCutIds,
   geometry: geometry,
   crossAxisExtent: crossAxisExtent,
   minBlockWidth: minBlockWidth,
-  activeCutId: activeCutId,
   selectedRange: selectedRange,
   rowAddress: rowAddress,
   hoveredCutId: hoveredCutId ?? _noHover,
+  standingCutId: standingCutId,
   colorScheme: colorScheme,
   baseTextStyle: baseTextStyle,
   showSeconds: showSeconds,
@@ -267,6 +279,35 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
 /// re-subscribe the painter's `repaint` merge every pass.
 final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 
+/// The cut a V row's bands mark as stood on (F-248): the cut under the
+/// playhead [cut] while that row is the one you stand on ([standsOnRow]).
+///
+/// 🗣️유저 2026-10-01: 「s행에서면 s행블록만 칠해지도록」 — one standing place,
+/// as the timeline's lane takes the wash off its layer's row. Heard through
+/// [changes], which carry both answers; it holds nothing of its own, so a
+/// host builds one per build.
+class StandingCut implements ValueListenable<CutId?> {
+  const StandingCut({
+    required this.changes,
+    required this.standsOnRow,
+    required this.cut,
+  });
+
+  final Listenable changes;
+  final bool Function() standsOnRow;
+  final ValueListenable<CutId?> cut;
+
+  @override
+  CutId? get value => standsOnRow() ? cut.value : null;
+
+  @override
+  void addListener(VoidCallback listener) => changes.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      changes.removeListener(listener);
+}
+
 /// The cut row's blocks, PAINTED (the storyboard's half of the timeline's
 /// row painterization).
 ///
@@ -280,18 +321,20 @@ final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 ///
 /// Only the drawing lives here. Selecting, sliding and reordering are the
 /// shared range gesture's, mounted above.
-class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
+class StoryboardCutBlocksPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   StoryboardCutBlocksPainter({
     required this.entries,
     required this.storyboardLayerNames,
     required this.storyboardCellsByCut,
+    this.linkedCutIds = const {},
     required this.geometry,
     required this.crossAxisExtent,
     required this.minBlockWidth,
-    required this.activeCutId,
     required this.selectedRange,
     required this.rowAddress,
     required this.hoveredCutId,
+    this.standingCutId,
     required this.colorScheme,
     required this.baseTextStyle,
     required this.showSeconds,
@@ -305,6 +348,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
            geometry,
            ?selectedRange,
            hoveredCutId,
+           ?standingCutId,
            ?windowBucket,
            ?thumbnails?.landed,
          ]),
@@ -326,6 +370,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// A cut always has at least one.
   final Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut;
 
+  /// The LINKED cuts among [entries] (I-25), resolved by the host that
+  /// knows the project's links — the painter only reads them.
+  final Set<CutId> linkedCutIds;
+
   /// The LIVE frame-axis geometry: a zoom step repaints instead of
   /// rebuilding the row that built this.
   final TimelineFrameGeometryHandle geometry;
@@ -335,8 +383,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// Blocks never draw narrower than this, however short the cut — the
   /// `TimelineScale` rule the widget blocks were sized by.
   final double minBlockWidth;
-
-  final CutId? activeCutId;
 
   /// The live frame RANGE on this track's global axis. A block is selected
   /// when the range COVERS it — the cut row is a frame-axis row and a cut
@@ -348,7 +394,16 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final TimelineRowAddress rowAddress;
   final ValueListenable<CutId?> hoveredCutId;
 
+  /// The cut you stand on (F-248), whose bands wear the standing wash — a
+  /// [StandingCut]: the cut under the playhead while this row is the one
+  /// you stand on. It moves on crossings and stands, so this row repaints
+  /// once a cut, never a tick. Null where nobody stands.
+  final ValueListenable<CutId?>? standingCutId;
+
   final ColorScheme colorScheme;
+
+  /// The ambient text style the row sits in — the app's face. Every word
+  /// on a block is printed from it the one way ([timelineBlockWordStyle]).
   final TextStyle baseTextStyle;
   final bool showSeconds;
   final int countingBase;
@@ -368,13 +423,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   final double viewportMainExtent;
 
   static const double _padding = 4;
-  /// The CUT PLATE's corner — the V row's block, the one the standing
-  /// outline wraps when you stand on a cut. Not the frame-block law: the
-  /// plate is a container with bands, and it is the ONE rounded thing in it —
-  /// what sits inside is square and clipped by this corner (유저 2026-09-26:
-  /// 「블록이 모서리 둥근건 블록 자체」). ↩️The panels inside it wore the
-  /// frame-block law until then.
-  static const double plateCornerRadius = 8;
 
   /// The narrowest block that still prints its total (the widget rule).
   static const double totalLabelMinWidth = 48;
@@ -391,9 +439,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// does, so nothing ever showed it. The folded track row's geometry starts
   /// at the first VISIBLE frame (F-143), and there `frame * cell` put every
   /// block that many cells too far right.
-  double _left(int frame) =>
-      geometry.value.leadingFrameSpacerWidth +
-      (frame - geometry.value.frameStartIndex) * _cellExtent;
+  ///
+  /// It is the geometry's own [TimelineFrameGeometry.edgeAt] — the frame
+  /// axis' one law (F-220) — rather than a copy of it.
+  double _left(int frame) => geometry.value.edgeAt(frame);
 
   /// A cut's block width: its frames, and at least [minBlockWidth] so a
   /// short cut can be seen — but never past where the next cut starts.
@@ -403,13 +452,29 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// 64 frames, and every shorter cut lay over the next one — drawn under it
   /// and pressed as itself. A row of short cuts reads frame for frame now,
   /// as Premiere's does.
+  ///
+  /// 🗣️유저 2026-09-27 (「최대한 원래 공간만 차지하도록」): the floor is one
+  /// pixel ([StoryboardPanel.cutBlockMinWidth]) — it keeps a sub-pixel cut
+  /// from vanishing and grows nothing that covers a pixel of its own.
   double _widthFor(StoryboardTimelineLayoutEntry entry) {
-    final width = entry.duration * _cellExtent;
+    final start = _left(entry.startFrame);
+    final width = _left(entry.endFrame) - start;
     final next = _nextStartByCut[entry.cutId];
     final floor = next == null
         ? minBlockWidth
-        : math.min(minBlockWidth, (next - entry.startFrame) * _cellExtent);
+        : math.min(minBlockWidth, _left(next) - start);
     return width < floor ? floor : width;
+  }
+
+  /// The frame after the one [entry]'s block, [width] wide, reaches into.
+  /// A block reaches at least [minBlockWidth], so its visible end is
+  /// measured in pixels, not in the cut's own frames.
+  int _reachedEndFrame(StoryboardTimelineLayoutEntry entry, double width) {
+    if (_cellExtent <= 0) {
+      return entry.endFrame;
+    }
+    final farEdge = timelineFrameEdge(entry.startFrame, _cellExtent) + width;
+    return timelineFrameAt(farEdge - 1e-6, _cellExtent) + 1;
   }
 
   /// Where the cut after each one starts — [entries] are in track order,
@@ -489,11 +554,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   }) {
     final left = _left(entry.startFrame);
     final width = _widthFor(entry);
-    // A block reaches at least [minBlockWidth], so its visible end is
-    // measured in pixels, not in the cut's own frames.
-    final endFrame = _cellExtent <= 0
-        ? entry.endFrame
-        : entry.startFrame + (width / _cellExtent).ceil();
+    final endFrame = _reachedEndFrame(entry, width);
     if (endFrame <= window.startIndex ||
         entry.startFrame >= window.endIndexExclusive) {
       return null;
@@ -516,13 +577,14 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       // the frame blocks' paper ask the same function.
       cutLabel: layerMarkColor(entry.cut.metadata.mark),
       conteLabel: conteLayer == null ? null : layerMarkColor(conteLayer.mark),
+      isLinkedCut: linkedCutIds.contains(entry.cutId),
       cells: cells,
       cellHeads: writing.heads,
       cellCommaLabels: writing.commaLabels,
-      isActive: entry.cutId == activeCutId,
       isRangeSelected:
           selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
       isHovered: entry.cutId == hovered,
+      isStanding: entry.cutId == standingCutId?.value,
       title: entry.cut.name,
       // D27: no explanatory copy — an empty layer slot reads as ''.
       layerLabel: layerName ?? '',
@@ -539,7 +601,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
               countingBase: countingBase,
             )
           : null,
-      thumbnails: _thumbnailsFor(entry, cells),
+      thumbnails: _thumbnailsFor(entry, cells, strip: bands.strip),
     );
   }
 
@@ -605,12 +667,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// One picture per PANEL, each at the frame that panel is about — asked
   /// ONLY for blocks the window keeps: the row used to request every
   /// cut's picture on every build.
+  ///
+  /// ⛔And not at all for a [strip] that shows none ([_stripShowsPictures]):
+  /// a V row at its floor keeps its bands and no picture, and it still
+  /// asked for every panel's — a render each, and a render thaws its cut's
+  /// cels at the canvas's full size whatever width it is for (measured
+  /// 09-28 on the user's film: 26 pictures nobody could see, +570MB).
   List<ui.Image?> _thumbnailsFor(
     StoryboardTimelineLayoutEntry entry,
-    List<StoryboardCoverageCell> cells,
-  ) {
+    List<StoryboardCoverageCell> cells, {
+    required Rect strip,
+  }) {
     final thumbnails = this.thumbnails;
-    if (thumbnails == null) {
+    if (thumbnails == null || !_stripShowsPictures(strip)) {
       return const [];
     }
     // The picture is drawn the strip's height tall ([_pictureIn]), so that
@@ -622,7 +691,10 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // resolution (⛔해상도로 속도를 사지 않는다). ↩️It chose between a 128px
     // and a 640px picture, and read neither the screen's density nor the
     // camera's shape.
-    final shownHeight = stripBandOf(crossAxisExtent).height * devicePixelRatio;
+    final shownHeight = strip.height * devicePixelRatio;
+    final conteStart = storyboardConteStart(
+      storyboardLayerForCut(entry.cut)?.timeline,
+    );
     return [
       for (final cell in cells)
         thumbnails.resolve(
@@ -630,6 +702,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
           storyboardCellPictureFrame(
             cell,
             pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
+            conteStart: conteStart,
           ),
           shownHeight: shownHeight,
         ),
@@ -702,6 +775,59 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return block.innerTopBand;
   }
 
+  /// 🗣️I-25 (유저 2026-09-14): 「링크컷이 발생해있는 경우, 모든 컷에 적용.
+  /// 내용은 컷블록에서 컷 이름 오른쪽에 링크아이콘(레이어에서 사용하는거랑
+  /// 똑같은 것) 사용. 그리고 해당 버튼 클릭시 공용창 띄움」 — the icon's
+  /// square right after a linked cut's name, in its top band: the ONE rect the
+  /// paint draws and the press reads (the D30 create affordance's shape).
+  /// Null on a cut that is not linked, or a band too narrow for the square.
+  Rect? linkAffordanceRectOf(StoryboardCutBlockVisual block) {
+    if (!block.isLinkedCut) {
+      return null;
+    }
+    final band = block.topBand;
+    final side = band.height;
+    final inset = math.min(_padding, band.width / 2);
+    final titleRoom = band.width - inset * 2 - side;
+    if (side <= 0 || titleRoom < 0) {
+      return null;
+    }
+    final titleWidth = _bandTextWidth(
+      block.title,
+      _titleStyle,
+      Size(titleRoom, band.height),
+    );
+    return Rect.fromLTWH(band.left + inset + titleWidth, band.top, side, side);
+  }
+
+  /// The width [text] is painted at in a [room] ([_paintBandText]'s fit).
+  double _bandTextWidth(String text, TextStyle style, Size room) {
+    if (text.isEmpty || room.width <= 0) {
+      return 0;
+    }
+    final set = timelineWordSetOnto(text, style, room.width);
+    return set.glyph.width * wordFit(set.glyph.size, room).x;
+  }
+
+  /// The layer badge's glyph ([Icons.link]) in the accent, centred in [rect].
+  void _paintLinkIcon(Canvas canvas, Rect rect) {
+    const icon = Icons.link;
+    final glyph = timelineGlyphPainter(
+      String.fromCharCode(icon.codePoint),
+      TextStyle(
+        fontSize: rect.height,
+        fontFamily: icon.fontFamily,
+        package: icon.fontPackage,
+        color: colorScheme.primary,
+        height: 1.0,
+      ),
+    );
+    glyph.paint(
+      canvas,
+      rect.center - Offset(glyph.width / 2, glyph.height / 2),
+    );
+  }
+
   /// The block covering row-local [position], or null between blocks.
   StoryboardCutBlockVisual? blockAt(Offset position) {
     for (final block in blocks()) {
@@ -721,8 +847,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     return null;
   }
 
-  TextStyle get _labelStyle =>
-      baseTextStyle.merge(const TextStyle(fontSize: 11));
+  /// D29: the cut-block text grade — the title, the heads and the lengths
+  /// alike, not a cell-fitted 9 that shrank to ~6px at storyboard zooms.
+  static const double _wordSize = 11;
 
   // The CELLS' writing convention on every cut-block label too (user
   // 2026-07-29, "cut blocks and storyboard blocks read as one"): panel ink
@@ -731,18 +858,28 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   // each label sits on, in place of scrims, halos and per-surface colours.
   // The styles' colors are layout/cache identity; the paint resolves the
   // real ink through [paintTimelineGlyphOnGround].
-  TextStyle get _titleStyle => _labelStyle.copyWith(
-    color: timelineDrawingInkColor,
-    fontWeight: FontWeight.bold,
+  //
+  // 🗣️F-234 (유저 2026-09-29): 「코마텍스트가 위아래 정렬이 중앙이아니라
+  // 살짝위라던가 … 특히 컷블록의 코마텍스트. 관련 텍스트 통일」 — the words
+  // are printed the block word's one way ([timelineBlockWordStyle]).
+  // ↩️They were `labelSmall` at 11, whose 1.45 line made a 16px box: taller
+  // than the 13px band, so every word was narrowed to 81% of its height to
+  // fit a band its ink never overflowed.
+  TextStyle get _titleStyle => timelineBlockWordStyle(
+    baseTextStyle,
+    ink: timelineDrawingInkColor,
+    fontSize: _wordSize,
+    bold: true,
   );
 
   /// The bands' LENGTH words — the cut's length and each panel's comma
-  /// count. D29: the cut-block text grade, the same 11 the title wears, not
-  /// a cell-fitted 9 that shrank to ~6px at storyboard zooms.
-  TextStyle get _totalStyle => _labelStyle.copyWith(
-    color: timelineDrawingInkColor.withValues(alpha: 0.72),
-    // R27 #3: bold — the readout was too easy to miss.
-    fontWeight: FontWeight.w700,
+  /// count, at the frame blocks' 0.72 (R27 #3: bold — the readout was too
+  /// easy to miss).
+  TextStyle get _totalStyle => timelineBlockWordStyle(
+    baseTextStyle,
+    ink: timelineDrawingInkColor.withValues(alpha: 0.72),
+    fontSize: _wordSize,
+    bold: true,
   );
 
   /// A pair of BANDS' composited fill — the ground the writing in them sits
@@ -757,7 +894,6 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   Color _stripGround(StoryboardCutBlockVisual block) =>
       storyboardCutBlockBackgroundColor(
         colorScheme,
-        active: block.isActive,
         hovered: block.isHovered,
       );
 
@@ -768,20 +904,30 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     }
   }
 
+  /// The CUT PLATE's corner — the V row's block, rounded by the frame-block
+  /// law like every other block: 6px, no larger than half a frame's cell or
+  /// half the plate. The plate is a container with bands, and it is the ONE
+  /// rounded thing in it — what sits inside is square and clipped by this
+  /// corner (유저 2026-09-26: 「블록이 모서리 둥근건 블록 자체」).
+  ///
+  /// 🗣️F-219 (유저 2026-09-28): 「컷블록의 꼭짓점은 10%대에서도 작은 줌에서도
+  /// 둥근데, se블록이나 타임라인의 프레임블록은 네모남 … 컷블록을 작은 줌에서
+  /// 네모나게 되는 법으로 통일」. ↩️A constant 8px, round at every zoom.
+  Radius get plateCorner => timelineBlockCornerRadiusAt(
+    cellExtent: _cellExtent,
+    crossExtent: crossAxisExtent,
+  );
+
   void _paintBlock(Canvas canvas, StoryboardCutBlockVisual block) {
-    final rrect = RRect.fromRectAndRadius(
-      block.rect,
-      const Radius.circular(plateCornerRadius),
-    );
+    final rrect = RRect.fromRectAndRadius(block.rect, plateCorner);
     // 🗣️유저 2026-09-26: 「패딩/실루엣선 이런거 싹 없도록 심플하게만」 — the
     // block is its plate, its bands and its pictures, painted, and nothing
     // else: no outline, no silhouette, no gap. The plate's one rounded
     // outline clips everything inside it. ↩️A light outline wrapped the
     // plate (R26 #8) and each panel (#15, the seam between two touching
     // pictures) until then; the edges' white triangles drowned in it
-    // (「애초 블럭이 실루엣이 흰색이라」). Which cut is ACTIVE still reads from
-    // the plate: a different statement, a different channel, and the one
-    // that survives standing somewhere else.
+    // (「애초 블럭이 실루엣이 흰색이라」). The cut you stand in is the
+    // playhead's to say (F-212); ↩️its plate said it too, in the accent.
     canvas.drawRRect(rrect, Paint()..color = _stripGround(block));
     canvas.save();
     canvas.clipRRect(rrect);
@@ -814,14 +960,23 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     final conteGround = _bandGround(block, StoryboardBand.conte);
     canvas.save();
     canvas.clipRect(block.topBand);
+    final link = linkAffordanceRectOf(block);
+    final top = block.topBand;
     _paintBandText(
       canvas,
       text: block.title,
       style: _titleStyle,
-      band: block.topBand,
+      // A linked cut's name gives up the icon's square at its end, so the
+      // icon stands right of it however the name narrows.
+      band: link == null
+          ? top
+          : Rect.fromLTRB(top.left, top.top, top.right - link.width, top.bottom),
       alignRight: false,
       ground: cutGround,
     );
+    if (link != null) {
+      _paintLinkIcon(canvas, link);
+    }
     canvas.restore();
 
     canvas.save();
@@ -920,12 +1075,19 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       if (comma.isEmpty || span.right <= span.left || _cellExtent <= 0) {
         continue;
       }
-      final glyph = timelineGlyphPainter(comma, _totalStyle);
-      final layout = timelineBlockWordLayout(glyph.size, (
+      // The panel's last cell as the law laid it (F-220).
+      final lastCell = math.max(span.left, span.lastCellStart);
+      // Its letter gaps give way first, then it narrows (F-234-Q1).
+      final set = timelineWordSetOnto(
+        comma,
+        _totalStyle,
+        span.right - span.left,
+      );
+      final layout = timelineBlockWordLayout(set.glyph.size, (
         axis: Axis.horizontal,
         room: Rect.fromLTRB(span.left, band.top, span.right, band.bottom),
-        cellStart: span.right - _cellExtent,
-        cellExtent: _cellExtent,
+        cellStart: lastCell,
+        cellExtent: span.right - lastCell,
         growth: TimelineBlockWordGrowth.towardBlockStart,
         acrossAlignment: 0,
       ));
@@ -936,6 +1098,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
         _totalStyle,
         ground: ground,
         fit: layout.fit,
+        tightening: set.tightening,
       );
     }
   }
@@ -943,20 +1106,26 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   /// Panel [cell]'s stretch along [block], in row-local x: measured in
   /// FRAMES like every other x on this row, and held inside the block (a
   /// block drawn at [minBlockWidth] is wider than its frames).
-  ({double left, double right}) _panelSpan(
+  ({double left, double right, double lastCellStart}) _panelSpan(
     StoryboardCutBlockVisual block,
     StoryboardCoverageCell cell,
   ) {
     final rect = block.rect;
     if (_cellExtent <= 0) {
-      return (left: rect.left, right: rect.right);
+      return (left: rect.left, right: rect.right, lastCellStart: rect.left);
     }
+    // The cut's first frame: a block starts on its cut's first boundary.
+    final g = geometry.value;
+    final start = timelineFrameAt(
+      rect.left -
+          g.leadingFrameSpacerWidth +
+          timelineFrameEdge(g.frameStartIndex, _cellExtent),
+      _cellExtent,
+    );
     return (
-      left: math.max(rect.left, rect.left + cell.startIndex * _cellExtent),
-      right: math.min(
-        rect.right,
-        rect.left + cell.endIndexExclusive * _cellExtent,
-      ),
+      left: math.max(rect.left, _left(start + cell.startIndex)),
+      right: math.min(rect.right, _left(start + cell.endIndexExclusive)),
+      lastCellStart: _left(start + cell.endIndexExclusive - 1),
     );
   }
 
@@ -984,13 +1153,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
     // The inset gives way to a stretch narrower than two of it, so a word
     // narrowed there stays in its own stretch — a panel's, not the next.
     final inset = math.min(_padding, band.width / 2);
-    final glyph = timelineGlyphPainter(text, style);
-    final fit = wordFit(
-      glyph.size,
-      Size(band.width - inset * 2, band.height),
-    );
-    final width = glyph.width * fit.x;
-    final height = glyph.height * fit.y;
+    final room = Size(band.width - inset * 2, band.height);
+    // Its letter gaps give way first, then it narrows (F-234-Q1).
+    final set = timelineWordSetOnto(text, style, room.width);
+    final fit = wordFit(set.glyph.size, room);
+    final width = set.glyph.width * fit.x;
+    final height = set.glyph.height * fit.y;
     final dx = alignRight ? band.right - inset - width : band.left + inset;
     final origin = Offset(dx, band.top + (band.height - height) / 2);
     paintTimelineGlyphOnGround(
@@ -1000,6 +1168,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       style,
       ground: ground,
       fit: fit,
+      tightening: set.tightening,
     );
   }
 
@@ -1021,8 +1190,7 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   ) sync* {
     final inner = block.strip;
     if (!showThumbnails ||
-        inner.width <= 0 ||
-        inner.height <= 0 ||
+        !_stripShowsPictures(inner) ||
         block.cells.isEmpty ||
         block.thumbnails.length != block.cells.length) {
       return;
@@ -1040,6 +1208,12 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
       }
     }
   }
+
+  /// Whether a block's [strip] has room for its panels' pictures — the one
+  /// answer for what is drawn there ([_picturesOf]) and what is asked for
+  /// it ([_thumbnailsFor]).
+  static bool _stripShowsPictures(Rect strip) =>
+      strip.width > 0 && strip.height > 0;
 
   /// Where [image] lands in [slot] — before the slot clips it.
   ///
@@ -1124,9 +1298,9 @@ class StoryboardCutBlocksPainter extends CustomPainter with RepaintOnProps {
   Object get props => (
     ByIdentity(entries),
     ByMap(storyboardLayerNames),
+    BySet(linkedCutIds),
     crossAxisExtent,
     minBlockWidth,
-    activeCutId,
     rowAddress,
     colorScheme,
     baseTextStyle,

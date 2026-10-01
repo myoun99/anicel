@@ -6,8 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart'
+    show paperGrainTextureMask;
 import 'package:anicel/src/ui/brush/brush_hand_settings_store.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -163,6 +166,257 @@ void main() {
   String curveOf(BrushToolState state) =>
       jsonEncode(state.shape.sizePressureCurve?.toJson());
 
+  Future<void> fromTheMenu(WidgetTester tester, String verb) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(verb).first);
+    await tester.pumpAndSettle();
+  }
+
+  /// The library's order, every brush, as the panel is handed it.
+  List<BrushPresetId> order(WidgetTester tester) => [
+    for (final preset in panel(tester).presets) preset.id,
+  ];
+
+  /// The brushes of the tab [id] shows in, in order.
+  List<BrushPresetId> tabOf(WidgetTester tester, BrushPresetId id) {
+    final shown = panel(tester);
+    final group = shown.presets
+        .firstWhere((preset) => preset.id == id)
+        .groupShownAmong(shown.groups);
+    return [
+      for (final preset in shown.presets)
+        if (preset.groupShownAmong(shown.groups) == group) preset.id,
+    ];
+  }
+
+  Future<void> pickInView(WidgetTester tester, BrushPresetId id) async {
+    await tester.ensureVisible(tileOf(id));
+    await pick(tester, id);
+  }
+
+  /// Opens the first tab holding at least [count] brushes, picks its first
+  /// and returns the tab. ⚠️These cases are about the library, not about
+  /// the tab the roster opens on — board F-218 put the two-brush Basic tab
+  /// first, and a case reading the third brush of the opening tab broke.
+  Future<List<BrushPresetId>> openTabWithAtLeast(
+    WidgetTester tester,
+    int count,
+  ) async {
+    final shown = panel(tester);
+    for (final group in shown.groups) {
+      final ids = [
+        for (final preset in shown.presets)
+          if (preset.groupShownAmong(shown.groups) == group.id) preset.id,
+      ];
+      if (ids.length < count) {
+        continue;
+      }
+      final tabKey = find.byKey(
+        ValueKey<String>('brush-preset-tab-${group.id.value}'),
+      );
+      await tester.ensureVisible(tabKey);
+      await tester.tap(tabKey);
+      await tester.pumpAndSettle();
+      await pickInView(tester, ids.first);
+      return tabOf(tester, ids.first);
+    }
+    throw StateError('⛔premise: no tab holds $count brushes');
+  }
+
+  // 🗣️F-250 (유저 2026-10-01): 「브러시 위치 바꾸는것도 언두에 기록. 그룹바꾸든
+  // 순서바꾸든. 그리고 브러시 삭제하면 현재 선택된 브러시 ui가 없어지는데,
+  // 제대로 삭제하면 그 외 브러시 선택시키도록」.
+  testWidgets('🚨F-250: a brush moved in the library goes back with one undo '
+      '— and a brush deleted since stays deleted', (tester) async {
+    await pumpWithPresets(tester);
+    final tab = await openTabWithAtLeast(tester, 4);
+    final before = order(tester);
+    final moved = [...panel(tester).presets];
+    moved.insert(0, moved.removeAt(before.indexOf(tab[2])));
+    panel(tester).onPresetsReordered!(moved);
+    await tester.pumpAndSettle();
+    expect(order(tester).first, tab[2], reason: 'premise: it moved');
+
+    // Not on the undo stack: a delete between the move and its undo.
+    final doomed = tab[3];
+    await pickInView(tester, doomed);
+    await fromTheMenu(tester, 'Delete selected brush');
+    await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+    await tester.pumpAndSettle();
+
+    expect(order(tester), [
+      for (final id in before)
+        if (id != doomed) id,
+    ]);
+  });
+
+  testWidgets('🚨F-250: deleting the brush in hand hands every tool that held '
+      'it the brush beside it', (tester) async {
+    await pumpWithPresets(tester);
+    final tab = await openTabWithAtLeast(tester, 3);
+    final doomed = tab[1];
+    await pickInView(tester, doomed);
+    await takeUp(tester, 'eraser');
+    await pickInView(tester, doomed);
+    await takeUp(tester, 'brush');
+
+    await fromTheMenu(tester, 'Delete selected brush');
+
+    expect(tileOf(doomed), findsNothing, reason: 'premise: it is gone');
+    expect(panel(tester).selectedPresetId, tab[2], reason: 'the next one');
+    await takeUp(tester, 'eraser');
+    expect(
+      panel(tester).selectedPresetId,
+      tab[2],
+      reason: 'the eraser held it too',
+    );
+  });
+
+  testWidgets('F-250: the last brush of a tab hands over to the one before',
+      (tester) async {
+    await pumpWithPresets(tester);
+    final tab = tabOf(tester, panel(tester).selectedPresetId!);
+    await pickInView(tester, tab.last);
+
+    await fromTheMenu(tester, 'Delete selected brush');
+
+    expect(panel(tester).selectedPresetId, tab[tab.length - 2]);
+  });
+
+  /// The tabs of at least [count] brushes that the opening brush does not
+  /// show in, in rail order.
+  List<List<BrushPresetId>> otherTabsWithAtLeast(
+    WidgetTester tester,
+    int count,
+  ) {
+    final shown = panel(tester);
+    final opening = shown.presets
+        .firstWhere((preset) => preset.id == shown.selectedPresetId)
+        .groupShownAmong(shown.groups);
+    return [
+      for (final group in shown.groups)
+        if (group.id != opening)
+          [
+            for (final preset in shown.presets)
+              if (preset.groupShownAmong(shown.groups) == group.id) preset.id,
+          ],
+    ].where((tab) => tab.length >= count).toList();
+  }
+
+  /// A tap on the tab [member] shows in, the way a hand taps it.
+  Future<void> tapTabOf(WidgetTester tester, BrushPresetId member) async {
+    final shown = panel(tester);
+    final group = shown.presets
+        .firstWhere((preset) => preset.id == member)
+        .groupShownAmong(shown.groups);
+    final tab = find.byKey(
+      ValueKey<String>('brush-preset-tab-${group?.value ?? 'root'}'),
+    );
+    await tester.ensureVisible(tab);
+    await tester.tap(tab);
+    await tester.pumpAndSettle();
+  }
+
+  // 🗣️F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때(선택하던 뭐던), 해당
+  // 그룹의 마지막으로 선택했던걸 기억해서 그거 자동선택되도록」.
+  testWidgets('🚨F-250: opening a group takes up the brush last picked there '
+      '— its first the first time — and the tab in hand stays', (
+    tester,
+  ) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x.first,
+      reason: 'nothing held there yet: the group\'s first',
+    );
+    await pickInView(tester, x[1]);
+    await tapTabOf(tester, y.first);
+    expect(panel(tester).selectedPresetId, y.first);
+
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: '「해당 그룹의 마지막으로 선택했던걸 기억해서」',
+    );
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'the brush in hand is in that tab already — it stays',
+    );
+  });
+
+  // 🗣️F-250-group-memory-Q1 (유저 2026-10-01): 「도구마다 따로」.
+  //
+  // ⚠️A paint tool held for the first time takes up the brush in hand
+  // (PaintToolStateNotifier), and taking a brush up is remembered in its
+  // tab like any pick — so the eraser is taken up in ANOTHER tab here, or
+  // it would hold the brush tool's choice in x already and the rule 「inside
+  // the tab, the brush stays」 would answer for the memory.
+  testWidgets('🚨F-250: each paint tool remembers its own last brush in a '
+      'group', (tester) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+    await tapTabOf(tester, x.first);
+    await pickInView(tester, x[1]);
+    await tapTabOf(tester, y.first);
+
+    await takeUp(tester, 'eraser');
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x.first,
+      reason: 'the eraser never held one there — the brush tool\'s choice '
+          'is the brush tool\'s',
+    );
+
+    await takeUp(tester, 'brush');
+    await tapTabOf(tester, x.first);
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'and the eraser\'s did not overwrite it',
+    );
+  });
+
+  // The rail's other half (railEntry: 안에 있으면 그대로): a tab the brush in
+  // hand shows in keeps it, whatever was last picked there — the memory
+  // answers only a hand coming from outside.
+  testWidgets('🚨F-250: the brush in hand moved into another tab stays in '
+      'hand when that tab opens', (tester) async {
+    await pumpWithPresets(tester);
+    final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+    await tapTabOf(tester, y.first);
+    await tapTabOf(tester, x.first);
+    await pickInView(tester, x[1]);
+    final shown = panel(tester);
+    final yGroup = shown.presets
+        .firstWhere((preset) => preset.id == y.first)
+        .groupShownAmong(shown.groups);
+    shown.onPresetsReordered!([
+      for (final preset in shown.presets)
+        if (preset.id == x[1]) preset.copyWith(groupId: yGroup) else preset,
+    ]);
+    await tester.pumpAndSettle();
+    expect(tabOf(tester, x[1]), contains(y.first), reason: 'premise: moved');
+
+    await tapTabOf(tester, y.first);
+
+    expect(
+      panel(tester).selectedPresetId,
+      x[1],
+      reason: 'it shows in that tab now — the hand stays on it, though '
+          '${y.first} was the last picked there',
+    );
+  });
+
   testWidgets('tapping a preset makes it the active one', (tester) async {
     await pumpWithPresets(tester);
     final active = panel(tester).selectedPresetId;
@@ -262,22 +516,13 @@ void main() {
     expect(size(tester), isNot(own), reason: 'premise: and on the eraser');
     await takeUp(tester, 'brush');
 
-    Future<void> fromTheMenu(String verb) async {
-      await tester.tap(
-        find.byKey(const ValueKey<String>('brush-preset-menu-button')).first,
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(verb).first);
-      await tester.pumpAndSettle();
-    }
-
     // The library itself has changed too: a brush is deleted.
     await pick(tester, two);
-    await fromTheMenu('Delete selected brush');
+    await fromTheMenu(tester, 'Delete selected brush');
     expect(tileOf(two), findsNothing, reason: 'premise: it is gone');
     await pick(tester, one);
 
-    await fromTheMenu('Reset brush library');
+    await fromTheMenu(tester, 'Reset brush library');
     await tester.tap(
       find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
     );
@@ -317,6 +562,72 @@ void main() {
           'started just before the reset must not land after it. It holds: '
           '${bank.existsSync() ? bank.readAsStringSync() : 'no file'}',
     );
+  });
+
+  // 🗣️board `a-brush-picked-wears-the-texture-of-the-one-before` (유저
+  // 2026-10-01): 「아날로그가 아닌 일반수채등 질감이 없어야하는게 아직있거든?
+  // … 초기화가 설마 텍스처항목은 초기화안하나?」 — F-181 again. Its pin read
+  // a size for the paper grain, and the grain rode a door the size never
+  // takes: the tool state's copyWith laid the LEFT brush's texture over the
+  // brush picked, and H25 filed it as the hand's. These read the texture.
+  group('🚨the texture a brush wears is its own', () {
+    Future<void> openWatercolours(WidgetTester tester) async {
+      final tab = find.byKey(
+        const ValueKey<String>('brush-preset-tab-builtin-watercolor-group'),
+      );
+      await tester.ensureVisible(tab);
+      await tester.tap(tab);
+      await tester.pumpAndSettle();
+    }
+
+    BrushToolState held(WidgetTester tester) => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool!
+        .value;
+
+    const analog = BrushPresetId('builtin-analog-watercolor');
+    const plain = BrushPresetId('builtin-watercolor');
+
+    testWidgets('a brush picked after a textured one wears none — and none '
+        'is filed as the hand\'s to come back', (tester) async {
+      await pumpWithPresets(tester);
+      await openWatercolours(tester);
+      await pickInView(tester, analog);
+      expect(held(tester).textureMaskSource, isNotNull, reason: 'premise');
+
+      await pickInView(tester, plain);
+      expect(held(tester).textureMaskSource, isNull);
+      await pickInView(tester, analog);
+      await pickInView(tester, plain);
+      expect(held(tester).textureMaskSource, isNull);
+    });
+
+    testWidgets('a library reset takes off a texture the hand laid on', (
+      tester,
+    ) async {
+      await pumpWithPresets(tester);
+      await openWatercolours(tester);
+      await pickInView(tester, plain);
+      await openBrushSettings(tester);
+      await edit(
+        tester,
+        (state) => state.withMask(BrushMaskSlot.texture, paperGrainTextureMask),
+      );
+      expect(held(tester).textureMaskSource, isNotNull, reason: 'premise');
+
+      await fromTheMenu(tester, 'Reset brush library');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-preset-reset-confirm-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(held(tester).presetId, plain, reason: 'premise: still in hand');
+      expect(
+        held(tester).textureMaskSource,
+        isNull,
+        reason: '「초기화가 설마 텍스처항목은 초기화안하나?」',
+      );
+    });
   });
 
   testWidgets('🚨H36: the eraser shows the brush it holds from the first '

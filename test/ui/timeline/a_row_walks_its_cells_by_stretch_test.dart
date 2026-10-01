@@ -374,7 +374,8 @@ void main() {
 
 /// The paper of [from, to) laid one cell at a time — each cell joins the
 /// run before it when no corner stands between them and it is the same
-/// paper, and an empty cell lays nothing.
+/// paper, an empty cell lays nothing, and a run the cell at [to] joins runs
+/// on through it (F-208: the sliver a tile's last pixel shows).
 List<({Rect rect, Color color, BorderRadius? radius})> _paperCellByCell(
   TimelineRowCellsPainter painter,
   int from,
@@ -411,18 +412,21 @@ List<({Rect rect, Color color, BorderRadius? radius})> _paperCellByCell(
     runColor = null;
   }
 
+  bool joins(int frameIndex) =>
+      painter.resolvedCellStyleFor(frameIndex).background == runColor &&
+      painter.cellModelAt(frameIndex).segment.continuesFromPrevious;
+
   for (var frameIndex = from; frameIndex < to; frameIndex += 1) {
-    final color = painter.resolvedCellStyleFor(frameIndex).background;
-    if (color == runColor &&
-        painter.cellModelAt(frameIndex).segment.continuesFromPrevious) {
+    if (joins(frameIndex)) {
       continue;
     }
     close(frameIndex);
+    final color = painter.resolvedCellStyleFor(frameIndex).background;
     if (color.a > 0) {
       runStart = frameIndex;
       runColor = color;
     }
   }
-  close(to);
+  close(to < painter.frameEndIndexExclusive && joins(to) ? to + 1 : to);
   return paper;
 }

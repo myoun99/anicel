@@ -1,10 +1,6 @@
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_dab.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -15,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'brush_canvas_test_helpers.dart';
+import '../helpers/blank_cel.dart';
 
 /// Guides are a contract about what a real gesture puts on the canvas, so
 /// these drive the actual pointer pipeline rather than calling the geometry
@@ -29,13 +26,6 @@ void main() {
 
   setUp(() => commits = <BrushStrokeCommitData>[]);
 
-  BrushEditSessionState sessionState() => BrushEditSessionState(
-    canvasState: CanvasSurfaceState(
-      currentSurface: BitmapSurface(canvasSize: canvasSize, tileSize: 32),
-    ),
-    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
-  );
-
   Widget app(CutGuides guides) => MaterialApp(
     home: Scaffold(
       body: Align(
@@ -44,7 +34,7 @@ void main() {
           width: canvasSize.width.toDouble(),
           height: canvasSize.height.toDouble(),
           child: InteractiveBrushEditCanvasView(
-            sessionState: sessionState(),
+            celNow: blankCel(canvasSize, tileSize: 32),
             layerId: layerId,
             frameId: frameId,
             inputSettings: () =>

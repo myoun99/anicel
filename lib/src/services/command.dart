@@ -92,22 +92,41 @@ void dropPayloadsOf(Iterable<Command> commands) {
   }
 }
 
+/// [commands] as ONE undo step — THE answer to 「these writes are one
+/// step」: nothing when there are none, the command itself when there is
+/// one, a [CompositeCommand] when there are several. A caller that runs
+/// the step goes through `HistoryManager.executeAsOneStep`; this is for
+/// one that hands it on.
+///
+/// 🚨one-step-of-many-commands (2026-09-29): sixteen sites wrote this fold
+/// out by hand as `length == 1 ? single : CompositeCommand(...)`, five
+/// more as an `if` ladder or a head with followers, and a dozen wrapped
+/// even a lone write — one question, answered at thirty call sites. The
+/// composite's constructor is private to this function now, so a second
+/// answer cannot be written.
+Command? oneStepOf(String description, List<Command> commands) =>
+    switch (commands) {
+      [] => null,
+      [final only] => only,
+      _ => CompositeCommand._(description: description, commands: commands),
+    };
+
 /// Several commands as ONE undo step: executes in order, undoes in
 /// reverse. For flows where one user action legitimately touches two
 /// stores (e.g. adding an instruction also writes its memo shorthand into
-/// the cut note) without splitting the undo.
+/// the cut note) without splitting the undo. Made by [oneStepOf] alone.
 /// ⚠️It is a [RetainedBytesCommand] because WRAPPING MUST NOT HIDE
 /// WEIGHT. A composite that did not report simply vanished from the byte
-/// budget along with everything inside it, and one of the ~30 places that
-/// build one wraps a brush stroke — so the entries the budget most needed
-/// to see were the ones it could not.
+/// budget along with everything inside it, and one of the steps that
+/// becomes one wraps a brush stroke — so the entries the budget most
+/// needed to see were the ones it could not.
 class CompositeCommand
     implements
         Command,
         RetainedBytesCommand,
         ParkableCommand,
         PictureRestoringCommand {
-  CompositeCommand({required this.description, required this.commands});
+  CompositeCommand._({required this.description, required this.commands});
 
   @override
   final String description;

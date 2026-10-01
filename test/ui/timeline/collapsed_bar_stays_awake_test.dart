@@ -101,6 +101,7 @@ const _barButtons = <String>[
   'shared-paste-linked-button',
   'shared-paste-independent-button',
   'shared-edit-button',
+  'shared-auto-name-button',
   'shared-delete-button',
   'set-comma-1-button',
   'set-comma-n-button',

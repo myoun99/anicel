@@ -14,6 +14,7 @@ import 'package:anicel/src/models/audio_sync_settings.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
+import '../../helpers/canned_audio_recorder.dart';
 
 /// The live take preview (REC1-C): while a take rolls, the armed lane
 /// shows the planner's would-be landing — real block, real waveform lane,
@@ -55,7 +56,7 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
 
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // The roll starts at frame 0: the frame being spoken into counts.
@@ -93,7 +94,7 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     // 48 kHz at 40 buckets/s = 1200 samples per bucket: two full buckets.
@@ -136,7 +137,7 @@ void main() {
         AudioSyncSettings(inputChannelMode: mode),
       );
       manager.selectLayer(manager.activeTrack.seLayers.first.id);
-      manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+      manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
       expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
       final chunk = Float32List(2400);
@@ -212,7 +213,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
 
     await tester.pumpWidget(
       MaterialApp(
@@ -256,7 +257,7 @@ void main() {
     addTearDown(manager.dispose);
     final lane = manager.activeTrack.seLayers.first;
     manager.selectLayer(lane.id);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(take());
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(take());
 
     await tester.pumpWidget(
       MaterialApp(
@@ -295,31 +296,3 @@ void main() {
 
 /// A microphone stand-in: start always succeeds at the take's rate and
 /// stop hands the prepared take back once.
-class _FakeRecorder extends AudioRecorder {
-  _FakeRecorder(this.recording);
-
-  final AudioRecording recording;
-  bool _started = false;
-
-  @override
-  bool get isRecording => _started;
-
-  @override
-  int start({
-    required int sampleRate,
-    bool useNullBackend = false,
-    int deviceIndex = -1,
-  }) {
-    _started = true;
-    return recording.sampleRate;
-  }
-
-  @override
-  AudioRecording? stop() {
-    if (!_started) {
-      return null;
-    }
-    _started = false;
-    return recording;
-  }
-}

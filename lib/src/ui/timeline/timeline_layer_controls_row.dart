@@ -1,4 +1,3 @@
-import '../widgets/app_tooltip.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -146,6 +145,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleLayerFillReference,
     this.onOpenLayerMixer,
     this.onOpenLayerReference,
+    this.onOpenLayerLinks,
     this.isReferenceSourceShort = false,
     this.isLayerSoloed = false,
     this.hasLanes = false,
@@ -241,6 +241,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// reserved slot.
   final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerReference;
+
+  /// The link badge's window (I-25): what the row is linked to, and the
+  /// button that unlinks it. Null leaves the badge a picture.
+  final Future<void> Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerLinks;
 
   /// Whether this row asks its file for more film than the file has — the
   /// button turns red, and its popover says by how much.
@@ -700,17 +705,23 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget _nameText(BuildContext context) =>
       readableText(axis, layer.name, style: layerRowNameStyle(context));
 
+  /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
+  /// 표시」 — the badge is the entrance to the link window, a rail button
+  /// like the reference button beside it.
   Widget? _linkBadge(ColorScheme colorScheme) {
     if (linkPartners.isEmpty) return null;
+    final onOpen = onOpenLayerLinks;
     return Padding(
       padding: const EdgeInsets.only(left: 4),
-      child: AppTooltip(
-        message: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
-        child: Icon(
-          Icons.link,
-          key: ValueKey<String>('$keyPrefix-layer-link-badge-${layer.id}'),
-          size: 14,
-          color: colorScheme.primary,
+      child: Builder(
+        builder: (context) => AppIconButton(
+          keyValue: '$keyPrefix-layer-link-badge-${layer.id}',
+          tooltip: [AppText.strings.tlLinkedWith, ...linkPartners].join('\n'),
+          size: const AppIconButtonBox(width: 18, height: 18, iconSize: 14),
+          // The link reads in the accent whatever the button's own rest
+          // colour: it says the row is linked before anything is pressed.
+          icon: Icon(Icons.link, color: colorScheme.primary),
+          onPressed: onOpen == null ? null : () => onOpen(context, layer.id),
         ),
       ),
     );

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
 
 import '../helpers/canvas_pill.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_defaults.dart';
@@ -20,7 +21,9 @@ import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -60,8 +63,10 @@ Widget floorPillHarness({
   required bool onFloor,
   int leadingCount = 0,
   CanvasViewport? viewport,
+  Rect? unframedFit,
   bool hasContentToView = true,
   ValueChanged<CanvasViewport>? onViewportChanged,
+  List<Widget> pageStrip = const [],
 }) {
   final frameKeys = BrushCanvasFixture.createFrameKeys();
   final panel = BrushCanvasPanel(
@@ -69,8 +74,10 @@ Widget floorPillHarness({
     availableFrameKeys: frameKeys,
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
     floorCover: EdgeInsets.zero,
+    pageStrip: pageStrip,
     canvasSize: const CanvasSize(width: 300, height: 300),
     viewport: viewport,
+    unframedFit: unframedFit,
     onViewportChanged: onViewportChanged,
     hasContentToView: hasContentToView,
     paperColor: 0xFFFFFFFF,
@@ -241,28 +248,185 @@ void main() {
     );
   });
 
-  testWidgets('🗣️a DOCKED panel\'s scrollbar capsules run their whole edge; '
-      'the floor\'s keep the short capsule (F-201, 유저 2026-09-27: 「바탕에 '
-      '깔린 캔버스나 뷰어말고 도킹된 패널은 스크롤바 알약 최대치로 늘리자 '
-      '길이」)', (tester) async {
+  testWidgets('🗣️a DOCKED panel\'s scrollbars are lanes of its own, flush '
+      'with its edges and meeting at a corner of neither\'s; the floor keeps '
+      'its short capsules (F-209, 유저 2026-09-28: 「가로 세로 스크롤바끼리 '
+      '오른쪽끝에서 서로 겹치니까 안겹치도록」 · 「알약이아니라 패널로서 공간 '
+      '차지해서」)', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1000, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    Future<(Rect, Rect)> barsWhen({required bool onFloor}) async {
+    Rect rectOf(String key) =>
+        tester.getRect(find.byKey(ValueKey<String>(key)));
+    Future<(Rect, Rect, Rect)> barsWhen({required bool onFloor}) async {
       await tester.pumpWidget(floorPillHarness(width: 900, onFloor: onFloor));
       await tester.pumpAndSettle();
-      Rect bar(String key) =>
-          tester.getRect(find.byKey(ValueKey<String>(key)));
-      return (bar('canvas-panbar-vertical'), bar('canvas-panbar-horizontal'));
+      return (
+        rectOf('canvas-panbar-vertical'),
+        rectOf('canvas-panbar-horizontal'),
+        rectOf('canvas-editor-panel-shell'),
+      );
     }
 
-    // The harness panel is 900 × 420; a capsule stands 6px in from each
-    // end of its edge.
-    final (docked, dockedAcross) = await barsWhen(onFloor: false);
-    expect(docked.height, closeTo(420 - 12, 0.5));
-    expect(dockedAcross.width, closeTo(900 - 12, 0.5));
-    final (floor, floorAcross) = await barsWhen(onFloor: true);
+    // The harness panel is 900 × 420.
+    const lane = AppScrollbarLane.wide;
+    final (down, across, panel) = await barsWhen(onFloor: false);
+    expect(
+      down,
+      Rect.fromLTRB(
+        panel.right - lane,
+        panel.top,
+        panel.right,
+        panel.bottom - lane,
+      ),
+      reason: 'the right lane runs from the top down to the corner',
+    );
+    expect(
+      across,
+      Rect.fromLTRB(
+        panel.left,
+        panel.bottom - lane,
+        panel.right - lane,
+        panel.bottom,
+      ),
+      reason: 'the bottom lane runs from the left across to the corner',
+    );
+    expect(down.overlaps(across), isFalse, reason: 'the two never cross');
+    expect(
+      rectOf('canvas-panbar-corner'),
+      Rect.fromLTRB(
+        panel.right - lane,
+        panel.bottom - lane,
+        panel.right,
+        panel.bottom,
+      ),
+    );
+    final (floor, floorAcross, _) = await barsWhen(onFloor: true);
     expect(floor.height, closeTo(420 * 0.34, 0.5));
     expect(floorAcross.width, closeTo(260, 0.5), reason: 'the floor\'s cap');
+    expect(
+      find.byKey(const ValueKey<String>('canvas-panbar-corner')),
+      findsNothing,
+      reason: 'the floor\'s bars float — no lanes, no corner',
+    );
+  });
+
+  testWidgets('🗣️F-209: a docked panel\'s lanes take their room, and every '
+      'panel\'s pill its band — Fit centres the artwork in what they leave, '
+      'the pill and the page strip float over it; ringed on the artwork '
+      'side (유저 2026-09-30: 「판정을 알약까지 포함해서 판정」)', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    // A rail's width, where the pill fills what it is given, and a floor's.
+    for (final width in [220.0, 900.0]) {
+      for (final onFloor in [false, true]) {
+        CanvasViewport? fitted;
+        await tester.pumpWidget(
+          floorPillHarness(
+            width: width,
+            onFloor: onFloor,
+            onViewportChanged: (view) => fitted = view,
+            pageStrip: const [SizedBox(width: 26, height: 40)],
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+        );
+        await tester.pumpAndSettle();
+        // The harness panel is `width` × 420; the artwork is 300 × 300.
+        final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+        final band = pillBandOf(tester);
+        final where = '${onFloor ? 'floor' : 'docked'} at ${width}px';
+        expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+        final centre = renderOf(
+          tester,
+          fitted!,
+        ).canvasToViewport(CanvasPoint(x: 150, y: 150));
+        expect(centre.x, closeTo((width - lane) / 2, 0.5), reason: where);
+        expect(
+          centre.y,
+          closeTo(band + (420 - band - lane) / 2, 0.5),
+          reason: 'below the pill\'s band ($where)',
+        );
+
+        final panel = tester.getRect(
+          find.byKey(const ValueKey<String>('canvas-editor-panel-shell')),
+        );
+        final pill = tester.getRect(
+          find.byKey(const ValueKey<String>('canvas-view-pill')),
+        );
+        expect(
+          pill.center.dx - panel.left,
+          closeTo((width - lane) / 2, 0.5),
+          reason: 'the pill holds the middle of what the lanes leave '
+              '($where)',
+        );
+        expect(
+          pill.right,
+          lessThanOrEqualTo(panel.right - lane + 0.5),
+          reason: 'and never reaches into a lane ($where)',
+        );
+        final strip = tester.getRect(
+          find.byKey(const ValueKey<String>('canvas-page-strip')),
+        );
+        expect(
+          strip.center.dy - panel.top,
+          closeTo((420 - lane) / 2, 0.5),
+          reason: 'and the page strip the middle of its edge ($where)',
+        );
+      }
+    }
+    // What lies beside a lane is the pasteboard, a colour the user picks:
+    // each lane is ringed on its artwork side, as a capsule is.
+    await tester.pumpWidget(floorPillHarness(width: 900, onFloor: false));
+    await tester.pumpAndSettle();
+    Border ringOf(String key) {
+      final lane = tester.widget<DecoratedBox>(
+        find.byKey(ValueKey<String>(key)),
+      );
+      return (lane.decoration as BoxDecoration).border! as Border;
+    }
+
+    const ring = BorderSide(color: AppColors.backdrop);
+    expect(ringOf('canvas-panbar-vertical').left, ring);
+    expect(ringOf('canvas-panbar-horizontal').top, ring);
+  });
+
+  testWidgets('🗣️playback\'s fit — the frame an owner hands a view nobody '
+      'framed — keeps below the pill\'s band as Fit does, on the floor and '
+      'docked (유저 2026-09-30: 「캔버스 재생시나 그런거」)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final onFloor in [false, true]) {
+      await tester.pumpWidget(
+        floorPillHarness(
+          width: 900,
+          onFloor: onFloor,
+          unframedFit: const Rect.fromLTWH(0, 0, 300, 300),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // What the panel paints: the fit resolves at the read, never stored.
+      final painted = tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport;
+      final lane = onFloor ? 0.0 : AppScrollbarLane.wide;
+      final band = pillBandOf(tester);
+      final top = painted.canvasToViewport(CanvasPoint(x: 150, y: 0));
+      final centre = painted.canvasToViewport(CanvasPoint(x: 150, y: 150));
+      final where = onFloor ? 'floor' : 'docked';
+      expect(band, greaterThan(30), reason: 'premise: the pill\'s band');
+      expect(top.y, greaterThan(band), reason: 'clear of the pill ($where)');
+      expect(
+        centre.y,
+        closeTo(band + (420 - band - lane) / 2, 0.5),
+        reason: 'in the middle of what the band and the lane leave ($where)',
+      );
+    }
   });
 
   testWidgets('유저 R4 #4·#5: the pill and BOTH panbars sit the same distance '
@@ -284,22 +448,28 @@ void main() {
     // measuring differently at 260px. It does not — the gap is the same
     // number at both widths, and what changes is only how large that number
     // reads beside a 30px tab strip instead of a 48px one.
+    //
+    // The bars are measured on the FLOOR: a docked panel's are lanes flush
+    // with its edges (F-209), pinned above.
     const margin = 6.0;
 
-    Future<Rect> gapsAt(Size size, String key) async {
+    Future<Rect> gapsAt(Size size, String key, {bool onFloor = false}) async {
       await tester.binding.setSurfaceSize(size);
       final frameKeys = BrushCanvasFixture.createFrameKeys();
+      final panel = BrushCanvasPanel(
+        coordinator: BrushCanvasFixture.createCoordinator(
+          frameKeys: frameKeys,
+        ),
+        availableFrameKeys: frameKeys,
+        cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+        floorCover: EdgeInsets.zero,
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: BrushCanvasPanel(
-              coordinator: BrushCanvasFixture.createCoordinator(
-                frameKeys: frameKeys,
-              ),
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              floorCover: EdgeInsets.zero,
-            ),
+            body: onFloor
+                ? CanvasFloorInsets(insets: EdgeInsets.zero, child: panel)
+                : panel,
           ),
         ),
       );
@@ -311,21 +481,33 @@ void main() {
 
     for (final size in const [Size(1400, 900), Size(260, 700)]) {
       final panel = size;
-      final pill = await gapsAt(size, 'canvas-view-pill');
-      expect(
-        pill.top,
-        closeTo(margin, 0.5),
-        reason: 'the pill hangs off the TOP edge at ${size.width}px',
-      );
+      for (final onFloor in [false, true]) {
+        final pill = await gapsAt(size, 'canvas-view-pill', onFloor: onFloor);
+        expect(
+          pill.top,
+          closeTo(margin, 0.5),
+          reason:
+              'the pill hangs off the TOP edge at ${size.width}px '
+              '(${onFloor ? 'floor' : 'docked'})',
+        );
+      }
 
-      final hBar = await gapsAt(size, 'canvas-panbar-horizontal');
+      final hBar = await gapsAt(
+        size,
+        'canvas-panbar-horizontal',
+        onFloor: true,
+      );
       expect(
         panel.height - hBar.bottom,
         closeTo(margin, 0.5),
         reason: 'the horizontal bar rides the BOTTOM edge at ${size.width}px',
       );
 
-      final vBar = await gapsAt(size, 'canvas-panbar-vertical');
+      final vBar = await gapsAt(
+        size,
+        'canvas-panbar-vertical',
+        onFloor: true,
+      );
       expect(
         panel.width - vBar.right,
         closeTo(margin, 0.5),
@@ -1087,7 +1269,7 @@ void main() {
       find.byType(BrushEditCanvasView),
     );
     expect(
-      canvasView.sessionState.canvasState.currentSurface.canvasSize,
+      canvasView.surface.canvasSize,
       BrushCanvasDefaults.canvasSize,
     );
   });
@@ -1107,14 +1289,17 @@ void main() {
           body: SizedBox(
             width: 640,
             height: 360,
-            child: BrushCanvasPanel(
-              coordinator: coordinator,
-              availableFrameKeys: frameKeys,
-              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-              // A canvas standing on its own IS the floor, and that is where the
-              // view controls live (법: 뷰 컨트롤은 바닥에만).
-              floorCover: EdgeInsets.zero,
-              canvasSize: const CanvasSize(width: 100, height: 50),
+            // On the FLOOR, where nothing lies on the artwork: a docked
+            // panel's Fit leaves its lanes out (F-209, pinned with them).
+            child: CanvasFloorInsets(
+              insets: EdgeInsets.zero,
+              child: BrushCanvasPanel(
+                coordinator: coordinator,
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+                canvasSize: const CanvasSize(width: 100, height: 50),
+              ),
             ),
           ),
         ),
@@ -1132,22 +1317,32 @@ void main() {
     final canvas = tester.widget<InteractiveBrushEditCanvasView>(
       find.byType(InteractiveBrushEditCanvasView),
     );
+    // What Fit frames into: the editor viewport less the pill's band across
+    // its top edge (the pill is cover — 유저 2026-09-30).
+    final band = pillBandOf(tester);
+    final window = Size(viewportSize.width, viewportSize.height - band);
     final expected = CanvasViewport.fitToView(
       canvasWidth: 100,
       canvasHeight: 50,
-      viewportWidth: viewportSize.width,
-      viewportHeight: viewportSize.height,
+      viewportWidth: window.width,
+      viewportHeight: window.height,
     );
 
-    // ⚠️`closeTo`, not `==`: the view is STORED in device pixels, so the
-    // panel's own fit result comes back through a multiply and a divide by
-    // the same ratio and can land one ulp off (measured: 5.919999999999999
-    // for 5.92). The tolerance is a millionth of a pixel — far below what
-    // this pin is about, which is that Fit measures the EDITOR viewport
-    // rather than the whole panel.
-    expect(canvas.viewport.zoom, closeTo(expected.zoom, 1e-9));
-    expect(canvas.viewport.panX, closeTo(expected.panX, 1e-6));
-    expect(canvas.viewport.panY, closeTo(expected.panY, 1e-6));
+    // The zoom lands DOWN to one the pill can say, by less than a readout
+    // digit (`a_zoom_lands_where_the_pill_can_say_it_test`), and the view
+    // is centred for the zoom it kept — so this pins what Fit MEASURES:
+    // the editor viewport, not the whole panel, and not the pill's band.
+    final zoom = canvas.viewport.zoom;
+    expect(zoom, lessThanOrEqualTo(expected.zoom + 1e-9));
+    expect(expected.zoom - zoom, lessThan(1e-4 + 1e-12));
+    expect(
+      canvas.viewport.panX,
+      closeTo((window.width - 100 * zoom) / 2, 1e-6),
+    );
+    expect(
+      canvas.viewport.panY,
+      closeTo(band + (window.height - 50 * zoom) / 2, 1e-6),
+    );
   });
 
   testWidgets('reset action restores the identity viewport', (tester) async {
@@ -1508,7 +1703,7 @@ void main() {
       find.byType(BrushEditCanvasView),
     );
     expect(
-      canvasView.sessionState.canvasState.currentSurface.tiles,
+      canvasView.surface.tiles,
       isNotEmpty,
     );
     expect(

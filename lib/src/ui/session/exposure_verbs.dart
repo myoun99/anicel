@@ -27,6 +27,7 @@ class ExposureVerbs {
     required SelectionAccess selection,
     required ProjectAccess project,
     required ChangeSink changes,
+    required RetimeLaw retime,
     required ActiveCutControllers controllers,
     required Camera camera,
     required RangeSelections rangeSelections,
@@ -34,6 +35,7 @@ class ExposureVerbs {
   }) : _selection = selection,
        _project = project,
        _changes = changes,
+       _retime = retime,
        _controllers = controllers,
        _camera = camera,
        _rangeSelections = rangeSelections,
@@ -44,6 +46,7 @@ class ExposureVerbs {
   final SelectionAccess _selection;
   final ProjectAccess _project;
   final ChangeSink _changes;
+  final RetimeLaw _retime;
   final ActiveCutControllers _controllers;
   final RangeSelections _rangeSelections;
   final CellVerbs _cells;
@@ -73,7 +76,7 @@ class ExposureVerbs {
   ///
   /// ⛔ONE PREDICATE FOR THE BAND AND THE PLAYHEAD — and the X-here is one
   /// of the reshaping verbs the retime law answers for
-  /// ([ChangeSink.standsDownFromRetime]), so the rows that stand down are
+  /// ([RetimeLaw.standsDownFromRetime]), so the rows that stand down are
   /// asked there, not listed again here: SYNCED attach rows (the base owns
   /// the timing), SINGLE-CEL image rows (the covering normalization would
   /// revert the X) and a MOVIE kept as a reference (a gap would restart the
@@ -91,7 +94,7 @@ class ExposureVerbs {
   bool _blankable(Layer layer) =>
       layer.kind.holdsDrawings &&
       !layer.kind.coversWithoutGaps &&
-      !_changes.standsDownFromRetime(layer.id);
+      !_retime.standsDownFromRetime(layer.id);
 
   bool get canBlankExposureForSelection =>
       _blankableSpanForSelection().isNotEmpty;

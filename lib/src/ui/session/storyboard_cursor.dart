@@ -11,7 +11,6 @@ import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
-import '../../services/command.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'range_selections.dart';
@@ -27,7 +26,7 @@ import 'transitions.dart';
 /// 2026-09-02). Measured before cutting: nothing of its own and seventeen
 /// session members touched. It names the roles it needs in its constructor.
 class StoryboardCursor {
-  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required SessionInternals internals, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _changes = changes, _frameIds = frameIds, _controllers = controllers, _internals = internals, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
+  StoryboardCursor({required ProjectAccess project, required SelectionAccess selection, required TimelineAccess timeline, required ChangeSink changes, required FrameIds frameIds, required ActiveCutControllers controllers, required RangeSelections rangeSelections, required CellVerbs cells, required CutVerbs cutVerbs, required Transitions transitions}) : _project = project, _selection = selection, _timeline = timeline, _changes = changes, _frameIds = frameIds, _controllers = controllers, _rangeSelections = rangeSelections, _cells = cells, _cutVerbs = cutVerbs, _transitions = transitions;
 
   final CellVerbs _cells;
   final CutVerbs _cutVerbs;
@@ -35,10 +34,10 @@ class StoryboardCursor {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
+  final TimelineAccess _timeline;
   final ChangeSink _changes;
   final FrameIds _frameIds;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
   final RangeSelections _rangeSelections;
 
   /// Why the storyboard toggle is refused, or null when it is allowed.
@@ -48,7 +47,7 @@ class StoryboardCursor {
   /// rather than silently doing nothing, and rather than making the second
   /// row that used to red-screen the V row.
   String? get targetLayerStoryboardRefusal {
-    final targetLayer = _internals.targetLayerForKindToggle;
+    final targetLayer = _selection.activeLayer;
     if (targetLayer == null || targetLayer.kind == LayerKind.storyboard) {
       return null;
     }
@@ -87,7 +86,10 @@ class StoryboardCursor {
     if (cellIndex < 0 || cellIndex >= cells.length) {
       return;
     }
-    final blockStart = cells[cellIndex].startIndex;
+    // The cell counts the conte's frames; the row's keys count the cut's
+    // (F-227: an arriving O.L's のりしろ comes first).
+    final blockStart =
+        storyboardConteStart(layer.timeline) + cells[cellIndex].startIndex;
     final entry = layer.timeline[blockStart];
     if (entry == null || !entry.isDrawing || entry.ghost) {
       return;
@@ -139,8 +141,11 @@ class StoryboardCursor {
     if (named.isEmpty || layer == null) {
       return;
     }
+    // Named in the conte's frames (the conte tab's cell); the row counts
+    // the cut's (F-227).
     final start = named.single;
-    final entry = layer.timeline[start];
+    final key = storyboardConteStart(layer.timeline) + start;
+    final entry = layer.timeline[key];
     final memo = entry?.memo ?? const ExposureMemo.empty();
     if (entry == null ||
         !entry.isDrawing ||
@@ -152,7 +157,7 @@ class StoryboardCursor {
     _project.cutCommandCoordinator.updateExposureMemo(
       cutId: cutId,
       layerId: layer.id,
-      blockStartIndex: start,
+      blockStartIndex: key,
       memo: memo.copyWith(inkId: inkId),
     );
     _changes.notifyChanged();
@@ -189,7 +194,7 @@ class StoryboardCursor {
         // Not parked in a gap ⇒ the cut-local playhead sits inside the
         // ACTIVE cut, so the cut under the cursor is that cut by
         // construction (the storyboard's cell press promotes it).
-        if (_selection.editingPlayheadInGap) {
+        if (_timeline.editingSession.playheadInGap) {
           return null;
         }
         final cut = _project.activeCutOrNull;
@@ -197,28 +202,40 @@ class StoryboardCursor {
           return null;
         }
         // D28: with a storyboard layer on the cut, the frame verbs target
-        // the PANEL under the cut-local cursor. A ghost or uncovered cell
-        // (junk the coverage rule merely tolerates) falls back to the cut
-        // block rather than lighting a verb the machinery will refuse
-        // (T25); a cut with NO storyboard layer keeps the old cut-block
-        // law outright.
-        final row = storyboardLayerForCut(cut);
-        if (row != null) {
-          final panel = coveringDrawingBlockAt(
-            row.timeline,
-            _controllers.timelineController.currentFrameIndex,
-          );
-          if (panel != null && !panel.entry.ghost && panel.startIndex >= 0) {
-            return StoryboardCursorStoryboardPanel(
-              cut,
-              row,
-              panel.startIndex,
-              panel.entry.length!,
-            );
-          }
-        }
-        return StoryboardCursorCutBlock(cut);
+        // the PANEL under the cut-local cursor; a cut with NO storyboard
+        // layer keeps the old cut-block law outright.
+        return _panelUnderCursor(cut) ?? StoryboardCursorCutBlock(cut);
     }
+  }
+
+  /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s
+  /// storyboard row. Null without a row — and for a ghost or uncovered
+  /// cell (junk the coverage rule merely tolerates), which falls back to
+  /// the cut block rather than lighting a verb the machinery will refuse
+  /// (T25).
+  ///
+  /// The storyboard's cursor stands in the CONTE's time; the row's keys
+  /// count the cut's frames, which begin earlier in a cut an O.L arrives
+  /// into (F-227).
+  StoryboardCursorStoryboardPanel? _panelUnderCursor(Cut cut) {
+    final row = storyboardLayerForCut(cut);
+    if (row == null) {
+      return null;
+    }
+    final panel = coveringDrawingBlockAt(
+      row.timeline,
+      storyboardConteStart(row.timeline) +
+          _controllers.timelineController.currentFrameIndex,
+    );
+    if (panel == null || panel.entry.ghost || panel.startIndex < 0) {
+      return null;
+    }
+    return StoryboardCursorStoryboardPanel(
+      cut,
+      row,
+      panel.startIndex,
+      panel.entry.length!,
+    );
   }
 
   /// Whether the storyboard's comma press (1/2/3/4/N) has a target: a live
@@ -342,14 +359,7 @@ class StoryboardCursor {
     if (commands.isEmpty) {
       return;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Create SE entry',
-              commands: commands,
-            ),
-    );
+    _project.historyManager.executeAsOneStep('Create SE entry', commands);
     _changes.notifyChanged();
   }
 

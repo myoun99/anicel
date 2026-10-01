@@ -97,11 +97,11 @@ void main() {
       expect(notifier.railEntry(CanvasTool.fill), CanvasTool.fill);
     });
 
-    test('the STAMP is passed through, not recorded', () {
-      // 유저 확정 2026-08-15: "찍기는 아예 성질이 다른거니까 그 외만
-      // 기억하도록." A fresh cut already arms it at the one moment it is
-      // wanted, and with an empty slot it does nothing — so bringing it
-      // back could hand over a tool with no work in it.
+    test('the stamp is remembered like any other tile', () {
+      // 🗣️I-53 (유저 2026-09-28): 「이제부터는 잘라내기도구 선택시 마지막
+      // 스탬프 선택된상태여도 다른 도구처럼 스탬프 선택되도록」. ↩️It used to
+      // be passed through (유저 확정 2026-08-15: 「찍기는 아예 성질이
+      // 다른거니까 그 외만 기억하도록」).
       final notifier = PaintToolStateNotifier(BrushToolState.defaults);
       addTearDown(notifier.dispose);
 
@@ -109,11 +109,7 @@ void main() {
       notifier.value = notifier.value.copyWith(tool: CanvasTool.cutStamp);
       notifier.value = notifier.value.copyWith(tool: CanvasTool.brush);
 
-      expect(
-        notifier.railEntry(CanvasTool.cut),
-        CanvasTool.cut,
-        reason: 'the tile from BEFORE the stamp is what waited',
-      );
+      expect(notifier.railEntry(CanvasTool.cut), CanvasTool.cutStamp);
     });
 
     test('already inside the group, a press stays put — even on the stamp', () {

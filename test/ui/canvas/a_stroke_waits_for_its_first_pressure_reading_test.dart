@@ -6,15 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/native/qa_pen_ledger.dart';
@@ -349,28 +346,63 @@ void main() {
         (state: PenLedgerState.measured, value: value);
 
     testWidgets(
-      'UIKit\'s word decides: a sample it calls an estimate waits, whatever '
-      'force it carries',
+      '🚨UIKit\'s estimate is READ — what waits is the press repeated before '
+      'the Pencil measured (build 1065: 「measured 1 · estimated 9」)',
       (tester) async {
-        // Forces that change from the first sample on — the fallback would
-        // take the second as a reading. UIKit says otherwise.
-        ledger[_ms(0)] = _estimatedReading;
-        ledger[_ms(8)] = _estimatedReading;
-        ledger[_ms(16)] = measured(0.8);
-        ledger[_ms(24)] = measured(0.8);
+        // The device's own pattern: UIKit calls nearly every force an
+        // estimate, final or not, and the first four carry the stand-in.
+        for (final at in [0, 8, 16, 24, 32]) {
+          ledger[_ms(at)] = _estimatedReading;
+        }
+        ledger[_ms(40)] = (state: PenLedgerState.estimatedFinal, value: 0.0);
         final results = await _strokes(tester, _pressureBrush, [
           _pencil([
-            _s(const Offset(4, 8), 0.5, 0),
-            _s(const Offset(20, 8), 0.6, 8),
-            _s(const Offset(40, 8), 0.8, 16),
-            _s(const Offset(70, 8), 0.8, 24),
+            _s(const Offset(4, 8), _stand, 0),
+            _s(const Offset(12, 8), _stand, 8),
+            _s(const Offset(20, 8), _stand, 16),
+            _s(const Offset(28, 8), _stand, 24),
+            _s(const Offset(40, 8), 0.16, 32),
+            _s(const Offset(60, 8), 0.12, 40),
           ]),
         ]);
 
-        expect(results.single.first.center.x, 4);
+        final dabs = results.single;
+        expect(dabs.first.center.x, 4);
+        expect(dabs.first.pressure, closeTo(_ipad(0.16), 1e-9));
+        expect(
+          dabs.map((dab) => dab.pressure),
+          everyElement(lessThanOrEqualTo(_ipad(0.16) + 1e-9)),
+          reason: 'no dab carries the stand-in',
+        );
+        expect(
+          dabs.last.pressure,
+          closeTo(_ipad(0.12), 1e-9),
+          reason: 'an estimate UIKit calls final is read like any other',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'a force UIKit calls MEASURED that repeats the press still waits — and '
+      'is not painted with its record, which is the stand-in',
+      (tester) async {
+        for (final at in [0, 8, 16]) {
+          ledger[_ms(at)] = measured(_stand);
+        }
+        ledger[_ms(24)] = measured(0.16);
+        final results = await _strokes(tester, _pressureBrush, [
+          _pencil([
+            _s(const Offset(4, 8), _stand, 0),
+            _s(const Offset(20, 8), _stand, 8),
+            _s(const Offset(36, 8), _stand, 16),
+            _s(const Offset(52, 8), 0.16, 24),
+          ]),
+        ]);
+
         expect(
           results.single.map((dab) => dab.pressure).toSet(),
-          {closeTo(_ipad(0.8), 1e-9)},
+          {closeTo(_ipad(0.16), 1e-9)},
         );
       },
       variant: ipad,
@@ -480,14 +512,52 @@ void main() {
 
         expect(
           InputInspector.notes['ledger'],
-          'ledger measured=1 estimated=2 none=1',
+          'ledger meas=1 est=2 fin=0 upd=0 rep=1 none=1',
+        );
+      },
+      variant: ipad,
+    );
+
+    testWidgets(
+      'the ledger line says how UIKit answered — and whether a correction it '
+      'sent reached the ledger by the stroke\'s end',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _pressureBrush, results);
+        ledger[_ms(0)] = _estimatedReading;
+        ledger[_ms(8)] = (state: PenLedgerState.estimatedFinal, value: 0.0);
+        _down(
+          tester,
+          const Offset(4, 8),
+          time: _ms(0),
+          force: 0.5,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        _move(
+          tester,
+          const Offset(20, 8),
+          time: _ms(8),
+          force: 0.6,
+          pressureMax: _pencilMax,
+        );
+        await tester.pump();
+        // UIKit's correction for the press lands after the move was read.
+        ledger[_ms(0)] = measured(0.7);
+        _up(tester, const Offset(20, 8), time: _ms(12));
+        await tester.pump();
+
+        expect(
+          InputInspector.notes['ledger'],
+          'ledger meas=0 est=1 fin=1 upd=1 rep=1 none=0',
         );
       },
       variant: ipad,
     );
   });
 
-  group('the lean and the direction wait like pressure', () {
+  group('the lean is read as it comes; the direction waits like pressure', () {
     tearDown(() {
       QaPenLedger.debugAltitude = null;
     });
@@ -515,15 +585,16 @@ void main() {
     );
 
     testWidgets(
-      'a lean UIKit still estimates waits too — each sample is drawn with '
-      'the lean measured for it, or the first measured after it',
+      'a lean UIKit estimates is READ as it comes — the stroke does not wait '
+      'on it, and a measurement is the measurement',
       (tester) async {
-        final altitudes = <Duration, PenLedgerReading>{
-          _ms(0): _estimatedReading,
-          _ms(8): _estimatedReading,
-          _ms(16): (state: PenLedgerState.measured, value: 0.6),
-        };
-        QaPenLedger.debugAltitude = (at) => altitudes[at];
+        // ↩️It waited, as the force did, until build 1065 showed UIKit
+        // calling nearly every Pencil sample an estimate.
+        QaPenLedger.debugAltitude = (at) => at == _ms(16)
+            ? (state: PenLedgerState.measured, value: 0.6)
+            : _estimatedReading;
+        final laid = debugStrokeDabsLaid = <BrushDab>[];
+        addTearDown(() => debugStrokeDabsLaid = null);
         final results = <List<BrushDab>>[];
         await _pump(tester, _tiltBrush, results);
         _down(
@@ -535,18 +606,16 @@ void main() {
           pressureMax: _pencilMax,
         );
         await tester.pump();
+        expect(laid, isNotEmpty, reason: 'the press lands at once');
         _move(
           tester,
           const Offset(20, 8),
           time: _ms(8),
           force: 1.1,
-          tilt: 0.1,
+          tilt: 0.3,
           pressureMax: _pencilMax,
         );
         await tester.pump();
-        // UIKit measures the press's lean; the first move's stays an
-        // estimate, and the next sample is measured from the start.
-        altitudes[_ms(0)] = (state: PenLedgerState.measured, value: 0.9);
         _move(
           tester,
           const Offset(36, 8),
@@ -559,13 +628,15 @@ void main() {
         _up(tester, const Offset(36, 8), time: _ms(20));
         await tester.pump();
 
+        double own(double tilt) => 1 - tilt / (math.pi / 2);
         final dabs = results.single;
         expect(dabs.first.center.x, 4);
-        expect(dabs.first.tiltAltitude, closeTo(0.9 / (math.pi / 2), 1e-9));
+        expect(dabs.first.tiltAltitude, closeTo(own(0.1), 1e-9));
         expect(
           dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
-          closeTo(0.6 / (math.pi / 2), 1e-9),
+          closeTo(own(0.3), 1e-9),
         );
+        expect(dabs.last.tiltAltitude, closeTo(0.6 / (math.pi / 2), 1e-9));
       },
       variant: ipad,
     );
@@ -587,13 +658,13 @@ void main() {
         expect((press.center.x, press.center.y), (4, 4));
         // The tip-stamp cache bakes the turn into the dab's mask; the
         // mask's key ends with it in whole degrees.
-        expect(press.tipMask?.id, endsWith('|315'));
+        expect(_bakedAngle(press), '315');
       },
     );
 
     testWidgets(
-      'once measured, a lean UIKit estimates again keeps the last one — and '
-      'a tap never measured lands with its own',
+      'a lean UIKit estimates between two it measured is its own — not the '
+      'last measurement — and a tap lands with its own',
       (tester) async {
         final altitudes = <Duration, PenLedgerReading>{
           _ms(0): (state: PenLedgerState.measured, value: 0.9),
@@ -612,14 +683,16 @@ void main() {
           _pencil([_s(const Offset(60, 24), 1.0, 100, tilt: 0.7)]),
         ]);
 
+        double own(double tilt) => 1 - tilt / (math.pi / 2);
+        const measured = 0.9 / (math.pi / 2);
+        final dabs = results.first;
+        expect(dabs.first.tiltAltitude, closeTo(measured, 1e-9));
         expect(
-          results.first.map((dab) => dab.tiltAltitude),
-          everyElement(closeTo(0.9 / (math.pi / 2), 1e-9)),
+          dabs.where((dab) => dab.center.x == 20).single.tiltAltitude,
+          closeTo(own(0.7), 1e-9),
         );
-        expect(
-          results.last.single.tiltAltitude,
-          closeTo(1 - 0.7 / (math.pi / 2), 1e-9),
-        );
+        expect(dabs.last.tiltAltitude, closeTo(measured, 1e-9));
+        expect(results.last.single.tiltAltitude, closeTo(own(0.7), 1e-9));
       },
       variant: ipad,
     );
@@ -647,8 +720,167 @@ void main() {
         _pen(pressureMax: 1, [_s(const Offset(10, 10), 0.5, 0)]),
       ]);
 
-      expect(results.single.single.tipMask?.id, endsWith('|0'));
+      expect(_bakedAngle(results.single.single), '0');
     });
+  });
+
+  group('on a desktop the lean is the platform\'s own word '
+      '(desktop-pen-tilt)', () {
+    tearDown(() {
+      QaPenLedger.debugTilt = null;
+    });
+
+    // 30° from vertical is 60° up: two thirds of a right angle.
+    const upright = 2.0 / 3.0;
+
+    testWidgets(
+      'on a Mac, the event\'s own record — AppKit\'s tilt — and none for a '
+      'mouse',
+      (tester) async {
+        // Flutter's macOS embedder calls every pen a mouse; the ledger
+        // knows which events were a tablet's.
+        final tilts = <Duration, PenLedgerTilt>{
+          for (final at in [0, 8, 16]) _ms(at): (x: 30 / 90, y: 0),
+        };
+        QaPenLedger.debugTilt = (at) => tilts[at];
+        final results = await _strokes(tester, _tiltBrush, [
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 8), 0, 0),
+            _s(const Offset(20, 8), 0, 8),
+            _s(const Offset(40, 8), 0, 16),
+          ]),
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 24), 0, 100),
+            _s(const Offset(40, 24), 0, 108),
+          ]),
+        ]);
+
+        expect(
+          results.first.map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results.first.map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(0, 1e-9)),
+          reason: 'the top leans right',
+        );
+        expect(
+          results.last.map((dab) => dab.tiltAltitude),
+          everyElement(isNull),
+          reason: 'a mouse leans nowhere, and is not an upright pen',
+        );
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
+
+    testWidgets(
+      'on Windows, the driver\'s — the HID report\'s tilt first, Wintab\'s '
+      'orientation where the report has none, and none where neither does',
+      (tester) async {
+        final results = <List<BrushDab>>[];
+        await _pump(tester, _tiltBrush, results);
+        final hid = RawPenInputService.instance;
+        final wintab = WintabPenService.instance;
+        RawPenInputService.debugClockOverride = () => DateTime(2024);
+        WintabPenService.debugClockOverride = () => DateTime(2024);
+        ({double x, double y})? hidTilt = (x: 0, y: 30);
+        var sequence = 0;
+        hid.debugPollOverride = () {
+          sequence += 1;
+          return QaPenRawState(flags: 0x01, sequence: sequence, tilt: hidTilt);
+        };
+        hid.start();
+        wintab.debugPollOverride = () => const [];
+        wintab.start();
+        wintab.debugInjectPacket(
+          const QaTabletPacket(
+            pressure: 0.5,
+            orientation: (bearing: 90, altitude: upright),
+            timeMs: 1,
+            buttons: 1,
+          ),
+        );
+
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 8), 0.5, 0),
+            _s(const Offset(40, 8), 0.5, 8),
+          ]),
+        );
+        hidTilt = null;
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 16), 0.5, 100),
+            _s(const Offset(40, 16), 0.5, 108),
+          ]),
+        );
+        wintab.debugInjectPacket(
+          const QaTabletPacket(pressure: 0.5, timeMs: 2, buttons: 1),
+        );
+        await _drive(
+          tester,
+          _pen(pressureMax: 1, [
+            _s(const Offset(4, 24), 0.5, 200),
+            _s(const Offset(40, 24), 0.5, 208),
+          ]),
+        );
+
+        expect(results, hasLength(3));
+        // HID: the top leans toward the user.
+        expect(
+          results[0].map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results[0].map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(90, 1e-9)),
+        );
+        // Wintab: the top's bearing is east — it leans right.
+        expect(
+          results[1].map((dab) => dab.tiltAltitude),
+          everyElement(closeTo(upright, 1e-9)),
+        );
+        expect(
+          results[1].map((dab) => dab.tiltAzimuthDegrees),
+          everyElement(closeTo(0, 1e-9)),
+        );
+        expect(
+          results[2].map((dab) => dab.tiltAltitude),
+          everyElement(isNull),
+          reason: 'a device that declares no orientation leans nowhere',
+        );
+        // The poll timers must die BEFORE the binding's pending-timer
+        // invariant check (which runs ahead of tearDown callbacks).
+        hid.debugReset();
+        wintab.debugReset();
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.windows),
+    );
+
+    testWidgets(
+      'the stroke puts how its samples leaned on the inspector\'s lean line',
+      (tester) async {
+        InputInspector.visible.value = true;
+        final tilts = <Duration, PenLedgerTilt>{
+          _ms(0): (x: 30 / 90, y: 0),
+          _ms(8): (x: 60 / 90, y: 0),
+        };
+        QaPenLedger.debugTilt = (at) => tilts[at];
+        await _strokes(tester, _tiltBrush, [
+          _pen(pressureMax: 1, kind: PointerDeviceKind.mouse, [
+            _s(const Offset(4, 8), 0, 0),
+            _s(const Offset(20, 8), 0, 8),
+            // A sample the ledger holds no tilt for.
+            _s(const Offset(40, 8), 0, 16),
+          ]),
+        ]);
+
+        expect(InputInspector.notes['lean'], 'lean 2/3 alt 0.33–0.67');
+      },
+      variant: TargetPlatformVariant.only(TargetPlatform.macOS),
+    );
   });
 
   group('speed waits like pressure (opening-dab-speed-Q1)', () {
@@ -916,8 +1148,8 @@ void main() {
           ]),
         ]);
 
-        expect(results.first.first.tipMask?.id, endsWith('|315'));
-        expect(results.last.first.tipMask?.id, endsWith('|45'));
+        expect(_bakedAngle(results.first.first), '315');
+        expect(_bakedAngle(results.last.first), '45');
       },
     );
 
@@ -925,8 +1157,8 @@ void main() {
       'what a cancelled stroke held is not painted by a next press that has '
       'nothing to wait for',
       (tester) async {
-        // UIKit estimates the first contact's force, and measures the next
-        // one's from its press: the second stroke never waits.
+        // The first contact waits on its stand-in and is cancelled; the
+        // second must not paint what it held.
         QaPenLedger.debugForce = (at) => at < _ms(100)
             ? _estimatedReading
             : (state: PenLedgerState.measured, value: 1.0);
@@ -979,7 +1211,7 @@ void main() {
 
         expect(
           InputInspector.notes['ledger'],
-          'ledger measured=1 estimated=0 none=0',
+          'ledger meas=1 est=0 fin=0 upd=0 rep=1 none=0',
         );
       },
       variant: ipad,
@@ -1134,6 +1366,11 @@ const double _pencilMax = 25 / 6;
 /// (1.0) is half pressure (유저 2026-09-27, `ipad-pencil-pressure-scale-Q1`).
 double _ipad(double force) => (force / 2.0).clamp(0.0, 1.0);
 
+/// The angle [dab]'s stamp was baked at — the sixth field of the stamp id
+/// (`tipstamp|tip|size|hardness|roundness|angle|…`). ↩️Read by its place, not
+/// as the id's tail: I-50 put the anti-alias step after it.
+String? _bakedAngle(BrushDab dab) => dab.tipMask?.id.split('|')[5];
+
 /// A stand-in force, as the user's inspector showed it on build 1064. The
 /// rule does not read the value — only that the press's force repeats — so
 /// it is deliberately not the 1/3 the forums logged.
@@ -1273,22 +1510,17 @@ Future<void> _pump(
   BrushEditCanvasInputSettings settings,
   List<List<BrushDab>> results,
 ) async {
+  final cel = BitmapSurface(
+    canvasSize: const CanvasSize(width: 160, height: 32),
+    tileSize: 16,
+  );
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
         body: Align(
           alignment: Alignment.topLeft,
           child: InteractiveBrushEditCanvasView(
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 160, height: 32),
-                  tileSize: 16,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
-            ),
+            celNow: () => cel,
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
             inputSettings: () => settings,
@@ -1412,8 +1644,6 @@ void _up(
 QaTabletPacket _packet({required double pressure, required int buttons}) =>
     QaTabletPacket(
       pressure: pressure,
-      tiltAzimuthDegrees: 0,
-      altitude: 1,
       timeMs: 1,
       buttons: buttons,
     );

@@ -279,13 +279,9 @@ class EffectsAndFx {
     if (commands.isEmpty) {
       return;
     }
-    _project.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
-              commands: commands,
-            ),
+    _project.historyManager.executeAsOneStep(
+      enabled ? 'Apply layer FX' : 'Bypass layer FX',
+      commands,
     );
     // A bare notify, like every sibling row write (opacity, blend, the
     // transform track, the effect chain): a switch flip is not a structural
@@ -382,7 +378,7 @@ class EffectsAndFx {
   }
 
   /// A V-track effect group's RESET (R5) — the track twin of
-  /// [SessionInternals.resetLaneGroup]. Track effects have no lane-range
+  /// `LaneVerbs.resetLaneGroup`. Track effects have no lane-range
   /// selection of their own, so the scope is always the playhead.
   bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) =>
       _editTrackEffects(

@@ -60,14 +60,12 @@ void main() {
     List<Layer> rows, {
     int cutStartFrame = 0,
     int localFrameIndex = 0,
-    int rowOffset = 0,
   }) => resolveSeNameTagsAt(
     trackSeLayers: rows,
     cutStartFrame: cutStartFrame,
     localFrameIndex: localFrameIndex,
     canvas: canvas,
     cameraFrame: camera,
-    rowOffset: rowOffset,
   );
 
   test('a covered row shows the name and the dialogue as SEPARATE runs, and '
@@ -117,7 +115,9 @@ void main() {
   });
 
   // The `rowOffset` stacking test went with the stacked default: nothing
-  // shifts per row or per track any more, so there is no offset to pin.
+  // shifts per row or per track any more, so there is no offset to pin —
+  // and the parameter went after it (2026-10-01), still passed and read by
+  // nobody.
 
   test('a block with no writing at all shows nothing', () {
     expect(

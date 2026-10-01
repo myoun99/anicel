@@ -2,8 +2,9 @@ import '../../models/flip_column_step.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/timeline_repeat.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_frame_axis.dart';
+import '../../models/timeline_run_behavior.dart' show TimelineRunEdgeMode;
 import '../../models/track_id.dart';
 import '../storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
 import '../timeline/instruction_span_editing.dart' show instructionSpanCovering;
@@ -68,18 +69,14 @@ class TrackAxisWalk {
   /// the result inside a cut or parks it in the void, so a playhead
   /// standing between cuts can step out under its own power.
   void flipPanels(TrackId trackId, {required bool forward}) {
-    // The MEMOIZED layout (identity-keyed on the project): a flip step is
-    // a per-move cost, and rebuilding the whole cross-track layout for
+    // The MEMOIZED axis (kept beside the layout it narrows): a flip step
+    // is a per-move cost, and rebuilding the whole cross-track layout for
     // each one is exactly the tax that memo exists to remove.
-    final entries = [
-      for (final entry in _projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
-    if (entries.isEmpty) {
+    final axis = _projectSettings.axisForTrack(trackId);
+    if (axis.isEmpty) {
       return;
     }
-    final axis = TrackFrameAxis(entries);
-    final panels = storyboardPanelsOnTrack(entries);
+    final panels = storyboardPanelsOnTrack(axis.entries);
     final from = _from(axis);
     _land(
       flipColumnStep(
@@ -131,7 +128,7 @@ class TrackAxisWalk {
     if (layer == null) {
       return;
     }
-    final axis = _timeline.axisForTrack(track.id);
+    final axis = _projectSettings.axisForTrack(track.id);
     final from = _from(axis);
     _land(
       flipColumnStep(
@@ -159,7 +156,7 @@ class TrackAxisWalk {
   /// last frame there, and that is the frame this axis counts from.
   int _from(TrackFrameAxis axis) =>
       axis.storyboardFrameOf(
-        parkedGlobalFrame: _selection.gapGlobalFrame,
+        parkedGlobalFrame: _timeline.editingSession.gapGlobalFrame,
         activeCutId: _project.activeCutId,
         localFrame: _controllers.timelineController.currentFrameIndex,
       ) ??
@@ -184,13 +181,22 @@ class TrackAxisWalk {
 
 /// THE flip's column on a layer row at [frame] — the row's own blocks,
 /// whatever they are made of (R10 #13: 「whatever the row is, count THAT
-/// row's blocks」), on whichever axis the row is walked.
+/// row's blocks」), on whichever axis the row is walked. A REPEAT's ghost is
+/// a column of its own, as it is a block of its own on the row; a HOLD's
+/// ghost is no column at all — the flip walks it a frame at a time, as it
+/// walks empty space.
 ///
-/// A7① (2026-08-17): a HOLD is one flip unit — the column absorbs hold-mode
-/// ghost tails/lead-ins into their owning run, so the flip never lands
-/// inside a hold the HUD draws as empty. Repeat ghosts stay their own
-/// columns; the merge lives HERE, in the flip's column definition only
-/// (creation gates, painters and playback keep reading raw coverage).
+/// 🗣️F-245 (유저 2026-10-01, 「그게 아님」): 「1(홀드)---- 일경우 1에
+/// 서있을때 오른쪽 플립하면 두번째인 - 로 이동되는건 좋음. 근데 그 다음
+/// 플립에서도 세번째 -, 네번째 -으로 이동되야한단거임. 일반 1프레임이동이랑
+/// 똑같이. 즉 리피트는 고스트프레임을 블록으로 인식해서 걸어가지만 홀드는
+/// 빈공간으로 인식해서 플립이 1프레임마다」. ↩️The first reading (09-30,
+/// `92882710a`) of 「리피트는 리피트도 블록으로 인식해서 플립해도 되는데,
+/// 홀드는 그냥 블록으로 인식해서 안넘어가도록. 즉 1홀드----x이면, 지금
+/// 1에있는상태에서 오른쪽누르면 x로 이동하는데, 그게아니라 블록 다음칸 그냥
+/// 평범하게 가도록」 made the hold ONE column of its own, so the second step
+/// leapt it whole. ↩️A7① (2026-08-18, 「홀드 블록을 한 단위로 건너뛰어」)
+/// had absorbed it into the run it holds before that.
 ///
 /// The TRANSITION row's blocks are its SPANS, and they live in its
 /// instruction map rather than on its timeline
@@ -205,5 +211,9 @@ FlipColumn? flipColumnOfRow(Layer layer, int frame) {
         ? null
         : (start: span.key, endExclusive: span.key + span.value.length);
   }
-  return holdMergedFlipColumnAt(layer, frame);
+  final block = coveringDrawingBlockAt(layer.timeline, frame);
+  if (block == null || block.entry.ghostOf?.mode == TimelineRunEdgeMode.hold) {
+    return null;
+  }
+  return (start: block.startIndex, endExclusive: block.endIndexExclusive);
 }

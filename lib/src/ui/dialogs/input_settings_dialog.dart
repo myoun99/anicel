@@ -5,6 +5,7 @@ import '../../services/input/wintab_pen_service.dart';
 import '../editor_session_manager.dart';
 import '../../models/app_input_settings.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/settings_rows.dart';
 import '../text/app_strings.dart';
 
@@ -153,7 +154,7 @@ class InputSettingsSection extends StatelessWidget {
               strings.inputCanvasTouchHeading,
               style: Theme.of(context).textTheme.labelLarge,
             ),
-            _EnumDropdownRow<CanvasTouchDragAction>(
+            _EnumChoiceRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-1',
               label: strings.inputDragOneFinger,
               value: settings.touchDragOneFinger,
@@ -163,7 +164,7 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(touchDragOneFinger: action),
               ),
             ),
-            _EnumDropdownRow<CanvasTouchDragAction>(
+            _EnumChoiceRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-2',
               label: strings.inputDragTwoFingers,
               // Drawing is single-finger by nature — the multi-finger
@@ -180,7 +181,7 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(touchDragTwoFingers: action),
               ),
             ),
-            _EnumDropdownRow<CanvasTouchDragAction>(
+            _EnumChoiceRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-3',
               label: strings.inputDragThreeFingers,
               values: const [
@@ -363,9 +364,9 @@ List<double> _parseDoubleList(String text) => [
     if (double.tryParse(part.trim()) case final value? when value > 0) value,
 ];
 
-/// A compact labeled enum dropdown row (PEN-7b touch settings).
-class _EnumDropdownRow<T> extends StatelessWidget {
-  const _EnumDropdownRow({
+/// A compact labeled enum choice row (PEN-7b touch settings).
+class _EnumChoiceRow<T extends Enum> extends StatelessWidget {
+  const _EnumChoiceRow({
     required this.rowKey,
     required this.label,
     required this.value,
@@ -388,21 +389,15 @@ class _EnumDropdownRow<T> extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          DropdownButton<T>(
+          PanelFlyoutButton(
             key: ValueKey<String>(rowKey),
-            value: value,
-            isDense: true,
-            items: [
-              for (final entry in values)
-                DropdownMenuItem(
-                  value: entry,
-                  child: Text(
-                    labelOf(entry),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-            ],
-            onChanged: (next) => next == null ? null : onChanged(next),
+            label: labelOf(value),
+            entriesBuilder: () => values.asFlyoutChoices(
+              current: value,
+              keyPrefix: '$rowKey-',
+              labelOf: labelOf,
+              onPicked: onChanged,
+            ),
           ),
         ],
       ),
@@ -504,44 +499,28 @@ class _CanvasMappingRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          DropdownButton<CanvasPointerAction>(
+          PanelFlyoutButton(
             key: ValueKey<String>('$keyPrefix-action'),
-            value: mapping.action,
-            isDense: true,
-            items: [
-              for (final action in CanvasPointerAction.values)
-                DropdownMenuItem(
-                  value: action,
-                  child: Text(
-                    _actionLabel(action),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-            ],
-            onChanged: (action) => action == null
-                ? null
-                : onChanged(mapping.copyWith(action: action)),
+            label: _actionLabel(mapping.action),
+            entriesBuilder: () => CanvasPointerAction.values.asFlyoutChoices(
+              current: mapping.action,
+              keyPrefix: '$keyPrefix-action-',
+              labelOf: _actionLabel,
+              onPicked: (action) => onChanged(mapping.copyWith(action: action)),
+            ),
           ),
           const SizedBox(width: 8),
-          DropdownButton<CanvasPointerRelease>(
+          PanelFlyoutButton(
             key: ValueKey<String>('$keyPrefix-release'),
-            value: mapping.release,
-            isDense: true,
-            items: [
-              for (final release in CanvasPointerRelease.values)
-                DropdownMenuItem(
-                  value: release,
-                  child: Text(
-                    _releaseLabel(release),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-            ],
-            onChanged: holdsTool
-                ? (release) => release == null
-                      ? null
-                      : onChanged(mapping.copyWith(release: release))
-                : null,
+            label: _releaseLabel(mapping.release),
+            enabled: holdsTool,
+            entriesBuilder: () => CanvasPointerRelease.values.asFlyoutChoices(
+              current: mapping.release,
+              keyPrefix: '$keyPrefix-release-',
+              labelOf: _releaseLabel,
+              onPicked: (release) =>
+                  onChanged(mapping.copyWith(release: release)),
+            ),
           ),
         ],
       ),

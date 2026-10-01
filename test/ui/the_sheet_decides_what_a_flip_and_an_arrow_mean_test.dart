@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
+import '../helpers/frame_keys.dart';
 import '../helpers/home_page_probes.dart';
 import 'timeline/timeline_cell_probe.dart';
 
@@ -61,13 +62,13 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
-    await tester.sendKeyEvent(LogicalKeyboardKey.period);
+    await pressNextFrame(tester);
+    await pressNextFrame(tester);
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
-    await tester.sendKeyEvent(LogicalKeyboardKey.comma);
-    await tester.sendKeyEvent(LogicalKeyboardKey.comma);
+    await pressPreviousFrame(tester);
+    await pressPreviousFrame(tester);
     await tester.pumpAndSettle();
 
     await tapToolbarButton(

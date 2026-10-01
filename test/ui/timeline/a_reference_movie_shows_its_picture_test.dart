@@ -91,7 +91,7 @@ void main() {
       path: moviePath,
       settings: ImportFileSettings(
         mode: ImportFileMode.reference,
-        sound: false,
+        movieParts: MovieParts.picture,
         inFrame: inFrame,
         fit: fit,
       ),
@@ -117,7 +117,10 @@ void main() {
   }
 
   BitmapSurface? pictureAt(EditorSessionManager s, Layer layer, int frame) =>
-      s.brushSurfaceForLayerFrame(layer, resolveExposedFrameAt(layer, frame)!);
+      s.renderCaches.brushSurfaceForLayerFrame(
+        layer,
+        resolveExposedFrameAt(layer, frame)!,
+      );
 
   testWidgets('each position of the one held cel is its own movie cel, '
       'counted from the file\'s IN point', (tester) async {

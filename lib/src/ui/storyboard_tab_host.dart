@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../core/identity_memo.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
@@ -11,10 +10,12 @@ import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
 import '../services/import/import_layer_spot.dart';
+import 'storyboard/cut_link_window.dart';
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/rail_column_swipe.dart' show RailSweepHistory;
 import 'timeline/timeline_action_toolbar.dart';
+import 'timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
@@ -23,6 +24,8 @@ import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
 import 'timeline/session_lane_callbacks.dart';
 import 'panels/panel_collapsed_scope.dart';
+import 'panels/panel_visibility_scope.dart'
+    show PanelInSightValueListenable, PanelVisibilityScope;
 import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import 'storyboard_panel.dart';
@@ -30,7 +33,6 @@ import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/timeline_section_policy.dart' show TimelineSection;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
-import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, parseLaneGroupKey;
 import 'timeline/layer_row_drag.dart'
@@ -40,9 +42,9 @@ import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
-import '../models/storyboard_timeline_layout.dart';
 import 'timeline/timeline_frame_range_gesture.dart' show TimelineLaneRangeHooks;
 import 'timeline/timeline_command_bar.dart';
+import 'timeline/memo_token.dart' show Kept, keptWhileSame;
 import 'timeline/timeline_view_cluster.dart';
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
@@ -164,17 +166,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
 
-  /// The storyboard playhead's track-global frame — the cursor-layer
-  /// pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
-  /// and session changes update THIS notifier, and only the panel's
-  /// playhead overlay + ruler subscribe. The panel itself (strips, blocks,
-  /// rails, waveforms) never rebuilds on a tick.
-  final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
+  /// The view cluster, kept by what it shows across this host's rebuilds —
+  /// the timeline panel's keep (F-244 ⑧).
+  final Map<Type, Kept<TimelineViewClusterFacts>> _kept = {};
+
+  // ⛔The storyboard's playhead channel is the SESSION's now
+  // ([PlayheadCursors.trackFrame]): the row this panel folds into draws the
+  // same playhead and turns the same pages, and that row is built by the
+  // workspace, which could not reach a channel kept here (유저 2026-09-27,
+  // folded-row-playhead-during-playback-Q1). It is still the cursor-layer
+  // pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
+  // and session changes move the channel, and only the panel's playhead
+  // overlay + ruler subscribe — the strips, blocks, rails and waveforms
+  // never rebuild on a tick.
 
   // ⛔The ACTIVE cut's local cursor channel is GONE (F-102, 2026-09-15): its
   // one reader was the S rows' lane labels, and an S row's keys are the
-  // track's — they read [_playheadGlobalFrame] now, as the V rows' labels
-  // do. #844's point survives on that channel: the labels subscribe, and a
+  // track's — they read the track channel now, as the V rows' labels do.
+  // #844's point survives on that channel: the labels subscribe, and a
   // committed seek repaints those cells instead of rebuilding the panel.
 
   /// Whatever can change a frame's cached-ness — warm progress AND pixel
@@ -186,59 +195,36 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
-  /// Identity-memoized active-track layout (R12-⑥): the playhead refresh
-  /// fires per playback tick and the ruler's green bar asks per visible
-  /// frame column per repaint — none of them may rebuild the layout list
-  /// each time. Cuts are immutable, so the project + active cut identity
-  /// pair decides staleness.
-  final _trackLayout = IdentityMemo<List<StoryboardTimelineLayoutEntry>>();
-
-  List<StoryboardTimelineLayoutEntry> _activeTrackLayout() =>
-      _trackLayout.resolve(
-        identity: _session.repository.requireProject(),
-        key: _session.activeCutId,
-        build: () => storyboardActiveTrackLayout(_session),
-      );
-
-  void _refreshPlayheadGlobalFrame() {
-    _playheadGlobalFrame.value = storyboardPlayheadFrame(
-      _session,
-      layout: _activeTrackLayout(),
-    );
-  }
-
-  // ⛔"To start" (REC1-B) is a free function now
-  // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
-  // 문턱's, built by the workspace, and the layout cache it wants lives here.
-  // One implementation, two possible callers, no host method to reach for.
+  /// The drag preview as this panel hears it: resting while the panel is
+  /// out of sight. 🔬Measured (storyboard-drags-lay-out-alone, 10-01): kept
+  /// alive behind the timeline, the strip, its gesture layers and its end
+  /// line rebuilt at every step of every timeline drag — the panel's parts
+  /// each subscribe, so the channel they all hear is gated once here.
+  late final PanelInSightValueListenable<TimelineDragPreview?> _dragPreview =
+      PanelInSightValueListenable(_session.dragPreview);
 
   @override
-  void initState() {
-    super.initState();
-    _refreshPlayheadGlobalFrame();
-    _session.addListener(_refreshPlayheadGlobalFrame);
-    _session.editingFrameCursor.addListener(_refreshPlayheadGlobalFrame);
-    _session.frameSeekCommitted.addListener(_refreshPlayheadGlobalFrame);
-    // Gap scrubs park per move (UI-R7 #9); the leading gap pins the
-    // cut-local cursor at 0, so the parking is the only move signal there.
-    _session.gapParkingListenable.addListener(_refreshPlayheadGlobalFrame);
-    _session.playbackRig.playback.globalFrameIndexListenable.addListener(
-      _refreshPlayheadGlobalFrame,
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _dragPreview.sight = PanelVisibilityScope.maybeOf(context);
+  }
+
+  @override
+  void didUpdateWidget(covariant StoryboardTabHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _dragPreview.source = _session.dragPreview;
   }
 
   @override
   void dispose() {
-    _session.removeListener(_refreshPlayheadGlobalFrame);
-    _session.editingFrameCursor.removeListener(_refreshPlayheadGlobalFrame);
-    _session.frameSeekCommitted.removeListener(_refreshPlayheadGlobalFrame);
-    _session.gapParkingListenable.removeListener(_refreshPlayheadGlobalFrame);
-    _session.playbackRig.playback.globalFrameIndexListenable.removeListener(
-      _refreshPlayheadGlobalFrame,
-    );
-    _playheadGlobalFrame.dispose();
+    _dragPreview.dispose();
     super.dispose();
   }
+
+  // ⛔"To start" (REC1-B) is a free function now
+  // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
+  // 문턱's, built by the workspace. One implementation, two possible
+  // callers, no host method to reach for.
 
   /// One twirl of this rail. A twirl FOLDING shut hands on where the
   /// storyboard stands ([onFold]) — the fold law the timeline's twirls keep
@@ -277,38 +263,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// ([timelineRowOwnsTransform]). Keys land on the GLOBAL axis and commit as
   /// ONE undo through [LaneVerbs], exactly as a layer effect's do.
   ///
-  /// A transform lane cannot reach here any more: the rail builds none for a
-  /// track row, so the dispatch is effects or nothing.
-  PropertyLaneEditCallbacks _trackLaneEditFor(Track track) {
-    final carrierId = trackTransformLaneCarrierId(track.id);
-    return PropertyLaneEditCallbacks(
-      onToggleKeyAt: (_, lane, frameIndex) {
-        if (!laneIsEffectLane(lane)) {
-          return;
-        }
-        _session.laneVerbs.toggleLaneKeyAt(
-          carrierId,
-          lane.laneId,
-          frameIndex,
-          frameIsGlobal: true,
-          description: '${lane.label} keyframe at frame ${frameIndex + 1}',
-        );
-      },
-      onSetValue: (_, lane, frameIndex, input) {
-        if (!laneIsEffectLane(lane)) {
-          return;
-        }
-        _session.laneVerbs.setLaneValueAt(
-          carrierId,
-          lane.laneId,
-          frameIndex,
-          input,
-          frameIsGlobal: true,
-          description: 'Set ${lane.label} at frame ${frameIndex + 1}',
-        );
-      },
-    );
-  }
+  /// ↩️F-195: this was a copy of [sessionLaneEditCallbacks] addressed to the
+  /// track's carrier, each hook fenced to effect lanes — and a value's
+  /// preview would have been its third copied hook. The rail hands the hooks
+  /// the CARRIER as the row's layer, so the carrier id arrives as the row's
+  /// own; [LaneVerbs] sends it home to the track ([laneVerbLayerFor]), and a
+  /// transform edit there lands nowhere by the verbs' own answer
+  /// (`_TransformHome.nowhere`), so the fence answered a question the verbs
+  /// already answer. One wiring, as the S rows take it.
+  PropertyLaneEditCallbacks _trackLaneEditFor(Track track) => _layerLaneEdit;
 
   // ⛔The host's lane-span head walk is GONE (C②): it walked TRANSFORM
   // lanes for a V rail that draws FX lanes and answered null for every SE
@@ -502,15 +465,31 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // bar carries exactly what the timeline's does.
         ],
       ),
-      cluster: TimelineViewCluster(
-        frameCursor: _session.editingFrameCursor,
-        // Global · cut-local pair (UI-R9 #6) — the channel already
-        // follows scrubs, gap parking and playback ticks.
-        globalFrame: _playheadGlobalFrame,
-        projectFrameRate: _session.projectSettings.projectFrameRate,
-        showSeconds: widget.showSeconds,
-        pixelsPerFrame: widget.pixelsPerFrame,
-        onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+      // The facts typed at the call, as the timeline panel's are.
+      cluster: keptWhileSame<Type, TimelineViewClusterFacts>(
+        _kept,
+        TimelineViewCluster,
+        (
+          frameCursor: _session.editingFrameCursor,
+          globalFrame: _session.playheadCursors.trackFrame,
+          projectFrameRate: _session.projectSettings.projectFrameRate,
+          showSeconds: widget.showSeconds,
+          pixelsPerFrame: widget.pixelsPerFrame,
+          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+          cutName: _session.activeCutOrNull?.name ?? '',
+          trailing: null,
+        ),
+        () => TimelineViewCluster(
+          frameCursor: _session.editingFrameCursor,
+          // Global · cut-local pair (UI-R9 #6) — the channel already
+          // follows scrubs, gap parking and playback ticks.
+          globalFrame: _session.playheadCursors.trackFrame,
+          cutName: _session.activeCutOrNull?.name ?? '',
+          projectFrameRate: _session.projectSettings.projectFrameRate,
+          showSeconds: widget.showSeconds,
+          pixelsPerFrame: widget.pixelsPerFrame,
+          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+        ),
       ),
     );
   }
@@ -525,11 +504,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   Widget _panel(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     // No per-tick host rebuild (W4 perf pass): playback ticks and scrub
-    // moves ride _playheadGlobalFrame into the panel's playhead overlay +
-    // ruler; the green bar rides the prerender progress into the ruler;
-    // the counter subscribes to the cursor. Cut crossings during playback
-    // still notify the session (cut follow), which rebuilds the host from
-    // the workspace subscription.
+    // moves ride the session's track cursor into the panel's playhead
+    // overlay + ruler; the green bar rides the prerender progress into the
+    // ruler; the counter subscribes to the cursor. Cut crossings during
+    // playback still notify the session (cut follow), which rebuilds the
+    // host from the workspace subscription.
     // The panel being worked in owns the frame-axis verbs (user,
     // 2026-08-05): touching the storyboard hands the flip its rail's row,
     // so the arrows count CUTS from here without having to pick a row
@@ -577,7 +556,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     hiddenSections: widget.hiddenSections,
                     onToggleSection: widget.onToggleSection,
                     seLanePreview: _session.voiceRecording.voiceRecordPreviewLane.value,
-                    dragPreview: _session.dragPreview,
+                    dragPreview: _dragPreview,
                     // While playing, the highlight follows the PLAYING cut
                     // (onStopped syncs the real active cut).
                     activeCutId: _session.playbackRig.playback.isActive
@@ -646,7 +625,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         LayerRowAddress(layerId),
                         panel: WorkingPanel.storyboard,
                       );
-                      final frame = storyboardPlayheadFrame(_session);
+                      final frame = _session.playheadCursors.trackFrameNow();
                       if (frame != null) {
                         seekStoryboardGlobalFrame(_session, frame);
                       }
@@ -743,6 +722,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         _session.layerStack.addLayerOfKind(LayerKind.storyboard);
                       }
                     },
+                    // I-25: a linked cut's name wears the link icon, and the
+                    // icon opens the link window.
+                    linkedCutIds: _session.cutVerbs.linkedCutIds,
+                    onOpenCutLinks: (context, cutId) => showCutLinkWindow(
+                      context,
+                      session: _session,
+                      cutId: cutId,
+                    ),
                     // The end line edits the MOVIE length (UI-R20 #3): the
                     // project's trailing gap, never the cuts.
                     movieEnd: StoryboardMovieEndCallbacks(
@@ -751,7 +738,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       onEnd: _session.movieEnd.endMovieEndDrag,
                       onCancel: _session.movieEnd.cancelMovieEndDrag,
                     ),
-                    playheadFrame: _playheadGlobalFrame,
+                    playheadFrame: _session.playheadCursors.trackFrame,
+                    cutUnderPlayhead: _session.cutUnderPlayhead.listenable,
                     // F-110: the gate on the page turn. Null while nothing
                     // plays, which is what keeps a hand's seek on the walk.
                     playbackFrame: _session
@@ -769,12 +757,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onScrubGlobalFrame: (frame) =>
                         scrubStoryboardGlobalFrame(_session, frame),
                     onScrubEnd: () => commitStoryboardScrub(_session),
-                    readyRunsIn: (start, end) => storyboardReadyRuns(
-                      _session,
-                      start,
-                      end,
-                      layout: _activeTrackLayout(),
-                    ),
+                    readyRunsIn: (start, end) =>
+                        storyboardReadyRuns(_session, start, end),
                     thumbnails: widget.thumbnails,
                     audioPeaksFor: _session.voiceRecording.audioPeaksForDisplay,
                     // The tooltip string doubles as the clip-marker switch
@@ -819,27 +803,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // This rail IS the track's global axis — the master
                       // one — so it reads and writes the span unshifted.
                       selection: _session.laneRangeSelection,
-                      // C②: the head LANE arrives resolved by the PANEL off
-                      // its own row geometry — the stale hand-kept walk
+                      // C②: the span arrives resolved by the PANEL off its
+                      // own row geometry — the stale hand-kept walk
                       // (transform lanes for a rail that draws fx lanes,
                       // null for every SE anchor) retired with it.
                       onSelectUpdate:
-                          (
-                            layerId,
-                            laneId,
-                            anchorIndex,
-                            headIndex,
-                            headLaneId,
-                            span,
-                          ) => _session.updateLaneRangeSelectionDrag(
-                            layerId: layerId,
-                            laneId: laneId,
-                            anchorIndex: anchorIndex,
-                            headIndex: headIndex,
-                            panel: WorkingPanel.storyboard,
-                            headLaneId: headLaneId,
-                            spanLaneIds: span,
-                          ),
+                          (layerId, laneId, anchorIndex, headIndex, span) =>
+                              _session.updateLaneRangeSelectionDrag(
+                                layerId: layerId,
+                                laneId: laneId,
+                                anchorIndex: anchorIndex,
+                                headIndex: headIndex,
+                                panel: WorkingPanel.storyboard,
+                                spanLaneIds: span,
+                              ),
                       // R10: a lane band is a place you can STAND. The
                       // storyboard's strips run on the GLOBAL axis, so the
                       // frame the tap reports is a global one.
@@ -944,9 +921,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // MOVE — that rule lives with the drop policy, where it
                       // can say which rows accept what — but it may not
                       // refuse to be SELECTED.
-                      isInRowSelection: (subject) => _session.rowIsSelected(
-                        timelineRowAddressOfDragSubject(subject),
-                      ),
+                      isInRowSelection: (subject) =>
+                          _session.rowSelectionVerbs.rowIsSelected(
+                            timelineRowAddressOfDragSubject(subject),
+                          ),
                       onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
                         timelineRowAddressOfDragSubject(subject),
                       ),
@@ -1025,9 +1003,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     legendOpacityValue: _session.opacityVerbs.lastMasterOpacity,
                     // The V row's picture eye (R9): session view state the
                     // playback display reads.
-                    cutPictureVisibleOf: _session.isCutPictureVisible,
+                    cutPictureVisibleOf: _session.cutPictureEyes.showsPicture,
                     onToggleCutPictureVisibility:
-                        _session.toggleCutPictureVisibility,
+                        _session.cutPictureEyes.toggle,
                     // R9 #21: the TRACK's own fx master and static opacity —
                     // persisted model state, unlike the cut toggles above.
                     trackFxStateOf: (track) => _session.effectsAndFx.trackFxState(track.id),
@@ -1092,6 +1070,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // row is track-owned and its spans address the global
                     // axis, so the cut timeline shows them read-only.
                     transitionDefById: _session.camera.cameraInstructionSet.defById,
+                    transitionRowShown: _session.transitions.names.rowNamed,
                     rowsChannel: widget.rowsChannel,
                     // D26: crossing fades are refused and wear the red
                     // corner — the session answers by global key on this
@@ -1187,10 +1166,13 @@ class _CursorGatedStoryboardToolbarState
       panel.canPasteIndependentFrame,
       panel.canPasteLinkedFrame,
       panel.canUnlink,
+      // I-18: 자동 이름 지정 lights over a cut and dims in a gap — the
+      // playhead moves it, and a playhead move is no notify.
+      panel.canAutoName,
       // F-75: the 색 편집 head on this bar reads the session's own answer —
       // whether the cel under the playhead has a drawing — which none of the
-      // entries above moves with.
-      widget.session.cells.canRunPixelVerb,
+      // entries above moves with. (I-55: the head's gate is every row's now.)
+      widget.session.pixelVerbs.canOpenColourEdit,
       // The shift pair aims at the standing row, passed by VALUE.
       widget.session.selectedRow,
       widget.session.languageSettings.value,

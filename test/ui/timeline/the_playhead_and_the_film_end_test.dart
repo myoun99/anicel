@@ -35,7 +35,7 @@ void main() {
     frameEndIndexExclusive: endExclusive,
     leadingFrameSpacerWidth: leading,
     metrics: metrics,
-    layerCount: 3,
+    crossAxisExtent: metrics.layerRowHeight * 4,
     axis: axis,
   );
 
@@ -110,8 +110,15 @@ void main() {
       );
     });
 
-    test('the tint is a LIVE accent read, not a frozen copy', () {
+    test('the tint is a LIVE accent read, not a frozen copy — and its wash '
+        'is stronger than the 18% it replaced', () {
       expect(timelinePlayheadColor, AppColors.accent);
+      expect(
+        timelinePlayheadWashColor.withValues(alpha: 1),
+        AppColors.accent.withValues(alpha: 1),
+      );
+      // 🗣️F-212 (유저 2026-09-28): 「좀 더 진해서 확실하게 보이도록」.
+      expect(timelinePlayheadWashColor.a, greaterThan(0.18));
     });
   });
 

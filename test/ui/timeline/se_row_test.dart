@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockColumn;
 import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
     show seNameBoxExtent;
 
@@ -246,10 +248,10 @@ void main() {
     );
     await _ensureRowVisible(tester, _seLayerId);
 
-    final writing = tester.widget<VerticalWritingText>(
+    final writing = tester.widget<TimelineBlockColumn>(
       find.descendant(
         of: find.bySemanticsLabel('SE name Door SE'),
-        matching: find.byType(VerticalWritingText),
+        matching: find.byType(TimelineBlockColumn),
       ),
     );
     expect(writing.latinForm, VerticalLatinForm.upright);
@@ -280,8 +282,11 @@ void main() {
     final nameBox = find.bySemanticsLabel('SE name 앨리스');
     expect(nameBox, findsOneWidget);
     final size = tester.getSize(nameBox);
-    // A partial band of the first frame cell, written horizontally.
-    expect(size.height, seNameBoxExtent);
+    // A partial band of the first frame cell, written horizontally — at
+    // most the chip's extent down the column: F-224 narrows it with its
+    // dialogue where the block cannot hold the two side by side, as this
+    // three-frame one cannot (the exact ratio is se_span_overflow_test's).
+    expect(size.height, lessThanOrEqualTo(seNameBoxExtent));
     expect(size.width, greaterThan(size.height));
   });
 

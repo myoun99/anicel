@@ -89,7 +89,9 @@ void main() {
 
     _stand(session, 0);
     session.pasteLinkedFrameAtCurrentFrame();
-    expect(_row(session), 'BBBAA...CC');
+    // F-235: A moves out of the paste's way and the hole takes it — C stays.
+    // ↩️'BBBAA...CC' carried the hole along.
+    expect(_row(session), 'BBBAACC');
   });
 
   testWidgets('the linked paste places the SAME cel, and the run is still '
@@ -171,12 +173,16 @@ void main() {
     // What came out is on the clipboard, at its own length.
     _stand(session, 0);
     session.pasteLinkedFrameAtCurrentFrame();
+    // 🗣️F-235 (유저 2026-09-29): 「겹치는 공간이 전혀 없는 붙여넣기인데도 뒤가
+    // 밀려나니까」 — the paste's push is the one every insertion makes
+    // (F-97): what it lands on moves just out of its way, and the first room
+    // after takes the rest. ↩️The push was rigid and carried the cut's hole
+    // along with C: 'BBBAA...CC'.
     expect(
       _row(session),
-      'BBBAA...CC',
-      reason: 'the paste pushes (T3, user-confirmed) and the cut leaves its '
-          'hole (⑳) — two halves of the splice, only one of which the user '
-          'ever asked for',
+      'BBBAACC',
+      reason: 'the paste pushes A (T3, user-confirmed), and the hole the cut '
+          'left (⑳) takes that push, so C stays',
     );
   });
 
@@ -226,7 +232,10 @@ void main() {
     _stand(session, 3);
     session.pasteLinkedFrameAtCurrentFrame();
 
-    expect(_row(session), 'AAAAAAAA');
+    // Standing inside the hold, the four-comma run replaces its last cell
+    // and pushes on past the end (F-236). ↩️The hold was split and its last
+    // cell pushed on behind the run (`AAAAAAAA`).
+    expect(_row(session), 'AAAAAAA');
     expect(
       _cut(session).duration,
       4,

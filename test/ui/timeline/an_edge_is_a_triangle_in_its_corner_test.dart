@@ -7,6 +7,8 @@ import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
     show timelineRowPaperExtent;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart'
@@ -50,8 +52,7 @@ void main() {
   }) => timelineFrameSpanRect(
     timelineBlockEdgeGripPlacement(
       edge: edge,
-      startIndex: from,
-      endIndexExclusive: from + length,
+      block: (startIndex: from, endIndexExclusive: from + length),
       // The rows hand the grip their PAPER (I-44).
       crossAxisExtent: paper,
     ),
@@ -65,8 +66,16 @@ void main() {
   // along the frame axis is 100%'s third of a cell (24px / 3) at every zoom,
   // and ONE CELL in a block too short for it.
   const grip = 8.0;
-  double alongFor(double cell, int length) =>
-      length * cell >= grip ? grip : cell;
+  double at(double cell, int frame) => timelineFrameEdge(frame, cell);
+  // 🚨F-220: the block is the law's span, and the one cell a short block
+  // gives the grip is the cell the law laid at that edge.
+  double alongFor(double cell, int length, TimelineBlockEdge edge) {
+    if (at(cell, start + length) - at(cell, start) >= grip) {
+      return grip;
+    }
+    final first = edge == TimelineBlockEdge.start ? start : start + length - 1;
+    return at(cell, first + 1) - at(cell, first);
+  }
 
   Path triangle(
     TimelineBlockEdge edge,
@@ -97,9 +106,10 @@ void main() {
       'far, the end edge near, on both axes', () {
     for (final cell in cells) {
       for (final length in blockLengths) {
-        final blockStart = start * cell;
-        final blockEnd = (start + length) * cell;
-        final along = alongFor(cell, length);
+        final blockStart = at(cell, start);
+        final blockEnd = at(cell, start + length);
+        final alongLead = alongFor(cell, length, TimelineBlockEdge.start);
+        final alongTail = alongFor(cell, length, TimelineBlockEdge.end);
         final why = 'cell $cell × $length frames';
         final lead = gripBox(
           TimelineBlockEdge.start,
@@ -111,11 +121,11 @@ void main() {
           length: length,
           cell: cell,
         );
-        expect(lead.width, moreOrLessEquals(along), reason: why);
+        expect(lead.width, moreOrLessEquals(alongLead), reason: why);
         expect(lead.height, moreOrLessEquals(paper / 2), reason: why);
         expect(lead.left, moreOrLessEquals(blockStart), reason: why);
         expect(lead.bottom, moreOrLessEquals(paper), reason: why);
-        expect(tail.width, moreOrLessEquals(along), reason: why);
+        expect(tail.width, moreOrLessEquals(alongTail), reason: why);
         expect(tail.height, moreOrLessEquals(paper / 2), reason: why);
         expect(tail.right, moreOrLessEquals(blockEnd), reason: why);
         expect(tail.top, 0, reason: why);
@@ -138,7 +148,7 @@ void main() {
         expect(leadV.top, moreOrLessEquals(blockStart), reason: why);
         expect(leadV.right, moreOrLessEquals(paper), reason: why);
         expect(leadV.width, moreOrLessEquals(paper / 2), reason: why);
-        expect(leadV.height, moreOrLessEquals(along), reason: why);
+        expect(leadV.height, moreOrLessEquals(alongLead), reason: why);
         expect(tailV.bottom, moreOrLessEquals(blockEnd), reason: why);
         expect(tailV.left, 0, reason: why);
       }
@@ -200,7 +210,12 @@ void main() {
         final path = triangle(edge, box, cell: cell);
         // The block's paper, drawn the way the cells painter draws it: the
         // block corner law on the paper box (I-44: the row short of its seam).
-        final block = Rect.fromLTWH(start * cell, 0, 5 * cell, paper);
+        final block = Rect.fromLTRB(
+          at(cell, start),
+          0,
+          at(cell, start + 5),
+          paper,
+        );
         final rounded = RRect.fromRectAndRadius(
           block,
           timelineBlockCornerRadiusAt(cellExtent: cell, crossExtent: paper),
@@ -403,7 +418,7 @@ void main() {
     for (final cell in cells) {
       final lead = gripBox(TimelineBlockEdge.start, length: 4, cell: cell);
       final tail = gripBox(TimelineBlockEdge.end, length: 4, cell: cell);
-      final firstCell = start * cell;
+      final firstCell = at(cell, start);
       final nameSize = timelineFittedGlyphFontSize(
         14,
         cell,
@@ -430,7 +445,7 @@ void main() {
       );
       final komaHeight = komaSize * 1.25;
       final koma = Rect.fromLTWH(
-        (start + 4) * cell - cell * 2,
+        at(cell, start + 4) - cell * 2,
         cross - 1 - komaHeight,
         cell * 2,
         komaHeight,

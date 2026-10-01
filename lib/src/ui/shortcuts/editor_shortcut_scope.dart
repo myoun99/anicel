@@ -44,6 +44,9 @@ String editorActionLabel(String actionId) {
   if (definition.toolPress case ShapeTilePress(:final verb, :final shape)) {
     return shapeTileLabel(verb, shape);
   }
+  if (definition.blendMode case final mode?) {
+    return blendModeActionLabel(mode, AppText.language);
+  }
   return AppText.strings.shortcutLabel(actionId, definition.label);
 }
 
@@ -74,7 +77,7 @@ String? shortcutKeys(EditorShortcutBindings? bindings, List<String> actionIds) {
   final keys = [
     for (final actionId in actionIds)
       if (bindings.primaryActivatorFor(actionId) case final activator?)
-        singleActivatorLabel(activator),
+        singleActivatorLabel(bindings.shownActivatorFor(actionId, activator)),
   ];
   return keys.isEmpty ? null : keys.join(', ');
 }

@@ -4,6 +4,7 @@ import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../editing/cut_insertion_room.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 /// A cut put INTO a track — at [index], or after the track's last cut — and
 /// taken back out exactly as it went in.
@@ -48,7 +49,21 @@ final class CutInsertion {
   /// kept so [revert] can hand the room back.
   Map<CutId, int> _gapsBefore = const {};
 
-  void apply(ProjectRepository repository) {
+  /// The transition rows this insertion moved — made on the first apply,
+  /// with the repository it was handed.
+  TransitionsRideTheCuts? _ride;
+
+  void apply(ProjectRepository repository) =>
+      (_ride ??= TransitionsRideTheCuts(repository)).carry(
+        () => _apply(repository),
+      );
+
+  void revert(ProjectRepository repository) =>
+      (_ride ??= TransitionsRideTheCuts(repository)).carryBack(
+        () => _revert(repository),
+      );
+
+  void _apply(ProjectRepository repository) {
     final cuts = _track(repository).cuts;
     _resolvedIndex ??= index ?? cuts.length;
     final gaps = followerGapsAfterInsert(
@@ -69,7 +84,7 @@ final class CutInsertion {
     }
   }
 
-  void revert(ProjectRepository repository) {
+  void _revert(ProjectRepository repository) {
     repository.removeCut(cutId: cut.id);
     // ⛔Back to the RECORDED numbers rather than gap+footprint: a follower
     // may have had less room than this cut took, and adding the footprint

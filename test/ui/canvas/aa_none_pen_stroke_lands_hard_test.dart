@@ -70,7 +70,8 @@ void main() {
               height: 128,
               child: InteractiveBrushEditCanvasView(
                 key: const ValueKey<String>('ink'),
-                sessionState: store.getOrCreate(key),
+                celNow: () =>
+                    store.getOrCreate(key).canvasState.currentSurface,
                 layerId: const LayerId('layer'),
                 frameId: const FrameId('frame'),
                 inputSettings: () => state.toInputSettings(),

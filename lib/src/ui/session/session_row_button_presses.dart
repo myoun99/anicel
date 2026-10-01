@@ -5,11 +5,13 @@ import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../services/commands/toggle_id_in_set_command.dart';
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
+import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
 /// them — the one wiring behind the timeline rail (the x-sheet's column
@@ -115,6 +117,117 @@ class SessionRowButtonPresses {
         session.rowSelectionVerbs.rowsActedOnBy(pressed),
         mode,
       );
+
+  /// The twirl of a row's property lanes (the fx lanes live under it).
+  ///
+  /// 🗣️I-32 (유저 2026-09-14): 「… 색라벨 변경,테이크,fx펼치기,타임시트on,off,
+  /// 그룹펼치기, … 레이어에 있는 버튼 전부 조사하고 연결해서
+  /// 일괄조작가능하게」 — the twirl and the group fold were the two left
+  /// pressing their own row only.
+  void toggleLanes(LayerId pressed) => session.rowSelectionVerbs.pressAcross(
+    pressed,
+    valueOf: _lanesOpen,
+    flip: _toggleLanesOf,
+    description: 'Toggle layer lanes',
+  );
+
+  /// The GROUP fold: ONE chevron with two verbs (`timelineGroupFoldFor`) — a
+  /// folder's own fold, or the attach group riding a base — so across the
+  /// selection a folder and a base fold together (I-32).
+  void toggleGroupFold(LayerId pressed) =>
+      session.rowSelectionVerbs.pressAcross(
+        pressed,
+        valueOf: _groupOpen,
+        flip: _toggleGroupOf,
+        description: 'Toggle group fold',
+      );
+
+  bool? _lanesOpen(LayerId id) {
+    final layer = _row(id);
+    if (layer == null ||
+        timelineLanesForLayer(
+          layer: layer,
+          session: session,
+          expandedGroupKeys: session.railView.expandedLaneGroupKeys.value,
+        ).isEmpty) {
+      return null;
+    }
+    return session.railView.expandedLaneLayerIds.value.contains(id);
+  }
+
+  /// 🚨UNDOABLE (유저 2026-08-29: 「아무튼 레이어에 있는 버튼 싹다」). The
+  /// property-lane twirl — the one the fx lanes live under — is a button
+  /// on a layer row like any other.
+  ///
+  /// ⛔The closing half still runs here and NOT inside the command: the
+  /// fold law hands the standing row to the layer when its lanes leave
+  /// the screen (R5 #11), and that is a selection move, not part of the
+  /// membership this undoes.
+  void _toggleLanesOf(LayerId id) {
+    final expanded = session.railView.expandedLaneLayerIds;
+    final closing = expanded.value.contains(id);
+    session.historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: expanded,
+        layerId: id,
+        debugLabel: 'Toggle layer lanes',
+      ),
+    );
+    if (closing) {
+      session.handOffCurrentRowOnFold(id);
+    }
+  }
+
+  bool? _groupOpen(LayerId id) {
+    final layer = _row(id);
+    final layers = session.activeCutOrNull?.layers;
+    if (layer == null || layers == null) {
+      return null;
+    }
+    if (layer.kind.groupsLayers) {
+      return !layer.collapsed;
+    }
+    if (attachedLayersOf(id, layers).isEmpty) {
+      return null;
+    }
+    return !session.railView.collapsedAttachBaseIds.value.contains(id);
+  }
+
+  void _toggleGroupOf(LayerId id) {
+    if (_row(id)?.kind.groupsLayers ?? false) {
+      session.folders.toggleLayerCollapsed(id);
+      return;
+    }
+    _toggleAttachFoldOf(id);
+  }
+
+  /// A base's attach group, folded or opened — undoable like the lane
+  /// twirl beside it (「아무튼 레이어에 있는 버튼 싹다」), which it was not
+  /// until I-32 pressed it across a selection.
+  void _toggleAttachFoldOf(LayerId baseId) {
+    final folded = session.railView.collapsedAttachBaseIds;
+    if (!folded.value.contains(baseId)) {
+      // FOLDING while one of the group's attach rows is active (UI-R24
+      // #4): hand the selection to the BASE so the group actually
+      // disappears — the active-attach-stays-visible rule otherwise kept
+      // the fold from taking effect until some other row was picked.
+      //
+      // ↩️Through the session's fold law since F-81, which asks what the
+      // group holds — the organizer folder and a nested one too — instead
+      // of 「is the active row an attach row of this base」.
+      //
+      // ↩️F-169: that rule is gone (nothing stands inside a shut group), so
+      // this hand-off is what keeps the fold from shutting over you.
+      session.handOffCurrentRowOnAttachFold(baseId);
+    }
+    session.historyManager.execute(
+      ToggleIdInSetCommand(
+        notifier: folded,
+        layerId: baseId,
+        debugLabel: 'Toggle attach group',
+      ),
+    );
+  }
 
   void previewOpacity(LayerId pressed, double opacity) {
     if (_isCamera(pressed) && cameraDim != null) {

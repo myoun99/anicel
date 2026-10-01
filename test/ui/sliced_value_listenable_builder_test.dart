@@ -142,6 +142,66 @@ void main() {
     await tester.pump();
     expect(seen, [0, 5]);
   });
+  test('a listener that is not a widget hears only the slice move — and '
+      'reads the value of its source', () {
+    final source = ValueNotifier<(int, String)>((1, 'a'));
+    addTearDown(source.dispose);
+    final sliced = SlicedValueListenable<(int, String), int>(
+      source,
+      (value) => value.$1,
+    );
+    var heard = 0;
+    sliced.addListener(() => heard += 1);
+
+    source.value = (1, 'b');
+    expect(heard, 0, reason: 'off the slice');
+    expect(sliced.value, (1, 'b'), reason: 'the value is its source\'s');
+
+    source.value = (2, 'b');
+    expect(heard, 1);
+    expect(sliced.slice, 2);
+
+    sliced.dispose();
+    source.value = (3, 'c');
+    expect(heard, 1, reason: 'a disposed slice has let go of its source');
+  });
+
+  testWidgets('the scope keeps ONE sliced channel across rebuilds, and '
+      'swaps it with its source', (tester) async {
+    final first = ValueNotifier<int>(1);
+    final second = ValueNotifier<int>(10);
+    addTearDown(first.dispose);
+    addTearDown(second.dispose);
+    final handed = <SlicedValueListenable<int, int>>[];
+
+    Widget host(ValueNotifier<int> source) =>
+        SlicedValueListenableScope<int, int>(
+          valueListenable: source,
+          slice: (value) => value,
+          builder: (context, sliced) {
+            handed.add(sliced);
+            return const SizedBox();
+          },
+        );
+
+    await tester.pumpWidget(host(first));
+    await tester.pumpWidget(host(first));
+    expect(
+      identical(handed[0], handed[1]),
+      isTrue,
+      reason: 'a painter compares its channel by identity — a new one per '
+          'build would repaint it every build',
+    );
+
+    await tester.pumpWidget(host(second));
+    expect(handed.last.value, 10);
+    var heard = 0;
+    handed.last.addListener(() => heard += 1);
+    first.value = 2;
+    expect(heard, 0, reason: 'the old source is let go');
+    second.value = 11;
+    expect(heard, 1);
+  });
 }
 
 class _Counter extends ChangeNotifier {

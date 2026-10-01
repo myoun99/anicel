@@ -1,5 +1,7 @@
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
+import '../core/point_bounds.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/pasteboard_bounds.dart';
@@ -176,6 +178,41 @@ class CanvasSelectionShape {
     ]);
   }
 
+  /// This outline cut at [wall] — the pasteboard's edge, past which no
+  /// selection may reach (I-23, 유저 2026-09-30: 「페이스트보드 밖도
+  /// 선택가능하네? 해당부분 안으로만 가능하게 구조적으로 변경하면서 작업」).
+  ///
+  /// Sutherland–Hodgman: the outline is cut by each side of the wall in
+  /// turn — ONE half-plane pass ([_cutBy]), asked of four sides. A point ON
+  /// the wall is inside, and a crossing lands exactly on the wall line
+  /// rather than a rounding error off it, so cutting again finds nothing to
+  /// do. What the cut adds along the wall is a run ON the wall line, where
+  /// no pixel centre lies, so the even-odd fill of the result is the old
+  /// fill inside the wall — a lasso that crosses itself included.
+  ///
+  /// This shape itself when every point is already inside; null when too
+  /// little is left to enclose anything.
+  CanvasSelectionShape? clippedTo(ui.Rect wall) {
+    final sides = _sidesOf(wall);
+    if (points.every((point) => sides.every((side) => _keeps(side, point)))) {
+      return this;
+    }
+    var kept = points;
+    for (final side in sides) {
+      kept = _cutBy(side, kept);
+      if (kept.length < 3) {
+        return null;
+      }
+    }
+    final box = pointsBounds([
+      for (final point in kept) ui.Offset(point.x, point.y),
+    ]);
+    if (box.width <= 0 || box.height <= 0) {
+      return null;
+    }
+    return CanvasSelectionShape(kept);
+  }
+
   /// Value equality (R28-S: the composite region compares step by step,
   /// and the ants painter's [CustomPainter.shouldRepaint] rides on it).
   @override
@@ -198,3 +235,59 @@ class CanvasSelectionShape {
   @override
   int get hashCode => Object.hashAll(points);
 }
+
+/// One side of a wall, as a half-plane: a point is kept when
+/// `sign · (c − bound) ≤ 0`, where `c` is its x if [bindsX] and its y
+/// otherwise — the line itself included.
+typedef _WallSide = ({bool bindsX, double bound, double sign});
+
+/// [wall]'s four sides.
+List<_WallSide> _sidesOf(ui.Rect wall) => [
+  (bindsX: true, bound: wall.left, sign: -1.0),
+  (bindsX: true, bound: wall.right, sign: 1.0),
+  (bindsX: false, bound: wall.top, sign: -1.0),
+  (bindsX: false, bound: wall.bottom, sign: 1.0),
+];
+
+/// [point]'s coordinate across [side]'s line.
+double _across(_WallSide side, CanvasPoint point) =>
+    side.bindsX ? point.x : point.y;
+
+bool _keeps(_WallSide side, CanvasPoint point) =>
+    side.sign * (_across(side, point) - side.bound) <= 0;
+
+/// Sutherland–Hodgman's one pass: [points] cut by [side].
+List<CanvasPoint> _cutBy(_WallSide side, List<CanvasPoint> points) {
+  final kept = <CanvasPoint>[];
+  var previous = points.last;
+  for (final current in points) {
+    final inside = _keeps(side, current);
+    if (inside != _keeps(side, previous)) {
+      kept.add(_crossing(side, previous, current));
+    }
+    if (inside) {
+      kept.add(current);
+    }
+    previous = current;
+  }
+  return kept;
+}
+
+/// Where the edge [a]–[b] meets [side]'s line — ON it: the coordinate
+/// across the line is the bound itself, never a quotient that lands a
+/// rounding error to either side.
+CanvasPoint _crossing(_WallSide side, CanvasPoint a, CanvasPoint b) {
+  final t =
+      (side.bound - _across(side, a)) / (_across(side, b) - _across(side, a));
+  return side.bindsX
+      ? CanvasPoint(x: side.bound, y: _between(a.y, b.y, t))
+      : CanvasPoint(x: _between(a.x, b.x, t), y: side.bound);
+}
+
+/// [from] → [to] at [t], held between the two.
+///
+/// ⚠️Not a nicety: rounding can carry the interpolation an ulp past an end,
+/// and so past a side an earlier pass already cut to — and then the cut
+/// outline pokes out of the wall, and cutting it again is not a no-op.
+double _between(double from, double to, double t) =>
+    (from + (to - from) * t).clamp(math.min(from, to), math.max(from, to));

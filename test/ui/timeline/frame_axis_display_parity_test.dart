@@ -62,8 +62,11 @@ void main() {
       expect(rows.map(nameOf), ['transform-position', 'fx-blur', 'A']);
     });
 
-    test('the attach group stays unsplittable: the lanes move past its '
-        'START, mirroring R26 #36 pushing them past its end', () {
+    // F-249 (유저 2026-10-01): 「기준레이어 fx펼치면 기준레이어 밑에 fx행오도록」
+    // — one answer for both axes. ↩️Both used to push the lanes past the
+    // whole attach group (R26 #36): its end here, its start on the sheet.
+    test('the lanes sit beside their own row on both axes, inside the '
+        'attach group', () {
       final below = Layer(
         id: const LayerId('below'),
         name: 'A-below',
@@ -88,9 +91,9 @@ void main() {
       expect(horizontal.map(nameOf), [
         'A-below',
         'A',
-        'A-above',
         'fx-blur',
         'transform-position',
+        'A-above',
       ]);
 
       final sheet = buildTimelineDisplayRows(
@@ -100,9 +103,9 @@ void main() {
         lanesPrecedeLayer: true,
       );
       expect(sheet.map(nameOf), [
+        'A-below',
         'transform-position',
         'fx-blur',
-        'A-below',
         'A',
         'A-above',
       ]);
@@ -140,7 +143,6 @@ void main() {
           axis: Axis.vertical,
           frameStartIndex: 0,
           frameEndIndexExclusive: frames,
-          currentFrameIndex: -1,
           playbackFrameCount: frames,
           leadingFrameSpacer: 0,
           crossExtent: 28,

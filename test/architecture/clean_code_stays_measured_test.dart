@@ -136,7 +136,34 @@ void main() {
   /// printer it added takes its face, strata and images once
   /// (`SheetCanvasPrinter`) rather than on every call. 🔬`clean_code_diff`
   /// between master and the lane names those two and nothing added.
-  const wideSignatures = 385;
+  ///
+  /// ⚠️385 → 384 on 2026-10-01, lowered as the rule asks: F-244's x-sheet
+  /// columns build their cells row through the timeline's
+  /// (`timelineCellsRowFrom`), and the sheet's own builder — `_columnFor`
+  /// (five) — went with the copy it held. 🔬`clean_code_diff` between master
+  /// (`6dce949f7`, at 385) and the lane named that one and nothing added.
+  ///
+  /// ⚠️384 → 385 on 2026-10-01, the offender named as the rule asks: F-222
+  /// ①'s `TransformBoxLaw.scaled` (five). It is the transform tool's scale
+  /// solve moved out of the selection layer into the box law, where every
+  /// box will take it, and its two named flags are the two questions the
+  /// solve always asked — which point stays put, and whether the axes keep
+  /// one scale. In the layer it read them off the widget state
+  /// (`_scaleModifierHeld`, `transformOptions.isUniform`), so the same
+  /// inputs were there and uncounted; as a law they are parameters. Folding
+  /// them into one value would be a split for the score. 🔬The lane's scan
+  /// against master: that one added, nothing else.
+  ///
+  /// ⚠️385 → 383 on 2026-10-01, lowered as the rule asks (F-222 ②~④, one
+  /// box for every row): the round took three off and put one on. Gone with
+  /// the handles they built: `_gizmoHandle` (the point gizmo),
+  /// `_LayerTransformBoxState._handle` and the canvas area's
+  /// `_transformBox`. Added: `boxPressAt` (six) — the one order a press on
+  /// any box is read in: the press, the four things a box may wear (a
+  /// cross, handles, an inside, a stage) and whether it turns; a box with
+  /// fewer passes fewer. 🔬The lane's scan against master (`25fdf5106`, at
+  /// 385).
+  const wideSignatures = 383;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -196,7 +223,44 @@ void main() {
   /// case — two case labels and the line that names the mark once for the
   /// wedge's direction. 🔬`clean_code_diff` between master (`87a5d3c21`, at
   /// 431) and the integration lane: that one added, nothing else.
-  const longBodies = 432;
+  ///
+  /// ⚠️432 → 426 on 2026-09-30, lowered as the rule asks: master stood at
+  /// 427, and the camera-work round took one off. What a render looks
+  /// through — the camera there, or a camera standing square over the whole
+  /// canvas — is asked in one place now (`ExportFrameRenderer._viewFor`),
+  /// so `renderCelGroup` gave up its own copy of that choice and fell under
+  /// the line. 🔬`clean_code_diff` between master (`2757f5455`, at 427) and
+  /// the lane named that one and nothing added.
+  ///
+  /// ⚠️426 → 423 on 2026-10-01, lowered as the rule asks: master stood at
+  /// 426, and F-244's cells-row round took three off — the x-sheet's
+  /// `_columnFor` (its copy of the cells row), the timeline's `_layeredRow`
+  /// (its memo, now `keptTimelineCellsRow`, the sheet's too) and
+  /// `_buildFrameRowsBody` (thirty answers handed over one by one, now the
+  /// hooks bundle). 🔬`clean_code_diff` between master (`6dce949f7`, at 426)
+  /// and the lane named those three and nothing added.
+  ///
+  /// ⚠️423 → 422 on 2026-10-01, lowered as the rule asks (I-55 · I-28, the
+  /// pixel copy round): two off, one on. `celPixelWalkFor` fell under the
+  /// line when every pixel reader's box-and-mask became one reading
+  /// (`selectionMaskOnPasteboard`), and the cell verbs' `pixelVerbCellKeys`
+  /// when the ladder it walked became a step of its own that the paste
+  /// shares. `PixelVerbs._pastePixels` (62) is the one added: the board
+  /// landing on every cel the ladder names, each through the marquee on its
+  /// own row, one landing per physical cel, folded into one undo. 🔬The
+  /// lane's scan against master (`1bde29155`, at 423) named those three.
+  ///
+  /// ⚠️Held at 422 on 2026-10-01 (F-222 ②~④): the round traded two for
+  /// two, and the two it put on are named because the rule above asks it.
+  /// Off: the camera frame's painter (`CameraFramePainter.paint`, its
+  /// handles and lever gone into the box) and the canvas area's
+  /// `_cameraOverlay` (its pose subscription now the one `_atTheCameraPose`
+  /// the frame and its box both stand on). On: `_RowTransformBoxState.build`
+  /// (62 — the claim, the finger gate, the pan and the chrome, in that
+  /// order) and the canvas area's `_layerBox` (116 — the row's pose under
+  /// its folders and the four landings, each with the decision it
+  /// carries). 🔬The lane's scan against master (`25fdf5106`, at 422).
+  const longBodies = 422;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

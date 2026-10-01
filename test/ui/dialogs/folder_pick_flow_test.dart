@@ -108,4 +108,27 @@ void main() {
       expect(folderPickNeedsStorageGrant(os), isFalse, reason: os);
     }
   });
+
+  test('finished outputs reach the user by the window each OS has — iOS\'s '
+      'export picker takes any number, Android places one file and shares '
+      'several, the desktops move them into a folder', () {
+    for (final oneFile in const [true, false]) {
+      expect(
+        handOverRoadFor('ios', oneFile: oneFile),
+        HandOverRoad.exportPicker,
+      );
+      for (final os in const ['macos', 'windows', 'linux']) {
+        expect(
+          handOverRoadFor(os, oneFile: oneFile),
+          HandOverRoad.folderWindow,
+          reason: os,
+        );
+      }
+    }
+    expect(handOverRoadFor('android', oneFile: true), HandOverRoad.saveWindow);
+    expect(
+      handOverRoadFor('android', oneFile: false),
+      HandOverRoad.shareSheet,
+    );
+  });
 }

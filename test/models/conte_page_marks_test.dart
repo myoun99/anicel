@@ -1,7 +1,6 @@
 import 'dart:ui' show Rect;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/core/app_corner_radii.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/conte/conte_page_marks.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
@@ -11,6 +10,8 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/sheet_marks.dart';
 import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/ui/conte/conte_words_in.dart';
+
+import '../helpers/conte_camera.dart';
 
 /// The conte body page, as the marks every printer replays.
 ///
@@ -108,42 +109,24 @@ void main() {
       expect(underside.single.hold, SheetRuleHold.far);
     });
 
-    test('the picture windows — and the pictures cut to them — wear the '
-        'app\'s window corner; the black around them keeps its own', () {
-      // 유저 2026-09-25: 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일
-      // 모서리 따라서」 · 「기존 상태에서 둥글게만」.
-      final fills = marks.whereType<SheetFill>();
-      final windows = fills.where((fill) => fill.argb == 0xFFEDEDED);
-      expect(windows, hasLength(m.rowsPerPage));
-      for (final window in windows) {
-        expect(window.cornerRadius, AppCornerRadii.window);
-      }
-      expect(silhouette, fills.firstWhere((f) => f.argb == 0xFF101010).rect);
-      expect(
-        fills.firstWhere((fill) => fill.argb == 0xFF101010).cornerRadius,
-        0,
-        reason: 'the column meets the head\'s rules square, as before',
-      );
-      for (final picture in marks.whereType<SheetPicture>()) {
-        expect(picture.cornerRadius, AppCornerRadii.window);
-      }
-    });
-
     test('a picture fills the camera\'s frame in its slot: the whole slot in '
-        'a window of the camera\'s shape, the camera\'s shape centred in one '
-        'its camera work made taller', () {
+        'a window of the camera\'s shape — and where the camera moves, the '
+        'canvas it sweeps, a screen to a window, in a slot its own size at '
+        'the top of its rows (H48)', () {
       // F-197: every printer and the pen read this one rect, so none of them
       // works out from a rendered picture's pixels where the picture is.
+      // 유저 2026-09-29: 「일단 카메라 팬대로 해당 코마에서 보여주고」.
+      final pan = conteCameraPan(down: 1);
       final worked = ConteSheetSource(
         framesPerSecond: 24,
         cuts: [
           _cut('W', [
             _cell(0, 24),
-            const ConteCellSource(
+            ConteCellSource(
               startFrame: 24,
               endFrameExclusive: 48,
               pictureFrame: 24,
-              rowSpan: 2,
+              camera: pan,
             ),
           ]),
         ],
@@ -176,6 +159,11 @@ void main() {
         plain.slot,
         'the camera\'s shape fills its window',
       );
+      expect(
+        plain.canvasRegion,
+        isNull,
+        reason: 'a camera that holds still shows its own view',
+      );
       final tall = pictures.last;
       expect(
         tall.slot.height,
@@ -183,19 +171,22 @@ void main() {
         reason: 'fixture: the camera work took two rows',
       );
       expect(
-        tall.frame.width / tall.frame.height,
-        closeTo(laid.metrics.cameraAspect, 1e-9),
-        reason: 'the camera\'s shape, kept',
+        tall.canvasRegion,
+        pan.field,
+        reason: 'the canvas the camera sweeps',
       );
+      final window = laid.metrics.windowRect(0);
       expectSame(
         tall.frame,
-        Rect.fromCenter(
-          center: tall.slot.center,
-          width: tall.slot.width,
-          height: tall.slot.width / laid.metrics.cameraAspect,
+        Rect.fromLTWH(
+          window.left,
+          laid.metrics.windowRect(1).top,
+          window.width,
+          window.height * 2,
         ),
-        'as wide as the window, in its middle',
+        'two screens tall at a window a screen, from the top of its rows',
       );
+      expectSame(tall.slot, tall.frame, 'the slot is the picture\'s size');
     });
 
     test('the film\'s pictures — with the camera work written on them — are '
@@ -212,13 +203,13 @@ void main() {
             name: 'P',
             durationFrames: 24,
             cumulativeEndFrames: 24,
-            cells: const [
+            cells: [
               ConteCellSource(
                 startFrame: 0,
                 endFrameExclusive: 24,
                 pictureFrame: 0,
                 action: 'ハヤト走る',
-                cameraLabels: ['PAN→', 'T.U'],
+                camera: conteCameraPan(across: 1),
               ),
             ],
           ),
@@ -235,16 +226,8 @@ void main() {
       expect(pictures.whereType<SheetPicture>(), hasLength(1));
       expect(
         pictures.whereType<SheetWords>().map((words) => words.text),
-        ['PAN→', 'T.U'],
+        ['IN', 'OUT'],
         reason: 'the camera work is written ON the picture',
-      );
-      expect(
-        pictures.whereType<SheetWords>().map((words) => (words.h, words.v)),
-        [
-          (SheetAlign.start, SheetAlign.start),
-          (SheetAlign.end, SheetAlign.end),
-        ],
-        reason: 'the first label at the picture\'s start, the last at its end',
       );
       final values = framed.where(
         (mark) => mark.layer == SheetPaintLayer.content,
@@ -258,7 +241,12 @@ void main() {
         SheetPicture(:final slot) => slot,
         SheetWords(:final slot) => slot,
         SheetFill(:final rect) => rect,
+        SheetRule(:final rect) => rect,
         SheetImage(:final slot) => slot,
+        SheetStroke(:final points) => points.fold(
+          Rect.fromPoints(points.first, points.first),
+          (box, point) => box.expandToInclude(Rect.fromPoints(point, point)),
+        ),
         _ => Rect.zero,
       };
       for (final picture in pictures) {

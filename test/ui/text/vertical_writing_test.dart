@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/ui/text/vertical_writing.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -37,8 +38,13 @@ class _SpyCanvas implements Canvas {
   @override
   void restore() => calls.add(#restore);
 
+  final List<(double, double)> scales = <(double, double)>[];
+
   @override
-  void scale(double sx, [double? sy]) => calls.add(#scale);
+  void scale(double sx, [double? sy]) {
+    calls.add(#scale);
+    scales.add((sx, sy ?? sx));
+  }
 
   @override
   int getSaveCount() => 1;
@@ -438,6 +444,57 @@ void main() {
     });
   });
 
+  // F-224: the SE row measures its dialogue down a column before drawing it
+  // (`dialogueNaturalExtent`), so what a glyph is drawn at and what it is
+  // measured at are one answer — the one this renderer draws.
+  group('a turned glyph in a narrow column', () {
+    // A line height that is not the glyph's width, so the two can be told
+    // apart once the glyph lies down.
+    const style = TextStyle(fontSize: 14, height: 1.5);
+    const column = 10.0;
+
+    test('is fitted ACROSS by its height and advances DOWN by its width', () {
+      final painter = TextPainter(
+        text: const TextSpan(text: 'ー', style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      expect(verticalGlyphCell('ー').form, VerticalGlyphForm.rotated);
+      expect(painter.height, greaterThan(column), reason: 'fixture');
+      expect(
+        painter.width,
+        isNot(closeTo(painter.height, 1)),
+        reason: 'fixture',
+      );
+      final fit = column / painter.height;
+
+      final spy = _SpyCanvas();
+      double? advance;
+      paintVerticalTextCell(
+        spy,
+        verticalGlyphCell('ー'),
+        painter: painter,
+        center: Offset.zero,
+        fontSize: 14,
+        setWord: paintScaledText,
+        maxCrossExtent: column,
+        alongColumnScale: (extent) {
+          advance = extent;
+          return 1;
+        },
+      );
+      expect(
+        spy.scales.single.$2,
+        closeTo(fit, 1e-9),
+        reason: 'lying down, its HEIGHT has to clear the column',
+      );
+      expect(
+        advance,
+        closeTo(painter.width * fit, 1e-9),
+        reason: 'lying down, it runs its WIDTH down the column',
+      );
+    });
+  });
+
   group('renderer', () {
     test('paints one glyph per CELL and rotates only what must rotate', () {
       final canvas = _SpyCanvas();
@@ -450,6 +507,7 @@ void main() {
         top: 0,
         mainExtent: 52,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(canvas.glyphCount, 4);
       expect(canvas.rotations.length, 1);
@@ -466,6 +524,7 @@ void main() {
         top: 0,
         mainExtent: 52,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(canvas.glyphCount, 2);
       expect(canvas.rotations, isEmpty);
@@ -481,6 +540,7 @@ void main() {
         top: 0,
         mainExtent: 13,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       // fontSize is min(10, 13 - 3) = 10, so the shift is 5px each way from
       // the cell centre (10, 6.5).
@@ -498,6 +558,7 @@ void main() {
         top: 0,
         mainExtent: 50,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(painted, 0);
       expect(canvas.calls, isEmpty);

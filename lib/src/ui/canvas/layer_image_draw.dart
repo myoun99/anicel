@@ -32,6 +32,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/transform_track.dart';
 import '../../services/composite_effect_paint.dart';
+import 'blends_in_place.dart';
 import 'raster_picture.dart';
 import 'subtree_image_composite.dart';
 import '../../services/layer_pose_paint.dart';
@@ -170,7 +171,8 @@ void drawPosedLayerImage(
       final laid = _laidDown(
         (image: image, worldRect: worldRect, extent: extent),
         texelScale: copyScale,
-        inkDrawsTheSame: _blendsInPlace(blendMode) && plan.outsetPixels == 0,
+        inkDrawsTheSame:
+            blendsInPlace(blendMode.paintBlendMode) && plan.outsetPixels == 0,
         laidBack: laidBack,
       );
       // ⛔THE STEP SCALE IS NOT `rasterScale`, even though it equals it here.
@@ -205,26 +207,36 @@ void drawPosedLayerImage(
         return true;
       }());
       paint.filterQuality = copies ? ui.FilterQuality.none : filterQuality;
+      final source = ui.Rect.fromLTWH(
+        0,
+        0,
+        stepped.width.toDouble(),
+        stepped.height.toDouble(),
+      );
       try {
+        // 🚨F-243: in an advanced blend the image is held to where it lands
+        // — a layer whose ink reaches the edge of its image stretched that
+        // edge across the pasteboard ([drawHeldToItsRect]).
         if (drawAtOriginWhen?.call(laid.worldRect, stepped) ?? false) {
-          canvas.drawImage(stepped, ui.Offset.zero, paint);
+          drawHeldToItsRect(
+            canvas,
+            source,
+            paint,
+            () => canvas.drawImage(stepped, ui.Offset.zero, paint),
+          );
           return;
         }
-        canvas.drawImageRect(
-          stepped,
-          ui.Rect.fromLTWH(
-            0,
-            0,
-            stepped.width.toDouble(),
-            stepped.height.toDouble(),
-          ),
-          ui.Rect.fromLTWH(
-            laid.worldRect.left * rasterScale,
-            laid.worldRect.top * rasterScale,
-            laid.worldRect.width * rasterScale,
-            laid.worldRect.height * rasterScale,
-          ),
+        final destination = ui.Rect.fromLTWH(
+          laid.worldRect.left * rasterScale,
+          laid.worldRect.top * rasterScale,
+          laid.worldRect.width * rasterScale,
+          laid.worldRect.height * rasterScale,
+        );
+        drawHeldToItsRect(
+          canvas,
+          destination,
           paint,
+          () => canvas.drawImageRect(stepped, source, destination, paint),
         );
       } finally {
         // ⛔The steps made a NEW image, and a whole image laid back for this
@@ -271,14 +283,8 @@ bool inkCropDrawsTheSame({
   required List<ResolvedLayerEffect> effects,
 }) =>
     pose == null &&
-    _blendsInPlace(blendMode) &&
+    blendsInPlace(blendMode.paintBlendMode) &&
     resolveCompositeEffectPlan(effects).outsetPixels == 0;
-
-/// Whether [blendMode] is one the engines blend pixel by pixel wherever it
-/// is drawn — `srcOver` and `plus` — rather than through the area drawn.
-bool _blendsInPlace(LayerBlendMode blendMode) =>
-    blendMode.paintBlendMode == ui.BlendMode.srcOver ||
-    blendMode.paintBlendMode == ui.BlendMode.plus;
 
 /// What a draw lays down: the [stored] image at its world rect where that is
 /// exact, and otherwise the image its extent stands for — laid back byte for

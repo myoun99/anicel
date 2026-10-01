@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
-import 'timeline_cell_style.dart' show timelineSelectedFrameBorderColor;
+import 'timeline_playhead.dart' show timelinePlayheadWashColor;
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge, timelinePlayheadSpan;
 import 'timeline_frame_window.dart';
 import '../repaint_props.dart';
 import '../widgets/tick_layer.dart';
@@ -94,7 +96,10 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
   static const Color readyBarColor = Color(0xFF54B435);
 
   /// The strip's thickness along the ruler's bottom edge.
-  static const double readyBarThickness = 3;
+  ///
+  /// 🗣️F-246 (유저 2026-09-30): 「재생준비완료인 초록띠가 너무 세로가 두꺼움.
+  /// 지금의 절반정도로 얇게」. ↩️3px.
+  static const double readyBarThickness = 1.5;
 
   ({int startIndex, int endIndexExclusive}) _visibleWindow() =>
       visibleFrameWindowFor(
@@ -140,8 +145,8 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
     final runs = runsToDraw?.call() ?? readyRuns();
     onPaintedRuns?.call(runs);
     for (final run in runs) {
-      final start = run.startIndex * cellWidth;
-      final extent = (run.endIndexExclusive - run.startIndex) * cellWidth;
+      final start = timelineFrameEdge(run.startIndex, cellWidth);
+      final extent = timelineFrameEdge(run.endIndexExclusive, cellWidth) - start;
       canvas.drawRect(
         horizontal
             ? Rect.fromLTWH(
@@ -162,14 +167,13 @@ class TimelineRulerCursorOverlayPainter extends CustomPainter
 
     final frame = tintedFrame();
     if (frame != null) {
-      // Matches the header cell's selected fill: the same tint over the
-      // same surface the cell would have blended it onto.
+      // The grids' playhead, on the ruler's cell (F-212).
+      final (:start, :end) = timelinePlayheadSpan(frame, cellWidth);
       canvas.drawRect(
         horizontal
-            ? Rect.fromLTWH(frame * cellWidth, 0, cellWidth, size.height)
-            : Rect.fromLTWH(0, frame * cellWidth, size.width, cellWidth),
-        Paint()
-          ..color = timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+            ? Rect.fromLTRB(start, 0, end, size.height)
+            : Rect.fromLTRB(0, start, size.width, end),
+        Paint()..color = timelinePlayheadWashColor,
       );
     }
   }

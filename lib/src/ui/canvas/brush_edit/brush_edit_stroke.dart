@@ -45,13 +45,12 @@ class _BrushEditStroke {
         : _state.widget.inputSettings();
     _state._activeStrokeInputSettings = strokeSettings;
     _state._opening.startContact(
-      _state._pressure.noteSample(event, opening: true, tiltOpening: true),
+      _state._pressure.noteSample(event, opening: true),
     );
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
-    _state._lastPenPosition = canvasPosition;
     final stabilizerStrength = strokeSettings.stabilizerStrength;
     _state._stabilizer = stabilizerStrength > 0
         ? StrokeStabilizer(
@@ -73,10 +72,9 @@ class _BrushEditStroke {
         : symmetryTransforms(symmetry);
     // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
     // jitter come from its press, so every view that hears the press rolls
-    // the same numbers. A sheet's windows each draw their own slice of one
-    // stroke (one paper, 유저 2026-09-25), and the pieces meet as the one
-    // stroke they are — a scattered dab cut at a window edge goes on in the
-    // window beside it — without any view being told who else heard it.
+    // the same numbers. ↩️Written for a sheet's windows each drawing their
+    // own slice of one stroke (one paper, 유저 2026-09-25); a stroke is one
+    // window's now (H49, 09-30), and the press still decides its dice.
     final dice = Object.hash(event.pointer, event.timeStamp);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);
@@ -96,7 +94,7 @@ class _BrushEditStroke {
     // bug: every parity test staged the model manually and never caught
     // it). The overlay must display in the stroke's blend mode from the
     // first dab.
-    final strokeSurface = _state.widget.sessionState.canvasState.currentSurface;
+    final strokeSurface = _state.widget.celNow();
     _state._groundSampler = _state._groundMixer == null
         ? null
         : bitmapSurfaceGroundSampler(strokeSurface);
@@ -129,7 +127,7 @@ class _BrushEditStroke {
   void takeSample(
     CanvasPoint penPosition, {
     required Duration at,
-    required ({bool pressure, bool speed, bool tilt}) read,
+    required ({bool pressure, bool speed}) read,
   }) {
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
@@ -167,7 +165,8 @@ class _BrushEditStroke {
     }
     // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
     // — the overlay, the commit, undo replay and the .anicel all see the
-    // same resolved (quantized, prerotated-mask) dabs.
+    // same resolved dabs (an analytic tip quantized into a prerotated mask,
+    // a raster tip as it is — F-251).
     //
     // ⚠️ Symmetry replicates HERE TOO. This is the stroke's FIRST dab, laid
     // at pointer-down rather than through [advanceStrokeTo], and it is a
@@ -225,8 +224,7 @@ class _BrushEditStroke {
       return;
     }
 
-    final canvasSize =
-        _state.widget.sessionState.canvasState.currentSurface.canvasSize;
+    final canvasSize = _state.widget.celNow().canvasSize;
     final clippedSegment = const CanvasSegmentClipper().clip(
       previous: previousRaw,
       current: canvasPosition,
@@ -455,7 +453,7 @@ class _BrushEditStroke {
 
   void endStrokeInput() {
     _state.widget.onActiveStrokeChanged?.call(false);
-    _state._pressure.reportLedger();
+    _state._pressure.reportReadings();
     clearStrokeInputState();
   }
 
@@ -483,7 +481,6 @@ class _BrushEditStroke {
     _state._groundMixer = null;
     _state._groundSampler = null;
     _state._stabilizer = null;
-    _state._lastPenPosition = null;
     _state._collectedDabs.clear();
     _state._pendingOverlayDabs.clear();
   }

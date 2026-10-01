@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
@@ -11,6 +12,7 @@ import '../../models/envelope/cut_envelope_source.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../canvas/viewport_canvas_transform.dart';
 import 'cut_envelope_ink.dart';
+import '../sheet/sheet_ink_layer.dart' show SheetInkOnScreen;
 import '../sheet_painting.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -19,7 +21,8 @@ export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// Paints a cut envelope. The panel and every export share it, so what is
 /// on screen IS the page — the timesheet's rule.
-class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
+class CutEnvelopePainter extends CustomPainter
+    with RepaintOnProps, SheetInkOnScreen {
   const CutEnvelopePainter({
     required this.layout,
     required this.source,
@@ -29,6 +32,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
     this.effectiveRatio = 1.0,
     this.imageFor,
     this.inkImageFor,
+    this.inkSurfaceFor,
     this.inkOwner,
     this.liveInkKeys = const {},
     // The ink store: a landed stroke (or an async-composed display image)
@@ -54,18 +58,26 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// it, exactly like the timesheet and conte painters. Null keeps the
   /// fit-to-size behaviour the exports use, where the canvas already IS
   /// the paper.
+  @override
   final CanvasViewport? viewport;
 
   /// The view's DPR — the SAME one the host snapped with, so
   /// [applyViewportTransform]'s own snap is a no-op here rather than a
   /// second, coarser rounding.
+  @override
   final double effectiveRatio;
 
   /// Resolves a media asset path to a decoded image (the logo).
   final ui.Image? Function(String assetPath)? imageFor;
 
-  /// The ink surface for a box.
+  /// The ink raster for a box — for an EXPORT, which has no view to draw
+  /// it through.
   final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// The ink surface for a box ON SCREEN, printed as the brush's live
+  /// window paints it ([SheetInkOnScreen], F-215).
+  @override
+  final BitmapSurface? Function(BrushFrameKey key)? inkSurfaceFor;
 
   /// The cut this envelope is of — its boxes' ink is keyed to it
   /// ([envelopeInkWindows]) — or null where no ink prints.
@@ -75,6 +87,7 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
   /// translucent ink never composites twice. Everything else is drawn here
   /// — which is the only reason ink is visible at all in the boxes too
   /// small (or too far off screen) to mount a window.
+  @override
   final Set<BrushFrameKey> liveInkKeys;
 
   bool _draws(SheetPaintLayer layer) =>
@@ -107,6 +120,14 @@ class CutEnvelopePainter extends CustomPainter with RepaintOnProps {
       _paintInk(canvas);
     }
     canvas.restore();
+    // On screen the ink is the stratum's last, and drawn out of paper
+    // space: as the live windows draw it (F-215).
+    final owner = inkOwner;
+    if (owner != null && _draws(SheetPaintLayer.ink)) {
+      printInkAsLive(canvas, size, [
+        for (final window in envelopeInkWindows(layout, owner)) window.mark,
+      ]);
+    }
   }
 
   void _paintForm(Canvas canvas, Color ink) {

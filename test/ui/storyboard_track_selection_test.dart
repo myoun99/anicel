@@ -99,7 +99,7 @@ void main() {
     session.selectTrackCutAtPlayhead(const TrackId('track-b'));
 
     expect(session.activeCutId, isNull, reason: 'the gap releases the cut');
-    expect(session.gapParkedGlobalFrame, 0);
+    expect(session.editingSession.gapGlobalFrame, 0);
     expect(session.selectedTrackId, const TrackId('track-b'));
   });
 

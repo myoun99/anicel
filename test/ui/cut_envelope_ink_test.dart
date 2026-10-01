@@ -10,9 +10,9 @@ import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
 
-/// Envelope ink lives in ONE plane: every box keeps the piece of a stroke
-/// drawn over it, and there is no page window because the form has no
-/// margin.
+/// Envelope ink lives in ONE plane: a stroke is the box's it starts in,
+/// kept where that box shows it (H49), and there is no page window because
+/// the form has no margin.
 void main() {
   const owner = CutId('cut-1');
 
@@ -306,13 +306,13 @@ void main() {
       expect(controller.hasInkFor(null, envelopeInkBoxKey(owner, 'cell')), isFalse);
     });
 
-    test('a box with no strokes has no display image to draw', () {
+    test('a box with no strokes has no surface to draw', () {
       final controller = CutEnvelopeInkController();
       addTearDown(controller.dispose);
       controller.syncGeometry(aspectRatio: 1);
 
       expect(
-        controller.displayImageFor(null, envelopeInkBoxKey(owner, 'cell')),
+        controller.surfaceFor(null, envelopeInkBoxKey(owner, 'cell')),
         isNull,
       );
     });

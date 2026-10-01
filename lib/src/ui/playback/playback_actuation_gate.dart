@@ -11,6 +11,7 @@ import 'package:flutter/rendering.dart'
 import 'package:flutter/services.dart'
     show HardwareKeyboard, KeyDownEvent, KeyEvent, KeyUpEvent;
 
+import '../debug/key_trace.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../shortcuts/shortcut_activator_codec.dart' show isModifierKey;
 import 'playback_transport.dart';
@@ -272,6 +273,8 @@ class _PlaybackActuationGateState extends State<PlaybackActuationGate> {
     }
     widget.transports.stopAll();
     _consumedKey = event;
+    // F-241: the input inspector's `eat` line.
+    KeyTrace.spentOnAStop(event);
     return true;
   }
 

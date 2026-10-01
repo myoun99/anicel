@@ -7,6 +7,7 @@ import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../helpers/solid_png_fixture.dart';
 import '../helpers/temp_dir.dart';
@@ -20,8 +21,8 @@ import '../helpers/temp_dir.dart';
 /// reach for, the selected chip, and the refused one — so the rows can be
 /// written once without any of them changing what the window offers.
 void main() {
-  ExportPill chipAt(WidgetTester tester, String key) =>
-      tester.widget<ExportPill>(find.byKey(ValueKey<String>(key)));
+  Pill chipAt(WidgetTester tester, String key) =>
+      tester.widget<Pill>(find.byKey(ValueKey<String>(key)));
 
   /// The chip of [row] that is drawn selected, by its key suffix.
   String selectedIn(WidgetTester tester, String row, List<String> values) {

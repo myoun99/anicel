@@ -10,6 +10,7 @@ import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/working_panel.dart';
 import 'panels/working_panel_surface.dart';
+import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
@@ -30,7 +31,7 @@ import 'timeline/layer_row_drag.dart'
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
-import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
+import 'timeline/timeline_grid_hooks.dart' show TimelineRowMemoAux;
 import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
@@ -165,13 +166,12 @@ class TimelineTabHost extends StatefulWidget {
 class _TimelineTabHostState extends State<TimelineTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// The frame cursor the panel's cursor-driven widgets subscribe to
-  /// (playhead, rulers, lane values, frame counter). Playback ticks and
-  /// editing seeks land HERE — never as a panel rebuild; that is the whole
-  /// playback-performance architecture.
-  late final ValueNotifier<int> _frameCursor = ValueNotifier<int>(
-    _session.currentFrameIndex,
-  );
+  // ⛔The frame cursor the panel's cursor-driven widgets subscribe to
+  // (playhead, rulers, lane values, frame counter) is the SESSION's now
+  // ([PlayheadCursors.cutFrame]): the row this panel folds into follows the
+  // same one, and that row is built by the workspace, which could not reach
+  // a cursor kept here (유저 2026-09-27,
+  // folded-row-playhead-during-playback-Q1).
 
   /// Everything that can change whether a frame reads as CACHED: frames
   /// warming in, and pixel edits invalidating composites. The rulers' green
@@ -192,37 +192,61 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.renderCaches.brushFrameStore.celPixelRevision,
   ]);
 
-  void _syncFrameCursor() {
-    final playbackGlobalFrame =
-        _session.playbackRig.playback.globalFrameIndexListenable.value;
-    _frameCursor.value = playbackGlobalFrame == null
-        ? _session.currentFrameIndex
-        : _session.playbackRig.playback.position?.localFrameIndex ??
-              _session.currentFrameIndex;
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _session.playbackRig.playback.globalFrameIndexListenable.addListener(
-      _syncFrameCursor,
-    );
-    // Scrub moves fire the editing cursor WITHOUT a session notify — this
-    // listener is what keeps the playhead glued to the pointer.
-    _session.editingFrameCursor.addListener(_syncFrameCursor);
-    _session.addListener(_syncFrameCursor);
-  }
-
-  @override
-  void dispose() {
-    _session.playbackRig.playback.globalFrameIndexListenable.removeListener(
-      _syncFrameCursor,
-    );
-    _session.editingFrameCursor.removeListener(_syncFrameCursor);
-    _session.removeListener(_syncFrameCursor);
-    _frameCursor.dispose();
-    super.dispose();
-  }
+  /// P2b: the rail row IS the handle. Pen and mouse move it; a finger
+  /// scrolls, because the rail scrolls along the very axis this drag runs.
+  ///
+  /// 🚨Bound ONCE, like the sources above (F-244): the rail keeps each row's
+  /// drag wrapper across an edit only while this is the same object — a
+  /// fresh set per build rebuilt every row's wrapper at every commit (~170
+  /// elements on 24 rows). Nothing in it reads the build it was made in: the
+  /// verbs are the session's, and the closures ask the session at the event.
+  late final TimelineRowDragHooks _rowDragHooks = TimelineRowDragHooks(
+    drag: _session.layerRowDragVerbs.inFlight,
+    onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
+    onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
+    onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
+    onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
+    onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
+    onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
+    // A file from the pool over the layer area raises the caret a
+    // moved row does (「레이어 영역(가로선) → 새 레이어」) AND the
+    // row it would make, standing in that gap (라운드 2d 2부).
+    // ⛔One verb, not two hooks: the line and the row are one
+    // answer, and a surface that raised only one of them would be
+    // showing half of what the release does.
+    onPlacementHover: _session.showLayerPlacement,
+    onPlacementLeave: _session.clearLayerPlacement,
+    acceptsPlacement: (displayLayers, slot, path) =>
+        _session.layerSlotSpotFor(displayLayers, slot, path) != null,
+    // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
+    // selection moves it — the cells' grammar, transposed.
+    //
+    // 🚨T5 (유저 2026-08-13): 「모든 셀은 선택범위 자유롭게 규칙없이
+    // 가능하듯이 **모든 행은 자유롭게 규칙없이 선택가능.** 지금 fx랑
+    // fx멤버가 선택범위 안됨」 — and on the fx header's chain drag
+    // specifically: 「셀과 같은문법으로 통일」.
+    //
+    // ⛔The old answer here was `null` for every subject that is not
+    // a layer row, which this file called "not a row selection's
+    // business". That was a KIND deciding whether a row may be
+    // selected, and the whole of ③/⑨'s law is that kind decides
+    // what an edit DOES, never whether the row can be named.
+    //
+    // The chain drag is not lost by this: it is the second phase
+    // now, exactly as a layer row's move is. Start outside the
+    // selection and the drag selects; start inside it and the drag
+    // re-orders the chain.
+    isInRowSelection: (subject) =>
+        _session.rowSelectionVerbs.rowIsSelected(
+          timelineRowAddressOfDragSubject(subject),
+        ),
+    onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
+      timelineRowAddressOfDragSubject(subject),
+    ),
+    onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
+    // I-39: what a picked-up row carries, named at the pointer.
+    rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
+  );
 
   /// Every kind's twirl-down lanes — the SAME AE Transform lanes on truly
   /// every layer (unified layer controls): the camera rides the cut camera
@@ -457,7 +481,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   );
 
   Widget _panel(BuildContext context) {
-    // Playback ticks flow into the frame cursor (see _syncFrameCursor) —
+    // Playback ticks flow into the frame cursor ([PlayheadCursors]) —
     // NEVER as a panel rebuild: only the cursor-driven widgets (playhead
     // layer, rulers, lane values, counter) subscribe, so the grids'
     // hundreds of cells stay untouched frame to frame. The prerender
@@ -512,6 +536,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
+            cutName: _session.activeCutOrNull?.name ?? '',
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build
@@ -530,12 +555,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // step rebuilds the dragged row's gate + the cursor overlay only,
             // never this host (the release commit is the one session notify).
             dragPreview: _session.dragPreview,
-            frameCursor: _frameCursor,
+            frameCursor: _session.playheadCursors.cutFrame,
             frameReadySignal: _frameReadySignal,
             revealSelectionTick: _session.rangeSelections.revealSelectionTick,
             // F-110: the page-turn tick. This is the same listenable
-            // [_syncFrameCursor] reads playback out of — null while nothing
-            // plays, which is what keeps a keyboard walk on the walk law.
+            // [PlayheadCursors.cutFrameNow] reads playback out of — null while
+            // nothing plays, which is what keeps a keyboard walk on the walk
+            // law.
             playbackFrame:
                 _session.playbackRig.playback.globalFrameIndexListenable,
             readyRunsIn:
@@ -544,9 +570,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 _session.activeCutSpan.activeCutPlaybackFrameCount,
             // The のりしろ: how far past the cut's end line it is DRAWN, and
             // the word the ruler spells across that. Same derivation the
-            // sheet pages by, so the two cannot disagree.
-            drawnFrameCount: _session.activeCutSpan.activeCutDrawnFrameCount,
-            noriShiroLabel: _session.activeCutSpan.activeCutNoriShiroLabel,
+            // sheet pages by, so the two cannot disagree — ASKED by each
+            // surface wherever it hears a drag, which this host never
+            // rebuilds for.
+            noriShiro: _session.activeCutSpan.activeCutNoriShiro,
             exposureStateForLayer: _session.exposureStateForLayer,
             frameNameForLayer: _session.frameVerbs.frameNameForLayer,
             // R26 #44: ACTION-section blocks whose cel is still blank gray
@@ -666,6 +693,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   session: _session,
                   layerId: layerId,
                 ),
+            onOpenLayerLinks: (anchorContext, layerId) => showLayerLinkWindow(
+              anchorContext,
+              session: _session,
+              layerId: layerId,
+            ),
             // ONE law, two readers: the rail asks whether to go red, the
             // popover asks by how much, and both get the answer from
             // [movieSourceShortfall].
@@ -688,7 +720,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // Folder rows are layer rows: their eye, opacity, blend, fx
             // switch, FX lanes and selection all ride the layer hooks
             // already threaded above. Only the members' twirl lands here.
-            onToggleLayerCollapsed: _session.folders.toggleLayerCollapsed,
+            onToggleLayerCollapsed: _rowPresses.toggleGroupFold,
             onToggleLayerFx: _rowPresses.toggleFx,
             // Per-layer onion skin (UI-R17 #5, TVPaint style).
             layerOnionSkinEnabledOf: _session.onionSkin.isLayerOnionSkinEnabled,
@@ -754,17 +786,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // of it that falls inside the window, on the window's own
               // numbers.
               selection: _session.cutLocalLaneRangeSelection,
-              // C②: the head LANE arrives resolved by the grid, off the
-              // rows it actually draws — the host's own lane-list walk
-              // retired with it.
+              // C②: the span arrives resolved by the grid, off the rows it
+              // actually draws — the host's own lane-list walk retired with
+              // it.
               onSelectUpdate:
-                  (layerId, laneId, anchorIndex, headIndex, headLaneId, span) =>
+                  (layerId, laneId, anchorIndex, headIndex, span) =>
                       _session.updateLaneRangeSelectionDrag(
                         layerId: layerId,
                         laneId: laneId,
                         anchorIndex: anchorIndex,
                         headIndex: headIndex,
-                        headLaneId: headLaneId,
                         spanLaneIds: span,
                       ),
               onTapAt: _standOnLane,
@@ -789,55 +820,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               currentRow: _session.standing.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
             ),
-            // P2b: the rail row IS the handle. Pen and mouse move it; a
-            // finger scrolls, because the rail scrolls along the very axis
-            // this drag runs.
-            rowDragHooks: TimelineRowDragHooks(
-              drag: _session.layerRowDragVerbs.inFlight,
-              onBegin: _session.layerRowDragVerbs.beginLayerRowDrag,
-              onUpdate: _session.layerRowDragVerbs.updateLayerRowDrag,
-              onRowTarget: _session.layerRowDragVerbs.updateLayerRowDropOnRow,
-              onEffectUpdate: _session.layerRowDragVerbs.updateEffectRowDrag,
-              onEnd: _session.layerRowDragVerbs.endLayerRowDrag,
-              onCancel: _session.layerRowDragVerbs.cancelLayerRowDrag,
-              // A file from the pool over the layer area raises the caret a
-              // moved row does (「레이어 영역(가로선) → 새 레이어」) AND the
-              // row it would make, standing in that gap (라운드 2d 2부).
-              // ⛔One verb, not two hooks: the line and the row are one
-              // answer, and a surface that raised only one of them would be
-              // showing half of what the release does.
-              onPlacementHover: _session.showLayerPlacement,
-              onPlacementLeave: _session.clearLayerPlacement,
-              acceptsPlacement: (displayLayers, slot, path) =>
-                  _session.layerSlotSpotFor(displayLayers, slot, path) != null,
-              // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
-              // selection moves it — the cells' grammar, transposed.
-              //
-              // 🚨T5 (유저 2026-08-13): 「모든 셀은 선택범위 자유롭게 규칙없이
-              // 가능하듯이 **모든 행은 자유롭게 규칙없이 선택가능.** 지금 fx랑
-              // fx멤버가 선택범위 안됨」 — and on the fx header's chain drag
-              // specifically: 「셀과 같은문법으로 통일」.
-              //
-              // ⛔The old answer here was `null` for every subject that is not
-              // a layer row, which this file called "not a row selection's
-              // business". That was a KIND deciding whether a row may be
-              // selected, and the whole of ③/⑨'s law is that kind decides
-              // what an edit DOES, never whether the row can be named.
-              //
-              // The chain drag is not lost by this: it is the second phase
-              // now, exactly as a layer row's move is. Start outside the
-              // selection and the drag selects; start inside it and the drag
-              // re-orders the chain.
-              isInRowSelection: (subject) => _session.rowIsSelected(
-                timelineRowAddressOfDragSubject(subject),
-              ),
-              onSelectBegin: (subject) => _session.rowSelectionVerbs.beginRowSelection(
-                timelineRowAddressOfDragSubject(subject),
-              ),
-              onSelectEnd: _session.rowSelectionVerbs.endRowSelection,
-              // I-39: what a picked-up row carries, named at the pointer.
-              rowsActedOnBy: _session.rowSelectionVerbs.rowsActedOnBy,
-            ),
+            rowDragHooks: _rowDragHooks,
             onRowSelectionSpan: _session.rowSelectionVerbs.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's
@@ -887,7 +870,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
-            laneOpenOf: widget.expandedLaneLayerIds.contains,
+            // LIVE, as the hook asks: the widget's set is the one this build
+            // was handed, and a twirl replaces the session's set with a new
+            // one — so a sweep that toggles row after row inside one frame
+            // (the legend's 「all」, or a press spread across the selection)
+            // read every row it had already turned as still unturned.
+            laneOpenOf: (id) =>
+                _session.railView.expandedLaneLayerIds.value.contains(id),
             laneGroupOnOf: _session.layerSwitches.isLayerTransformOn,
             layerEyeOnOf: _session.layerSwitches.isLayerEyeOn,
             onToggleLayerLanes: widget.onToggleLayerLanes,
@@ -1139,8 +1128,12 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // cel under the playhead HAS A DRAWING, and two drawn cels answer every
       // other gate here alike — so a seek from a cel emptied in place to a
       // drawn one moved nothing this token held, and the cached bar kept
-      // the dark head.
-      session.cells.canRunPixelVerb,
+      // the dark head. (I-55: the head's gate is every row's now.)
+      session.pixelVerbs.canOpenColourEdit,
+      // I-18: 자동 이름 지정 lights on a BLOCK under the playhead and dims on
+      // an empty cell or a ghost — a seek moves it, and a seek is no notify.
+      // The timeline context's answer, read where it comes from.
+      session.blockNaming.timelineTargets != null,
       // The Add button gates on the active layer's kind + cell state.
       // NOTE: these two move together with the can* getters above in every
       // reachable scenario, so the guard test cannot isolate them — they are

@@ -289,6 +289,26 @@ void main() {
       expect(s.workingPanel, WorkingPanel.storyboard);
     });
 
+    test('dragging a V track\'s lanes on the storyboard stands on the TRACK '
+        'row — their carrier is no layer', () {
+      final s = session();
+      s.standOnRow(const LayerRowAddress(seId), panel: WorkingPanel.storyboard);
+      expect(
+        s.storyboardStandingRow,
+        const LayerRowAddress(seId),
+        reason: '⛔premise: the storyboard stands on the S row',
+      );
+      s.updateLaneRangeSelectionDrag(
+        layerId: trackTransformLaneCarrierId(trackId),
+        laneId: 'opacity',
+        anchorIndex: 2,
+        headIndex: 4,
+        spanLaneIds: const ['opacity'],
+        panel: WorkingPanel.storyboard,
+      );
+      expect(s.storyboardStandingRow, const TrackRowAddress(trackId));
+    });
+
     test('a row made while working in the storyboard is that rail\'s row',
         () {
       final s = session();

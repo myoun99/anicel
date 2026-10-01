@@ -294,6 +294,18 @@ abstract final class FolderPicker {
   })?
   debugSaveDestinationPicker;
 
+  /// The same seam for [exportFiles]. ⚠️Reset in
+  /// `test/flutter_test_config.dart`: its native half MOVES what it is
+  /// handed, like [debugFileExporter]'s.
+  @visibleForTesting
+  static Future<FolderGrant> Function(List<String> sourcePaths)?
+  debugFilesExporter;
+
+  /// The same seam for [shareFiles]. ⚠️Reset in
+  /// `test/flutter_test_config.dart`, like the seams above.
+  @visibleForTesting
+  static Future<bool> Function(List<String> paths)? debugFileSharer;
+
   /// Test seam for the OS these rules are read from.
   ///
   /// ⚠️Reset in `test/flutter_test_config.dart`, like [debugFolderPicker].
@@ -520,6 +532,36 @@ abstract final class FolderPicker {
       'sourcePath': sourcePath,
       'suggestedName': suggestedName ?? fileNameOfPath(sourcePath),
     }, GrantKind.file)).first;
+  }
+
+  /// [exportFile] for SEVERAL finished outputs at once — files and folders
+  /// — in ONE picker: iOS's export mode takes a list, and it is the mode
+  /// that reaches Google Drive (drive-folder-windows-Q1, 유저 2026-09-27:
+  /// 「내보내기가 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」). The sources
+  /// are MOVED on success. Granted, or the cancel / unavailable it met.
+  static Future<FolderGrant> exportFiles(List<String> sourcePaths) async {
+    final override = debugFilesExporter;
+    if (override != null) {
+      return override(sourcePaths);
+    }
+    return (await _invoke('exportFiles', {
+      'sourcePaths': sourcePaths,
+    }, GrantKind.file)).first;
+  }
+
+  /// Offers [paths] to another app through the system's share sheet —
+  /// Android's road for several files, where no picker places more than
+  /// one (「드라이브에 저장」 takes them there). True once the sheet was
+  /// shown; whatever takes them reads them afterwards, so they must stay.
+  static Future<bool> shareFiles(List<String> paths) async {
+    final override = debugFileSharer;
+    if (override != null) {
+      return override(paths);
+    }
+    final answer = await _invoke('shareFiles', {
+      'paths': paths,
+    }, GrantKind.file);
+    return answer.first.status == FolderPickStatus.granted;
   }
 
   /// Save As on the platforms that HAVE a save dialog: the dialog answers

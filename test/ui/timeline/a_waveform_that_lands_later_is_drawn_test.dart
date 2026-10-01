@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/audio/waveform_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
@@ -50,18 +51,26 @@ void main() {
             expandedLayerIds: const {},
             lanesForLayer: (_) => const [],
           ),
-          playbackFrameCount: 24,
+          hooks: TimelineGridHooks(
+            activeLayerId: null,
+            frameCursor: ValueNotifier<int>(0),
+            playbackFrameCount: 24,
+            exposureStateForLayer: _uncovered,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+            audioPeaksFor: (_) => landed,
+            projectFrameRate: ProjectFrameRate.fps24,
+          ),
           frameStartIndex: 0,
           frameEndIndexExclusive: 10,
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
           totalFrameContentWidth: 480,
           metrics: TimelineGridMetrics.defaults,
-          exposureStateForLayer: _uncovered,
-          onSelectLayer: (_) {},
-          onSelectFrame: (_) {},
-          audioPeaksFor: (_) => landed,
-          projectFrameRate: ProjectFrameRate.fps24,
         ),
       ),
     ),

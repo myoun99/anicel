@@ -1,5 +1,6 @@
 import 'dart:collection';
 
+import 'block_run_move.dart';
 import 'timeline_exposure.dart';
 
 /// 🚨★★★ THE ONE SPLICE — 유저 확정 2026-08-13 (T2·T3).
@@ -13,9 +14,16 @@ import 'timeline_exposure.dart';
 ///
 /// | verb | N |
 /// |---|---|
-/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, everything after moves right |
+/// | 붙여넣기, 선택 없음 | 0 — nothing comes out, and what follows moves only as far as the clip reaches it; INSIDE a block, the rest of that block (F-236) |
 /// | 붙여넣기, 선택 있음 | the selection's length — 갈아끼우기 |
 /// | 잘라내기 | the selection's length, with no clip going in |
+///
+/// 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+/// 밀려나냐니까? 컷블록이든 프레임이든」 · 「겹치는 공간이 전혀 없는
+/// 붙여넣기인데도 뒤가 밀려나니까 하는소리임」. ↩️N = 0 moved EVERYTHING
+/// after the insertion point right by the clip's length, into empty space
+/// or not; it pushes the way every other insertion does now
+/// ([clearTimelineFrom]).
 ///
 /// The length difference is absorbed by the TAIL: a longer clip pushes, a
 /// shorter one pulls. ⛔Nothing outside the lifted run is ever overwritten —
@@ -40,11 +48,25 @@ import 'timeline_exposure.dart';
 /// the absence of an entry, exactly as they are in a live row, so a copied
 /// gap reproduces as a gap.
 class TimelineClipRow {
-  TimelineClipRow({required Map<int, TimelineExposure> exposures, required this.length})
-    : assert(length >= 0, 'A clip run cannot be shorter than nothing.'),
-      exposures = SplayTreeMap<int, TimelineExposure>.from(exposures);
+  TimelineClipRow({
+    required Map<int, TimelineExposure> exposures,
+    required this.length,
+    required this.timed,
+  }) : assert(length >= 0, 'A clip run cannot be shorter than nothing.'),
+       exposures = SplayTreeMap<int, TimelineExposure>.from(exposures);
 
-  const TimelineClipRow.empty() : exposures = const {}, length = 0;
+  const TimelineClipRow.empty()
+    : exposures = const {},
+      length = 0,
+      timed = true;
+
+  /// ONE comma of [exposure]'s drawing, without its timing — what a copy
+  /// with nothing selected banks (F-152, 유저 2026-09-16: 「그냥 그곳에
+  /// 서있을떄 복사한거면 … 붙혀넣을때 1콤마로서 붙혀넣게」).
+  TimelineClipRow.untimed(TimelineExposure exposure)
+    : exposures = {0: exposure.copyWith(length: 1)},
+      length = 1,
+      timed = false;
 
   /// Offset from the run start → the authored entry beginning there.
   final Map<int, TimelineExposure> exposures;
@@ -54,7 +76,18 @@ class TimelineClipRow {
   /// cells are part of what was selected.
   final int length;
 
+  /// Whether the commas are part of what was copied — a run taken off a
+  /// selection keeps them where it lands (「해당 블록을 선택해서 복사하면
+  /// 콤마 유지되도록」); an [untimed] comma takes the length of the place it
+  /// lands in, when that place is the rest of a block ([spliceTimeline]).
+  final bool timed;
+
   bool get isEmpty => length == 0;
+
+  /// This clip carrying [exposures] instead — the same run, the same
+  /// timing, other entries (a paste re-spelling or re-minting what it lands).
+  TimelineClipRow withExposures(Map<int, TimelineExposure> exposures) =>
+      TimelineClipRow(exposures: exposures, length: length, timed: timed);
 }
 
 /// Makes [index] a block BOUNDARY.
@@ -97,6 +130,45 @@ SplayTreeMap<int, TimelineExposure> splitTimelineAt(
   return next;
 }
 
+/// The block [index] stands inside, from [index] on, made [exposure]'s
+/// drawing — THE division an added frame makes (user's rule 2026-07-27:
+/// `1-----` with the cursor on the third frame becomes `1--o--`, the new
+/// drawing taking over the rest of the hold), and an untimed paste landing
+/// there makes the same one (F-236).
+///
+/// The dots past [index] stay with the frames they time; the head keeps
+/// the memo ([splitTimelineAt]). [index] must be strictly inside a block
+/// ([restOfBlockAt] is positive).
+SplayTreeMap<int, TimelineExposure> blockRestTakenBy(
+  Map<int, TimelineExposure> timeline,
+  int index,
+  TimelineExposure exposure,
+) {
+  assert(restOfBlockAt(timeline, index) > 0, 'not inside a block');
+  final next = splitTimelineAt(timeline, index);
+  final rest = next[index]!;
+  next[index] = exposure.copyWith(
+    length: rest.length,
+    breakdownOffsets: rest.breakdownOffsets,
+  );
+  return next;
+}
+
+/// How many cells of the block [index] stands STRICTLY inside are left from
+/// [index] on — 0 at a block's head, in an empty cell, or past every block.
+int restOfBlockAt(Map<int, TimelineExposure> timeline, int index) {
+  final covering = _coveringEntry(
+    timeline is SplayTreeMap<int, TimelineExposure>
+        ? timeline
+        : SplayTreeMap<int, TimelineExposure>.from(timeline),
+    index,
+  );
+  if (covering == null || covering.key == index) {
+    return 0;
+  }
+  return covering.key + (covering.value.length ?? 1) - index;
+}
+
 /// Everything starting at or after [index] moves by [delta] cells.
 ///
 /// Iteration order matters: moving right walks the keys backwards so a
@@ -127,6 +199,33 @@ SplayTreeMap<int, TimelineExposure> shiftTimelineFrom(
   return next;
 }
 
+/// Everything starting at or after [index] made to clear [frontier] — THE
+/// push an insertion makes ([startsClearingFrontier]): the empty cells
+/// ahead of each block absorb it before it reaches the block behind them,
+/// and a block it never reaches stays where it is.
+SplayTreeMap<int, TimelineExposure> clearTimelineFrom(
+  Map<int, TimelineExposure> timeline,
+  int index, {
+  required int frontier,
+}) {
+  final next = SplayTreeMap<int, TimelineExposure>();
+  final downstream = <int>[];
+  for (final key in SplayTreeMap<int, TimelineExposure>.from(timeline).keys) {
+    if (key < index) {
+      next[key] = timeline[key]!;
+    } else {
+      downstream.add(key);
+    }
+  }
+  final starts = startsClearingFrontier([
+    for (final key in downstream) (start: key, length: timeline[key]!.length!),
+  ], frontier: frontier);
+  for (final (position, key) in downstream.indexed) {
+    next[starts[position]] = timeline[key]!;
+  }
+  return next;
+}
+
 /// Reads [count] cells starting at [index] off the row, without changing it.
 ///
 /// Boundaries are split first, so a range that starts or ends inside a hold
@@ -149,6 +248,7 @@ TimelineClipRow captureTimelineRun({
           entry.key - index: entry.value,
     },
     length: count,
+    timed: true,
   );
 }
 
@@ -163,9 +263,15 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
   int liftCount = 0,
   TimelineClipRow? clip,
 }) {
-  var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
   final inserting = clip;
   final replacing = inserting != null && !inserting.isEmpty;
+  if (liftCount == 0 && replacing) {
+    final inside = _insertedInsideABlock(timeline, index, inserting);
+    if (inside != null) {
+      return inside;
+    }
+  }
+  var next = SplayTreeMap<int, TimelineExposure>.from(timeline);
   if (liftCount > 0) {
     next = splitTimelineAt(next, index);
     next = splitTimelineAt(next, index + liftCount);
@@ -197,11 +303,47 @@ SplayTreeMap<int, TimelineExposure> spliceTimeline({
   if (!replacing) {
     return next;
   }
-  next = shiftTimelineFrom(next, index, inserting.length);
+  // A replace absorbs its own difference in the tail (the T2·T3 table
+  // above); a bare insert pushes the way every insertion does (F-235).
+  next = liftCount > 0
+      ? shiftTimelineFrom(next, index, inserting.length)
+      : clearTimelineFrom(next, index, frontier: index + inserting.length);
   for (final entry in inserting.exposures.entries) {
     next[index + entry.key] = entry.value;
   }
   return next;
+}
+
+/// [clip] inserted at [index] when that is INSIDE a block — null anywhere
+/// else, where the insert is the plain one.
+///
+/// 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑 똑같은
+/// 법 통일」 — an insert that lands inside a block replaces the rest of that
+/// block, as an added frame does. What the clip brings decides the length
+/// (F-236-Q1): a comma copied standing has no timing and takes the rest of
+/// the hold — the very division an added frame makes ([blockRestTakenBy]);
+/// a run copied off a selection keeps its commas and the tail absorbs the
+/// difference, as every replace does (T2·T3): 「선택범위로 코마정보가
+/// 있을때만 코마대로 유지해서 붙여넣어서 뒤가 짧으면 당기고 부족하면 밀고」.
+/// ↩️The block was split and its rest pushed on behind the clip, so the
+/// same drawing came back after it (`1--AB1--`).
+SplayTreeMap<int, TimelineExposure>? _insertedInsideABlock(
+  Map<int, TimelineExposure> timeline,
+  int index,
+  TimelineClipRow clip,
+) {
+  final rest = restOfBlockAt(timeline, index);
+  if (rest == 0) {
+    return null;
+  }
+  return clip.timed
+      ? spliceTimeline(
+          timeline: timeline,
+          index: index,
+          liftCount: rest,
+          clip: clip,
+        )
+      : blockRestTakenBy(timeline, index, clip.exposures[0]!);
 }
 
 MapEntry<int, TimelineExposure>? _coveringEntry(

@@ -10,6 +10,8 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
 import '../../../models/media_asset.dart';
+import '../../../models/timeline_coverage.dart'
+    show TimelineDrawingBlock, drawingBlocks;
 import '../../../models/timeline_empty_gaps.dart' show emptyGapsBetween;
 import '../../../models/timeline_exposure.dart';
 import '../../../models/timeline_repeat.dart' show rederiveRunBehaviors;
@@ -44,6 +46,7 @@ class MediaPlacementDrag {
     required ValueNotifier<TimelineDragPreview?> preview,
     required Layer? Function(LayerId layerId) layerById,
     required int Function() cutFrameCount,
+    required int Function() drawnFrameCount,
     required MediaAsset? Function(String path) assetFor,
     required AudioPeaks? Function(String path) peaksFor,
     required ProjectFrameRate Function() frameRate,
@@ -52,6 +55,7 @@ class MediaPlacementDrag {
   }) : _preview = preview,
        _layerById = layerById,
        _cutFrameCount = cutFrameCount,
+       _drawnFrameCount = drawnFrameCount,
        _assetFor = assetFor,
        _peaksFor = peaksFor,
        _frameRate = frameRate,
@@ -60,7 +64,10 @@ class MediaPlacementDrag {
 
   final ValueNotifier<TimelineDragPreview?> _preview;
   final Layer? Function(LayerId layerId) _layerById;
+  /// Where a row that tiles its cut stops (the conte 尺), and where
+  /// hold/repeat ghosts fill to (the DRAWN end, F-227) — two questions.
   final int Function() _cutFrameCount;
+  final int Function() _drawnFrameCount;
 
   /// The pool entry for a path — the PROJECT's own lookup
   /// ([Project.mediaAssetByPath]). ⛔Not a scan of its own: 「이 경로의 풀
@@ -114,12 +121,41 @@ class MediaPlacementDrag {
     }
     _preview.value = MediaPlacementPreview(
       previewLayers: {
-        layerId: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
+        layerId: rederiveRunBehaviors(
+          after,
+          drawnFrameCount: _drawnFrameCount(),
+        ),
       },
       silhouette: (
         layerId: layerId,
         startIndex: frameIndex,
         endIndexExclusive: frameIndex + count,
+      ),
+    );
+  }
+
+  /// The file stands over a REFERENCE row it would swap into (I-47): what
+  /// would change is the row's own block — nothing moves and nothing new is
+  /// made — so that block is the silhouette (Q1 2026-09-27: 「끄는 동안 행
+  /// 위에 바뀔 블록이 실루엣으로 보이고」), and no preview row: the row stays
+  /// as it is, like an SE cell's.
+  ///
+  /// ⚠️One span, from the row's first block to its last: a reference row is
+  /// one block by construction (a still's pinned cel, a movie's one block),
+  /// and the preview holds one silhouette.
+  void showOnReference({required LayerId layerId}) {
+    final row = _layerById(layerId);
+    final blocks = row == null
+        ? const <TimelineDrawingBlock>[]
+        : drawingBlocks(row.timeline);
+    if (blocks.isEmpty) {
+      return clear();
+    }
+    _preview.value = MediaPlacementPreview(
+      silhouette: (
+        layerId: layerId,
+        startIndex: blocks.first.startIndex,
+        endIndexExclusive: blocks.last.endIndexExclusive,
       ),
     );
   }

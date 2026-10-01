@@ -99,7 +99,14 @@ class FlipHudSnapshot {
     required this.frameIndex,
     required this.frameCount,
     this.playbackFrameCount,
+    this.countsTrackFrames = false,
   });
+
+  /// Whether [frameIndex] and the runs count the TRACK's frames — the
+  /// storyboard's rows, or the track a gap stands on — rather than the
+  /// active cut's own. A row that draws this snapshot follows the playhead
+  /// channel that counts the same way ([PlayheadCursors]).
+  final bool countsTrackFrames;
 
   static const FlipHudSnapshot empty = FlipHudSnapshot(
     rows: <FlipHudRow>[],

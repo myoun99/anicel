@@ -28,6 +28,7 @@ import '../widgets/dock_edge_splitter.dart';
 import '../widgets/settings_rows.dart';
 import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart';
+import '../widgets/pill_strip.dart';
 
 /// The 가져오기/배치 window (§6-z21): ONE window for every import — file
 /// picks, folder drops, OS drag-and-drop all land here, defaults filled
@@ -805,15 +806,14 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
-  /// Why a placement that ran and answered `false` did not land, most
-  /// specific reason first: a build with no renderer, then a destination
-  /// that is not there.
-  /// A MOVIE's door (미디어 배치 라운드 6). Let go on an SE row's empty
-  /// cell it is its sound alone (「SE 행은 소리만 담으므로 영상의 소리만
-  /// 블록이 된다」). Anywhere else the picture lands — cels when it bakes,
-  /// behind the app's one wait window, because a bake is hundreds of them
-  /// (「이런 무거움이 예상되는 로직은 로딩 ui 띄우도록」) — with its sound on
-  /// the SE rows when the 「소리」 answer says so.
+  /// A MOVIE's door (미디어 배치 라운드 6). What lands is the 「소리」
+  /// answer — the picture, the picture with its sound on the SE rows, or
+  /// the sound alone, which is also what an SE row's empty cell takes
+  /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
+  /// [importMovieParts] — the cell used to be answered HERE, straight to a
+  /// sound's door). A picture that bakes lands behind the app's one wait
+  /// window, because a bake is hundreds of cels (「이런 무거움이 예상되는
+  /// 로직은 로딩 ui 띄우도록」).
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
@@ -821,17 +821,6 @@ class _ImportDialogState extends State<ImportDialog> {
     String? sourcePath,
   }) {
     final doors = widget.session.importDoors;
-    final carry = settings.mode == ImportFileMode.keepInside;
-    if (widget.spot is SeCellSpot) {
-      return doors.importSoundFile(
-        path: path,
-        copyIntoProject: carry,
-        inFrame: settings.inFrame,
-        outFrame: settings.outFrame,
-        spot: widget.spot,
-        sourcePath: sourcePath,
-      );
-    }
     Future<bool> place(void Function(int rendered, int total)? progress) =>
         doors.importVideoFile(
           path: path,
@@ -857,6 +846,8 @@ class _ImportDialogState extends State<ImportDialog> {
     );
   }
 
+  /// Why a placement that ran and answered `false` did not land: a build
+  /// with no PDF renderer says so, anything else could not be imported.
   String _placementFailure(
     String path,
     MediaAssetKind? kind,
@@ -1058,9 +1049,9 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
           ),
           Flexible(
-            child: ExportPillStrip(
+            child: PillStrip(
               items: [
-                ExportPillItem(
+                PillItem(
                   keyValue: 'import-place-pool',
                   label: AppText.strings.imPool,
                   selected: !_placing,
@@ -1071,7 +1062,7 @@ class _ImportDialogState extends State<ImportDialog> {
                       ? AppText.strings.imAlreadyPooledTooltip
                       : null,
                 ),
-                ExportPillItem(
+                PillItem(
                   keyValue: 'import-place-timeline',
                   label: AppText.strings.panelTimeline,
                   selected: _placing,
@@ -1154,7 +1145,10 @@ class _ImportDialogState extends State<ImportDialog> {
             Expanded(
               child: ImportPreview(
                 key: const ValueKey<String>('import-preview'),
+                session: widget.session,
                 path: previewPath,
+                opensAsSound:
+                    previewPath != null && _landsAsSound(previewPath),
                 inFrame: settings.inFrame,
                 outFrame: settings.outFrame,
                 // The ends appear wherever they act: on what gets placed,
@@ -1258,16 +1252,25 @@ class _ImportDialogState extends State<ImportDialog> {
       // 「소리열: 추천대로」).
       if (any(_asksSound)) _soundColumn(),
       if (placing && _files.isNotEmpty) _intoColumn(),
-      if (placing && any(_placesPicture)) _fitColumn(placing),
+      // By the file's KIND, not the row's answers: a movie turned to its
+      // sound alone leaves the column standing, its cell blank — a column
+      // that went with the answer would be UI popping out of existence.
+      if (placing && any(_mayPlacePicture)) _fitColumn(placing),
       // 「PSD가 아닌파일은 PSD열 삭제」.
       if (placing && any(importPathIsPsd)) _psdColumn(placing),
     ];
   }
 
-  /// Whether [path] places as a PICTURE — the only thing a fit means
-  /// anything for. A sound goes to the SE rows; a movie is a picture here,
-  /// and its sound follows the 「소리」 answer.
-  bool _placesPicture(String path) => !_isSound(path);
+  /// Whether [path] places as a PICTURE — the only thing a fit or a bake
+  /// means anything for. A sound goes to the SE rows; a movie is a picture
+  /// here, and its sound follows the 「소리」 answer — unless that answer is
+  /// the sound alone.
+  bool _placesPicture(String path) => !_landsAsSound(path);
+
+  /// Whether [path] is a kind that CAN place a picture, whatever its row
+  /// answers — what a column's presence is read from.
+  bool _mayPlacePicture(String path) =>
+      mediaAssetKindForPath(path) != MediaAssetKind.audio;
 
   /// Whether the 「소리」 question is this row's: a movie being placed that
   /// the conform found a sound in ([_probeMovieSound]).
@@ -1277,8 +1280,12 @@ class _ImportDialogState extends State<ImportDialog> {
     hasSound: _movieSound[normalizedMediaPath(path)] ?? false,
   );
 
-  bool _isSound(String path) =>
-      mediaAssetKindForPath(path) == MediaAssetKind.audio;
+  /// Whether [path] lands as a SOUND on the SE rows — a sound file, or a
+  /// movie whose 「소리」 answer is the sound alone ([importLandsAsSound]).
+  bool _landsAsSound(String path) => importLandsAsSound(
+    kind: mediaAssetKindForPath(path),
+    settings: _settingsFor(path),
+  );
 
   ImportColumn<Object?> _fileColumn() => ImportColumn<Object?>(
     id: 'file',
@@ -1311,10 +1318,9 @@ class _ImportDialogState extends State<ImportDialog> {
     values: const [false, true],
     labelOf: (value) => importOnOffLabel(value == true),
     valueOf: (path) => _settingsFor(path).bake,
-    appliesTo: (path) => importBakeAllowed(
-      kind: mediaAssetKindForPath(path),
-      placing: placing,
-    ),
+    appliesTo: (path) =>
+        _placesPicture(path) &&
+        importBakeAllowed(kind: mediaAssetKindForPath(path), placing: placing),
     enabledFor: (path, value) =>
         value == true ||
         !importBakeLocked(
@@ -1329,19 +1335,23 @@ class _ImportDialogState extends State<ImportDialog> {
     ),
   );
 
+  /// What of a movie comes in — 끔 (the picture), 켬 (the picture and its
+  /// sound) and, since 유저 2026-09-27 (「소리만 임포트 영상만 임포트도
+  /// 고를수있게」), the sound alone ([MovieParts]).
   ImportColumn<Object?> _soundColumn() => ImportColumn<Object?>(
     id: 'sound',
     label: AppText.strings.imSound,
-    style: ImportColumnStyle.toggle,
-    values: const [false, true],
-    labelOf: (value) => importOnOffLabel(value == true),
-    valueOf: (path) => _settingsFor(path).sound,
+    values: MovieParts.values,
+    labelOf: (value) => importMoviePartsLabel(value! as MovieParts),
+    valueOf: (path) => _settingsFor(path).movieParts,
     appliesTo: _asksSound,
+    // What the drop's place keeps in is not an answer to take out
+    // ([importMovieParts]).
     enabledFor: (path, value) =>
-        value == true || !importSoundLocked(widget.spot),
+        importMovieParts(value! as MovieParts, widget.spot) == value,
     onPick: (paths, value) => _setSettings(
       paths,
-      (settings) => settings.copyWith(sound: value == true),
+      (settings) => settings.copyWith(movieParts: value! as MovieParts),
     ),
   );
 
@@ -1366,12 +1376,12 @@ class _ImportDialogState extends State<ImportDialog> {
       // A sound's place is the SE rows' own rule (유저 2026-09-11: 「SE1부터
       // … 겹치지 않는 … 기존 SE행 … 없으면 새 SE행」) — answered, so shown
       // locked, like every answer the context gave.
-      valueOf: (path) => _isSound(path)
+      valueOf: (path) => _landsAsSound(path)
           ? (spot is SeCellSpot ? spot : const _SoundOnSeRows())
           : answering ?? _settingsFor(path).into,
       appliesTo: (path) => true,
       enabledFor: (path, value) =>
-          !_isSound(path) &&
+          !_landsAsSound(path) &&
           (value != ImportDestination.activeCutLayer ||
               widget.session.activeCutOrNull != null),
       onPick: (paths, value) {
@@ -1402,6 +1412,10 @@ class _ImportDialogState extends State<ImportDialog> {
             '',
         shownCell + 1,
       ),
+    // Never opens this window — a swap has nothing to ask (I-47) — but a
+    // spot is a spot, and this one names its row.
+    ReferenceSwapSpot(:final layerId) =>
+      widget.session.layerById(layerId)?.name ?? '',
   };
 
   ImportColumn<Object?> _fitColumn(bool placing) => ImportColumn<Object?>(

@@ -124,18 +124,17 @@ class _WorkspaceFlipHud {
   /// changes, which is exactly what the flip itself does down in the
   /// session. A panel is a run, the space between cuts is uncovered.
   FlipHudSnapshot _flipHudTrackSnapshot(EditorSessionManager session) {
-    final trackId = session.selectedTrackId;
-    final entries = [
-      for (final entry in session.projectSettings.projectLayout())
-        if (entry.trackId == trackId) entry,
-    ];
+    // ⛔The session's track axis, not a walk of its own — see
+    // [storyboardActiveTrackLayout] (one track a film, 전제 8, so its
+    // whole-layout fallback answers the same).
+    final entries = session.trackFrameAxis().entries;
     if (entries.isEmpty) {
       return FlipHudSnapshot.empty;
     }
     // Where the storyboard shows the playhead — the frame the track's flip
     // leaves from ([TrackFrameAxis.storyboardFrameOf]).
     final globalFrame =
-        storyboardPlayheadFrame(session) ?? session.editingGlobalFrame;
+        session.playheadCursors.trackFrameNow() ?? session.editingGlobalFrame;
     return FlipHudSnapshot(
       rows: [
         flipHudTrackRow(
@@ -149,6 +148,7 @@ class _WorkspaceFlipHud {
       // last cut. The axis has to reach wherever it is standing or the
       // window would show the final cut as the column you are on.
       frameCount: math.max(entries.last.endFrame, globalFrame + 1),
+      countsTrackFrames: true,
     );
   }
 }

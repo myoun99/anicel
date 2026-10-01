@@ -1,6 +1,4 @@
 import 'versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import 'app_support_path.dart';
 import 'provider_documents.dart';
@@ -40,17 +38,11 @@ class RecentProjectsStore {
       ) ??
       const RecentProjects();
 
-  void save(RecentProjects projects) {
-    try {
-      final file = File(filePath);
-      file.parent.createSync(recursive: true);
-      file.writeAsStringSync(
-        jsonEncode({'version': version, ...projects.toJson()}),
-      );
-    } on Object {
-      // Best-effort; the live list stays valid for this session.
-    }
-  }
+  void save(RecentProjects projects) => saveVersionedSettingsSync(
+    filePath: filePath,
+    version: version,
+    json: projects.toJson(),
+  );
 }
 
 /// Records an open, in memory and on disk.

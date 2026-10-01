@@ -18,17 +18,16 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
-import 'package:anicel/src/ui/canvas/canvas_point_gizmo.dart';
-import 'package:anicel/src/ui/canvas/layer_transform_box.dart';
+import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
-/// 🚨The gizmos edit a row's OWN pose, and a row's own pose lives in its
+/// 🚨The row's box edits a row's OWN pose, and a row's own pose lives in its
 /// PARENT's space — the folders above it. On the canvas that space is where
-/// the folders' placement puts it, so a gizmo stands where its value shows
+/// the folders' placement puts it, so each grab stands where its value shows
 /// and a drag lands back through the same placement.
 ///
 /// 🔬Found with the placement law (a-posed-folder-and-the-pen, 2026-09-25):
@@ -105,7 +104,7 @@ void main() {
     final session = sessionOf(tester);
     session.selectLayer(row);
     await pumpFrames(tester);
-    final landed = session.pixelEditingCoordinator!.commitSourceStroke(
+    final landed = session.pixelEditing.coordinator!.commitSourceStroke(
       sourceDabs: [
         BrushDab(
           center: CanvasPoint(x: centre.x + 30, y: centre.y + 20),
@@ -126,12 +125,8 @@ void main() {
     return session;
   }
 
-  CanvasPointGizmo gizmo(WidgetTester tester, HandleGlyph glyph) =>
-      tester.widget<CanvasPointGizmo>(
-        find.byWidgetPredicate(
-          (widget) => widget is CanvasPointGizmo && widget.glyph == glyph,
-        ),
-      );
+  RowTransformBox boxOf(WidgetTester tester) =>
+      tester.widget<RowTransformBox>(find.byType(RowTransformBox));
 
   TransformPose ownPose(EditorSessionManager session) =>
       session.layerPoseAtFrame(
@@ -149,17 +144,17 @@ void main() {
       center: CanvasPoint(x: centre.x + 200, y: centre.y),
     );
 
-    testWidgets('the crosshair stands on the picture it moves, and a drag '
-        'moves the row by the drag', (tester) async {
+    testWidgets('the box stands on the picture it moves, and a drag moves the '
+        'row by the drag', (tester) async {
       final session = await standOnTheRowsTransform(tester, movedRight);
-      final crosshair = gizmo(tester, HandleGlyph.crosshair);
+      final box = boxOf(tester);
       expectPoint(
-        crosshair.point,
+        box.pose.center,
         CanvasPoint(x: centre.x + 200, y: centre.y),
         'the row\'s pivot shows 200 to the right, where the folder puts it',
       );
 
-      crosshair.onCommitted(CanvasPoint(x: centre.x + 230, y: centre.y + 10));
+      box.move!.committed(CanvasPoint(x: centre.x + 230, y: centre.y + 10));
       await tester.pump();
       expectPoint(
         ownPose(session).center,
@@ -171,14 +166,14 @@ void main() {
     testWidgets('the anchor stands where the folder shows it, and lands back '
         'through it', (tester) async {
       final session = await standOnTheRowsTransform(tester, movedRight);
-      final anchor = gizmo(tester, HandleGlyph.anchor);
+      final cross = boxOf(tester).cross!;
       expectPoint(
-        anchor.point,
+        cross.at,
         CanvasPoint(x: centre.x + 200, y: centre.y),
         'the anchor, carried by the folder like everything in it',
       );
 
-      anchor.onCommitted(CanvasPoint(x: centre.x + 210, y: centre.y + 5));
+      cross.landing.committed(CanvasPoint(x: centre.x + 210, y: centre.y + 5));
       await tester.pump();
       expectPoint(
         session.layerAnchorPointAtFrame(
@@ -197,12 +192,12 @@ void main() {
     testWidgets('the box turns the picture as the folder shows it, and its '
         'turn is the row\'s own', (tester) async {
       final session = await standOnTheRowsTransform(tester, turned);
-      final box = tester.widget<LayerTransformBox>(
-        find.byType(LayerTransformBox),
+      final box = tester.widget<RowTransformBox>(
+        find.byType(RowTransformBox),
       );
       expect(box.pose.rotationDegrees, closeTo(30, 0.001));
 
-      box.onRotationCommitted(50);
+      box.turn!.committed(50);
       await tester.pump();
       expect(
         ownPose(session).rotationDegrees,
@@ -215,13 +210,13 @@ void main() {
   group('in a folder scaled 2x', () {
     final twice = TransformPose(center: centre, zoom: 2);
 
-    testWidgets('a crosshair drag lands under the pointer — half the drag, '
-        'in the folder', (tester) async {
+    testWidgets('a move lands under the pointer — half the drag, in the '
+        'folder', (tester) async {
       final session = await standOnTheRowsTransform(tester, twice);
-      final crosshair = gizmo(tester, HandleGlyph.crosshair);
-      expectPoint(crosshair.point, centre, 'the centre stays the centre');
+      final box = boxOf(tester);
+      expectPoint(box.pose.center, centre, 'the centre stays the centre');
 
-      crosshair.onCommitted(CanvasPoint(x: centre.x + 40, y: centre.y + 20));
+      box.move!.committed(CanvasPoint(x: centre.x + 40, y: centre.y + 20));
       await tester.pump();
       expectPoint(
         ownPose(session).center,
@@ -233,8 +228,8 @@ void main() {
     testWidgets('the box frames the picture as the folder shows it, and its '
         'scale is the row\'s own', (tester) async {
       final session = await standOnTheRowsTransform(tester, twice);
-      final box = tester.widget<LayerTransformBox>(
-        find.byType(LayerTransformBox),
+      final box = tester.widget<RowTransformBox>(
+        find.byType(RowTransformBox),
       );
       expect(
         box.pose.zoom,
@@ -242,7 +237,7 @@ void main() {
         reason: 'the box draws the row at the zoom the canvas shows it',
       );
 
-      box.onScaleCommitted(3);
+      box.scale!.committed(3);
       await tester.pump();
       expect(
         ownPose(session).zoom,

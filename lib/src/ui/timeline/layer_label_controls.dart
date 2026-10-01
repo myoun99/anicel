@@ -1260,22 +1260,19 @@ List<PanelFlyoutEntry> layerTakeFlyoutEntries({
   required int? selectedTake,
   required void Function(int? take) onSelected,
   bool offerLatest = false,
-}) => [
-  if (offerLatest)
-    PanelFlyoutItem(
-      keyValue: 'layer-take-option-latest',
-      label: AppText.strings.exTakeLatest,
-      selected: selectedTake == null,
-      onSelected: () => onSelected(null),
-    ),
-  for (final take in LayerMark.takeChoices)
-    PanelFlyoutItem(
-      keyValue: 'layer-take-option-$take',
-      label: AppText.strings.tlLayerTakeNumber(take),
-      selected: take == selectedTake,
-      onSelected: () => onSelected(take),
-    ),
-];
+}) => <int?>[
+  if (offerLatest) null,
+  ...LayerMark.takeChoices,
+].asFlyoutValueChoices(
+  current: selectedTake,
+  choiceOf: (take) => PanelFlyoutChoice(
+    key: 'layer-take-option-${take ?? 'latest'}',
+    label: take == null
+        ? AppText.strings.exTakeLatest
+        : AppText.strings.tlLayerTakeNumber(take),
+  ),
+  onPicked: onSelected,
+);
 
 /// The colour plate alone, read-only: [LayerMarkChip]'s left half without
 /// its trigger. The export window's layer list draws the rail's own plate

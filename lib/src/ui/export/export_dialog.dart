@@ -15,12 +15,14 @@ import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
+import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart' show FolderPicker;
+import '../../services/persistence/session_scratch.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
@@ -30,7 +32,10 @@ import '../../models/app_language.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_windows.dart';
 import '../../models/conte/conte_words.dart';
+import '../../models/conte/conte_page_marks.dart'
+    show contePictureOf, contePictureRenderWidth;
 import '../../models/conte/conte_sheet_layout.dart';
+import '../../models/sheet_marks.dart' show SheetPictureKey;
 import '../../models/conte/conte_sheet_source.dart';
 import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
@@ -40,6 +45,7 @@ import '../../models/project.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
+import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
 import '../conte/conte_words_in.dart';
 import '../envelope/cut_envelope_builder.dart';
@@ -78,6 +84,7 @@ import '../../models/timesheet_document.dart';
 import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart'
     show TimesheetDocumentLayout;
+import '../timesheet/cut_sheet_document.dart';
 import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
 import '../timesheet/timesheet_words_in.dart';
 import '../widgets/app_window.dart';
@@ -87,6 +94,7 @@ import '../text/app_face.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import '../widgets/pill_strip.dart';
 
 /// One row of the output-cel list: the cut it belongs to, the bundle's
 /// axis layer, its plate (none for an instruction row), where its sheets
@@ -150,28 +158,38 @@ class ExportDialogState extends State<ExportDialog> {
 
   ExportTab _tab = ExportTab.sequence;
   late ExportTabSpecs _specs;
-  String? _location;
 
-  /// The security-scoped token for [_location], when the OS issued one
-  /// (macOS/iOS). Persisted with the path so the replayed location can be
-  /// WRITTEN to after a relaunch, not just displayed
-  /// (Q-scoped-folder-settings, 유저 08-26).
+  /// Where the outputs go; null until the user picks. A folder carries the
+  /// security-scoped token the OS issued for it (macOS/iOS), which is what
+  /// lets the replayed location be WRITTEN to after a relaunch, not just
+  /// displayed (Q-scoped-folder-settings, 유저 08-26). 「끝나면 고르기」
+  /// (drive-folder-windows-Q1) writes into an outbox of the run's own
+  /// ([_runOutbox]) and [handOverFilesForUser] takes it from there.
   ///
-  /// ⚠️ The pair moves through [_setLocation] ONLY. Written separately
-  /// they drift, and a bookmark that outlived its path is a grant for
-  /// somewhere else — jobs carry bare paths, so the setter is what
-  /// decides the token's fate on every move.
-  String? _locationBookmark;
+  /// ⚠️ONE value on purpose. The path and its token were two fields kept
+  /// together by one setter — a bookmark that outlived its path is a grant
+  /// for somewhere else — and 「끝나면 고르기」 would have made a third to
+  /// keep apart from them. As one value, no code can leave half of a
+  /// destination behind.
+  ExportDestination? _destination;
+
+  /// The chosen folder's path; null while the outputs are handed over or
+  /// nothing is chosen.
+  String? get _location => switch (_destination) {
+    ExportIntoFolder(:final folder) => folder.path,
+    _ => null,
+  };
+
   bool _presetsOpen = true;
   bool _queueOpen = true;
 
-  /// See [_locationBookmark] — the one door the pair moves through.
-  /// A path with no [bookmark] (a queue job replay, the test seam)
-  /// clears the token: better to re-ask than to write somewhere else.
-  void _setLocation(String? path, {String? bookmark}) {
-    _location = path;
-    _locationBookmark = bookmark;
-  }
+  /// Where the run under way writes when it hands over — its own folder in
+  /// this run's room ([SessionScratch.outboxFolder]); null otherwise.
+  String? _runOutbox;
+
+  /// Where the run under way writes: its outbox when it hands over, the
+  /// chosen folder otherwise.
+  String get _outputDirectory => _runOutbox ?? _location!;
 
   final Map<String, bool> _expanded = {};
   final ExportQueueModel _queue = ExportQueueModel();
@@ -224,10 +242,7 @@ class ExportDialogState extends State<ExportDialog> {
     _anchorCut = _session.activeCutSpan.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
-    _setLocation(
-      restored.lastLocation?.path,
-      bookmark: restored.lastLocation?.bookmark,
-    );
+    _destination = restored.lastDestination;
     _presetsOpen = restored.presetsDrawerOpen;
     _queueOpen = restored.queueDrawerOpen;
     final projectName = sanitizeExportFileComponent(
@@ -278,10 +293,7 @@ class ExportDialogState extends State<ExportDialog> {
     AppExport.settings.value = loaded;
     setState(() {
       _specs = loaded.lastSpecs;
-      final location = loaded.lastLocation;
-      if (location != null) {
-        _setLocation(location.path, bookmark: location.bookmark);
-      }
+      _destination = loaded.lastDestination ?? _destination;
       _presetsOpen = loaded.presetsDrawerOpen;
       _queueOpen = loaded.queueDrawerOpen;
       _syncControllersFromSpecs();
@@ -293,19 +305,31 @@ class ExportDialogState extends State<ExportDialog> {
   /// stored path without its resolved bookmark is refused at the first
   /// write, silently. Follows a folder the user renamed, and persists
   /// only when something actually moved. A token that will not resolve
-  /// leaves the pair untouched (unavailable is not deleted).
+  /// leaves the folder untouched (unavailable is not deleted), and so does
+  /// a destination the user changed while the token was resolving.
   Future<void> _resolveLocationGrant() async {
-    final token = _locationBookmark;
+    final replayed = _destination;
+    if (replayed is! ExportIntoFolder) {
+      return;
+    }
+    final token = replayed.folder.bookmark;
     if (token == null) {
       return;
     }
     final grant = await FolderPicker.resolveBookmark(token);
     final path = grant.path;
-    if (!mounted || !grant.isGranted || path == null) {
+    if (!mounted ||
+        !grant.isGranted ||
+        path == null ||
+        !identical(_destination, replayed)) {
       return;
     }
-    final moved = path != _location;
-    setState(() => _setLocation(path, bookmark: grant.bookmark ?? token));
+    final moved = path != replayed.folder.path;
+    setState(
+      () => _destination = ExportIntoFolder(
+        GrantedDirectory(path: path, bookmark: grant.bookmark ?? token),
+      ),
+    );
     if (moved) {
       _persist();
     }
@@ -353,12 +377,9 @@ class ExportDialogState extends State<ExportDialog> {
   // --- state plumbing -------------------------------------------------------
 
   void _persist() {
-    final location = _location;
     final next = AppExport.settings.value.copyWith(
       lastSpecs: _specs,
-      lastLocation: location == null
-          ? null
-          : GrantedDirectory(path: location, bookmark: _locationBookmark),
+      lastDestination: _destination,
       presetsDrawerOpen: _presetsOpen,
       queueDrawerOpen: _queueOpen,
     );
@@ -413,13 +434,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// wrote that guard out; it is the same law each time — a run in flight
   /// owns the spec — so one place says it.
   /// One segment of a module's pill strip; the strip is the window's one
-  /// grouped-choice control ([ExportPillStrip]).
-  ExportPillItem _pill({
+  /// grouped-choice control ([PillStrip]).
+  PillItem _pill({
     required String keyValue,
     required String label,
     required bool selected,
     required VoidCallback onPick,
-  }) => ExportPillItem(
+  }) => PillItem(
     keyValue: keyValue,
     label: label,
     selected: selected,
@@ -572,15 +593,14 @@ class ExportDialogState extends State<ExportDialog> {
       label: celGroupCutName(project, shown),
       expand: true,
       enabled: cuts.length > 1 && !_isExporting,
-      entriesBuilder: () => [
-        for (final cut in cuts)
-          PanelFlyoutItem(
-            keyValue: 'export-cels-cut-${cut.id.value}',
-            label: celGroupCutName(project, cut),
-            selected: cut.id == shown.id,
-            onSelected: () => _showCelCut(cut),
-          ),
-      ],
+      entriesBuilder: () => cuts.asFlyoutValueChoices(
+        current: cuts.where((cut) => cut.id == shown.id).firstOrNull,
+        choiceOf: (cut) => PanelFlyoutChoice(
+          key: 'export-cels-cut-${cut.id.value}',
+          label: celGroupCutName(project, cut),
+        ),
+        onPicked: _showCelCut,
+      ),
     );
   }
 
@@ -890,13 +910,9 @@ class ExportDialogState extends State<ExportDialog> {
     if (cached != null && identical(cached.$1, cut)) {
       return cached;
     }
-    final document = TimesheetDocument.fromCut(
+    final document = cutSheetDocument(
+      _session,
       cut: cut,
-      projectName: _session.repository.requireProject().name,
-      fps: _session.projectSettings.projectFps,
-      info: _session.timesheetInfo,
-      instructionDefById: _session.camera.cameraInstructionSet.defById,
-      trackSeLayers: _session.activeTrack.seLayers,
       cutStartFrame: _trackStartOf(cut),
     );
     final layout = TimesheetDocumentLayout(document: document);
@@ -1049,6 +1065,9 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// ⛔ONE for the three sheets: the conte and the envelope each composed
   /// their own, and the timesheet's would have been the third.
+  ///
+  /// The ink is read as a LOOK, like every render's cel ([CelRead.look]):
+  /// a sheet nobody has open keeps its ink parked.
   Future<Map<BrushFrameKey, ui.Image>> _renderSheetInk(
     Iterable<BrushFrameKey> keys,
   ) async {
@@ -1058,7 +1077,9 @@ class ExportDialogState extends State<ExportDialog> {
       if (images.containsKey(key)) {
         continue;
       }
-      final surface = caches.sheetInkStoreFor(key)?.bakedSurfaceOrNull(key);
+      final surface = caches
+          .sheetInkStoreFor(key)
+          ?.bakedSurfaceOrNull(key, read: CelRead.look);
       if (surface == null) {
         continue;
       }
@@ -1175,11 +1196,12 @@ class ExportDialogState extends State<ExportDialog> {
     return null;
   }
 
-  /// Renders each cell picture the conte [pages] name, once, camera-framed
-  /// at [size] — fresh composites straight from the brush store (the
-  /// storyboard thumbnail rule: the cache is panel-resolution, an export
-  /// re-renders). [have] says which keys the caller already holds, and
-  /// [take] receives each image and owns it from then on.
+  /// Renders each cell picture the conte [pages] name, once — a window's
+  /// [width] wide ([contePictureRenderWidth]) — fresh composites straight from
+  /// the brush store (the storyboard thumbnail rule: the cache is
+  /// panel-resolution, an export re-renders). [have] says which keys the
+  /// caller already holds, and [take] receives each image and owns it from
+  /// then on.
   ///
   /// ⛔ONE WALK FOR BOTH CONTE EXPORTS. The sheets and the PDF each wrote
   /// out the page/cell nesting, the (cut, frame) dedupe key, the cancel
@@ -1188,15 +1210,16 @@ class ExportDialogState extends State<ExportDialog> {
   /// different picture than the other.
   Future<void> _forEachContePicture(
     List<ContePageLayout> pages, {
-    required CanvasSize size,
-    required bool Function((String, int) key) have,
-    required Future<void> Function((String, int) key, ui.Image image) take,
+    required int width,
+    required bool Function(SheetPictureKey key) have,
+    required Future<void> Function(SheetPictureKey key, ui.Image image) take,
   }) async {
-    _contePictureSize = size;
+    _contePictureSize = _session.camera.cameraFrameSize.scaledToWidth(width);
     final renderer = ExportFrameRenderer(session: _session);
     for (final page in pages) {
       for (final cell in page.cells) {
-        final key = (cell.cutId, cell.source.pictureFrame);
+        final picture = contePictureOf(cell, page.metrics);
+        final key = picture.key;
         if (have(key) || _cancelRequested) {
           continue;
         }
@@ -1206,15 +1229,17 @@ class ExportDialogState extends State<ExportDialog> {
         }
         await take(
           key,
-          await renderer.renderComposite(
-            ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
-            ExportSizeMode.camera,
-            outputSize: size,
+          await renderer.renderPicture(
+            cut,
+            picture.pictureFrame,
+            width: contePictureRenderWidth(picture, page.metrics, width),
+            region: picture.canvasRegion,
           ),
         );
       }
     }
   }
+
 
   /// One conte page rendered with its cell pictures and sheet ink alive
   /// for exactly that render and disposed after — the preview's and the
@@ -1236,9 +1261,10 @@ class ExportDialogState extends State<ExportDialog> {
       return await renderContePageImage(
         page: page,
         source: source,
-        pictureFor: (cutId, frame, _) => pictures[(cutId, frame)],
+        pictureFor: (picture, _) => pictures[picture.key],
         imageFor: (path) => images[path],
         inkImageFor: (key) => ink[key],
+        picturesOverInk: contePicturesOverInkIn(_session, page),
         scale: scale,
         outputSize: outputSize,
         words: words,
@@ -1254,16 +1280,16 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// Renders every cell's picture once, camera-framed at [width].
-  Future<Map<(String, int), ui.Image>> _renderContePictures(
+  /// Renders every cell's picture once, a window's [width] wide.
+  Future<Map<SheetPictureKey, ui.Image>> _renderContePictures(
     List<ContePageLayout> pages, {
     required int width,
   }) async {
-    final images = <(String, int), ui.Image>{};
+    final images = <SheetPictureKey, ui.Image>{};
     try {
       await _forEachContePicture(
         pages,
-        size: _session.camera.cameraFrameSize.scaledToWidth(width),
+        width: width,
         have: images.containsKey,
         take: (key, image) async => images[key] = image,
       );
@@ -1315,7 +1341,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// Test seam: sets the destination without the platform picker.
   @visibleForTesting
   void debugSetLocationForTests(String location) {
-    setState(() => _setLocation(location));
+    setState(
+      () => _destination = ExportIntoFolder(GrantedDirectory(path: location)),
+    );
   }
 
   String _sequenceFileNameFor(int index) {
@@ -1876,8 +1904,7 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   String _outputLine() {
-    final location = _location;
-    if (location == null || location.isEmpty) {
+    if (!_hasDestination) {
       return AppText.strings.exChooseLocation;
     }
     final (:name, :more) = _firstOutputFile();
@@ -2071,10 +2098,14 @@ class ExportDialogState extends State<ExportDialog> {
         : const ui.Color(0xFFFFFFFF),
   );
 
-  bool get _hasLocation => _location != null && _location!.isNotEmpty;
+  bool get _hasDestination => switch (_destination) {
+    ExportIntoFolder(:final folder) => folder.path.isNotEmpty,
+    ExportHandOver() => true,
+    null => false,
+  };
 
   bool get _canExport {
-    if (_isExporting || !_hasLocation) {
+    if (_isExporting || !_hasDestination) {
       return false;
     }
     switch (_tab) {
@@ -2099,7 +2130,7 @@ class ExportDialogState extends State<ExportDialog> {
   // --- export runners -------------------------------------------------------
 
   String _joinLocation(String name) =>
-      '$_location${Platform.pathSeparator}$name';
+      '$_outputDirectory${Platform.pathSeparator}$name';
 
   void _reportProgress(int completed, int total) {
     if (mounted) {
@@ -2142,6 +2173,85 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
+  /// [run] where the destination sends it: into [_location] — or, handing
+  /// over, into an outbox of its own, answered with the run's sentence so
+  /// the caller hands the outbox over when its time comes (at once for
+  /// Export, after the last job for the queue). A run that was stopped or
+  /// failed leaves nothing to hand over.
+  Future<({String message, String? outbox})> _runIntoDestination(
+    Future<String> Function() run,
+  ) async {
+    if (_destination is! ExportHandOver) {
+      return (message: await run(), outbox: null);
+    }
+    final outbox = _freshOutbox();
+    _runOutbox = outbox;
+    try {
+      final message = await run();
+      if (_cancelRequested) {
+        _discardOutboxes([outbox]);
+        return (message: message, outbox: null);
+      }
+      return (message: message, outbox: outbox);
+    } on Object {
+      _discardOutboxes([outbox]);
+      rethrow;
+    } finally {
+      _runOutbox = null;
+    }
+  }
+
+  String _freshOutbox() {
+    final outbox =
+        '${SessionScratch.outboxFolder()}${Platform.pathSeparator}'
+        '${DateTime.now().microsecondsSinceEpoch}';
+    Directory(outbox).createSync(recursive: true);
+    return outbox;
+  }
+
+  /// Hands everything the [outboxes] hold to the user in ONE window
+  /// ([handOverFilesForUser]), and answers the sentence the run ends on
+  /// when the hand-over changed it — declined, or failed on the way — or
+  /// null when the run's own sentence stands. Export and the queue end
+  /// their runs through it alike.
+  ///
+  /// What was handed over is gone from the room afterwards — and so is
+  /// what the user declined or what failed to arrive: nothing asks for it
+  /// again. What another app was only offered (Android's share sheet)
+  /// stays for it to read, and goes with the run.
+  Future<String?> _handOverOutboxes(List<String> outboxes) async {
+    var handed = HandOver.declined;
+    try {
+      final outputs = [
+        for (final outbox in outboxes)
+          for (final entry in Directory(outbox).listSync()) entry.path,
+      ];
+      if (outputs.isEmpty || !mounted) {
+        return null;
+      }
+      handed = await handOverFilesForUser(context, paths: outputs);
+      return handed == HandOver.declined
+          ? AppText.strings.exHandOverDeclined
+          : null;
+    } on Object catch (error) {
+      return AppText.strings.exFailed(error);
+    } finally {
+      if (handed != HandOver.offered) {
+        _discardOutboxes(outboxes);
+      }
+    }
+  }
+
+  void _discardOutboxes(List<String> outboxes) {
+    for (final outbox in outboxes) {
+      try {
+        Directory(outbox).deleteSync(recursive: true);
+      } on FileSystemException {
+        // The room goes with the run.
+      }
+    }
+  }
+
   /// The CURRENT tab's export, as one message-returning run — the Export
   /// button wraps it in the guard, the queue runner drives it per job.
   Future<String> _runCurrentTabExport() {
@@ -2170,7 +2280,14 @@ class ExportDialogState extends State<ExportDialog> {
     if (!_canExport) {
       return;
     }
-    await _runGuarded(_runCurrentTabExport);
+    await _runGuarded(() async {
+      final ran = await _runIntoDestination(_runCurrentTabExport);
+      final outbox = ran.outbox;
+      if (outbox == null) {
+        return ran.message;
+      }
+      return await _handOverOutboxes([outbox]) ?? ran.message;
+    });
   }
 
   // --- the render queue (EX7) -----------------------------------------------
@@ -2205,7 +2322,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _queue.enqueue(
       spec: _specs.specFor(_tab),
-      outputDirectory: _location!,
+      destination: _destination!,
       fileName: _singleFileNameForCurrentTab(),
     );
     setState(() {});
@@ -2222,7 +2339,7 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _tab = job.tab;
       _specs = _specs.withSpec(job.spec);
-      _setLocation(job.outputDirectory);
+      _destination = job.destination;
       final controller = _fileControllerFor(job.tab);
       final fileName = job.fileName;
       if (controller != null && fileName != null) {
@@ -2263,8 +2380,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     final snapshotTab = _tab;
     final snapshotSpecs = _specs;
-    final snapshotLocation = _location;
-    final snapshotLocationBookmark = _locationBookmark;
+    final snapshotDestination = _destination;
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
@@ -2272,18 +2388,26 @@ class ExportDialogState extends State<ExportDialog> {
     });
     var succeeded = 0;
     var failed = 0;
+    // Every job that hands over leaves its outbox here, and they go to the
+    // user in ONE window once the last job is done — a queue of five does
+    // not ask five times where its outputs go.
+    final outboxes = <String>[];
+    String? handOverSaid;
     try {
       while (!_cancelRequested) {
         final job = _queue.nextQueued;
         if (job == null) {
           break;
         }
-        final status = await _runQueuedJob(job);
+        final status = await _runQueuedJob(job, outboxes);
         if (status == ExportJobStatus.succeeded) {
           succeeded += 1;
         } else if (status == ExportJobStatus.failed) {
           failed += 1;
         }
+      }
+      if (outboxes.isNotEmpty) {
+        handOverSaid = await _handOverOutboxes(outboxes);
       }
     } finally {
       _activeJobId = null;
@@ -2293,9 +2417,10 @@ class ExportDialogState extends State<ExportDialog> {
           _progress = null;
           _tab = snapshotTab;
           _specs = snapshotSpecs;
-          _setLocation(snapshotLocation, bookmark: snapshotLocationBookmark);
+          _destination = snapshotDestination;
           _syncControllersFromSpecs();
-          _statusMessage = _queueRestSentence(succeeded, failed);
+          _statusMessage =
+              handOverSaid ?? _queueRestSentence(succeeded, failed);
         });
         _persist();
         _preview.clear();
@@ -2312,7 +2437,12 @@ class ExportDialogState extends State<ExportDialog> {
   /// ⚠️A failure is caught HERE, which is what 부분 실패 means: the runner
   /// above never sees a throw and carries on to the next job. Cancel ends
   /// the job as cancelled, and the runner counts it as neither.
-  Future<ExportJobStatus> _runQueuedJob(ExportJob job) async {
+  ///
+  /// A job that hands over leaves its outbox in [outboxes] for the runner.
+  Future<ExportJobStatus> _runQueuedJob(
+    ExportJob job,
+    List<String> outboxes,
+  ) async {
     _activeJobId = job.id;
     _queue.update(
       job.id,
@@ -2321,7 +2451,11 @@ class ExportDialogState extends State<ExportDialog> {
     _loadJobIntoForm(job);
     _refreshPreview();
     try {
-      final message = await _runCurrentTabExport();
+      final ran = await _runIntoDestination(_runCurrentTabExport);
+      if (ran.outbox case final outbox?) {
+        outboxes.add(outbox);
+      }
+      final message = ran.message;
       final status = _cancelRequested
           ? ExportJobStatus.cancelled
           : ExportJobStatus.succeeded;
@@ -2373,7 +2507,7 @@ class ExportDialogState extends State<ExportDialog> {
       count: count,
       renderImage: renderImage,
       fileNameFor: fileNameFor,
-      directoryPath: _location!,
+      directoryPath: _outputDirectory,
       encode: encode,
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
@@ -2456,10 +2590,10 @@ class ExportDialogState extends State<ExportDialog> {
     // before the next renders — only the raw copies (the document's own
     // material) live to the end.
     _reportProgress(0, pages.length + 1);
-    final pdfPictures = <(String, int), ContePdfPicture>{};
+    final pdfPictures = <SheetPictureKey, ContePdfPicture>{};
     await _forEachContePicture(
       pages,
-      size: cameraSize,
+      width: cameraSize.width,
       have: pdfPictures.containsKey,
       take: (key, image) async {
         try {
@@ -2516,6 +2650,7 @@ class ExportDialogState extends State<ExportDialog> {
       pictures: pdfPictures,
       images: pdfImages,
       inkPictures: inkPictures,
+      picturesOverInkOf: (page) => contePicturesOverInkIn(_session, page),
       words: words,
     );
     final file = File(_joinLocation('conte.pdf'));
@@ -2617,7 +2752,7 @@ class ExportDialogState extends State<ExportDialog> {
       count: 1,
       renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
       fileNameFor: (_) => fileName,
-      directoryPath: _location!,
+      directoryPath: _outputDirectory,
       encode: _stillEncodeFor(spec.format),
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
@@ -2794,7 +2929,10 @@ class ExportDialogState extends State<ExportDialog> {
       if (directory == null || !mounted) {
         return;
       }
-      setState(() => _setLocation(directory));
+      setState(
+        () =>
+            _destination = ExportIntoFolder(GrantedDirectory(path: directory)),
+      );
       _persist();
       return;
     }
@@ -2806,7 +2944,17 @@ class ExportDialogState extends State<ExportDialog> {
     if (path == null || !mounted) {
       return;
     }
-    setState(() => _setLocation(path, bookmark: grant!.bookmark));
+    setState(
+      () => _destination = ExportIntoFolder(
+        GrantedDirectory(path: path, bookmark: grant!.bookmark),
+      ),
+    );
+    _persist();
+  }
+
+  /// 「끝나면 고르기」: the destination is chosen once the run is done.
+  void _chooseHandOver() {
+    setState(() => _destination = const ExportHandOver());
     _persist();
   }
 
@@ -3036,68 +3184,116 @@ class ExportDialogState extends State<ExportDialog> {
             ),
           ),
           const SizedBox(width: 8),
-          if (singleFile)
-            SizedBox(
-              width: 180,
-              child: TextField(
-                key: const ValueKey<String>('export-file-name-field'),
-                controller: controller,
-                enabled: !_isExporting,
-                style: theme.textTheme.bodySmall,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 5,
-                  ),
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-            )
-          else
-            Text(
-              _patternPreview(),
-              key: const ValueKey<String>('export-pattern-preview'),
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 11,
-              ),
-            ),
-          const SizedBox(width: 14),
-          Text(
-            AppText.strings.exLocationLabel,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 8),
+          // The name and the destination share what the buttons leave: the
+          // name takes its width while the destination keeps half the room,
+          // and gives way evenly below that — in a narrow window a name
+          // field of fixed width and the two destination buttons outgrow
+          // the bar.
           Expanded(
-            child: Text(
-              _location ?? AppText.strings.exChooseFolder,
-              key: const ValueKey<String>('export-location-label'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontFamily: 'monospace',
-                fontSize: 11,
-                color: _hasLocation
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
+            child: LayoutBuilder(
+              builder: (context, room) => Row(
+                children: [
+                  if (singleFile)
+                    SizedBox(
+                      width: math.min(180, room.maxWidth / 2),
+                      child: TextField(
+                        key: const ValueKey<String>('export-file-name-field'),
+                        controller: controller,
+                        enabled: !_isExporting,
+                        style: theme.textTheme.bodySmall,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 5,
+                          ),
+                        ),
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    )
+                  else
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: room.maxWidth / 2,
+                      ),
+                      child: Text(
+                        _patternPreview(),
+                        key: const ValueKey<String>('export-pattern-preview'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 14),
+                  Text(
+                    AppText.strings.exLocationLabel,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      switch (_destination) {
+                        ExportIntoFolder(:final folder) => folder.path,
+                        ExportHandOver() => AppText.strings.exHandOverWhenDone,
+                        null => AppText.strings.exChooseFolder,
+                      },
+                      key: const ValueKey<String>('export-location-label'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: _hasDestination
+                            ? theme.colorScheme.onSurface
+                            : theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           const SizedBox(width: 8),
-          OutlinedButton(
-            key: const ValueKey<String>('export-browse-button'),
-            onPressed: _isExporting ? null : _browseLocation,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-            ),
-            child: Text(AppText.strings.exBrowse),
+          _destinationButton(
+            key: 'export-browse-button',
+            label: AppText.strings.exBrowse,
+            onPressed: _browseLocation,
+          ),
+          const SizedBox(width: 6),
+          _destinationButton(
+            key: 'export-hand-over-button',
+            label: AppText.strings.exHandOverWhenDone,
+            onPressed: _chooseHandOver,
           ),
         ],
+      ),
+    );
+  }
+
+  /// A button that picks where the outputs go — dead while a run is under
+  /// way, whose destination is already decided.
+  Widget _destinationButton({
+    required String key,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    final pressed = _isExporting ? null : onPressed;
+    return ControlPressClaim(
+      onPressed: pressed,
+      child: OutlinedButton(
+        key: ValueKey<String>(key),
+        onPressed: silentPress(pressed),
+        style: OutlinedButton.styleFrom(
+          visualDensity: VisualDensity.compact,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+        ),
+        child: Text(label),
       ),
     );
   }
@@ -3726,23 +3922,23 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// 적용 · 추가: a strip of switches — the same control the grouped
   /// choices wear, each pill holding one yes/no of its own.
-  Widget _celSwitchRow(String label, List<ExportPillItem> items) =>
+  Widget _celSwitchRow(String label, List<PillItem> items) =>
       ExportModuleRow(
         label: label,
         child: Align(
           alignment: Alignment.centerLeft,
-          child: ExportPillStrip(items: items),
+          child: PillStrip(items: items),
         ),
       );
 
   /// A pill that flips one spec field — lit while [on], writing [write]'s
   /// spec on tap, dead while an export runs.
-  ExportPillItem _specSwitch(
+  PillItem _specSwitch(
     String keyValue,
     String label,
     bool on,
     CelsExportSpec Function() write,
-  ) => ExportPillItem(
+  ) => PillItem(
     keyValue: keyValue,
     label: label,
     selected: on,
@@ -3756,8 +3952,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// is a state the delta puts the cut in, so it lights and takes no tap.
   Widget _celSelectionRow(CelsExportSpec spec) {
     final strings = AppText.strings;
-    ExportPillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
-        ExportPillItem(
+    PillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
+        PillItem(
           keyValue: 'export-cels-select-$key',
           label: label,
           selected: on,
@@ -3769,16 +3965,16 @@ class ExportDialogState extends State<ExportDialog> {
         spacing: 6,
         runSpacing: 4,
         children: [
-          ExportPillStrip(
+          PillStrip(
             items: [
               filter('base', strings.exSelBase, spec.base, () => spec.copyWith(base: !spec.base)),
               filter('attach', strings.exSelAttach, spec.attach, () => spec.copyWith(attach: !spec.attach)),
               filter('sheet', strings.exSelSheet, spec.sheetOnly, () => spec.copyWith(sheetOnly: !spec.sheetOnly)),
             ],
           ),
-          ExportPillStrip(
+          PillStrip(
             items: [
-              ExportPillItem(
+              PillItem(
                 keyValue: 'export-cels-select-custom',
                 label: strings.exSelCustom,
                 selected: _celSelectionIsCustom,
@@ -3990,7 +4186,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-tsformat-sheet',
@@ -4041,7 +4237,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-conteformat-pdf',
@@ -4090,7 +4286,7 @@ class ExportDialogState extends State<ExportDialog> {
         label: AppText.strings.brScale,
         child: Align(
           alignment: Alignment.centerLeft,
-          child: ExportPillStrip(
+          child: PillStrip(
             items: [
               for (final step in const [1, 2, 3, 4])
                 _pill(
@@ -4245,7 +4441,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 _pill(
                   keyValue: 'export-envelope-paper-cut',
@@ -4271,7 +4467,7 @@ class ExportDialogState extends State<ExportDialog> {
                 label: AppText.strings.exWidth,
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: ExportPillStrip(
+                  child: PillStrip(
                     items: [
                       for (final width in const [1240, 2480, 3508])
                         _pill(
@@ -4305,7 +4501,7 @@ class ExportDialogState extends State<ExportDialog> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ExportPillStrip(
+            PillStrip(
               items: [
                 // The strata an envelope HAS — it shows no film pictures.
                 for (final layer in EnvelopeExportSpec.strata)
@@ -4330,7 +4526,7 @@ class ExportDialogState extends State<ExportDialog> {
               label: AppText.strings.exFiles,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: ExportPillStrip(
+                child: PillStrip(
                   items: [
                     _pill(
                       keyValue: 'export-envelope-files-flat',

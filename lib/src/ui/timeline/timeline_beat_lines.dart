@@ -5,6 +5,7 @@ import '../../models/app_frame_grid_settings.dart';
 import '../theme/app_theme.dart';
 import 'axis_turn.dart';
 import 'timeline_cell_style.dart';
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_grid_metrics.dart'
     show timelineFirstOnStride, timelineStrideHolding;
 import 'timeline_second.dart';
@@ -265,11 +266,12 @@ int timelineFrameLineStep(double frameCellExtent, int framesPerSecond) {
 }
 
 /// Where the line at the boundary STARTING [frameIndex] is drawn, along
-/// the frame axis in content coordinates.
+/// the frame axis in content coordinates — on the law's boundary
+/// ([timelineFrameEdge]).
 double timelineFrameBoundaryLinePosition(
   int frameIndex,
   double frameCellExtent,
-) => frameIndex * frameCellExtent + timelineGridLineSnap;
+) => timelineFrameEdge(frameIndex, frameCellExtent) + timelineGridLineSnap;
 
 /// The grid line's ink ON a painted ground (a row's ground): the law line
 /// channel-multiplied onto the ground, weighted by the line's own alpha —
@@ -748,12 +750,11 @@ class TimelineGridSheetPainter extends CustomPainter with RepaintOnProps {
     int firstBoundary(int period) => frameStartIndex <= 0
         ? period
         : timelineFirstOnStride(frameStartIndex, period);
-    double positionOf(int frame) => timelineFrameBoundaryLinePosition(
-      frame - frameStartIndex,
-      frameCellExtent,
-    );
+    final origin = timelineFrameEdge(frameStartIndex, frameCellExtent);
+    double positionOf(int frame) =>
+        timelineFrameBoundaryLinePosition(frame, frameCellExtent) - origin;
     bool shown(int frame) =>
-        (frame - frameStartIndex) * frameCellExtent <= mainExtent;
+        timelineFrameEdge(frame, frameCellExtent) - origin <= mainExtent;
 
     // Every boundary a line can stand on, walked once at the step the three
     // marks share ([timelineFrameLineStep]), each asking THE law which mark

@@ -4,15 +4,18 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_block_word.dart'
+    show TimelineBlockColumn;
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
     show instructionLabelInset;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
-import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
+
+import '../../helpers/block_word_finder.dart';
+import 'timeline_cell_probe.dart';
 
 /// R5-⑤ geometry pin, revised 2026-08-08: the instruction endpoints (A/B)
 /// still sit DEAD CENTER in their cells — both axes, and nothing is drawn
@@ -49,8 +52,7 @@ void main() {
 
   /// The cells are PAINTED now (R28 #4), so the target comes from the row
   /// painter's geometry rather than from a cell widget's box.
-  void expectCentered(WidgetTester tester, Finder text, Offset cellCenter) {
-    final textCenter = tester.getCenter(text);
+  void expectCentered(Offset textCenter, Offset cellCenter) {
     expect(textCenter.dx, closeTo(cellCenter.dx, 1.0));
     expect(textCenter.dy, closeTo(cellCenter.dy, 1.0));
   }
@@ -83,13 +85,11 @@ void main() {
     );
 
     expectCentered(
-      tester,
-      find.text('ㄱ'),
+      blockWordRect(tester, findBlockText('ㄱ')).center,
       timelineCellCenter(tester, 'cam-1', 2),
     );
     expectCentered(
-      tester,
-      find.text('ㄴ'),
+      blockWordRect(tester, findBlockText('ㄴ')).center,
       timelineCellCenter(tester, 'cam-1', 6),
     );
 
@@ -98,7 +98,7 @@ void main() {
     final span = tester.getRect(
       find.byKey(const ValueKey<String>('timeline-instruction-cam-1-2')),
     );
-    final name = tester.getRect(find.text('PAN'));
+    final name = blockWordRect(tester, findBlockText('PAN'));
     expect(name.center.dx, closeTo(span.center.dx, 1.0));
     expect(
       name.top,
@@ -140,20 +140,13 @@ void main() {
       ),
     );
 
-    // On the sheet the writing reads DOWN its column, so the strings are
-    // carried by the shared vertical writer rather than by `Text`.
-    Finder written(String text) => find.byWidgetPredicate(
-      (w) => w is VerticalWritingText && w.text == text,
-    );
-
+    // On the sheet the writing reads DOWN its column ([findBlockColumn]).
     expectCentered(
-      tester,
-      written('ㄱ'),
+      blockWordRect(tester, findBlockColumn('ㄱ')).center,
       timelineCellCenter(tester, 'cam-1', 2, prefix: 'xsheet'),
     );
     expectCentered(
-      tester,
-      written('ㄴ'),
+      blockWordRect(tester, findBlockColumn('ㄴ')).center,
       timelineCellCenter(tester, 'cam-1', 6, prefix: 'xsheet'),
     );
 
@@ -162,7 +155,7 @@ void main() {
     final span = tester.getRect(
       find.byKey(const ValueKey<String>('xsheet-instruction-cam-1-2')),
     );
-    final name = tester.getRect(written('PAN'));
+    final name = blockWordRect(tester, findBlockColumn('PAN'));
     expect(name.center.dy, closeTo(span.center.dy, 1.0));
     expect(
       name.right,
@@ -217,13 +210,13 @@ void main() {
       ),
     );
 
-    final name = find.byWidgetPredicate((w) => w is VerticalWritingText);
+    final name = find.byWidgetPredicate((w) => w is TimelineBlockColumn);
     expect(name, findsWidgets);
     final columnWidth = XSheetTimelineGrid.defaultMetrics.layerRowHeight;
     for (final rect
         in tester
             .widgetList(name)
-            .map((w) => tester.getRect(find.byWidget(w)))) {
+            .map((w) => blockWordRect(tester, find.byWidget(w)))) {
       expect(
         rect.width,
         lessThanOrEqualTo(columnWidth + 0.01),

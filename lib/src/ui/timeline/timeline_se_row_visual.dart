@@ -13,12 +13,15 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../../models/media_asset.dart' show MediaAssetKind, mediaAssetKindForPath;
 import '../media/media_asset_drop_target.dart';
+import '../text/dialogue_fit_paint.dart' show dialogueNaturalExtent;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_block_word.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_beat_lines.dart';
+import 'timeline_frame_coordinate_policy.dart'
+    show timelineFrameAt, timelineFrameEdge;
 import 'timeline_frame_span_layout.dart';
 import 'timeline_grid_metrics.dart' show timelineFirstOnStride;
 import 'axis_turn.dart';
@@ -475,6 +478,25 @@ class _AudioClipStrip extends StatelessWidget {
 /// block's start boundary).
 const double seNameBoxExtent = 16;
 
+/// How far the name chip runs along a block [mainExtent] long whose dialogue
+/// runs [dialogueExtent] at its natural size ([dialogueNaturalExtent]):
+/// [seNameBoxExtent] while the two fit side by side, and past that the chip
+/// narrows by the very ratio the dialogue does.
+///
+/// 🗣️F-224 (유저 2026-09-29): 「줌에 맞춰서 se블록의 대사 좌우 줄일때,
+/// 대사는 줄어들어가는데 이름칸은 줄어들기 시작하는게 늦어서 15%정도에서
+/// 이름칸만 100%랑 거의 비슷한 크기인데 대사만 줄어들고있음. 대사랑 이름칸이랑
+/// 동일하게 줄어들기시작하도록」. ↩️The chip kept its 16 until the block was
+/// under 32 and then took half of it — a ceiling read off an old threshold,
+/// not anyone's rule — while the dialogue beside it had been narrowing since
+/// the block got shorter than the two of them.
+double seNameBoxExtentIn(double mainExtent, {required double dialogueExtent}) {
+  final natural = seNameBoxExtent + dialogueExtent;
+  return mainExtent >= natural
+      ? seNameBoxExtent
+      : seNameBoxExtent * mainExtent / natural;
+}
+
 /// The sheet's SE-entry writing, the real Toei way (R4, user-approved
 /// mockup v3): a compact INVERTED name chip flush against the block's
 /// start boundary (ink fill, paper-light writing) and the dialogue fitted
@@ -514,17 +536,22 @@ class SeSpanVisual extends StatelessWidget {
         // 🚨★★★F-93 (유저 2026-09-16): 「이름 상자를 버리는게아니야.
         // 유지한채로 가로 길이만 작게하란거야」 — the chip STAYS and narrows,
         // the way the dialogue glyphs beside it narrow rather than vanish
-        // (`wordCondensation`). ⛔The half-span ceiling is not a new
-        // number: the old threshold `>= seNameBoxExtent * 2` already said the
-        // box may never take more than half the span, and that stands. The
-        // two meet at 32 — `32 / 2 == seNameBoxExtent` — so the chip narrows
-        // continuously instead of stepping.
-        final mainExtent = axis == Axis.horizontal
+        // (`wordCondensation`).
+        final horizontal = axis == Axis.horizontal;
+        final mainExtent = horizontal
             ? constraints.maxWidth
             : constraints.maxHeight;
-        final nameExtent = mainExtent >= seNameBoxExtent * 2
-            ? seNameBoxExtent
-            : mainExtent / 2;
+        final nameExtent = seNameBoxExtentIn(
+          mainExtent,
+          dialogueExtent: dialogueNaturalExtent(
+            dialogue,
+            axis: axis,
+            style: dialogueFitStyle(context, color: timelineDrawingInkColor),
+            maxCrossExtent: horizontal
+                ? constraints.maxHeight
+                : constraints.maxWidth,
+          ),
+        );
         return Flex(
           direction: axis,
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -555,9 +582,8 @@ class _SeNameBox extends StatelessWidget {
   final Axis axis;
   final String name;
 
-  /// How far the chip runs ALONG the block: [seNameBoxExtent] where the span
-  /// can afford it, half the span where it cannot (F-93). ⛔Never the whole
-  /// span — the dialogue keeps the rest.
+  /// How far the chip runs ALONG the block ([seNameBoxExtentIn]): its
+  /// [seNameBoxExtent], narrowed with the dialogue beside it (F-224).
   final double extent;
 
   @override
@@ -567,31 +593,6 @@ class _SeNameBox extends StatelessWidget {
     // dark ink writing carrying the contrast. Writing follows the strip:
     // upright glyph stack on the row strip, horizontal on the X-sheet
     // band. Same tint on the printed sheet.
-    const style = TextStyle(
-      color: timelineDrawingInkColor,
-      fontSize: 9,
-      fontWeight: FontWeight.bold,
-      height: 1.05,
-    );
-    // R10 R6: the vertical arm was its own glyph stack, so an SE name with
-    // a long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying
-    // the wrong way while the timesheet beside it rotated them. It reads
-    // the one shared table now.
-    //
-    // 유저 2026-08-24 (F-27): 「se블록의 이름이 세로쓰기세로표기 인거같은데,
-    // 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings
-    // the user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block
-    // stands its Latin up, and the PRINT timesheet keeps the Japanese
-    // typesetting default. The X-sheet arm below is the `Text` branch, so
-    // it is untouched by construction rather than by an exception.
-    final writing = axis == Axis.horizontal
-        ? VerticalWritingText(
-            text: name,
-            style: style,
-            lineHeight: 1.05,
-            latinForm: VerticalLatinForm.upright,
-          )
-        : Text(name, maxLines: 1, softWrap: false, style: style);
     final box = Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
@@ -601,24 +602,57 @@ class _SeNameBox extends StatelessWidget {
         // R6-②: soft accent tint (the full-strength accent read too loud);
         // dark ink writing carries the contrast — matches the sheet.
         color: AppColors.accent.withValues(alpha: 0.3),
-        // A LONG name stays inside the chip instead of overflowing the row
-        // (the striped-error report — R4 improvement 2) — by the block-word
-        // law now (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its
-        // type and narrows, each axis on its own, into the chip. ↩️It shrank
-        // WHOLE into the chip (`FittedBox.scaleDown`), height with width.
-        child: TimelineBlockWord(
-          place: (
-            axis: axis,
-            cells: 1,
-            cellIndex: 0,
-            growth: TimelineBlockWordGrowth.towardBlockEnd,
-            acrossAlignment: 0,
-          ),
-          child: ExcludeSemantics(child: writing),
-        ),
+        child: _word(),
       ),
     );
     return alongBox(axis, extent, child: box);
+  }
+
+  /// The name written in the chip: down it on the row strip, along it on
+  /// the X-sheet band.
+  ///
+  /// R10 R6: the vertical arm was its own glyph stack, so an SE name with a
+  /// long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying the
+  /// wrong way while the timesheet beside it rotated them. It reads the one
+  /// shared table now.
+  ///
+  /// 유저 2026-08-24 (F-27): 「se블록의 이름이 세로쓰기세로표기 인거같은데,
+  /// 가로쓰기 세로표기가 되도록. x시트는 그대로 냅둠」 — the two readings the
+  /// user named on 2026-08-08 ([VerticalLatinForm]): the SCREEN block stands
+  /// its Latin up, and the PRINT timesheet keeps the Japanese typesetting
+  /// default. The X-sheet arm is the line branch, so it is untouched by
+  /// construction rather than by an exception.
+  ///
+  /// A LONG name stays inside the chip instead of overflowing the row (the
+  /// striped-error report — R4 improvement 2) — by the block-word law now
+  /// (B, 유저 2026-09-24: 「se텍스트든 뭐든」): it keeps its type and narrows,
+  /// each axis on its own, into the chip. ↩️It shrank WHOLE into the chip
+  /// (`FittedBox.scaleDown`), height with width.
+  Widget _word() {
+    const style = TextStyle(
+      color: timelineDrawingInkColor,
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      height: 1.05,
+    );
+    final place = (
+      axis: axis,
+      cells: 1,
+      cellIndex: 0,
+      growth: TimelineBlockWordGrowth.towardBlockEnd,
+      acrossAlignment: 0.0,
+    );
+    return ExcludeSemantics(
+      child: axis == Axis.horizontal
+          ? TimelineBlockColumn(
+              text: name,
+              style: style,
+              lineHeight: 1.05,
+              latinForm: VerticalLatinForm.upright,
+              place: place,
+            )
+          : TimelineBlockText(text: name, style: style, place: place),
+    );
   }
 }
 
@@ -715,31 +749,7 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
     canvas.drawRRect(rrect, Paint()..color = paper);
     final seen = timelineGridGroundOver(under: ground, painted: paper);
     if (blockFrameLines && seen != null && frameCellExtent > 0) {
-      final frames = (extentAlong(axis, size) / frameCellExtent).round();
-      // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
-      // the sheet's and the rows' walk. It asked every frame of the block,
-      // and at I-22's floor a ten-minute sound is 14,400 of them.
-      final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
-      for (
-        var frame = timelineFirstOnStride(startFrame + 1, step);
-        frame < startFrame + frames;
-        frame += step
-      ) {
-        final offset = frame - startFrame;
-        final line = timelineBlockFrameLine(
-          axis: axis,
-          frameIndex: frame,
-          boundary: offset * frameCellExtent,
-          across: (from: 0, to: cross),
-          frameCellExtent: frameCellExtent,
-          framesPerSecond: framesPerSecond,
-          colorScheme: colorScheme,
-          paper: seen,
-        );
-        if (line != null) {
-          canvas.drawRect(line.rect, Paint()..color = line.color);
-        }
-      }
+      _paintFrameLines(canvas, extentAlong(axis, size), cross, seen);
     }
     canvas.drawRRect(
       rrect,
@@ -748,6 +758,42 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
         ..strokeWidth = 1
         ..color = timelineDrawingStartBorderColor,
     );
+  }
+
+  /// The block's own frame lines over [seen] paper, [along] long.
+  void _paintFrameLines(
+    Canvas canvas,
+    double along,
+    double cross,
+    Color seen,
+  ) {
+    final origin = timelineFrameEdge(startFrame, frameCellExtent);
+    // The frame at the span's far edge, by the law read backwards — a
+    // quotient of pixels drifts a frame once cells are not whole pixels.
+    final end = timelineFrameAt(origin + along, frameCellExtent);
+    // Only the boundaries a line can stand on ([timelineFrameLineStep]) —
+    // the sheet's and the rows' walk. It asked every frame of the block,
+    // and at I-22's floor a ten-minute sound is 14,400 of them.
+    final step = timelineFrameLineStep(frameCellExtent, framesPerSecond);
+    for (
+      var frame = timelineFirstOnStride(startFrame + 1, step);
+      frame < end;
+      frame += step
+    ) {
+      final line = timelineBlockFrameLine(
+        axis: axis,
+        frameIndex: frame,
+        boundary: timelineFrameEdge(frame, frameCellExtent) - origin,
+        across: (from: 0, to: cross),
+        frameCellExtent: frameCellExtent,
+        framesPerSecond: framesPerSecond,
+        colorScheme: colorScheme,
+        paper: seen,
+      );
+      if (line != null) {
+        canvas.drawRect(line.rect, Paint()..color = line.color);
+      }
+    }
   }
 
   @override

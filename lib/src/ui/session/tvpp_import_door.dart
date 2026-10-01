@@ -53,14 +53,12 @@ class TvppImportDoor {
   TvppImportDoor({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
     required RenderCaches renderCaches,
     required ProjectFile file,
     required ProjectFileDoor projectDoor,
     required MediaPool mediaPool,
   }) : _project = project,
        _changes = changes,
-       _internals = internals,
        _renderCaches = renderCaches,
        _file = file,
        _projectDoor = projectDoor,
@@ -68,7 +66,6 @@ class TvppImportDoor {
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
   final RenderCaches _renderCaches;
   final ProjectFile _file;
   final ProjectFileDoor _projectDoor;
@@ -179,7 +176,7 @@ class TvppImportDoor {
     }
     bakeCelSurface(
       _renderCaches.brushFrameStore,
-      _internals.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
+      _project.brushFrameKeyForCut(cut, bake.layerId, bake.frameId),
       BitmapSurface(canvasSize: cut.canvasSize).putTiles([
         for (final tile in tiles)
           (

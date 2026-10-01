@@ -38,8 +38,12 @@ Future<PaintToolStateNotifier> _pumpRail(
           valueListenable: tool,
           builder: (context, state, _) => ToolsPanel(
             tool: state.tool,
-            onPress: (press) =>
-                pressTool(press, tool: tool, transform: transform),
+            onPress: (press) => pressTool(
+              press,
+              tool: tool,
+              transform: transform,
+              cutWhole: () {},
+            ),
           ),
         ),
       ),

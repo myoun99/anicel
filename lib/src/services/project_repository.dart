@@ -34,6 +34,9 @@ import '../models/project_frame_rate.dart';
 import '../models/stroke.dart';
 import '../models/transform_track.dart';
 import '../models/track.dart';
+import '../models/track_transitions.dart'
+    show drawnFrameCountOf, transitionHandlesByCut;
+import '../models/transition_geometry.dart' show CutTransitionHandles;
 import '../models/track_id.dart';
 import 'project_lookup.dart' show requireMemoBlockAt;
 import 'project_tree_editor.dart';
@@ -49,24 +52,28 @@ typedef _FoundEdit<I, E> = ({
   Project? Function(Project project, I id, E Function(E) update) edit,
 });
 
+/// A cut as the repository's last write settled it: the instance, the
+/// のりしろ it was settled against, and the conte row that write tiled.
+typedef _Settled = ({
+  Cut cut,
+  CutTransitionHandles handles,
+  LayerId? conteRowId,
+});
+
 /// [cut] with [layer] inserted at [index] (appended when null) — the cut a
 /// row joins, and the one a conte picture draws through while the row its
-/// first stroke makes is not there yet.
-Cut cutWithLayerInserted(Cut cut, Layer layer, int? index) => cut.copyWith(
-  layers: insertedAt(
-    cut.layers,
-    // The cut is only known here, and its length is what the ghosts fill
-    // to. See [ProjectRepository]'s `_withDerivedRunEdges`.
-    rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
-    index,
-  ),
-);
+/// first stroke makes is not there yet. The row's run edges are the
+/// write's to settle (invariant 5 of [ProjectRepository]'s normalization):
+/// where they fill to is the cut's drawn end, which only the project knows.
+Cut cutWithLayerInserted(Cut cut, Layer layer, int? index) =>
+    cut.copyWith(layers: insertedAt(cut.layers, layer, index));
 
 class ProjectRepository {
-  ProjectRepository({Project? initialProject})
-    : _currentProject = initialProject == null
-          ? null
-          : _reconcileAttachedMirrors(initialProject);
+  ProjectRepository({Project? initialProject}) {
+    if (initialProject != null) {
+      _currentProject = _normalized(initialProject);
+    }
+  }
 
   Project? _currentProject;
 
@@ -82,16 +89,20 @@ class ProjectRepository {
     return project;
   }
 
+  /// A project from elsewhere is settled from scratch: what the last write
+  /// here remembered is about a different set of rows, whatever their ids.
   void replaceProject(Project project) {
-    _currentProject = _reconcileAttachedMirrors(project);
+    _settled = const {};
+    _currentProject = _normalized(project);
   }
 
   void clearProject() {
+    _settled = const {};
     _currentProject = null;
   }
 
   void updateProject(Project Function(Project project) update) {
-    _currentProject = _reconcileAttachedMirrors(update(requireProject()));
+    _currentProject = _normalized(update(requireProject()));
   }
 
   /// Puts the link registry back to [registry] — what every link-touching
@@ -183,13 +194,15 @@ class ProjectRepository {
   /// The write-time invariants, applied to every cut on every write:
   /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
   ///    layer's stored timeline is ONE real 1-frame block at index 0 plus
-  ///    a fixed end-side HOLD whose ghosts fill to the cut boundary
+  ///    a fixed end-side HOLD whose ghosts fill to the cut's drawn end
   ///    (D22) — runs FIRST so the mirror pass below sees the final base
   ///    timeline (an image row can be an attach base).
   /// 2. The COVERING STORYBOARD row ([cutWithCoveringStoryboardRow]): its
-  ///    stored panels tile the cut exactly. Same grammar as 1, arriving
-  ///    late because the row's DERIVED reader was mistaken for a guarantee
-  ///    — it only hid the stored holes from the surface that makes them.
+  ///    stored panels tile the cut exactly, and its last panel holds
+  ///    through whatever のりしろ the cut owes (F-227). Same grammar as 1,
+  ///    arriving late because the row's DERIVED reader was mistaken for a
+  ///    guarantee — it only hid the stored holes from the surface that
+  ///    makes them.
   /// 3. The ALWAYS-MIRROR invariant (UI-R23 #7 v2,
   ///    [cutWithReconciledAttachedMirrors]): every synced attach row a
   ///    complete mirror of its base — one own cel + link per base cel —
@@ -199,32 +212,132 @@ class ProjectRepository {
   ///    carries an instruction exactly when its row's spans ride its blocks
   ///    — a direction row's bare block takes the ＋'s span, any other row's
   ///    block puts one down.
+  /// 5. RUN EDGES FILLED TO THE DRAWN END ([rederiveRunBehaviors]): a run
+  ///    edge property is a SPEC — *this run holds*, *this run repeats* —
+  ///    carried by one of the run's blocks (`TimelineRunEdgeMark`), and the
+  ///    cells it covers are ghost exposures synthesized from it. The ghosts
+  ///    reach the cut's DRAWN end — its conte 尺 plus the のりしろ the
+  ///    track's transitions ask of it ([drawnFrameCountsOf]) — and that end
+  ///    moves without the cut being touched: an O.L drawn, moved or
+  ///    removed, a neighbour trimmed. This is the one place that sees every
+  ///    such write, so it is here, last, where the four above have settled
+  ///    the blocks the ghosts are read off.
+  ///
+  ///    ↩️It used to run on chosen verbs (`_withDerivedRunEdges`, on a cut
+  ///    inserted from outside and on a length change) and every timeline
+  ///    edit derived its own; the paths that brought a cut in from OUTSIDE
+  ///    did not, and an imported hold printed `H` and covered nothing. A
+  ///    write-time invariant covers the next importer by construction.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
-  static Project _reconcileAttachedMirrors(Project project) {
+  Project _normalized(Project project) {
+    final pass = _settle(project, memo: _settled);
+    _settled = pass.settled;
+    return pass.project;
+  }
+
+  /// [draft] as a write of it would leave it — the invariants above, read
+  /// against what the last write settled — with nothing written and
+  /// nothing remembered.
+  ///
+  /// 🗣️F-227: a drag that re-lays the cuts previews through this. The
+  /// のりしろ holds and the conte start an O.L asks of the cuts it joins
+  /// are derived by the WRITE, from the new layout; a preview that skipped
+  /// the pass showed the holds gone and the receiving cut's panels where
+  /// the old のりしろ put them, then jumped on release.
+  Project settledAsWritten(Project draft) =>
+      _settle(draft, memo: _settled).project;
+
+  /// The five invariants over every cut [memo] does not already hold
+  /// settled, and the memo the next write reads.
+  static ({Project project, Map<CutId, _Settled> settled}) _settle(
+    Project project, {
+    required Map<CutId, _Settled> memo,
+  }) {
     final firstInstruction = project.cameraInstructions.defs.isEmpty
         ? null
         : project.cameraInstructions.defs.first.id;
+    final handlesByCut = transitionHandlesByCut(project);
+    final settled = <CutId, _Settled>{};
     final tracks = mappedOrSame(project.tracks, (track) {
-      final cuts = mappedOrSame(
-        track.cuts,
-        (cut) => _normalizedCut(cut, firstInstruction: firstInstruction),
-      );
+      final cuts = mappedOrSame(track.cuts, (cut) {
+        final handles = handlesByCut[cut.id]!;
+        final last = memo[cut.id];
+        // A cut this write did not touch, whose のりしろ did not move, is the
+        // very instance the last write settled: all five hold.
+        final next =
+            last != null && identical(last.cut, cut) && last.handles == handles
+            ? cut
+            : _normalizedCut(
+                cut,
+                firstInstruction: firstInstruction,
+                handles: handles,
+                // The conte row the last write tiled, if this is still it:
+                // its blocks sit where that write put them, whatever an edit
+                // since did to its first panel. A row it never saw says
+                // where it was tiled from itself.
+                previousConteStart:
+                    last != null && last.conteRowId == _conteRowIdOf(cut)
+                    ? last.handles.head
+                    : null,
+              );
+        settled[cut.id] = (
+          cut: next,
+          handles: handles,
+          conteRowId: _conteRowIdOf(next),
+        );
+        return next;
+      });
       return identical(cuts, track.cuts) ? track : track.copyWith(cuts: cuts);
     });
-    return identical(tracks, project.tracks)
-        ? project
-        : project.copyWith(tracks: tracks);
+    return (
+      project: identical(tracks, project.tracks)
+          ? project
+          : project.copyWith(tracks: tracks),
+      settled: settled,
+    );
   }
 
-  /// The four invariants above, in their stated order, over one cut.
-  static Cut _normalizedCut(Cut cut, {required String? firstInstruction}) =>
-      cutWithSpansOnTheirBlocks(
-        cutWithReconciledAttachedMirrors(
-          cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
+  /// Each cut as the last write left it, with the のりしろ its conte row and
+  /// run edges were settled against — so a write settles only the cuts it
+  /// changed or whose のりしろ it moved, not every cut of the project.
+  Map<CutId, _Settled> _settled = const {};
+
+  static LayerId? _conteRowIdOf(Cut cut) {
+    for (final layer in cut.layers) {
+      if (layer.kind == LayerKind.storyboard) {
+        return layer.id;
+      }
+    }
+    return null;
+  }
+
+  /// The five invariants above, in their stated order, over one cut.
+  static Cut _normalizedCut(
+    Cut cut, {
+    required String? firstInstruction,
+    required CutTransitionHandles handles,
+    required int? previousConteStart,
+  }) {
+    final drawnFrameCount = drawnFrameCountOf(cut, handles);
+    final shaped = cutWithSpansOnTheirBlocks(
+      cutWithReconciledAttachedMirrors(
+        cutWithCoveringStoryboardRow(
+          cutWithCoveringImageRows(cut, drawnFrameCount: drawnFrameCount),
+          handles: handles,
+          previousConteStart: previousConteStart,
         ),
-        defaultInstructionId: firstInstruction,
-      );
+      ),
+      defaultInstructionId: firstInstruction,
+    );
+    final layers = mappedOrSame(
+      shaped.layers,
+      (layer) => rederiveRunBehaviors(layer, drawnFrameCount: drawnFrameCount),
+    );
+    return identical(layers, shaped.layers)
+        ? shaped
+        : shaped.copyWith(layers: layers);
+  }
 
   void updateTimesheetInfo(TimesheetInfo info) {
     updateProject((project) => project.copyWith(timesheetInfo: info));
@@ -345,8 +458,8 @@ class ProjectRepository {
 
   void insertCut({required TrackId trackId, required Cut cut, int? index}) {
     // A cut built elsewhere — an importer's plan, a duplicate — arrives
-    // with run-edge SPECS and no ghosts. See [_withDerivedRunEdges].
-    final derived = _withDerivedRunEdges(cut);
+    // with run-edge SPECS and no ghosts; the write settles them where it
+    // lands (invariant 5 of [_normalized]).
     _mutate(_track, trackId, (track) {
       // ⛔NOT [insertedAt]. That law CLAMPS, which is right for a row
       // landing in a layer list; a cut index past the end is a caller
@@ -354,9 +467,9 @@ class ProjectRepository {
       // pinned by "throws when inserting a cut at an out-of-range index".
       final cuts = [...track.cuts];
       if (index == null) {
-        cuts.add(derived);
+        cuts.add(cut);
       } else {
-        cuts.insert(index, derived);
+        cuts.insert(index, cut);
       }
       return track.copyWith(cuts: cuts);
     });
@@ -463,41 +576,11 @@ class ProjectRepository {
     );
   }
 
-  /// Every layer of [cut] with its run-edge ghosts derived from [cut]'s
-  /// own length.
-  ///
-  /// A run edge property is a SPEC — *this run holds*, *this run repeats* —
-  /// carried by one of the run's blocks (`TimelineRunEdgeMark`), and the
-  /// cells it covers are ghost exposures synthesized from it by
-  /// [rederiveRunBehaviors]. The two are only ever in step because
-  /// something re-derives, and every path that EDITS a timeline does.
-  ///
-  /// The paths that bring a cut or a layer in from OUTSIDE did not, which
-  /// is a whole class of bug rather than one: an imported hold recorded
-  /// its spec, printed `H` on the property tag, and covered nothing. It
-  /// lives here rather than in each importer on purpose — the next
-  /// importer, and the next [TimelineRunEdgeMode], are then covered by
-  /// construction instead of by whoever writes them remembering to ask.
-  ///
-  /// Free when there is nothing to derive: [rederiveRunBehaviors] returns
-  /// the same layer instance for a layer with no marks and no ghosts, so
-  /// the grid's memo gates see no change.
-  static Cut _withDerivedRunEdges(Cut cut) => cut.copyWith(
-    layers: [
-      for (final layer in cut.layers)
-        rederiveRunBehaviors(layer, cutFrameCount: cut.duration),
-    ],
-  );
-
+  /// Hold/repeat run edges fill to the cut's drawn end, which a length
+  /// change moves — the write's own settling (invariant 5 of [_normalized])
+  /// fills them again.
   void updateCutDuration({required CutId cutId, required int duration}) {
-    _mutate(
-      _cut,
-      cutId,
-      // Hold/repeat run edges fill ghosts TO THE CUT END, so a duration
-      // change re-derives every layer — the only rederive trigger that
-      // is not a layer edit.
-      (cut) => _withDerivedRunEdges(cut.copyWith(duration: duration)),
-    );
+    _mutate(_cut, cutId, (cut) => cut.copyWith(duration: duration));
   }
 
   void updateCutGuides({required CutId cutId, required CutGuides guides}) {

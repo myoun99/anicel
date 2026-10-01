@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
-import '../models/timesheet_info.dart';
 import 'brush/brush_canvas_panel.dart'
     show BrushCanvasPanel, CanvasAutoFrameRequest;
 import 'brush/sheet_canvas_panel.dart';
@@ -19,6 +19,7 @@ import 'dialogs/timesheet_format_window.dart';
 import 'editor_session_manager.dart';
 import 'widgets/app_icon_button.dart';
 import 'widgets/page_turn_strip.dart';
+import 'timesheet/cut_sheet_document.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
 import 'effective_device_pixel_ratio.dart';
@@ -143,8 +144,15 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // list identity, not the cut's.
     final trackSeLayers = session.activeTrack.seLayers;
     // Same story for the transition row: track-owned, so an edit there
-    // changes the track's identity rather than the cut's.
-    final transitionLayer = session.activeTrack.transitionLayer;
+    // changes the track's identity rather than the cut's. It is keyed as it
+    // PRINTS (F-229): an O.L writes the cuts it joins and the word of the
+    // sheet's language, so a rename next door or a language switch
+    // reprints.
+    final transitionLayer = session.transitions.names.rowNamed(
+      session.activeTrack,
+      session.activeTrack.transitionLayer,
+      olWord: sheetOlWord(session),
+    );
     final cutStartFrame = at.startFrame;
     if (_document == null ||
         !identical(_documentCut, cut) ||
@@ -165,28 +173,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _documentProjectName = projectName;
       _documentFps = session.projectSettings.projectFps;
       _documentDataSheet = _dataSheet;
-      _document = TimesheetDocument.fromCut(
+      _document = cutSheetDocument(
+        session,
         cut: cut,
-        projectName: projectName,
-        fps: session.projectSettings.projectFps,
-        info: info,
-        instructionDefById: instructionSet.defById,
-        trackSeLayers: trackSeLayers,
         cutStartFrame: cutStartFrame,
-        transitionSpans: session.transitions.activeTrackTransitionSpans,
-        // D31: the transition row prints when its own timesheet flag is
-        // on — through the SESSION'S cut-view projection (one walk for
-        // the sheet and the cut timeline's row; spans re-keyed to this
-        // cut's local axis), MINUS the D26-refused crossing fades (the
-        // sheet prints only what applies — the row keeps them for the
-        // warning to sit on). Off = the slot stays blank form space,
-        // the camera column's own precedent.
-        transitionLayer: transitionLayer.onTimesheet
-            ? session.transitions.trackTransitionSheetLayerFor(
-                cutStart: cutStartFrame,
-                duration: cut.duration,
-              )
-            : null,
         dataSheet: _dataSheet,
       );
       _layout = null;
@@ -260,12 +250,27 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           );
   }
 
+  /// The sheet's format, and the paper of the cut it shows — the cut
+  /// under the playhead the sheet prints ([_resolveLayouts]).
   Future<void> _editSheetFormat() {
     final session = widget.session;
-    return askThenCommit<TimesheetInfo>(
+    final cut = session.cutUnderPlayhead.resolve()?.cut;
+    return askThenCommit<TimesheetFormat>(
       context,
-      dialog: (_) => TimesheetFormatWindow(initialInfo: session.timesheetInfo),
-      commit: session.updateTimesheetInfo,
+      dialog: (_) => TimesheetFormatWindow(
+        initialInfo: session.timesheetInfo,
+        sheet: cut == null
+            ? null
+            : (
+                kind: cut.metadata.sheetKind,
+                celColumns: SheetSources.of(cut: cut).celLayers.length,
+              ),
+      ),
+      commit: (format) => session.updateTimesheetFormat(
+        info: format.info,
+        cutId: cut?.id,
+        kind: format.kind,
+      ),
     );
   }
 
@@ -550,7 +555,9 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     repaint: Listenable.merge([
                                       session.editingFrameCursor,
                                       session.frameSeekCommitted,
-                                      session.gapParkingListenable,
+                                      session
+                                          .editingSession
+                                          .gapParkingListenable,
                                       session
                                           .playbackRig
                                           .playback

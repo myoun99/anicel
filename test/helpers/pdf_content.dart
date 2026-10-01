@@ -49,8 +49,10 @@ List<(int, int)> pdfImageSizes(Uint8List pdf) {
   ];
 }
 
-/// Every closed path the pages draw: `x y m`, then `x y l` …, then `h`.
-List<List<Offset>> pdfClosedPaths(Uint8List pdf) {
+/// Every closed path the pages draw: `x y m`, then `x y l` …, then `h` —
+/// given [then], only those that operator takes right after (`W*`: the
+/// paths an even-odd clip cuts by).
+List<List<Offset>> pdfClosedPaths(Uint8List pdf, {String? then}) {
   final paths = <List<Offset>>[];
   for (final tokens in _streamTokens(pdf)) {
     List<Offset>? path;
@@ -63,7 +65,10 @@ List<List<Offset>> pdfClosedPaths(Uint8List pdf) {
         case 'l' when x != null && y != null && path != null:
           path.add(Offset(x, y));
         case 'h' when path != null:
-          paths.add(path);
+          final next = i + 1 < tokens.length ? tokens[i + 1] : null;
+          if (then == null || next == then) {
+            paths.add(path);
+          }
           path = null;
       }
     }
@@ -100,4 +105,63 @@ List<Rect> pdfImagePlacements(Uint8List pdf) => [
               final double y,
             ))
           Rect.fromLTWH(x, y, w, h),
+];
+
+/// Every stroked path the pages draw: `x y m`, then `x y l` …, then `S` —
+/// or `s`, which closes it first — and the graphics state it is stroked
+/// under: the name of the last `/Name gs` still in force (`q` saves it,
+/// `Q` restores it), null where none was set.
+List<({List<Offset> points, bool closed, String? state})> pdfStrokes(
+  Uint8List pdf,
+) {
+  final strokes = <({List<Offset> points, bool closed, String? state})>[];
+  for (final tokens in _streamTokens(pdf)) {
+    List<Offset>? path;
+    String? state;
+    final saved = <String?>[];
+    for (var i = 0; i < tokens.length; i += 1) {
+      final x = i >= 2 ? double.tryParse(tokens[i - 2]) : null;
+      final y = i >= 1 ? double.tryParse(tokens[i - 1]) : null;
+      switch (tokens[i]) {
+        case 'q':
+          saved.add(state);
+        case 'Q':
+          state = saved.isEmpty ? null : saved.removeLast();
+        case 'gs' when i >= 1:
+          state = tokens[i - 1];
+        case 'm' when x != null && y != null:
+          path = [Offset(x, y)];
+        case 'l' when x != null && y != null && path != null:
+          path.add(Offset(x, y));
+        case 'S' || 's' when path != null:
+          strokes.add((points: path, closed: tokens[i] == 's', state: state));
+          path = null;
+        case 'f' || 'f*' || 'n' || 'W' || 'W*' || 'h':
+          path = null;
+      }
+    }
+  }
+  return strokes;
+}
+
+/// Every stroke opacity the file's graphics states carry — their `/CA`,
+/// wherever the writer put the dictionary.
+List<double> pdfStrokeOpacities(Uint8List pdf) => [
+  for (final text in [latin1.decode(pdf), ..._streamContents(pdf)])
+    for (final match in RegExp(r'/CA\s+([0-9.]+)').allMatches(text))
+      ?double.tryParse(match[1]!),
+];
+
+/// Every `a b c d e f cm` the pages set that places no image — a turn, a
+/// move — as its six numbers.
+List<List<double>> pdfTransforms(Uint8List pdf) => [
+  for (final tokens in _streamTokens(pdf))
+    for (var i = 6; i < tokens.length; i += 1)
+      if (tokens[i] == 'cm' &&
+          (i + 2 >= tokens.length || tokens[i + 2] != 'Do'))
+        if ([
+              for (var j = i - 6; j < i; j += 1) double.tryParse(tokens[j]),
+            ]
+            case final numbers when !numbers.contains(null))
+          [for (final number in numbers) number!],
 ];

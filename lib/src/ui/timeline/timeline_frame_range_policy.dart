@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../../core/timeline/timeline_defaults.dart';
 import '../../models/project_frame_rate.dart' show secondsPlusFramesLabel;
+import 'timeline_frame_coordinate_policy.dart' show timelineFrameEdge;
 import 'timeline_grid_metrics.dart';
 
 class TimelineFrameRange {
@@ -44,7 +45,7 @@ double timelineCutEndBoundaryX({
   required int playbackFrameCount,
   required TimelineGridMetrics metrics,
 }) {
-  return playbackFrameCount * metrics.frameCellWidth;
+  return timelineFrameEdge(playbackFrameCount, metrics.frameCellWidth);
 }
 
 /// R27 #3: the ONE duration readout every block-length label prints —

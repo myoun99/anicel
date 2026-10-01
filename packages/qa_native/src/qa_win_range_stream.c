@@ -22,8 +22,18 @@
 // `qa_video_decode.c`: that file is the DECODE LAW plus three thin backends,
 // and hand-written COM is neither.
 //
-// One object, one reader, one document at a time — the decoder's own
-// contract, so nothing here is shared between threads.
+// 🚨★★★**MEDIA FOUNDATION CALLS THIS FROM ITS OWN THREADS**
+// (framed-movie-parity-hangs-under-load, 2026-09-29). The decoder's contract
+// — one document per caller — says nothing about the source inside the
+// reader, which reads on its work-queue threads while the caller's thread
+// tears the reader down. ↩️This said 「nothing here is shared between
+// threads」, and three things were: Close freed the file and the block
+// buffers under a read still using them, the stream could go before a read's
+// callback finished it, and every EndRead reported the LAST read's count.
+// Under load — the work queue behind, the teardown on time — the native
+// parity lost its test process mid-suite, twice. So: one lock over the span
+// and the position, and each read carries its own answer and a hold on the
+// stream until its callback has finished it.
 
 #if defined(_WIN32)
 
@@ -34,6 +44,7 @@
 #include <mfobjects.h>
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "qa_media_span.h"
 #include "qa_win_range_stream.h"
@@ -43,23 +54,68 @@ typedef struct {
   // its vtable pointer, so this cast has to be free.
   const IMFByteStreamVtbl* lpVtbl;
   LONG ref;
+  /// Over [span] and [position]: a read, a seek and a close each hold it
+  /// for the whole of what they do, so a close waits for the read it meets
+  /// and a read after it is refused.
+  SRWLOCK lock;
   /// The medium. Every position below is the MEDIUM's — for a framed span,
   /// a position in the decoded bytes — and nothing above this stream ever
   /// learns that it is not a whole file.
   qa_media_span* span;
+  /// Set once, before anyone else can see the stream.
   int64_t length;
   int64_t position;
-  /// What the last [BeginRead] read, for the [EndRead] that follows it.
-  ///
-  /// ⚠️One outstanding read at a time. The source reader issues them in
-  /// sequence against a stream that answers immediately, and a stream that
-  /// reports no async capability is not asked to overlap them.
-  ULONG pending;
 } qa_range_stream;
 
 static qa_range_stream* qa_range_of(IMFByteStream* self) {
   return (qa_range_stream*)self;
 }
+
+// ---------------------------------------------------------------------------
+// One BeginRead's answer: how many bytes it read, and a hold on the stream
+// its callback will finish it on. The async result carries it to EndRead.
+
+typedef struct {
+  const IUnknownVtbl* lpVtbl;
+  LONG ref;
+  ULONG got;
+  IMFByteStream* stream;
+} qa_range_answer;
+
+static HRESULT STDMETHODCALLTYPE qa_answer_query(IUnknown* self,
+                                                 REFIID riid,
+                                                 void** out) {
+  if (out == NULL) {
+    return E_POINTER;
+  }
+  if (IsEqualGUID(riid, &IID_IUnknown)) {
+    *out = self;
+    IUnknown_AddRef(self);
+    return S_OK;
+  }
+  *out = NULL;
+  return E_NOINTERFACE;
+}
+
+static ULONG STDMETHODCALLTYPE qa_answer_add_ref(IUnknown* self) {
+  return (ULONG)InterlockedIncrement(&((qa_range_answer*)self)->ref);
+}
+
+static ULONG STDMETHODCALLTYPE qa_answer_release(IUnknown* self) {
+  qa_range_answer* answer = (qa_range_answer*)self;
+  const LONG left = InterlockedDecrement(&answer->ref);
+  if (left == 0) {
+    IMFByteStream_Release(answer->stream);
+    free(answer);
+  }
+  return (ULONG)left;
+}
+
+static const IUnknownVtbl qa_range_answer_vtbl = {
+    qa_answer_query,
+    qa_answer_add_ref,
+    qa_answer_release,
+};
 
 static HRESULT STDMETHODCALLTYPE qa_range_query(IMFByteStream* self,
                                                 REFIID riid,
@@ -85,6 +141,7 @@ static ULONG STDMETHODCALLTYPE qa_range_release(IMFByteStream* self) {
   qa_range_stream* stream = qa_range_of(self);
   const LONG left = InterlockedDecrement(&stream->ref);
   if (left == 0) {
+    // The last reference: nobody else can be inside, so no lock.
     qa_media_span_close(stream->span);
     free(stream);
   }
@@ -126,16 +183,18 @@ static HRESULT STDMETHODCALLTYPE qa_range_get_position(IMFByteStream* self,
   if (position == NULL) {
     return E_POINTER;
   }
-  *position = (QWORD)qa_range_of(self)->position;
+  qa_range_stream* stream = qa_range_of(self);
+  AcquireSRWLockExclusive(&stream->lock);
+  *position = (QWORD)stream->position;
+  ReleaseSRWLockExclusive(&stream->lock);
   return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE qa_range_set_position(IMFByteStream* self,
-                                                       QWORD position) {
-  qa_range_stream* stream = qa_range_of(self);
-  // ⚠️CLAMPED, not refused. A reader probing past the end is ordinary — it
-  // is how it finds the end — and an error there reads as a broken file.
-  int64_t wanted = (int64_t)position;
+/// [position] clamped into the medium — the caller holds the lock.
+///
+/// ⚠️CLAMPED, not refused. A reader probing past the end is ordinary — it
+/// is how it finds the end — and an error there reads as a broken file.
+static void qa_range_place_locked(qa_range_stream* stream, int64_t wanted) {
   if (wanted < 0) {
     wanted = 0;
   }
@@ -143,6 +202,14 @@ static HRESULT STDMETHODCALLTYPE qa_range_set_position(IMFByteStream* self,
     wanted = stream->length;
   }
   stream->position = wanted;
+}
+
+static HRESULT STDMETHODCALLTYPE qa_range_set_position(IMFByteStream* self,
+                                                       QWORD position) {
+  qa_range_stream* stream = qa_range_of(self);
+  AcquireSRWLockExclusive(&stream->lock);
+  qa_range_place_locked(stream, (int64_t)position);
+  ReleaseSRWLockExclusive(&stream->lock);
   return S_OK;
 }
 
@@ -152,7 +219,9 @@ static HRESULT STDMETHODCALLTYPE qa_range_is_end(IMFByteStream* self,
     return E_POINTER;
   }
   qa_range_stream* stream = qa_range_of(self);
+  AcquireSRWLockExclusive(&stream->lock);
   *end = stream->position >= stream->length ? TRUE : FALSE;
+  ReleaseSRWLockExclusive(&stream->lock);
   return S_OK;
 }
 
@@ -162,24 +231,26 @@ static HRESULT qa_range_read_at(qa_range_stream* stream,
                                 ULONG want,
                                 ULONG* got) {
   *got = 0;
-  if (stream->span == NULL) {
-    return E_FAIL;  // Closed: nothing left to read from.
-  }
+  AcquireSRWLockExclusive(&stream->lock);
+  HRESULT answer = S_OK;
   const int64_t left = stream->length - stream->position;
-  if (left <= 0 || want == 0) {
-    return S_OK;
+  if (stream->span == NULL) {
+    answer = E_FAIL;  // Closed: nothing left to read from.
+  } else if (left > 0 && want > 0) {
+    const ULONG take = (int64_t)want > left ? (ULONG)left : want;
+    const int64_t read = qa_media_span_read(stream->span, stream->position,
+                                            into, (int64_t)take);
+    if (read < 0) {
+      // The file would not read, or a block would not decode: a broken
+      // medium, said as one rather than served as whatever the buffer held.
+      answer = E_FAIL;
+    } else {
+      stream->position += read;
+      *got = (ULONG)read;
+    }
   }
-  const ULONG take = (int64_t)want > left ? (ULONG)left : want;
-  const int64_t read =
-      qa_media_span_read(stream->span, stream->position, into, (int64_t)take);
-  if (read < 0) {
-    // The file would not read, or a block would not decode: a broken
-    // medium, said as one rather than served as whatever the buffer held.
-    return E_FAIL;
-  }
-  stream->position += read;
-  *got = (ULONG)read;
-  return S_OK;
+  ReleaseSRWLockExclusive(&stream->lock);
+  return answer;
 }
 
 static HRESULT STDMETHODCALLTYPE qa_range_read(IMFByteStream* self,
@@ -204,15 +275,25 @@ static HRESULT STDMETHODCALLTYPE qa_range_begin_read(IMFByteStream* self,
   if (into == NULL || callback == NULL) {
     return E_POINTER;
   }
-  qa_range_stream* stream = qa_range_of(self);
   ULONG got = 0;
-  const HRESULT read = qa_range_read_at(stream, into, want, &got);
+  const HRESULT read = qa_range_read_at(qa_range_of(self), into, want, &got);
   if (FAILED(read)) {
     return read;
   }
-  stream->pending = got;
+  qa_range_answer* answer = (qa_range_answer*)calloc(1, sizeof(*answer));
+  if (answer == NULL) {
+    return E_OUTOFMEMORY;
+  }
+  answer->lpVtbl = &qa_range_answer_vtbl;
+  answer->ref = 1;
+  answer->got = got;
+  answer->stream = self;
+  IMFByteStream_AddRef(self);
   IMFAsyncResult* result = NULL;
-  const HRESULT made = MFCreateAsyncResult(NULL, callback, state, &result);
+  const HRESULT made =
+      MFCreateAsyncResult((IUnknown*)answer, callback, state, &result);
+  // The result holds the answer now — or nothing does, and it goes.
+  IUnknown_Release((IUnknown*)answer);
   if (FAILED(made)) {
     return made;
   }
@@ -224,12 +305,26 @@ static HRESULT STDMETHODCALLTYPE qa_range_begin_read(IMFByteStream* self,
 static HRESULT STDMETHODCALLTYPE qa_range_end_read(IMFByteStream* self,
                                                    IMFAsyncResult* result,
                                                    ULONG* got) {
-  (void)result;
-  if (got == NULL) {
+  (void)self;
+  if (result == NULL || got == NULL) {
     return E_POINTER;
   }
-  *got = qa_range_of(self)->pending;
-  return S_OK;
+  IUnknown* object = NULL;
+  const HRESULT held = IMFAsyncResult_GetObject(result, &object);
+  if (FAILED(held)) {
+    return held;
+  }
+  // ⛔Only a result this stream made carries an answer it can read.
+  if (object == NULL ||
+      (const IUnknownVtbl*)object->lpVtbl != &qa_range_answer_vtbl) {
+    if (object != NULL) {
+      IUnknown_Release(object);
+    }
+    return E_INVALIDARG;
+  }
+  *got = ((qa_range_answer*)object)->got;
+  IUnknown_Release(object);
+  return IMFAsyncResult_GetStatus(result);
 }
 
 static HRESULT STDMETHODCALLTYPE qa_range_write(IMFByteStream* self,
@@ -273,13 +368,14 @@ static HRESULT STDMETHODCALLTYPE qa_range_seek(IMFByteStream* self,
                                                QWORD* landed) {
   (void)flags;
   qa_range_stream* stream = qa_range_of(self);
-  const int64_t from =
-      origin == msoCurrent ? stream->position : 0;
-  HRESULT set = qa_range_set_position(self, (QWORD)(from + move));
+  AcquireSRWLockExclusive(&stream->lock);
+  const int64_t from = origin == msoCurrent ? stream->position : 0;
+  qa_range_place_locked(stream, from + move);
   if (landed != NULL) {
     *landed = (QWORD)stream->position;
   }
-  return set;
+  ReleaseSRWLockExclusive(&stream->lock);
+  return S_OK;
 }
 
 static HRESULT STDMETHODCALLTYPE qa_range_flush(IMFByteStream* self) {
@@ -289,8 +385,10 @@ static HRESULT STDMETHODCALLTYPE qa_range_flush(IMFByteStream* self) {
 
 static HRESULT STDMETHODCALLTYPE qa_range_close(IMFByteStream* self) {
   qa_range_stream* stream = qa_range_of(self);
+  AcquireSRWLockExclusive(&stream->lock);
   qa_media_span_close(stream->span);
   stream->span = NULL;
+  ReleaseSRWLockExclusive(&stream->lock);
   return S_OK;
 }
 
@@ -331,6 +429,7 @@ IMFByteStream* qa_win_range_stream_create(const char* utf8_path,
   }
   stream->lpVtbl = &qa_range_vtbl;
   stream->ref = 1;
+  InitializeSRWLock(&stream->lock);
   stream->span = span;
   stream->length = qa_media_span_size(span);
   stream->position = 0;

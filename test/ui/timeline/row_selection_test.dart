@@ -20,7 +20,7 @@ import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_selected_exposure_outline.dart'
+import 'package:anicel/src/ui/timeline/timeline_row_selection_bands.dart'
     show TimelineRowSelectionBands;
 import 'package:anicel/src/ui/session/row_selection.dart';
 
@@ -78,13 +78,31 @@ void main() {
       );
 
       s.rowSelectionVerbs.beginRowSelection(camera.address);
-      expect(s.rowIsSelected(camera.address), isTrue);
+      expect(s.rowSelectionVerbs.rowIsSelected(camera.address), isTrue);
       expect(
         s.layerVerbs.deletableSelectedLayerIds(),
         isEmpty,
         reason: 'kind decides what the edit DOES, not whether it selects',
       );
     });
+  });
+
+  // T10 (유저 확정 2026-08-14): a press clears the selection when it moves you
+  // somewhere else, and holds it when it begins a move of what is selected.
+  test('standing on a selected row keeps the rows; standing elsewhere lets '
+      'them go', () {
+    final s = session();
+    final rows = railRows(s);
+    s.rowSelectionVerbs.beginRowSelection(rows.first.address);
+    s.rowSelectionVerbs.updateRowSelection(rows, 1);
+    final both = [rows[0].address, rows[1].address];
+    expect(s.rowSelection.value, both, reason: '⛔premise');
+
+    s.standOnRow(rows[1].address);
+    expect(s.rowSelection.value, both, reason: 'inside: the start of a move');
+
+    s.standOnRow(rows[2].address);
+    expect(s.rowSelection.value, isEmpty, reason: 'outside: a new place');
   });
 
   // 🚨유저 확정 2026-08-12: 「선택범위는 하나만 작동하도록. 프레임셀

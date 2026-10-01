@@ -34,12 +34,12 @@ class _XSheetGridReveal {
   /// selection standing on a LANE column scrolled to the layer beside it —
   /// the rail had honoured the current-row address since R10 #19.
   void _revealSelection() => revealSelectionOnBothAxes(
-    (
+    frames: (
       controller: _state._frameScrollController,
       extent: _state._metrics.frameCellWidth,
       at: _state.widget.hooks.frameCursor.value,
     ),
-    (
+    rows: (
       controller: _state._layerScrollController,
       extent: _state._metrics.layerRowHeight,
       at: indexOfDisplayRow(

@@ -68,7 +68,7 @@ void main() {
     // only while the cut HAS a guide.
     s.createDrawingAtCurrentFrame();
     s.cutVerbs.setActiveCutGuides(oneSymmetry());
-    s.selectedGuideId = id;
+    s.cutVerbs.selectedGuideId = id;
     await tester.pumpAndSettle();
     final tool = workspace.brushTool!;
     tool.value = tool.value.copyWith(tool: CanvasTool.guide);

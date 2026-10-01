@@ -1,9 +1,13 @@
 import 'package:collection/collection.dart' show IterableExtension;
 
+import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
+import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
+import '../../models/track.dart';
 import '../../services/media/media_asset_uses.dart';
 import '../../services/persistence/cel_places.dart';
 import '../../services/project_lookup.dart';
@@ -11,18 +15,19 @@ import 'app_strings.dart';
 
 /// A ROW as one line: what holds it — its cut, or its track — and its name.
 ///
-/// Three lists name a row — a frame's place (its first two parts), a media
-/// pool file's row uses and a link badge's partners — so a row reads the
-/// same wherever it is listed.
+/// Four lists name a row — a frame's place (its first two parts), a media
+/// pool file's row uses, a link badge's partners and a lane key's link
+/// notice — so a row reads the same wherever it is listed.
 String rowPlaceLine({required String ownerName, required String layerName}) =>
     '$ownerName · $layerName';
 
 /// A place in a project as one line of a list: the names it is found by,
 /// joined the way the canvas title joins a cut, a layer and a frame.
 ///
-/// Two lists speak in these lines — the pictures a save could not carry
-/// (C-save-percent) and the uses of a media pool file (F-118) — so a frame
-/// on a row reads the same in both.
+/// The lists that speak in these lines — the pictures a save could not
+/// carry (C-save-percent), the uses of a media pool file (F-118) and the
+/// frames a link takes (I-18, [drawingPlaceLines]) — so a frame on a row
+/// reads the same in all of them.
 String celPlaceLine(CelPlace place) {
   final strings = AppText.strings;
   return switch (place) {
@@ -40,6 +45,57 @@ String celPlaceLine(CelPlace place) {
     GoneCelPlace() => strings.saveCelsLostGone,
   };
 }
+
+/// [layerId]'s drawings [frameIds], each as [celPlaceLine] names it, in the
+/// order given — none for a row [project] does not hold, or for a drawing
+/// its bank does not.
+///
+/// What a LINK notice lists (I-18): 「대상의 프레임을 리스트로서」 — the
+/// drawings a join by name discards, and those a 겸용 conversion replaces,
+/// one line each, however many there are.
+List<String> drawingPlaceLines(
+  Project project,
+  LayerId layerId,
+  Iterable<FrameId> frameIds,
+) {
+  final owned = _rowOf(project, layerId);
+  if (owned == null) {
+    return const [];
+  }
+  return [
+    for (final frameId in frameIds)
+      if (owned.layer.frameById(frameId) case final frame?)
+        celPlaceLine(
+          DrawingCelPlace.at(
+            track: owned.track,
+            cut: owned.cut,
+            layer: owned.layer,
+            frame: frame,
+          ),
+        ),
+  ];
+}
+
+/// [layerId]'s row as [rowPlaceLine] names it — none for a row [project]
+/// does not hold.
+///
+/// What a lane KEY's link notice lists: the keys a join re-values sit on
+/// that row's lanes, and a key has no drawing of its own to name.
+List<String> rowPlaceLines(Project project, LayerId layerId) => [
+  if (_rowOf(project, layerId) case final owned?)
+    rowPlaceLine(
+      ownerName: rowOwnerName(track: owned.track, cut: owned.cut),
+      layerName: owned.layer.name,
+    ),
+];
+
+/// [layerId]'s row in [project] with what holds it, wherever it lives.
+({Track track, Cut? cut, Layer layer})? _rowOf(
+  Project project,
+  LayerId layerId,
+) => projectLayersWithOwners(
+  project,
+).firstWhereOrNull((owned) => owned.layer.id == layerId);
 
 /// One use of a media pool file as a line of the list the pool shows: a
 /// picture of the work where it is set, a row by its cut and its name, a

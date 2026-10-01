@@ -167,9 +167,10 @@ void main() {
         canvasSize: canvas,
       );
 
-      // ⚠️`shapes`, not `shape`: a step holds the copies a guide made of one
-      // act since the guide round, and a plain drag is the one-copy case.
-      final points = moved!.steps.single.shapes.single.points;
+      // ⚠️`singleShape`, not a reach into the step: a step holds the copies
+      // a guide made of one act since the guide round (a plain drag is the
+      // one-copy case), and since I-23 it may hold a whole selection.
+      final points = moved!.singleShape!.points;
       expect(points.first.x, closeTo(50, 0.001));
       expect(points.first.y, closeTo(100, 0.001));
     });

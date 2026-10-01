@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/app_language.dart';
 import '../../models/frame.dart' show inbetweenMark;
 import '../../models/timesheet_info.dart' show WorkPicture;
+import '../../models/timesheet_sheet_kind.dart';
 
 /// The LIVE program/notation languages, app-wide — the same shape
 /// [AppColors.accentSettings] uses, and for the same reason: widgets deep
@@ -153,9 +154,18 @@ enum AppStrings {
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
 
+  /// The conte's pen on a cut with no conte row to draw into, while
+  /// 「프레임 자동 생성」 is off (유저 2026-09-30, H51: 「콘티레이어없으면
+  /// 프레임이 없다고뜨는데 … 콘티레이어가 없다고」).
+  String get noticeNoConteLayer => _s('noticeNoConteLayer');
+
   /// R27 #16: the refusal is about the LAYER, not the section — the CAM
   /// section is no longer uniformly undrawable in the user's model.
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
+
+  /// F-242: a row that could be drawn on, with its eye (or a folder's above
+  /// it) off — its cel is there, only hidden.
+  String get noticeLayerHidden => _s('noticeLayerHidden');
 
   /// Synced attach rows look like blocks but own no timing — a grab
   /// redirects to the owner (the synced-block UI's cursor guidance).
@@ -220,6 +230,10 @@ enum AppStrings {
   /// D26: the crossing-fade refusal warning (red corner marker's hover
   /// text) — the sanctioned exception to the no-explanatory-UI rule.
   String get tlTransitionCrossingWarning => _s('tlTransitionCrossingWarning');
+
+  /// An O.L's name on the transition row — not the user's to set (F-229,
+  /// 유저: 「이름부분은 그냥 컷O.L. 일본어론 カットO.L」).
+  String get tlTransitionCutOl => _s('tlTransitionCutOl');
   String get audioMicGainLabel => _s('audioMicGainLabel');
   String get audioInputChannelLabel => _s('audioInputChannelLabel');
   String get audioInputChannelDevice => _s('audioInputChannelDevice');
@@ -266,6 +280,10 @@ enum AppStrings {
   /// deselect button exists).
   String get selectionClosePolygon => _s('selectionClosePolygon');
 
+  /// 선택 반전 (I-23) — the selection tool's settings button that selects
+  /// what is not selected, out to the pasteboard wall.
+  String get selectionInvert => _s('selectionInvert');
+
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
   String get commonDelete => _s('commonDelete');
@@ -304,12 +322,20 @@ enum AppStrings {
   /// '{name}' is replaced with the layer name.
   String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
+
+  /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
+  /// 아니라 복수 대응을 기본으로」) — the frames are the list under it.
   String get frameNameConflictBody => _s('frameNameConflictBody');
+
+  /// The fold over the frames a name link would join.
+  String get frameNameConflictListHeading =>
+      _s('frameNameConflictListHeading');
 
   // --- The instance editors ---
   String get seInstanceNewTitle => _s('seInstanceNewTitle');
   String get seInstanceEditTitle => _s('seInstanceEditTitle');
   String get seNameLabel => _s('seNameLabel');
+  String get seTypeLabel => _s('seTypeLabel');
   String get seDialogueLabel => _s('seDialogueLabel');
   String get seLinkedAudioLabel => _s('seLinkedAudioLabel');
   String get seLinkedAudioNone => _s('seLinkedAudioNone');
@@ -330,10 +356,15 @@ enum AppStrings {
   String get convertLinkedCutLinksTemplate =>
       _s('convertLinkedCutLinksTemplate');
 
-  /// '{count}' drawings, '{cut}' the target cut. The origin's picture wins
-  /// each same-name conflict (원본 승리) — announced up front.
+  /// '{cut}' the target cut. The origin's picture wins each same-name
+  /// conflict (원본 승리) — announced up front, the drawings it replaces
+  /// listed under it rather than counted in it (I-18 link-notice-Q1).
   String get convertLinkedCutReplacedTemplate =>
       _s('convertLinkedCutReplacedTemplate');
+
+  /// The fold over those replaced drawings.
+  String get convertLinkedCutReplacedHeading =>
+      _s('convertLinkedCutReplacedHeading');
 
   /// '{count}' is the joining drawing count.
   String get convertLinkedCutJoiningTemplate =>
@@ -642,6 +673,15 @@ enum AppStrings {
   String get sheetBarDrawn => _s('sheetBarDrawn');
   String get sheetBarNotDrawn => _s('sheetBarNotDrawn');
   String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+  String get sheetLength => _s('sheetLength');
+  String get sheetThreeSeconds => _s('sheetThreeSeconds');
+  String get sheetSixSeconds => _s('sheetSixSeconds');
+
+  /// What the paper a timesheet prints on is called.
+  String sheetKindName(TimesheetSheetKind kind) => switch (kind) {
+    TimesheetSheetKind.threeSeconds => sheetThreeSeconds,
+    TimesheetSheetKind.sixSeconds => sheetSixSeconds,
+  };
   String get sheetFillOn => _s('sheetFillOn');
   String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
@@ -773,7 +813,9 @@ enum AppStrings {
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlSelectRowSpan => _s('tlSelectRowSpan');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
-  String get tlUnlinkLayer => _s('tlUnlinkLayer');
+  /// I-25: the link window's button, and why it is off on a linked cut's row.
+  String get linkWindowUnlink => _s('linkWindowUnlink');
+  String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlRenameLayer => _s('tlRenameLayer');
   String get tlCopyLayer => _s('tlCopyLayer');
@@ -992,6 +1034,11 @@ enum AppStrings {
   String get panelMediaViewerSub => _s('panelMediaViewerSub');
   String get panelOnionSkin => _s('panelOnionSkin');
   String get panelToolSize => _s('panelToolSize');
+  /// 🗣️F-76 (유저 2026-09-11): 「콘티패널은 지금의 스토리보드패널을
+  /// 콘티패널로 명명하고, 기존 콘티패널은 알기쉽게 콘티 프리뷰 패널이나 콘티
+  /// 용지 패널? 이거는 이름은 제안해주도록」 — F-76-Q1 (09-30): 「콘티 용지」.
+  /// Until then the two panels shared one Korean name. The code names follow
+  /// separately (storyboard → conte, conte → conteSheet).
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
   String get panelTimesheet => _s('panelTimesheet');
@@ -1060,6 +1107,8 @@ enum AppStrings {
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
   String get exBrowse => _s('exBrowse');
+  String get exHandOverWhenDone => _s('exHandOverWhenDone');
+  String get exHandOverDeclined => _s('exHandOverDeclined');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
   String get exBaseName => _s('exBaseName');
@@ -1351,6 +1400,7 @@ enum AppStrings {
   String get imModeReference => _s('imModeReference');
   String get imBake => _s('imBake');
   String get imSound => _s('imSound');
+  String get imSoundOnly => _s('imSoundOnly');
   String get commonOn => _s('commonOn');
   String get commonOff => _s('commonOff');
   String get imFitContain => _s('imFitContain');
@@ -1453,9 +1503,10 @@ enum AppStrings {
   /// renames nothing. No `en` rows: the English is the defaults' own.
   ///
   /// ja takes Clip Studio's names where a brush is modelled on one (Gペン ·
-  /// 丸ペン · カブラペン · ミリペン). Names with no settled art-supply term in a
-  /// language (Anime Pen, Rough Ink, Grit Spray, Rough Edge, Water Blend) are
-  /// rendered from the English, and are the first a translator may refine.
+  /// 丸ペン · カブラペン · ミリペン), and Photoshop's for the two rounds it
+  /// ships (ハード円ブラシ · ソフト円ブラシ). Names with no settled art-supply
+  /// term in a language (Grit Spray, Rough Edge, Water Blend) are rendered
+  /// from the English, and are the first a translator may refine.
   String builtinBrushName(String id, String fallback) =>
       _values['builtinBrush.$id'] ?? fallback;
 
@@ -1654,6 +1705,14 @@ enum AppStrings {
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
+
+  /// I-24: the two ways a count of frames is typed (`FrameCountField`).
+  String get frameCountEntryFrames => _s('frameCountEntryFrames');
+  String get frameCountEntrySecondsPlusFrames =>
+      _s('frameCountEntrySecondsPlusFrames');
+
+  /// 자동 이름 지정's one field (I-18): the number the first block takes.
+  String get autoNameStartField => _s('autoNameStartField');
   String get projectFpsTitle => _s('projectFpsTitle');
   String get projectFpsField => _s('projectFpsField');
 
@@ -1675,7 +1734,9 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
+    'noticeNoConteLayer': 'This cut has no storyboard layer',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
+    'noticeLayerHidden': 'This layer is hidden',
     'noticeEditAttachOwner': 'Edit the owner layer',
     'commonCancel': 'Cancel',
     'commonApply': 'Apply',
@@ -1711,6 +1772,7 @@ enum AppStrings {
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'tlTransitionCrossingWarning': 'Crosses the cut boundary — not applied',
+    'tlTransitionCutOl': 'Cut O.L.',
     'audioMicGainLabel': 'Mic gain (dB)',
     'audioInputChannelLabel': 'Input channels',
     'audioInputChannelDevice': 'As device',
@@ -1742,6 +1804,7 @@ enum AppStrings {
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
     'selectionClosePolygon': 'Close shape',
+    'selectionInvert': 'Invert Selection',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
     'commonRename': 'Rename',
@@ -1766,12 +1829,15 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
-        'This name is already used by another frame in this layer. Link to '
-        'that frame? The same name then shares the same material, and this '
-        "frame's drawing is discarded.",
+        'Each frame listed takes a name another frame on its layer already '
+        'uses. Link them to the frames holding those names? The same name '
+        "then shares the same material, and each listed frame's drawing is "
+        'discarded.',
+    'frameNameConflictListHeading': 'Frames to link',
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
+    'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
     'seLinkedAudioLabel': 'Linked audio',
     'seLinkedAudioNone': 'None',
@@ -1785,8 +1851,9 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'Link with cut',
     'convertLinkedCutLinksTemplate': 'Links {names}.',
     'convertLinkedCutReplacedTemplate':
-        '{count} same-name drawing(s) in "{cut}" will be replaced by the '
+        'Same-name drawings in "{cut}" will be replaced by the '
         "origin's (원본 승리).",
+    'convertLinkedCutReplacedHeading': 'Drawings replaced',
     'convertLinkedCutJoiningTemplate':
         '{count} drawing(s) join the shared set.',
     'convertLinkedCutTargetGainsTemplate': '"{cut}" gains: {names}.',
@@ -2078,6 +2145,9 @@ enum AppStrings {
     'sheetBarDrawn': 'Drawn',
     'sheetBarNotDrawn': 'Not drawn',
     'sheetSeEmptyFill': 'Empty SE stretches',
+    'sheetLength': 'Sheet length',
+    'sheetThreeSeconds': '3 sec',
+    'sheetSixSeconds': '6 sec',
     'sheetFillOn': 'Grayed',
     'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
@@ -2184,10 +2254,10 @@ enum AppStrings {
     'panelMedia': 'Media',
     'panelOnionSkin': 'Onion skin',
     'panelToolSize': 'Tool size',
-    'panelStoryboard': 'Storyboard',
+    'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
-    'panelConte': 'Conte',
+    'panelConte': 'Conte Sheet',
     'panelEnvelope': 'Envelope',
     'commonRegister': 'Register',
     'commonNameField': 'Name',
@@ -2246,6 +2316,8 @@ enum AppStrings {
     'exChannels': 'Channels',
     'exAudio': 'Audio',
     'exBrowse': 'Browse…',
+    'exHandOverWhenDone': 'Choose when done',
+    'exHandOverDeclined': 'Not handed over — the outputs were let go.',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
     'exBaseName': 'Base name',
@@ -2425,6 +2497,7 @@ enum AppStrings {
     'imModeReference': 'Link',
     'imBake': 'Rasterize',
     'imSound': 'Sound',
+    'imSoundOnly': 'Sound only',
     'commonOn': 'On',
     'commonOff': 'Off',
     'imFitContain': 'Keep aspect',
@@ -2720,7 +2793,8 @@ enum AppStrings {
     'tlDuplicateLayer': 'Duplicate layer',
     'tlSelectRowSpan': 'Select whole row',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
-    'tlUnlinkLayer': 'Unlink layer',
+    'linkWindowUnlink': 'Unlink',
+    'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
     'tlResetGroup': 'Reset (keeps keys)',
     'tlRenameLayer': 'Rename layer…',
     'tlCopyLayer': 'Copy layer',
@@ -2770,8 +2844,11 @@ enum AppStrings {
     'tlStoryboardLayer': 'Storyboard layer',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
+    'frameCountEntryFrames': 'Frames',
+    'frameCountEntrySecondsPlusFrames': 'Seconds+frames',
     'projectFpsTitle': 'Project frame rate',
     'projectFpsField': 'Frames per second',
+    'autoNameStartField': 'Start number',
   };
 
   static const _jaValues = <String, String>{
@@ -2784,7 +2861,9 @@ enum AppStrings {
     'pageLabel': 'ページ',
     'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
+    'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
+    'noticeLayerHidden': 'このレイヤーは非表示です',
     'noticeEditAttachOwner': '親レイヤーを編集してください',
     'commonCancel': 'キャンセル',
     'commonApply': '適用',
@@ -2818,6 +2897,7 @@ enum AppStrings {
     'recordTakeClipped': 'テイクがクリッピングしました — ブロックの赤い角が目印です。',
     'recordClipMarkerTooltip': 'このテイクはクリッピングしています（入力過大）',
     'tlTransitionCrossingWarning': 'カット境界を越えています — 適用されません',
+    'tlTransitionCutOl': 'カットO.L',
     'audioMicGainLabel': 'マイクゲイン（dB）',
     'audioInputChannelLabel': '入力チャンネル',
     'audioInputChannelDevice': '装置のまま',
@@ -2848,6 +2928,7 @@ enum AppStrings {
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
     'selectionClosePolygon': '形を閉じる',
+    'selectionInvert': '選択範囲を反転',
     'commonSave': '保存',
     'commonDelete': '削除',
     'commonRename': '名前を変更',
@@ -2872,12 +2953,14 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
-        'この名前はこのレイヤーの別のフレームで既に使われています。既存のフレームに'
-        'リンクしますか？リンクすると同じ名前が同じ素材を共有し、このフレームの絵は'
-        '破棄されます。',
+        '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
+        'その名前のフレームにリンクしますか？リンクすると同じ名前が同じ素材を共有し、'
+        '一覧のフレームの絵は破棄されます。',
+    'frameNameConflictListHeading': 'リンクするフレーム',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
+    'seTypeLabel': 'タイプ',
     'seDialogueLabel': 'セリフ',
     'seLinkedAudioLabel': 'リンクされた音声',
     'seLinkedAudioNone': 'なし',
@@ -2891,7 +2974,8 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'リンクするカット',
     'convertLinkedCutLinksTemplate': '{names} をリンクします。',
     'convertLinkedCutReplacedTemplate':
-        '「{cut}」の同名作画 {count} 枚が原本のもので置き換わります（原本優先）。',
+        '「{cut}」の同名作画が原本のもので置き換わります（原本優先）。',
+    'convertLinkedCutReplacedHeading': '置き換わる作画',
     'convertLinkedCutJoiningTemplate': '作画 {count} 枚が共有セットに加わります。',
     'convertLinkedCutTargetGainsTemplate': '「{cut}」に追加：{names}。',
     'convertLinkedCutOriginGainsTemplate': 'このカットに追加：{names}。',
@@ -3198,6 +3282,9 @@ enum AppStrings {
     'sheetBarDrawn': '引く',
     'sheetBarNotDrawn': '引かない',
     'sheetSeEmptyFill': 'セリフのない区間',
+    'sheetLength': 'シートの長さ',
+    'sheetThreeSeconds': '3秒',
+    'sheetSixSeconds': '6秒',
     'sheetFillOn': '塗る',
     'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
@@ -3234,12 +3321,8 @@ enum AppStrings {
     'shortcutCategory.File': 'ファイル',
     'shortcutAction.frame-previous': '前のフレーム',
     'shortcutAction.frame-next': '次のフレーム',
-    'shortcutAction.frame-walk-left': '左へ一歩',
-    'shortcutAction.frame-walk-right': '右へ一歩',
-    'shortcutAction.frame-walk-up': '上へ一歩',
-    'shortcutAction.frame-walk-down': '下へ一歩',
-    'shortcutAction.drawing-previous': '前の作画',
-    'shortcutAction.drawing-next': '次の作画',
+    'shortcutAction.drawing-previous': '前のブロック',
+    'shortcutAction.drawing-next': '次のブロック',
     'shortcutAction.playback-toggle': '再生 / 一時停止',
     'shortcutAction.canvas-pan-hold': '移動（押している間）',
     'shortcutAction.voice-record-toggle': '音声収録（開始/停止）',
@@ -3257,6 +3340,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-free': '自由変形',
     'shortcutAction.tool-transform-mesh': 'メッシュワープ',
     'shortcutAction.tool-cut': '切り抜きツール',
+    'shortcutAction.tool-cut-whole': '全体カット',
     'shortcutAction.tool-cut-stamp': 'スタンプ',
     'shortcutAction.selection-deselect': '選択解除',
     'shortcutAction.layer-up': 'レイヤーを上へ',
@@ -3286,6 +3370,10 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
     'shortcutAction.edit-delete-colour': '色削除',
     'shortcutAction.edit-keep-colour': '色残し',
+    'shortcutAction.edit-copy-pixels': 'ピクセルコピー',
+    'shortcutAction.edit-paste-pixels-above': 'ピクセルを上に貼り付け',
+    'shortcutAction.edit-paste-pixels-below': 'ピクセルを下に貼り付け',
+    'shortcutAction.edit-auto-name': '自動命名',
     'blendMode.passThrough': '通過',
     'blendMode.normal': '通常',
     'blendMode.color': '通常',
@@ -3402,10 +3490,10 @@ enum AppStrings {
     'panelMedia': 'メディア',
     'panelOnionSkin': 'オニオンスキン',
     'panelToolSize': 'ツールサイズ',
-    'panelStoryboard': '絵コンテ',
+    'panelStoryboard': 'コンテ',
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
-    'panelConte': 'コンテ',
+    'panelConte': 'コンテ用紙',
     'panelEnvelope': 'エンベロープ',
     'commonRegister': '登録',
     'commonNameField': '名前',
@@ -3464,6 +3552,8 @@ enum AppStrings {
     'exChannels': 'チャンネル',
     'exAudio': '音声',
     'exBrowse': '参照…',
+    'exHandOverWhenDone': '終わったら選ぶ',
+    'exHandOverDeclined': '渡さなかったため、書き出した結果は破棄しました。',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
     'exBaseName': 'ベース名',
@@ -3666,6 +3756,7 @@ enum AppStrings {
     'imModeReference': 'リンク',
     'imBake': 'ラスタライズ',
     'imSound': '音',
+    'imSoundOnly': '音のみ',
     'commonOn': 'オン',
     'commonOff': 'オフ',
     'imFitContain': 'アスペクト維持',
@@ -3806,6 +3897,7 @@ enum AppStrings {
     'brNewGroup': 'グループを新規作成',
     'brNewGroupName': '新規グループ',
     'brNewPresetName': 'プリセット {n}',
+    'builtinBrush.builtin-basic-group': '基本',
     'builtinBrush.builtin-pencil-group': '鉛筆',
     'builtinBrush.builtin-ink-group': 'ペン',
     'builtinBrush.builtin-dry-media-group': '乾式画材',
@@ -3815,24 +3907,21 @@ enum AppStrings {
     'builtinBrush.builtin-blend-group': '色混ぜ',
     'builtinBrush.builtin-texture-group': 'テクスチャ',
     'builtinBrush.builtin-decoration-group': 'デコレーション',
-    'builtinBrush.builtin-pencil': '鉛筆',
-    'builtinBrush.builtin-soft-pencil': '柔らか鉛筆',
+    'builtinBrush.builtin-pencil': '鉛筆 HB',
+    'builtinBrush.builtin-soft-pencil': '鉛筆 2B',
     'builtinBrush.builtin-mechanical-pencil': 'シャープペンシル',
-    'builtinBrush.builtin-rough-pencil': 'ラフ鉛筆',
-    'builtinBrush.builtin-hard-pencil': '硬い鉛筆 2H',
-    'builtinBrush.builtin-dark-pencil': '濃い鉛筆 4B',
+    'builtinBrush.builtin-hard-pencil': '鉛筆 2H',
+    'builtinBrush.builtin-dark-pencil': '鉛筆 4B',
     'builtinBrush.builtin-colored-pencil': '色鉛筆',
-    'builtinBrush.builtin-shading-pencil': '陰影鉛筆',
-    'builtinBrush.builtin-ink-pen': 'インクペン',
+    'builtinBrush.builtin-shading-pencil': '寝かせ鉛筆',
+    'builtinBrush.builtin-ink-pen': 'ハード円ブラシ',
     'builtinBrush.builtin-g-pen': 'Gペン',
     'builtinBrush.builtin-maru-pen': '丸ペン',
     'builtinBrush.builtin-brush-pen': '筆ペン',
     'builtinBrush.builtin-calligraphy': 'カリグラフィ',
     'builtinBrush.builtin-marker': 'マーカー',
-    'builtinBrush.builtin-anime-pen': 'アニメペン',
     'builtinBrush.builtin-kabura-pen': 'カブラペン',
     'builtinBrush.builtin-technical-pen': 'ミリペン',
-    'builtinBrush.builtin-rough-ink': '粗いインク',
     'builtinBrush.builtin-dry-ink': 'かすれインク',
     'builtinBrush.builtin-chalk-preset': 'チョーク',
     'builtinBrush.builtin-charcoal': '木炭',
@@ -3840,18 +3929,17 @@ enum AppStrings {
     'builtinBrush.builtin-crayon': 'クレヨン',
     'builtinBrush.builtin-graphite-stick': 'グラファイトスティック',
     'builtinBrush.builtin-watercolor': '水彩',
+    'builtinBrush.builtin-analog-watercolor': 'アナログ水彩',
     'builtinBrush.builtin-wet-watercolor': 'にじみ水彩',
     'builtinBrush.builtin-dense-watercolor': '濃い水彩',
     'builtinBrush.builtin-flat-wash': '平塗り',
-    'builtinBrush.builtin-round-bristle': '丸筆',
     'builtinBrush.builtin-flat-bristle': '平筆',
     'builtinBrush.builtin-gouache': 'ガッシュ',
     'builtinBrush.builtin-oil-brush': '油彩ブラシ',
     'builtinBrush.builtin-palette-knife': 'パレットナイフ',
     'builtinBrush.builtin-dry-brush': 'ドライブラシ',
     'builtinBrush.builtin-airbrush': 'エアブラシ',
-    'builtinBrush.builtin-soft-brush': '柔らかブラシ',
-    'builtinBrush.builtin-spray': 'スプレー',
+    'builtinBrush.builtin-soft-brush': 'ソフト円ブラシ',
     'builtinBrush.builtin-grit-spray': '粗いスプレー',
     'builtinBrush.builtin-blender': '色混ぜ',
     'builtinBrush.builtin-water-blend': '水ぼかし',
@@ -3880,6 +3968,7 @@ enum AppStrings {
     'builtinTip.builtin-leaf': '葉',
     'builtinTip.builtin-paper-grain': '紙目',
     'builtinTip.builtin-canvas-weave': 'キャンバス目',
+    'builtinTip.builtin-cold-press': 'コールドプレス紙',
     'brRenameGroup': 'グループ名を変更',
     'brDeleteGroup': 'グループを削除',
     'brRenameSelected': '選択中のブラシ名を変更',
@@ -4063,7 +4152,8 @@ enum AppStrings {
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlSelectRowSpan': '行全体を選択',
     'tlLinkDuplicateLayer': 'リンクして複製',
-    'tlUnlinkLayer': 'リンクを解除',
+    'linkWindowUnlink': 'リンクを解除',
+    'linkWindowUnlinkLinkedCut': 'リンクカットのレイヤーはカットごと解除します',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlRenameLayer': 'レイヤー名を変更…',
     'tlCopyLayer': 'レイヤーをコピー',
@@ -4111,8 +4201,11 @@ enum AppStrings {
     'tlStoryboardLayer': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
+    'frameCountEntryFrames': 'コマ数',
+    'frameCountEntrySecondsPlusFrames': '秒+コマ',
     'projectFpsTitle': 'プロジェクトのフレームレート',
     'projectFpsField': '1秒あたりのフレーム数',
+    'autoNameStartField': '開始番号',
   };
 
   static const _koValues = <String, String>{
@@ -4125,7 +4218,9 @@ enum AppStrings {
     'pageLabel': '페이지',
     'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
+    'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
+    'noticeLayerHidden': '숨김 상태인 레이어입니다',
     'noticeEditAttachOwner': '주인 레이어를 편집하세요',
     'commonCancel': '취소',
     'commonApply': '적용',
@@ -4159,6 +4254,7 @@ enum AppStrings {
     'recordTakeClipped': '테이크에 클리핑이 감지되었습니다 — 블록의 빨간 모서리가 표시입니다.',
     'recordClipMarkerTooltip': '이 테이크는 클리핑되었습니다(입력 과대)',
     'tlTransitionCrossingWarning': '컷 경계를 넘어 적용되지 않습니다',
+    'tlTransitionCutOl': '컷O.L.',
     'audioMicGainLabel': '마이크 게인(dB)',
     'audioInputChannelLabel': '입력 채널',
     'audioInputChannelDevice': '장치 그대로',
@@ -4189,6 +4285,7 @@ enum AppStrings {
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
     'selectionClosePolygon': '도형 닫기',
+    'selectionInvert': '선택 반전',
     'commonSave': '저장',
     'commonDelete': '삭제',
     'commonRename': '이름 변경',
@@ -4213,12 +4310,14 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
-        '이 이름은 이 레이어의 다른 프레임이 이미 쓰고 있습니다. 기존 프레임에 '
-        '링크할까요? 링크하면 같은 이름이 같은 원화를 공유하고, 이 프레임의 '
-        '그림은 버려집니다.',
+        '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
+        '있습니다. 그 이름의 프레임에 링크할까요? 링크하면 같은 이름이 같은 '
+        '원화를 공유하고, 목록의 프레임 그림은 버려집니다.',
+    'frameNameConflictListHeading': '링크할 프레임',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
+    'seTypeLabel': '타입',
     'seDialogueLabel': '대사',
     'seLinkedAudioLabel': '링크된 오디오',
     'seLinkedAudioNone': '없음',
@@ -4232,8 +4331,8 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': '링크할 컷',
     'convertLinkedCutLinksTemplate': '{names}을(를) 링크합니다.',
     'convertLinkedCutReplacedTemplate':
-        '"{cut}"의 같은 이름 원화 {count}장이 원본 것으로 대체됩니다'
-        '(원본 승리).',
+        '"{cut}"의 같은 이름 원화가 원본 것으로 대체됩니다(원본 승리).',
+    'convertLinkedCutReplacedHeading': '대체되는 원화',
     'convertLinkedCutJoiningTemplate': '원화 {count}장이 공유 세트에 합류합니다.',
     'convertLinkedCutTargetGainsTemplate': '"{cut}"에 추가: {names}.',
     'convertLinkedCutOriginGainsTemplate': '이 컷에 추가: {names}.',
@@ -4538,6 +4637,9 @@ enum AppStrings {
     'sheetBarDrawn': '그음',
     'sheetBarNotDrawn': '안 그음',
     'sheetSeEmptyFill': '대사 없는 구간',
+    'sheetLength': '시트 길이',
+    'sheetThreeSeconds': '3초',
+    'sheetSixSeconds': '6초',
     'sheetFillOn': '칠함',
     'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
@@ -4574,12 +4676,8 @@ enum AppStrings {
     'shortcutCategory.File': '파일',
     'shortcutAction.frame-previous': '이전 프레임',
     'shortcutAction.frame-next': '다음 프레임',
-    'shortcutAction.frame-walk-left': '왼쪽으로 한 걸음',
-    'shortcutAction.frame-walk-right': '오른쪽으로 한 걸음',
-    'shortcutAction.frame-walk-up': '위로 한 걸음',
-    'shortcutAction.frame-walk-down': '아래로 한 걸음',
-    'shortcutAction.drawing-previous': '이전 원화',
-    'shortcutAction.drawing-next': '다음 원화',
+    'shortcutAction.drawing-previous': '이전 블록',
+    'shortcutAction.drawing-next': '다음 블록',
     'shortcutAction.playback-toggle': '재생 / 일시정지',
     'shortcutAction.canvas-pan-hold': '이동(누르는 동안)',
     'shortcutAction.voice-record-toggle': '음성 녹음 (시작/정지)',
@@ -4597,10 +4695,11 @@ enum AppStrings {
     'shortcutAction.tool-transform-free': '자유 변형',
     'shortcutAction.tool-transform-mesh': '메시 워프',
     'shortcutAction.tool-cut': '잘라내기 도구',
+    'shortcutAction.tool-cut-whole': '전체 잘라내기',
     'shortcutAction.tool-cut-stamp': '스탬프',
     'shortcutAction.selection-deselect': '선택 해제',
-    'shortcutAction.layer-up': '레이어 위로',
-    'shortcutAction.layer-down': '레이어 아래로',
+    'shortcutAction.layer-up': '위 레이어',
+    'shortcutAction.layer-down': '아래 레이어',
     'shortcutAction.edit-confirm': '확정',
     'shortcutAction.selection-transform-cancel': '변형 취소',
     'shortcutAction.onion-skin-toggle': '어니언 스킨 켜기/끄기',
@@ -4626,6 +4725,10 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
     'shortcutAction.edit-delete-colour': '색 삭제',
     'shortcutAction.edit-keep-colour': '색 남기기',
+    'shortcutAction.edit-copy-pixels': '픽셀 복사',
+    'shortcutAction.edit-paste-pixels-above': '픽셀 위 붙여넣기',
+    'shortcutAction.edit-paste-pixels-below': '픽셀 아래 붙여넣기',
+    'shortcutAction.edit-auto-name': '자동 이름 지정',
     'blendMode.passThrough': '통과',
     'blendMode.normal': '표준',
     'blendMode.color': '표준',
@@ -4747,7 +4850,7 @@ enum AppStrings {
     'panelStoryboard': '콘티',
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
-    'panelConte': '콘티',
+    'panelConte': '콘티 용지',
     'panelEnvelope': '엔벨로프',
     'commonRegister': '등록',
     'commonNameField': '이름',
@@ -4804,6 +4907,8 @@ enum AppStrings {
     'exChannels': '채널',
     'exAudio': '오디오',
     'exBrowse': '찾아보기…',
+    'exHandOverWhenDone': '끝나면 고르기',
+    'exHandOverDeclined': '넘기지 않아 내보낸 결과물을 버렸습니다.',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'exBaseName': '기본 이름',
@@ -5006,6 +5111,7 @@ enum AppStrings {
     'imModeReference': '참조',
     'imBake': '굽기',
     'imSound': '소리',
+    'imSoundOnly': '소리만',
     'commonOn': '켬',
     'commonOff': '끔',
     'imFitContain': '비율 유지',
@@ -5140,6 +5246,7 @@ enum AppStrings {
     'brNewGroup': '새 그룹',
     'brNewGroupName': '새 그룹',
     'brNewPresetName': '프리셋 {n}',
+    'builtinBrush.builtin-basic-group': '기본',
     'builtinBrush.builtin-pencil-group': '연필',
     'builtinBrush.builtin-ink-group': '펜',
     'builtinBrush.builtin-dry-media-group': '건식 재료',
@@ -5149,24 +5256,21 @@ enum AppStrings {
     'builtinBrush.builtin-blend-group': '색 혼합',
     'builtinBrush.builtin-texture-group': '텍스처',
     'builtinBrush.builtin-decoration-group': '데코레이션',
-    'builtinBrush.builtin-pencil': '연필',
-    'builtinBrush.builtin-soft-pencil': '부드러운 연필',
+    'builtinBrush.builtin-pencil': 'HB 연필',
+    'builtinBrush.builtin-soft-pencil': '2B 연필',
     'builtinBrush.builtin-mechanical-pencil': '샤프',
-    'builtinBrush.builtin-rough-pencil': '러프 연필',
-    'builtinBrush.builtin-hard-pencil': '딱딱한 연필 2H',
-    'builtinBrush.builtin-dark-pencil': '진한 연필 4B',
+    'builtinBrush.builtin-hard-pencil': '2H 연필',
+    'builtinBrush.builtin-dark-pencil': '4B 연필',
     'builtinBrush.builtin-colored-pencil': '색연필',
-    'builtinBrush.builtin-shading-pencil': '음영 연필',
-    'builtinBrush.builtin-ink-pen': '잉크 펜',
+    'builtinBrush.builtin-shading-pencil': '눕혀 쓰는 연필',
+    'builtinBrush.builtin-ink-pen': '하드 라운드',
     'builtinBrush.builtin-g-pen': 'G펜',
     'builtinBrush.builtin-maru-pen': '둥근 펜',
     'builtinBrush.builtin-brush-pen': '붓펜',
     'builtinBrush.builtin-calligraphy': '캘리그래피',
     'builtinBrush.builtin-marker': '마커',
-    'builtinBrush.builtin-anime-pen': '애니 펜',
     'builtinBrush.builtin-kabura-pen': '카부라 펜',
     'builtinBrush.builtin-technical-pen': '밀리 펜',
-    'builtinBrush.builtin-rough-ink': '거친 잉크',
     'builtinBrush.builtin-dry-ink': '마른 잉크',
     'builtinBrush.builtin-chalk-preset': '초크',
     'builtinBrush.builtin-charcoal': '목탄',
@@ -5174,18 +5278,17 @@ enum AppStrings {
     'builtinBrush.builtin-crayon': '크레용',
     'builtinBrush.builtin-graphite-stick': '흑연 스틱',
     'builtinBrush.builtin-watercolor': '수채',
+    'builtinBrush.builtin-analog-watercolor': '아날로그 수채',
     'builtinBrush.builtin-wet-watercolor': '번지는 수채',
     'builtinBrush.builtin-dense-watercolor': '진한 수채',
     'builtinBrush.builtin-flat-wash': '평칠',
-    'builtinBrush.builtin-round-bristle': '둥근 붓',
     'builtinBrush.builtin-flat-bristle': '납작붓',
     'builtinBrush.builtin-gouache': '과슈',
     'builtinBrush.builtin-oil-brush': '유화 붓',
     'builtinBrush.builtin-palette-knife': '팔레트 나이프',
     'builtinBrush.builtin-dry-brush': '드라이 브러시',
     'builtinBrush.builtin-airbrush': '에어브러시',
-    'builtinBrush.builtin-soft-brush': '부드러운 브러시',
-    'builtinBrush.builtin-spray': '스프레이',
+    'builtinBrush.builtin-soft-brush': '소프트 라운드',
     'builtinBrush.builtin-grit-spray': '거친 스프레이',
     'builtinBrush.builtin-blender': '색 혼합',
     'builtinBrush.builtin-water-blend': '물 번짐',
@@ -5214,6 +5317,7 @@ enum AppStrings {
     'builtinTip.builtin-leaf': '잎',
     'builtinTip.builtin-paper-grain': '종이 결',
     'builtinTip.builtin-canvas-weave': '캔버스 결',
+    'builtinTip.builtin-cold-press': '콜드프레스 종이',
     'brRenameGroup': '그룹 이름 변경',
     'brDeleteGroup': '그룹 삭제',
     'brRenameSelected': '선택한 브러시 이름 변경',
@@ -5398,7 +5502,8 @@ enum AppStrings {
     'tlDuplicateLayer': '레이어 복제',
     'tlSelectRowSpan': '행 전체 선택',
     'tlLinkDuplicateLayer': '링크해서 복제',
-    'tlUnlinkLayer': '링크 해제',
+    'linkWindowUnlink': '링크 해제',
+    'linkWindowUnlinkLinkedCut': '링크 컷이라 레이어만 해제할 수 없습니다',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlRenameLayer': '레이어 이름 변경…',
     'tlCopyLayer': '레이어 복사',
@@ -5447,8 +5552,11 @@ enum AppStrings {
     'tlStoryboardLayer': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
+    'frameCountEntryFrames': '프레임',
+    'frameCountEntrySecondsPlusFrames': '초+코마',
     'projectFpsTitle': '프로젝트 프레임레이트',
     'projectFpsField': '초당 프레임 수',
+    'autoNameStartField': '시작 번호',
   };
 
   static const _frValues = <String, String>{
@@ -5461,7 +5569,9 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
+    'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
+    'noticeLayerHidden': 'Ce calque est masqué',
     'noticeEditAttachOwner': 'Modifiez le calque parent',
     'commonCancel': 'Annuler',
     'commonApply': 'Appliquer',
@@ -5497,6 +5607,7 @@ enum AppStrings {
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'tlTransitionCrossingWarning': 'Dépasse la limite du plan — non appliqué',
+    'tlTransitionCutOl': 'O.L. de plan',
     'audioMicGainLabel': 'Gain micro (dB)',
     'audioInputChannelLabel': 'Canaux d\'entrée',
     'audioInputChannelDevice': 'Tel quel',
@@ -5529,6 +5640,7 @@ enum AppStrings {
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
     'selectionClosePolygon': 'Fermer la forme',
+    'selectionInvert': 'Inverser la sélection',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
     'commonRename': 'Renommer',
@@ -5553,12 +5665,15 @@ enum AppStrings {
     'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
-        'Ce nom est déjà utilisé par une autre image de ce calque. Lier à '
-        "l'image existante ? Le même nom partagera alors le même dessin, et le "
-        'dessin de cette image sera supprimé.',
+        'Chaque image listée prend un nom déjà utilisé par une autre image de '
+        'son calque. Les lier aux images qui portent ces noms ? Le même nom '
+        'partagera alors le même dessin, et le dessin de chaque image listée '
+        'sera supprimé.',
+    'frameNameConflictListHeading': 'Images à lier',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
+    'seTypeLabel': 'Type',
     'seDialogueLabel': 'Dialogue',
     'seLinkedAudioLabel': 'Audio lié',
     'seLinkedAudioNone': 'Aucun',
@@ -5572,8 +5687,9 @@ enum AppStrings {
     'convertLinkedCutTargetLabel': 'Lier au plan',
     'convertLinkedCutLinksTemplate': 'Lie {names}.',
     'convertLinkedCutReplacedTemplate':
-        '{count} dessin(s) de même nom dans « {cut} » seront remplacés par '
+        'Les dessins de même nom dans « {cut} » seront remplacés par '
         "ceux de l'origine (원본 승리).",
+    'convertLinkedCutReplacedHeading': 'Dessins remplacés',
     'convertLinkedCutJoiningTemplate':
         "{count} dessin(s) rejoignent l'ensemble partagé.",
     'convertLinkedCutTargetGainsTemplate': '« {cut} » gagne : {names}.',
@@ -5907,6 +6023,9 @@ enum AppStrings {
     'sheetBarDrawn': 'Tracé',
     'sheetBarNotDrawn': 'Non tracé',
     'sheetSeEmptyFill': 'Plages sans dialogue',
+    'sheetLength': 'Longueur de feuille',
+    'sheetThreeSeconds': '3 s',
+    'sheetSixSeconds': '6 s',
     'sheetFillOn': 'Grisées',
     'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
@@ -5943,12 +6062,8 @@ enum AppStrings {
     'shortcutCategory.File': 'Fichier',
     'shortcutAction.frame-previous': 'Image précédente',
     'shortcutAction.frame-next': 'Image suivante',
-    'shortcutAction.frame-walk-left': 'Un pas à gauche',
-    'shortcutAction.frame-walk-right': 'Un pas à droite',
-    'shortcutAction.frame-walk-up': 'Un pas vers le haut',
-    'shortcutAction.frame-walk-down': 'Un pas vers le bas',
-    'shortcutAction.drawing-previous': 'Dessin précédent',
-    'shortcutAction.drawing-next': 'Dessin suivant',
+    'shortcutAction.drawing-previous': 'Bloc précédent',
+    'shortcutAction.drawing-next': 'Bloc suivant',
     'shortcutAction.playback-toggle': 'Lecture / Pause',
     'shortcutAction.canvas-pan-hold': 'Déplacer (maintenir)',
     'shortcutAction.voice-record-toggle':
@@ -5967,6 +6082,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-free': 'Transformation libre',
     'shortcutAction.tool-transform-mesh': 'Déformation par grille',
     'shortcutAction.tool-cut': 'Outil découpe',
+    'shortcutAction.tool-cut-whole': 'Découpe entière',
     'shortcutAction.tool-cut-stamp': 'Tampon',
     'shortcutAction.selection-deselect': 'Désélectionner',
     'shortcutAction.layer-up': 'Calque vers le haut',
@@ -5996,6 +6112,10 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
     'shortcutAction.edit-delete-colour': 'Supprimer la couleur',
     'shortcutAction.edit-keep-colour': 'Conserver la couleur',
+    'shortcutAction.edit-copy-pixels': 'Copier les pixels',
+    'shortcutAction.edit-paste-pixels-above': 'Coller les pixels dessus',
+    'shortcutAction.edit-paste-pixels-below': 'Coller les pixels dessous',
+    'shortcutAction.edit-auto-name': 'Nommer automatiquement',
     'blendMode.passThrough': 'Transfert',
     'blendMode.normal': 'Normal',
     'blendMode.color': 'Normal',
@@ -6121,10 +6241,10 @@ enum AppStrings {
     'panelMedia': 'Médias',
     'panelOnionSkin': "Pelure d'oignon",
     'panelToolSize': 'Taille de l\'outil',
-    'panelStoryboard': 'Storyboard',
+    'panelStoryboard': 'Conte',
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
-    'panelConte': 'Conte',
+    'panelConte': 'Feuille de conte',
     'panelEnvelope': 'Enveloppe',
     'commonRegister': 'Enregistrer',
     'commonNameField': 'Nom',
@@ -6184,6 +6304,8 @@ enum AppStrings {
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
     'exBrowse': 'Parcourir…',
+    'exHandOverWhenDone': 'Choisir à la fin',
+    'exHandOverDeclined': 'Non transmis — les fichiers exportés ont été abandonnés.',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'exBaseName': 'Nom de base',
@@ -6423,6 +6545,7 @@ enum AppStrings {
     'imModeReference': 'Lier',
     'imBake': 'Pixelliser',
     'imSound': 'Son',
+    'imSoundOnly': 'Son seul',
     'commonOn': 'Oui',
     'commonOff': 'Non',
     'imFitContain': 'Proportions',
@@ -6568,6 +6691,7 @@ enum AppStrings {
     'brNewGroup': 'Nouveau groupe',
     'brNewGroupName': 'Nouveau groupe',
     'brNewPresetName': 'Préréglage {n}',
+    'builtinBrush.builtin-basic-group': 'Base',
     'builtinBrush.builtin-pencil-group': 'Crayon',
     'builtinBrush.builtin-ink-group': 'Plume',
     'builtinBrush.builtin-dry-media-group': 'Techniques sèches',
@@ -6577,24 +6701,21 @@ enum AppStrings {
     'builtinBrush.builtin-blend-group': 'Mélange',
     'builtinBrush.builtin-texture-group': 'Texture',
     'builtinBrush.builtin-decoration-group': 'Décoration',
-    'builtinBrush.builtin-pencil': 'Crayon',
-    'builtinBrush.builtin-soft-pencil': 'Crayon tendre',
+    'builtinBrush.builtin-pencil': 'Crayon HB',
+    'builtinBrush.builtin-soft-pencil': 'Crayon 2B',
     'builtinBrush.builtin-mechanical-pencil': 'Porte-mine',
-    'builtinBrush.builtin-rough-pencil': 'Crayon d\'esquisse',
-    'builtinBrush.builtin-hard-pencil': 'Crayon dur 2H',
-    'builtinBrush.builtin-dark-pencil': 'Crayon gras 4B',
+    'builtinBrush.builtin-hard-pencil': 'Crayon 2H',
+    'builtinBrush.builtin-dark-pencil': 'Crayon 4B',
     'builtinBrush.builtin-colored-pencil': 'Crayon de couleur',
-    'builtinBrush.builtin-shading-pencil': 'Crayon d\'ombrage',
-    'builtinBrush.builtin-ink-pen': 'Stylo à encre',
+    'builtinBrush.builtin-shading-pencil': 'Crayon couché',
+    'builtinBrush.builtin-ink-pen': 'Rond dur',
     'builtinBrush.builtin-g-pen': 'Plume G',
     'builtinBrush.builtin-maru-pen': 'Plume ronde',
     'builtinBrush.builtin-brush-pen': 'Feutre pinceau',
     'builtinBrush.builtin-calligraphy': 'Calligraphie',
     'builtinBrush.builtin-marker': 'Marqueur',
-    'builtinBrush.builtin-anime-pen': 'Plume anime',
     'builtinBrush.builtin-kabura-pen': 'Plume Kabura',
     'builtinBrush.builtin-technical-pen': 'Stylo technique',
-    'builtinBrush.builtin-rough-ink': 'Encre brute',
     'builtinBrush.builtin-dry-ink': 'Encre sèche',
     'builtinBrush.builtin-chalk-preset': 'Craie',
     'builtinBrush.builtin-charcoal': 'Fusain',
@@ -6602,18 +6723,17 @@ enum AppStrings {
     'builtinBrush.builtin-crayon': 'Crayon de cire',
     'builtinBrush.builtin-graphite-stick': 'Bâton de graphite',
     'builtinBrush.builtin-watercolor': 'Aquarelle',
+    'builtinBrush.builtin-analog-watercolor': 'Aquarelle analogique',
     'builtinBrush.builtin-wet-watercolor': 'Aquarelle mouillée',
     'builtinBrush.builtin-dense-watercolor': 'Aquarelle dense',
     'builtinBrush.builtin-flat-wash': 'Lavis uni',
-    'builtinBrush.builtin-round-bristle': 'Brosse ronde',
     'builtinBrush.builtin-flat-bristle': 'Brosse plate',
     'builtinBrush.builtin-gouache': 'Gouache',
     'builtinBrush.builtin-oil-brush': 'Pinceau à l\'huile',
     'builtinBrush.builtin-palette-knife': 'Couteau à peindre',
     'builtinBrush.builtin-dry-brush': 'Brosse sèche',
     'builtinBrush.builtin-airbrush': 'Aérographe',
-    'builtinBrush.builtin-soft-brush': 'Pinceau doux',
-    'builtinBrush.builtin-spray': 'Spray',
+    'builtinBrush.builtin-soft-brush': 'Rond flou',
     'builtinBrush.builtin-grit-spray': 'Spray granuleux',
     'builtinBrush.builtin-blender': 'Mélangeur',
     'builtinBrush.builtin-water-blend': 'Fondu à l\'eau',
@@ -6642,6 +6762,7 @@ enum AppStrings {
     'builtinTip.builtin-leaf': 'Feuille',
     'builtinTip.builtin-paper-grain': 'Grain du papier',
     'builtinTip.builtin-canvas-weave': 'Trame de toile',
+    'builtinTip.builtin-cold-press': 'Papier grain fin',
     'brRenameGroup': 'Renommer le groupe',
     'brDeleteGroup': 'Supprimer le groupe',
     'brRenameSelected': 'Renommer le pinceau sélectionné',
@@ -6806,7 +6927,8 @@ enum AppStrings {
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlSelectRowSpan': 'Sélectionner toute la ligne',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
-    'tlUnlinkLayer': 'Délier le calque',
+    'linkWindowUnlink': 'Délier',
+    'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlRenameLayer': 'Renommer le calque…',
     'tlCopyLayer': 'Copier le calque',
@@ -6858,8 +6980,11 @@ enum AppStrings {
     'tlStoryboardLayer': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
+    'frameCountEntryFrames': 'Images',
+    'frameCountEntrySecondsPlusFrames': 'Secondes+images',
     'projectFpsTitle': 'Fréquence du projet',
     'projectFpsField': 'Images par seconde',
+    'autoNameStartField': 'Numéro de départ',
   };
 
   static const _zhHansValues = <String, String>{
@@ -6872,7 +6997,9 @@ enum AppStrings {
     'pageLabel': '页',
     'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
+    'noticeNoConteLayer': '该镜头没有分镜图层',
     'noticeLayerNotDrawable': '该图层不可绘制',
+    'noticeLayerHidden': '该图层已隐藏',
     'noticeEditAttachOwner': '请编辑父图层',
     'commonCancel': '取消',
     'commonApply': '应用',
@@ -6905,6 +7032,7 @@ enum AppStrings {
     'recordTakeClipped': '录音发生削波 — 块上的红角为标记。',
     'recordClipMarkerTooltip': '该录音已削波（电平过高）',
     'tlTransitionCrossingWarning': '超出镜头边界 — 未应用',
+    'tlTransitionCutOl': '镜头O.L.',
     'audioMicGainLabel': '麦克风增益（dB）',
     'audioInputChannelLabel': '输入声道',
     'audioInputChannelDevice': '按设备',
@@ -6934,6 +7062,7 @@ enum AppStrings {
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
     'selectionClosePolygon': '闭合形状',
+    'selectionInvert': '反选',
     'commonSave': '保存',
     'commonDelete': '删除',
     'commonRename': '重命名',
@@ -6958,11 +7087,13 @@ enum AppStrings {
     'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
-        '该名称已被此图层中的另一帧使用。是否链接到已有的同名帧？'
-        '链接后相同名称共用同一张原画，此帧的原画将被舍弃。',
+        '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
+        '链接后相同名称共用同一张原画，列表中各帧的原画将被舍弃。',
+    'frameNameConflictListHeading': '要链接的帧',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
+    'seTypeLabel': '类型',
     'seDialogueLabel': '台词',
     'seLinkedAudioLabel': '已链接音频',
     'seLinkedAudioNone': '无',
@@ -6973,7 +7104,8 @@ enum AppStrings {
     'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',
     'convertLinkedCutLinksTemplate': '链接 {names}。',
-    'convertLinkedCutReplacedTemplate': '“{cut}”中 {count} 张同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutReplacedTemplate': '“{cut}”中的同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutReplacedHeading': '被替换的原画',
     'convertLinkedCutJoiningTemplate': '{count} 张原画加入共用集合。',
     'convertLinkedCutTargetGainsTemplate': '“{cut}”新增：{names}。',
     'convertLinkedCutOriginGainsTemplate': '本镜头新增：{names}。',
@@ -7253,6 +7385,9 @@ enum AppStrings {
     'sheetBarDrawn': '画',
     'sheetBarNotDrawn': '不画',
     'sheetSeEmptyFill': '无台词区间',
+    'sheetLength': '摄影表长度',
+    'sheetThreeSeconds': '3秒',
+    'sheetSixSeconds': '6秒',
     'sheetFillOn': '置灰',
     'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
@@ -7288,12 +7423,8 @@ enum AppStrings {
     'shortcutCategory.File': '文件',
     'shortcutAction.frame-previous': '上一帧',
     'shortcutAction.frame-next': '下一帧',
-    'shortcutAction.frame-walk-left': '向左一步',
-    'shortcutAction.frame-walk-right': '向右一步',
-    'shortcutAction.frame-walk-up': '向上一步',
-    'shortcutAction.frame-walk-down': '向下一步',
-    'shortcutAction.drawing-previous': '上一张原画',
-    'shortcutAction.drawing-next': '下一张原画',
+    'shortcutAction.drawing-previous': '上一个块',
+    'shortcutAction.drawing-next': '下一个块',
     'shortcutAction.playback-toggle': '播放 / 暂停',
     'shortcutAction.canvas-pan-hold': '移动（按住）',
     'shortcutAction.voice-record-toggle': '录音（开始/停止）',
@@ -7311,6 +7442,7 @@ enum AppStrings {
     'shortcutAction.tool-transform-free': '自由变换',
     'shortcutAction.tool-transform-mesh': '网格变形',
     'shortcutAction.tool-cut': '裁剪工具',
+    'shortcutAction.tool-cut-whole': '整体裁剪',
     'shortcutAction.tool-cut-stamp': '图章',
     'shortcutAction.selection-deselect': '取消选择',
     'shortcutAction.layer-up': '图层上移',
@@ -7340,6 +7472,10 @@ enum AppStrings {
     'shortcutAction.edit-clear-pixels': '清空像素',
     'shortcutAction.edit-delete-colour': '删除颜色',
     'shortcutAction.edit-keep-colour': '保留颜色',
+    'shortcutAction.edit-copy-pixels': '复制像素',
+    'shortcutAction.edit-paste-pixels-above': '粘贴像素到上方',
+    'shortcutAction.edit-paste-pixels-below': '粘贴像素到下方',
+    'shortcutAction.edit-auto-name': '自动命名',
     'blendMode.passThrough': '穿透',
     'blendMode.normal': '正常',
     'blendMode.color': '正常',
@@ -7456,7 +7592,7 @@ enum AppStrings {
     'panelStoryboard': '分镜',
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
-    'panelConte': '分镜稿',
+    'panelConte': '分镜用纸',
     'panelEnvelope': '包络',
     'commonRegister': '注册',
     'commonNameField': '名称',
@@ -7513,6 +7649,8 @@ enum AppStrings {
     'exChannels': '声道',
     'exAudio': '音频',
     'exBrowse': '浏览…',
+    'exHandOverWhenDone': '完成后选择',
+    'exHandOverDeclined': '未交出，导出的结果已丢弃。',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
     'exBaseName': '基础名称',
@@ -7715,6 +7853,7 @@ enum AppStrings {
     'imModeReference': '链接',
     'imBake': '栅格化',
     'imSound': '声音',
+    'imSoundOnly': '仅声音',
     'commonOn': '开',
     'commonOff': '关',
     'imFitContain': '保持比例',
@@ -7844,6 +7983,7 @@ enum AppStrings {
     'brNewGroup': '新建分组',
     'brNewGroupName': '新建分组',
     'brNewPresetName': '预设 {n}',
+    'builtinBrush.builtin-basic-group': '基础',
     'builtinBrush.builtin-pencil-group': '铅笔',
     'builtinBrush.builtin-ink-group': '笔',
     'builtinBrush.builtin-dry-media-group': '干性画材',
@@ -7853,24 +7993,21 @@ enum AppStrings {
     'builtinBrush.builtin-blend-group': '混色',
     'builtinBrush.builtin-texture-group': '纹理',
     'builtinBrush.builtin-decoration-group': '装饰',
-    'builtinBrush.builtin-pencil': '铅笔',
-    'builtinBrush.builtin-soft-pencil': '软铅笔',
+    'builtinBrush.builtin-pencil': 'HB铅笔',
+    'builtinBrush.builtin-soft-pencil': '2B铅笔',
     'builtinBrush.builtin-mechanical-pencil': '自动铅笔',
-    'builtinBrush.builtin-rough-pencil': '草稿铅笔',
-    'builtinBrush.builtin-hard-pencil': '硬铅笔 2H',
-    'builtinBrush.builtin-dark-pencil': '深色铅笔 4B',
+    'builtinBrush.builtin-hard-pencil': '2H铅笔',
+    'builtinBrush.builtin-dark-pencil': '4B铅笔',
     'builtinBrush.builtin-colored-pencil': '彩色铅笔',
-    'builtinBrush.builtin-shading-pencil': '阴影铅笔',
-    'builtinBrush.builtin-ink-pen': '墨水笔',
+    'builtinBrush.builtin-shading-pencil': '侧锋铅笔',
+    'builtinBrush.builtin-ink-pen': '硬边圆',
     'builtinBrush.builtin-g-pen': 'G笔',
     'builtinBrush.builtin-maru-pen': '圆笔',
     'builtinBrush.builtin-brush-pen': '软笔',
     'builtinBrush.builtin-calligraphy': '书法',
     'builtinBrush.builtin-marker': '马克笔',
-    'builtinBrush.builtin-anime-pen': '动画笔',
     'builtinBrush.builtin-kabura-pen': '镝笔',
     'builtinBrush.builtin-technical-pen': '针管笔',
-    'builtinBrush.builtin-rough-ink': '粗墨',
     'builtinBrush.builtin-dry-ink': '枯墨',
     'builtinBrush.builtin-chalk-preset': '粉笔',
     'builtinBrush.builtin-charcoal': '炭笔',
@@ -7878,18 +8015,17 @@ enum AppStrings {
     'builtinBrush.builtin-crayon': '蜡笔',
     'builtinBrush.builtin-graphite-stick': '石墨条',
     'builtinBrush.builtin-watercolor': '水彩',
+    'builtinBrush.builtin-analog-watercolor': '手绘水彩',
     'builtinBrush.builtin-wet-watercolor': '湿水彩',
     'builtinBrush.builtin-dense-watercolor': '浓水彩',
     'builtinBrush.builtin-flat-wash': '平涂',
-    'builtinBrush.builtin-round-bristle': '圆头笔',
     'builtinBrush.builtin-flat-bristle': '平头笔',
     'builtinBrush.builtin-gouache': '水粉',
     'builtinBrush.builtin-oil-brush': '油画笔',
     'builtinBrush.builtin-palette-knife': '调色刀',
     'builtinBrush.builtin-dry-brush': '干笔',
     'builtinBrush.builtin-airbrush': '喷枪',
-    'builtinBrush.builtin-soft-brush': '柔边笔',
-    'builtinBrush.builtin-spray': '喷雾',
+    'builtinBrush.builtin-soft-brush': '柔边圆',
     'builtinBrush.builtin-grit-spray': '颗粒喷雾',
     'builtinBrush.builtin-blender': '混色笔',
     'builtinBrush.builtin-water-blend': '水晕',
@@ -7918,6 +8054,7 @@ enum AppStrings {
     'builtinTip.builtin-leaf': '叶子',
     'builtinTip.builtin-paper-grain': '纸纹',
     'builtinTip.builtin-canvas-weave': '画布纹',
+    'builtinTip.builtin-cold-press': '冷压纸',
     'brRenameGroup': '重命名分组',
     'brDeleteGroup': '删除分组',
     'brRenameSelected': '重命名所选画笔',
@@ -8069,7 +8206,8 @@ enum AppStrings {
     'tlDuplicateLayer': '复制图层',
     'tlSelectRowSpan': '选择整行',
     'tlLinkDuplicateLayer': '链接复制图层',
-    'tlUnlinkLayer': '取消图层链接',
+    'linkWindowUnlink': '取消链接',
+    'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',
     'tlResetGroup': '重置（保留关键帧）',
     'tlRenameLayer': '重命名图层…',
     'tlCopyLayer': '复制图层',
@@ -8119,7 +8257,10 @@ enum AppStrings {
     'tlStoryboardLayer': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',
+    'frameCountEntryFrames': '帧数',
+    'frameCountEntrySecondsPlusFrames': '秒+帧',
     'projectFpsTitle': '项目帧率',
     'projectFpsField': '每秒帧数',
+    'autoNameStartField': '起始编号',
   };
 }

@@ -1,32 +1,25 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
-import '../../models/timeline_repeat.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
 import 'property_lane_model.dart';
-import 'selected_exposure_display_range_policy.dart';
-import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'axis_turn.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_instruction_row_visual.dart';
 import 'timeline_playhead.dart';
-import 'timeline_selected_exposure_outline.dart';
 import '../text/app_strings.dart' show AppText;
 import '../widgets/tick_layer.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
-/// playhead tint, the active layer's selected-cell ring (carrying the
-/// grid's selected-cell semantics) and the selected exposure outline — in
-/// ONE widget subscribed to the cursor.
+/// standing wash, the playhead, the selection bands and the standing cell's
+/// semantics — in ONE widget subscribed to the cursor.
 ///
 /// This is the heart of the playback-performance architecture: a playback
 /// tick or an editing seek repaints THIS layer only, and lays out this layer
@@ -45,12 +38,11 @@ class TimelineCursorLayer extends StatelessWidget {
     required this.frameEndIndexExclusive,
     required this.leadingFrameSpacerWidth,
     required this.metrics,
-    required this.exposureStateForLayer,
     required this.crossAxisExtent,
     this.axis = Axis.horizontal,
-    this.dragPreview,
     this.frameRangeSelection,
     this.laneRangeSelection,
+    this.dragPreview,
     this.windowBucket,
     this.viewportMainExtent = 0,
     this.selectedSemanticsKey = const ValueKey<String>(
@@ -72,9 +64,10 @@ class TimelineCursorLayer extends StatelessWidget {
   /// ("다른 프레임셀선택이랑 완전동일화").
   final ValueListenable<TimelineLaneSelection?>? laneRangeSelection;
 
-  /// The session's edit-drag preview channel: while a comma drag targets
-  /// the active layer, the selection visuals (the selected-exposure
-  /// outline) follow the PREVIEW layer so they ride the drag live.
+  /// The edit-drag preview the rows below show: while a drag reshapes the
+  /// row you stand on, the standing wash reads that row as previewed, so it
+  /// rides the drag (H12) instead of holding the block's old seat. Null where
+  /// the rows show no preview.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
 
   /// The grid's display rows (layer rows + expanded lanes), for the active
@@ -83,8 +76,8 @@ class TimelineCursorLayer extends StatelessWidget {
   final LayerId? activeLayerId;
 
   /// The row you are STANDING on. There is exactly one, and the standing
-  /// visuals go with it — when it is a property lane the layer's row gives
-  /// its ring up.
+  /// cell goes with it — when it is a property lane the layer's row gives
+  /// it up.
   ///
   /// 2026-08-07 settled that as "그림은 그릴 수 있을지라도 서있는건 하나";
   /// 2026-08-08 dropped the first half. A lane takes no strokes at all now,
@@ -99,8 +92,6 @@ class TimelineCursorLayer extends StatelessWidget {
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
-  final TimelineCellExposureState Function(Layer layer, int frameIndex)
-  exposureStateForLayer;
 
   /// Total layer-axis extent of the rows (the playhead's length).
   final double crossAxisExtent;
@@ -145,10 +136,10 @@ class TimelineCursorLayer extends StatelessWidget {
           child: ListenableBuilder(
             listenable: Listenable.merge([
               frameCursor,
-              ?dragPreview,
               ?frameRangeSelection,
               ?laneRangeSelection,
               ?currentRow,
+              ?dragPreview,
               ?windowBucket,
             ]),
             builder: (context, _) => _overlay(),
@@ -158,33 +149,24 @@ class TimelineCursorLayer extends StatelessWidget {
     );
   }
 
-  /// Everything the cursor moves, bottom to top: the playhead tint, the
-  /// selected-range band, the lane-range band, the standing mark on a lane,
-  /// and the active layer's row (its exposure outline and cell ring).
+  /// Everything the cursor moves, bottom to top: the standing wash, the
+  /// playhead, the selected-range band or the lane-range band, and the
+  /// standing cell.
   ///
   /// UI-R15→R16: under full bounds + the quantized bucket, visibility GATES
-  /// and the outline's display clamp use the bucket-derived window, while
-  /// positioning stays in the widget's own coordinate space. This thin
-  /// builder re-runs once per span crossing — never per scrolled pixel.
+  /// use the bucket-derived window, while positioning stays in the widget's
+  /// own coordinate space. This thin builder re-runs once per span
+  /// crossing — never per scrolled pixel.
   Widget _overlay() {
     final frame = frameCursor.value;
     final window = _visibleWindow();
     final cursorVisible = frameWindowContains(window, frame);
-    final standingLaneIndex = _standingLaneIndex();
+    final standing = _standingRow();
     final children = <Widget>[
+      if (standing != null) ?_standingWash(standing, frame, window),
       ?_playhead(frame, cursorVisible: cursorVisible),
       ?_selectedBand(window),
-      ?_standingLaneMark(
-        frame,
-        standingLaneIndex,
-        cursorVisible: cursorVisible,
-      ),
-      ?_activeRow(
-        frame,
-        window,
-        standingLaneIndex,
-        cursorVisible: cursorVisible,
-      ),
+      if (standing != null && cursorVisible) _standingCell(standing, frame),
     ];
     return Stack(clipBehavior: Clip.none, children: children);
   }
@@ -259,7 +241,7 @@ class TimelineCursorLayer extends StatelessWidget {
     );
   }
 
-  // ── the five layers ───────────────────────────────────────────────────
+  // ── the layers ────────────────────────────────────────────────────────
 
   /// Mounted only while the cursor is inside the built window (the widget's
   /// own out-of-range shrink is not enough — tests and semantics treat
@@ -272,7 +254,6 @@ class TimelineCursorLayer extends StatelessWidget {
       frameEndIndexExclusive: frameEndIndexExclusive,
       leadingFrameSpacerWidth: leadingFrameSpacerWidth,
       metrics: metrics,
-      layerCount: rows.length,
       crossAxisExtent: crossAxisExtent,
       axis: axis,
     );
@@ -368,150 +349,112 @@ class TimelineCursorLayer extends StatelessWidget {
         lane.laneId == standing.laneId;
   }
 
-  /// STANDING ON A LANE takes the standing visual off the layer row and puts
-  /// it here — one standing place, not two.
+  /// The row you stand on, as a display row: the lane when you stand on one,
+  /// the active layer's row otherwise (one standing place, not two).
+  ({int index, bool lane})? _standingRow() {
+    final lane = _standingLaneIndex();
+    if (lane != null) return (index: lane, lane: true);
+    final layer = _rowIndexWhere(_rowIsActiveLayer);
+    return layer == null ? null : (index: layer, lane: false);
+  }
+
+  /// The unit the playhead stands on, on [row] — what a click on that cell
+  /// selects ([snapFrameRangeToBlocks]): its block, or the one cell when it
+  /// has none (F-175: 「빈 공간 한칸은 블럭으로서 한칸으로 쳐서」). A lane's
+  /// keys are points, not blocks, so on a lane it is the cell.
   ///
-  /// The RING, the same one the layer row wears (user, 2026-08-08: 진짜로 서
-  /// 있게). It used to draw the range-selection BAND, which is what gave the
-  /// game away: a filled 2px band where the layer row's is a hollow 3px ring
-  /// reads as "a one-cell selection happens to be here" — and that is
-  /// exactly what it was.
-  ///
-  /// R5 #4: a live lane SELECTION used to switch this off, and the active
-  /// layer's row then took over — so dragging a span on a member lane moved
-  /// the standing mark off the lane and onto the layer, which reads as "you
-  /// are on the layer now" while the model has you exactly where you were
-  /// (the canvas still refuses strokes, which is how the user caught it).
-  /// They are two different statements: the BAND says what is selected, the
-  /// RING says where you stand, and selecting something has never been a
-  /// reason to stop standing anywhere.
-  Widget? _standingLaneMark(
+  /// The row as the rows below show it: through a drag, previewed.
+  ({int startIndex, int endIndexExclusive}) _standingUnit(
+    TimelineDisplayRow row,
     int frame,
-    int? standingLaneIndex, {
-    required bool cursorVisible,
-  }) {
-    if (standingLaneIndex == null || !cursorVisible) return null;
+  ) {
+    final cell = (startIndex: frame, endIndexExclusive: frame + 1);
+    if (row.isLane) return cell;
+    final shown =
+        timelineRowPreviewLayer(dragPreview?.value, row.layer) ?? row.layer;
+    final unit = snapFrameRangeToBlocks(
+      layer: shown,
+      anchorIndex: frame,
+      headIndex: frame,
+    );
+    return unit == null
+        ? cell
+        : (
+            startIndex: unit.startIndex,
+            endIndexExclusive: unit.endIndexExclusive,
+          );
+  }
+
+  /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
+  /// 표시. 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the unit you stand on
+  /// wears the standing wash — a fill and no line, under the playhead's.
+  /// It stays while the playhead is scrolled out of the window and the unit
+  /// still reaches into it.
+  Widget? _standingWash(
+    ({int index, bool lane}) standing,
+    int frame,
+    ({int startIndex, int endIndexExclusive}) window,
+  ) {
+    final unit = _standingUnit(rows[standing.index], frame);
+    if (!frameRangesOverlap(
+      unit.startIndex,
+      unit.endIndexExclusive,
+      window.startIndex,
+      window.endIndexExclusive,
+    )) {
+      return null;
+    }
+    final unitStart = _frameX(unit.startIndex);
+    return placedAlong(
+      axis,
+      along: unitStart,
+      across: standing.index * metrics.layerRowHeight,
+      alongExtent: _frameX(unit.endIndexExclusive) - unitStart,
+      acrossExtent: metrics.layerRowHeight,
+      child: DecoratedBox(
+        key: const ValueKey<String>('timeline-standing-wash'),
+        decoration: timelineStandingWashDecorationAt(
+          cellExtent: metrics.frameCellWidth,
+          crossExtent: metrics.layerRowHeight,
+        ),
+      ),
+    );
+  }
+
+  /// Where you STAND, said to semantics and to the probes that read it —
+  /// the cell under the playhead on the row you stand on. It paints
+  /// nothing; the wash under it ([_standingWash]) is what shows.
+  ///
+  /// 🗣️F-212 (유저 2026-09-28): 「현재 블록이나 갭 등 위치를 알리는 실루엣
+  /// 라인, 초기부터 있었지만 삭제하고싶음. 현재 재생헤드의 세로 바탕색
+  /// 오버레이만으로 충분하다고 판단」 — the playhead says where you stand.
+  /// ↩️The active row wore a ring round the block or the gap under the
+  /// playhead, and a 3px ring on an empty cell; a lane you stood on wore
+  /// the 3px ring (user, 2026-08-08: 진짜로 서 있게).
+  Widget _standingCell(({int index, bool lane}) standing, int frame) {
     final spanStart = _frameX(frame);
     return placedAlong(
       axis,
       along: spanStart,
-      across: standingLaneIndex * metrics.layerRowHeight,
+      across: standing.index * metrics.layerRowHeight,
       alongExtent: _frameX(frame + 1) - spanStart,
       acrossExtent: metrics.layerRowHeight,
       child: Semantics(
-        key: const ValueKey<String>('timeline-lane-standing-cell'),
+        key: standing.lane
+            ? const ValueKey<String>('timeline-lane-standing-cell')
+            : selectedSemanticsKey,
         label: AppText.strings.tlSelectedCell,
         container: true,
-        child: DecoratedBox(decoration: timelineStandingCellDecoration),
+        child: const SizedBox.expand(),
       ),
     );
   }
 
-  /// Otherwise the visuals follow the ACTIVE layer's row. The exposure
-  /// outline stays even while the cursor itself is scrolled out of the
-  /// window (its block may still intersect); only the cell ring needs the
-  /// cursor on screen.
-  ///
   /// R28 #12 used to need a FOLDER clause here: the header row carried its
   /// first member as a REPRESENTATIVE layer, so this search found the
-  /// folder's row index first and the block outline drew one row too high.
+  /// folder's row index first and the standing visuals drew one row too high.
   /// A folder row answers to its own id now, so only lanes (which share
   /// their layer's id) are skipped.
-  Widget? _activeRow(
-    int frame,
-    ({int startIndex, int endIndexExclusive}) window,
-    int? standingLaneIndex, {
-    required bool cursorVisible,
-  }) {
-    if (standingLaneIndex != null) return null;
-    final index = _rowIndexWhere(_rowIsActiveLayer);
-    if (index == null) return null;
-    final activeLayer = rows[index].layer;
-    final layer =
-        timelineDragPreviewLayerFor(dragPreview?.value, activeLayer.id) ??
-        activeLayer;
-    final displayRange = _selectedDisplayRange(layer, frame, window);
-    // Display rows are uniformly tall (timelineDisplayRowExtent).
-    return stripAcross(
-      axis,
-      across: index * metrics.layerRowHeight,
-      acrossExtent: metrics.layerRowHeight,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          TimelineSelectedExposureOutline(
-            axis: axis,
-            layerId: layer.id,
-            displayRange: displayRange,
-            frameStartIndex: frameStartIndex,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellWidth: metrics.frameCellWidth,
-            rowHeight: metrics.layerRowHeight,
-            borderColor: timelineSelectedFrameBorderColor,
-            borderRadius: BorderRadius.all(
-              timelineBlockCornerRadiusAt(
-                cellExtent: metrics.frameCellWidth,
-                crossExtent: metrics.layerRowHeight,
-              ),
-            ),
-          ),
-          ?_cellRing(frame, displayRange, cursorVisible: cursorVisible),
-        ],
-      ),
-    );
-  }
-
   bool _rowIsActiveLayer(TimelineDisplayRow row) =>
       !row.isLane && row.layer.id == activeLayerId;
-
-  /// Ghost cells read as EMPTY here (UI-R11 #5): the selection block outline
-  /// never wraps derived exposures — they show text only, no block UI of any
-  /// kind.
-  /// 🚨This read is what a RANGE SELECTION measures, so a row kind missing
-  /// from it selects nothing at all — the transition row's symptom (user
-  /// 2026-08-11: 「선택범위… 트랜지션레이어만 작동안하니까」).
-  TimelineCellExposureState _exposureStateAt(Layer layer, int frameIndex) =>
-      timelineIndexIsGhost(layer, frameIndex)
-      ? TimelineCellExposureState.uncovered
-      : bandExposureState(layer, frameIndex, ownCels: exposureStateForLayer);
-
-  SelectedExposureDisplayRange _selectedDisplayRange(
-    Layer layer,
-    int frame,
-    ({int startIndex, int endIndexExclusive}) window,
-  ) => resolveSelectedExposureDisplayRange(
-    active: true,
-    currentFrameIndex: frame,
-    frameStartIndex: window.startIndex,
-    frameEndIndexExclusive: window.endIndexExclusive,
-    exposureStateAt: (frameIndex) => _exposureStateAt(layer, frameIndex),
-  );
-
-  /// On a drawing block the BLOCK outline is the selection visual — the
-  /// single-cell ring would double it up (UI-R10 #8), so the ring keeps its
-  /// semantics node (probes/tests anchor on it) but paints nothing there;
-  /// empty cells keep the visible ring.
-  Widget? _cellRing(
-    int frame,
-    SelectedExposureDisplayRange displayRange, {
-    required bool cursorVisible,
-  }) {
-    if (!cursorVisible) return null;
-    final onBlock = displayRange.resolvedRange.isBlock;
-    return placedAlong(
-      axis,
-      along: _frameX(frame),
-      across: 0,
-      alongExtent: metrics.frameCellWidth,
-      acrossExtent: metrics.layerRowHeight,
-      child: Semantics(
-        key: selectedSemanticsKey,
-        label: AppText.strings.tlSelectedCell,
-        container: true,
-        child: onBlock
-            ? const SizedBox.expand()
-            : DecoratedBox(decoration: timelineStandingCellDecoration),
-      ),
-    );
-  }
 }

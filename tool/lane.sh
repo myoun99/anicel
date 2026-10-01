@@ -15,7 +15,7 @@
 # every time. The account is suspended, so origin is frozen and LOCAL master is
 # the trunk — that is not a workaround to remember, it is what `open` does.
 #
-# ⛔THE SIX THINGS THIS REFUSES TO LET YOU DO
+# ⛔THE SEVEN THINGS THIS REFUSES TO LET YOU DO
 #
 # 1. Run a git command in a worktree that is not one. `git worktree remove`
 #    fails on Windows whenever a file is locked, and it leaves the DIRECTORY
@@ -68,6 +68,18 @@
 #    build would be thrown away every time. What loads the engine says it
 #    instead — `affected_tests` names a foreign engine before and after it
 #    runs.
+# 7. Land a lane that moved while its gates ran. The gates measure the
+#    WORKING TREE; the merge takes COMMITS, and the worktree is removed with
+#    --force right after it. 2026-09-30: while a land sat in `flutter
+#    analyze`, its author fixed the very architecture test that was red — in
+#    the lane, uncommitted. The gates measured the fix and passed, the merge
+#    took the commits without it, the removal destroyed it, and master's
+#    test/architecture, the gate every later land has to pass, stayed red
+#    until a lane of its own repaired it (66e598ba4, then 6ab4facd1). So
+#    after its last gate `land` asks again what it asked before the rebase —
+#    does the tree hold exactly the lane's commits — and whether HEAD is
+#    still the commit the rebase made. On either no it refuses and the lane
+#    stays as it is: commit the edit (or discard it) and land again.
 #
 # ⚠️WHAT THIS CANNOT DO FOR YOU: judge a LAW COLLISION. Two lanes that never
 # touch the same file still invent the same law under two names — seven times in
@@ -332,11 +344,11 @@ cmd_native() {
   echo "lane: native — green ($(wc -l <"$list") parity files)"
 }
 
-cmd_land() {
-  local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
-  local p; p="$(lane_path "$name")"
-  require_worktree "$p"
-
+# Is the lane's working tree exactly its commits? Printing what is not.
+# `land` asks it twice — before the rebase, and after the gates (refusal 7) —
+# and both times through this one function, so the two answers cannot drift.
+lane_is_clean() {
+  local p="$1"
   # The platform folders are rewritten by the build hooks on every run; they are
   # never anyone's change.
   git -C "$p" checkout -- linux macos windows 2>/dev/null
@@ -350,13 +362,20 @@ cmd_land() {
   # twice on 2026-09-08). Without this, `land` refuses a lane whose content is
   # identical to HEAD and the author goes looking for a change that is not
   # there. `--refresh` compares the bytes and rewrites the cache; it changes
-  # no file and stages nothing, so a REAL edit still stops the merge below.
+  # no file and stages nothing, so a REAL edit still stops the land.
   git -C "$p" update-index -q --really-refresh >/dev/null 2>&1 || true
-  [ -z "$(git -C "$p" status --short)" ] || {
-    git -C "$p" status --short >&2
-    die "uncommitted changes in the lane — commit them first
+  [ -z "$(git -C "$p" status --short)" ] && return 0
+  git -C "$p" status --short >&2
+  return 1
+}
+
+cmd_land() {
+  local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+
+  lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
   A '??' line is a file nobody added; it does NOT travel with the merge."
-  }
 
   echo "lane: rebasing work/$name onto $TRUNK"
   git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
@@ -368,6 +387,8 @@ cmd_land() {
   and lost that way before anyone noticed.
   If the conflict is a LAW rather than a line, read the rule at the top of
   this file before choosing a side."
+  # Refusal 7: the commit the gates below are measuring.
+  local measured; measured="$(git -C "$p" rev-parse HEAD)"
 
   echo "lane: flutter analyze (no arguments)"
   (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
@@ -387,6 +408,18 @@ cmd_land() {
   if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
     cmd_native "$name"
   fi
+
+  # Refusal 7, after the LAST gate: every gate above read the working tree,
+  # and the merge below takes only the commits.
+  local now; now="$(git -C "$p" rev-parse HEAD)"
+  [ "$now" = "$measured" ] || die "the lane got a commit while its gates ran — this is refusal 7
+  HEAD was ${measured:0:10} when they started and is ${now:0:10} now: the
+  merge would take what the gates never measured. Run land again."
+  lane_is_clean "$p" || die "the lane was edited while its gates ran — this is refusal 7
+  The gates measured these edits, but the merge takes only the commits and
+  the worktree is removed with --force right after it: master would get
+  what nobody measured, and the edits would be destroyed. Commit them (or
+  discard them) and run land again."
 
   git -C "$ROOT" merge --ff-only "work/$name" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
   echo "lane: merged work/$name -> $(git -C "$ROOT" log --oneline -1)"

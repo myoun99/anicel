@@ -18,6 +18,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 /// session's frame store — NOT through the history manager.
 void drawOnCurrentFrame(EditorSessionManager s) {
   s.createDrawingAtCurrentFrame();
+  inkTheCurrentCel(s);
+}
+
+/// The dab of ink [drawOnCurrentFrame] puts down, into the cel [s] already
+/// stands on — for a test that has to see that cel BEFORE it is inked.
+void inkTheCurrentCel(EditorSessionManager s) {
   final selection = s.editingCanvas.activeBrushEditorSelection!;
   BrushFrameEditingCoordinator(
     initialFrameKey: s.brushFrameKeyForCut(

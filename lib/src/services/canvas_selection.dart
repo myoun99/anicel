@@ -2,6 +2,9 @@ import '../models/dirty_region.dart';
 import '../models/tiles_covering.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' show Offset;
+
+import '../core/point_bounds.dart';
 
 import '../models/bitmap_surface.dart';
 import '../models/pasteboard_bounds.dart';
@@ -9,6 +12,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
+import '../models/canvas_size.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
@@ -21,8 +25,8 @@ import 'selection_affine.dart';
 export 'canvas_selection_shape.dart';
 export 'selection_affine.dart';
 
-/// The integer canvas rect a warp lands in: the bounding box of [points],
-/// snapped outward.
+/// The integer canvas rect a warp lands in: the bounding box of [points]
+/// ([pointsBounds]), snapped outward.
 ///
 /// Shared by all three warps so their geometry cannot drift apart — they
 /// each had their own copy of this loop, and three copies of a bounding
@@ -30,23 +34,16 @@ export 'selection_affine.dart';
 ({int left, int top, int width, int height}) selectionWarpOutputRect(
   List<CanvasPoint> points,
 ) {
-  var minX = double.infinity;
-  var minY = double.infinity;
-  var maxX = double.negativeInfinity;
-  var maxY = double.negativeInfinity;
-  for (final point in points) {
-    minX = math.min(minX, point.x);
-    maxX = math.max(maxX, point.x);
-    minY = math.min(minY, point.y);
-    maxY = math.max(maxY, point.y);
-  }
-  final left = minX.floor();
-  final top = minY.floor();
+  final bounds = pointsBounds([
+    for (final point in points) Offset(point.x, point.y),
+  ]);
+  final left = bounds.left.floor();
+  final top = bounds.top.floor();
   return (
     left: left,
     top: top,
-    width: math.max(1, maxX.ceil() - left),
-    height: math.max(1, maxY.ceil() - top),
+    width: math.max(1, bounds.right.ceil() - left),
+    height: math.max(1, bounds.bottom.ceil() - top),
   );
 }
 
@@ -905,48 +902,81 @@ Uint8List buildSelectionMask({
   return mask;
 }
 
-SelectionLiftDabs? buildSelectionLiftDabs({
+/// A selection's mask over the box it covers — nothing is selected outside
+/// [box].
+typedef SelectionMaskReading = ({
+  Uint8List mask,
+  ({int left, int top, int width, int height}) box,
+});
+
+/// A selection READ the way every pixel reader reads one: [region]
+/// rasterized at [options] ([buildSelectionMask]) over its own box —
+/// coverage, padded for the post-passes, inside the pasteboard wall of
+/// [canvasSize] ([CanvasSelectionRegion.pixelBoxWithin]). Null when that
+/// box is empty.
+///
+/// ⛔ONE READING. The move's lift, the pixel verbs' walk, the copy and the
+/// paste (I-55) each computed this box and then this mask; four copies of
+/// two steps is how a selection comes to mean two things.
+SelectionMaskReading? selectionMaskOnPasteboard(
+  CanvasSelectionRegion region, {
+  required CanvasSize canvasSize,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
+}) {
+  final box = region.pixelBoxWithin(
+    canvasSize.pasteboardRegion,
+    pad: options.bboxPad,
+  );
+  if (box == null) {
+    return null;
+  }
+  return (
+    mask: buildSelectionMask(
+      region: region,
+      options: options,
+      left: box.left,
+      top: box.top,
+      width: box.width,
+      height: box.height,
+    ),
+    box: box,
+  );
+}
+
+/// What a selection takes off a cel: its reading
+/// ([selectionMaskOnPasteboard]), the straight-alpha pixels under it, and
+/// whether a partly-covered pixel travelled whole.
+typedef SelectionPixels = ({
+  Uint8List mask,
+  ({int left, int top, int width, int height}) box,
+  Uint8List rgba,
+  bool takeWholePixels,
+});
+
+/// The pixels [region] takes off [surface] at [options] — null when its box
+/// is empty or nothing under the mask is painted.
+///
+/// ⛔ONE LIFT. The move's lift and the cut piece (the cut tool, 전체
+/// 잘라내기, 픽셀 복사) each read the selection and gathered under it, the
+/// piece citing the move's law in a comment — the same steps twice, which is
+/// how one marquee comes to take two different sets of pixels.
+SelectionPixels? liftSelectionPixels({
   required CanvasSelectionRegion region,
   required BitmapSurface surface,
-  required String liftId,
-  SelectionMaskOptions options = SelectionMaskOptions.none,
+  required SelectionMaskOptions options,
 }) {
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
-  final canvasSize = surface.canvasSize;
-  // Coverage, not the tight fold: the mask box must hold every pixel a
-  // step could have added, and `maskFor` zeroes what a 삭제 took back.
-  final regionBounds = region.coverageBounds;
-  final minX = regionBounds.left;
-  final minY = regionBounds.top;
-  final maxX = regionBounds.right;
-  final maxY = regionBounds.bottom;
-  // R26: grow/feather/AA may write beyond the polygon's bbox.
-  final pad = options.bboxPad;
-  final left = math.max(canvasSize.pasteboardLeft, minX.floor() - pad);
-  final top = math.max(canvasSize.pasteboardTop, minY.floor() - pad);
-  final rightExclusive = math.min(
-    canvasSize.pasteboardRightExclusive,
-    maxX.ceil() + 1 + pad,
+  // R26: grow/feather/AA may write beyond the polygon's bbox, hence the pad.
+  final read = selectionMaskOnPasteboard(
+    region,
+    canvasSize: surface.canvasSize,
+    options: options,
   );
-  final bottomExclusive = math.min(
-    canvasSize.pasteboardBottomExclusive,
-    maxY.ceil() + 1 + pad,
-  );
-  if (rightExclusive <= left || bottomExclusive <= top) {
+  if (read == null) {
     return null;
   }
-  final width = rightExclusive - left;
-  final height = bottomExclusive - top;
-
-  final mask = buildSelectionMask(
-    region: region,
-    options: options,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
-  );
+  final (:mask, :box) = read;
 
   // 🚨WHOLE PIXELS unless the softness was ASKED for. A feathered selection
   // is a soft edge on purpose; anti-aliasing is not, and splitting a pixel
@@ -958,17 +988,39 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   final gathered = gatherMaskedSurfacePixels(
     surface: surface,
     mask: mask,
-    left: left,
-    top: top,
-    width: width,
-    height: height,
+    left: box.left,
+    top: box.top,
+    width: box.width,
+    height: box.height,
     takeWholePixels: takeWholePixels,
   );
-  final rgba = gathered.rgba;
-  final liftedAnything = gathered.liftedAnything;
-  if (!liftedAnything) {
+  if (!gathered.liftedAnything) {
     return null;
   }
+  return (
+    mask: mask,
+    box: box,
+    rgba: gathered.rgba,
+    takeWholePixels: takeWholePixels,
+  );
+}
+
+SelectionLiftDabs? buildSelectionLiftDabs({
+  required CanvasSelectionRegion region,
+  required BitmapSurface surface,
+  required String liftId,
+  SelectionMaskOptions options = SelectionMaskOptions.none,
+}) {
+  final lifted = liftSelectionPixels(
+    region: region,
+    surface: surface,
+    options: options,
+  );
+  if (lifted == null) {
+    return null;
+  }
+  final (:mask, :box, :rgba, :takeWholePixels) = lifted;
+  final (:left, :top, :width, :height) = box;
 
   // The erase rides the STAMP path too (R15-④): destination-out from the
   // exact mask bytes — tip-mask erases resample bilinearly and left a

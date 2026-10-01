@@ -16,6 +16,7 @@ import '../command.dart';
 import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 /// 겸용컷 생성 (L2): a NEW cut whose drawing layers are linked copies of
 /// the source's — same FrameIds and names (the pictures are one), with
@@ -90,7 +91,7 @@ class CreateLinkedCutCommand implements Command {
   @override
   void execute() {
     _previousActiveCutId = editingSession.activeCutId;
-    repository.updateProject((project) {
+    void insert() => repository.updateProject((project) {
       final position = requireCutPosition(project, sourceCutId);
       final track = position.track;
       final source = position.cut;
@@ -201,9 +202,12 @@ class CreateLinkedCutCommand implements Command {
       _banksBefore = banksBefore;
       return next;
     });
+    _ride.carry(insert);
     editingSession.setActiveCutId(newCutId);
     _hasExecuted = true;
   }
+
+  late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
 
   @override
   void undo() {
@@ -212,7 +216,7 @@ class CreateLinkedCutCommand implements Command {
     if (!_hasExecuted || previousActiveCutId == null || registryBefore == null) {
       throw StateError('Command has not been executed.');
     }
-    repository.updateProject((project) {
+    void remove() => repository.updateProject((project) {
       var next = removeCutAnywhere(
         project,
         newCutId,
@@ -238,6 +242,7 @@ class CreateLinkedCutCommand implements Command {
       }
       return next;
     });
+    _ride.carryBack(remove);
     editingSession.setActiveCutId(previousActiveCutId);
   }
 

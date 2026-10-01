@@ -5,6 +5,8 @@ import 'dart:ui' as ui;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/media/image_viewer_document.dart';
 import 'package:anicel/src/services/media/media_byte_source.dart';
+import 'package:anicel/src/services/media/viewer_document.dart';
+import '../../helpers/psd_fixture.dart';
 import '../../helpers/temp_dir.dart';
 
 /// The answer to 유저 2026-08-29「한장짜리면 결국 그대로 올라가는건
@@ -83,5 +85,94 @@ void main() {
       ImageViewerDocument.open(MediaFileBytes(file.path)),
       throwsA(isA<Object>()),
     );
+  });
+
+  group('🚨a Photoshop document opens as its COMPOSITE — no codec reads '
+      'one, so it is asked for first', () {
+    /// An 8×6 document whose composite says where each pixel is: red
+    /// counts across, green down.
+    Uint8List layout() => buildPsd(
+      width: 8,
+      height: 6,
+      compositePlanes: [
+        Uint8List.fromList([
+          for (var y = 0; y < 6; y += 1)
+            for (var x = 0; x < 8; x += 1) x * 30,
+        ]),
+        Uint8List.fromList([
+          for (var y = 0; y < 6; y += 1)
+            for (var x = 0; x < 8; x += 1) y * 40,
+        ]),
+        Uint8List(48)..fillRange(0, 48, 7),
+      ],
+    );
+
+    List<int> at(int x, int y) => [x * 30, y * 40, 7, 255];
+
+    Future<void> expectTheComposite(ViewerDocument doc) async {
+      expect(doc.pageCount, 1);
+      expect(doc.pageSize(0), const ui.Size(8, 6));
+      final small = await doc.renderPage(0, width: 4, height: 2);
+      addTearDown(small.dispose);
+      expect(
+        (small.width, small.height),
+        (4, 2),
+        reason: 'EXACTLY the size asked, a squashed ask included',
+      );
+      final whole = await doc.renderPage(0, width: 8, height: 6);
+      addTearDown(whole.dispose);
+      final pixels = (await whole.toByteData(
+        format: ui.ImageByteFormat.rawStraightRgba,
+      ))!.buffer.asUint8List();
+      expect(pixels.sublist((2 * 8 + 3) * 4, (2 * 8 + 4) * 4), at(3, 2));
+      // The cut tool's read, at the page's own size.
+      expect(
+        await doc.readRegionRgba(0, (left: 1, top: 2, width: 3, height: 2)),
+        [
+          for (var y = 2; y < 4; y += 1)
+            for (var x = 1; x < 4; x += 1) ...at(x, y),
+        ],
+      );
+    }
+
+    test('from a file of its own', () async {
+      final file = File('${dir.path}/layout.psd')
+        ..writeAsBytesSync(layout());
+      final doc = await ImageViewerDocument.open(MediaFileBytes(file.path));
+      addTearDown(doc.dispose);
+
+      await expectTheComposite(doc);
+    });
+
+    test('and from bytes the project carries', () async {
+      final bytes = layout();
+      final archive = File('${dir.path}/project.anicel')
+        ..writeAsBytesSync([0, 0, 0, ...bytes]);
+      final doc = await ImageViewerDocument.open(
+        MediaArchiveBytes(
+          archivePath: archive.path,
+          dataOffset: 3,
+          length: bytes.length,
+        ),
+      );
+      addTearDown(doc.dispose);
+
+      await expectTheComposite(doc);
+    });
+
+    test('and a document saved without one says so', () async {
+      final file = File('${dir.path}/no-composite.psd')
+        ..writeAsBytesSync(buildPsd(width: 8, height: 6));
+      await expectLater(
+        ImageViewerDocument.open(MediaFileBytes(file.path)),
+        throwsA(
+          isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('without a composite image'),
+          ),
+        ),
+      );
+    });
   });
 }

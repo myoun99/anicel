@@ -55,6 +55,12 @@ typedef struct {
   const IMFAsyncCallbackVtbl* lpVtbl;
   LONG ref;
   LONG invoked;
+  /// What a real caller does in its callback: finishes the read it began,
+  /// on the stream it began it on, with the result it was handed.
+  IMFByteStream* stream;
+  ULONG ended;
+  /// Held shut until the test lets the callback go on — null: at once.
+  HANDLE go;
 } qa_test_callback;
 
 static HRESULT STDMETHODCALLTYPE cb_query(IMFAsyncCallback* self,
@@ -91,8 +97,15 @@ static HRESULT STDMETHODCALLTYPE cb_parameters(IMFAsyncCallback* self,
 
 static HRESULT STDMETHODCALLTYPE cb_invoke(IMFAsyncCallback* self,
                                            IMFAsyncResult* result) {
-  (void)result;
-  InterlockedIncrement(&((qa_test_callback*)self)->invoked);
+  qa_test_callback* callback = (qa_test_callback*)self;
+  if (callback->go != NULL) {
+    // Bounded: a test that forgot to open the gate fails, it does not hang.
+    WaitForSingleObject(callback->go, 5000);
+  }
+  ULONG ended = 0;
+  IMFByteStream_EndRead(callback->stream, result, &ended);
+  callback->ended = ended;
+  InterlockedIncrement(&callback->invoked);
   return S_OK;
 }
 
@@ -100,7 +113,58 @@ static const IMFAsyncCallbackVtbl qa_test_callback_vtbl = {
     cb_query, cb_add_ref, cb_release, cb_parameters, cb_invoke,
 };
 
+static qa_test_callback callback_on(IMFByteStream* stream, HANDLE go) {
+  qa_test_callback callback;
+  callback.lpVtbl = &qa_test_callback_vtbl;
+  callback.ref = 1;
+  callback.invoked = 0;
+  callback.stream = stream;
+  callback.ended = 0;
+  callback.go = go;
+  return callback;
+}
+
+/// ⚠️`MFInvokeCallback` QUEUES the callback; it does not call it — so what
+/// is waited for is the notification, bounded, never assumed.
+static void wait_invoked(qa_test_callback* callback) {
+  for (int spin = 0; spin < 2000 && callback->invoked == 0; spin += 1) {
+    Sleep(1);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Close racing a read, as Media Foundation does it: its own work-queue
+// threads read while the thread that owns the reader tears it down.
+
+typedef struct {
+  IMFByteStream* stream;
+  /// The span's block size: every read takes a whole block.
+  ULONG block;
+  volatile LONG stop;
+  LONG reads;
+} qa_test_reader;
+
+static DWORD WINAPI read_until_stopped(void* argument) {
+  qa_test_reader* reader = (qa_test_reader*)argument;
+  uint8_t* sink = (uint8_t*)malloc(reader->block);
+  QWORD at = 0;
+  while (sink != NULL && reader->stop == 0) {
+    // Two blocks in turn, so every read DECODES one: a read that only
+    // copies the block the span kept is over before a Close can meet it.
+    at = at == 0 ? (QWORD)reader->block * 5 : 0;
+    ULONG got = 0;
+    IMFByteStream_SetCurrentPosition(reader->stream, at);
+    IMFByteStream_Read(reader->stream, sink, reader->block, &got);
+    InterlockedIncrement(&reader->reads);
+  }
+  free(sink);
+  return 0;
+}
+
 int main(void) {
+  // Unbuffered: a check that kills the process must not take the lines
+  // printed before it with it.
+  setvbuf(stdout, NULL, _IONBF, 0);
   wchar_t directory[MAX_PATH];
   wchar_t fixture[MAX_PATH];
   if (GetTempPathW(MAX_PATH, directory) == 0 ||
@@ -195,10 +259,7 @@ int main(void) {
   // returning E_NOTIMPL there can fail to open a file the stream can plainly
   // read — so the pair is implemented, and therefore has to be checked.
   if (SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) {
-    qa_test_callback callback;
-    callback.lpVtbl = &qa_test_callback_vtbl;
-    callback.ref = 1;
-    callback.invoked = 0;
+    qa_test_callback callback = callback_on(stream, NULL);
     IMFByteStream_SetCurrentPosition(stream, 200);
     memset(got, 0, sizeof(got));
     const HRESULT began = IMFByteStream_BeginRead(
@@ -209,16 +270,56 @@ int main(void) {
     // correctly. The bytes are already in the buffer either way (the read
     // itself is synchronous), so what is being waited for is the
     // notification, and a caller that never gets it would hang forever.
-    for (int spin = 0; spin < 2000 && callback.invoked == 0; spin += 1) {
-      Sleep(1);
-    }
+    wait_invoked(&callback);
     expect_int("and the callback is invoked", callback.invoked, 1);
-    ULONG ended_read = 0;
-    IMFByteStream_EndRead(stream, NULL, &ended_read);
-    expect_int("EndRead reports what was read", ended_read, 8);
+    expect_int("EndRead reports what was read", callback.ended, 8);
     for (int i = 0; i < 8; i += 1) {
       expect_int("and the async read filled the buffer with range bytes",
                  got[i], pattern_byte(RANGE_BASE + 200 + i));
+    }
+
+    // 🚨TWO READS IN FLIGHT: each EndRead answers for ITS read. The count
+    // lived in one field of the stream, so a read that finished after the
+    // next one began reported the next one's bytes — a short read is the
+    // end of the file to a parser.
+    {
+      HANDLE go = CreateEventW(NULL, TRUE, FALSE, NULL);
+      qa_test_callback first = callback_on(stream, go);
+      qa_test_callback second = callback_on(stream, NULL);
+      uint8_t eight[8];
+      uint8_t three[3];
+      IMFByteStream_SetCurrentPosition(stream, 0);
+      IMFByteStream_BeginRead(stream, eight, 8, (IMFAsyncCallback*)&first,
+                              NULL);
+      IMFByteStream_BeginRead(stream, three, 3, (IMFAsyncCallback*)&second,
+                              NULL);
+      wait_invoked(&second);
+      SetEvent(go);
+      wait_invoked(&first);
+      expect_int("the first read's EndRead reports the first read",
+                 first.ended, 8);
+      expect_int("the second read's EndRead reports the second read",
+                 second.ended, 3);
+      CloseHandle(go);
+    }
+
+    // 🚨A READ IN FLIGHT HOLDS ITS STREAM. Its callback finishes it on the
+    // stream it began on, so the stream must outlive the owner's last
+    // reference — a reader torn down while the work queue is behind lets
+    // go of a stream whose read has not been finished.
+    {
+      IMFByteStream* held =
+          qa_win_range_stream_create(fixture_utf8, RANGE_BASE, RANGE_LEN, 0);
+      HANDLE go = CreateEventW(NULL, TRUE, FALSE, NULL);
+      qa_test_callback late = callback_on(held, go);
+      IMFByteStream_BeginRead(held, got, 8, (IMFAsyncCallback*)&late, NULL);
+      const ULONG left = IMFByteStream_Release(held);
+      expect_int("a read in flight keeps its stream alive", (long long)left,
+                 1);
+      SetEvent(go);
+      wait_invoked(&late);
+      expect_int("and finishes on it", late.ended, 8);
+      CloseHandle(go);
     }
     MFShutdown();
   } else {
@@ -227,6 +328,18 @@ int main(void) {
   }
 
   IMFByteStream_Release(stream);
+
+  // A read after Close is refused — the stream has nothing left to read.
+  {
+    IMFByteStream* closed =
+        qa_win_range_stream_create(fixture_utf8, RANGE_BASE, RANGE_LEN, 0);
+    IMFByteStream_Close(closed);
+    read = 0;
+    const HRESULT after = IMFByteStream_Read(closed, got, 8, &read);
+    expect_int("a read after Close is refused", FAILED(after) ? 1 : 0, 1);
+    expect_int("and reads nothing", read, 0);
+    IMFByteStream_Release(closed);
+  }
 
   // ⛔A range that runs past the end of the file is refused, not truncated:
   // a stream promising bytes the file cannot supply turns into a movie that
@@ -283,6 +396,61 @@ int main(void) {
                    pattern_byte(kBlock * 2 - 8 + i));
       }
       IMFByteStream_Release(framed);
+    }
+
+  }
+
+  // 🚨CLOSE RACING A READ (framed-movie-parity-hangs-under-load): Media
+  // Foundation reads on its own work-queue threads while the thread that
+  // owns the reader tears it down, and Close freed the file and the block
+  // buffers under a read still using them. A read after Close is refused;
+  // a read Close meets finishes first.
+  {
+    // Big blocks, so a read spends its time decoding one — the window a
+    // Close has to land in.
+    enum { kRaceMedium = 1 << 20, kRaceBlock = 1 << 16 };
+    static uint8_t race_medium[kRaceMedium];
+    for (int64_t at = 0; at < kRaceMedium; at += 1) {
+      race_medium[at] = pattern_byte(at);
+    }
+    uint32_t race_lengths[QA_FIXTURE_MAX_BLOCKS];
+    FILE* out = _wfopen(fixture, L"wb");
+    int64_t race_blob = -1;
+    if (out != NULL) {
+      race_blob = qa_fixture_write_framed(out, race_medium, kRaceMedium,
+                                          kRaceBlock, race_lengths);
+      fclose(out);
+    }
+    expect_int("the race's framed span is written", race_blob > 0 ? 1 : 0,
+               1);
+    if (race_blob > 0) {
+      LONG reads = 0;
+      for (int cycle = 0; cycle < 300; cycle += 1) {
+        IMFByteStream* racing =
+            qa_win_range_stream_create(fixture_utf8, 0, race_blob, 1);
+        if (racing == NULL) {
+          expect_int("a framed span opens for the race", 0, 1);
+          break;
+        }
+        qa_test_reader reader;
+        reader.stream = racing;
+        reader.block = kRaceBlock;
+        reader.stop = 0;
+        reader.reads = 0;
+        const HANDLE thread =
+            CreateThread(NULL, 0, read_until_stopped, &reader, 0, NULL);
+        // Let the reader get going, then close under it.
+        for (int spin = 0; spin < 200 && reader.reads < 2; spin += 1) {
+          Sleep(0);
+        }
+        IMFByteStream_Close(racing);
+        InterlockedExchange(&reader.stop, 1);
+        WaitForSingleObject(thread, 5000);
+        CloseHandle(thread);
+        reads += reader.reads;
+        IMFByteStream_Release(racing);
+      }
+      expect_int("LIVENESS: the race read", reads > 0 ? 1 : 0, 1);
     }
   }
 

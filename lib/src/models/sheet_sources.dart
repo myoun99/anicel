@@ -14,6 +14,7 @@ class SheetSources {
   SheetSources._({
     required this.playbackFrameCount,
     required this.celLayers,
+    required this.books,
     required this.seLayers,
     required this.instructionLayers,
   });
@@ -40,6 +41,7 @@ class SheetSources {
         for (final layer in cut.layers)
           if (layerTakesSheetCelColumn(layer)) layer,
       ],
+      books: sheetBooksOf(cut.layers),
       seLayers: [
         for (final layer in cut.layers)
           if (layer.kind == LayerKind.se && layer.onTimesheet)
@@ -80,6 +82,9 @@ class SheetSources {
   /// The rows that take an ACTION-block cel column.
   final List<Layer> celLayers;
 
+  /// The books the sheet marks between those columns ([sheetBooksOf]).
+  final List<SheetBook> books;
+
   /// The SE rows, already windowed and clipped to this cut, each with the
   /// two facts the printed sheet marks: whether the row's block runs past
   /// the cut end, and whether it spilled in from an earlier cut.
@@ -87,6 +92,47 @@ class SheetSources {
 
   /// The instruction rows the sheet prints.
   final List<Layer> instructionLayers;
+}
+
+/// A BOOK the sheet marks (D24): [boundary] cel columns up from the
+/// bottom — between column `boundary - 1` and `boundary` — and its tag,
+/// every book at that boundary bottom first, joined by `,` (유저
+/// 2026-09-25: 「같은 축에 여러 북 있으면 … 레이어이름,레이어이름 이런식으로
+/// 사이에 , 넣어서」).
+typedef SheetBook = ({int boundary, String label});
+
+/// The books [layers] (bottom to top, the cut's order) mark on a sheet,
+/// left to right: every image row [layerMarksSheetBook] answers for, at
+/// the boundary of the cel columns below it.
+///
+/// ⛔None under the first cel column — 유저 2026-09-25
+/// (timesheet-edge-books-Q1): 「업계에서 보통 A셀 밑, 셀 맨 밑은
+/// 표시안해」. The one over the last column is marked.
+List<SheetBook> sheetBooksOf(List<Layer> layers) {
+  var cels = 0;
+  final labels = <int, List<String>>{};
+  for (final layer in layers) {
+    if (layerTakesSheetCelColumn(layer)) {
+      cels += 1;
+    } else if (cels > 0 && layerMarksSheetBook(layer)) {
+      (labels[cels] ??= []).add(sheetBookLabel(layer));
+    }
+  }
+  return [
+    for (final MapEntry(key: boundary, value: names) in labels.entries)
+      (boundary: boundary, label: names.join(',')),
+  ];
+}
+
+/// A book's tag: its row's name and the name of the picture the row
+/// holds, run together — 「BOOK」 and 「1」 print 「BOOK1」 — or the row's
+/// name alone when the picture has none (유저 2026-09-25: 「레이어이름이
+/// BOOK인데 프레임이름 없으면 BOOK으로 넣고, BOOK인데 프레임이름1이면
+/// BOOK1이렇게」). An image row holds one picture a cut
+/// ([LayerKind.holdsSingleCel]).
+String sheetBookLabel(Layer layer) {
+  final picture = layer.frames.isEmpty ? null : layer.frames.first;
+  return '${layer.name}${picture?.celNumber ?? ''}';
 }
 
 /// Whether any authored block of [clone] starts inside the cut and runs

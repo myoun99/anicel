@@ -20,7 +20,7 @@ import 'session_roles.dart';
 /// raises and drops them, so it holds them, and the UI reads
 /// `session.frameScrub` — ARCH-session-state's second family (2026-09-23),
 /// the same move the onion skin made first, and the `SessionInternals`
-/// ledger counts down by the two getters it no longer carries.
+/// ledger counted down by the two getters it no longer carries.
 class FrameScrub {
   FrameScrub({
     required ProjectAccess project,
@@ -28,14 +28,16 @@ class FrameScrub {
     required ChangeSink changes,
     required TimelineAccess timeline,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required ValueListenable<bool> brushInputActive,
+    required ValueNotifier<int> editingFrameCursor,
     required PlaybackRig playbackRig,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
        _controllers = controllers,
-       _internals = internals,
+       _brushInputActive = brushInputActive,
+       _editingFrameCursor = editingFrameCursor,
        _playbackRig = playbackRig;
 
   final ProjectAccess _project;
@@ -43,7 +45,10 @@ class FrameScrub {
   final ChangeSink _changes;
   final TimelineAccess _timeline;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  /// Whether a stroke is in flight — the session's `brushInputActive`:
+  /// a scrub never moves the playhead under a pen that is drawing.
+  final ValueListenable<bool> _brushInputActive;
+  final ValueNotifier<int> _editingFrameCursor;
   final PlaybackRig _playbackRig;
 
   /// True while a ruler scrub is in flight.
@@ -96,7 +101,7 @@ class FrameScrub {
   /// lands the ONE full seek, where cut activation and gap deselection
   /// now both live (UI-R10 #13's live empty-out moved there on purpose).
   void scrubGlobalFrame(int globalFrame) {
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     final axis = _timeline.trackFrameAxis();
@@ -114,7 +119,7 @@ class FrameScrub {
       // rule scrubFrameIndex keeps for in-cut taps; the playhead itself
       // follows immediately through the parking either way). No warm:
       // the track stack self-fills, there is no active-cut cache to fill.
-      final parked = _selection.gapGlobalFrame;
+      final parked = _timeline.editingSession.gapGlobalFrame;
       // Engage on the SECOND out-of-territory event — OR on the FIRST
       // when this gesture already touched the cut's territory (D6: a
       // press ON the cursor's own frame never set the flag via
@@ -126,7 +131,7 @@ class FrameScrub {
           !active.value) {
         active.value = true;
       }
-      _selection.gapGlobalFrame = globalFrame;
+      _timeline.editingSession.gapGlobalFrame = globalFrame;
       // D6: the territory-exit EDGE — only while the gesture is live
       // (a tap's pointer-down park keeps this false, the no-flash rule),
       // and only on the flip, so per-move parking stays notify-quiet.
@@ -138,12 +143,12 @@ class FrameScrub {
     // The gesture stands IN territory — the fact the out-branch's engage
     // reads to tell a real drag's crossing from a bare pointer-down.
     _scrubTouchedTerritory = true;
-    if (_selection.gapGlobalFrame != null) {
+    if (_timeline.editingSession.gapGlobalFrame != null) {
       // Scrubbing back onto the cut un-parks — and kicks the warm the
       // out-of-territory engage skipped (one warm per territory entry,
       // not per move: the preview reads the composite cache, so a cold
       // stretch would otherwise show stale paper for the whole re-entry).
-      _selection.gapGlobalFrame = null;
+      _timeline.editingSession.gapGlobalFrame = null;
       _changes.warmActiveCut();
       // D6: the re-entry edge — the content mount swaps back to the
       // interactive canvas even when the cursor lands on its own frame
@@ -171,12 +176,12 @@ class FrameScrub {
   /// no-op the retarget scope swallows by index.
   void scrubFrameIndex(int frameIndex) {
     // R15-⑤: scrubs are seeks too — refused under a live stroke.
-    if (_internals.strokeInFlight) {
+    if (_brushInputActive.value) {
       return;
     }
     if (frameIndex != _controllers.timelineController.currentFrameIndex) {
       _controllers.timelineController.selectFrameIndex(frameIndex);
-      _internals.editingFrameCursor.value = frameIndex;
+      _editingFrameCursor.value = frameIndex;
       // Each crossed frame plays its slice of the mix (2D audio scrub).
       _playbackRig.audioScrubber.onScrubFrame(frameIndex);
       if (!active.value) {
@@ -186,7 +191,7 @@ class FrameScrub {
         _changes.warmActiveCut();
       }
     } else {
-      _internals.editingFrameCursor.value = frameIndex;
+      _editingFrameCursor.value = frameIndex;
     }
   }
 
@@ -224,19 +229,19 @@ class FrameScrub {
       outOfTerritory.value = false;
     }
     _scrubTouchedTerritory = false;
-    final parked = _selection.gapGlobalFrame;
+    final parked = _timeline.editingSession.gapGlobalFrame;
     if (parked != null) {
       // R15-⑤: a live stroke refuses the landing seek — the
       // parking stays put (the parked display state) instead of being
       // half-cleared.
-      if (_internals.strokeInFlight) {
+      if (_brushInputActive.value) {
         return;
       }
       // The parking is cleared BEFORE the landing seek: selectCut must
       // not read a live drag's parking as a committed gap departure —
       // its fromGap branch would land frame 0 first and double the
       // committed-seek signal. A gap landing re-parks by itself.
-      _selection.gapGlobalFrame = null;
+      _timeline.editingSession.gapGlobalFrame = null;
       _selection.selectGlobalFrame(parked);
       return;
     }

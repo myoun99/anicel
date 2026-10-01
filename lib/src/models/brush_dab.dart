@@ -34,6 +34,7 @@ class BrushDab {
     this.antiAlias = BrushAntiAlias.high,
     this.erase = false,
     this.stamp,
+    this.pathStep,
   }) {
     if (!textureScale.isFinite || textureScale <= 0.0) {
       throw ArgumentError.value(
@@ -66,6 +67,7 @@ class BrushDab {
     _validateFinite(angleDegrees, 'angleDegrees');
     _validateSquareIsAxisAligned(tipShape, tipMask, roundness, angleDegrees);
     _validateSequence(sequence);
+    _validatePathStep(pathStep);
   }
 
   final CanvasPoint center;
@@ -78,14 +80,27 @@ class BrushDab {
   final double pressure;
 
   /// How fast the pen was travelling when this dab was laid, normalized to
-  /// 0..1 by the pen door — see `BrushInputSample.speed`, which explains why
-  /// the raw px/s never travels.
+  /// 0..1 against `AppInputSettings.speedReferencePixelsPerSecond`.
+  ///
+  /// 🚨**NORMALIZED AT THE DOOR, like pressure and tilt.** The raw px/s never
+  /// reaches a dab, because the ratio's ceiling is a user setting and a
+  /// reader holding raw pixels would have to fetch that setting to mean
+  /// anything — sixteen readers, sixteen chances to fetch a different one.
+  /// The pen door divides once (`AppInput.normalizedSpeed`) and everything
+  /// downstream reads a plain 0..1, exactly as it does for the other two.
+  ///
+  /// ⚠️Speed is a property of the MOVE, not of the point: every dab placed
+  /// along one segment carries that segment's speed. 0.0 is a pen that has
+  /// just landed and has no move behind it yet.
+  /// ↩️This lived on `BrushInputSample.speed` until that model went with the
+  /// offline path that built it — nothing in the app ever did.
   final double speed;
 
-  /// Which way the pen leaned, in degrees (0 = along +x). Meaningless while
-  /// [tiltAltitude] is 1.0 — an upright pen leans nowhere — and REQUIRED to
-  /// be 0 when it is null, so "the device said nothing" has exactly one
-  /// spelling (the constructor checks).
+  /// Which way the pen's top leaned, in degrees clockwise from +x — the
+  /// convention every source is converted into (`PenLean`). Meaningless
+  /// while [tiltAltitude] is 1.0 — an upright pen leans nowhere — and
+  /// REQUIRED to be 0 when it is null, so "the device said nothing" has
+  /// exactly one spelling (the constructor checks).
   final double tiltAzimuthDegrees;
 
   /// How upright the pen was: 1.0 vertical, 0.0 flat on the surface — or
@@ -173,6 +188,18 @@ class BrushDab {
   /// the rect.
   final BrushStampImage? stamp;
 
+  /// How long a stretch of the stroke this dab stands for, in canvas
+  /// pixels — the step the interpolator laid it at. NULL for the dab that
+  /// opens a stroke (a tap is only that) and for a dab not laid along a path.
+  ///
+  /// 🚨★★★EVERY DAB LAYS WHAT THIS STEP IS WORTH (유저 2026-10-01
+  /// `one-pixel-steps-change-a-brush-with-its-size` A: 「엔진이 쌓임을 환산 —
+  /// 크기와 무관하게(클튜처럼)」, Q2 「환산은 커널에서 — 모든 브러시」): the
+  /// steps floor at one pixel, so a big brush lays far more stamps per width
+  /// than a small one and piled up darker and harder-edged for it. The
+  /// kernels even that out on the laid alpha (`stampShareOf`).
+  final double? pathStep;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -201,6 +228,7 @@ class BrushDab {
     BrushAntiAlias? antiAlias,
     bool? erase,
     BrushStampImage? stamp,
+    double? pathStep,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -230,6 +258,7 @@ class BrushDab {
       antiAlias: antiAlias ?? this.antiAlias,
       erase: erase ?? this.erase,
       stamp: stamp ?? this.stamp,
+      pathStep: pathStep ?? this.pathStep,
     );
   }
 
@@ -266,6 +295,7 @@ class BrushDab {
     if (antiAlias != BrushAntiAlias.high) 'antiAlias': antiAlias.name,
     if (erase) 'erase': true,
     if (stamp != null) 'stamp': stamp!.toJson(),
+    if (pathStep != null) 'pathStep': pathStep,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -314,6 +344,7 @@ class BrushDab {
       stamp: json['stamp'] == null
           ? null
           : BrushStampImage.fromJson(json['stamp'] as Map<String, dynamic>),
+      pathStep: (json['pathStep'] as num?)?.toDouble(),
     );
   }
 
@@ -347,7 +378,8 @@ class BrushDab {
           other.textureDensity == textureDensity &&
           other.antiAlias == antiAlias &&
           other.erase == erase &&
-          other.stamp == stamp;
+          other.stamp == stamp &&
+          other.pathStep == pathStep;
 
   @override
   int get hashCode => Object.hashAll([
@@ -378,6 +410,7 @@ class BrushDab {
     antiAlias,
     erase,
     stamp,
+    pathStep,
   ]);
 
   @override
@@ -495,6 +528,16 @@ void _validateFinite(double value, String fieldName) {
       value,
       fieldName,
       'BrushDab.$fieldName must be finite.',
+    );
+  }
+}
+
+void _validatePathStep(double? value) {
+  if (value != null && (!value.isFinite || value <= 0.0)) {
+    throw ArgumentError.value(
+      value,
+      'pathStep',
+      'BrushDab.pathStep must be finite and greater than 0, or null.',
     );
   }
 }

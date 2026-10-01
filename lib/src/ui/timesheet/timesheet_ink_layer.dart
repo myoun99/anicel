@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -12,13 +14,14 @@ import '../brush/brush_tool_state.dart';
 import '../canvas/viewport_canvas_transform.dart' show canvasRectShown;
 import '../sheet/sheet_ink_layer.dart';
 import 'timesheet_document_painter.dart';
+import 'timesheet_ink_bands.dart';
 import 'timesheet_ink_controller.dart';
 
 /// Computes the ink windows for the current view mode, bottom-of-stack
-/// first: page ink lies under the strip windows, so what a stroke draws on
-/// the column grid goes to the frame-anchored strip plane and everything
-/// else (header, memo band, margins, gaps) goes to the page plane — one
-/// stroke, split where it crosses ([sheetInkRegions]).
+/// first: page ink lies under the strip windows, so a stroke started on
+/// the column grid goes to the frame-anchored strip plane and one started
+/// anywhere else (header, memo band, margins, gaps) to the page plane —
+/// each kept to what its window shows ([sheetInkRegions]).
 ///
 /// [pages] are the pages of the page view to lay windows for — every
 /// page the layout prints when null.
@@ -31,21 +34,55 @@ List<SheetInkWindow> timesheetInkWindows({
   final document = layout.document;
   final windows = <SheetInkWindow>[];
   const rowHeight = TimesheetDocumentLayout.rowHeight;
+  const scale = timesheetInkScale;
   SheetInkWindow window(
     String id,
     BrushFrameKey key,
     Rect rect, {
     Offset origin = Offset.zero,
+    double stretch = 1,
   }) => SheetInkWindow(
     id: id,
     key: key,
     plane: TimesheetInkPlane.of(key),
     placement: SheetInkPlacement(
       window: rect,
-      scale: timesheetInkScale.toDouble(),
+      scale: scale.toDouble(),
       origin: origin,
+      stretch: stretch,
     ),
   );
+
+  // Frame-anchored ink: [rows] rows from global frame [first], laid from
+  // ([left], [top]) — each run of columns a window onto the band surface
+  // the rows are kept on ([timesheetInkRuns]). One run keeps the strip's
+  // own id.
+  final runs = timesheetInkRuns(layout);
+  final bandFrames = timesheetInkBandFrames(document);
+  void strip(
+    String id, {
+    required int first,
+    required int rows,
+    required double left,
+    required double top,
+  }) {
+    final band = first ~/ bandFrames;
+    final row = first % bandFrames;
+    for (final run in runs) {
+      windows.add(
+        window(
+          runs.length == 1 ? id : '$id-c${run.first}',
+          timesheetInkStripKey(cutId, band),
+          Rect.fromLTWH(left + run.left, top, run.width, rows * rowHeight),
+          origin: Offset(
+            run.surfaceLeft * scale,
+            row * rowHeight * scale,
+          ),
+          stretch: run.stretch,
+        ),
+      );
+    }
+  }
 
   if (layout.continuous) {
     // Page ink: page 1's surface over the identical header/memo geometry
@@ -62,20 +99,16 @@ List<SheetInkWindow> timesheetInkWindows({
         ),
       ),
     );
-    // Strip ink: the page bands stacked seamlessly down the single strip.
-    final bandHeight = document.pageFrameCount * rowHeight;
-    for (var band = 0; band < document.pages.length; band += 1) {
-      windows.add(
-        window(
-          'strip-$band-continuous',
-          timesheetInkStripKey(cutId, band),
-          Rect.fromLTWH(
-            layout.halfLeft(0, 0),
-            layout.halfRowsTop(0) + band * bandHeight,
-            layout.halfWidth,
-            bandHeight,
-          ),
-        ),
+    // Strip ink: the bands stacked seamlessly down the single strip.
+    final bands = (document.rowCount + bandFrames - 1) ~/ bandFrames;
+    for (var band = 0; band < bands; band += 1) {
+      final first = band * bandFrames;
+      strip(
+        'strip-$band-continuous',
+        first: first,
+        rows: math.min(bandFrames, document.rowCount - first),
+        left: layout.halfLeft(0, 0),
+        top: layout.halfRowsTop(0) + first * rowHeight,
       );
     }
     return windows;
@@ -92,27 +125,16 @@ List<SheetInkWindow> timesheetInkWindows({
     );
   }
   for (final pageIndex in visiblePages) {
-    for (final strip in layout.halfStrips) {
-      windows.add(
-        window(
-          'strip-$pageIndex-h${strip.half}',
-          timesheetInkStripKey(cutId, pageIndex),
-          Rect.fromLTWH(
-            layout.halfLeft(pageIndex, strip.half),
-            layout.halfRowsTop(pageIndex),
-            layout.halfWidth,
-            strip.rowCount * rowHeight,
-          ),
-          // The right half shows the band's lower rows: one surface, two
-          // windows onto it.
-          origin: Offset(
-            0,
-            strip.half *
-                document.halfFrameCount *
-                rowHeight *
-                timesheetInkScale,
-          ),
-        ),
+    final page = document.pages[pageIndex];
+    for (final half in layout.halfStrips) {
+      // The right half shows the band's lower rows: one surface, two
+      // windows onto it — and a 3-second page, half a band.
+      strip(
+        'strip-$pageIndex-h${half.half}',
+        first: page.startFrame + half.half * document.halfFrameCount,
+        rows: half.rowCount,
+        left: layout.halfLeft(pageIndex, half.half),
+        top: layout.halfRowsTop(pageIndex),
       );
     }
   }

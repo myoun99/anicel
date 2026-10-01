@@ -22,7 +22,8 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 /// minutes, every edge grip of the film and the plate grounds under them,
 /// on every playback frame (measured at 0.16px, profile build: the edit
 /// chrome's paint 508ms of a 2,169ms tick sample). It rides a boundary of
-/// its own now, as the timeline's playhead does.
+/// its own now, as the timeline's playhead does — and since F-212 the ring
+/// paints nothing, but the standing cell still moves with the playhead.
 void main() {
   const frames = 24;
 

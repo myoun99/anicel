@@ -156,11 +156,16 @@ abstract interface class TimelineTileRasterSource {
   /// emitter's bake key both read this.
   TextStyle glyphStyleFor(TimelineRowCellModel model);
 
-  /// Where the word of the cell at [frameIndex] is laid, row-local, for a
-  /// word of natural size [word], and how far it is narrowed (F-96: a name
-  /// that outgrows its cell grows on into its block; B: it narrows only past
-  /// the block). The tile emitter bakes its word exactly here, this narrow.
-  ({Offset origin, WordFit fit}) cellWordLayoutFor(int frameIndex, Size word);
+  /// The word [text] of the cell at [frameIndex] as it is set there,
+  /// row-local (F-96: a name that outgrows its cell grows on into its
+  /// block): how far its letter gaps give way (F-234-Q1), where it is laid
+  /// and how far it is still narrowed (B: only past the block). The tile
+  /// emitter bakes its word exactly here, this tight.
+  ({double tightening, Offset origin, WordFit fit}) cellWordSetFor(
+    int frameIndex,
+    String text,
+    TextStyle style,
+  );
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
   /// and how large it is. The tile emitter bakes the mark exactly here, in

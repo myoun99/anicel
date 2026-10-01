@@ -77,7 +77,7 @@ void main() {
         path: path,
         settings: const ImportFileSettings(
           mode: ImportFileMode.keepInside,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       );
 
@@ -193,6 +193,7 @@ void main() {
                 width: 400,
                 height: 300,
                 child: ImportPreview(
+                  session: session,
                   path: path,
                   inFrame: 0,
                   outFrame: null,
@@ -241,7 +242,10 @@ void main() {
     }
 
     BitmapSurface? pictureAt(EditorSessionManager s, Layer layer, int at) =>
-        s.brushSurfaceForLayerFrame(layer, resolveExposedFrameAt(layer, at)!);
+        s.renderCaches.brushSurfaceForLayerFrame(
+          layer,
+          resolveExposedFrameAt(layer, at)!,
+        );
 
     for (final fate in OriginalFate.values) {
       testWidgets('its original ${fate.name}: the row plays what the project '

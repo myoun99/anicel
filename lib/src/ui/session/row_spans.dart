@@ -1,12 +1,12 @@
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/storyboard_timeline_layout.dart';
 import '../../models/timeline_frame_range.dart' show exposureBlockAt;
 import '../../models/range_snap.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_axis.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart' show cutMediaStartFrame;
 import '../../services/playback/playback_frame_mapping.dart';
 import '../timeline/instruction_span_editing.dart';
 import 'folder_bands.dart';
@@ -14,6 +14,26 @@ import 'project_settings.dart';
 import 'session_roles.dart';
 import 'track_se_display.dart';
 import 'transitions.dart';
+
+/// The blocks a track-owned row's [material] makes, as a snap lane: a sound
+/// row's sounds, or — [spans] — the transition row's spans. One reading for
+/// the select-drag that snaps to them and the standing wash that stands on
+/// them (F-248), so a row cannot select one block and stand on another.
+RangeBlockAt trackRowMaterialBlocks(Layer material, {required bool spans}) =>
+    spans
+    ? (index) {
+        final covering = instructionSpanCovering(
+          material.instructions,
+          index,
+        );
+        return covering == null
+            ? null
+            : RangeBlock(
+                startIndex: covering.key,
+                endIndexExclusive: covering.key + covering.value.length,
+              );
+      }
+    : (index) => exposureBlockAt(material, index);
 
 /// WHAT A ROW SPANS — where a row's material starts and ends, and what a
 /// range drag over it may snap to.
@@ -40,20 +60,17 @@ import 'transitions.dart';
 class RowSpans {
   RowSpans({
     required ProjectAccess project,
-    required TimelineAccess timeline,
     required FolderBands folderBands,
     required ProjectSettings projectSettings,
     required TrackSeDisplay trackSe,
     required Transitions transitions,
   }) : _project = project,
-       _timeline = timeline,
        _folderBands = folderBands,
        _projectSettings = projectSettings,
        _trackSe = trackSe,
        _transitions = transitions;
 
   final ProjectAccess _project;
-  final TimelineAccess _timeline;
   final FolderBands _folderBands;
   final ProjectSettings _projectSettings;
   final TrackSeDisplay _trackSe;
@@ -62,7 +79,7 @@ class RowSpans {
   /// D40, the cut row: [trackId]'s whole cut span — the first cut's start
   /// through the last cut's end — or null when the track has no cuts.
   ({int startFrame, int endFrameExclusive})? trackCutSpan(TrackId trackId) {
-    final entries = _timeline.axisForTrack(trackId).entries;
+    final entries = _projectSettings.axisForTrack(trackId).entries;
     if (entries.isEmpty) {
       return null;
     }
@@ -139,7 +156,7 @@ class RowSpans {
         // every unselected track's sounds snapless.
         final layer = _trackSe.trackSeAnywhere(layerId)?.layer;
         if (layer != null) {
-          return (index) => exposureBlockAt(layer, index);
+          return trackRowMaterialBlocks(layer, spans: false);
         }
         // 🚨The transition row snaps to its SPANS, and a row with no snap lane
         // at all produced no span — which cleared the selection instead of
@@ -151,18 +168,7 @@ class RowSpans {
         if (transition == null) {
           return null;
         }
-        return (index) {
-          final covering = instructionSpanCovering(
-            transition.instructions,
-            index,
-          );
-          return covering == null
-              ? null
-              : RangeBlock(
-                  startIndex: covering.key,
-                  endIndexExclusive: covering.key + covering.value.length,
-                );
-        };
+        return trackRowMaterialBlocks(transition, spans: true);
       case LaneRowAddress():
         // Lane keys are POINTS, not blocks — the lane domain's own rule
         // ("raw cells, no block snap"), so there is nothing to snap to.
@@ -194,17 +200,12 @@ class RowSpans {
   }
 
   /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
-  /// — what the track-owned lanes are keyed in.
-  int trackGlobalFrameOf(CutId cutId, int frameIndex) {
-    for (final entry in buildStoryboardTimelineLayout(
-      _project.repository.requireProject(),
-    )) {
-      if (entry.cutId == cutId) {
-        return entry.startFrame + frameIndex;
-      }
-    }
-    return frameIndex;
-  }
+  /// — what the track-owned lanes are keyed in. A frame of the cut's OWN
+  /// (the picture's) counts from where its material starts, which is ahead
+  /// of the conte start in a cut an O.L arrives into ([cutMediaStartFrame]).
+  int trackGlobalFrameOf(CutId cutId, int frameIndex) =>
+      (cutMediaStartFrame(_project.repository.requireProject(), cutId) ?? 0) +
+      frameIndex;
 
   /// The multitrack display resolution WITH transitions: every track's
   /// covered cut at [globalFrame], in project track order, and an O.L

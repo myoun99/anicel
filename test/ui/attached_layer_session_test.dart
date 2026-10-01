@@ -662,7 +662,7 @@ void main() {
       s.selectLayer(belowId);
       expect(s.layerVerbs.isLayerLinked(belowId), isTrue);
 
-      s.layerVerbs.unlinkActiveLayer();
+      s.layerVerbs.unlinkLayers([belowId]);
       expect(s.layerVerbs.isLayerLinked(base.id), isFalse);
       expect(
         s.layerVerbs.isLayerLinked(belowId),

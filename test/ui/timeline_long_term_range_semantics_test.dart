@@ -13,7 +13,6 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
@@ -90,35 +89,6 @@ void main() {
         expect(
           find.byKey(const ValueKey<String>('timeline-playhead-column')),
           findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
-      'selected exposure outline is a display-range visual beyond playback duration',
-      (tester) async {
-        // The 312px layer rail (fx switch) narrows the default test
-        // viewport's frame window below cell 12 — widen the surface so the
-        // asserted cells stay rendered.
-        await tester.binding.setSurfaceSize(const Size(1000, 600));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
-        final fixture = _fixture(cutDuration: 3);
-
-        await tester.pumpWidget(_panel(fixture, currentFrameIndex: 10));
-
-        final outline = find.byKey(
-          const ValueKey<String>(
-            'timeline-selected-exposure-range-outline-layer-a',
-          ),
-        );
-        expect(outline, findsOneWidget);
-        expect(timelineCellInWindow(tester, 'layer-a', 10), isTrue);
-        expect(timelineCellInWindow(tester, 'layer-a', 12), isTrue);
-
-        final positioned = tester.widget<Positioned>(outline);
-        expect(
-          positioned.width,
-          3 * TimelineGridMetrics.defaults.frameCellWidth,
         );
       },
     );

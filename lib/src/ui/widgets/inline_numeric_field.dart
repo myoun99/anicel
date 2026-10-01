@@ -29,6 +29,7 @@ class InlineNumericField extends StatefulWidget {
     this.textAlign = TextAlign.center,
     this.signed = true,
     this.keyboardType,
+    this.inputFormatters,
   });
 
   /// Seeds the field, and is selected whole so the first keystroke
@@ -53,6 +54,12 @@ class InlineNumericField extends StatefulWidget {
   /// the field's focus/escape/commit behaviour but its digits run A–F, so
   /// a numeric pad would leave a phone unable to type half of them.
   final TextInputType? keyboardType;
+
+  /// Overrides what a keystroke may put in the field. Null converts the
+  /// full-width numerals and leaves the rest to the host's parser; a host
+  /// that takes whole numbers alone passes [halfWidthDigitsOnly], so a
+  /// letter never lands (I-18's start number: 「숫자만 입력가능」).
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<InlineNumericField> createState() => _InlineNumericFieldState();
@@ -135,7 +142,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
               decimal: true,
               signed: widget.signed,
             ),
-        inputFormatters: halfWidthNumerals,
+        inputFormatters: widget.inputFormatters ?? halfWidthNumerals,
         style: widget.textStyle ?? const TextStyle(fontSize: 12),
         decoration: const InputDecoration(
           // Bare: the field replaces a readout in place, so it opts out of

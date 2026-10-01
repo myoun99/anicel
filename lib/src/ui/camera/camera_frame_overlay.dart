@@ -1,54 +1,24 @@
-import 'dart:math' as math;
-
-import 'package:flutter/gestures.dart'
-    show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
-import 'package:vector_math/vector_math_64.dart' show Vector3;
 
-import '../../models/app_input_settings.dart' show AppInput;
+import '../../core/point_bounds.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../services/layer_pose_paint.dart' show cameraProjectionMatrix;
+import '../../models/transform_track.dart' show TransformPose;
+import '../../services/camera_frame_corners.dart'
+    show cameraFrameCornersInCanvas;
 import '../repaint_props.dart';
-import '../widgets/axis_bar_gesture.dart' show OwningPanGestureRecognizer;
+import '../canvas/canvas_viewport_offset.dart';
+import '../canvas/row_transform_box.dart';
 
 /// The camera pose's center in viewport (screen) coordinates.
 Offset cameraCenterInViewport({
   required CameraPose pose,
   required CanvasViewport viewport,
 }) {
-  final mapped = viewport.canvasToViewport(pose.center);
-  return Offset(mapped.x, mapped.y);
-}
-
-/// The camera frame's corners in canvas coordinates:
-/// top-left, top-right, bottom-right, bottom-left.
-///
-/// The output frame's four corners pulled BACK through the one camera
-/// projection ([cameraProjectionMatrix] inverted — the closure
-/// guidesInArtworkSpace uses for the layer pose), so the overlay's frame is
-/// exactly the region the export renderer and the playback painter show.
-List<Offset> cameraFrameCornersInCanvas({
-  required CameraPose pose,
-  required CanvasSize cameraFrameSize,
-}) {
-  final inverse = cameraProjectionMatrix(pose, cameraFrameSize)..invert();
-  final width = cameraFrameSize.width.toDouble();
-  final height = cameraFrameSize.height.toDouble();
-  Offset corner(double x, double y) {
-    final mapped = inverse.transform3(Vector3(x, y, 0));
-    return Offset(mapped.x, mapped.y);
-  }
-
-  return [
-    corner(0, 0),
-    corner(width, 0),
-    corner(width, height),
-    corner(0, height),
-  ];
+  return viewport.canvasToViewportOffset(pose.center);
 }
 
 /// The axis-aligned canvas-space bounds of the (possibly rotated) camera
@@ -57,21 +27,9 @@ Rect cameraFrameBoundsInCanvas({
   required CameraPose pose,
   required CanvasSize cameraFrameSize,
 }) {
-  final corners = cameraFrameCornersInCanvas(
-    pose: pose,
-    cameraFrameSize: cameraFrameSize,
+  return pointsBounds(
+    cameraFrameCornersInCanvas(pose: pose, cameraFrameSize: cameraFrameSize),
   );
-  var left = corners.first.dx;
-  var top = corners.first.dy;
-  var right = corners.first.dx;
-  var bottom = corners.first.dy;
-  for (final corner in corners.skip(1)) {
-    left = math.min(left, corner.dx);
-    top = math.min(top, corner.dy);
-    right = math.max(right, corner.dx);
-    bottom = math.max(bottom, corner.dy);
-  }
-  return Rect.fromLTRB(left, top, right, bottom);
 }
 
 /// The camera frame's corners in viewport (screen) coordinates:
@@ -81,12 +39,9 @@ List<Offset> cameraFrameCornersInViewport({
   required CanvasSize cameraFrameSize,
   required CanvasViewport viewport,
 }) {
-  Offset toViewport(Offset corner) {
-    final mapped = viewport.canvasToViewport(
-      CanvasPoint(x: corner.dx, y: corner.dy),
-    );
-    return Offset(mapped.x, mapped.y);
-  }
+  Offset toViewport(Offset corner) => viewport.canvasToViewportOffset(
+    CanvasPoint(x: corner.dx, y: corner.dy),
+  );
 
   return [
     for (final corner in cameraFrameCornersInCanvas(
@@ -97,55 +52,27 @@ List<Offset> cameraFrameCornersInViewport({
   ];
 }
 
-/// The rotate lever in viewport coordinates, as ONE value: its [base] is
-/// the top edge's midpoint and its [knob] sticks out of that midpoint,
-/// away from the frame center, by [CameraFrameOverlay.rotateLeverLength]
-/// screen pixels.
-///
-/// The base and the knob answer together because they are one lever: the
-/// painter drew the midpoint itself and then asked a knob helper that
-/// derived the very same midpoint again, so the line and the circle it
-/// joins were two derivations of one geometry.
-({Offset base, Offset knob}) cameraRotateLeverInViewport({
-  required CameraPose pose,
-  required CanvasSize cameraFrameSize,
-  required CanvasViewport viewport,
-}) {
-  final corners = cameraFrameCornersInViewport(
-    pose: pose,
-    cameraFrameSize: cameraFrameSize,
-    viewport: viewport,
-  );
-  final center = cameraCenterInViewport(pose: pose, viewport: viewport);
-  final base = Offset(
-    (corners[0].dx + corners[1].dx) / 2,
-    (corners[0].dy + corners[1].dy) / 2,
-  );
-  final direction = base - center;
-  final distance = direction.distance;
-  final unit = distance == 0 ? const Offset(0, -1) : direction / distance;
-  return (base: base, knob: base + unit * CameraFrameOverlay.rotateLeverLength);
-}
-
 /// The TVPaint-style camera view drawn over the canvas: everything outside
-/// the camera frame is dimmed and the frame silhouette gets a blue outline.
+/// the camera frame is dimmed and the frame silhouette gets an outline.
 ///
-/// When [interactive] (the camera layer is active) the frame shows its
-/// manipulation handles: dragging a corner square scales the zoom around the
-/// camera center, dragging the lever knob above the top edge rotates around
-/// the center, and dragging anywhere else moves the camera. Every drag
-/// previews live and commits ONE keyframe on release via [onPoseCommitted]
-/// (one undo entry per drag). When not interactive the overlay ignores
-/// pointers so canvas panning/drawing still works below it.
-class CameraFrameOverlay extends StatefulWidget {
+/// It only DRAWS. On the camera row the frame is grabbed through the box
+/// every row's transform wears (F-222 ③, `RowTransformBox`): the inside
+/// moves the camera, a corner zooms it and outside on stage turns it, each
+/// about its centre. ↩️The frame used to take the hand itself — a corner
+/// for the zoom, a lever knob above the top edge for the turn, anywhere
+/// else for the move — and the lever went with the transform tool's (유저
+/// 2026-09-22 「회전 꼭짓점은 잔재 싹 삭제」), when every box became one law.
+///
+/// 🚨F-195: the frame does NOT draw a drag of its own. The host shows the
+/// dragged pose as the camera track the display reads, and hands it back
+/// as [pose].
+class CameraFrameOverlay extends StatelessWidget {
   const CameraFrameOverlay({
     super.key,
     required this.pose,
     required this.cameraFrameSize,
     required this.viewport,
     required this.dimOpacity,
-    this.interactive = false,
-    this.onPoseCommitted,
   });
 
   /// The app's accent, like every other thing on screen that says "this is
@@ -165,13 +92,6 @@ class CameraFrameOverlay extends StatefulWidget {
   /// rather than as a second piece of geometry.
   static const double centerCrossArm = 4;
 
-  /// Screen-space pointer slack around a handle before the drag falls back
-  /// to moving the camera.
-  static const double handleHitRadius = 12;
-
-  /// How far the rotate knob sticks out of the top edge, in screen pixels.
-  static const double rotateLeverLength = 24;
-
   static const double minZoom = 0.01;
   static const double maxZoom = 100;
 
@@ -186,247 +106,94 @@ class CameraFrameOverlay extends StatefulWidget {
   /// 0 = no dim, 1 = fully black outside the camera frame.
   final double dimOpacity;
 
-  final bool interactive;
-  final ValueChanged<CameraPose>? onPoseCommitted;
-
   @override
-  State<CameraFrameOverlay> createState() => _CameraFrameOverlayState();
+  Widget build(BuildContext context) => IgnorePointer(
+    child: CustomPaint(
+      key: const ValueKey<String>('camera-frame-overlay'),
+      painter: CameraFramePainter(
+        pose: pose,
+        cameraFrameSize: cameraFrameSize,
+        viewport: viewport,
+        dimOpacity: dimOpacity,
+        outlineColor: CameraFrameOverlay.outlineColor,
+      ),
+      // A bare CustomPaint sizes to zero under loose constraints; the frame
+      // must always cover the whole viewport.
+      child: const SizedBox.expand(),
+    ),
+  );
 }
 
-enum _CameraDragMode { move, zoom, rotate }
+/// The camera row's box (F-222 ③): the frame IS the box — the inside moves
+/// the camera, a corner zooms it, outside on stage turns it, each about its
+/// centre ([RowTransformBox]). No cross: the camera turns and zooms about
+/// its own centre, which nothing places (유저 2026-10-01: 「카메라도 그래서
+/// 십자가 못움직이고 중심기준 회전이 맞을거같으니 십자가 필요없으니」).
+///
+/// [zoom] lands the CAMERA's zoom. The frame's size is the output's over
+/// the zoom, so the box's own scale is the zoom's inverse — the corner
+/// dragged outward zooms out.
+class CameraFrameBox extends StatelessWidget {
+  const CameraFrameBox({
+    super.key,
+    required this.pose,
+    required this.cameraFrameSize,
+    required this.canvasSize,
+    required this.viewport,
+    required this.claimsCanvas,
+    required this.onCancelled,
+    this.move,
+    this.zoom,
+    this.turn,
+  });
 
-class _CameraFrameOverlayState extends State<CameraFrameOverlay> {
-  CameraPose? _dragPose;
-  _CameraDragMode _dragMode = _CameraDragMode.move;
-  double _zoomStartDistance = 0;
-  double _zoomStartZoom = 1;
-  double _lastPointerAngle = 0;
+  final CameraPose pose;
+  final CanvasSize cameraFrameSize;
 
-  /// PEN-13: the TOUCH gate. Fingers manipulate the camera ONLY when the
-  /// one-finger touch slot is Touch drawing (the camera drag is a pen-
-  /// class edit, so it follows the drawing capability) — under a flip/
-  /// navigate slot a finger on the camera layer belongs to the screen
-  /// gestures alone. Pen/mouse always operate.
-  ///
-  /// The commitment rule mirrors the brush view (PEN-12 #4): a second
-  /// finger landing while the touch drag is still SUB-SLOP converts the
-  /// pair to a screen gesture (the camera pose snaps back untouched);
-  /// once committed, extra fingers are ignored and the drag lives.
-  final Set<int> _touchContacts = <int>{};
-  bool _touchDrag = false;
-  bool _touchDragAborted = false;
-  double _touchDragDistance = 0;
+  /// The cut's canvas — the stage the turn keeps to.
+  final CanvasSize canvasSize;
+  final CanvasViewport viewport;
+  final bool claimsCanvas;
+  final VoidCallback onCancelled;
+  final RowBoxLanding<CanvasPoint>? move;
+  final RowBoxLanding<double>? zoom;
+  final RowBoxLanding<double>? turn;
 
-  static const double _touchCommitSlop = 18;
-
-  CameraPose get _displayPose => _dragPose ?? widget.pose;
-
-  Offset get _centerInViewport =>
-      cameraCenterInViewport(pose: _displayPose, viewport: widget.viewport);
-
-  double _pointerAngleDegrees(Offset position) {
-    final fromCenter = position - _centerInViewport;
-    return math.atan2(fromCenter.dy, fromCenter.dx) * 180 / math.pi;
-  }
-
-  void _dragStart(DragStartDetails details) {
-    if (details.kind == PointerDeviceKind.touch) {
-      if (!AppInput.touchDraws || _touchContacts.length > 1) {
-        _touchDragAborted = true;
-        return;
-      }
-      _touchDrag = true;
-      _touchDragAborted = false;
-      _touchDragDistance = 0;
-    } else {
-      _touchDrag = false;
-      _touchDragAborted = false;
-    }
-    final position = details.localPosition;
-    final pose = widget.pose;
-
-    final knob = cameraRotateLeverInViewport(
-      pose: pose,
-      cameraFrameSize: widget.cameraFrameSize,
-      viewport: widget.viewport,
-    ).knob;
-    if ((position - knob).distance <= CameraFrameOverlay.handleHitRadius) {
-      _dragMode = _CameraDragMode.rotate;
-      _lastPointerAngle = _pointerAngleDegrees(position);
-      return;
-    }
-
-    final corners = cameraFrameCornersInViewport(
-      pose: pose,
-      cameraFrameSize: widget.cameraFrameSize,
-      viewport: widget.viewport,
-    );
-    for (final corner in corners) {
-      if ((position - corner).distance <= CameraFrameOverlay.handleHitRadius) {
-        _dragMode = _CameraDragMode.zoom;
-        _zoomStartDistance = math.max(
-          (position - _centerInViewport).distance,
-          0.001,
-        );
-        _zoomStartZoom = pose.zoom;
-        return;
-      }
-    }
-
-    _dragMode = _CameraDragMode.move;
-  }
-
-  void _dragUpdate(DragUpdateDetails details) {
-    if (_touchDragAborted) {
-      return;
-    }
-    if (_touchDrag) {
-      _touchDragDistance += details.delta.distance;
-    }
-    final pose = _displayPose;
-    switch (_dragMode) {
-      case _CameraDragMode.move:
-        final canvasDelta = widget.viewport.viewportDeltaToCanvasDelta(
-          dx: details.delta.dx,
-          dy: details.delta.dy,
-        );
-        setState(() {
-          _dragPose = pose.copyWith(
-            center: CanvasPoint(
-              x: pose.center.x + canvasDelta.x,
-              y: pose.center.y + canvasDelta.y,
-            ),
-          );
-        });
-      case _CameraDragMode.zoom:
-        // The corner sits at a distance ∝ 1/zoom from the center, so
-        // dragging it outward zooms out and inward zooms in.
-        final distance = math.max(
-          (details.localPosition - _centerInViewport).distance,
-          0.001,
-        );
-        final zoom = (_zoomStartZoom * _zoomStartDistance / distance).clamp(
-          CameraFrameOverlay.minZoom,
-          CameraFrameOverlay.maxZoom,
-        );
-        setState(() => _dragPose = pose.copyWith(zoom: zoom));
-      case _CameraDragMode.rotate:
-        // Accumulate wrapped angular deltas so the rotation stays continuous
-        // across the ±180° seam and supports full extra turns (0 → 360
-        // keyframes are meaningful — poses lerp as-is).
-        final angle = _pointerAngleDegrees(details.localPosition);
-        var delta = angle - _lastPointerAngle;
-        while (delta > 180) {
-          delta -= 360;
-        }
-        while (delta < -180) {
-          delta += 360;
-        }
-        _lastPointerAngle = angle;
-        // A horizontally flipped VIEW mirrors on-screen angles: the same
-        // pointer sweep must still rotate the pose the way the user sees
-        // it turn.
-        if (widget.viewport.flipHorizontal) {
-          delta = -delta;
-        }
-        setState(() {
-          _dragPose = pose.copyWith(
-            rotationDegrees: pose.rotationDegrees + delta,
-          );
-        });
-    }
-  }
-
-  void _dragEnd() {
-    final dragPose = _dragPose;
-    final aborted = _touchDragAborted;
-    _touchDrag = false;
-    _touchDragAborted = false;
-    _touchDragDistance = 0;
-    setState(() => _dragPose = null);
-    if (!aborted && dragPose != null && dragPose != widget.pose) {
-      widget.onPoseCommitted?.call(dragPose);
-    }
-  }
-
-  /// A second finger landing during a SUB-SLOP touch drag: the pair is a
-  /// screen gesture — the camera pose snaps back untouched.
-  void _handleExtraTouchDown(PointerDownEvent event) {
-    if (event.kind != PointerDeviceKind.touch) {
-      return;
-    }
-    _touchContacts.add(event.pointer);
-    if (_touchContacts.length >= 2 &&
-        _touchDrag &&
-        !_touchDragAborted &&
-        _touchDragDistance < _touchCommitSlop) {
-      _touchDragAborted = true;
-      setState(() => _dragPose = null);
-    }
-  }
-
-  void _handleTouchGone(int pointer) {
-    _touchContacts.remove(pointer);
-  }
+  static double _zoomOf(double frameScale) => (1 / frameScale).clamp(
+    CameraFrameOverlay.minZoom,
+    CameraFrameOverlay.maxZoom,
+  );
 
   @override
   Widget build(BuildContext context) {
-    final paint = CustomPaint(
-      key: const ValueKey<String>('camera-frame-overlay'),
-      painter: CameraFramePainter(
-        pose: _displayPose,
-        cameraFrameSize: widget.cameraFrameSize,
-        viewport: widget.viewport,
-        dimOpacity: widget.dimOpacity,
-        outlineColor: CameraFrameOverlay.outlineColor,
-        showHandles: widget.interactive,
+    final zoom = this.zoom;
+    return RowTransformBox(
+      corners: [
+        for (final corner in cameraFrameCornersInCanvas(
+          pose: pose,
+          cameraFrameSize: cameraFrameSize,
+        ))
+          CanvasPoint(x: corner.dx, y: corner.dy),
+      ],
+      pose: TransformPose(
+        center: pose.center,
+        zoom: 1 / pose.zoom,
+        rotationDegrees: pose.rotationDegrees,
       ),
-      // A bare CustomPaint sizes to zero under loose constraints; the overlay
-      // must always cover (and hit-test across) the whole viewport.
-      child: const SizedBox.expand(),
-    );
-
-    if (!widget.interactive) {
-      return IgnorePointer(child: paint);
-    }
-
-    return Listener(
-      // PEN-13: raw contact tracking for the touch gate (the pan
-      // callbacks alone can't see the finger count).
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: _handleExtraTouchDown,
-      onPointerUp: (event) => _handleTouchGone(event.pointer),
-      onPointerCancel: (event) => _handleTouchGone(event.pointer),
-      child: RawGestureDetector(
-        key: const ValueKey<String>('camera-frame-overlay-gesture'),
-        behavior: HitTestBehavior.opaque,
-        gestures: <Type, GestureRecognizerFactory>{
-          _CameraPanGestureRecognizer:
-              GestureRecognizerFactoryWithHandlers<_CameraPanGestureRecognizer>(
-                () => _CameraPanGestureRecognizer(debugOwner: this),
-                (recognizer) {
-                  // A LATE touch never joins the pan (the default
-                  // latest-pointer strategy would hand the drag to the
-                  // idle newcomer, freezing the camera mid-drag) — the
-                  // finger that started the drag keeps driving it.
-                  recognizer.extraTouchRejected = (event) =>
-                      event.kind == PointerDeviceKind.touch &&
-                      _touchContacts.isNotEmpty;
-                  recognizer.gestureSettings =
-                      MediaQuery.maybeGestureSettingsOf(context);
-                  // Handles are small: report the true pointer-down
-                  // position (not the post-touch-slop accept position) so
-                  // corner/knob hit tests don't miss the pressed handle.
-                  recognizer.dragStartBehavior = DragStartBehavior.down;
-                  recognizer.onStart = _dragStart;
-                  recognizer.onUpdate = _dragUpdate;
-                  recognizer.onEnd = (_) => _dragEnd();
-                  recognizer.onCancel = _dragEnd;
-                },
-              ),
-        },
-        child: paint,
-      ),
+      canvasSize: canvasSize,
+      viewport: viewport,
+      claimsCanvas: claimsCanvas,
+      // The frame's own hairline is the outline ([CameraFrameOverlay]).
+      outlined: false,
+      onCancelled: onCancelled,
+      move: move,
+      scale: zoom == null
+          ? null
+          : (
+              changed: (frameScale) => zoom.changed(_zoomOf(frameScale)),
+              committed: (frameScale) => zoom.committed(_zoomOf(frameScale)),
+            ),
+      turn: turn,
     );
   }
 }
@@ -438,7 +205,6 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
     required this.viewport,
     required this.dimOpacity,
     required this.outlineColor,
-    this.showHandles = false,
   });
 
   final CameraPose pose;
@@ -446,10 +212,6 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
   final CanvasViewport viewport;
   final double dimOpacity;
   final Color outlineColor;
-
-  /// Corner zoom squares + the rotate lever; drawn only while the camera
-  /// layer is being manipulated.
-  final bool showHandles;
 
   /// The camera frame's corners in viewport (screen) coordinates:
   /// top-left, top-right, bottom-right, bottom-left.
@@ -500,64 +262,9 @@ class CameraFramePainter extends CustomPainter with RepaintOnProps {
       center + const Offset(0, arm),
       line,
     );
-
-    if (showHandles) {
-      // The grips come down with the frame: filled 8px squares and a 2px
-      // lever read as a different weight of drawing beside a hairline.
-      // OUTLINED squares, so a corner reads as a place to grab rather than
-      // as a blob sitting on the artwork.
-      for (final corner in corners) {
-        canvas.drawRect(
-          Rect.fromCenter(center: corner, width: 6, height: 6),
-          line,
-        );
-      }
-
-      final lever = cameraRotateLeverInViewport(
-        pose: pose,
-        cameraFrameSize: cameraFrameSize,
-        viewport: viewport,
-      );
-      canvas.drawLine(lever.base, lever.knob, line);
-      // The knob stays FILLED: it is the one handle that is not on a
-      // corner, so the frame's own geometry does not point at it.
-      canvas.drawCircle(lever.knob, 3.5, Paint()..color = outlineColor);
-    }
   }
 
   @override
   Object get props =>
-      (pose, cameraFrameSize, viewport, dimOpacity, outlineColor, showHandles);
-}
-
-/// PEN-13: the camera pan that never hands its drag to a late finger —
-/// [extraTouchRejected] filters newcomers at the arena door, so the
-/// finger that started the drag keeps driving it (committed drags
-/// survive palm rests; the overlay's Listener handles the sub-slop
-/// abort separately).
-///
-/// 🗣️F-194 (유저 2026-09-27, Android): 「카메라 레이어 조작하려고 스타일러스
-/// 펜으로 캔버스에서 실루엣 꼭짓점같은거 이동하려니 조작안됨」. H24: the
-/// canvas under this takes the arena on the FIRST movement, and a stock pan
-/// waits for its slop — 2px for a mouse, so the mouse won, and 36px for a
-/// pen or a finger, so they never did. It takes the arena on the first
-/// movement too, deeper, so it is asked first — the transform box's and
-/// the gizmos' law ([OwningPanGestureRecognizer]).
-///
-/// ⚠️A finger it wins while the one-finger slot does not draw is let go at
-/// the start (`_dragStart`, PEN-13), and nothing is lost by the win: the
-/// canvas's flip and pan read raw pointers, which no arena takes away.
-class _CameraPanGestureRecognizer extends OwningPanGestureRecognizer {
-  _CameraPanGestureRecognizer({super.debugOwner});
-
-  bool Function(PointerDownEvent event)? extraTouchRejected;
-
-  @override
-  bool isPointerAllowed(PointerEvent event) {
-    if (event is PointerDownEvent &&
-        (extraTouchRejected?.call(event) ?? false)) {
-      return false;
-    }
-    return super.isPointerAllowed(event);
-  }
+      (pose, cameraFrameSize, viewport, dimOpacity, outlineColor);
 }

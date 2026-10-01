@@ -130,6 +130,32 @@ class MemoryCensus {
   }
 }
 
+/// Whether what the GPU holds for this process — the pictures every
+/// `ui.Image` row counts: tile pictures, layer images, playback frames,
+/// panel rasters, viewer pages, thumbnails, the framework's image cache —
+/// is part of the OS's number for its RAM ([MemoryCensus.footprintBytes]).
+///
+/// 🗣️F-226-Q1 (유저 2026-09-30): 「애초에 gpu에 들어가는 메모리를 셀
+/// 필요가 있나? … GPU에 들어가는 메모리는 계산에서 싹 빼고 RAM만
+/// 집계」. So a texture row is counted only where it IS RAM: on Apple the
+/// GPU shares the RAM and `phys_footprint` bills its pictures to the process
+/// (the iPhone's tile pictures sat in the gap until they had a row,
+/// C-ipad-crash); on Windows they live apart — measured on an RTX 4080,
+/// 1,769MB private beside 859MB of dedicated GPU memory, the census adding
+/// the pictures to RAM and reading 3,132MB 「known」 inside 1,737MB. ⚠️Android
+/// and Linux are not measured: their number is private pages, which the
+/// GPU driver's memory is billed apart from, so they go with Windows.
+///
+/// ⛔The CEILINGS stay whatever this answers (`CacheBudgetLine`): a GPU's
+/// memory runs out too, and the allowance still moves them.
+bool get texturesAreInTheRamFigure => switch (defaultTargetPlatform) {
+  TargetPlatform.iOS || TargetPlatform.macOS => true,
+  TargetPlatform.android ||
+  TargetPlatform.fuchsia ||
+  TargetPlatform.linux ||
+  TargetPlatform.windows => false,
+};
+
 /// Takes the census. Cheap — every number below is a counter the holder
 /// already maintains, so this is addition, not measurement.
 ///
@@ -142,6 +168,7 @@ class MemoryCensus {
 MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
   int sum(int Function(EditorSessionManager session) bytesOf) =>
       sessions.fold(0, (total, session) => total + bytesOf(session));
+  final textures = texturesAreInTheRamFigure;
   final items = <MemoryCensusItem>[
     MemoryCensusItem(
       id: 'drawings',
@@ -187,24 +214,27 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
           // so once ([CutPieceSlot.allPieceBytes]).
           LastStrokeSlot.allStrokeBytes,
     ),
-    MemoryCensusItem(
-      id: 'playbackFrames',
-      bytes: sum(
-        (session) => session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+    if (textures)
+      MemoryCensusItem(
+        id: 'playbackFrames',
+        bytes: sum(
+          (session) =>
+              session.renderCaches.cutFrameCompositeCache.estimatedBytes,
+        ),
+        detail: sum(
+          (session) => session.renderCaches.cutFrameCompositeCache.pinnedBytes,
+        ),
       ),
-      detail: sum(
-        (session) => session.renderCaches.cutFrameCompositeCache.pinnedBytes,
+    if (textures)
+      MemoryCensusItem(
+        id: 'layerImages',
+        bytes: sum(
+          (session) => session.renderCaches.layerFrameImageCache.estimatedBytes,
+        ),
+        detail: sum(
+          (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,
+        ),
       ),
-    ),
-    MemoryCensusItem(
-      id: 'layerImages',
-      bytes: sum(
-        (session) => session.renderCaches.layerFrameImageCache.estimatedBytes,
-      ),
-      detail: sum(
-        (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,
-      ),
-    ),
     MemoryCensusItem(
       id: 'brushTips',
       bytes:
@@ -228,10 +258,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // TILES — the same pictures halved for a zoomed-out screen
     // ([TilePyramid]), screen-bounded, and let go with the paints that
     // stop asking for them.
-    MemoryCensusItem(
-      id: 'tileImages',
-      bytes: BitmapTileImageCache.liveImageBytes + TilePyramid.liveBytes,
-    ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'tileImages',
+        bytes: BitmapTileImageCache.liveImageBytes + TilePyramid.liveBytes,
+      ),
     // 🚨THE DRAWING ENGINE'S OWN MEMORY, which is nobody's picture: tile
     // blocks parked for reuse and grow-only scratch sized by the largest
     // call so far. Both resident, both read as engine overhead until
@@ -254,52 +285,56 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
     // ⚠️A source scan cannot find this one: the ratchet reads `lib/`, and
     // this counter lives in the framework. It is here because someone
     // looked, which is the argument for looking.
-    MemoryCensusItem(
-      id: 'imageCache',
-      bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
-    ),
-    MemoryCensusItem(
-      id: 'panelRasters',
-      bytes:
-          StaticRaster.censusBytes +
-          // A dock region's still image (2026-09-25) is the same kind of
-          // holding: a panel region kept as a raster while nothing changes.
-          StillRaster.censusBytes +
-          // ⛔The editing canvas's display buffer belongs on the same row:
-          // it is a panel holding a raster of itself, kept for as long as
-          // nothing changes. It lives in a widget State, so it is PUSHED
-          // here — 2026-09-10.
-          //
-          // ⚠️NOT one image. A derived buffer pins the one it was drawn
-          // from, so this is the whole chain, up to
-          // `DisplayBufferCache._maxChainBytes` — it read one image until
-          // 2026-09-12, and the canvases it was not counting showed up in
-          // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
-          sum(
-            (session) =>
-                session.renderCaches.canvasBufferBytes +
-                // The conte's live pictures are the same painter, one
-                // buffer each.
-                session.renderCaches.livePictureBufferBytes.values.fold(
-                  0,
-                  (total, bytes) => total + bytes,
-                ),
-          ),
-    ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'imageCache',
+        bytes: PaintingBinding.instance.imageCache.currentSizeBytes,
+      ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'panelRasters',
+        bytes:
+            StaticRaster.censusBytes +
+            // A dock region's still image (2026-09-25) is the same kind of
+            // holding: a panel region kept as a raster while nothing changes.
+            StillRaster.censusBytes +
+            // ⛔The editing canvas's display buffer belongs on the same row:
+            // it is a panel holding a raster of itself, kept for as long as
+            // nothing changes. It lives in a widget State, so it is PUSHED
+            // here — 2026-09-10.
+            //
+            // ⚠️NOT one image. A derived buffer pins the one it was drawn
+            // from, so this is the whole chain, up to
+            // `DisplayBufferCache._maxChainBytes` — it read one image until
+            // 2026-09-12, and the canvases it was not counting showed up in
+            // 「엔진·폰트·프레임워크」 as 10GB nothing would own.
+            sum(
+              (session) =>
+                  session.renderCaches.canvasBufferBytes +
+                  // The conte's live pictures are the same painter, one
+                  // buffer each.
+                  session.renderCaches.livePictureBufferBytes.values.fold(
+                    0,
+                    (total, bytes) => total + bytes,
+                  ),
+            ),
+      ),
     // Pushed by the mounted viewers rather than read off a holder the
     // session owns — see [RenderCaches.viewerRasterBytesByViewer].
-    MemoryCensusItem(
-      id: 'viewerPages',
-      bytes: sum((session) => session.renderCaches.viewerRasterBytes),
-    ),
+    if (textures)
+      MemoryCensusItem(
+        id: 'viewerPages',
+        bytes: sum((session) => session.renderCaches.viewerRasterBytes),
+      ),
     // Pushed by the workspace, whose State owns the store — see
     // [RenderCaches.storyboardThumbnailBytes].
-    MemoryCensusItem(
-      id: 'storyboardThumbnails',
-      bytes: sum(
-        (session) => session.renderCaches.storyboardThumbnailBytes,
+    if (textures)
+      MemoryCensusItem(
+        id: 'storyboardThumbnails',
+        bytes: sum(
+          (session) => session.renderCaches.storyboardThumbnailBytes,
+        ),
       ),
-    ),
     // A movie kept as a reference, decoded where it is shown. Its pictures
     // live in the cel store and are paid from the drawings' hot budget —
     // but they are not the user's artwork, so not that row: a take warmed
@@ -349,6 +384,11 @@ int _clipboardOnlyBytes(Iterable<EditorSessionManager> sessions) {
   final counted = Set<Object>.identity();
   var bytes = 0;
   for (final session in sessions) {
+    // 픽셀 복사's board (I-55) holds a copy of its own — never a tile a
+    // store shares — so it is weighed whole, once per clipboard.
+    if (counted.add(session.appClipboard)) {
+      bytes += session.appClipboard.pixels.heldBytes;
+    }
     for (final picture in session.appClipboard.heldPictures) {
       for (final tile in picture.tiles.values) {
         if (!hot.contains(tile) && counted.add(tile)) {

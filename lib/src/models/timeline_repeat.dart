@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import '../core/floor_math.dart';
 import 'frame_id.dart';
 import 'layer.dart';
-import 'timeline_coverage.dart' show coveringDrawingBlockAt;
 import 'timeline_exposure.dart';
 import 'timeline_run_behavior.dart';
 
@@ -165,9 +164,17 @@ List<TimelineGluedRun> _gluedRuns(
 /// 2026-09-03 restructure of one 300-line function; every rule and its
 /// comment moved verbatim.)
 class _RunBehaviorPass {
-  _RunBehaviorPass(this.base, {required this.cutFrameCount});
+  _RunBehaviorPass(this.base, {required this.drawnFrameCount});
 
-  final int cutFrameCount;
+  /// Where an end side fills TO: the cut's DRAWN end — its conte 尺 plus
+  /// the のりしろ transitions ask of it — not the red line.
+  ///
+  /// 🗣️F-227 (유저 2026-09-29): 「타임라인패널에서도 홀드같은게 빨간엔드라인에서
+  /// 끝나는게아니라 여백엔드라인까지 가도록, 거기가 진짜 엔드라인이라는 느낌」.
+  /// A hold is "this picture until the end", and with an O.L the end is where
+  /// the cut's material ends: stopping at the conte end left the leaving cut
+  /// nothing to show through the second half of its own O.L.
+  final int drawnFrameCount;
 
   /// Pass 1's output: the authored entries alone — their marks normalized
   /// by pass 2 before anything is derived from them.
@@ -269,12 +276,12 @@ class _RunBehaviorPass {
   }
 
   /// End side: hold = one ghost of the run's last frameId filling to the
-  /// cut end; repeat = the pattern span cycling to the cut end.
+  /// drawn end; repeat = the pattern span cycling to the drawn end.
   void _fillAfter(_RunEdge edge) {
     final ghostStart = edge.run.endIndexExclusive;
-    // Fill limit: the cut end, or the next occupied index (an authored
+    // Fill limit: the drawn end, or the next occupied index (an authored
     // entry or an earlier behavior's ghosts) — whichever comes first.
-    var limit = cutFrameCount;
+    var limit = drawnFrameCount;
     final nextKey = result.firstKeyAfter(ghostStart - 1);
     if (nextKey != null && nextKey < limit) {
       limit = nextKey;
@@ -480,14 +487,15 @@ class _RunBehaviorPass {
 ///    pick are stripped.
 /// 3. Application, holds before repeats, in run order, start side before
 ///    end side. End side: hold = one ghost of the run's last frameId filling
-///    to the cut end; repeat = the pattern span cycling to the cut end.
+///    to the DRAWN end ([_RunBehaviorPass.drawnFrameCount]); repeat = the
+///    pattern span cycling to it.
 ///    Start side is the mirror, ghosts FLUSH-aligned to the run start (a
 ///    partial lead-in shows the pattern's tail). Ghosts clamp against
 ///    authored entries and earlier sides' ghosts — derived frames never
 ///    displace real ones.
 /// 4. A fully occluded side keeps its marks (the property comes back when
 ///    room opens up again).
-Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
+Layer rederiveRunBehaviors(Layer layer, {required int drawnFrameCount}) {
   final carriesAnything = layer.timeline.values.any(
     (entry) => entry.ghost || !entry.startEdge.isNone || !entry.endEdge.isNone,
   );
@@ -497,7 +505,7 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
   // Pass 1: strip every ghost entry (derived state, never authored).
   final pass = _RunBehaviorPass(
     ghostFreeTimeline(layer),
-    cutFrameCount: cutFrameCount,
+    drawnFrameCount: drawnFrameCount,
   );
   pass.resolve();
   for (final edge in pass.applicationOrder) {
@@ -573,83 +581,6 @@ TimelineRunEdgeGhost? runEdgeGhostAt(Layer layer, int frameIndex) {
   return frameIndex < coveringKey + covering.length!
       ? covering.ghostOf
       : null;
-}
-
-/// A7① (2026-08-18): the flip's COLUMN at [frame], with HOLD-mode ghost
-/// tails and lead-ins absorbed into their owning run — the animator's
-/// flip treats a hold as ONE unit (「홀드 블록을 한 단위로 건너뛰어」), and
-/// the flip HUD already draws no block where a hold ghost is, so
-/// movement and picture agree again.
-///
-/// The merge is DIRECTIONAL by the behavior's own side: an end-side tail
-/// merges leftward into its run, a start-side lead-in rightward — never
-/// across the ghost's far edge, so a tail that happens to abut the NEXT
-/// authored run does not fuse two runs into one column (the flip must
-/// still land there). Glued authored blocks stay separate columns
-/// exactly as before, and REPEAT-mode ghosts stay their own columns —
-/// A7① names holds only.
-({int start, int endExclusive})? holdMergedFlipColumnAt(
-  Layer layer,
-  int frame,
-) {
-  final block = coveringDrawingBlockAt(layer.timeline, frame);
-  if (block == null) {
-    return null;
-  }
-
-  TimelineRunEdgeSide? holdGhostSide(TimelineExposure entry) {
-    final ghostOf = entry.ghostOf;
-    return ghostOf != null && ghostOf.mode == TimelineRunEdgeMode.hold
-        ? ghostOf.side
-        : null;
-  }
-
-  var start = block.startIndex;
-  var endExclusive = block.endIndexExclusive;
-  // What the span's outermost blocks ARE, for the directional edge rule.
-  var leftmostHoldSide = holdGhostSide(block.entry);
-  var rightmostHoldSide = leftmostHoldSide;
-  if (block.entry.ghost && leftmostHoldSide == null) {
-    // A repeat ghost: its own column, unchanged.
-    return (start: start, endExclusive: endExclusive);
-  }
-
-  var expanded = true;
-  while (expanded) {
-    expanded = false;
-    // LEFT edge: merge when the neighbour is a lead-in ghost of OUR run
-    // (side == start points rightward at us), or when OUR leftmost block
-    // is an end-side tail and the neighbour is the authored run it holds.
-    final beforeKey = layer.timeline.lastKeyBefore(start);
-    if (beforeKey != null) {
-      final before = layer.timeline[beforeKey]!;
-      if (before.isDrawing && beforeKey + (before.length ?? 1) == start) {
-        final beforeHoldSide = holdGhostSide(before);
-        final merge =
-            beforeHoldSide == TimelineRunEdgeSide.start ||
-            (leftmostHoldSide == TimelineRunEdgeSide.end && !before.ghost);
-        if (merge) {
-          start = beforeKey;
-          leftmostHoldSide = beforeHoldSide;
-          expanded = true;
-        }
-      }
-    }
-    // RIGHT edge: the mirror.
-    final after = layer.timeline[endExclusive];
-    if (after != null && after.isDrawing) {
-      final afterHoldSide = holdGhostSide(after);
-      final merge =
-          afterHoldSide == TimelineRunEdgeSide.end ||
-          (rightmostHoldSide == TimelineRunEdgeSide.start && !after.ghost);
-      if (merge) {
-        endExclusive = endExclusive + (after.length ?? 1);
-        rightmostHoldSide = afterHoldSide;
-        expanded = true;
-      }
-    }
-  }
-  return (start: start, endExclusive: endExclusive);
 }
 
 /// Whether [index] on [layer] falls inside a GHOST exposure (a derived

@@ -44,15 +44,18 @@ void main() {
       height: 200,
       child: InteractiveBrushEditCanvasView(
         key: ValueKey<String>('ink-$id'),
-        sessionState: store.getOrCreate(
-          BrushFrameKey(
-            projectId: const ProjectId('p'),
-            trackId: const TrackId('t'),
-            cutId: const CutId('c'),
-            layerId: LayerId('layer-$id'),
-            frameId: FrameId('frame-$id'),
-          ),
-        ),
+        celNow: () => store
+            .getOrCreate(
+              BrushFrameKey(
+                projectId: const ProjectId('p'),
+                trackId: const TrackId('t'),
+                cutId: const CutId('c'),
+                layerId: LayerId('layer-$id'),
+                frameId: FrameId('frame-$id'),
+              ),
+            )
+            .canvasState
+            .currentSurface,
         layerId: LayerId('layer-$id'),
         frameId: FrameId('frame-$id'),
         inputSettings: BrushEditCanvasInputSettings.new,

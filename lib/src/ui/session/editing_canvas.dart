@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
@@ -8,6 +9,8 @@ import '../../models/layer_id.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../brush/brush_editor_selection.dart';
 import '../canvas/canvas_layer_stack_view.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, cutShowingDragPreview, layersShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'editing_stack_map.dart';
 import 'opacity_verbs.dart';
@@ -37,7 +40,7 @@ class EditingCanvas {
     required SelectionAccess selection,
     required ChangeSink changes,
     required TimelineAccess timeline,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required ActiveCutControllers controllers,
     required OpacityVerbs opacityVerbs,
     required TrackSeDisplay trackSe,
@@ -45,7 +48,7 @@ class EditingCanvas {
        _selection = selection,
        _changes = changes,
        _timeline = timeline,
-       _internals = internals,
+       _dragPreview = dragPreview,
        _controllers = controllers,
        _opacityVerbs = opacityVerbs,
        _trackSe = trackSe;
@@ -54,7 +57,7 @@ class EditingCanvas {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final TimelineAccess _timeline;
-  final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
   final ActiveCutControllers _controllers;
   final OpacityVerbs _opacityVerbs;
   final TrackSeDisplay _trackSe;
@@ -90,13 +93,22 @@ class EditingCanvas {
     }
 
     final frameIndex = _controllers.timelineController.currentFrameIndex;
+    // A drag in flight — a block, a comma, several rows, a file pushing its
+    // neighbours, a lane value (F-195) — substitutes its rows in before the
+    // shared visit, so the picture follows the hand with no repo write per
+    // move, exactly as the opacity drag below always has
+    // (canvas-follows-block-moves, 유저 2026-09-28 「따라가게」).
+    final dragPreview = _dragPreview.value;
+    final shownCut = cutShowingDragPreview(cut, dragPreview);
     // Opacity drag preview (R4 #4/#6, DISPLAY only): the dragged rows'
     // static opacity substitutes in before the shared visit, so the canvas
     // follows the drag without any repo write per move.
     final preview = _opacityVerbs.dragPreview.value;
     final stackCut = preview == null
-        ? cut
-        : cut.copyWith(layers: _withOpacityPreview(cut.layers, preview));
+        ? shownCut
+        : shownCut.copyWith(
+            layers: _withOpacityPreview(shownCut.layers, preview),
+          );
 
     final drawn = stackAt(
       cut: cut,
@@ -111,7 +123,12 @@ class EditingCanvas {
       // transform tracks are stripped, so the plain resolve path
       // suffices). They live outside the cut's stack, so they land at the
       // top level.
-      ..._trackSeDisplayNodes(cut, frameIndex: frameIndex, preview: preview),
+      ..._trackSeDisplayNodes(
+        cut,
+        frameIndex: frameIndex,
+        dragPreview: dragPreview,
+        preview: preview,
+      ),
     ];
     return (
       nodes: List.unmodifiable(nodes),
@@ -125,9 +142,10 @@ class EditingCanvas {
   /// and a conte picture's while its brush is on, one walk for both: the
   /// row a pen draws on is drawn where the composite puts it.
   ///
-  /// [stackCut] is [cut] as it composites right now (the canvas's opacity
-  /// drag preview). The live row stands in the tree only when it takes
-  /// brush input; otherwise it composites like any other.
+  /// [stackCut] is [cut] as it composites right now (the drag in flight, the
+  /// canvas's opacity drag preview); [cut] is what the brush holds. The live
+  /// row stands in the tree only when it takes brush input and shows the cel
+  /// the brush holds; otherwise it composites like any other.
   ({
     List<CompositeNode<CanvasStackRow>> nodes,
     double activeLayerOpacity,
@@ -142,7 +160,7 @@ class EditingCanvas {
     final shown = stackCut ?? cut;
     final walk = EditingStackMap(
       opacityVerbs: _opacityVerbs,
-      internals: _internals,
+      project: _project,
       cut: cut,
       stackCut: shown,
       frameIndex: frameIndex,
@@ -181,15 +199,21 @@ class EditingCanvas {
         layer,
   ];
 
-  /// The track's SE rows as cut-local display clones, read-only.
+  /// The track's SE rows as cut-local display clones, read-only — a dragged
+  /// one as the drag in flight shows it.
   Iterable<CompositeNode<CanvasStackRow>> _trackSeDisplayNodes(
     Cut cut, {
     required int frameIndex,
+    required TimelineDragPreview? dragPreview,
     required ({Set<LayerId> layerIds, double opacity})? preview,
   }) sync* {
+    final shown = layersShowingDragPreview(
+      _trackSe.trackSeDisplayLayers,
+      dragPreview,
+    );
     final rows = preview == null
-        ? _trackSe.trackSeDisplayLayers
-        : _withOpacityPreview(_trackSe.trackSeDisplayLayers, preview);
+        ? shown
+        : _withOpacityPreview(shown, preview);
     for (final layer in rows) {
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
@@ -210,7 +234,7 @@ class EditingCanvas {
       }
       yield CompositeLeaf(
         CanvasLayerImageRequest(
-          frameKey: _internals.brushFrameKeyForCut(cut, layer.id, frame.id),
+          frameKey: _project.brushFrameKeyForCut(cut, layer.id, frame.id),
           opacity: opacity,
           pose: null,
           anchorPoint: null,
@@ -241,15 +265,39 @@ class EditingCanvas {
   /// stack to stand, for the same reasons it gets no stroke.
   BrushEditorSelection? brushEditorSelectionFor(FrameId frameId) {
     final activeLayer = _selection.activeLayer;
-    if (activeLayer == null) {
+    if (activeLayer == null || activeRowStrokeRefusal != null) {
       return null;
     }
+    final cutId = _timeline.editingSession.activeCutId;
+    if (cutId == null) {
+      return null; // Gap state: no cut, no brush target.
+    }
+    return BrushEditorSelection(
+      projectId: _project.repository.requireProject().id,
+      trackId: _selection.selectedTrackId,
+      cutId: cutId,
+      layerId: activeLayer.id,
+      frameId: frameId,
+    );
+  }
+
+  /// WHY the active row takes no stroke — null when it takes one.
+  ///
+  /// 🗣️F-242 (유저 2026-09-29): 「그림 못그리는 이유 명확화. 지금 비지블off인
+  /// 프레임에서 그리려해도 프레임이 존재안한다고 뜨는데 그런부분 원인 제대로
+  /// 메시지 띄워주기」. The cursor notice chose its words from a second copy
+  /// of these gates that knew two answers — 「not drawable」 and 「no
+  /// frame」 — so a cel on a hidden row was reported MISSING. The gates are
+  /// asked here once: [brushEditorSelectionFor] refuses on any answer, and
+  /// the notice names the answer it got.
+  StrokeRefusal? get activeRowStrokeRefusal {
+    final activeLayer = _selection.activeLayer;
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
     // composites them read-only). A media-REFERENCE layer (§6-z23) shows
     // a library asset: no strokes until it is rasterized.
-    if (!layerAcceptsBrushInput(activeLayer)) {
-      return null;
+    if (activeLayer == null || !layerAcceptsBrushInput(activeLayer)) {
+      return StrokeRefusal.notDrawable;
     }
     // R4 #1: a hidden layer takes no strokes either — you would be drawing
     // into something the canvas doesn't show. Flip the eye back on (or use
@@ -262,20 +310,9 @@ class EditingCanvas {
     // row's own eye is how a stroke went on landing in a folder the user had
     // switched off.
     if (!_project.layers.rowVisible(activeLayer)) {
-      return null;
+      return StrokeRefusal.hidden;
     }
-
-    final cutId = _timeline.editingSession.activeCutId;
-    if (cutId == null) {
-      return null; // Gap state: no cut, no brush target.
-    }
-    return BrushEditorSelection(
-      projectId: _project.repository.requireProject().id,
-      trackId: _selection.selectedTrackId,
-      cutId: cutId,
-      layerId: activeLayer.id,
-      frameId: frameId,
-    );
+    return null;
   }
 
   /// Rasterize (§6-f): the ONE verb for every derived-content layer.
@@ -318,4 +355,14 @@ class EditingCanvas {
     );
     _changes.notifyChanged();
   }
+}
+
+/// Why a row takes no stroke ([EditingCanvas.activeRowStrokeRefusal]).
+enum StrokeRefusal {
+  /// The row cannot hold a drawing at all — its kind takes no brush input,
+  /// or it shows a library asset that waits for a rasterize.
+  notDrawable,
+
+  /// The row can hold one, but its eye (or a folder's above it) is off.
+  hidden,
 }

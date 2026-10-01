@@ -12,25 +12,9 @@ class _TimesheetCellsPass {
   final TimesheetDocumentPainter _painter;
 
   /// The column's display cells, with an in-flight drag preview
-  /// substituted for its layer. Every layer-backed column kind previews
-  /// (UI-R18 #7 — action, SE, camera instruction): the column's own baked
-  /// [TimesheetColumn.previewCellsBuilder] re-derives the cells, so the
-  /// painter never learns each kind's recipe. SE previews arrive as
-  /// DISPLAY clones under the same id (the timeline's seam), so the SE
-  /// windowing stays the document's job.
-  List<TimesheetCell> displayCellsFor(TimesheetColumn column) {
-    final preview = _painter.dragPreview?.value;
-    final layerId = column.layerId;
-    final rebuild = column.previewCellsBuilder;
-    if (preview == null || layerId == null || rebuild == null) {
-      return column.cells;
-    }
-    final previewLayer = timelineDragPreviewLayerFor(preview, layerId);
-    if (previewLayer == null) {
-      return column.cells;
-    }
-    return rebuild(previewLayer);
-  }
+  /// substituted for its layer ([timesheetColumnCellsShowing]).
+  List<TimesheetCell> displayCellsFor(TimesheetColumn column) =>
+      timesheetColumnCellsShowing(column, _painter.dragPreview?.value);
 
   /// The rows of a half starting at [rowsTop] that [_painter._cull] can reach.
   ///
@@ -95,7 +79,7 @@ class _TimesheetCellsPass {
     final rowsTop = _painter.layout.halfRowsTop(pageIndex);
     final rowsBottom = rowsTop + rowCount * TimesheetDocumentLayout.rowHeight;
     final right = left + _painter.layout.halfWidth;
-    final columnsTop = rowsTop - _painter.layout.columnsHeaderHeight;
+    final columnsTop = _painter.layout.gridTop(pageIndex);
     final lettersTop = rowsTop - TimesheetDocumentLayout.letterRowHeight;
 
     final lightPaint = Paint()

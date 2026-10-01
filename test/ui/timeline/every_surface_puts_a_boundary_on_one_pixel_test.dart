@@ -1,0 +1,250 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
+import 'package:anicel/src/ui/timeline/timeline_scale.dart';
+
+import '../storyboard_cut_block_probe.dart';
+import 'timeline_frame_geometry_probe.dart';
+
+/// 🗣️F-220 (유저 2026-09-29): the zoom follows every percent, so a cell is
+/// seldom a whole number of pixels — and every surface must still put a
+/// boundary on the SAME whole pixel, or a line and the block beside it part
+/// by a pixel. The source scan holds the code to the one law
+/// (`test/architecture/the_frame_axis_has_one_law_test.dart`); this holds
+/// what the surfaces draw, at a zoom a product of frames and cell would get
+/// wrong.
+void main() {
+  const cell = 7.3;
+  double edge(int frame) => timelineFrameEdge(frame, cell);
+
+  test('a row\'s cells tile the axis on the law\'s whole pixels', () {
+    final painter = TimelineRowCellsPainter(
+      layer: Layer(
+        id: const LayerId('edge-a'),
+        name: 'A',
+        frames: [
+          Frame(id: const FrameId('f'), duration: 1, strokes: const []),
+        ],
+        timeline: {0: const TimelineExposure.drawing(FrameId('f'), length: 30)},
+      ),
+      geometry: testFrameGeometry(
+        frameCellExtent: cell,
+        frameEndIndexExclusive: 40,
+      ),
+      crossAxisExtent: 28,
+      exposureStateForLayer: (_, _) => TimelineCellExposureState.held,
+      colorScheme: const ColorScheme.dark(),
+      baseTextStyle: const TextStyle(fontSize: 11),
+      substrateGeneration: 'g1',
+    );
+    for (var frame = 0; frame < 39; frame += 1) {
+      final rect = painter.cellRectFor(frame);
+      expect(rect.left, edge(frame), reason: 'frame $frame');
+      expect(rect.right, edge(frame + 1), reason: 'frame $frame');
+      expect(
+        painter.frameIndexAt(Offset(rect.left, 1)),
+        frame,
+        reason: 'a press on the cell\'s first pixel is that cell',
+      );
+    }
+  });
+
+  test('the grid sheet rules each boundary on the law\'s pixel', () {
+    final lines = _Lines();
+    TimelineGridSheetPainter(
+      frameCellExtent: cell,
+      framesPerSecond: 24,
+      colorScheme: const ColorScheme.dark(),
+      ground: null,
+    ).paint(lines, const Size(cell * 60, 30));
+    expect(lines.alongs, isNotEmpty, reason: 'fixture: the sheet rules');
+    for (final along in lines.alongs) {
+      final boundary = along - timelineGridLineSnap;
+      expect(boundary, boundary.roundToDouble(), reason: 'at $along');
+      expect(
+        timelineFrameAt(boundary, cell),
+        predicate<int>((frame) => edge(frame) == boundary),
+        reason: 'a line at $along stands on a boundary the law puts there',
+      );
+    }
+  });
+
+  // 🗣️F-210 (유저 2026-09-28): 「1픽셀이라도 보이게」 — at the floor a cell
+  // is an eighth of a pixel, and the playhead takes the pixel its frame
+  // starts in. The grid's column and the ruler's cell are one span in one
+  // wash (F-212: 「룰러랑 프레임영역이랑 … 색 통일」).
+  testWidgets('the playhead\'s column is the playhead cell, never under a '
+      'pixel, and the ruler washes the same span', (tester) async {
+    for (final (zoom, frame, left, right) in [
+      for (final frame in [0, 1, 7, 13, 29])
+        (cell, frame, edge(frame), edge(frame + 1)),
+      (1 / 8, 0, 0.0, 1.0),
+      (1 / 8, 13, 1.0, 2.0),
+      (1 / 8, 29, 3.0, 4.0),
+    ]) {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: TimelinePlayhead(
+            currentFrameIndex: frame,
+            frameStartIndex: 0,
+            frameEndIndexExclusive: 40,
+            leadingFrameSpacerWidth: 0,
+            metrics: TimelineGridMetrics(frameCellWidth: zoom),
+            crossAxisExtent: 40,
+          ),
+        ),
+      );
+      final column = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-playhead-column')),
+      );
+      expect(column.left, left, reason: 'frame $frame at $zoom');
+      expect(column.right, right, reason: 'frame $frame at $zoom');
+
+      final ruler = _Washes();
+      TimelineRulerCursorOverlayPainter(
+        playhead: ValueNotifier<int?>(frame),
+        repaintSignal: null,
+        windowBucket: ValueNotifier<int>(0),
+        viewportMainExtent: 0,
+        renderedFrames: 40,
+        cellWidth: zoom,
+        readyRunsIn: null,
+      ).paint(ruler, const Size(400, 28));
+      expect(ruler.washes, [
+        (
+          left: left,
+          right: right,
+          argb: timelinePlayheadWashColor.toARGB32(),
+        ),
+      ], reason: 'the ruler\'s cell, frame $frame at $zoom');
+    }
+  });
+
+  testWidgets('the storyboard\'s cut blocks start and end on the law\'s '
+      'pixels', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    Cut cut(String id, int duration) => Cut(
+      id: CutId(id),
+      name: id,
+      duration: duration,
+      canvasSize: const CanvasSize(width: 640, height: 360),
+      layers: [
+        Layer(
+          id: LayerId('$id-cel'),
+          name: 'A',
+          frames: const [],
+          timeline: const {},
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StoryboardPanel(
+            project: Project(
+              id: const ProjectId('edges'),
+              name: 'Edges',
+              createdAt: DateTime.utc(2026, 9, 29),
+              tracks: [
+                Track(
+                  id: const TrackId('edge-track'),
+                  name: 'Video',
+                  cuts: [cut('cut-1', 17), cut('cut-2', 23), cut('cut-3', 31)],
+                ),
+              ],
+            ),
+            activeCutId: const CutId('cut-1'),
+            pixelsPerFrame: cell,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    var start = 0;
+    for (final (id, duration) in [('cut-1', 17), ('cut-2', 23), ('cut-3', 31)]) {
+      final block = requireCutBlock(tester, id);
+      expect(block.rect.left, edge(start), reason: '$id starts');
+      expect(block.rect.right, edge(start + duration), reason: '$id ends');
+      start += duration;
+    }
+  });
+
+  test('the scale\'s widths are distances between boundaries — a span and '
+      'its neighbours tile the axis', () {
+    const scale = TimelineScale(pixelsPerFrame: cell, minBlockWidth: 0);
+
+    var right = 0.0;
+    for (final (start, end) in [(0, 3), (3, 4), (4, 11)]) {
+      expect(scale.leftForFrame(start), right, reason: 'no gap, no overlap');
+      right = scale.leftForFrame(start) + scale.spanWidth(start, end);
+      expect(right, right.roundToDouble(), reason: 'on a whole pixel');
+    }
+    expect(right, scale.leftForFrame(11));
+  });
+
+  test('the scale reads its boundaries back: frameAt, and framesCovering '
+      'counts the cells an extent reaches into', () {
+    const scale = TimelineScale(pixelsPerFrame: cell);
+
+    for (var frame = 0; frame < 40; frame += 1) {
+      final left = scale.leftForFrame(frame);
+      expect(scale.frameAt(left), frame, reason: 'on its own boundary');
+      expect(
+        scale.frameAt(scale.leftForFrame(frame + 1) - 0.01),
+        frame,
+        reason: 'up to the next boundary',
+      );
+      expect(scale.framesCovering(left), frame);
+      expect(scale.framesCovering(left + 0.5), frame + 1);
+    }
+  });
+}
+
+class _Lines implements Canvas {
+  final alongs = <double>[];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) => alongs.add(p1.dx);
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+/// Every rect laid across the strip, by the span it covers and its colour —
+/// as 8-bit ARGB: a paint keeps its colour in float32, so it reads back a
+/// hair off the double it was given.
+class _Washes implements Canvas {
+  final washes = <({double left, double right, int argb})>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) => washes.add((
+    left: rect.left,
+    right: rect.right,
+    argb: paint.color.toARGB32(),
+  ));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}

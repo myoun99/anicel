@@ -40,3 +40,22 @@ class TickLayer extends StatelessWidget {
     ),
   );
 }
+
+/// The marks a tick moves over a [Stack] — each a `Positioned` of that stack's
+/// own coordinates — on one [TickLayer] filling it.
+///
+/// 🚨F-244: a drag step is a tick. The cut's end and its のりしろ ride every
+/// step of every drag, on the ruler, the sheet's rail and the body alike;
+/// rebuilt bare in the grid's layout scope, a step laid it out again and
+/// repainted the panel around them. The fill is what makes the layer's
+/// constraints tight, so it keeps the layout in.
+class TickOverlay extends StatelessWidget {
+  const TickOverlay({super.key, required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Positioned.fill(
+    child: TickLayer(child: Stack(children: children)),
+  );
+}

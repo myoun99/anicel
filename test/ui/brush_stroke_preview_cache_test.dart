@@ -357,4 +357,26 @@ void main() {
       );
     });
   });
+
+  // F-205 (유저 2026-09-28): 「필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
+  // 10%만큼만 진해진다」 — the canvas has settled a dab at its opacity since;
+  // the swatch multiplied it in until 2026-10-01.
+  test('🚨a swatch\'s dabs settle at their opacity, as the canvas\'s do', () {
+    // Every pressure reads as 30% opacity, and a hard full-flow nib crosses
+    // itself a pixel apart all along the curve.
+    final settings = BrushSettings(
+      hardness: 1,
+      flow: 1,
+      opacityPressureCurve: BrushPressureCurve(const [
+        BrushCurvePoint(0, 0.3),
+        BrushCurvePoint(1, 0.3),
+      ]),
+    );
+    final alpha = rasterizeBrushStrokeSample(settings, 96, 32);
+    expect(
+      alpha.reduce((a, b) => a > b ? a : b),
+      (0.3 * 255).round(),
+      reason: 'piled to its opacity and no further',
+    );
+  });
 }

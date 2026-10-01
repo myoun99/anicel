@@ -1,7 +1,6 @@
 import '../../services/straight_rgba_image.dart';
 import 'dart:async';
 import 'dart:collection';
-import 'dart:math' as math;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
@@ -9,8 +8,11 @@ import 'package:flutter/foundation.dart' hide Uint8List;
 import 'package:flutter/material.dart';
 
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/layer.dart';
+import '../../models/layer_cells_agreement.dart';
 import '../../models/layer_id.dart';
 import '../../native/qa_native_engine.dart';
+import '../text/word_bake.dart';
 import '../text/word_condensation.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
@@ -441,156 +443,51 @@ class TimelineGridTileStore {
   // painter's exact ink per cell.
 
   static const int _glyphCapacity = 1024;
-  final BakeOnceLru<String, _BakedGlyph?> _glyphs =
-      BakeOnceLru<String, _BakedGlyph?>(capacity: _glyphCapacity);
+  final BakeOnceLru<String, BakedWordCoverage?> _glyphs =
+      BakeOnceLru<String, BakedWordCoverage?>(capacity: _glyphCapacity);
 
   /// ⚠️The narrowing is part of the glyph (B, 유저 2026-09-24): a word that
   /// runs past its block is baked narrow, and [wordCondensation] quantises
-  /// the factor so the distinct bakes stay few.
-  static String _glyphKey(
-    String text,
-    TextStyle style,
-    ({double dpr, WordFit fit}) at,
-  ) =>
+  /// the factor so the distinct bakes stay few. So is the spacing its letter
+  /// gaps gave way to first (F-234-Q1, [wordTightening] — quarter pixels).
+  static String _glyphKey(String text, TextStyle style, _GlyphBake at) =>
       '$text|${style.fontSize}|${style.fontWeight}|${style.fontStyle}|'
-      '${style.fontFamily}|${at.dpr}|${at.fit.x}|${at.fit.y}';
+      '${style.fontFamily}|${style.letterSpacing}|${at.tightening}|'
+      '${at.dpr}|${at.fit.x}|${at.fit.y}';
 
-  Future<_BakedGlyph?> _glyphA8(
+  Future<BakedWordCoverage?> _glyphA8(
     String text,
     TextStyle style,
-    ({double dpr, WordFit fit}) at,
+    _GlyphBake at,
   ) {
     final key = _glyphKey(text, style, at);
     return _glyphs.ensure(key, () => _bakeGlyph(text, style, at));
   }
 
-  Future<_BakedGlyph?> _bakeGlyph(
+  Future<BakedWordCoverage?> _bakeGlyph(
     String text,
     TextStyle style,
-    ({double dpr, WordFit fit}) at,
-  ) async {
-    final (:dpr, :fit) = at;
+    _GlyphBake at,
+  ) {
+    final (:dpr, :fit, :tightening) = at;
     // COVERAGE bake: white text on transparent, alpha channel out — the
-    // GLYPH op multiplies the per-cell ink's alpha by it.
-    final textPainter = timelineGlyphPainter(
-      text,
-      style.copyWith(color: const Color(0xFFFFFFFF)),
-    );
-    if (textPainter.width <= 0 || textPainter.height <= 0) {
-      return null;
-    }
-    final width = (textPainter.width * fit.x * dpr).ceil() + 2;
-    final height = (textPainter.height * fit.y * dpr).ceil() + 2;
-    // 🚨★★★TINY TEXT IS RASTERISED BIG AND SHRUNK, not rasterised tiny.
-    //
-    // Names used to shrink to a 4px floor at deep zoom-out (R26 #38/#4) and
-    // went anyway. 🧪Measured 2026-08-29: rasterising "12" at 4px leaves
-    // mean alpha 136 over its box; rasterising at 12px and box-filtering to
-    // the same box leaves 212. Both peak at 255, so the ink was never
-    // missing — it was BLOTCHY, dark only where a stroke happened to land on
-    // the grid, and a blotch tinted with cell ink reads as nothing. A word
-    // keeps its type now (B, 2026-09-24) but NARROWS, and a narrow stroke
-    // blotches the same way — so the size this asks about is the type times
-    // the tighter narrowing.
-    //
-    // ⛔ABOVE THE FLOOR NOTHING CHANGES. `_bakeAtScale` is 1 for any glyph
-    // the rasteriser can already draw well, so zoom-in keeps the pixels it
-    // has always had — 유저: 「줌인하면 텍스트는 선명하게 보고싶다」.
+    // GLYPH op multiplies the per-cell ink's alpha by it. Rasterised big and
+    // shrunk where it is small ([bakeWordCoverage], the bake a screen draws
+    // a narrowed word from too, F-224).
     //
     // ⛔AND THE ATLAS STAYS 1:1. The GLYPH op blits without a scale
-    // parameter, so the shrink and the narrowing happen HERE, before
+    // parameter, so the shrink and the narrowing happen in the bake, before
     // upload; the native ABI is untouched.
-    final bakeScale = _bakeAtScale(
-      (style.fontSize ?? _legibleBakeSize) * math.min(fit.x, fit.y),
+    return bakeWordCoverage(
+      timelineGlyphPainter(
+        text,
+        style.copyWith(color: const Color(0xFFFFFFFF)),
+        tightening: tightening,
+      ),
+      fit: fit,
+      dpr: dpr,
+      fontSize: style.fontSize,
     );
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder)
-      ..translate(1, 1)
-      ..scale(dpr * bakeScale * fit.x, dpr * bakeScale * fit.y);
-    textPainter.paint(canvas, Offset.zero);
-    final picture = recorder.endRecording();
-    final bigWidth = (width * bakeScale).ceil();
-    final bigHeight = (height * bakeScale).ceil();
-    // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
-    // survive a failed bake; and `toByteData` is awaited, so the image used to
-    // survive a failed read. Both are given back by structure now.
-    final ui.Image image;
-    try {
-      image = picture.toImageSync(bigWidth, bigHeight);
-    } finally {
-      picture.dispose();
-    }
-    final ByteData? data;
-    try {
-      data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    } finally {
-      image.dispose();
-    }
-    if (data == null) {
-      return null;
-    }
-    final big = Uint8List(bigWidth * bigHeight);
-    for (var i = 0; i < big.length; i += 1) {
-      big[i] = data.getUint8(i * 4 + 3);
-    }
-    return _BakedGlyph(
-      width: width,
-      height: height,
-      logicalWidth: textPainter.width * fit.x,
-      logicalHeight: textPainter.height * fit.y,
-      alpha: bakeScale == 1
-          ? big
-          : boxFilterA8(big, bigWidth, bigHeight, width, height),
-    );
-  }
-
-  /// How much bigger than its final box to rasterise a glyph of
-  /// [fontSize].
-  ///
-  /// ⛔1 for anything the rasteriser draws well already, which is what
-  /// keeps zoom-in byte-identical. Below that, enough to land the bake
-  /// near [_legibleBakeSize] — past which more oversampling buys nothing,
-  /// because the box it is being averaged into is the limit.
-  static double _bakeAtScale(double? fontSize) {
-    final size = fontSize ?? _legibleBakeSize;
-    if (size >= _legibleBakeSize) {
-      return 1;
-    }
-    return _legibleBakeSize / size;
-  }
-
-  /// The size at which a digit's strokes land on enough pixels for the
-  /// average to carry its shape. Measured, not chosen: 12px was the probe's
-  /// comparison point and it recovers most of the ink (mean 136 → 212).
-  static const double _legibleBakeSize = 12;
-
-  /// Box-filters an A8 bitmap down to [tw]×[th].
-  ///
-  /// ⛔AVERAGE, not sample. Point-sampling a big raster back down would
-  /// reproduce the blotchiness this exists to remove — the whole gain is
-  /// that every source pixel under a destination pixel contributes.
-  @visibleForTesting
-  static Uint8List boxFilterA8(Uint8List src, int sw, int sh, int tw, int th) {
-    final out = Uint8List(tw * th);
-    for (var y = 0; y < th; y += 1) {
-      final y0 = y * sh ~/ th;
-      final y1 = ((y + 1) * sh / th).ceil().clamp(y0 + 1, sh);
-      for (var x = 0; x < tw; x += 1) {
-        final x0 = x * sw ~/ tw;
-        final x1 = ((x + 1) * sw / tw).ceil().clamp(x0 + 1, sw);
-        var acc = 0;
-        var n = 0;
-        for (var sy = y0; sy < y1; sy += 1) {
-          final row = sy * sw;
-          for (var sx = x0; sx < x1; sx += 1) {
-            acc += src[row + sx];
-            n += 1;
-          }
-        }
-        out[y * tw + x] = n == 0 ? 0 : acc ~/ n;
-      }
-    }
-    return out;
   }
 
   /// Rasters the request and returns the image TOGETHER WITH the content
@@ -604,12 +501,22 @@ class TimelineGridTileStore {
     final painter = request.painter;
     final dpr = request.devicePixelRatio;
     final spanCells = request.spanEndIndexExclusive - request.spanStartIndex;
-    final width = (spanCells * painter.frameCellExtent * dpr).ceil();
-    final height = (painter.crossAxisExtent * dpr).ceil();
-    if (width <= 0 || height <= 0 || spanCells <= 0) {
+    if (spanCells <= 0) {
       return null;
     }
     final horizontal = painter.axis == Axis.horizontal;
+    // The span's cells as the painter lays them — the frame axis' one law,
+    // so a tile is exactly as long as the cells it holds at any zoom.
+    final first = painter.cellRectFor(request.spanStartIndex);
+    final last = painter.cellRectFor(request.spanEndIndexExclusive - 1);
+    final spanExtent = horizontal
+        ? last.right - first.left
+        : last.bottom - first.top;
+    final width = (spanExtent * dpr).ceil();
+    final height = (painter.crossAxisExtent * dpr).ceil();
+    if (width <= 0 || height <= 0) {
+      return null;
+    }
     final tileWidth = horizontal ? width : height;
     final tileHeight = horizontal ? height : width;
 
@@ -767,19 +674,21 @@ class TimelineGridTileStore {
         }
         continue;
       }
+      // Set, laid and narrowed where the classic pass sets it — its letter
+      // gaps first ([TimelineTileRasterSource.cellWordSetFor]).
       final style = painter.glyphStyleFor(model);
-      // Laid and narrowed where the classic pass lays it, from the word's
-      // NATURAL size ([TimelineTileRasterSource.cellWordLayoutFor]).
-      final layout = painter.cellWordLayoutFor(
-        frameIndex,
-        timelineGlyphPainter(model.glyph, style).size,
+      final layout = painter.cellWordSetFor(frameIndex, model.glyph, style);
+      final bake = (
+        dpr: dpr,
+        fit: layout.fit,
+        tightening: layout.tightening,
       );
       glyphCells.add((
         text: model.glyph,
         style: style,
         rgba: timelineGridPackRgba(ink),
-        key: _glyphKey(model.glyph, style, (dpr: dpr, fit: layout.fit)),
-        fit: layout.fit,
+        key: _glyphKey(model.glyph, style, bake),
+        bake: bake,
         origin: horizontal
             ? layout.origin.translate(-originMain, 0)
             : layout.origin.translate(0, -originMain),
@@ -801,16 +710,12 @@ class TimelineGridTileStore {
       return null;
     }
 
-    final baked = <String, _BakedGlyph>{};
+    final baked = <String, BakedWordCoverage>{};
     for (final cell in glyphs) {
       if (baked.containsKey(cell.key)) {
         continue;
       }
-      final glyph = await _glyphA8(
-        cell.text,
-        cell.style,
-        (dpr: dpr, fit: cell.fit),
-      );
+      final glyph = await _glyphA8(cell.text, cell.style, cell.bake);
       if (glyph != null) {
         baked[cell.key] = glyph;
       }
@@ -950,9 +855,13 @@ typedef _TileGlyph = ({
   TextStyle style,
   int rgba,
   String key,
-  WordFit fit,
+  _GlyphBake bake,
   Offset origin,
 });
+
+/// How a word's glyph is baked: at the device pixel ratio, narrowed by its
+/// fit, and set as tight as its letter gaps gave way (F-234-Q1).
+typedef _GlyphBake = ({double dpr, WordFit fit, double tightening});
 
 /// What `_raster` hands the drain: the pixels, and the revision and the
 /// substrate they describe.
@@ -991,7 +900,9 @@ class _TileEntry {
   /// the one failure mode a cache is not allowed to have.
   final String substrateGeneration;
 
-  final Object layer;
+  /// The layer the tile was baked from. A later instance serves too, where
+  /// it shows the same cells through this tile ([_showsSameCellsAs]).
+  final Layer layer;
 
   /// ㉘: what the row's coverage follows when it is not the layer — a
   /// camera row's keys live on `cut.camera`, so a tile baked before a key
@@ -1090,7 +1001,6 @@ class _TileEntry {
     // tiles any more (the out-of-cut wash became its own overlay), so a
     // cut-length drag re-rasters nothing.
     return substrateGeneration == painter.substrateGeneration &&
-        identical(layer, painter.layer) &&
         coverageIdentity == painter.coverageIdentity &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
@@ -1113,27 +1023,53 @@ class _TileEntry {
         blockFrameLines == painter.blockFrameLines &&
         framesPerSecond == painter.framesPerSecond &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
-        this.devicePixelRatio == devicePixelRatio;
+        this.devicePixelRatio == devicePixelRatio &&
+        // Last: the one fact that may walk two timelines.
+        _showsSameCellsAs(painter.layer);
+  }
+
+  /// Whether [next] shows the cells this tile was baked from: the same
+  /// instance, or a new one that agrees with it through the tile's reach
+  /// ([firstCellThatMayDiffer]).
+  ///
+  /// 🚨F-244 (유저 2026-09-30: 「블록 코마 늘리거나 관련 동작들 … 무거운
+  /// 컷일수록 심해짐」): a comma drag makes a new layer at every step, and
+  /// on the instance alone every visible span of the row — and of its
+  /// attach mirror — was baked again at every step: 40 tiles a step on FU
+  /// 301, the last landing 25–57ms after it, the row showing the step
+  /// before meanwhile. Only the spans from the dragged block on show
+  /// anything new.
+  ///
+  /// The reach is the span's own cells and the one after it — its last
+  /// paper asks that cell whether it joins, and a frame line at the span's
+  /// end stands on it. What a cell reads beyond itself (its neighbours, its
+  /// block's word) the agreement answers for; what it reads from outside
+  /// its layer is the look's other facts (the camera row's track is
+  /// [coverageIdentity], the cels' pixels [celContentRevision]).
+  bool _showsSameCellsAs(Layer next) {
+    if (identical(layer, next)) {
+      return true;
+    }
+    final differs = _agreementOf(layer, next);
+    return differs == null || spanEndIndexExclusive < differs;
   }
 }
 
-/// One baked glyph: A8 coverage at physical resolution (1px pad on
-/// every side) plus the LOGICAL text size the classic pass centers on.
-class _BakedGlyph {
-  const _BakedGlyph({
-    required this.width,
-    required this.height,
-    required this.logicalWidth,
-    required this.logicalHeight,
-    required this.alpha,
-  });
-
-  final int width;
-  final int height;
-  final double logicalWidth;
-  final double logicalHeight;
-  final Uint8List alpha;
+/// [firstCellThatMayDiffer] of the pair a row's tiles ask about together —
+/// every span of the row asks it of the same two instances.
+int? _agreementOf(Layer baked, Layer next) {
+  final known = _agreements[baked];
+  if (known != null && identical(known.next, next)) {
+    return known.differs;
+  }
+  final differs = firstCellThatMayDiffer(baked, next);
+  _agreements[baked] = (next: next, differs: differs);
+  return differs;
 }
+
+final Expando<({Layer next, int? differs})> _agreements = Expando(
+  'tile agreement',
+);
 
 /// The per-raster transient atlas (a vertical stack of the span's
 /// distinct glyphs) the GLYPH ops reference.

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../core/wrap_degrees.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/app_input_settings.dart';
 import '../input/control_press_claim.dart';
@@ -13,6 +14,8 @@ import '../../models/viewport_point.dart';
 import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'canvas_zoom_scale.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/sheet_arrow.dart';
 import 'flip_hud_controller.dart';
 
 /// Viewport pan/zoom input for the canvas panel, independent of what the
@@ -164,20 +167,9 @@ class _CanvasViewportGestureLayerState
   /// the two-finger navigation gesture.
   final Map<int, Offset> _touchPositions = <int, Offset>{};
 
-  static double _wrapDegrees(double degrees) {
-    var wrapped = degrees;
-    while (wrapped > 180) {
-      wrapped -= 360;
-    }
-    while (wrapped < -180) {
-      wrapped += 360;
-    }
-    return wrapped;
-  }
-
   /// Snaps a candidate view angle to 0° when it lands near straight.
   static double _snappedRotation(double degrees) {
-    final normalized = _wrapDegrees(degrees);
+    final normalized = wrapDegrees(degrees);
     if (normalized.abs() <= rotationZeroSnapDegrees) {
       return degrees - normalized;
     }
@@ -267,17 +259,28 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
-    if (!(canvasPressPans(event.buttons) || _primaryPressPans(event)) ||
-        _panPointer != null ||
-        widget.strokeActive()) {
+    if (_panPointer != null || widget.strokeActive()) {
       return;
     }
-    _panPointer = event.pointer;
-    _panStartLocalPosition = event.localPosition;
+    if (canvasPressPans(event.buttons) || _primaryPressPans(event)) {
+      // A pan press is this canvas's gesture from its down: the held key or
+      // the mapped button said so before anything moved.
+      _beginPan(event.pointer, event.localPosition);
+    } else if (widget.primaryPressPans && canvasPrimaryDown(event.buttons)) {
+      _heldByAControl = event.pointer;
+    }
+  }
+
+  /// A primary press this canvas would have panned but a control took at
+  /// its down — a cell's, until the press turns into a drag
+  /// ([PressFire.upInsideOrPan]).
+  int? _heldByAControl;
+
+  void _beginPan(int pointer, Offset at) {
+    _panPointer = pointer;
+    _panStartLocalPosition = at;
     _panStartViewport = _liveViewport;
-    // A pan press is this canvas's gesture from its down: the held key or
-    // the mapped button said so before anything moved.
-    _holdForTheGesture(event.pointer);
+    _holdForTheGesture(pointer);
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -287,6 +290,18 @@ class _CanvasViewportGestureLayerState
       return;
     }
 
+    // The cell let go of the press as it turned into a drag: it is this
+    // canvas's pan from here — the view does not jump for the way it came
+    // before, as a scroller's drag starts where it was taken. A move
+    // reaches the control below before this layer, so the claim is already
+    // gone on the move that made it a drag.
+    if (event.pointer == _heldByAControl &&
+        !controlOwnsTap(event.pointer)) {
+      _heldByAControl = null;
+      if (_panPointer == null && !widget.strokeActive()) {
+        _beginPan(event.pointer, event.localPosition);
+      }
+    }
     if (event.pointer != _panPointer) {
       return;
     }
@@ -309,6 +324,9 @@ class _CanvasViewportGestureLayerState
     if (_touchPositions.remove(event.pointer) != null) {
       _controlTouchLift(event.pointer);
       return;
+    }
+    if (event.pointer == _heldByAControl) {
+      _heldByAControl = null;
     }
     if (event.pointer == _panPointer) {
       _clearPan();
@@ -611,9 +629,9 @@ class _CanvasViewportGestureLayerState
   /// F-28: the frame axis is sideways on the timeline and downward on the
   /// X-sheet, and the flip follows the sheet the user is reading — 「타임라인
   /// 패널 x시트일 경우 … 세로가 프레임이동 가로가 레이어이동 되도록. 그게
-  /// 직관적임」. ↩️It no longer picks the action ids (유저 2026-08-31, see
-  /// `_updateFlip`): the shell asks this same question when a direction
-  /// arrives, and asking it here as well answered it twice.
+  /// 직관적임」. The move a step makes is read through the sheet's turn
+  /// (`_updateFlip`, F-241) — the same one a pressed arrow key is read
+  /// through — and this answers only what the HUD draws.
   bool _flipsFrames(bool horizontal) =>
       widget.flipHud?.framesRunAlong(horizontal: horizontal) ?? horizontal;
 
@@ -636,19 +654,29 @@ class _CanvasViewportGestureLayerState
       _flipEmittedSteps += forward ? 1 : -1;
       final fine = _flipModifierActive;
       // 🚨F-28 (유저 2026-08-31 실기: 「터치는 위아래 터치 조작이 여전히
-      // 레이어이동, 심각한건 플립ui는 프레임이동의 ui 보여주고있음」): the
-      // ARROW KEYS' own direction ids, on every sheet. What a direction
-      // means is the shell's question (`framesRunAlong` inside
-      // `_walkTimeline`); this layer answering it as well made the X-sheet
-      // flip twice. The modifier is Ctrl — the same four directions, one
-      // frame at a time where they walk frames.
-      final actionId = horizontal
-          ? (forward
-                ? (fine ? 'frame-walk-right' : 'drawing-next')
-                : (fine ? 'frame-walk-left' : 'drawing-previous'))
-          : (forward
-                ? (fine ? 'frame-walk-down' : 'layer-down')
-                : (fine ? 'frame-walk-up' : 'layer-up'));
+      // 레이어이동, 심각한건 플립ui는 프레임이동의 ui 보여주고있음」): a
+      // flip is an ARROW on the sheet, read the way a pressed arrow key is —
+      // turned to the timeline's reading by the one turn (F-241,
+      // `FlipHudController.timelineArrowFor`), then the same move a key
+      // makes. ↩️It sent the arrow keys' direction ids and the shell turned
+      // them; the keys are meanings now, and one turn answers both
+      // entrances. The +1-finger modifier is the one-frame step along the
+      // frames, as Shift is on the keys.
+      final pressed = SheetArrow.along(
+        horizontal: horizontal,
+        forward: forward,
+      );
+      final read = widget.flipHud?.timelineArrowFor(pressed) ?? pressed;
+      final actionId = switch (read) {
+        SheetArrow.left => fine
+            ? EditorActionIds.framePrevious
+            : EditorActionIds.drawingPrevious,
+        SheetArrow.right => fine
+            ? EditorActionIds.frameNext
+            : EditorActionIds.drawingNext,
+        SheetArrow.up => EditorActionIds.layerUp,
+        SheetArrow.down => EditorActionIds.layerDown,
+      };
       widget.onInvokeAction?.call(actionId);
     }
     // The action has LANDED by now (the funnel is synchronous), so the
@@ -755,7 +783,7 @@ class _CanvasViewportGestureLayerState
         widget.rotationEnabled && settings.navigationRotationEnabled;
     final startAngle = rotationOn ? _navStartAngle : null;
     if (startAngle != null) {
-      final rawDelta = _wrapDegrees(
+      final rawDelta = wrapDegrees(
         _touchAngleDegrees(first, second) - startAngle,
       );
       if (_navRotationCompensation == null &&

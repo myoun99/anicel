@@ -218,13 +218,17 @@ void main() {
       row('leftTop', tint: 0xFF0000FF),
       row('pasteboard', tint: 0xFF00FF00, opacity: 0.4),
     ],
-    // ⚠️The blurred folder holds only ink that keeps off the canvas's
-    // edges: a blurred folder reaching past the composite trips the paint
-    // pass's own assertion whatever the cache stores — board
-    // `a-blurred-folder-outgrows-the-composite`, not this pin's finding.
+    // The blurred folder reaches both ends of the canvas ([sparse]), so at
+    // every view but the whole one its buffer runs past the composite by
+    // the blur's spread — the scene that stopped the paint pass's own
+    // assertion (board `a-blurred-folder-outgrows-the-composite`).
     'folders with a blend and a blur': [
       CompositeGroup<CanvasStackRow>(
-        children: [row('interior'), row('inner', opacity: 0.6)],
+        children: [
+          row('sparse'),
+          row('interior'),
+          row('inner', opacity: 0.6),
+        ],
         opacity: 0.7,
         blendMode: LayerBlendMode.multiply,
         effects: [effect(EffectKind.blur, [2, 2])],
@@ -385,24 +389,11 @@ void main() {
     return (count: count, where: where);
   }
 
-  // Magnified, the blurred folder's buffer reaches past the little of the
-  // canvas on screen and the paint pass asserts before either arm has drawn
-  // — the old arm included.
-  String? skipFor(String scene, String viewport) =>
-      scene == 'folders with a blend and a blur' && viewport == 'magnified 230%'
-      ? 'board a-blurred-folder-outgrows-the-composite'
-      : null;
-
   for (final scene in scenes.entries) {
     for (final viewport in viewports.entries) {
       for (final walk in [false, true]) {
         final route = walk ? 'the direct walk' : 'the display buffer';
         final name = '${scene.key} · ${viewport.key} · $route';
-        final skip = skipFor(scene.key, viewport.key);
-        if (skip != null) {
-          test(name, () {}, skip: skip);
-          continue;
-        }
         testWidgets(name, (tester) async {
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetDevicePixelRatio);
@@ -436,6 +427,73 @@ void main() {
         });
       }
     }
+  }
+
+  // board `a-blurred-folder-outgrows-the-composite`: the folder's buffer
+  // runs past the view by the blur's spread ON PURPOSE — so the ink just
+  // off screen still reaches the blur at the edge. Seen with the view's
+  // right edge through the ink at (141, 93), every pixel of the canvas on
+  // screen is the pixel the whole view shows there.
+  //
+  // ⚠️RED ON IMPELLER VULKAN (`--enable-impeller`, Android's default), and
+  // not for the blur. The folder blends in multiply, and Vulkan mixes an
+  // advanced blend twice along the diagonal of the quad it draws
+  // (flutter#179547 — every advanced-blend draw does it, from an image, a
+  // saveLayer or a shader alike). This folder's raster follows the view, so
+  // the diagonal moves with the pan: two pixels, up to 3/255 at this one.
+  // Skia and the Windows app (Impeller GLES) keep every byte — measured
+  // 2026-09-30, board `a-blurred-folder-cut-by-the-view-moves-on-vulkan`.
+  for (final walk in [false, true]) {
+    final route = walk ? 'the direct walk' : 'the display buffer';
+    testWidgets('a blurred folder cut by the view\'s edge blurs as it does '
+        'seen whole — $route', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final nodes = scenes['folders with a blend and a blur']!;
+      // At 100% a canvas pixel is a screen pixel, offset by the pan.
+      const whole = (x: 18, y: 12);
+      const cut = (x: 33, y: -30);
+      final seenWhole = await screen(
+        tester,
+        whole: true,
+        nodes: nodes,
+        viewport: CanvasViewport(zoom: 1, panX: 18, panY: 12),
+        walk: walk,
+      );
+      addTearDown(seenWhole.images.dispose);
+      final seenCut = await screen(
+        tester,
+        whole: true,
+        nodes: nodes,
+        viewport: CanvasViewport(zoom: 1, panX: 33, panY: -30),
+        walk: walk,
+      );
+      addTearDown(seenCut.images.dispose);
+      final width = view.width.toInt();
+      var compared = 0;
+      final moved = <String>[];
+      for (var y = 0; y < canvasSize.height; y += 1) {
+        for (var x = 0; x < canvasSize.width; x += 1) {
+          final sx = x + cut.x;
+          final sy = y + cut.y;
+          if (sx < 0 || sx >= width || sy < 0 || sy >= view.height) {
+            continue;
+          }
+          final a = (sy * width + sx) * 4;
+          final b = ((y + whole.y) * width + x + whole.x) * 4;
+          compared += 1;
+          for (var c = 0; c < 4; c += 1) {
+            if (seenCut.bytes[a + c] != seenWhole.bytes[b + c] &&
+                moved.length < 6) {
+              moved.add('($x, $y) c$c ${seenCut.bytes[a + c]} '
+                  'vs ${seenWhole.bytes[b + c]}');
+            }
+          }
+        }
+      }
+      expect(compared, greaterThan(5000), reason: 'the cut view shows canvas');
+      expect(moved, isEmpty, reason: 'the edge blurs what lies past it');
+    });
   }
 
   testWidgets('both arms ran: the buffer draws ink rows from their ink, the '

@@ -28,8 +28,9 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 /// ⛔The fix is not to make the ruler switch the active cut, which the
 /// report wondered aloud about: the scrub PARKS on purpose, and the preview
 /// machinery around it exists because the active cut does NOT follow a drag.
-/// The row subscribes instead — one row per track, the cost the ruler beside
-/// it already pays.
+/// The row subscribes instead — through the one cell that says which cut it
+/// acts on, the eye (I-22, 09-28: it was the whole row, rebuilt on every
+/// crossing), the cost the ruler beside it already pays and less.
 void main() {
   const frames = 24;
 
@@ -57,6 +58,23 @@ void main() {
     ],
   );
 
+  final vRow = find.byType(StoryboardTrackLabelRow).first;
+  const eyePrefix = 'storyboard-cut-visibility-';
+
+  /// The cut the V row's eye acts on — the one it names in its key.
+  String? subject(WidgetTester tester) {
+    final eye = find.descendant(
+      of: vRow,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(eyePrefix),
+      ),
+    );
+    final key = tester.widget(eye.first).key! as ValueKey<String>;
+    return key.value.substring(eyePrefix.length);
+  }
+
   testWidgets('the V row\'s subject follows the ruler mid-drag', (
     tester,
   ) async {
@@ -71,21 +89,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    String? subject() => tester
-        .widget<StoryboardTrackLabelRow>(
-          find.byType(StoryboardTrackLabelRow).first,
-        )
-        .subjectCut
-        ?.id
-        .value;
-
     final perFrame = tester
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
     final ruler = tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-ruler')),
     );
-    expect(subject(), 'cut-0', reason: 'fixture premise');
+    expect(subject(tester), 'cut-0', reason: 'fixture premise');
 
     // Press inside cut-0 and drag right, one cut's worth of frames at a
     // time, WITHOUT releasing.
@@ -98,7 +108,7 @@ void main() {
     for (var step = 1; step <= 6; step += 1) {
       await gesture.moveBy(Offset(10 * perFrame, 0));
       await tester.pump(const Duration(milliseconds: 16));
-      seen.add(subject());
+      seen.add(subject(tester));
     }
 
     expect(
@@ -112,7 +122,7 @@ void main() {
     await gesture.up();
     await tester.pumpAndSettle();
     expect(
-      subject(),
+      subject(tester),
       'cut-2',
       reason: 'the release changes nothing that the drag had not already '
           'shown — which is the whole complaint, inverted',
@@ -122,9 +132,13 @@ void main() {
   /// I-22 ③: the row follows the cut under the playhead, not the playhead —
   /// it was rebuilt, buttons, faces and tooltips, on every frame a playback
   /// or a scrub moved, while a cut kept the same subject for its whole
-  /// length.
-  testWidgets('a move that stays inside the cut rebuilds no V row; a move '
-      'into the next one does', (tester) async {
+  /// length. And then on every CROSSING, which at a far zoom is nearly every
+  /// move: only the eye shows which cut it is, so only the eye follows, on
+  /// a tick layer of its own, and the row around it stands (09-28).
+  testWidgets('a move inside the cut rebuilds nothing of the V row; a move '
+      'into the next one moves its eye and leaves the row standing', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -137,7 +151,7 @@ void main() {
     await tester.pumpAndSettle();
 
     StoryboardTrackLabelRow row() => tester.widget<StoryboardTrackLabelRow>(
-      find.byType(StoryboardTrackLabelRow).first,
+      vRow,
     );
     final perFrame = tester
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
@@ -154,14 +168,19 @@ void main() {
     // Frame 2 → 12: still cut-0.
     await gesture.moveBy(Offset(10 * perFrame, 0));
     await tester.pump(const Duration(milliseconds: 16));
-    expect(row().subjectCut?.id.value, 'cut-0', reason: 'premise');
+    expect(subject(tester), 'cut-0', reason: 'premise');
     expect(identical(row(), atTwo), isTrue, reason: 'the same subject');
 
     // Frame 12 → 32: cut-1.
     await gesture.moveBy(Offset(20 * perFrame, 0));
     await tester.pump(const Duration(milliseconds: 16));
-    expect(row().subjectCut?.id.value, 'cut-1');
-    expect(identical(row(), atTwo), isFalse, reason: 'a new subject');
+    expect(subject(tester), 'cut-1', reason: 'the eye follows the crossing');
+    expect(
+      identical(row(), atTwo),
+      isTrue,
+      reason: '🚨the whole V row was rebuilt for a crossing — its buttons, '
+          'tooltips and all — where only the eye shows which cut it is',
+    );
 
     await gesture.up();
     await tester.pumpAndSettle();

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -12,6 +13,7 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
+import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (
@@ -587,5 +589,44 @@ void main() {
 
       expect(read().rotationMode, BrushTipRotationMode.direction);
     });
+  });
+
+  testWidgets('the brush edge is the app\'s one grouped choice — a pill per '
+      'step, the chosen one lit, a press choosing (board '
+      'pill-group-everywhere)', (tester) async {
+    var state = BrushToolState.defaults;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: StatefulBuilder(
+              builder: (context, setState) => BrushSettingsPanel(
+                state: state,
+                onChanged: (next) => setState(() => state = next),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Finder edge(BrushAntiAlias step) =>
+        find.byKey(ValueKey<String>('brush-tool-edge-${step.name}'));
+    List<bool> lit() => [
+      for (final step in BrushAntiAlias.values)
+        tester.widget<Pill>(edge(step)).selected,
+    ];
+    expect(state.antiAlias, isNot(BrushAntiAlias.none), reason: 'premise');
+    expect(lit(), [
+      for (final step in BrushAntiAlias.values) step == state.antiAlias,
+    ]);
+
+    await tester.ensureVisible(edge(BrushAntiAlias.none));
+    await tester.tap(edge(BrushAntiAlias.none));
+    await tester.pumpAndSettle();
+
+    expect(state.antiAlias, BrushAntiAlias.none);
+    expect(lit(), [
+      for (final step in BrushAntiAlias.values) step == BrushAntiAlias.none,
+    ]);
   });
 }

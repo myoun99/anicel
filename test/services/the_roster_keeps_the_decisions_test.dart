@@ -7,7 +7,11 @@
 // that the picker cannot tell apart.
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/models/brush_anti_alias.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_input_source.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_settings.dart';
 import 'package:anicel/src/models/brush_shape.dart';
 import 'package:anicel/src/models/brush_tip_mask.dart';
@@ -39,15 +43,139 @@ void main() {
       defaultBrushGroups.map((group) => group.name.toLowerCase()),
       isNot(contains('pixel')),
     );
-    final animePen = defaultBrushPresets.firstWhere(
-      (preset) => preset.name == 'Anime Pen',
-    );
-    expect(animePen.settings.antiAlias.name, 'none');
-    // 🚨And the hardness that makes the AA setting mean anything: at 1.0 the
-    // coverage is already binary, so `none` would be a field set to no effect.
-    expect(animePen.settings.hardness, lessThan(1.0));
-    // ⛔A masked tip would be binarized whole by the same threshold.
-    expect(animePen.settings.tipMask, isNull);
+    // ↩️Nor a pixel ROW (board F-218, 유저 2026-09-28: 「이상한것들 쳐내고.
+    // 애니펜 이런거」): Anime Pen was that row, and a pixel line is the 없음
+    // step any brush can take.
+    for (final preset in defaultBrushPresets) {
+      expect(
+        preset.settings.antiAlias,
+        isNot(BrushAntiAlias.none),
+        reason: '${preset.name} would be the pixel pen again',
+      );
+    }
+  });
+
+  // Board F-218 (유저 2026-09-28, answered 2026-10-01 「개편안 승인. 너가
+  // 제안한 그대로」): the roster the user approved on its review page.
+  group('the F-218 roster', () {
+    BrushPreset byId(String id) =>
+        defaultBrushPresets.firstWhere((preset) => preset.id.value == id);
+
+    test('Basic opens the list with the two rounds, under their old ids', () {
+      // 「포토샵보면 둥근라운드 딱딱한라운드 뭐 이런 진짜 기본적인 브러시가
+      // 제대로 있는데 여긴 이상함」.
+      expect(defaultBrushGroups.first.id.value, 'builtin-basic-group');
+      final basic = [
+        for (final preset in defaultBrushPresets)
+          if (preset.groupId == defaultBrushGroups.first.id) preset.name,
+      ];
+      expect(basic, ['Hard Round', 'Soft Round']);
+      expect(byId('builtin-ink-pen').name, 'Hard Round');
+      expect(byId('builtin-ink-pen').settings.hardness, 1.0);
+      expect(byId('builtin-soft-brush').name, 'Soft Round');
+      expect(byId('builtin-soft-brush').settings.hardness, 0.0);
+    });
+
+    test('every graphite pencil has graphite in it, and the grades step the '
+        'way the leads do', () {
+      // 「연필은 싹 다 비슷비슷한 브러시라 차이를 못느끼겠음 … 현실기반?」 —
+      // three pencils were plain round tips, a thin pen each.
+      for (final id in [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+        'builtin-mechanical-pencil',
+        'builtin-shading-pencil',
+      ]) {
+        final settings = byId(id).settings;
+        expect(
+          settings.tipMask != null || settings.textureMaskSource != null,
+          isTrue,
+          reason: '${byId(id).name} would be a pen again',
+        );
+      }
+      const gradeIds = [
+        'builtin-hard-pencil',
+        'builtin-pencil',
+        'builtin-soft-pencil',
+        'builtin-dark-pencil',
+      ];
+      expect(
+        [for (final id in gradeIds) byId(id).name],
+        ['2H Pencil', 'HB Pencil', '2B Pencil', '4B Pencil'],
+      );
+      final grades = [for (final id in gradeIds) byId(id).settings];
+      for (var i = 1; i < grades.length; i += 1) {
+        final softer = grades[i];
+        final harder = grades[i - 1];
+        expect(
+          softer.flow * softer.opacity,
+          greaterThan(harder.flow * harder.opacity),
+          reason: 'a softer lead lays darker',
+        );
+        expect(
+          softer.textureDensity,
+          greaterThan(harder.textureDensity),
+          reason: 'a softer lead grains coarser',
+        );
+        expect(
+          softer.hardness,
+          lessThan(harder.hardness),
+          reason: 'a softer lead has the softer edge',
+        );
+      }
+    });
+
+    test('the pencil laid on its side spreads wide, pale and soft', () {
+      // 「각도에 따라 눕히는 연필 … 아날로그에서. 그런거 그대로 재현한 연필」.
+      final tilted = byId('builtin-shading-pencil').settings;
+      final curves = tilted.shape.curves;
+      expect(
+        curves[(BrushPressureTarget.size, BrushInputSource.tilt)],
+        isNotNull,
+      );
+      final opacity =
+          curves[(BrushPressureTarget.opacity, BrushInputSource.tilt)]!;
+      expect(opacity.evaluate(1.0), lessThan(opacity.evaluate(0.0)));
+      final hardness =
+          curves[(BrushPressureTarget.hardness, BrushInputSource.tilt)]!;
+      expect(hardness.evaluate(1.0), lessThan(hardness.evaluate(0.0)));
+    });
+
+    test('one watercolour carries paper, and it is cold-press', () {
+      // 「질감 있다면 그냥 수채가아니라 아날로그 수채라던가 … 진짜 아날로그
+      // 질감 종이질감」.
+      final watercolors = [
+        for (final preset in defaultBrushPresets)
+          if (preset.groupId?.value == 'builtin-watercolor-group') preset,
+      ];
+      final papered = [
+        for (final preset in watercolors)
+          if (preset.settings.textureMaskSource != null) preset,
+      ];
+      expect(papered.map((preset) => preset.name), ['Analog Watercolor']);
+      expect(
+        papered.single.settings.textureMaskSource!.id,
+        'builtin-cold-press',
+      );
+    });
+
+    test('the five that drew another brush\'s row are gone', () {
+      for (final id in [
+        'builtin-rough-pencil',
+        'builtin-anime-pen',
+        'builtin-rough-ink',
+        'builtin-round-bristle',
+        'builtin-spray',
+      ]) {
+        expect(
+          defaultBrushPresets.where((preset) => preset.id.value == id),
+          isEmpty,
+          reason: id,
+        );
+      }
+    });
   });
 
   test('paint is split by medium, and every group has members', () {
@@ -171,7 +299,12 @@ void main() {
     const grain = 'its grain is the gap between stamps';
     const ownGap = <String, String>{
       'builtin-chalk-preset': grain,
-      'builtin-rough-pencil': grain,
+      // Board F-218: the graphite grades and the tilted pencil wear the grain
+      // tip now.
+      'builtin-hard-pencil': grain,
+      'builtin-pencil': grain,
+      'builtin-soft-pencil': grain,
+      'builtin-shading-pencil': grain,
       'builtin-dark-pencil': grain,
       'builtin-colored-pencil': grain,
       'builtin-dry-ink': grain,

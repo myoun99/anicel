@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/services/brush_tip_defaults.dart';
 import 'package:anicel/src/services/brush_tip_image_codec.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
+import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
 import '../helpers/temp_dir.dart';
 
@@ -249,6 +250,25 @@ void main() {
       expect(library.tips.last.id, 'tip-1');
       expect(library.tips.last.name, 'Renamed');
       expect(library.maskFor('tip-1'), isNotNull);
+    });
+
+    // 🚨A MUTANT SURVIVED HERE (2026-09-30): the index could go unwritten
+    // and every test in this file stayed green — nothing watched what an
+    // edit hands the index file.
+    test('a rename is written to the index, as the library '
+        'stands', () async {
+      final written = <String>[];
+      debugSettingsFileWrite = (_, text) async => written.add(text);
+      addTearDown(() => debugSettingsFileWrite = null);
+      final library = BrushTipLibrary(service: service);
+      addTearDown(library.dispose);
+      await library.register(_mask('tip-1'), name: 'Mine');
+
+      library.rename('tip-1', 'Renamed');
+      await pumpEventQueue();
+
+      final tips = (jsonDecode(written.last) as Map)['tips'] as List;
+      expect([for (final tip in tips) (tip as Map)['name']], ['Renamed']);
     });
   });
 

@@ -8,10 +8,12 @@ import 'layer_id.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
 import 'project_frame_rate.dart' show secondsPlusFramesLabel;
+import 'se_line_type.dart';
 import 'sheet_sources.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
+import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 
@@ -116,9 +118,25 @@ class TimesheetCell {
     this.valueA,
     this.valueB,
     this.seName,
+    this.seType,
   });
 
   static const TimesheetCell blank = TimesheetCell(TimesheetCellKind.empty);
+
+  /// This cell over [spanLength] rows, everything else as it prints — so a
+  /// run that grows keeps every field without naming each one.
+  TimesheetCell withSpanLength(int spanLength) => TimesheetCell(
+    kind,
+    label: label,
+    mark: mark,
+    spanLength: spanLength,
+    spanOffset: spanOffset,
+    markType: markType,
+    valueA: valueA,
+    valueB: valueB,
+    seName: seName,
+    seType: seType,
+  );
 
   final TimesheetCellKind kind;
 
@@ -156,6 +174,41 @@ class TimesheetCell {
   /// A prints it across the whole start row (accent box + underline, Toei
   /// style) with the dialogue distributing below.
   final String? seName;
+
+  /// SE drawing start cells only: the line's delivery (I-20) — the sheet
+  /// prints it over the name when [SeLineType.printsOnSheets] says so.
+  final SeLineType? seType;
+
+  /// Equal cells print the same — what lets the sheet tell a drag that
+  /// re-prints a column from one that only moves a value it does not print
+  /// (sheet-prints-only-its-drags).
+  @override
+  bool operator ==(Object other) =>
+      other is TimesheetCell &&
+      other.kind == kind &&
+      other.label == label &&
+      other.mark == mark &&
+      other.spanLength == spanLength &&
+      other.spanOffset == spanOffset &&
+      other.markType == markType &&
+      other.valueA == valueA &&
+      other.valueB == valueB &&
+      other.seName == seName &&
+      other.seType == seType;
+
+  @override
+  int get hashCode => Object.hash(
+    kind,
+    label,
+    mark,
+    spanLength,
+    spanOffset,
+    markType,
+    valueA,
+    valueB,
+    seName,
+    seType,
+  );
 }
 
 /// One sheet column: the printed column header plus one cell per document
@@ -244,8 +297,10 @@ class TimesheetDocument {
     required this.fps,
     required this.playbackFrameCount,
     this.transitionHandles = CutTransitionHandles.none,
+    required this.sheetKind,
     required this.pageFrameCount,
     required this.columns,
+    required this.books,
     required this.pages,
   });
 
@@ -254,7 +309,9 @@ class TimesheetDocument {
     required String projectName,
     required int fps,
     TimesheetInfo info = TimesheetInfo.empty,
-    int pageSeconds = 6,
+    // Rows a page holds, in seconds: the cut's sheet's ([sheetKind]) —
+    // a test lays shorter pages with it.
+    int? pageSeconds,
     CameraInstructionDef? Function(String instructionId)? instructionDefById,
     // TRACK-owned SE rows (global-frame timelines) shown windowed to this
     // cut; [cutStartFrame] is the cut's global start on its track.
@@ -279,14 +336,12 @@ class TimesheetDocument {
     // down held rows).
     bool dataSheet = false,
   }) {
-    const actionColumnCount = 8;
-    const celColumnCount = 8;
     const seColumnCount = 2;
     const cameraColumnCount = 2;
     if (fps <= 0) {
       throw ArgumentError.value(fps, 'fps', 'fps must be positive.');
     }
-    if (pageSeconds <= 0) {
+    if (pageSeconds != null && pageSeconds <= 0) {
       throw ArgumentError.value(
         pageSeconds,
         'pageSeconds',
@@ -313,11 +368,17 @@ class TimesheetDocument {
       spans: transitionSpans,
     );
     final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
-    final pageFrameCount = pageSeconds * fps;
+    final animationLayers = sources.celLayers;
+    final sheetKind = sheetKindFor(
+      cut.metadata.sheetKind,
+      celColumns: animationLayers.length,
+    );
+    final actionColumnCount = sheetKind.celColumns;
+    final celColumnCount = sheetKind.celColumns;
+    final pageFrameCount = (pageSeconds ?? sheetKind.pageSeconds) * fps;
     final pageCount = timesheetPageCount(drawnFrameCount, pageFrameCount);
     final rowCount = pageCount * pageFrameCount;
 
-    final animationLayers = sources.celLayers;
     final seSlots = sources.seLayers;
     final instructionLayers = sources.instructionLayers;
     // The one clip, again, for the LIVE preview clone a drag publishes —
@@ -394,8 +455,10 @@ class TimesheetDocument {
       fps: fps,
       playbackFrameCount: playbackFrameCount,
       transitionHandles: handles,
+      sheetKind: sheetKind,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
+      books: List.unmodifiable(sources.books),
       pages: List.unmodifiable([
         for (var page = 0; page < pageCount; page += 1)
           TimesheetPage(
@@ -534,15 +597,25 @@ class TimesheetDocument {
   int get drawnFrameCount =>
       transitionHandles.drawnFrames(playbackFrameCount);
 
+  /// The paper the sheet prints on — the cut's, or the 3-second sheet
+  /// when the cut's cel layers outgrow the 6-second one ([sheetKindFor]).
+  final TimesheetSheetKind sheetKind;
+
   /// Rows per paper page (pageSeconds × fps).
   final int pageFrameCount;
 
   final List<TimesheetColumn> columns;
+
+  /// The books tagged over the ACTION block, left to right — each at a
+  /// boundary of its cel columns ([SheetBook]).
+  final List<SheetBook> books;
+
   final List<TimesheetPage> pages;
 
-  /// Rows per page HALF: the paper page splits into two side-by-side
-  /// columns of this many rows (the second half takes any odd remainder).
-  int get halfFrameCount => pageFrameCount ~/ 2;
+  /// Rows per strip: a page lays [TimesheetSheetKind.strips] side-by-side
+  /// strips of this many rows — two HALVES on the 6-second sheet, the last
+  /// taking any odd remainder, and one on the 3-second sheet.
+  int get halfFrameCount => pageFrameCount ~/ sheetKind.strips;
 
   /// Total document rows (pages × pageFrameCount).
   int get rowCount => pages.length * pageFrameCount;
@@ -748,9 +821,10 @@ class _LayerCellsPass {
          for (final frame in layer.frames)
            frame.id: drawingHeadOf(frame.name, kind: layer.kind),
        },
-       seNamesByFrameId = <FrameId, String?>{
+       seEntriesByFrameId = <FrameId, SeEntryFields>{
          if (includeSeNames)
-           for (final frame in layer.frames) frame.id: frame.seName,
+           for (final frame in layer.frames)
+             frame.id: (seName: frame.seName, seType: frame.seType),
        };
 
   final Layer layer;
@@ -767,7 +841,10 @@ class _LayerCellsPass {
   final List<bool> covered;
   final List<MapEntry<int, TimelineExposure>> entries;
   final Map<FrameId, DrawingHead> headsByFrameId;
-  final Map<FrameId, String?> seNamesByFrameId;
+  /// An SE row's blocks' own fields — the speaker and the delivery (I-20) —
+  /// by drawing; empty for every other row. One record, so the sheet's
+  /// writers pass the block's SE writing on as one thing.
+  final Map<FrameId, SeEntryFields> seEntriesByFrameId;
 
   /// The cell a drawing's head writes: its cel number or its mark
   /// ([headsByFrameId]) — `?` for a frame the layer does not hold.
@@ -775,7 +852,7 @@ class _LayerCellsPass {
     TimesheetCellKind kind,
     FrameId? frameId, {
     required int spanLength,
-    String? seName,
+    SeEntryFields? se,
   }) {
     final head = headsByFrameId[frameId] ?? (word: '?', mark: null);
     return TimesheetCell(
@@ -783,7 +860,8 @@ class _LayerCellsPass {
       label: head.word,
       mark: head.mark,
       spanLength: spanLength,
-      seName: seName,
+      seName: se?.seName,
+      seType: se?.seType,
     );
   }
 
@@ -856,7 +934,7 @@ class _LayerCellsPass {
       _writeDrawingRun(
         start,
         exposure,
-        seName: seNamesByFrameId[exposure.frameId],
+        se: seEntriesByFrameId[exposure.frameId],
       );
     }
   }
@@ -959,13 +1037,7 @@ class _LayerCellsPass {
     final runLength = rowsEnd - runStart;
     final owner = cells[runStart];
     if (owner.kind == TimesheetCellKind.drawing) {
-      cells[runStart] = TimesheetCell(
-        TimesheetCellKind.drawing,
-        label: owner.label,
-        mark: owner.mark,
-        spanLength: runLength,
-        seName: owner.seName,
-      );
+      cells[runStart] = owner.withSpanLength(runLength);
     }
     for (var row = runStart + 1; row < rowsEnd; row += 1) {
       final prior = cells[row];
@@ -1015,7 +1087,7 @@ class _LayerCellsPass {
       _writeDrawingRun(
         ghostStart,
         ghostExposure,
-        seName: seNamesByFrameId[ghostExposure.frameId],
+        se: seEntriesByFrameId[ghostExposure.frameId],
       );
     }
   }
@@ -1045,20 +1117,20 @@ class _LayerCellsPass {
   /// One drawing run: its cel at [start], its held rows after it.
   ///
   /// Written by the authored blocks and, verbatim, by a FRONT repeat's
-  /// lead-in ghosts — [seName] is the only value the two sites differ on,
+  /// lead-in ghosts — [se] is the only value the two sites differ on,
   /// and `covered[…]` is idempotent on the ghost path (the chain walk sets
   /// it before dispatching).
   void _writeDrawingRun(
     int start,
     TimelineExposure exposure, {
-    required String? seName,
+    required SeEntryFields? se,
   }) {
     final endExclusive = (start + exposure.length!).clamp(0, rowCount);
     cells[start] = _headCell(
       TimesheetCellKind.drawing,
       exposure.frameId,
       spanLength: endExclusive - start,
-      seName: seName,
+      se: se,
     );
     covered[start] = true;
     for (var row = start + 1; row < endExclusive; row += 1) {

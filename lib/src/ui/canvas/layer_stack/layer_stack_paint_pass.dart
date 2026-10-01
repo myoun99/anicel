@@ -520,6 +520,44 @@ class _LayerStackPaintPass {
     return wrap.invert() == 0 ? null : wrap;
   }();
 
+  /// What the live slot's own raster covers, in the SLOT's space: the rect
+  /// the same layer drawn as an image covers, where the view can see it.
+  ///
+  /// 🚨★★★THE IMAGE ROW'S RECT, BY THE IMAGE ROW'S QUESTION (F-243). A
+  /// cached row lays down its ink alone only where that is exact
+  /// ([inkCropDrawsTheSame]) and otherwise its whole image, the page
+  /// included; this asks the same. 🔬On Impeller Vulkan an advanced blend
+  /// rounds by the area it blends through: rastered to its ink, a multiply
+  /// row being drawn on came out up to 14/255 off the same row drawn as an
+  /// image in 109 pixels of one scene; over the page, not one byte in any
+  /// of 20 (blends × zooms × inks), as on the Windows app and the test
+  /// runner already. Where a crop is exact the ink is all there is to
+  /// raster, and a colour key keeps its smaller raster.
+  ///
+  /// 🚨Not [_bufferBoundsFor], which answers in CANVAS space — the extent
+  /// taken through the row's pose — for the buffers the walk opens around
+  /// nodes. The slot's own route runs INSIDE the pose wrap, so the view is
+  /// brought into the slot instead ([_slotFromCanvas]). Read as slot
+  /// coordinates, a posed row's canvas rect rastered the wrong part of the
+  /// slot and cut its drawing away (found in F-243's review: every posed
+  /// row in an advanced blend takes this route since).
+  Rect _activeSlotBufferBounds(_PaintActiveSurface row) {
+    final intoSlot = _slotFromCanvas;
+    final view = intoSlot == null
+        ? _visibleCanvasRect
+        : MatrixUtils.transformRect(intoSlot, _visibleCanvasRect);
+    final drawn = _activeSurfaceExtent();
+    final covered =
+        inkCropDrawsTheSame(
+          pose: row.pose,
+          blendMode: row.blendMode,
+          effects: row.effects,
+        )
+        ? drawn
+        : drawn.expandToInclude(_canvasRect);
+    return view.intersect(covered);
+  }
+
   /// The one active slot in [nodes], wherever the folders put it.
   static _PaintActiveSurface? _activeRowIn(
     List<CompositeNode<_PaintRow>> nodes,
@@ -676,14 +714,24 @@ class _LayerStackPaintPass {
     // that the enclosing canvas-resolution buffer then clipped
     // away. Content bounds keep it inside by construction, and
     // this says so where it can fail.
-    final groupRect = effectBufferBounds(
-      _bufferBoundsFor(node, _activeSurfaceExtent),
-      groupPlan.outsetPixels,
-    );
+    //
+    // ⚠️It is the CONTENT that must sit inside, before the effect
+    // grows it. The spread the size hint adds below is deliberate
+    // — artwork just outside the view has to reach the blur at the
+    // view's edge — so there the buffer lies past the composite by
+    // exactly that spread, off screen. ↩️This asserted the grown
+    // rect, and a blurred folder whose ink crossed the view's edge
+    // stopped every debug build at any zoom (board
+    // `a-blurred-folder-outgrows-the-composite`).
+    final contentRect = _bufferBoundsFor(node, _activeSurfaceExtent);
     assert(
-      _contentExtent.expandToInclude(groupRect) == _contentExtent,
+      _contentExtent.expandToInclude(contentRect) == _contentExtent,
       'a group buffer must sit inside the composite it is part '
-      'of: $groupRect is not within $_contentExtent',
+      'of: $contentRect is not within $_contentExtent',
+    );
+    final groupRect = effectBufferBounds(
+      contentRect,
+      groupPlan.outsetPixels,
     );
     // 🚨★★★ONE PICTURE PER NODE — a group IS an image, not a
     // `saveLayer`. [drawSubtreeAsImage] holds the arithmetic and
@@ -782,13 +830,15 @@ class _LayerStackPaintPass {
     // [BitmapSurfacePainter.drawsDisjointCoverage] answers, and
     // the law the overlay's own blend already rides one level
     // down ("tiles never overlap, so per-tile draws blend each
-    // pixel exactly once").
+    // pixel exactly once") — and the blend acts where it is
+    // drawn, which F-243 (the last clause below) showed an
+    // advanced blend does not.
     //
-    // What is left for a buffer is the one thing a per-draw
-    // paint cannot do: a filter that SPREADS has to see across
-    // the tile boundaries, so it needs the layer assembled
-    // first. `outsetPixels` is exactly that question — a colour
-    // matrix is per-pixel and rides along fine.
+    // What is left for a buffer is what a per-draw paint cannot
+    // do: a filter that SPREADS has to see across the tile
+    // boundaries, so it needs the layer assembled first.
+    // `outsetPixels` is exactly that question — a colour matrix
+    // is per-pixel and rides along fine.
     final needsBuffer =
         activeEffects.outsetPixels > 0 ||
         !_painter.activeSurfacePainter!.drawsDisjointCoverage ||
@@ -802,7 +852,14 @@ class _LayerStackPaintPass {
         // BELOW a painted effect keys what that effect made, so
         // the layer has to be assembled into an image first —
         // the one thing a buffer cannot hand it.
-        activePlan.preSteps.isNotEmpty;
+        activePlan.preSteps.isNotEmpty ||
+        // 🚨★★★F-243: AN ADVANCED BLEND NEVER RIDES THE TILES. Per
+        // draw it is not per pixel — each tile blended the whole
+        // screen by its edge colour on the Windows app ([blendsInPlace]
+        // has the measurement). Buffered, the blend takes the image
+        // route below: the layer assembled into one image and blended
+        // once, which is what every other row in that blend already is.
+        !blendsInPlace(activePaint.blendMode);
     // Null when the buffer carries it, so nothing applies twice.
     final ridingPaint = needsBuffer ? null : activePaint;
     assert(() {
@@ -819,6 +876,7 @@ class _LayerStackPaintPass {
     void paintLiveBody(Canvas into) {
       into.save();
       into.clipRect(_painter.activeSurfacePainter!.pasteboardRect);
+      final float = _painter.floatOverlay?.value;
         _painter.activeSurfacePainter!.paintContentInto(
           into,
           layerPaint: ridingPaint,
@@ -827,30 +885,28 @@ class _LayerStackPaintPass {
           // safety-net walk (rasterScale = the device scale) draws the
           // level its residual leaves.
           level: displayLevelOf(rasterScale),
+          // 🚨TS1: the selection's FLOAT belongs here, right on top of
+          // the surface it was lifted out of and UNDER everything
+          // above that row. Drawn inside this slot's clip and its
+          // effects/opacity buffer, because the pixels are that
+          // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
+          // half-opacity row previews a transform at half opacity,
+          // which is what the commit will look like.
+          //
+          // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
+          // float is CANVAS space, so for a posed row the wrap is undone
+          // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
+          // was right only while the lift took canvas coordinates as the
+          // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
+          //
+          // ↩️F-240: it is handed to the surface's own paint rather than
+          // drawn here after it — below 100% the surface draws level
+          // tiles, and a float laid over them 1:1 at `none` was sampled one
+          // pixel in two, so it looked sharper than what it landed as.
+          float: float == null
+              ? null
+              : (preview: float, canvasToRow: _slotFromCanvas),
         );
-      // 🚨TS1: the selection's FLOAT belongs here, right on top of
-      // the surface it was lifted out of and UNDER everything
-      // above that row. Drawn inside this slot's clip and its
-      // effects/opacity buffer, because the pixels are that
-      // layer's pixels — 유저 확정 A: 「프리뷰는 원래 그런거」, so a
-      // half-opacity row previews a transform at half opacity,
-      // which is what the commit will look like.
-      //
-      // ⚠️Inside the POSE wrap as well (the whole switch is) — and the
-      // float is CANVAS space, so for a posed row the wrap is undone
-      // for it ([_slotFromCanvas]). ↩️It used to ride the wrap, which
-      // was right only while the lift took canvas coordinates as the
-      // row's own and moved the wrong pixels (a-marquee-on-a-posed-row).
-      final float = _painter.floatOverlay?.value;
-      final intoSlot = _slotFromCanvas;
-      if (float != null && intoSlot != null) {
-        into.save();
-        into.transform(intoSlot.storage);
-        float.paintInto(into);
-        into.restore();
-      } else {
-        float?.paintInto(into);
-      }
       into.restore();
     }
 
@@ -871,13 +927,16 @@ class _LayerStackPaintPass {
     // wears a blend that is not srcOver (a stamp ghost, a lifted float):
     // a brush or eraser stroke on the same row showed nothing either way
     // and its frame cost did not move (median UI 1.6 vs 1.4 ms).
+    // ⚠️Since F-243 an advanced blend on the row itself is buffered too
+    // (see `needsBuffer`), so a multiply or screen row pays it on every
+    // paint — the price of being the one image every other such row is.
     final blendsAsImage =
         needsBuffer && activePaint.blendMode != BlendMode.srcOver;
     if (activePlan.preSteps.isNotEmpty || blendsAsImage) {
       drawSubtreeAsImage(
         canvas: canvas,
         bounds: effectBufferBounds(
-          _bufferBoundsFor(node, _activeSurfaceExtent),
+          _activeSlotBufferBounds(row),
           activePlan.outsetPixels,
         ),
         rasterScale: rasterScale,
@@ -1066,7 +1125,7 @@ class _LayerStackPaintPass {
     return (
       at: at,
       rasterPays: rasterPays,
-      rasterRect: _wholeBufferPixelsOutward(_bakeExtent),
+      rasterRect: wholeLevelPixelsOutward(_bakeExtent, _level),
     );
   }
 
@@ -1152,22 +1211,6 @@ class _LayerStackPaintPass {
     _paintSplit(into, _painter.nodes, 0, rasterScale);
   }
 
-  /// [bounds] grown out to whole BUFFER pixels — canvas pixels at level 0,
-  /// 2^[_level] canvas pixels below 100% — the grid the display buffer is
-  /// made on, and the backdrop raster inside it with it, so the raster
-  /// lands 1:1 on the buffer's pixels whichever of the two rects is larger.
-  /// A rect on this grid is also what makes a carry exact: two buffers of
-  /// one level are offset by whole buffer pixels.
-  Rect _wholeBufferPixelsOutward(Rect bounds) {
-    final step = _levelStep;
-    return Rect.fromLTRB(
-      (bounds.left / step).floorToDouble() * step,
-      (bounds.top / step).floorToDouble() * step,
-      (bounds.right / step).ceilToDouble() * step,
-      (bounds.bottom / step).ceilToDouble() * step,
-    );
-  }
-
   /// Rasterises [_paintContent] over [bounds] at CANVAS resolution — at the
   /// display's level below 100% ([_level]) — or null when the stack should
   /// just paint itself onto the screen.
@@ -1191,7 +1234,7 @@ class _LayerStackPaintPass {
     // Whole pixels, and the DESTINATION is the rounded rect too — a src/dst
     // pair that disagree by a fraction of a pixel would resample the buffer
     // a second time and undo the point of having it.
-    final rect = _wholeBufferPixelsOutward(bounds);
+    final rect = wholeLevelPixelsOutward(bounds, _level);
     final width = (rect.width / _levelStep).round();
     final height = (rect.height / _levelStep).round();
     if (width <= 0 || height <= 0) {
@@ -1360,7 +1403,7 @@ class _LayerStackPaintPass {
         _displayScale != _displayScale.roundToDouble()) {
       return false;
     }
-    final region = _wholeBufferPixelsOutward(dirty);
+    final region = wholeLevelPixelsOutward(dirty, _level);
     final onPaper =
         _painter.paintPaper &&
         _painter.paperBackground.paintedArgb >>> 24 == 0xFF &&
@@ -1608,7 +1651,7 @@ class _LayerStackPaintPass {
         ..filterQuality = ui.FilterQuality.none
         ..isAntiAlias = false,
     );
-    _recomposeOverCarried(into, [_wholeBufferPixelsOutward(dirty)]);
+    _recomposeOverCarried(into, [wholeLevelPixelsOutward(dirty, _level)]);
   }
 
   /// Carries the overlap of the previous buffer ([scroll]) into [rect]
@@ -1652,7 +1695,7 @@ class _LayerStackPaintPass {
       if (overlap.right < rect.right)
         Rect.fromLTRB(overlap.right, overlap.top, rect.right, overlap.bottom),
       if (dirty != null && !dirty.intersect(overlap).isEmpty)
-        _wholeBufferPixelsOutward(dirty).intersect(overlap),
+        wholeLevelPixelsOutward(dirty, _level).intersect(overlap),
     ];
     var area = 0.0;
     for (final band in bands) {

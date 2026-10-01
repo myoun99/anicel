@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/property_track.dart' show PropertyKeyInterpolation;
 import '../../models/layer_id.dart';
 import '../../models/media_asset.dart' show mediaFileName;
+import '../../models/se_line_type.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../services/project_lookup.dart' show layerAnywhereOrNull;
 import '../editor_command_actions.dart' show createActiveInstance;
@@ -18,12 +19,15 @@ import '../dialogs/instruction_event_dialog.dart';
 import '../dialogs/instruction_set_editor_dialog.dart';
 import '../dialogs/rename_frame_dialog.dart';
 import '../dialogs/se_instance_dialog.dart';
+import '../dialogs/start_number_window.dart';
 import '../editor_session_manager.dart';
-import '../export/export_settings_modules.dart'
-    show ExportPillItem, ExportPillStrip;
+import '../session/block_naming.dart' show AutoNamePlan;
 import '../text/app_strings.dart';
+import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
+import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
+import 'toolbar_panel_context.dart' show ToolbarPanelContext;
 
 /// THE instance editor, in one place: what a double-tap on a cell opens, and
 /// what the frame pill's `Edit Instance` opens at the playhead.
@@ -257,13 +261,17 @@ Future<void> _editSeLabel(
     context,
     initialSeName: session.seEntries.selectedFrameSeName ?? '',
     initialDialogue: session.selectedFrameName ?? '',
+    initialSeType: session.seEntries.selectedFrameSeType,
     linkedAudio: [
       for (final entry in linked)
         _audioLink(session, entry.clip, entry.index, blockFrames),
     ],
     previewAxis: previewAxis,
-    commit: (dialogue, seName) =>
-        session.seEntries.updateSelectedSeEntry(dialogue: dialogue, seName: seName),
+    commit: (dialogue, fields) => session.seEntries.updateSelectedSeEntry(
+      dialogue: dialogue,
+      seName: fields.seName,
+      seType: fields.seType,
+    ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
     unlink: session.audioClips.unlinkAudioClipsFromActiveLayer,
@@ -377,17 +385,18 @@ Future<void> editSeEntryInstance(
     context,
     initialSeName: entry.seName ?? '',
     initialDialogue: entry.name ?? '',
+    initialSeType: entry.seType,
     linkedAudio: [
       for (var index = 0; index < layer.audioClips.length; index += 1)
         if (layer.audioClips[index].frameId == entryId)
           _audioLink(session, layer.audioClips[index], index, block.length),
     ],
     previewAxis: previewAxis,
-    commit: (dialogue, seName) => session.seEntries.updateSeEntryForLayer(
+    commit: (dialogue, fields) => session.seEntries.updateSeEntryForLayer(
       layerId,
       entryId,
       dialogue: dialogue,
-      seName: seName,
+      fields: fields,
     ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),
@@ -402,9 +411,10 @@ Future<void> _editSeEntryWithDialog(
   BuildContext context, {
   required String initialSeName,
   required String initialDialogue,
+  required SeLineType initialSeType,
   required List<SeInstanceAudioLink> linkedAudio,
   required Axis previewAxis,
-  required void Function(String dialogue, String? seName) commit,
+  required void Function(String dialogue, SeEntryFields fields) commit,
   required void Function(int token, int offsetFrames) setOffset,
   required void Function(Iterable<int> tokens) unlink,
 }) async {
@@ -414,6 +424,7 @@ Future<void> _editSeEntryWithDialog(
       creating: false,
       initialSeName: initialSeName,
       initialDialogue: initialDialogue,
+      initialSeType: initialSeType,
       previewAxis: previewAxis,
       linkedAudio: linkedAudio,
     ),
@@ -424,7 +435,7 @@ Future<void> _editSeEntryWithDialog(
 
   final seName = result.seName.isEmpty ? null : result.seName;
   // SE edits never hit the link-conflict flow (duplicates allowed).
-  commit(result.dialogue, seName);
+  commit(result.dialogue, (seName: seName, seType: result.seType));
   // ⚠️The offsets BEFORE the unlink: a token is the clip's index, and taking
   // a sound off shifts every index after it.
   for (final MapEntry(key: token, value: offset)
@@ -457,7 +468,13 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
   BuildContext context,
   EditorSessionManager session,
   Axis previewAxis,
-  ({CameraInstructionSet set, InstructionEvent covering, bool editsSet}) span,
+  ({
+    CameraInstructionSet set,
+    InstructionEvent covering,
+    bool editsSet,
+    InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
+  })
+  span,
 ) => showDialogVerb<InstructionEventDialogResult>(
   context,
   (dialogContext) => InstructionEventDialog(
@@ -472,6 +489,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
         ? () => _editInstructionSet(dialogContext, session)
         : null,
     previewAxis: previewAxis,
+    namedByItsCuts: span.namedByItsCuts,
   ),
 );
 
@@ -495,6 +513,7 @@ typedef _SpanRow = ({
   MapEntry<int, InstructionEvent>? covering,
   CameraInstructionSet set,
   bool editsSet,
+  InstructionEvent Function(InstructionEvent draft)? namedByItsCuts,
   void Function()? create,
   void Function() remove,
   int Function(InstructionEvent covering) length,
@@ -516,6 +535,7 @@ Future<void> _editSpanInstance(
     set: row.set,
     covering: covering.value,
     editsSet: row.editsSet,
+    namedByItsCuts: row.namedByItsCuts,
   ));
   if (result == null) {
     return;
@@ -550,6 +570,8 @@ Future<void> _editInstructionEvent(
   covering: session.instructionVerbs.instructionSpanAt(layerId, frameIndex),
   set: session.camera.cameraInstructionSet,
   editsSet: true,
+  // A direction's writing is the user's: its ends are what the camera does.
+  namedByItsCuts: null,
   // F-105: this is the Edit button's door too — an empty direction cell is
   // created by the double tap's fork and the ＋ ([createActiveInstance]).
   create: null,
@@ -595,10 +617,22 @@ Future<void> editTransitionSpanInstance(
   Axis previewAxis = Axis.horizontal,
 }) {
   final frame = globalFrame ?? session.editingGlobalFrame;
+  final covering = session.transitions.transitionSpanAt(frame);
   return _editSpanInstance(context, session, previewAxis, (
-    covering: session.transitions.transitionSpanAt(frame),
+    covering: covering,
     set: session.transitions.transitionInstructionSet,
     editsSet: false,
+    // F-229: a transition's targets are certain — the window previews the
+    // names its row will show, measured across the span's REAL length (the
+    // preview draws a draft of its own), and writes none of them.
+    namedByItsCuts: covering == null
+        ? null
+        : (draft) => session.transitions.names
+              .eventShownAt(
+                covering.key,
+                draft.copyWith(length: covering.value.length),
+              )
+              .copyWith(length: draft.length),
     create: null,
     remove: () => session.transitions.removeTransitionSpanAt(frame),
     // LENGTH is not taken from the dialog. The grips own it, so a re-pick
@@ -644,65 +678,45 @@ Future<void> _editInstructionSet(
   commit: session.camera.updateCameraInstructionSet,
 );
 
-/// A lane KEY's name — the frame-name flow said of a keyframe, down to the
-/// dialog and the confirmation: the same rename prompt, the same
-/// [FrameNameConflictDialog] when the name is taken, and joining ADOPTS the
-/// value that name already holds instead of imposing this key's (user
-/// 2026-08-10: "프레임블록이랑 같은 규칙이면됨").
+/// THE NAME-THEN-OFFER-TO-LINK FLOW, once: ask, attempt the naming, and
+/// when a name is already taken ask ONCE — never once per key, never once
+/// per drawing — whether to join what holds it, listing what the join takes.
 ///
-/// An emptied field UN-names the key, which is the only way back to an
-/// ordinary unlinked one.
-/// THE RENAME-THEN-OFFER-TO-LINK FLOW, once: prompt for the name, attempt
-/// the rename, and when the name is already taken ask ONCE — never once per
-/// key — whether to join what holds it.
+/// The three presses that wear it — a frame's rename, a lane key's and
+/// 자동 이름 지정 (I-18) — differ only in the question they ask, in what the
+/// naming hands back when it collides (the conflicting [FrameId] for a
+/// frame, the taken name for a key, the whole plan for a press — one
+/// nullable conflict token either way), in the lines that conflict lists
+/// and in which link verb takes it. All are collaborators, not modes; this
+/// template is the ONE place holding the guard between the two windows.
 ///
-/// The two rows that wear it differ only in what the rename verb hands
-/// back when it collides ([bool] for a lane key, the conflicting
-/// [FrameId] for a frame — one nullable conflict token either way) and in
-/// which link verb takes it. Both are collaborators, not modes; this
-/// template is the ONE place holding the guard between the two dialogs.
-///
-/// The prompt's `fieldTrailing` is content confirmed alongside the name —
-/// the key window's TYPE — built with the window's own setState so it can
-/// show its pick. `onConflict` holds the two answers to the question:
-/// `join` takes the name that is taken, and `decline` is what the flow
-/// still owes when the user keeps the name as it was — the part of the
-/// window that did not collide.
-Future<void> _renameThenOfferLink<T extends Object>(
+/// `onConflict` holds the list and the two answers to the question: `join`
+/// takes the name that is taken, and `decline` is what the flow still owes
+/// when the user keeps the name as it was — the part of the window that did
+/// not collide.
+Future<void> _nameThenOfferLink<A extends Object, C extends Object>(
   BuildContext context, {
+  required Future<A?> Function() ask,
+  required C? Function(A answer) name,
   required ({
-    String initialName,
-    String? title,
-    String? fieldLabel,
-    Widget Function(StateSetter setLocal)? fieldTrailing,
+    List<String> Function(C conflict) lines,
+    void Function(C conflict) join,
+    VoidCallback? decline,
   })
-  prompt,
-  required T? Function(String nextName) rename,
-  required ({void Function(T conflict) join, VoidCallback? decline})
   onConflict,
 }) async {
-  final nextName = await showDialogVerb<String>(
-    context,
-    (_) => StatefulBuilder(
-      builder: (context, setLocal) => RenameFrameDialog(
-        initialName: prompt.initialName,
-        title: prompt.title,
-        fieldLabel: prompt.fieldLabel,
-        fieldTrailing: prompt.fieldTrailing?.call(setLocal),
-      ),
-    ),
-  );
-  if (nextName == null) {
+  final answer = await ask();
+  if (answer == null) {
     return;
   }
-  final conflict = rename(nextName);
+  final conflict = name(answer);
   if (conflict == null || !context.mounted) {
     return;
   }
-  // Asked ONCE for the whole range, never once per key.
+  // Asked ONCE for the whole press, never once per key or per drawing.
   final shouldLink = await showDialogVerb<bool>(
     context,
-    (_) => const FrameNameConflictDialog(),
+    (_) => FrameNameConflictDialog(targets: onConflict.lines(conflict)),
   );
   if (shouldLink != true) {
     onConflict.decline?.call();
@@ -711,11 +725,45 @@ Future<void> _renameThenOfferLink<T extends Object>(
   onConflict.join(conflict);
 }
 
+/// The rename prompt a frame and a lane key ask their name with. Its
+/// `fieldTrailing` is content confirmed alongside the name — the key
+/// window's TYPE — built with the window's own setState so it can show its
+/// pick.
+Future<String?> _askName(
+  BuildContext context,
+  ({
+    String initialName,
+    String? title,
+    String? fieldLabel,
+    Widget Function(StateSetter setLocal)? fieldTrailing,
+  })
+  prompt,
+) => showDialogVerb<String>(
+  context,
+  (_) => StatefulBuilder(
+    builder: (context, setLocal) => RenameFrameDialog(
+      initialName: prompt.initialName,
+      title: prompt.title,
+      fieldLabel: prompt.fieldLabel,
+      fieldTrailing: prompt.fieldTrailing?.call(setLocal),
+    ),
+  ),
+);
+
+/// A lane KEY's name — the frame-name flow said of a keyframe, down to the
+/// dialog and the confirmation: the same rename prompt, the same
+/// [FrameNameConflictDialog] when the name is taken, and joining ADOPTS the
+/// value that name already holds instead of imposing this key's (user
+/// 2026-08-10: "프레임블록이랑 같은 규칙이면됨").
+///
+/// An emptied field UN-names the key, which is the only way back to an
+/// ordinary unlinked one.
 Future<void> _renameLaneKey(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  if (!session.laneVerbs.canNameLaneKeys) {
+  final lane = session.laneVerbs.laneVerbRange;
+  if (lane == null || !session.laneVerbs.canNameLaneKeys) {
     return Future<void>.value();
   }
   final strings = AppText.strings;
@@ -732,9 +780,9 @@ Future<void> _renameLaneKey(
   // link, so re-stating it is no longer free).
   final agreed = session.laneVerbs.laneKeyInterpolationForSelection;
   PropertyKeyInterpolation? picked;
-  return _renameThenOfferLink<String>(
+  return _nameThenOfferLink<String, String>(
     context,
-    prompt: (
+    ask: () => _askName(context, (
       // What the covered keys already AGREE on; blank when they disagree,
       // the same thing the group header says with its `…`.
       initialName: session.laneVerbs.laneKeyNameForSelection ?? '',
@@ -744,13 +792,13 @@ Future<void> _renameLaneKey(
         selected: picked ?? agreed,
         onPicked: (kind) => setLocal(() => picked = kind),
       ),
-    ),
+    )),
     // The RANGE form is the only one called: a single key is the one-frame
     // span at the playhead, so naming one and naming five is the same verb
     // (user 2026-08-10, "선택범위로 통하는 조작이 모두 다른것들이랑 동일한
     // 로직"). The covered keys of a lane land on ONE value, which is what a
     // shared name means.
-    rename: (nextName) {
+    name: (nextName) {
       final trimmed = nextName.trim();
       return session.laneVerbs.setLaneKeyNamesForSelection(
             trimmed.isEmpty ? null : trimmed,
@@ -760,6 +808,12 @@ Future<void> _renameLaneKey(
           : null;
     },
     onConflict: (
+      // A key names no drawing of its own: the row its lanes are on is
+      // where the keys the join re-values sit.
+      lines: (_) => rowPlaceLines(
+        session.repository.requireProject(),
+        lane.layerId,
+      ),
       join: (name) => session.laneVerbs.linkLaneKeyNamesForSelection(
         name,
         interpolation: picked,
@@ -784,13 +838,13 @@ Widget _keyInterpolationPills({
   required ValueChanged<PropertyKeyInterpolation> onPicked,
 }) {
   final strings = AppText.strings;
-  return ExportPillStrip(
+  return PillStrip(
     items: [
       for (final (kind, label) in [
         (PropertyKeyInterpolation.linear, strings.keyInterpolationLinear),
         (PropertyKeyInterpolation.hold, strings.keyInterpolationHold),
       ])
-        ExportPillItem(
+        PillItem(
           keyValue: 'rename-key-interpolation-${kind.name}',
           label: label,
           selected: selected == kind,
@@ -804,18 +858,69 @@ Future<void> _renameSelectedFrame(
   BuildContext context,
   EditorSessionManager session,
 ) {
-  if (session.selectedFrame == null || !session.frameVerbs.canRenameFrameAtCurrentFrame) {
+  final layer = session.activeLayer;
+  final frame = session.selectedFrame;
+  if (layer == null ||
+      frame == null ||
+      !session.frameVerbs.canRenameFrameAtCurrentFrame) {
     return Future<void>.value();
   }
-  return _renameThenOfferLink<FrameId>(
+  return _nameThenOfferLink<String, FrameId>(
     context,
-    prompt: (
+    ask: () => _askName(context, (
       initialName: session.selectedFrameName ?? '',
       title: null,
       fieldLabel: null,
       fieldTrailing: null,
+    )),
+    name: session.frameVerbs.renameSelectedFrame,
+    onConflict: (
+      // The one frame a single rename links: the one being renamed.
+      lines: (_) => drawingPlaceLines(
+        session.repository.requireProject(),
+        layer.id,
+        [frame.id],
+      ),
+      join: session.frameVerbs.linkSelectedFrame,
+      decline: null,
     ),
-    rename: session.frameVerbs.renameSelectedFrame,
-    onConflict: (join: session.frameVerbs.linkSelectedFrame, decline: null),
+  );
+}
+
+/// 🗣️I-18 — 자동 이름 지정, pressed on [panel]: the window asks the number
+/// the first block takes, and the panel's targets are numbered from it.
+///
+/// The targets are read at the ANSWER, not at the press
+/// ([ToolbarPanelContext.autoNameTargets]): the window stood between, and
+/// what is numbered is what stands selected when the number is given. A new
+/// name held outside the press asks first, listing every drawing a join
+/// discards — Link writes the names and the joins as ONE undo step, Cancel
+/// writes nothing.
+Future<void> autoNameWithWindow(
+  BuildContext context,
+  EditorSessionManager session, {
+  required ToolbarPanelContext panel,
+}) {
+  final naming = session.blockNaming;
+  return _nameThenOfferLink<int, AutoNamePlan>(
+    context,
+    ask: () => showDialogVerb<int>(context, (_) => const StartNumberWindow()),
+    name: (start) {
+      final targets = panel.autoNameTargets;
+      if (targets == null) {
+        return null;
+      }
+      final plan = naming.plan(targets, from: start);
+      if (plan.hasJoins) {
+        return plan;
+      }
+      naming.apply(plan);
+      return null;
+    },
+    onConflict: (
+      lines: (plan) => plan.joinLines,
+      join: naming.apply,
+      decline: null,
+    ),
   );
 }

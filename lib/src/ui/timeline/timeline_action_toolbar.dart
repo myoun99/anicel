@@ -2,12 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/pixel_clipboard_verb.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
@@ -17,6 +19,7 @@ import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
+import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'rasterize_reference_rows.dart';
 import 'timeline_section_policy.dart';
@@ -27,7 +30,8 @@ import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart';
-import '../dialogs/app_prompt_dialog.dart';
+import '../widgets/app_window.dart';
+import '../widgets/frame_count_field.dart';
 
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies
 /// it to the selection (or the current block). Shared by the toolbar's N
@@ -41,28 +45,83 @@ Future<void> showTimelineCommaCountDialog(
   EditorSessionManager session, {
   ToolbarPanelContext? panel,
 }) async {
-  final strings = AppText.strings;
-  final entered = await showDialog<String>(
+  final comma = await showDialog<int>(
     context: context,
-    builder: (context) => AppPromptDialog(
-      windowKey: const ValueKey<String>('set-comma-n-dialog'),
-      title: strings.setCommasTitle,
-      titleIcon: Icons.timelapse_outlined,
-      fieldLabel: strings.setCommasField,
-      initialValue: '',
-      confirmLabel: strings.commonApply,
-      numeric: true,
-      fieldKey: const ValueKey<String>('set-comma-n-field'),
-      confirmKey: const ValueKey<String>('set-comma-n-apply'),
+    builder: (context) => _CommaCountWindow(
+      framesPerSecond: session.projectSettings.projectFrameRate.countingBase,
+      // 🗣️I-24-open-entry-Q1 (유저 2026-10-01): 「마지막에 쓴 방식으로 연다」
+      // — the entry last switched to, kept as an app setting so a restart
+      // keeps it too.
+      entry: AppFrameCountSettings.settings.value.lastEntry,
+      onEntryChanged: (entry) => session.appSettings.setFrameCountSettings(
+        AppFrameCountSettings(lastEntry: entry),
+      ),
     ),
   );
-  final comma = int.tryParse(entered ?? '');
   if (comma != null && comma >= 1) {
     if (panel != null) {
       panel.setComma(comma);
     } else {
       session.exposureVerbs.setCommaForSelectionOrCurrent(comma);
     }
+  }
+}
+
+/// The N-comma window: the count typed as frames or as seconds+frames
+/// ([FrameCountField], I-24), popped as frames.
+class _CommaCountWindow extends StatefulWidget {
+  const _CommaCountWindow({
+    required this.framesPerSecond,
+    required this.entry,
+    required this.onEntryChanged,
+  });
+
+  final int framesPerSecond;
+
+  /// The entry the window opens on.
+  final FrameCountEntry entry;
+  final ValueChanged<FrameCountEntry> onEntryChanged;
+
+  @override
+  State<_CommaCountWindow> createState() => _CommaCountWindowState();
+}
+
+class _CommaCountWindowState extends State<_CommaCountWindow> {
+  int? _count;
+
+  void _apply() => Navigator.of(context).pop(_count);
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppText.strings;
+    return AppWindow(
+      windowKey: const ValueKey<String>('set-comma-n-dialog'),
+      title: strings.setCommasTitle,
+      titleIcon: Icons.timelapse_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 300,
+      body: FrameCountField(
+        keyPrefix: 'set-comma-n',
+        label: strings.setCommasField,
+        framesPerSecond: widget.framesPerSecond,
+        onChanged: (count) => _count = count,
+        onSubmitted: _apply,
+        initialEntry: widget.entry,
+        onEntryChanged: widget.onEntryChanged,
+      ),
+      actions: [
+        AppWindowAction(
+          label: strings.commonCancel,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('set-comma-n-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: _apply,
+        ),
+      ],
+    );
   }
 }
 
@@ -482,13 +541,9 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: serves && session.layerVerbs.canLinkDuplicateActiveLayer,
         onSelected: session.layerVerbs.linkDuplicateActiveLayer,
       ),
-      PanelFlyoutItem(
-        keyValue: 'timeline-unlink-layer-button',
-        label: AppText.strings.tlUnlinkLayer,
-        icon: Icons.link_off,
-        enabled: serves && session.layerVerbs.canUnlinkActiveLayer,
-        onSelected: session.layerVerbs.unlinkActiveLayer,
-      ),
+      // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
+      // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
+      // link window, and its button unlinks.
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
@@ -577,9 +632,13 @@ class TimelineActionToolbar extends StatelessWidget {
   /// 하고싶음」 — the buttons match the colour exactly, and the graded
   /// version is the Delete Color / Keep Color EFFECT.
   ///
-  /// Every item is live whenever the head is: they share one gate
-  /// ([EditorSessionManager.canRunPixelVerb]) and there is no way to open
-  /// the list without passing it.
+  /// ↩️The four were live whenever the head was — one gate for all of them.
+  /// I-55 put a second kind of verb in the list, so the head opens when any
+  /// row can run (`canOpenColourEdit`) and each row dims on its own gate:
+  /// the four on theirs, the clipboard rows on theirs.
+  ///
+  /// 🗣️I-55 (유저 2026-10-01): 「색편집버튼에 새 기능으로서 … 픽셀복사/픽셀
+  /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
   List<PanelFlyoutEntry> _colourEditEntries() => [
     PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
     for (final verb in CelPixelVerb.values)
@@ -603,7 +662,26 @@ class TimelineActionToolbar extends StatelessWidget {
           CelPixelVerb.keepColour => Icons.colorize_outlined,
         },
         shortcuts: [pixelVerbActionIdFor(verb)],
-        onSelected: () => session.cells.runPixelVerb(verb),
+        enabled: session.pixelVerbs.canRunPixelVerb,
+        onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+      ),
+    const PanelFlyoutDivider(),
+    for (final verb in PixelClipboardVerb.values)
+      PanelFlyoutItem(
+        keyValue: switch (verb) {
+          PixelClipboardVerb.copy => 'shared-copy-pixels-button',
+          PixelClipboardVerb.pasteAbove => 'shared-paste-pixels-above-button',
+          PixelClipboardVerb.pasteBelow => 'shared-paste-pixels-below-button',
+        },
+        label: editorActionLabel(pixelClipboardActionIdFor(verb)),
+        icon: switch (verb) {
+          PixelClipboardVerb.copy => Icons.content_copy,
+          PixelClipboardVerb.pasteAbove => Icons.flip_to_front,
+          PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
+        },
+        shortcuts: [pixelClipboardActionIdFor(verb)],
+        enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
+        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
       ),
   ];
 
@@ -855,6 +933,9 @@ class TimelineActionToolbar extends StatelessWidget {
       // cursor gate carry `canRunPixelVerb`); this listener stays for the cel
       // emptied in place.
       session.layerStack.celTintRevision,
+      // I-55: and the pixel board — a copy fills it without moving anything
+      // above, and the two pastes open behind it.
+      session.appClipboard.pixels,
     ]),
     builder: (context, _) => _sharedPillBody(),
   );
@@ -877,10 +958,12 @@ class TimelineActionToolbar extends StatelessWidget {
       // reason the delete reads `deleteSubject` — the button's enablement
       // and what the press DOES have to come from one answer.
       onEditInstance != null && panelContext.canEditInstance,
-      // The two pixel verbs read the same one-question gate their press runs.
-      session.cells.canRunPixelVerb,
+      // The 색 편집 head reads the gate its rows open behind.
+      session.pixelVerbs.canOpenColourEdit,
       // I-45: the link-independent button, from its own one answer.
       panelContext.canUnlink,
+      // I-18: 자동 이름 지정, likewise.
+      panelContext.canAutoName,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -914,6 +997,24 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: onEditInstance != null && panelContext.canEditInstance
               ? onEditInstance
               : null,
+        ),
+        // 🗣️I-18 — 자동 이름 지정, beside Edit (유저: 「타임라인 공용 알약에
+        // 새 버튼 신설. 내용은 블록 이름 자동편집으로 … 버튼은 자동 이름
+        // 지정」). It asks what is selected, the pill's one ladder, and
+        // numbers what the panel names from the number its window asks for.
+        // A context of its own: the window opens from where it was pressed.
+        Builder(
+          builder: (context) => _iconButton(
+            key: const ValueKey<String>('shared-auto-name-button'),
+            tooltip: editorActionLabel(EditorActionIds.editAutoName),
+            shortcuts: const [EditorActionIds.editAutoName],
+            icon: Icons.format_list_numbered,
+            onPressed: panelContext.canAutoName
+                ? () => unawaited(
+                    autoNameWithWindow(context, session, panel: panelContext),
+                  )
+                : null,
+          ),
         ),
         const PillDivider(),
         // 🚨T3 신설 — 잘라내기, 「복사 버튼 왼쪽」 (유저 2026-08-13).
@@ -1008,7 +1109,7 @@ class TimelineActionToolbar extends StatelessWidget {
             key: const ValueKey<String>('shared-colour-edit-button'),
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
-            onPressed: session.cells.canRunPixelVerb
+            onPressed: session.pixelVerbs.canOpenColourEdit
                 ? () => showPanelFlyout(context, entries: _colourEditEntries())
                 : null,
           ),

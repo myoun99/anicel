@@ -7,11 +7,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/bitmap_surface.dart';
-import 'package:anicel/src/models/brush_bitmap_materialization_history_state.dart';
-import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -26,6 +22,7 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
+import '../../helpers/blank_cel.dart';
 
 /// The interactive canvas STAYS MOUNTED as the playhead crosses "no cel ↔
 /// cel". It used to be swapped for a blank box whenever the frame under
@@ -267,7 +264,7 @@ void main() {
     // view is mounted and standing down — the case the fix is about.
     expect(hasCel(tester), isFalse);
     expect(
-      session.layerContentBoundsAt(layer(), 4),
+      session.renderCaches.layerContentBoundsAt(layer(), 4),
       isNull,
       reason: 'nothing is on this frame yet',
     );
@@ -290,7 +287,7 @@ void main() {
       reason: '「빈 칸에서 펜다운하면 블록이 자동생성되고」',
     );
     expect(
-      session.layerContentBoundsAt(layer(), 4),
+      session.renderCaches.layerContentBoundsAt(layer(), 4),
       isNotNull,
       reason: '「그대로 스트로크 그려지기시작」 — the half that was missing',
     );
@@ -326,7 +323,7 @@ void main() {
     final standingOn = tester
         .widget<InteractiveBrushEditCanvasView>(canvasView)
         .frameId;
-    expect(session.pixelEditingCoordinator, isNull);
+    expect(session.pixelEditing.coordinator, isNull);
 
     final press = await tester.startGesture(
       visibleCanvasPoint(tester),
@@ -346,7 +343,7 @@ void main() {
       reason: '「블록은 생기는데」 — the block half already works',
     );
     expect(
-      session.layerContentBoundsAt(layer(), frame),
+      session.renderCaches.layerContentBoundsAt(layer(), frame),
       isNotNull,
       reason: '「그 가장 처음 상태만 선이 안그어짐」 — the first stroke lands too',
     );
@@ -357,7 +354,7 @@ void main() {
           'left standing on a name nothing uses',
     );
     expect(
-      session.pixelEditingCoordinator?.activeFrameKey.frameId,
+      session.pixelEditing.coordinator?.activeFrameKey.frameId,
       standingOn,
       reason: 'and the stack is the session\'s once it stands on a cel',
     );
@@ -385,6 +382,7 @@ void main() {
 
     session.selectFrameIndex(4);
     await tester.pumpAndSettle();
+    final entriesBefore = session.historyManager.undoCount;
 
     final press = await tester.startGesture(
       visibleCanvasPoint(tester),
@@ -396,6 +394,14 @@ void main() {
     await press.up();
     await tester.pumpAndSettle();
     expect(layer().timeline.length, drawnBefore + 1);
+    // ⚠️Counted, because the length alone cannot tell: a block no stroke
+    // claimed is filed as its own entry after the stroke's, and undoing
+    // THAT restores the length too — with the ink still on the stack.
+    expect(
+      session.historyManager.undoCount,
+      entriesBefore + 1,
+      reason: 'the stroke took the block it made as its own first half',
+    );
 
     session.historyManager.undo();
     await tester.pumpAndSettle();
@@ -529,7 +535,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(layer().timeline.length, blocksBefore, reason: 'a pick makes none');
-    expect(session.layerContentBoundsAt(layer(), 4), isNull);
+    expect(session.renderCaches.layerContentBoundsAt(layer(), 4), isNull);
 
     session.playbackRig.prerenderScheduler.cancel();
   });
@@ -541,15 +547,9 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: InteractiveBrushEditCanvasView(
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 64, height: 64),
-                  tileSize: 2,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
+            celNow: blankCel(
+              const CanvasSize(width: 64, height: 64),
+              tileSize: 2,
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),
@@ -613,15 +613,9 @@ void main() {
         home: Scaffold(
           body: InteractiveBrushEditCanvasView(
             key: const ValueKey<String>('brush-canvas-view'),
-            sessionState: BrushEditSessionState(
-              canvasState: CanvasSurfaceState(
-                currentSurface: BitmapSurface(
-                  canvasSize: const CanvasSize(width: 64, height: 64),
-                  tileSize: 2,
-                ),
-              ),
-              materializationHistoryState:
-                  BrushBitmapMaterializationHistoryState(),
+            celNow: blankCel(
+              const CanvasSize(width: 64, height: 64),
+              tileSize: 2,
             ),
             layerId: const LayerId('layer-a'),
             frameId: const FrameId('frame-a'),

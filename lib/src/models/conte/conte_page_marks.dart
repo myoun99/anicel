@@ -2,6 +2,7 @@
 /// all print from ([SheetMark]).
 library;
 
+import 'dart:math' as math;
 import 'dart:ui' show Offset, Rect, Size;
 
 import '../../core/contain_rect.dart';
@@ -24,16 +25,50 @@ const int _ink = conteInkArgb;
 const double conteCellTextSize = 8.5;
 
 const int _rule = 0xFF404040;
-const int _paper = 0xFFFFFFFF;
 
-/// The tone inside a picture window — the well a panel is drawn into.
-/// Light enough that a drawing over it still reads as the drawing.
-const int _well = 0xFFEDEDED;
+/// The paper — inside a picture window too: an empty window, the canvas
+/// past a picture's edge and the slot of a cut not made yet are all paper
+/// (유저 2026-09-30, H52: 「빈곳? 밖공간이나 존재안하는컷의 코마가
+/// 회색표시인데, 그냥 그런거 규칙두지말고 흰색인채로」). ↩️A window had a
+/// grey well of its own (0xFFEDEDED), and each of those showed it.
+const int _paper = 0xFFFFFFFF;
 
 /// A block's own length: small and light, so the cut's total is the number
 /// that reads (유저 2026-09-25: 「컷 전체 길이를 눈에띄게 하고싶으니까
 /// 텍스트를 연하게, 작게」).
 const int _blockLength = 0xFF8C8C8C;
+
+/// A camera's first key, frame and label — Storyboard Pro's IN green; its
+/// last key wears OUT's red (유저 2026-09-29: 「스토리보드 프로는 인을
+/// 초록색으로 실루엣이나 텍스트 그리고, 아웃을 빨간색이야」).
+const int _cameraIn = 0xFF3B6D11;
+const int _cameraOut = 0xFFA32D2D;
+
+/// A key between the first and the last: its name and the cross on its
+/// corner, in the sheet's own black (유저 2026-10-01, H55: 「작고
+/// 검정색으로? 그리고 그 색으로 키 색도 바꾸고」). ↩️The name was
+/// 0xFF5F5E5A, the grey the trails still wear.
+const int _cameraBetween = conteInkArgb;
+
+/// The trails a camera's corners draw: a grey at half its strength (유저
+/// 2026-09-30, H47: 「꼭짓점 궤도 좀 더 연하게.(불투명도 낮추는방식)」) —
+/// every printer keeps the alpha, the PDF's too. ⚠️Its own grey, no longer
+/// a key between's ink at half strength: that ink went black (H55), and
+/// the trails stay as light as H47 made them.
+const int _cameraTrail = 0x805F5E5A;
+
+const double _cameraFrameWidth = 1.2;
+const double _cameraTrailWidth = 0.8;
+const double _cameraLabelSize = 8;
+
+/// How far each arm of a key between's cross reaches from its corner, and
+/// how thick it is: small — it has one point to show (H55 「좀 작아도
+/// 알기쉬우니 작고」).
+const double _cameraCrossArm = 2.5;
+const double _cameraCrossWidth = 0.8;
+
+/// How far a key's label sits inside its frame's corner, along both sides.
+const double _cameraLabelInset = 2;
 
 /// The length a cut is being dragged to, or null to print what the layout
 /// built (F-88: the conte's numbers follow a cut-length drag).
@@ -255,11 +290,9 @@ Iterable<SheetMark> _rules(ConteSheetMetrics m) sync* {
 
 /// The silhouette: ONE black shape down the picture column with a window of
 /// the camera's own shape cut per row (유저 2026-09-25: 「검정색 사각형
-/// 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」),
-/// each window's corners rounded the app's way (「지브리콘티처럼 모서리
-/// 둥글게하자. 우리 앱 통일 모서리 따라서」 · 「카메라는 사각형이라
-/// 둥글게하면 둥근만큼 잘리잖아. 그거는 전혀 문제없고 의도한 대가야. 기존
-/// 상태에서 둥글게만」).
+/// 실루엣은 남기되 그거랑 겹친 이상한 반투명한 라인같은거 없앤단거야」) —
+/// square, as every window of the sheet is ([ConteSheetMetrics.windowRect]
+/// keeps the rounded corners it wore before).
 Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
   yield SheetFill(
     SheetPaintLayer.form,
@@ -270,8 +303,7 @@ Iterable<SheetMark> _silhouette(ConteSheetMetrics m) sync* {
     yield SheetFill(
       SheetPaintLayer.form,
       rect: m.windowRect(row),
-      argb: _well,
-      cornerRadius: m.windowRadius,
+      argb: _paper,
     );
   }
 }
@@ -366,39 +398,172 @@ Rect contePictureSlot(ContePlacedCell cell, ConteSheetMetrics m) =>
 /// [cell]'s picture as the page prints it — and as a live picture shows
 /// its corner while the brush draws into it: the camera's shape contained
 /// in the slot, the whole slot for a window of that shape.
+///
+/// A cell whose camera moves shows the canvas that camera sweeps instead
+/// ([ConteCameraWork.field] — 유저 2026-09-29: 「일단 카메라 팬대로 해당
+/// 코마에서 보여주고」), at the plan's scale ([ConteCameraPlan.scale]) from
+/// the top of its slot — a slot its own size (H48: 「위쪽정렬로 배치」).
 SheetPicture contePictureOf(ContePlacedCell cell, ConteSheetMetrics m) {
   final slot = contePictureSlot(cell, m);
+  final work = cell.source.camera;
+  final Rect frame;
+  if (work == null) {
+    frame = containRect(Size(m.cameraAspect, 1), slot);
+  } else {
+    final scale = conteCameraPlan(m, work).scale;
+    frame = Rect.fromLTWH(
+      slot.left,
+      slot.top,
+      work.field.width * scale,
+      work.field.height * scale,
+    );
+  }
   return SheetPicture(
     SheetPaintLayer.picture,
     cutId: cell.cutId,
     pictureFrame: cell.source.pictureFrame,
     slot: slot,
-    frame: containRect(Size(m.cameraAspect, 1), slot),
-    cornerRadius: m.windowRadius,
+    frame: frame,
+    canvasRegion: work?.field,
   );
 }
 
-/// The camera's labels written on [cell]'s picture — printed over the
-/// picture, and over a live picture again, where it covers them.
-Iterable<SheetMark> conteCameraLabelsOf(
-  ContePlacedCell cell,
+/// How many pixels wide [picture] renders when a window's picture renders
+/// [windowWidth] wide: as sharp on the paper as every window's, so the
+/// canvas a moving camera sweeps takes more pixels as it takes more paper
+/// (유저 2026-09-25 conte-picture-resolution-Q1: 「내보낼땐 용지가
+/// 실제크기가 꽤 크니까 그에 맞춰서 해상도 높기만하면됨」).
+int contePictureRenderWidth(
+  SheetPicture picture,
   ConteSheetMetrics m,
-) => _cameraLabels(
-  cell.source.cameraLabels,
-  contePictureSlot(cell, m).deflate(2),
+  int windowWidth,
+) => math.max(
+  1,
+  (windowWidth * picture.frame.width / m.windowRect(0).width).round(),
 );
 
+/// The camera's work written on [cell]'s picture (유저 2026-09-30) — printed
+/// over the picture, and over a live picture again, where it covers it.
+///
+/// The trail each corner of the frame draws key to key (「궤도는
+/// 중앙이아니라 각 꼭짓점 4개 전부야」); the first key's frame in IN's green
+/// and the last's in OUT's red, and no frame for a key between (「첫/끝 키
+/// 말고 중간키는 실루엣을 안그려」); every label at its frame's top-left
+/// corner, turned with the frame (「기운 틀의 모서리. 각도 그대로따라감」) —
+/// a key between is labelled where its frame would be (「원래
+/// 위치해야할곳에 위치시키고 틀만 안보이게」), its corner crossed there in
+/// black (H55). Labels may overlap (「글자 겹치는거 어쩔수없는거니까」).
+Iterable<SheetMark> conteCameraMarksOf(
+  ContePlacedCell cell,
+  ConteSheetMetrics m,
+) sync* {
+  final work = cell.source.camera;
+  if (work == null) return;
+  final shown = contePictureOf(cell, m).frame;
+  final scale = shown.width / work.field.width;
+  List<Offset> onPaper(List<Offset> points) => [
+    for (final point in points)
+      shown.topLeft + (point - work.field.topLeft) * scale,
+  ];
+  for (final trail in work.trails) {
+    yield SheetStroke(
+      SheetPaintLayer.picture,
+      points: onPaper(trail),
+      argb: _cameraTrail,
+      width: _cameraTrailWidth,
+    );
+  }
+  for (final key in work.keys) {
+    final corners = onPaper(key.corners);
+    final argb = switch (key.role) {
+      ConteCameraKeyRole.first => _cameraIn,
+      ConteCameraKeyRole.last => _cameraOut,
+      ConteCameraKeyRole.between => _cameraBetween,
+    };
+    if (key.role != ConteCameraKeyRole.between) {
+      yield SheetStroke(
+        SheetPaintLayer.picture,
+        points: corners,
+        argb: argb,
+        width: _cameraFrameWidth,
+        closed: true,
+      );
+    }
+    if (key.label case final label?) {
+      if (key.role == ConteCameraKeyRole.between) {
+        yield* _cameraCross(corners);
+      }
+      yield _cameraLabel(label, corners, argb);
+    }
+  }
+}
+
+/// The corner a key between's name stands at, crossed — where a trail runs
+/// straight through it, nothing else says where on the trail the name
+/// belongs (유저 2026-10-01, H55: 「s가 어딨는지 … 알기어렵잖아. 그래서
+/// 무언가 s의 꼭짓점에 표시하고싶어서. 해당 위치 꼭짓점에 십자가」). It
+/// goes with the name, and turns with the frame as the name does.
+Iterable<SheetStroke> _cameraCross(List<Offset> corners) sync* {
+  final (:right, :down, turn: _) = _frameAxes(corners);
+  for (final arm in [right, down]) {
+    yield SheetStroke(
+      SheetPaintLayer.picture,
+      points: [
+        corners[0] - arm * _cameraCrossArm,
+        corners[0] + arm * _cameraCrossArm,
+      ],
+      argb: _cameraBetween,
+      width: _cameraCrossWidth,
+    );
+  }
+}
+
+/// Which way the frame [corners] draw runs from its top-left corner —
+/// along its top side ([right]) and down its left ([down]), at [turn]
+/// radians — for what stands square to a turned frame.
+({Offset right, Offset down, double turn}) _frameAxes(List<Offset> corners) {
+  final along = corners[1] - corners[0];
+  final turn = math.atan2(along.dy, along.dx);
+  return (
+    right: Offset(math.cos(turn), math.sin(turn)),
+    down: Offset(-math.sin(turn), math.cos(turn)),
+    turn: turn,
+  );
+}
+
+/// [label] at the top-left corner of the frame [corners] draw, inside it
+/// and turned with it.
+SheetWords _cameraLabel(String label, List<Offset> corners, int argb) {
+  final along = corners[1] - corners[0];
+  final (:right, :down, :turn) = _frameAxes(corners);
+  final at = corners[0] + (right + down) * _cameraLabelInset;
+  return SheetWords(
+    SheetPaintLayer.picture,
+    text: label,
+    slot: Rect.fromLTWH(
+      at.dx,
+      at.dy,
+      math.max(0, along.distance - 2 * _cameraLabelInset),
+      _cameraLabelSize * 1.25,
+    ),
+    size: _cameraLabelSize,
+    argb: argb,
+    bold: true,
+    fit: SheetWordsFit.oneLine,
+    turn: turn,
+  );
+}
+
 /// One cell: its window grown with its camera work, its picture, the
-/// camera's labels and its two text columns.
+/// camera's work written on it and its two text columns.
 Iterable<SheetMark> _cell(
   ConteSheetMetrics m,
   ConteSheetSource source,
   ContePlacedCell cell,
 ) sync* {
-  final window = contePictureSlot(cell, m);
-  yield* _cameraWork(m, cell, window);
+  yield* _cameraWork(m, cell);
   yield contePictureOf(cell, m);
-  yield* conteCameraLabelsOf(cell, m);
+  yield* conteCameraMarksOf(cell, m);
   yield SheetWords(
     SheetPaintLayer.content,
     text: cell.source.action,
@@ -415,53 +580,62 @@ Iterable<SheetMark> _cell(
   );
 }
 
-/// Camera work makes the cell ONE window over its rows and into the text it
-/// claims: the black it reaches beyond the column is its own, and so is the
-/// well that covers the bars between its rows.
+/// Camera work makes the cell ONE window over its rows and into the
+/// columns it claims ([conteCameraPlan]) — a box no larger than its
+/// picture, at the top of those rows (유저 2026-09-30, H48: 「칸은 2칸공간
+/// 차지하더라도 검은칸은 필요한 만큼만」). The picture column over the
+/// cell's rows turns paper, and the box stands on it: black round a window
+/// of paper, the picture's.
 Iterable<SheetMark> _cameraWork(
   ConteSheetMetrics m,
   ContePlacedCell cell,
-  Rect window,
 ) sync* {
-  final picture = cell.pictureRect;
-  final encroaches = picture.right > m.actionLeft;
-  if (cell.source.rowSpan == 1 && !encroaches) return;
-  if (encroaches) {
-    yield SheetFill(
-      SheetPaintLayer.picture,
-      rect: Rect.fromLTRB(
-        m.actionLeft,
-        picture.top,
-        picture.right,
-        picture.bottom,
-      ),
-      argb: _ink,
-    );
-  }
+  if (cell.source.camera == null) return;
+  final box = cell.pictureRect;
+  yield* _pictureColumnPaper(
+    m,
+    box.top,
+    m.rowTop(cell.rowOnPage + cell.rowSpan),
+  );
+  yield SheetFill(SheetPaintLayer.picture, rect: box, argb: _ink);
   yield SheetFill(
     SheetPaintLayer.picture,
-    rect: window,
-    argb: _well,
-    cornerRadius: m.windowRadius,
+    rect: contePictureSlot(cell, m),
+    argb: _paper,
   );
 }
 
-/// The camera's labels, written on the picture: the first at its start, the
-/// last at its end.
-Iterable<SheetMark> _cameraLabels(List<String> labels, Rect slot) sync* {
-  if (labels.isEmpty) return;
-  SheetWords label(String text, SheetAlign at) => SheetWords(
+/// The picture column from [top] to [bottom] where no window stands — the
+/// rows a camera cell's box leaves, and the row its words moved down to:
+/// paper, its sides ruled as the head rules the column, and its foot on
+/// the page's last row (유저 2026-09-30, the page drawn and taken:
+/// 「내려갈땐 다 같이 내려가도록하자」).
+Iterable<SheetMark> _pictureColumnPaper(
+  ConteSheetMetrics m,
+  double top,
+  double bottom,
+) sync* {
+  final w = m.ruleWidth;
+  final (left, right) = (m.pictureLeft, m.actionLeft);
+  SheetRule rule(Rect rect, SheetRuleHold hold) => SheetRule(
     SheetPaintLayer.picture,
-    text: text,
-    slot: slot,
-    size: 8,
-    argb: _ink,
-    bold: true,
-    h: at,
-    v: at,
+    rect: rect,
+    argb: _rule,
+    hold: hold,
   );
-  yield label(labels.first, SheetAlign.start);
-  if (labels.length > 1) yield label(labels.last, SheetAlign.end);
+  yield SheetFill(
+    SheetPaintLayer.picture,
+    rect: Rect.fromLTRB(left, top, right, bottom),
+    argb: _paper,
+  );
+  yield rule(Rect.fromLTRB(left, top, left + w, bottom), SheetRuleHold.near);
+  yield rule(Rect.fromLTRB(right - w, top, right, bottom), SheetRuleHold.far);
+  if (bottom >= m.bodyBottom - 1e-9) {
+    yield rule(
+      Rect.fromLTRB(left, bottom - w, right, bottom),
+      SheetRuleHold.far,
+    );
+  }
 }
 
 /// The time column: each block's own length where a cut has more than one,
@@ -478,11 +652,13 @@ Iterable<SheetMark> _times(
   final fps = source.framesPerSecond;
   for (final cell in page.cells) {
     final cut = source.cutById(cell.cutId);
+    // Where the cell's words are: beside its picture, or under it with the
+    // rest of them (유저 2026-09-30: 「초수도 다음코마에 넣으면되니까」).
     final slot = Rect.fromLTRB(
       m.timeLeft,
-      m.rowTop(cell.rowOnPage),
+      cell.wordsTop,
       m.bodyRight,
-      m.rowTop(cell.rowOnPage + cell.source.rowSpan),
+      m.rowTop(cell.rowOnPage + cell.rowSpan),
     ).deflate(m.timeInset);
     final isLast = cell.cellIndex == cut.cells.length - 1;
     final total = liveFramesOf?.call(cell.cutId) ?? cut.durationFrames;

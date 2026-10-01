@@ -1,6 +1,88 @@
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/cut_id.dart';
 import '../theme/app_theme.dart';
+import 'timeline_cut_end_handle.dart';
+import 'timeline_drag_preview.dart';
+import 'timeline_frame_range_policy.dart' show timelineCutEndBoundaryX;
+import 'timeline_grid_metrics.dart';
+
+/// The のりしろ mark a frame ruler draws — the timeline's ruler and the
+/// X-sheet's rail alike — riding the drag in flight.
+///
+/// Its margin is ASKED ([noriShiro]) wherever the drag is heard, so the line
+/// and the name across it ride a transition span dragged over the cut's
+/// boundary as they ride a trim. ↩️Both surfaces were handed the margin
+/// when the host built, and the host never rebuilds for a drag step — the
+/// ruler stood on the committed margin until the release
+/// (`ruler-norishiro-follows-drags`), and the rail did not follow even a
+/// trim.
+class TimelineRulerNoriShiro extends StatelessWidget {
+  const TimelineRulerNoriShiro({
+    super.key,
+    required this.dragPreview,
+    required this.cutId,
+    this.movieEndUnder,
+    required this.playbackFrameCount,
+    required this.noriShiro,
+    required this.metrics,
+    this.axis = Axis.horizontal,
+  });
+
+  /// The drag channel; null draws the committed mark.
+  final ValueListenable<TimelineDragPreview?>? dragPreview;
+
+  /// The cut whose end the mark follows under a trim — or, on a surface
+  /// whose end is the movie's, [movieEndUnder]. With neither, no drag moves
+  /// the mark.
+  final CutId? cutId;
+  final int Function(TimelineDragPreview preview)? movieEndUnder;
+  final int playbackFrameCount;
+  final TimelineNoriShiro Function()? noriShiro;
+  final TimelineGridMetrics metrics;
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) {
+    final dragPreview = this.dragPreview;
+    if (dragPreview == null || (cutId == null && movieEndUnder == null)) {
+      return _markUnder(null);
+    }
+    return ValueListenableBuilder<TimelineDragPreview?>(
+      valueListenable: dragPreview,
+      builder: (context, preview, _) => _markUnder(preview),
+    );
+  }
+
+  /// The mark as [preview] leaves it (null: nothing in flight).
+  TimelineRulerNoriShiroBoundary _markUnder(TimelineDragPreview? preview) {
+    final margin = noriShiro?.call();
+    return TimelineRulerNoriShiroBoundary(
+      cutEnd: timelineCutEndBoundaryX(
+        playbackFrameCount: timelineCutEndPreviewFrameCount(
+          preview: preview,
+          cutId: cutId,
+          movieEndUnder: movieEndUnder,
+          playbackFrameCount: playbackFrameCount,
+        ),
+        metrics: metrics,
+      ),
+      drawnEnd: timelineCutEndBoundaryX(
+        playbackFrameCount: timelineDrawnEndPreviewFrameCount(
+          preview: preview,
+          cutId: cutId,
+          movieEndUnder: movieEndUnder,
+          playbackFrameCount: playbackFrameCount,
+          drawnFrameCount: margin?.drawnFrameCount,
+        ),
+        metrics: metrics,
+      ),
+      label: margin?.label ?? '',
+      axis: axis,
+    );
+  }
+}
 
 /// The のりしろ boundary in the frame ruler: where the cut is DRAWN to, past
 /// the red line that says where it plays to.

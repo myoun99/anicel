@@ -14,7 +14,9 @@
 /// here knows a canvas, a PDF or a widget.
 library;
 
-import 'dart:ui' show Offset, Rect;
+import 'dart:ui' show Offset, Rect, Size;
+
+import 'package:flutter/foundation.dart' show listEquals;
 
 import 'brush_frame_key.dart';
 import 'sheet_paint_layer.dart';
@@ -49,24 +51,14 @@ sealed class SheetMark {
 /// every fill is axis-aligned, and an edge cut on the grid is wholly one
 /// colour or the other — the paper's own rule, for everything a sheet
 /// fills.
-///
-/// [cornerRadius] rounds its four corners the app's way — a superellipse
-/// corner on flat sides (`AppShapes`), the radius one of the app's own
-/// (`AppCornerRadii`). Zero is square.
 final class SheetFill extends SheetMark {
-  const SheetFill(
-    super.layer, {
-    required this.rect,
-    required this.argb,
-    this.cornerRadius = 0,
-  });
+  const SheetFill(super.layer, {required this.rect, required this.argb});
 
   final Rect rect;
   final int argb;
-  final double cornerRadius;
 
   @override
-  Object get _prints => (rect, argb, cornerRadius);
+  Object get _prints => (rect, argb);
 }
 
 /// Which long edge of a rule holds its place when the rule is widened to
@@ -155,6 +147,7 @@ final class SheetWords extends SheetMark {
     this.h = SheetAlign.start,
     this.v = SheetAlign.start,
     this.fit = SheetWordsFit.wrap,
+    this.turn = 0,
   });
 
   final String text;
@@ -169,20 +162,69 @@ final class SheetWords extends SheetMark {
   final SheetAlign v;
   final SheetWordsFit fit;
 
+  /// How far the words are turned — radians, clockwise on the page — about
+  /// the slot's top-left corner, slot and all: a camera key's name written
+  /// along its turned frame (유저 2026-09-29: 「기운 틀의 모서리. 각도
+  /// 그대로따라감」).
+  final double turn;
+
   @override
-  Object get _prints => (text, slot, size, argb, bold, h, v, fit);
+  Object get _prints => (text, slot, size, argb, bold, h, v, fit, turn);
 
   /// Nothing to set, or nowhere to set it: every printer skips these words.
   bool get printsNothing =>
       text.isEmpty || slot.width <= 0 || slot.height <= 0;
 }
 
+/// A line through [points], [width] wide — open, or [closed] into an
+/// outline: a camera key's frame on a picture, the trail each of its
+/// corners draws. A frame the camera turned is no rectangle, so it is no
+/// fill.
+final class SheetStroke extends SheetMark {
+  const SheetStroke(
+    super.layer, {
+    required this.points,
+    required this.argb,
+    required this.width,
+    this.closed = false,
+  });
+
+  final List<Offset> points;
+  final int argb;
+  final double width;
+  final bool closed;
+
+  @override
+  Object get _prints => (_Points(points), argb, width, closed);
+}
+
+/// Points compared by what they hold — a list is equal only to itself, and
+/// a mark's [SheetMark._prints] must say whether it prints alike.
+final class _Points {
+  const _Points(this.points);
+
+  final List<Offset> points;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _Points && listEquals(other.points, points);
+
+  @override
+  int get hashCode => Object.hashAll(points);
+}
+
+/// What a picture's image is found by: its cut at its frame, through the
+/// camera or over [SheetPicture.canvasRegion] — the panel's picture store
+/// and an export's rendered pictures both key by it.
+typedef SheetPictureKey = ({
+  String cutId,
+  int pictureFrame,
+  Rect? canvasRegion,
+});
+
 /// A cell's picture: the camera's [frame], in its [slot]. The printer finds
-/// the image by ([cutId], [pictureFrame]) — the panel in its thumbnail
-/// store, the PDF among the pictures its export rendered.
-///
-/// Clipped to the slot's corners ([cornerRadius], the window it sits in):
-/// a square picture in a rounded window would cover the window's corners.
+/// the image by its [key] — the panel in its thumbnail store, the PDF among
+/// the pictures its export rendered.
 final class SheetPicture extends SheetMark {
   const SheetPicture(
     super.layer, {
@@ -190,7 +232,7 @@ final class SheetPicture extends SheetMark {
     required this.pictureFrame,
     required this.slot,
     required this.frame,
-    this.cornerRadius = 0,
+    this.canvasRegion,
   });
 
   final String cutId;
@@ -205,11 +247,36 @@ final class SheetPicture extends SheetMark {
   /// the camera's shape only to the nearest pixel of its height, and a
   /// contain on those pixels left a sliver of the window uncovered — the
   /// page, the PDF and the pen each answered where the picture was (F-197).
+  /// Over a [canvasRegion], it is where that region lies.
   final Rect frame;
-  final double cornerRadius;
+
+  /// The canvas the picture shows, square to it, where its cell's camera
+  /// moves — the region that camera sweeps (`ConteCameraWork.field`); null
+  /// for what the camera shows at [pictureFrame].
+  final Rect? canvasRegion;
+
+  SheetPictureKey get key => (
+    cutId: cutId,
+    pictureFrame: pictureFrame,
+    canvasRegion: canvasRegion,
+  );
+
+  /// This picture [by] further on the paper — a page further down a stack
+  /// of pages: its slot and frame move, the canvas it shows does not.
+  ///
+  /// ⛔The one place a picture is moved. A copy spelled field by field
+  /// drops whatever field comes after it — [canvasRegion] did.
+  SheetPicture shiftedBy(Offset by) => SheetPicture(
+    layer,
+    cutId: cutId,
+    pictureFrame: pictureFrame,
+    slot: slot.shift(by),
+    frame: frame.shift(by),
+    canvasRegion: canvasRegion,
+  );
 
   @override
-  Object get _prints => (cutId, pictureFrame, slot, frame, cornerRadius);
+  Object get _prints => (cutId, pictureFrame, slot, frame, canvasRegion);
 }
 
 /// A media image — the company logo — contained in [slot].
@@ -254,17 +321,48 @@ class SheetInkPlacement {
     required this.window,
     required this.scale,
     this.origin = Offset.zero,
+    this.stretch = 1,
   });
 
   final Rect window;
   final double scale;
   final Offset origin;
 
+  /// How much wider than its surface's own shape the window shows it: 1,
+  /// but for a column of the 3-second timesheet, whose columns print wider
+  /// than the 6-second sheet's the writing is kept on — the writing stays
+  /// on its cells, as wide as they print (유저 2026-09-27,
+  /// timesheet-sheet-kind-ink-Q1: 「프레임을 따라 옮겨 붙인다」 · 「g셀만큼
+  /// 그린게 3초시트로 늘리면 g셀까지만 보이게」).
+  final double stretch;
+
   /// Where surface pixel [pixel] lands on the paper.
-  Offset paperOf(Offset pixel) => window.topLeft + (pixel - origin) / scale;
+  Offset paperOf(Offset pixel) =>
+      window.topLeft +
+      Offset(
+        (pixel.dx - origin.dx) / scale * stretch,
+        (pixel.dy - origin.dy) / scale,
+      );
 
   /// The surface pixel under paper point [paper] — [paperOf] run backwards.
-  Offset pixelOf(Offset paper) => (paper - window.topLeft) * scale + origin;
+  Offset pixelOf(Offset paper) => Offset(
+    (paper.dx - window.left) * scale / stretch + origin.dx,
+    (paper.dy - window.top) * scale + origin.dy,
+  );
+
+  /// This window at its surface's own shape — as narrow as its surface
+  /// slice at the ink's scale, from the same corner: what a brush writing
+  /// through it sees before the stretch ([stretch]) is laid on.
+  SheetInkPlacement get unstretched => SheetInkPlacement(
+    window: Rect.fromLTWH(
+      window.left,
+      window.top,
+      window.width / stretch,
+      window.height,
+    ),
+    scale: scale,
+    origin: origin,
+  );
 
   /// Where a raster [width]×[height] of the surface lands on the paper —
   /// at the ink's own scale, the window clipping it; never stretched to
@@ -276,21 +374,27 @@ class SheetInkPlacement {
   );
 
   /// The window's slice of its surface, in surface pixels.
-  Rect get surfaceRect => origin & window.size * scale;
+  Rect get surfaceRect =>
+      origin & Size(window.width * scale / stretch, window.height * scale);
 
   /// The same window on a page that lies [by] further on — a page in a
   /// stack of pages. The surface and its slice do not move: every mapping
   /// here is measured from the window's corner.
-  SheetInkPlacement shiftedBy(Offset by) =>
-      SheetInkPlacement(window: window.shift(by), scale: scale, origin: origin);
+  SheetInkPlacement shiftedBy(Offset by) => SheetInkPlacement(
+    window: window.shift(by),
+    scale: scale,
+    origin: origin,
+    stretch: stretch,
+  );
 
   @override
   bool operator ==(Object other) =>
       other is SheetInkPlacement &&
       other.window == window &&
       other.scale == scale &&
-      other.origin == origin;
+      other.origin == origin &&
+      other.stretch == stretch;
 
   @override
-  int get hashCode => Object.hash(window, scale, origin);
+  int get hashCode => Object.hash(window, scale, origin, stretch);
 }

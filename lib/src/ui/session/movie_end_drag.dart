@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'drags/movie_end_drag.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../services/commands/update_project_trailing_frames_command.dart';
@@ -14,14 +16,14 @@ class MovieEndDragVerbs {
   MovieEndDragVerbs({
     required ProjectAccess project,
     required ChangeSink changes,
-    required SessionInternals internals,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
   }) : _project = project,
        _changes = changes,
-       _internals = internals;
+       _dragPreview = dragPreview;
 
   final ProjectAccess _project;
   final ChangeSink _changes;
-  final SessionInternals _internals;
+  final ValueNotifier<TimelineDragPreview?> _dragPreview;
 
   /// The in-flight end-line drag ([MovieEndDrag]), or null.
   MovieEndDrag? _movieEndDrag;
@@ -46,7 +48,7 @@ class MovieEndDragVerbs {
   bool beginMovieEndDrag() {
     _movieEndDrag = MovieEndDrag(
       beforeTrailing: _project.repository.requireProject().trailingFrames,
-      preview: _internals.dragPreview,
+      preview: _dragPreview,
       commitTrailing: (trailingFrames) {
         _project.historyManager.execute(
           UpdateProjectTrailingFramesCommand(

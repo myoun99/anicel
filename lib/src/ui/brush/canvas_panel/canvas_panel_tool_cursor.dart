@@ -29,8 +29,8 @@ class _CanvasPanelToolCursor {
     CutPiece piece,
     ui.Image? image,
   ) {
-    final centre = _state._viewportState._viewport.viewportToCanvas(
-      ViewportPoint(x: position.dx, y: position.dy),
+    final centre = _state._viewportState._viewport.viewportOffsetToCanvas(
+      position,
     );
     final width = piece.stampWidth.toDouble();
     final height = piece.stampHeight.toDouble();
@@ -198,8 +198,8 @@ class _CanvasPanelToolCursor {
       return null;
     }
     return sample(
-      _state._viewportState._viewport.viewportToCanvas(
-        ViewportPoint(x: viewportPosition.dx, y: viewportPosition.dy),
+      _state._viewportState._viewport.viewportOffsetToCanvas(
+        viewportPosition,
       ),
     );
   }

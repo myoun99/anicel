@@ -120,33 +120,27 @@ class _LinkCommands {
       targetCut: targetCut,
     );
 
-    final commands = <Command>[
-      if (targetCut.canvasSize != originCut.canvasSize)
-        ResizeCutCanvasCommand(
+    _coordinator.historyManager.executeAsOneStep(
+      'Convert cut $targetCutId to link $originCutId',
+      [
+        if (targetCut.canvasSize != originCut.canvasSize)
+          ResizeCutCanvasCommand(
+            repository: _coordinator.repository,
+            cutId: targetCutId,
+            canvasSize: originCut.canvasSize,
+            anchor: CanvasResizeAnchor.center,
+            brushFrameStore: store,
+          ),
+        ConvertToLinkedCutCommand(
           repository: _coordinator.repository,
-          cutId: targetCutId,
-          canvasSize: originCut.canvasSize,
-          anchor: CanvasResizeAnchor.center,
           brushFrameStore: store,
+          originCutId: originCutId,
+          targetCutId: targetCutId,
+          unionLayerIdMap: plan.unionLayerIdMap,
+          newGroupIdBySource: plan.newGroupIdBySource,
+          coveringFrameIdBySource: plan.coveringFrameIdBySource,
         ),
-      ConvertToLinkedCutCommand(
-        repository: _coordinator.repository,
-        brushFrameStore: store,
-        originCutId: originCutId,
-        targetCutId: targetCutId,
-        unionLayerIdMap: plan.unionLayerIdMap,
-        newGroupIdBySource: plan.newGroupIdBySource,
-        coveringFrameIdBySource: plan.coveringFrameIdBySource,
-      ),
-    ];
-
-    _coordinator.historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(
-              description: 'Convert cut $targetCutId to link $originCutId',
-              commands: commands,
-            ),
+      ],
     );
   }
 

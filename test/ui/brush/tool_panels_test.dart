@@ -6,7 +6,11 @@ import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
@@ -347,45 +351,12 @@ void main() {
           reason: '${entry.key}',
         );
       }
-      // Which tiles the button COMES BACK to. 유저 확정 2026-08-15: the
-      // stamp is not one of them — "찍기는 아예 성질이 다른거니까 그 외만
-      // 기억하도록."
-      const remembered = <CanvasTool, bool>{
-        CanvasTool.brush: true,
-        CanvasTool.eraser: true,
-        CanvasTool.eyedropper: true,
-        CanvasTool.fill: true,
-        CanvasTool.fillShape: true,
-        CanvasTool.cut: true,
-        CanvasTool.cutStamp: false,
-        CanvasTool.guide: true,
-        CanvasTool.select: true,
-        CanvasTool.move: true,
-      };
-      expect(
-        remembered.keys.toSet(),
-        CanvasTool.values.toSet(),
-        reason: 'a new tool must answer this one too',
-      );
-      for (final entry in remembered.entries) {
-        expect(
-          canvasToolRailTileIsRemembered(entry.key),
-          entry.value,
-          reason: '${entry.key}',
-        );
-      }
-
       for (final tool in CanvasTool.values) {
         final group = canvasToolRailGroup(tool);
         expect(
           canvasToolRailGroup(group),
           group,
           reason: 'a group is named by one of its own members ($tool)',
-        );
-        expect(
-          canvasToolRailTileIsRemembered(group),
-          isTrue,
-          reason: 'a group can always come back to its own default ($tool)',
         );
         // The predicates that LIGHT the two shared buttons have to agree
         // with the table that RE-ENTERS them, or a tile could highlight one
@@ -554,6 +525,88 @@ void main() {
     });
   });
 
+  // 🚨I-23 — 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은 부분을
+  // 선택함. 위치는 선택툴일때의 툴설정. 버튼.」
+  group('선택 반전 in the selection tool\'s settings', () {
+    const buttonKey = ValueKey<String>('selection-invert-button');
+    const canvas = CanvasSize(width: 20, height: 15);
+
+    CanvasSelectionRegion selected() => CanvasSelectionRegion.shape(
+      CanvasSelectionShape.rect(left: 2, top: 3, right: 12, bottom: 9),
+    );
+
+    Future<void> pumpSelectSettings(
+      WidgetTester tester, {
+      required CanvasSelectionCommands commands,
+      CanvasSize? canvasSize = canvas,
+    }) async {
+      await tester.pumpWidget(
+        app(
+          ToolSettingsPanel(
+            state: BrushToolState.defaults.copyWith(tool: CanvasTool.select),
+            onChanged: (_) {},
+            fillOptions: const FloodFillOptions(),
+            onFillOptionsChanged: (_) {},
+            selectionCommands: commands,
+            canvasSize: canvasSize,
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    OutlinedButton button(WidgetTester tester) =>
+        tester.widget<OutlinedButton>(find.byKey(buttonKey));
+
+    testWidgets('stands in one place, live, with a selection and without', (
+      tester,
+    ) async {
+      final commands = CanvasSelectionCommands();
+      await pumpSelectSettings(tester, commands: commands);
+      final without = tester.getRect(find.byKey(buttonKey));
+      expect(
+        button(tester).onPressed,
+        isNotNull,
+        reason: 'nothing selected still inverts — to the whole wall',
+      );
+
+      commands.setRegion(selected());
+      await tester.pump();
+
+      expect(tester.getRect(find.byKey(buttonKey)), without);
+      expect(button(tester).onPressed, isNotNull);
+    });
+
+    testWidgets('a tap inverts the selection', (tester) async {
+      final commands = CanvasSelectionCommands()..setRegion(selected());
+      await pumpSelectSettings(tester, commands: commands);
+
+      await tester.tap(find.byKey(buttonKey));
+      await tester.pump();
+
+      expect(
+        commands.region,
+        CanvasSelectionRegion.invertedWithin(
+          selected(),
+          canvas.pasteboardRect,
+        ),
+      );
+    });
+
+    testWidgets('is greyed, never gone, with no canvas to take a wall from', (
+      tester,
+    ) async {
+      await pumpSelectSettings(
+        tester,
+        commands: CanvasSelectionCommands(),
+        canvasSize: null,
+      );
+
+      expect(find.byKey(buttonKey), findsOneWidget);
+      expect(button(tester).onPressed, isNull);
+    });
+  });
+
   group('shape memory (유저 확정: 도형은 동사별로 기억)', () {
     test('picking a shape for one verb leaves the other verb alone', () {
       final state = BrushToolState.defaults
@@ -640,8 +693,12 @@ void main() {
         app(
           ToolLibraryPanel(
             tool: CanvasTool.move,
-            onPress: (press) =>
-                pressTool(press, tool: tool, transform: options),
+            onPress: (press) => pressTool(
+              press,
+              tool: tool,
+              transform: options,
+              cutWhole: () {},
+            ),
             brushLibrary: const SizedBox.shrink(),
             transformOptions: options,
           ),

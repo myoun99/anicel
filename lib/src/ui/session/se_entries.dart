@@ -3,8 +3,11 @@ import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_line_type.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../../models/storyboard_timeline_layout.dart';
+import '../timeline/timeline_drag_preview.dart'
+    show TimelineDragPreview, globalLayersShowingDragPreview;
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
 import 'camera.dart';
@@ -55,7 +58,16 @@ class SeEntries {
   /// the parked stack, export), so none of them can disagree. Works for
   /// ANY cut, not just the active one: it walks the owning track's global
   /// SE rows and converts through that cut's start.
-  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) {
+  ///
+  /// [preview] is a drag in flight — an SE row's tag or pose scrubbed, its
+  /// handle dragged (F-195), its lines moved or stretched
+  /// (canvas-follows-block-moves) — which the EDITING canvas shows as it
+  /// goes. The routes that render a committed film pass none.
+  List<ResolvedSeNameTag> seNameTagsForCutFrame(
+    Cut cut,
+    int localFrameIndex, {
+    TimelineDragPreview? preview,
+  }) {
     // The over-end runway is a CLIPPED VIEW of the cut (UI-R9 #4): a
     // playhead past the last frame must never address the NEIGHBOUR
     // cut's SE window and put the next speaker over this picture. The
@@ -65,10 +77,6 @@ class SeEntries {
     // that already IS [maxLocal] to itself.
     final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
     final project = _project.repository.requireProject();
-    // Rows on the tracks BELOW this one: unconfigured defaults stack the
-    // whole project's SE rows, so two covered tracks in the multitrack
-    // stack never land on the same spot.
-    var rowOffset = 0;
     for (final track in project.tracks) {
       // Cheap gate: most tracks hold no SE writing at all, and this runs
       // per painted frame per covered track.
@@ -76,22 +84,27 @@ class SeEntries {
         final start = cutGlobalStartFrameIn(track, cut.id);
         if (start != null) {
           return resolveSeNameTagsAt(
-            trackSeLayers: track.seLayers,
+            trackSeLayers: globalLayersShowingDragPreview(
+              track.seLayers,
+              preview,
+            ),
             cutStartFrame: start,
             localFrameIndex: localFrame,
             canvas: cut.canvasSize,
             cameraFrame: _camera.cameraFrameSize,
-            rowOffset: rowOffset,
           );
         }
       }
-      rowOffset += track.seLayers.length;
     }
     return const [];
   }
 
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => _selection.selectedFrame?.seName;
+
+  /// The selected entry's delivery (I-20) — what the SE dialog opens on.
+  SeLineType get selectedFrameSeType =>
+      _selection.selectedFrame?.seType ?? SeLineType.on;
 
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
@@ -129,10 +142,14 @@ class SeEntries {
     _changes.notifyChanged();
   }
 
-  /// SE rows: updates the selected entry's dialogue (Frame.name) and
-  /// speaker name in ONE undo step. Duplicates are allowed — the same
-  /// dialogue can legitimately repeat on a sheet.
-  void updateSelectedSeEntry({required String dialogue, String? seName}) {
+  /// SE rows: updates the selected entry's dialogue (Frame.name), speaker
+  /// name and delivery (I-20) in ONE undo step. Duplicates are allowed — the
+  /// same dialogue can legitimately repeat on a sheet.
+  void updateSelectedSeEntry({
+    required String dialogue,
+    String? seName,
+    required SeLineType seType,
+  }) {
     final layer = _selection.activeLayer;
     final frame = _selection.selectedFrame;
     if (layer == null ||
@@ -144,7 +161,7 @@ class SeEntries {
       layer.id,
       frame.id,
       dialogue: dialogue,
-      seName: seName,
+      fields: (seName: seName, seType: seType),
     );
   }
 
@@ -158,7 +175,7 @@ class SeEntries {
     LayerId layerId,
     FrameId frameId, {
     required String dialogue,
-    String? seName,
+    required SeEntryFields fields,
   }) {
     final layer = requireLayerAnywhere(
       _project.repository.requireProject(),
@@ -172,8 +189,7 @@ class SeEntries {
       frameId: frameId,
       name: dialogue,
       allowDuplicateName: true,
-      seName: seName,
-      updateSeName: true,
+      seEntry: fields,
     );
     _changes.notifyChanged();
   }

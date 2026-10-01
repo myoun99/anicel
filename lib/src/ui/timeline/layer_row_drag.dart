@@ -21,13 +21,14 @@ import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
-import '../../models/app_input_settings.dart' show AppInput;
+import '../input/finger_mode_devices.dart';
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/drag_chip.dart';
 import '../widgets/drag_chip_overlay.dart';
 import 'layer_drop_policy.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
+import 'memo_token.dart' show ByIdentity;
 import 'property_lane_model.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, parseEffectLaneId;
 import 'held_row_pin.dart';
@@ -884,38 +885,39 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   }
 
   Widget _gestures({required Widget child}) {
-    return RawGestureDetector(
-      // Translucent: the row's own taps (select the layer, the eye, the
-      // sliders) keep firing — only the pan recognizer joins the arena.
-      behavior: HitTestBehavior.translucent,
-      gestures: <Type, GestureRecognizerFactory>{
-        EagerPanGestureRecognizer:
-            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
-              () => EagerPanGestureRecognizer(debugOwner: this),
-              (recognizer) {
-                // The rail SCROLLS along the same axis this drag runs, so
-                // the device policy is what separates them: pen and mouse
-                // move rows, a finger scrolls (UI-R22 #6).
-                recognizer.supportedDevices = AppInput.timelineEditPanDevices;
-                // PEN-11: RawGestureDetector does not inject these.
-                recognizer.gestureSettings = MediaQuery.maybeGestureSettingsOf(
-                  context,
-                );
-                recognizer.dragStartBehavior = DragStartBehavior.down;
-                recognizer.onStart = (details) => _begin(
-                  details.localPosition,
-                  globalPosition: details.globalPosition,
-                );
-                recognizer.onUpdate = _update;
-                // ⑨: a SELECT drag ends its own way. Falling through to the
-                // move's end would run the DROP COMMIT for a gesture that
-                // never proposed a drop.
-                recognizer.onEnd = (_) => _end();
-                recognizer.onCancel = () => _end(cancelled: true);
-              },
-            ),
-      },
-      child: child,
+    return FingerModeDevices.timelineEditPan(
+      builder: (context, devices) => RawGestureDetector(
+        // Translucent: the row's own taps (select the layer, the eye, the
+        // sliders) keep firing — only the pan recognizer joins the arena.
+        behavior: HitTestBehavior.translucent,
+        gestures: <Type, GestureRecognizerFactory>{
+          EagerPanGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+                () => EagerPanGestureRecognizer(debugOwner: this),
+                (recognizer) {
+                  // The rail SCROLLS along the same axis this drag runs, so
+                  // the device policy is what separates them: pen and mouse
+                  // move rows, a finger scrolls (UI-R22 #6).
+                  recognizer.supportedDevices = devices;
+                  // PEN-11: RawGestureDetector does not inject these.
+                  recognizer.gestureSettings =
+                      MediaQuery.maybeGestureSettingsOf(context);
+                  recognizer.dragStartBehavior = DragStartBehavior.down;
+                  recognizer.onStart = (details) => _begin(
+                    details.localPosition,
+                    globalPosition: details.globalPosition,
+                  );
+                  recognizer.onUpdate = _update;
+                  // ⑨: a SELECT drag ends its own way. Falling through to
+                  // the move's end would run the DROP COMMIT for a gesture
+                  // that never proposed a drop.
+                  recognizer.onEnd = (_) => _end();
+                  recognizer.onCancel = () => _end(cancelled: true);
+                },
+              ),
+        },
+        child: child,
+      ),
     );
   }
 
@@ -1156,8 +1158,9 @@ DragChipItem effectRowDragChip(PropertyLaneRow header) =>
 /// and found missing on the sheet later. The audit's clone scan
 /// (2026-09-03) found the pair; this is the one that stays.
 ///
-/// [dragRows] is a getter: the caret reads the rows drawn at build time,
-/// the selection closures the rows drawn at EVENT time.
+/// [dragRows] is a getter: the caret LINE a row paints reads the rows drawn
+/// at build time; the crossing and the selection closures, the rows drawn
+/// at EVENT time.
 ///
 /// 🚨B4-3 (유저, 몇 번째인지 세지 않겠다고 했다) — **EVERY ROW JOINS A
 /// SELECTION.**
@@ -1251,22 +1254,59 @@ Widget layerRowDragWrapper({
     onCrossed: hooks == null
         ? (_, _, _) {}
         : (steps, onRow, inRow) {
-      final slot = caret.slotFor(steps);
-      final target = caret.onRowLayer(onRow);
+      // The rows as drawn NOW (F-244): the rail keeps this wrapper across
+      // builds that moved no row, so the rows it was built over may carry
+      // older layers than the ones the drag lands among.
+      final drawn = LayerRowCaret.of(dragRows(), row.layer.id) ?? caret;
+      final slot = drawn.slotFor(steps);
+      final target = drawn.onRowLayer(onRow);
       if (target != null) {
-        hooks.onRowTarget(caret.layers, slot, target.id);
+        hooks.onRowTarget(drawn.layers, slot, target.id);
         return;
       }
       hooks.onUpdate(
-        caret.layers,
+        drawn.layers,
         slot,
-        pointerInRow: caret.onRowLayer(inRow)?.id,
+        pointerInRow: drawn.onRowLayer(inRow)?.id,
       );
     },
     onSelectCrossed: hooks?.onSelectBegin == null
         ? null
         : (rowDelta) => onRowSelectionSpan?.call(dragRows(), rowDelta),
     child: child,
+  );
+}
+
+/// What [layerRowDragWrapper] builds a row's wrapper FROM — equal while the
+/// wrapper it would build is the same one, so a rail that keeps its rows'
+/// widgets keys them on this too (F-244).
+///
+/// The caret LINE is what a build paints (the slot at the row's leading
+/// edge, and whether the row is the last); the crossing reads the rows at
+/// the event and needs no key. [drawnRows] is what the wrapper's
+/// `dragRows` getter reads while this build draws.
+typedef LayerRowDragInputs = ({
+  ByIdentity<TimelineRowDragHooks?> hooks,
+  void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
+  int? caretSlot,
+  bool? caretIsLastRow,
+});
+
+/// See [LayerRowDragInputs].
+LayerRowDragInputs layerRowDragInputs({
+  required TimelineDisplayRow row,
+  required List<TimelineDisplayRow> drawnRows,
+  required TimelineRowDragHooks? hooks,
+  required void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan,
+}) {
+  final caret = LayerRowCaret.of(drawnRows, row.layer.id);
+  return (
+    hooks: ByIdentity(hooks),
+    onRowSelectionSpan: onRowSelectionSpan,
+    caretSlot: caret?.slot,
+    caretIsLastRow: caret?.isLastRow,
   );
 }
 

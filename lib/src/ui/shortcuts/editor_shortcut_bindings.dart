@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../debug/key_trace.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
+import 'sheet_arrow.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_settings_store.dart';
 import 'touch_shortcuts.dart';
@@ -75,7 +77,7 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// all three or none of them.
   bool presses(String actionId, KeyEvent event) {
     for (final activator in activatorsFor(actionId)) {
-      for (final form in pressableForms(activator)) {
+      for (final form in _formsOf(actionId, activator)) {
         if (form.accepts(event, HardwareKeyboard.instance)) {
           return true;
         }
@@ -83,6 +85,66 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
     return false;
   }
+
+  /// How the sheet in front of the user turns the arrows (F-241) — the
+  /// shell hands its flip HUD in. Null reads every arrow as the timeline
+  /// does.
+  SheetArrowTurn? sheet;
+
+  /// [activator]'s pressable forms for [actionId]: an ARROW of a move on
+  /// the sheet ([EditorActionDefinition.readsTheSheet]) is matched turned.
+  Iterable<ShortcutActivator> _formsOf(
+    String actionId,
+    SingleActivator activator,
+  ) =>
+      _turns(actionId, activator)
+      ? [SheetTurnedActivator(activator, () => sheet)]
+      : pressableForms(activator);
+
+  bool _turns(String actionId, SingleActivator activator) =>
+      (definitionFor(actionId)?.readsTheSheet ?? false) &&
+      SheetArrow.of(activator.trigger) != null;
+
+  /// [activator] as it reads on the sheet in front of the user — a turned
+  /// arrow shows the key that presses it HERE (유저 F-241: 「단축키 바뀐
+  /// 상황에서 그에맞게 텍스트 내용도 변경」).
+  SingleActivator shownActivatorFor(
+    String actionId,
+    SingleActivator activator,
+  ) {
+    final turn = sheet;
+    if (turn == null || !_turns(actionId, activator)) {
+      return activator;
+    }
+    final timeline = SheetArrow.of(activator.trigger)!;
+    return _withTrigger(activator, turn.sheetArrowFor(timeline).key);
+  }
+
+  /// [pressed], recorded for [actionId] on the sheet in front of the user,
+  /// as it is kept: a turned arrow is kept as the timeline reads it, so it
+  /// turns again on the other sheet.
+  SingleActivator keptActivatorFor(
+    String actionId,
+    SingleActivator pressed,
+  ) {
+    final turn = sheet;
+    if (turn == null || !_turns(actionId, pressed)) {
+      return pressed;
+    }
+    final arrow = SheetArrow.of(pressed.trigger)!;
+    return _withTrigger(pressed, turn.timelineArrowFor(arrow).key);
+  }
+
+  static SingleActivator _withTrigger(
+    SingleActivator activator,
+    LogicalKeyboardKey trigger,
+  ) => SingleActivator(
+    trigger,
+    control: activator.control,
+    shift: activator.shift,
+    alt: activator.alt,
+    meta: activator.meta,
+  );
 
   bool isOverridden(String actionId) => _overrides.containsKey(actionId);
 
@@ -102,7 +164,7 @@ class EditorShortcutBindings extends ChangeNotifier {
         continue;
       }
       for (final activator in activatorsFor(definition.id)) {
-        for (final form in pressableForms(activator)) {
+        for (final form in _formsOf(definition.id, activator)) {
           map[form] = EditorActionIntent(definition.id);
         }
       }
@@ -266,9 +328,9 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   Future<void> _pendingPersist = Future<void>.value();
 
-  /// Resolves when every override write issued so far has hit disk —
-  /// awaited by tests and available for a shutdown flush. Writes chain,
-  /// so ordering (last writer wins) is preserved.
+  /// Resolves once the file holds the last overrides written — awaited by
+  /// tests and available for a shutdown flush. The writes keep their order
+  /// ([saveVersionedSettings]), so the last one written is the one kept.
   Future<void> get pendingPersist => _pendingPersist;
 
   void _persist() {
@@ -289,7 +351,7 @@ class EditorShortcutBindings extends ChangeNotifier {
           entry.key: entry.value?.name,
       },
     };
-    _pendingPersist = _pendingPersist.then((_) => store.save(payload));
+    _pendingPersist = store.save(payload);
   }
 }
 
@@ -339,6 +401,61 @@ Iterable<ShortcutActivator> pressableForms(SingleActivator activator) sync* {
   }
 }
 
+/// [timeline] — an arrow written as the timeline reads it — pressed on
+/// whichever sheet is up: the arrow that arrives is turned by [turn] before
+/// it is matched (F-241, `SheetArrowTurn`). Null turns nothing.
+class SheetTurnedActivator extends ShortcutActivator {
+  const SheetTurnedActivator(this.timeline, this.turn);
+
+  final SingleActivator timeline;
+  final SheetArrowTurn? Function() turn;
+
+  @override
+  Iterable<LogicalKeyboardKey> get triggers => [
+    for (final arrow in SheetArrow.values) arrow.key,
+  ];
+
+  @override
+  bool accepts(KeyEvent event, HardwareKeyboard state) {
+    final pressed = SheetArrow.of(event.logicalKey);
+    if (pressed == null) {
+      return false;
+    }
+    final read = turn()?.timelineArrowFor(pressed) ?? pressed;
+    return timeline.accepts(_withKey(event, read.key), state);
+  }
+
+  static KeyEvent _withKey(KeyEvent event, LogicalKeyboardKey key) =>
+      switch (event) {
+        KeyDownEvent() => KeyDownEvent(
+          physicalKey: event.physicalKey,
+          logicalKey: key,
+          character: event.character,
+          timeStamp: event.timeStamp,
+          synthesized: event.synthesized,
+          deviceType: event.deviceType,
+        ),
+        KeyRepeatEvent() => KeyRepeatEvent(
+          physicalKey: event.physicalKey,
+          logicalKey: key,
+          character: event.character,
+          timeStamp: event.timeStamp,
+          deviceType: event.deviceType,
+        ),
+        _ => KeyUpEvent(
+          physicalKey: event.physicalKey,
+          logicalKey: key,
+          timeStamp: event.timeStamp,
+          synthesized: event.synthesized,
+          deviceType: event.deviceType,
+        ),
+      };
+
+  @override
+  String debugDescribeKeys() =>
+      'sheet-turned ${timeline.debugDescribeKeys()}';
+}
+
 /// [typed]'s character reached with Shift held — the form [pressableForms]
 /// adds for a layout that puts that character on Shift.
 class ShiftTypedActivator extends ShortcutActivator {
@@ -370,14 +487,29 @@ class EditorShortcutManager extends ShortcutManager {
 
   @override
   KeyEventResult handleKeypress(BuildContext context, KeyEvent event) {
+    // F-241: every answer goes to the input inspector's `bind` line.
     if (_fieldKeeps(event)) {
+      KeyTrace.answered(event, 'kept by the focused text field');
       return KeyEventResult.ignored;
     }
     final held = onHoldKey?.call(event) ?? KeyEventResult.ignored;
     if (held == KeyEventResult.handled) {
+      KeyTrace.answered(event, 'held');
       return held;
     }
-    return super.handleKeypress(context, event);
+    final result = super.handleKeypress(context, event);
+    if (event is! KeyUpEvent) {
+      final intent = shortcuts.entries
+          .where((entry) => entry.key.accepts(event, HardwareKeyboard.instance))
+          .firstOrNull
+          ?.value;
+      KeyTrace.answered(
+        event,
+        '${intent is EditorActionIntent ? intent.actionId : 'no binding'}'
+        ' (${result.name})',
+      );
+    }
+    return result;
   }
 
   /// Whether the text field that has focus keeps [event] for itself.

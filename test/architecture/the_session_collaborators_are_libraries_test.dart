@@ -20,7 +20,7 @@
 // It is an instrument, so here is what it looks like when it lies:
 //   - it reads DIRECTIVE LINES textually, so a `part` written inside a block
 //     comment counts -> a violation nobody can execute
-//   - it counts `SessionInternals` members by the AST, so a member added in
+//   - it looks for `SessionInternals` by the AST, so one declared in
 //     a `part` of the roles file (there is none) would be invisible
 //   - it says nothing about what a collaborator does with a role once it has
 //     one: this is a boundary test, not a design test
@@ -61,11 +61,11 @@ const _mayNameTheSession = <String, String>{
       'never constructs it or keeps one.',
 };
 
-/// What `SessionInternals` still carries: the MEASURED remainder of the
+/// What `SessionInternals` carried: the MEASURED remainder of the
 /// coupling, after the roles took what they could name and the siblings took
 /// what belonged to another collaborator.
 ///
-/// ⛔This number only falls. It started at 117 when the interface was first
+/// ⛔This number only fell. It started at 117 when the interface was first
 /// generated (G0-2, 2026-09-06), stood at 82 after the sibling promotion,
 /// and reached 56 when G3's four clusters landed (the rows and their drags,
 /// the cut/track surface, the media pool, the audio and SE rows); every
@@ -139,7 +139,55 @@ const _mayNameTheSession = <String, String>{
 /// selection role; and the opacity at a frame was a second name for the
 /// model's `resolveOpacityTrackAt` — the lane rows already call that, so
 /// `LaneVerbs` does too and the session's copy is gone.
-const _sessionInternalsMembers = 17;
+/// 17 → 13 (same day, the fourteenth family): the four doors onto where
+/// the user stands that `RangeSelections` passes through — whether a row is
+/// selected, standing on a row, selecting a layer, selecting a V row. Both
+/// `Standing` and `RowSelection` hold the selections, so it takes the four
+/// as CLOSURES (the ninth family's cure for a cycle edge). The session's
+/// `rowIsSelected` was then a second name for `RowSelection.rowIsSelected`
+/// and went; the three doors stay the session's, since they settle the last
+/// edit before they move you (I-41).
+/// 13 → 11 (same day, the fifteenth family): the two track writes a row's
+/// lanes commit. The lane MOVE spelled the camera-or-layer routing of the
+/// lane verbs' funnel again inline, so it commits through that funnel now;
+/// the layer write then had one asker and moved into `LaneVerbs`, and the
+/// camera write — `Camera`'s own — comes in as a closure (the camera holds
+/// the lane move, which holds the verbs). The session's camera forwarder
+/// went with it; tests name `session.camera` and `session.laneVerbs`.
+/// 11 → 9 (same day, the sixteenth family): the two notifiers — the drag
+/// preview channel and the editing frame cursor — are SIBLINGS, plain
+/// objects the session owns, and every collaborator that published on them
+/// takes the notifier itself by constructor (the edge and range-move drags
+/// through their roles records). The active cut's controllers, the cut
+/// move, the movie-end drag and the lane move name no internals now.
+/// 9 → 5 (2026-09-28, the seventeenth family): the kind toggle's target was
+/// a second name for the active layer (since the July extraction, with no
+/// reason written) and went — its two askers read `activeLayer`; a stroke
+/// in flight IS the session's `brushInputActive` notifier, handed to the
+/// scrub and to `Standing`; and the two plain answers — whether the session
+/// is disposed, the row the user stands on — come in as questions
+/// (closures), since a bool and a getter cannot be handed over as objects
+/// (the lane verbs' preview drop, which arrived meanwhile, asks the same).
+/// The lane verbs, the scrub, the layer switches and the storyboard cursor
+/// name no internals now.
+/// 5 → 4 (same day, the eighteenth family): the brush store key of a cel
+/// is a PROJECT answer — the session derived it from the project alone
+/// (`brushFrameKeyIn`) — and seventeen collaborators asked it, so it is a
+/// member of `ProjectAccess`, the role they all hold. Thirteen of them held
+/// internals for nothing else and name none now; the picture carry and the
+/// editing stack map take the project role in its place.
+/// 4 → 0 (same day, the nineteenth family) — PAID OFF, and the interface is
+/// deleted: the block start a move commits at is the SE window's own answer
+/// and moved into `TrackSeDisplay`, which every asker but one already held
+/// (the block shift takes it now); the live editing coordinator is a SIBLING
+/// the canvas fills in, `PixelEditing`, beside `LiveStrokeLanding`; the V
+/// row's track-cut select comes to `Standing` as a question (it selects cuts
+/// and parks the playhead, which are the session's); and a block move's
+/// eligibility joined `standsDownFromRetime` — one law's two halves, which
+/// the role generator had sorted into `ChangeSink` — in a role of their
+/// own, `RetimeLaw`. The range selections held `ChangeSink` for that one
+/// question alone and no longer take it.
+const _paidOffInterface = 'SessionInternals';
 
 List<String> _dartFilesUnder(String dir) => [
   for (final f in Directory(dir).listSync().whereType<File>())
@@ -205,7 +253,7 @@ void main() {
     }
   });
 
-  test('SessionInternals only shrinks', () {
+  test('SessionInternals is paid off, and stays gone', () {
     final unit = parseString(
       content: File(_rolesFile).readAsStringSync(),
       featureSet: FeatureSet.latestLanguageVersion(),
@@ -213,29 +261,17 @@ void main() {
     ).unit;
     final internals = unit.declarations
         .whereType<ClassDeclaration>()
-        .where((c) => c.namePart.typeName.lexeme == 'SessionInternals')
+        .where((c) => c.namePart.typeName.lexeme == _paidOffInterface)
         .toList();
-    expect(
-      internals,
-      hasLength(1),
-      reason: 'SessionInternals is the measured remainder — it has one home.',
-    );
-    final members = internals.single.body.members.length;
 
     expect(
-      members,
-      lessThanOrEqualTo(_sessionInternalsMembers),
+      internals,
+      isEmpty,
       reason:
-          'SessionInternals grew. ⛔Nothing is added to it: a host name a '
-          'collaborator needs is either a ROLE, a SIBLING it takes by '
-          'constructor, or code that moves INTO the collaborator.',
-    );
-    expect(
-      _sessionInternalsMembers - members,
-      lessThan(25),
-      reason:
-          'the SessionInternals ceiling is slack — lower it to $members so '
-          'the ratchet keeps its bite',
+          '$_paidOffInterface came back. ⛔A host name a collaborator needs '
+          'is either a ROLE, a SIBLING it takes by constructor, or code that '
+          'moves INTO the collaborator — the grab-bag was counted down from '
+          '117 to nothing and deleted (2026-09-28).',
     );
   });
 }

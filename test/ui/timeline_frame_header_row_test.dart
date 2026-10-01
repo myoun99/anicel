@@ -12,7 +12,6 @@ void main() {
     WidgetTester tester, {
     required int frameStartIndex,
     required int frameEndIndexExclusive,
-    required int currentFrameIndex,
     required int playbackFrameCount,
     required ValueChanged<int> onSelectFrame,
     double leadingFrameSpacerWidth = 96,
@@ -24,7 +23,6 @@ void main() {
           child: TimelineFrameHeaderRow(
             frameStartIndex: frameStartIndex,
             frameEndIndexExclusive: frameEndIndexExclusive,
-            currentFrameIndex: currentFrameIndex,
             playbackFrameCount: playbackFrameCount,
             leadingFrameSpacerWidth: leadingFrameSpacerWidth,
             trailingFrameSpacerWidth: trailingFrameSpacerWidth,
@@ -43,7 +41,6 @@ void main() {
       tester,
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
-      currentFrameIndex: 4,
       playbackFrameCount: 6,
       onSelectFrame: (_) {},
     );
@@ -62,7 +59,6 @@ void main() {
       tester,
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
-      currentFrameIndex: 4,
       playbackFrameCount: 6,
       onSelectFrame: (_) {},
     );
@@ -78,7 +74,6 @@ void main() {
       tester,
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
-      currentFrameIndex: 4,
       playbackFrameCount: 6,
       onSelectFrame: (_) {},
     );
@@ -98,7 +93,6 @@ void main() {
       tester,
       frameStartIndex: 3,
       frameEndIndexExclusive: 6,
-      currentFrameIndex: 4,
       playbackFrameCount: 6,
       onSelectFrame: (frameIndex) => selectedFrameIndex = frameIndex,
     );
@@ -108,26 +102,6 @@ void main() {
     expect(selectedFrameIndex, isNull);
   });
 
-  testWidgets('the current frame reads selected with its tinted background', (
-    tester,
-  ) async {
-    await pumpHeaderRow(
-      tester,
-      frameStartIndex: 3,
-      frameEndIndexExclusive: 6,
-      currentFrameIndex: 4,
-      playbackFrameCount: 6,
-      onSelectFrame: (_) {},
-    );
-
-    expect(timelineHeaderModel(tester, 4).selected, isTrue);
-    expect(timelineHeaderModel(tester, 3).selected, isFalse);
-    expect(
-      timelineHeaderModel(tester, 4).background,
-      isNot(timelineHeaderModel(tester, 3).background),
-    );
-  });
-
   testWidgets('outside-playback frame headers still paint, marked outside', (
     tester,
   ) async {
@@ -135,7 +109,6 @@ void main() {
       tester,
       frameStartIndex: 3,
       frameEndIndexExclusive: 7,
-      currentFrameIndex: 4,
       playbackFrameCount: 5,
       onSelectFrame: (_) {},
     );

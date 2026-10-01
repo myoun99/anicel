@@ -267,10 +267,7 @@ void main() {
         CanvasPoint(x: 192, y: 64),
         CanvasPoint(x: 192, y: 192),
       ], 112);
-      final both = CompositeCommand(
-        description: 'both',
-        commands: [left, right],
-      );
+      final both = oneStepOf('both', [left, right])! as CompositeCommand;
       history.execute(both);
       expect(await both.parkPayload(), isTrue);
 

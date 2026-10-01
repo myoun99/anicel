@@ -51,9 +51,9 @@ void main() {
 
     seekStoryboardGlobalFrame(s, aEnd + 1);
     expect(s.activeCutId, isNull, reason: 'a gap is a no-cut position');
-    expect(s.gapParkedGlobalFrame, aEnd + 1);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 1);
     expect(
-      storyboardPlayheadFrame(s),
+      s.playheadCursors.trackFrameNow(),
       aEnd + 1,
       reason: 'the ruler shows the gap landing, not a snapped edge',
     );
@@ -61,7 +61,7 @@ void main() {
     // Late in the gap: still no cut, still the exact landing.
     seekStoryboardGlobalFrame(s, aEnd + 3);
     expect(s.activeCutId, isNull);
-    expect(storyboardPlayheadFrame(s), aEnd + 3);
+    expect(s.playheadCursors.trackFrameNow(), aEnd + 3);
   });
 
   test('a LEADING gap before the first cut PARKS the playhead exactly '
@@ -72,12 +72,16 @@ void main() {
 
     seekStoryboardGlobalFrame(s, 1);
     expect(s.editingGlobalFrame, 1, reason: 'the ruler stays where clicked');
-    expect(storyboardPlayheadFrame(s), 1);
-    expect(s.editingPlayheadInGap, isTrue, reason: 'no cut here — the void');
+    expect(s.playheadCursors.trackFrameNow(), 1);
+    expect(
+      s.editingSession.playheadInGap,
+      isTrue,
+      reason: 'no cut here — the void',
+    );
 
     // Seeking back onto the cut leaves the parking.
     seekStoryboardGlobalFrame(s, 3);
-    expect(s.editingPlayheadInGap, isFalse);
+    expect(s.editingSession.playheadInGap, isFalse);
     expect(s.currentFrameIndex, 0);
   });
 
@@ -86,9 +90,9 @@ void main() {
     s.selectCut(first);
 
     s.selectGlobalFrame(aEnd + 1);
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.playheadInGap, isTrue);
     s.selectGlobalFrame(2);
-    expect(s.editingPlayheadInGap, isFalse);
+    expect(s.editingSession.playheadInGap, isFalse);
   });
 
   test('an editing scrub inside the cut rides the cursor path (no session '
@@ -105,7 +109,7 @@ void main() {
 
     scrubStoryboardGlobalFrame(s, aEnd + 1);
     expect(s.activeCutId, first, reason: 'mid-drag keeps the cut quiet');
-    expect(s.gapParkedGlobalFrame, aEnd + 1);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 1);
     expect(notifies, 0, reason: 'gap entry no longer rebuilds mid-drag');
 
     commitStoryboardScrub(s);
@@ -122,31 +126,35 @@ void main() {
     s.addListener(() => notifies += 1);
 
     scrubStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.gapParkedGlobalFrame, aEnd + 1);
-    expect(storyboardPlayheadFrame(s), aEnd + 1);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 1);
+    expect(s.playheadCursors.trackFrameNow(), aEnd + 1);
     scrubStoryboardGlobalFrame(s, aEnd + 3);
-    expect(s.gapParkedGlobalFrame, aEnd + 3);
+    expect(s.editingSession.gapGlobalFrame, aEnd + 3);
     expect(notifies, 0, reason: 'moves ride the parking notifier only');
 
     commitStoryboardScrub(s);
     expect(s.activeCutId, isNull, reason: 'the release lands the deselect');
     expect(
-      s.gapParkedGlobalFrame,
+      s.editingSession.gapGlobalFrame,
       aEnd + 3,
       reason: 'the release keeps the parking (the commit used to wipe it)',
     );
-    expect(storyboardPlayheadFrame(s), aEnd + 3);
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.playheadCursors.trackFrameNow(), aEnd + 3);
+    expect(s.editingSession.playheadInGap, isTrue);
     expect(notifies, 1, reason: 'the release deselect is the one notify');
 
     // A NO-CUT drag back over the cut's frames parks too (the drag never
     // selects mid-move); its release lands the full seek onto the cut.
     scrubStoryboardGlobalFrame(s, 2);
-    expect(s.gapParkedGlobalFrame, 2, reason: 'over-cut moves park as well');
+    expect(
+      s.editingSession.gapGlobalFrame,
+      2,
+      reason: 'over-cut moves park as well',
+    );
     expect(s.activeCutId, isNull, reason: 're-selection waits for release');
     commitStoryboardScrub(s);
     expect(s.activeCutId, first, reason: 'the release re-selects the cut');
-    expect(s.gapParkedGlobalFrame, isNull);
+    expect(s.editingSession.gapGlobalFrame, isNull);
     expect(s.currentFrameIndex, 2);
   });
 
@@ -160,20 +168,20 @@ void main() {
 
     scrubStoryboardGlobalFrame(s, 1);
     expect(s.activeCutId, cutId, reason: 'mid-drag keeps the cut quiet');
-    expect(s.gapParkedGlobalFrame, 1);
-    expect(storyboardPlayheadFrame(s), 1);
+    expect(s.editingSession.gapGlobalFrame, 1);
+    expect(s.playheadCursors.trackFrameNow(), 1);
     scrubStoryboardGlobalFrame(s, 2);
-    expect(s.gapParkedGlobalFrame, 2);
+    expect(s.editingSession.gapGlobalFrame, 2);
     expect(notifies, 0, reason: 'moves never rebuild the panels');
 
     commitStoryboardScrub(s);
     expect(s.activeCutId, isNull, reason: 'the release lands the deselect');
     expect(
-      storyboardPlayheadFrame(s),
+      s.playheadCursors.trackFrameNow(),
       2,
       reason: 'the release stays parked in the leading gap',
     );
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.playheadInGap, isTrue);
     expect(notifies, 1, reason: 'one notify for the whole drag');
   });
 
@@ -185,7 +193,7 @@ void main() {
     // The timeline's runway is a clipped view of the CUT: the storyboard
     // shows it at the cut's last frame, never inside the gap.
     s.selectFrameIndex(aEnd + 40);
-    expect(storyboardPlayheadFrame(s), aEnd - 1);
+    expect(s.playheadCursors.trackFrameNow(), aEnd - 1);
 
     clampPlayheadForStoryboard(s);
     expect(s.currentFrameIndex, aEnd - 1);
@@ -193,7 +201,7 @@ void main() {
     // A runway index inside the gap clamps the same way (a gap landing is
     // the PARKED no-cut state, never a raw cut-local runway index).
     s.selectFrameIndex(aEnd + 2);
-    expect(storyboardPlayheadFrame(s), aEnd - 1);
+    expect(s.playheadCursors.trackFrameNow(), aEnd - 1);
     clampPlayheadForStoryboard(s);
     expect(s.currentFrameIndex, aEnd - 1);
   });
@@ -208,7 +216,7 @@ void main() {
       s.selectGlobalFrame(global);
       expect(s.editingGlobalFrame, global, reason: 'round trip at $global');
       expect(
-        storyboardPlayheadFrame(s),
+        s.playheadCursors.trackFrameNow(),
         global,
         reason: 'the storyboard reads the same axis at $global',
       );
@@ -262,13 +270,13 @@ void main() {
     s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
     // Inside cut-a: the mapped position and the global agree.
     seekStoryboardGlobalFrame(s, 1);
-    expect(storyboardPlayheadFrame(s), 1);
+    expect(s.playheadCursors.trackFrameNow(), 1);
 
     // IN the gap: the ruler playhead reads the playback clock's global
     // frame instead of freezing on the stale editing playhead.
     seekStoryboardGlobalFrame(s, aEnd + 2);
     expect(s.playbackRig.playback.position, isNull);
-    expect(storyboardPlayheadFrame(s), aEnd + 2);
+    expect(s.playheadCursors.trackFrameNow(), aEnd + 2);
 
     s.playbackRig.playback.stop();
     await tester.pumpAndSettle();

@@ -17,7 +17,8 @@ import 'package:flutter/widgets.dart';
 /// presses, and pens hover while fingers scroll.
 class PenFriendlyScrollController extends ScrollController {
   /// [initialScrollOffset] is where a NEW position is born — see the frame
-  /// grids, which remount on every fold and must not be born at zero.
+  /// grids, which are built afresh while the axis they share stands
+  /// elsewhere (an orientation switch) and must not be born at zero.
   PenFriendlyScrollController({super.initialScrollOffset});
 
   @override

@@ -52,7 +52,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      session.editingPlayheadInGap,
+      session.editingSession.playheadInGap,
       isFalse,
       reason: 'already measured; restated here so a failure below cannot be '
           'blamed on the session',

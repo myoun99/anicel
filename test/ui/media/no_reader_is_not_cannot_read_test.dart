@@ -76,7 +76,7 @@ void main() {
               viewerId: 'media-viewer',
               session: session,
               request: slot.request,
-              position: 0,
+              position: slot.position,
             ),
           ),
         ),

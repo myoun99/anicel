@@ -312,11 +312,15 @@ void main() {
     expect(layoutStart(s, second), firstDuration - 3);
   });
 
-  test('a trim NEVER moves TRACK-owned authoring — the R4 independence rule, '
-      'now guarded on the transition row the V transform used to stand for', () {
-    // The V row's transform (and its fade keys) is gone; the invariant it was
-    // asserted through is not. A transition span straddles a cut boundary on
-    // the GLOBAL axis, so a trim moving it would break the O.L outright.
+  // 🗣️유저 2026-09-30 (F-227-ol-trim-Q1): 「경계를 따라간다」 — an O.L rides
+  // the boundary it crosses, so a trim of the front cut's end carries it and
+  // its のりしろ stay as they were. These two used to pin the opposite: the
+  // R4 independence rule, carried over to the transition row once the V
+  // transform was gone. R4 stays the V lanes' law (their transform keys are
+  // track data a trim never moves); the transition row answers to its own.
+  test('a trim of the front cut\'s end carries the O.L across that boundary '
+      'with it — three frames stay on each side, and one undo takes both '
+      'back', () {
     final (s, first, _) = twoCutSession();
     final duration = s.cutById(first)!.duration;
     s.transitions.updateTransitionInstructions({
@@ -330,33 +334,27 @@ void main() {
     edgeDragOf(s).endCutEdgeDrag();
 
     expect(s.cutById(first)!.duration, duration - 4);
-    expect(
-      s.activeTrack.transitionLayer.instructions,
-      spans,
-      reason: 'spans hold their global frames through the trim',
-    );
+    expect(s.activeTrack.transitionLayer.instructions.keys, [duration - 7]);
 
-    // ONE undo restores the duration; the spans never changed.
     s.undo();
     expect(s.cutById(first)!.duration, duration);
     expect(s.activeTrack.transitionLayer.instructions, spans);
 
-    // Growth leaves them alone the same way.
+    // Growth carries it forward the same way.
     edgeDragOf(s).beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     edgeDragOf(s).updateCutEdgeDrag(5);
     edgeDragOf(s).endCutEdgeDrag();
     expect(s.cutById(first)!.duration, duration + 5);
-    expect(s.activeTrack.transitionLayer.instructions, spans);
+    expect(s.activeTrack.transitionLayer.instructions.keys, [duration + 2]);
   });
 
-  test('a lead-edge drag shifts the cut\'s WINDOW, not the track\'s spans — '
-      'they stay at their global frames and read shifted from the cut', () {
+  test('a lead-edge drag moves the boundary in front of the cut, and the '
+      'O.L across it with it', () {
     final (s, first, second) = twoCutSession();
     final secondStart = layoutStart(s, second);
     s.transitions.updateTransitionInstructions({
       secondStart - 2: const InstructionEvent(instructionId: 'ol', length: 4),
     });
-    final spans = s.activeTrack.transitionLayer.instructions;
 
     edgeDragOf(s).beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     edgeDragOf(s).updateCutEdgeDrag(5);
@@ -366,9 +364,9 @@ void main() {
     expect(s.cutById(first)!.leadingGapFrames, 0);
     expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(
-      s.activeTrack.transitionLayer.instructions,
-      spans,
-      reason: 'spans hold their global frames through the window shift',
+      s.activeTrack.transitionLayer.instructions.keys,
+      [secondStart + 3],
+      reason: 'the cut in front grew five, and the boundary with it',
     );
   });
 

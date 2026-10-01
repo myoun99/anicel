@@ -1,6 +1,4 @@
 import 'versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import '../../models/app_ui_scale.dart';
 import 'app_support_path.dart';
@@ -43,9 +41,9 @@ class AppUiScaleStore {
     },
   );
 
-  Future<void> save(double scale) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(jsonEncode({'version': version, 'scale': scale}));
-  }
+  Future<void> save(double scale) => saveVersionedSettings(
+    filePath: filePath,
+    version: version,
+    json: {'scale': scale},
+  );
 }

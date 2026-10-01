@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show ValueNotifier;
+import '../timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'dart:collection';
 
 import '../../models/layer_id.dart';
@@ -36,7 +38,8 @@ class FrameRangeMoveDragVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required SessionInternals internals,
+    required RetimeLaw retime,
+    required ValueNotifier<TimelineDragPreview?> dragPreview,
     required RowSpans rowSpans,
     required DrawingBlockMoveDragVerbs blockMove,
     required RenderCaches renderCaches,
@@ -50,7 +53,8 @@ class FrameRangeMoveDragVerbs {
          selection: selection,
          changes: changes,
          controllers: controllers,
-         internals: internals,
+         retime: retime,
+         dragPreview: dragPreview,
          blockMove: blockMove,
          renderCaches: renderCaches,
          camera: camera,
@@ -61,7 +65,7 @@ class FrameRangeMoveDragVerbs {
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _internals = internals,
+       _retime = retime,
        _rowSpans = rowSpans,
        _folders = folders,
        _rangeSelections = rangeSelections;
@@ -83,7 +87,7 @@ class FrameRangeMoveDragVerbs {
   final SelectionAccess _selection;
   final ChangeSink _changes;
   final ActiveCutControllers _controllers;
-  final SessionInternals _internals;
+  final RetimeLaw _retime;
 
   /// The frame-range move in flight, or null. ⛔The only thing this class
   /// keeps about one: the drag-start capture, the last valid plans and the
@@ -163,7 +167,7 @@ class FrameRangeMoveDragVerbs {
     TimelineRunEdgeMode? mode,
     bool scopeToSelection = true,
   }) {
-    if (!_internals.blockMoveEligible(layerId)) {
+    if (!_retime.blockMoveEligible(layerId)) {
       return;
     }
     final before = _project.layerById(layerId);
@@ -207,7 +211,7 @@ class FrameRangeMoveDragVerbs {
     }
     final after = rederiveRunBehaviors(
       before.copyWith(timeline: timeline),
-      cutFrameCount: _project.activeCutFrameCount,
+      drawnFrameCount: _project.activeCutDrawnFrameCount,
     );
     if (after == before) {
       return;

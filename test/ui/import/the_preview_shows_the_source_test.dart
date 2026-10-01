@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
@@ -18,6 +20,15 @@ import '../../helpers/the_file_itself.dart';
 /// ⛔「A range that changes nothing is a control that lies」 — the IN/OUT
 /// ends appear only where they bite: a multi-frame source being PLACED.
 void main() {
+  late EditorSessionManager session;
+
+  setUp(
+    () => session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    ),
+  );
+  tearDown(() => session.dispose());
+
   Future<void> pump(
     WidgetTester tester, {
     String? path,
@@ -30,6 +41,7 @@ void main() {
             width: 320,
             height: 240,
             child: ImportPreview(
+              session: session,
               path: path,
               inFrame: 0,
               outFrame: null,

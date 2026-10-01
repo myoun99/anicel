@@ -8,12 +8,13 @@ import 'package:anicel/src/ui/dialogs/convert_to_linked_cut_dialog.dart';
 /// replacements and appearing layers before anything executes; Link pops
 /// the chosen target cut id.
 void main() {
+  const replaced = ['2 · A · 1', '2 · A · 2', '2 · B · 1'];
   const linkingPreview = ConvertToLinkedCutPreviewData(
     targetCutName: '2',
     linkingLayerNames: ['A', 'B'],
     layerNamesAppearingInTarget: ['only-here'],
     layerNamesAppearingInOrigin: ['only-there'],
-    replacedFrameCount: 3,
+    replacedDrawings: replaced,
     joiningFrameCount: 2,
     linksAnything: true,
   );
@@ -63,7 +64,18 @@ void main() {
       find.textContaining('replaced by the origin\'s (원본 승리)'),
       findsOneWidget,
     );
-    expect(find.textContaining('3 same-name drawing(s)'), findsOneWidget);
+    // I-18 link-notice-Q1 「겸용 변환 안내문을 목록으로」: the drawings it
+    // replaces are listed, open, under that line.
+    for (final drawing in replaced) {
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('app-notice-details-list')),
+          matching: find.text(drawing),
+        ),
+        findsOneWidget,
+        reason: drawing,
+      );
+    }
     expect(
       find.textContaining('2 drawing(s) join the shared set.'),
       findsOneWidget,
@@ -87,7 +99,7 @@ void main() {
       linkingLayerNames: [],
       layerNamesAppearingInTarget: [],
       layerNamesAppearingInOrigin: [],
-      replacedFrameCount: 0,
+      replacedDrawings: [],
       joiningFrameCount: 0,
       linksAnything: false,
     );

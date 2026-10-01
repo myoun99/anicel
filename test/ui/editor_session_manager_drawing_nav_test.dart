@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
@@ -334,18 +335,30 @@ void main() {
     });
   });
 
-  // A7① (2026-08-17): a HOLD is one flip unit — 「홀드 블록을 한 단위로
-  // 건너뛰어 다음 프레임 선택」. The run-edge HOLD materializes a ghost
-  // block right after the held block, and the flip used to treat that
-  // ghost as its own column, landing exactly where the user reported
-  // (「홀드 안쪽 2번 인덱스」) — while the flip HUD drew no block there.
-  // The flip's column absorbs hold ghosts into their owning run now;
-  // repeat ghosts stay their own columns (A7① names holds only).
-  group('A7①: a HOLD is one flip unit', () {
-    (EditorSessionManager, LayerId) heldSession(TimelineRunEdgeMode mode) {
+  // 🗣️F-245 (유저 2026-10-01, 「그게 아님」): 「1(홀드)---- 일경우 1에
+  // 서있을때 오른쪽 플립하면 두번째인 - 로 이동되는건 좋음. 근데 그 다음
+  // 플립에서도 세번째 -, 네번째 -으로 이동되야한단거임. 일반 1프레임이동이랑
+  // 똑같이. 즉 리피트는 고스트프레임을 블록으로 인식해서 걸어가지만 홀드는
+  // 빈공간으로 인식해서 플립이 1프레임마다」 — a HOLD is empty space to the
+  // flip, a REPEAT's ghost a column. ↩️The 09-30 reading made the hold one
+  // column of its own; ↩️A7① (2026-08-18) had merged it into the held run.
+  group('a HOLD is walked a frame at a time, a REPEAT a part at a time', () {
+    (EditorSessionManager, LayerId) heldSession(
+      TimelineRunEdgeMode mode, {
+      int blockLength = 1,
+    }) {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       s.createDrawingAtCurrentFrame(); // 1-cell block at index 0
       final layerId = s.activeLayer!.id;
+      if (blockLength > 1) {
+        s.edgeDrag.beginExposureEdgeDrag(
+          layerId: layerId,
+          blockStartIndex: 0,
+          edge: TimelineBlockEdge.end,
+        );
+        s.edgeDrag.updateExposureEdgeDrag(blockLength - 1);
+        s.edgeDrag.endExposureEdgeDrag();
+      }
       s.rangeMove.setRunEdgeBehavior(
         layerId: layerId,
         blockStartIndex: 0,
@@ -355,51 +368,54 @@ void main() {
       return (s, layerId);
     }
 
-    test('forward from the held block leaves past the ghost end — never '
-        'lands inside the hold', () {
+    test('forward from the held block steps onto every cell of the hold, '
+        'one at a time, and then out of it', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
+      expect(cutEnd, greaterThan(3), reason: 'fixture: a hold to walk');
 
       s.selectFrameIndex(0);
-      s.frameVerbs.flipRow(forward: true);
-      expect(
-        s.currentFrameIndex,
-        cutEnd,
-        reason: 'block + its hold ghost = ONE column ending at the cut end',
-      );
+      for (var frame = 1; frame <= cutEnd; frame += 1) {
+        s.frameVerbs.flipRow(forward: true);
+        expect(
+          s.currentFrameIndex,
+          frame,
+          reason: '「일반 1프레임이동이랑 똑같이」',
+        );
+      }
     });
 
-    test('backward from beyond lands on the AUTHORED head, and mid-ghost '
-        'leaves the whole unit', () {
+    test('backward through the hold is the same walk, onto the held block '
+        'at the end', () {
       final (s, _) = heldSession(TimelineRunEdgeMode.hold);
       addTearDown(s.dispose);
       final cutEnd = s.requireActiveCut.duration;
 
       s.selectFrameIndex(cutEnd);
-      s.frameVerbs.flipRow(forward: false);
-      expect(
-        s.currentFrameIndex,
-        0,
-        reason: 'the previous column is the whole hold unit — its start is '
-            'the authored head, not the ghost\'s',
-      );
-
-      s.selectFrameIndex(3); // inside the ghost
-      s.frameVerbs.flipRow(forward: true);
-      expect(s.currentFrameIndex, cutEnd, reason: 'mid-hold leaves whole');
+      for (var frame = cutEnd - 1; frame >= 0; frame -= 1) {
+        s.frameVerbs.flipRow(forward: false);
+        expect(s.currentFrameIndex, frame);
+      }
     });
 
-    test('REPEAT ghosts stay their own columns — A7① names holds only', () {
-      final (s, _) = heldSession(TimelineRunEdgeMode.repeat);
+    test('a REPEAT\'s parts are walked as blocks, as they were', () {
+      final (s, _) = heldSession(TimelineRunEdgeMode.repeat, blockLength: 2);
       addTearDown(s.dispose);
+      expect(
+        s.activeLayer!.timeline[0]?.length,
+        2,
+        reason: 'fixture: a two-cell block, so a part and a cell differ',
+      );
 
       s.selectFrameIndex(0);
       s.frameVerbs.flipRow(forward: true);
+      expect(s.currentFrameIndex, 2, reason: 'onto the first part');
+      s.frameVerbs.flipRow(forward: true);
       expect(
         s.currentFrameIndex,
-        1,
-        reason: 'each repeated part remains a flip column of its own',
+        4,
+        reason: 'each repeated part is a flip column of its own',
       );
     });
   });

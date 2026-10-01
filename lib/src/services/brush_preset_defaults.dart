@@ -1,4 +1,3 @@
-import '../models/brush_anti_alias.dart';
 import '../models/brush_blend_mode.dart';
 import '../models/brush_group.dart';
 import '../models/brush_group_icon.dart';
@@ -12,6 +11,7 @@ import '../models/brush_shape.dart';
 import '../models/brush_tip_rotation_mode.dart';
 import 'brush_tip_mask_defaults.dart';
 
+const BrushGroupId _basicGroup = BrushGroupId('builtin-basic-group');
 const BrushGroupId _pencilGroup = BrushGroupId('builtin-pencil-group');
 const BrushGroupId _penGroup = BrushGroupId('builtin-ink-group');
 const BrushGroupId _dryMediaGroup = BrushGroupId('builtin-dry-media-group');
@@ -59,8 +59,18 @@ const BrushGroupId _decorationGroup = BrushGroupId('builtin-decoration-group');
 /// 「픽셀브러시도 그냥 G펜 우리가 만들어서 넣고 aa off면 픽셀대로 나오게
 /// 클튜처럼 하면되는거고」 — a pixel brush is an anti-alias setting, not a
 /// family. It ships as Anime Pen inside Pen, where Clip Studio files its
-/// ドットペン too.
+/// ドットペン too. ↩️Anime Pen is gone (board F-218, 유저 2026-09-28
+/// 「이상한것들 쳐내고. 애니펜 이런거」): a pixel line is the 없음 step of
+/// any brush's anti-alias, so the setting stays and the extra row does not.
+///
+/// 🚨**BASIC COMES FIRST** (board F-218, 유저 2026-09-28: 「포토샵보면
+/// 둥근라운드 딱딱한라운드 뭐 이런 진짜 기본적인 브러시가 제대로 있는데
+/// 여긴 이상함. 대표적인 기본적인 브러시들 추가」). The two rounds every
+/// painting program opens with were already here under other names — Ink
+/// Pen and Soft Brush — so they MOVED and were renamed rather than being
+/// added beside themselves.
 final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
+  const BrushGroup(id: _basicGroup, name: 'Basic', icon: BrushGroupIcon.brush),
   const BrushGroup(
     id: _pencilGroup,
     name: 'Pencil',
@@ -158,87 +168,114 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 /// dab: each soft brush took the flow that gives, at its own size, the
 /// density it had, `1 − (1 − flow)^(old step / new step)` (Airbrush at 40 px:
 /// a 2 px step became 1, and 0.12 became 0.062).
+///
+/// 🚨**A FLOW SAYS WHAT ONE STAMP PER TENTH OF THE SIZE LAYS** (유저
+/// 2026-10-01, board `one-pixel-steps-change-a-brush-with-its-size`:
+/// 「엔진이 쌓임을 환산 — 크기와 무관하게(클튜처럼)」). A dab lays its share of
+/// such a stamp (`stampShareOf`), so one flow piles up the same at every
+/// size. Every brush that lays a share at its own size took the flow that
+/// lays there what its pixel-apart pile laid before, `1 − (1 − flow)^(1 /
+/// share)` — twenty of them (Soft Round at 24 px: share 0.417, 0.394 became
+/// 0.6992; Airbrush at 40 px: share 0.25, 0.062 became 0.2259). A brush at
+/// flow 1 keeps it: whole is whole at any share.
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
-  // ---- Pencil ----------------------------------------------------------
+  // ---- Basic -----------------------------------------------------------
+  // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
+  // stay `builtin-ink-pen` and `builtin-soft-brush`, so a project's resumed
+  // tools and the hand bank still find them.
   BrushPreset(
-    id: const BrushPresetId('builtin-pencil'),
-    name: 'Pencil',
-    groupId: _pencilGroup,
-    // ⚠️Pressure darkens the line as well as widening it — what a pencil
-    // does and ink does not. Only its spacing (15% against the Ink Pen's
-    // 10%) set the two rows apart until both went to the finest spacing
-    // (2026-09-24), and then they drew the same row.
+    id: const BrushPresetId('builtin-ink-pen'),
+    name: 'Hard Round',
+    groupId: _basicGroup,
     settings: BrushSettings(
-      size: 4,
+      size: 8,
       hardness: 1.0,
       spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve.identity(),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-soft-brush'),
+    name: 'Soft Round',
+    groupId: _basicGroup,
+    settings: BrushSettings(
+      size: 24,
+      // Photoshop's Soft Round is hardness 0: the falloff starts at the
+      // centre.
+      hardness: 0.0,
+      flow: 0.6992,
+      spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-soft-pencil'),
-    name: 'Soft Pencil',
-    groupId: _pencilGroup,
-    settings: BrushSettings(
-      size: 6,
-      hardness: 0.8,
-      opacity: 0.85,
-      flow: 0.8,
-      spacing: BrushShape.minSpacing,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
-      opacityPressureCurve: BrushPressureCurve.identity(),
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-mechanical-pencil'),
-    name: 'Mechanical Pencil',
-    groupId: _pencilGroup,
-    settings: BrushSettings(
-      size: 2,
-      hardness: 1.0,
-      spacing: BrushShape.minSpacing,
-      // A lead has one width; pressure darkens it rather than widening it.
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.8),
-      opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-rough-pencil'),
-    name: 'Rough Pencil',
-    groupId: _pencilGroup,
-    settings: BrushSettings(
-      size: 8,
-      flow: 0.9,
-      spacing: 0.1,
-      tipMask: grainBrushTipMask,
-      textureMaskSource: paperGrainTextureMask,
-      textureDensity: 0.55,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
-    ),
-  ),
-  // 🚨TWO MORE GRADES, because a pencil set IS its grades. 2H is hard and
-  // pale, 4B is soft and dark, and the pair is what makes the middle grades
-  // already here read as a set rather than as three similar pencils.
+
+  // ---- Pencil ----------------------------------------------------------
+  // 🚨A PENCIL SET IS ITS GRADES (board F-218, 유저 2026-09-28: 「연필은 싹
+  // 다 비슷비슷한 브러시라 차이를 못느끼겠음. 제대로 차이 두도록. 현실기반?」).
+  // Three of the eight pencils here were plain round tips with no graphite in
+  // them at all — a thin pen each. Now every graphite pencil wears the grain
+  // tip and the paper's tooth, and the four grades step the way the leads
+  // do: the harder, the paler, finer and crisper; the softer, the darker,
+  // coarser and broader. ⚠️The picker draws every row at one size, so the
+  // grades are kept apart by what it CAN draw — tone (flow · opacity),
+  // grain (texture density) and edge (hardness) — never by size alone.
   BrushPreset(
     id: const BrushPresetId('builtin-hard-pencil'),
-    name: 'Hard Pencil 2H',
+    name: '2H Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 3,
-      hardness: 0.95,
-      flow: 0.55,
-      spacing: BrushShape.minSpacing,
-      opacity: 0.75,
+      hardness: 1.0,
+      flow: 0.45,
+      opacity: 0.65,
+      spacing: 0.05,
+      tipMask: grainBrushTipMask,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.0,
       textureDensity: 0.35,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.75),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.6),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-pencil'),
+    name: 'HB Pencil',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 4,
+      hardness: 0.9,
+      flow: 0.65,
+      opacity: 0.8,
+      spacing: 0.05,
+      tipMask: grainBrushTipMask,
+      textureMaskSource: paperGrainTextureMask,
+      textureScale: 1.2,
+      textureDensity: 0.5,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.6),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.5),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-soft-pencil'),
+    name: '2B Pencil',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 6,
+      hardness: 0.75,
+      flow: 0.8,
+      opacity: 0.9,
+      spacing: 0.05,
+      tipMask: grainBrushTipMask,
+      textureMaskSource: paperGrainTextureMask,
+      textureScale: 1.3,
+      textureDensity: 0.6,
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
     ),
   ),
   BrushPreset(
     id: const BrushPresetId('builtin-dark-pencil'),
-    name: 'Dark Pencil 4B',
+    name: '4B Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 8,
@@ -250,6 +287,25 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       textureScale: 1.4,
       textureDensity: 0.7,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.35),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-mechanical-pencil'),
+    name: 'Mechanical Pencil',
+    groupId: _pencilGroup,
+    settings: BrushSettings(
+      size: 2,
+      hardness: 1.0,
+      spacing: BrushShape.minSpacing,
+      // ⚠️The tooth, not the grain tip: a 64-texel tip at two pixels samples
+      // to noise, while the paper's tooth bites a fine line the way it bites
+      // a thin lead.
+      textureMaskSource: paperGrainTextureMask,
+      textureScale: 1.0,
+      textureDensity: 0.3,
+      // A lead has one width; pressure darkens it rather than widening it.
+      sizePressureCurve: BrushPressureCurve.linearFrom(0.9),
+      opacityPressureCurve: BrushPressureCurve.linearFrom(0.45),
     ),
   ),
   BrushPreset(
@@ -267,18 +323,23 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
+  // 🚨THE PENCIL LAID ON ITS SIDE (board F-218, 유저: 「각도에 따라 눕히는
+  // 연필. 연필 눕혀서 그리기도 하잖아 아날로그에서. 그런거 그대로 재현한
+  // 연필」). Upright it draws a line; leaned over, the side of the lead
+  // spreads the same graphite wide, pale and soft-edged.
   BrushPreset(
     id: const BrushPresetId('builtin-shading-pencil'),
-    name: 'Shading Pencil',
+    name: 'Tilted Pencil',
     groupId: _pencilGroup,
     settings: BrushSettings(
       size: 6,
       hardness: 0.7,
       flow: 0.8,
-      spacing: BrushShape.minSpacing,
+      spacing: 0.05,
       roundness: 0.55,
       angleDegrees: 35,
       rotationMode: BrushTipRotationMode.fixed,
+      tipMask: grainBrushTipMask,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 1.2,
       textureDensity: 0.5,
@@ -305,24 +366,20 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
         (BrushPressureTarget.opacity, BrushInputSource.tilt):
             BrushPressureCurve(const [
               BrushCurvePoint(0.0, 1.0),
-              BrushCurvePoint(1.0, 0.55),
+              BrushCurvePoint(1.0, 0.4),
+            ]),
+        // And the side of a lead has no point: the edge goes soft as it
+        // lies down.
+        (BrushPressureTarget.hardness, BrushInputSource.tilt):
+            BrushPressureCurve(const [
+              BrushCurvePoint(0.0, 1.0),
+              BrushCurvePoint(1.0, 0.35),
             ]),
       },
     ),
   ),
 
   // ---- Pen -------------------------------------------------------------
-  BrushPreset(
-    id: const BrushPresetId('builtin-ink-pen'),
-    name: 'Ink Pen',
-    groupId: _penGroup,
-    settings: BrushSettings(
-      size: 8,
-      hardness: 1.0,
-      spacing: BrushShape.minSpacing,
-      sizePressureCurve: BrushPressureCurve.identity(),
-    ),
-  ),
   BrushPreset(
     id: const BrushPresetId('builtin-g-pen'),
     name: 'G-Pen',
@@ -351,17 +408,28 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       sizePressureCurve: BrushPressureCurve.linearFrom(0.45),
     ),
   ),
+  // 🚨A BRUSH PEN IS NOT A SOFTER G-PEN (board F-218: the two drew nearly
+  // the same row, 4.3 levels apart). Its tip is felt or hair: the line leaves
+  // the paper as a hairline and swells late and wide — so the edge is softer
+  // and the swell is an S.
+  // ⛔NO FLOW CURVE, though the F-218 proposal had one (a light touch laying
+  // thinner ink). Thinner ink is a partly covered pixel even with the edge
+  // set to none, and H39 is 유저's 「aa off시엔 진짜 안티앨리어싱
+  // 완전없었으면」 for the pen group's round brushes — confirmed on the
+  // device with this one among them. `aa_none_pen_stroke_lands_hard_test`
+  // holds it.
   BrushPreset(
     id: const BrushPresetId('builtin-brush-pen'),
     name: 'Brush Pen',
     groupId: _penGroup,
     settings: BrushSettings(
-      size: 12,
-      hardness: 0.85,
+      size: 14,
+      hardness: 0.7,
       spacing: BrushShape.minSpacing,
       sizePressureCurve: BrushPressureCurve(const [
-        BrushCurvePoint(0.0, 0.05),
-        BrushCurvePoint(0.4, 0.22),
+        BrushCurvePoint(0.0, 0.02),
+        BrushCurvePoint(0.3, 0.1),
+        BrushCurvePoint(0.7, 0.55),
         BrushCurvePoint(1.0, 1.0),
       ]),
     ),
@@ -387,29 +455,8 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 16,
       hardness: 0.8,
       opacity: 0.7,
-      flow: 0.436,
+      flow: 0.6,
       spacing: BrushShape.minSpacing,
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-anime-pen'),
-    name: 'Anime Pen',
-    groupId: _penGroup,
-    settings: BrushSettings(
-      size: 6,
-      // 🚨HARDNESS 0.85 IS THE WHOLE PRESET, not a style choice. At hardness
-      // 1.0 `hardRadius == radius`, so `edgeSpan == 0` and coverage is
-      // ALREADY binary (`brush_dab_tip_geometry.dart`, and identically in the
-      // kernel) — `antiAlias: none` on such a tip is a field set to no
-      // effect. A 0.85 ramp gives the threshold something to cut, landing the
-      // hard edge at r × (1 + h) / 2, and flipping AA back to high in the
-      // panel visibly softens it.
-      hardness: 0.85,
-      spacing: BrushShape.minSpacing,
-      // ⛔NEVER pair `antiAlias: none` with a tip MASK: the threshold hits
-      // mask coverage too, and would binarize a grain or chalk tip whole.
-      antiAlias: BrushAntiAlias.none,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.85),
     ),
   ),
   // 🚨KABURA PEN (カブラペン) IS CLIP STUDIO'S THIRD NIB and the roster had
@@ -441,24 +488,6 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 1.0,
       flow: 1.0,
       spacing: BrushShape.minSpacing,
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-rough-ink'),
-    name: 'Rough Ink',
-    groupId: _penGroup,
-    settings: BrushSettings(
-      size: 9,
-      hardness: 1.0,
-      flow: 1.0,
-      spacing: BrushShape.minSpacing,
-      // The LINE is clean and the EDGE is not: a dual grain bites the
-      // silhouette without touching the nib's own pressure response.
-      dualMask: grainBrushTipMask,
-      dualMaskScale: 0.45,
-      dualDensity: 0.45,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.4),
-      roundnessJitter: 0.2,
     ),
   ),
   BrushPreset(
@@ -542,7 +571,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _dryMediaGroup,
     settings: BrushSettings(
       size: 16,
-      flow: 0.8,
+      flow: 0.8996,
       spacing: 0.07,
       tipMask: grainBrushTipMask,
       textureMaskSource: canvasWeaveTextureMask,
@@ -557,7 +586,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _dryMediaGroup,
     settings: BrushSettings(
       size: 26,
-      flow: 0.75,
+      flow: 0.8233,
       spacing: 0.08,
       // ⚠️Roundness squashes a MASKED tip too — the mask sampler divides by
       // it the same way the analytic ellipse does — and the panel's tip icon
@@ -575,6 +604,11 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   ),
 
   // ---- Watercolor ------------------------------------------------------
+  // 🚨A WATERCOLOUR HERE IS CLEAN, AND ONE IS ANALOGUE (board F-218, 유저:
+  // 「수채브러시에 질감있는것도 그냥 한없이 의문임. 질감 있다면 그냥 수채가
+  // 아니라 아날로그 수채라던가 이런식으로 하고 질감도 진짜 아날로그질감
+  // 종이질감」). The digital washes carry no paper; the paper — cold-press
+  // tooth, not the generic grain — lives on Analog Watercolor alone.
   BrushPreset(
     id: const BrushPresetId('builtin-watercolor'),
     name: 'Watercolor',
@@ -582,12 +616,29 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 28,
       hardness: 0.3,
-      flow: 0.265,
+      flow: 0.5774,
       opacity: 0.8,
       spacing: BrushShape.minSpacing,
-      textureMaskSource: paperGrainTextureMask,
-      textureScale: 2.0,
-      textureDensity: 0.8,
+      opacityPressureCurve: BrushPressureCurve.identity(),
+    ),
+  ),
+  BrushPreset(
+    id: const BrushPresetId('builtin-analog-watercolor'),
+    name: 'Analog Watercolor',
+    groupId: _watercolorGroup,
+    settings: BrushSettings(
+      size: 28,
+      hardness: 0.3,
+      // ⚠️Lower than Watercolor's on purpose: the paper multiplies every
+      // dab, and a pile that reaches the stroke's ceiling has no tooth left
+      // to show — at Watercolor's flow the hollows and the crowns both
+      // filled (measured as it shipped, board F-218).
+      flow: 0.4261,
+      opacity: 0.8,
+      spacing: BrushShape.minSpacing,
+      textureMaskSource: coldPressTextureMask,
+      textureScale: 1.0,
+      textureDensity: 1.0,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
@@ -597,14 +648,11 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 34,
-      flow: 0.35,
+      flow: 0.5775,
       opacity: 0.8,
       spacing: 0.05,
       // The wet edge lives in the TIP, not in a new engine field.
       tipMask: wetBlotBrushTipMask,
-      textureMaskSource: paperGrainTextureMask,
-      textureScale: 2.0,
-      textureDensity: 0.6,
       angleJitter: 1.0,
       sizeJitter: 0.2,
       // ⚠️The blend is applied ONCE per stroke at pen-up, so washes darken
@@ -626,12 +674,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 22,
       hardness: 0.6,
-      flow: 0.716,
+      flow: 0.9375,
       opacity: 0.9,
       spacing: BrushShape.minSpacing,
-      textureMaskSource: paperGrainTextureMask,
-      textureScale: 1.4,
-      textureDensity: 0.45,
       mixesGroundColor: true,
       colorStretch: 0.3,
       paintAmount: 0.95,
@@ -646,16 +691,13 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 44,
       hardness: 0.35,
-      flow: 0.207,
+      flow: 0.6392,
       opacity: 0.75,
       spacing: BrushShape.minSpacing,
       // A wide flat sable held square to the paper: the angle stays put so
       // the band keeps one width across the sweep.
       roundness: 0.2,
       rotationMode: BrushTipRotationMode.fixed,
-      textureMaskSource: paperGrainTextureMask,
-      textureScale: 2.5,
-      textureDensity: 0.6,
       mixesGroundColor: true,
       colorStretch: 0.35,
       paintAmount: 0.9,
@@ -666,27 +708,12 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
 
   // ---- Oil -------------------------------------------------------------
   BrushPreset(
-    id: const BrushPresetId('builtin-round-bristle'),
-    name: 'Round Bristle',
-    groupId: _oilGroup,
-    settings: BrushSettings(
-      size: 18,
-      hardness: 0.9,
-      flow: 0.775,
-      spacing: BrushShape.minSpacing,
-      tipMask: bristleBrushTipMask,
-      // Bristles rake along the stroke, so the tip turns with it.
-      rotationMode: BrushTipRotationMode.direction,
-      sizePressureCurve: BrushPressureCurve.linearFrom(0.5),
-    ),
-  ),
-  BrushPreset(
     id: const BrushPresetId('builtin-flat-bristle'),
     name: 'Flat Bristle',
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 22,
-      flow: 0.75,
+      flow: 0.9375,
       spacing: 0.05,
       roundness: 0.3,
       angleDegrees: 45,
@@ -701,7 +728,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 20,
       hardness: 0.65,
-      flow: 0.853,
+      flow: 0.9784,
       spacing: BrushShape.minSpacing,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.5,
@@ -715,9 +742,10 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 26,
-      flow: 0.9,
+      flow: 0.9975,
       spacing: BrushShape.minSpacing,
       tipMask: bristleBrushTipMask,
+      // Bristles rake along the stroke, so the tip turns with it.
       rotationMode: BrushTipRotationMode.direction,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.2,
@@ -754,18 +782,23 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       paintDensity: 1.0,
     ),
   ),
+  // ⚠️A DRY BRUSH STILL HAS TO SHOW (board F-218: its row laid 2% ink — the
+  // sponge at full density ate nearly every dab). The sponge bites at a
+  // little over half, so the stroke breaks into dry streaks instead of
+  // vanishing.
   BrushPreset(
     id: const BrushPresetId('builtin-dry-brush'),
     name: 'Dry Brush',
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 30,
-      flow: 0.5,
+      flow: 0.9009,
       spacing: 0.06,
       tipMask: bristleBrushTipMask,
       rotationMode: BrushTipRotationMode.direction,
       dualMask: spongeBrushTipMask,
       dualMaskScale: 0.75,
+      dualDensity: 0.55,
       spacingJitter: 0.4,
       opacityJitter: 0.2,
       sizePressureCurve: BrushPressureCurve.linearFrom(0.3),
@@ -780,46 +813,17 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 40,
       hardness: 0.05,
-      flow: 0.062,
+      flow: 0.2259,
       opacity: 0.9,
       // Tight spacing is what makes an airbrush build rather than band.
       spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
   ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-soft-brush'),
-    name: 'Soft Brush',
-    groupId: _airbrushGroup,
-    settings: BrushSettings(
-      size: 24,
-      hardness: 0.25,
-      flow: 0.394,
-      spacing: BrushShape.minSpacing,
-      opacityPressureCurve: BrushPressureCurve.identity(),
-    ),
-  ),
-  BrushPreset(
-    id: const BrushPresetId('builtin-spray'),
-    name: 'Spray',
-    groupId: _airbrushGroup,
-    settings: BrushSettings(
-      size: 44,
-      hardness: 0.1,
-      flow: 0.086,
-      opacity: 0.85,
-      spacing: BrushShape.minSpacing,
-      textureMaskSource: paperGrainTextureMask,
-      // 🚨TEXTURE SCALE 0.7 IS THE WHOLE SEPARATION from Airbrush. The
-      // texture period is `mask size × scale`, so 0.7 is a ~45px grain that
-      // reads as SPECKLE in a preview row, while Watercolor's 2.0 is a ~128px
-      // period that reads as a soft gradient. Raise it and this row becomes a
-      // second airbrush.
-      textureScale: 0.7,
-      textureDensity: 0.9,
-      opacityPressureCurve: BrushPressureCurve.identity(),
-    ),
-  ),
+  // ↩️SPRAY IS GONE (board F-218). It was kept apart from Airbrush by its
+  // texture scale alone — 0.7, a ~45px grain meant to read as speckle — and
+  // measured it did not: its row stood 2.2 levels from Airbrush's, the
+  // closest pair in the whole roster. Speckle is Grit Spray's.
   BrushPreset(
     id: const BrushPresetId('builtin-grit-spray'),
     name: 'Grit Spray',
@@ -827,7 +831,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 36,
       hardness: 0.35,
-      flow: 0.3,
+      flow: 0.51,
       opacity: 0.85,
       spacing: 0.05,
       dualMask: splatterBrushTipMask,
@@ -844,7 +848,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 24,
       hardness: 0.35,
-      flow: 0.7,
+      flow: 0.91,
       spacing: 0.05,
       mixesGroundColor: true,
       // 🚨STRETCH 0.35, NEVER 1.0 — and this is arithmetic, not taste. The
@@ -867,7 +871,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 34,
       hardness: 0.12,
-      flow: 0.3,
+      flow: 0.51,
       spacing: 0.05,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.6,
@@ -887,7 +891,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _blendGroup,
     settings: BrushSettings(
       size: 14,
-      flow: 0.4,
+      flow: 0.5111,
       spacing: 0.05,
       tipMask: grainBrushTipMask,
       textureMaskSource: paperGrainTextureMask,
@@ -972,7 +976,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 16,
       hardness: 1.0,
-      flow: 0.9,
+      flow: 0.9749,
       spacing: 0.06,
       tipMask: bristleBrushTipMask,
       rotationMode: BrushTipRotationMode.fixed,
@@ -1007,7 +1011,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 20,
       hardness: 1.0,
-      flow: 0.85,
+      flow: 0.9775,
       spacing: 0.05,
       dualMask: chalkBrushTipMask,
       dualMaskScale: 0.6,

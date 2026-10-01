@@ -13,10 +13,12 @@ import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/media_reference.dart';
 import '../models/movie_cel.dart';
+import '../models/se_line_type.dart';
 import '../models/timeline_coverage.dart';
 import '../services/editing/cut_duplicate_helpers.dart' show duplicateFrameContent;
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../models/track_transitions.dart';
 import '../models/timeline_splice.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
@@ -454,13 +456,10 @@ class TimelineController {
   }
 
   void _executeCommands(List<Command> commands, {required String description}) {
-    if (commands.isEmpty) {
-      return;
+    final command = oneStepOf(description, commands);
+    if (command != null) {
+      _runCommand(command);
     }
-    final command = commands.length == 1
-        ? commands.single
-        : CompositeCommand(description: description, commands: commands);
-    _runCommand(command);
   }
 
   /// THE dispatch: through the history when there is one (undoable), run
@@ -525,71 +524,32 @@ class TimelineController {
 
   bool canRenameFrameAt({required Layer layer, required int frameIndex}) =>
       _names.canRenameFrameAt(layer: layer, frameIndex: frameIndex);
-  FrameId? conflictingFrameIdForRename({
-    required Layer layer,
-    required FrameId frameId,
-    required String? name,
-  }) => _names.conflictingFrameIdForRename(
-    layer: layer,
-    frameId: frameId,
-    name: name,
+  Map<FrameId, FrameId> nameConflicts(
+    Layer layer,
+    Map<FrameId, String?> names,
+  ) => _names.nameConflicts(layer, names);
+  void nameFramesForLayer({
+    required LayerId layerId,
+    Map<FrameId, String?> names = const {},
+    Map<FrameId, FrameId> joins = const {},
+  }) => _names.nameFramesForLayer(
+    layerId: layerId,
+    names: names,
+    joins: joins,
   );
   void renameFrameForLayer({
     required LayerId layerId,
     required FrameId frameId,
     required String? name,
     bool allowDuplicateName = false,
-    String? seName,
-    bool updateSeName = false,
+    SeEntryFields? seEntry,
   }) => _names.renameFrameForLayer(
     layerId: layerId,
     frameId: frameId,
     name: name,
     allowDuplicateName: allowDuplicateName,
-    seName: seName,
-    updateSeName: updateSeName,
+    seEntry: seEntry,
   );
-
-  void linkFrameForLayer({
-    required LayerId layerId,
-    required FrameId sourceFrameId,
-    required FrameId targetFrameId,
-  }) {
-    final before = _requireLayer(layerId);
-    _requireFrameInLayer(layer: before, frameId: sourceFrameId);
-    _requireFrameInLayer(layer: before, frameId: targetFrameId);
-    if (sourceFrameId == targetFrameId) {
-      return;
-    }
-
-    final nextTimeline = SplayTreeMap<int, TimelineExposure>();
-    for (final entry in before.timeline.entries) {
-      final exposure = entry.value;
-      if (exposure.isDrawing && exposure.frameId == sourceFrameId) {
-        nextTimeline[entry.key] = exposure.copyWith(frameId: targetFrameId);
-      } else {
-        nextTimeline[entry.key] = exposure;
-      }
-    }
-
-    var nextFrames = before.frames;
-    if (!bankLanesOf(layerId).exposes(sourceFrameId, lane: nextTimeline)) {
-      nextFrames = before.frames
-          .where((frame) => frame.id != sourceFrameId)
-          .toList(growable: false);
-    }
-
-    final after = before.copyWith(
-      frames: nextFrames,
-      timeline: nextTimeline,
-      audioClips: _audioClipsForFrames(before, nextFrames),
-    );
-    if (after == before) {
-      return;
-    }
-
-    _applyLayerEdit(before: before, after: after);
-  }
 
   // --- Comma adjustment (TVPaint-style edge shift) ------------------------------
 
@@ -689,7 +649,7 @@ class TimelineController {
     return UpdateLayerTimelineCommand(
       repository: _repository,
       before: before,
-      after: rederiveRunBehaviors(after, cutFrameCount: _cutFrameCount()),
+      after: rederiveRunBehaviors(after, drawnFrameCount: _drawnFrameCount()),
     );
   }
 
@@ -707,7 +667,7 @@ class TimelineController {
   ) {
     final next = rederiveRunBehaviors(
       layer.copyWith(timeline: timeline),
-      cutFrameCount: _cutFrameCount(),
+      drawnFrameCount: _drawnFrameCount(),
     );
     return next == layer ? null : next;
   }
@@ -782,8 +742,16 @@ class TimelineController {
   }
 
   /// The run-behavior fill boundary: hold/repeat edges fill ghosts to the
-  /// cut end. Zero (no cut) renders no end-side ghosts.
-  int _cutFrameCount() => _findCutOrNull()?.duration ?? 0;
+  /// cut's DRAWN end — the conte 尺 plus its のりしろ (F-227). Zero (no cut)
+  /// renders no end-side ghosts.
+  int _drawnFrameCount() {
+    final project = _repository.currentProject;
+    final cutId = _cutId;
+    if (project == null || cutId == null) {
+      return 0;
+    }
+    return cutDrawnFrameCount(project, cutId) ?? 0;
+  }
 
   Cut? _findCutOrNull() {
     final project = _repository.currentProject;

@@ -8,6 +8,7 @@ import '../../models/track_id.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import 'transitions_ride_the_cuts.dart';
 
 class DuplicateCutCommand implements Command {
   DuplicateCutCommand({
@@ -50,10 +51,12 @@ class DuplicateCutCommand implements Command {
       frameIdMap: frameIdMap,
     );
 
-    repository.insertCut(
-      trackId: targetTrackId,
-      cut: duplicatedCut,
-      index: index,
+    _ride.carry(
+      () => repository.insertCut(
+        trackId: targetTrackId,
+        cut: duplicatedCut,
+        index: index,
+      ),
     );
     editingSession.setActiveCutId(duplicatedCut.id);
     _hasExecuted = true;
@@ -66,7 +69,9 @@ class DuplicateCutCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    repository.removeCut(cutId: newCutId);
+    _ride.carryBack(() => repository.removeCut(cutId: newCutId));
     editingSession.setActiveCutId(previousActiveCutId);
   }
+
+  late final TransitionsRideTheCuts _ride = TransitionsRideTheCuts(repository);
 }

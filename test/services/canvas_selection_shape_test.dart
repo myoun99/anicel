@@ -3,7 +3,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 
 /// The ONE edge/scanline rule behind membership (`containsPoint`, the
-/// even-odd ray cast) and the lift mask (`_scanCrossings`, the scanline
+/// even-odd ray cast) and the lift mask (`_crossingsOn`, the scanline
 /// fill): which edges a horizontal line crosses and where. Both walkers
 /// spelled it (the audit's clone scan, 2026-09-06); the strict `>`
 /// half-open convention is what keeps a vertex shared by two edges from

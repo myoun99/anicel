@@ -162,21 +162,14 @@ class _WorkspaceLayoutPersistence {
       return;
     }
     _layoutSaveTimer?.cancel();
-    _layoutSaveTimer = Timer(const Duration(milliseconds: 800), () {
-      final payload = _layoutPayload();
-      _layoutWrite = _layoutWrite.then(
-        (_) => store.save(payload).catchError((Object _) {}),
-      );
-    });
+    // 🪦Chained its writes here once — two in flight interleaved into a
+    // file no restore could read (V rows' splitter test, 2026-09-26). Every
+    // settings file's writes keep their order now ([saveVersionedSettings]).
+    _layoutSaveTimer = Timer(
+      const Duration(milliseconds: 800),
+      () => unawaited(store.save(_layoutPayload())),
+    );
   }
-
-  /// The write in flight — the next one waits for it. `writeAsString`
-  /// truncates and then writes, so two writes into one file at once
-  /// interleave, and the longer one's tail outlives the shorter: a file no
-  /// restore can read, and the whole arrangement lost at the next launch.
-  /// (Found by the V rows' splitter test: a save scheduled at launch and the
-  /// reset's own save were in flight together.)
-  Future<void> _layoutWrite = Future<void>.value();
 
   /// Everything the layout file keeps, as it stands now.
   Map<String, Object?> _layoutPayload() => {

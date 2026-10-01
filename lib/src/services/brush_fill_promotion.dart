@@ -17,8 +17,8 @@ const int fillPromotionRevision = 1;
 
 /// 🚨★★★A FILL IS A STROKE OF ONE DAB (유저 절대규칙 2026-09-17: 「보이는
 /// 중이랑 결과랑 절대로 다르면 안 되」). The result tiles a fill tap will
-/// land, made NOW by the commit's own function — the same clip the panel
-/// runs on a stroke that arrives without live pixels, then
+/// land, made NOW by the commit's own function — the same stamp clip the
+/// panel's commit funnel runs ([clipStampDabToSelection]), then
 /// [brushCommitResultForBrushDabSequenceOnBitmapSurface] exactly as the
 /// commit would call it — so what the screen shows before the commit IS
 /// the commit, byte for byte and at every level (the tiles reach the
@@ -45,24 +45,17 @@ List<PromotedStrokeTile> promoteFillDab({
   required LayerId layerId,
   required FrameId frameId,
 }) {
-  final clipped = selection == null
-      ? null
-      : clipDabsToSelection(
-          dabs: [dab],
-          canvasSize: surface.canvasSize,
-          tileSize: surface.tileSize,
-          region: selection,
-        );
-  if (selection != null && clipped == null) {
+  final landing = selection == null
+      ? dab
+      : clipStampDabToSelection(dab, region: selection);
+  if (landing == null) {
     return const [];
   }
   final result = brushCommitResultForBrushDabSequenceOnBitmapSurface(
     surface: surface,
-    sequence: BrushDabSequence([dab]),
+    sequence: BrushDabSequence([landing]),
     layerId: layerId,
     frameId: frameId,
-    prerasterizedStrokePixels: clipped?.pixels,
-    prerasterizedStrokeBounds: clipped?.bounds,
     blendMode: blendMode,
   );
   if (!result.hasChanges) {

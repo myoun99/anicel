@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 
@@ -187,6 +189,33 @@ void main() {
       expect(a == c, isFalse);
       expect(a.toString(), contains('BrushEditCanvasInputSettings'));
       expect(a.toString(), contains('size: 2.0'));
+    });
+
+    test('🚨a copyWith that changes one thing keeps the rest — the edge step '
+        'too', () {
+      // The live stroke snapshots a mapped-erase press with
+      // `copyWith(erase: true, blendMode: erase)`; the edge step rode that
+      // rebuild at its default, so a 없음 brush erased at 3단계.
+      final brush = BrushEditCanvasInputSettings(
+        color: 0xFF336699,
+        size: 7,
+        hardness: 0.8,
+        antiAlias: BrushAntiAlias.none,
+      );
+      final erasing = brush.copyWith(
+        erase: true,
+        blendMode: BrushBlendMode.erase,
+      );
+      expect(erasing.antiAlias, BrushAntiAlias.none);
+      expect(
+        brush.copyWith(color: 0xFF000000).copyWith(color: brush.color),
+        brush,
+        reason: 'a colour there and back is the brush it was',
+      );
+      expect(
+        brush.copyWith(antiAlias: BrushAntiAlias.low).antiAlias,
+        BrushAntiAlias.low,
+      );
     });
   });
 }

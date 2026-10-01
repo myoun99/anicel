@@ -14,8 +14,9 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/census_where_textures_are_ram.dart';
 
 /// 🚨2026-09-11: the census added each cel store's COLD bytes to the
 /// drawings and sheet-ink rows. But a cooled cel is written to the run's
@@ -50,7 +51,7 @@ void main() {
       AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, inked()));
 
   Map<String, int> censusRows(EditorSessionManager session) => {
-    for (final item in collectMemoryCensus([session]).items)
+    for (final item in collectMemoryCensusWhereTexturesAreRam([session]).items)
       item.id: item.bytes,
   };
 

@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/canvas/canvas_zoom_scale.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/effective_device_pixel_ratio.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 
 import '../../helpers/brush_canvas_fixture.dart';
 import '../../helpers/canvas_pill.dart';
@@ -406,8 +407,16 @@ void main() {
       await tester.pumpWidget(harness(uiScale: 1.0, canvasSize: canvasSize));
       await tester.pump();
 
-      final window = tester.getSize(
+      // What the view is fitted into: the editor viewport less the lanes a
+      // docked panel's scrollbars stand in (F-209) and the pill's band
+      // across its top.
+      final box = tester.getSize(
         find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
+      );
+      final band = pillBandOf(tester);
+      final window = Size(
+        box.width - AppScrollbarLane.wide,
+        box.height - AppScrollbarLane.wide - band,
       );
       await tester.tap(
         find.byKey(const ValueKey<String>('canvas-viewport-fit')),
@@ -440,7 +449,7 @@ void main() {
         CanvasPoint(x: 317 / 2, y: 171 / 2),
       );
       expect(centre.x, closeTo(window.width / 2, 1e-9));
-      expect(centre.y, closeTo(window.height / 2, 1e-9));
+      expect(centre.y, closeTo(band + window.height / 2, 1e-9));
     });
 
     testWidgets('the angle reads 0.00° and writes what a rotation kept', (

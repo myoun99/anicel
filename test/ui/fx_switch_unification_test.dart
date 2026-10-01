@@ -35,7 +35,7 @@ void main() {
     EditorSessionManager session,
   ) {
     final layerId = session.activeLayer!.id;
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       layerId,
       TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>().withKey(

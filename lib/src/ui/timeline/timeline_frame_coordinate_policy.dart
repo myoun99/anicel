@@ -11,6 +11,69 @@ library;
 
 import 'dart:math' as math;
 
+/// Where the boundary BEFORE frame [frameIndex] lands along the frame axis,
+/// counted from frame 0's — THE frame→pixel law. Every frame-axis position
+/// on every panel is read through it, and [timelineFrameAt] reads it back.
+///
+/// 🗣️F-220 (유저 2026-09-29): the zoom follows every percent now, so a cell
+/// is seldom a whole number of pixels. From a pixel a cell up, a boundary
+/// lands on the whole pixel nearest it: a frame line stays one crisp
+/// column at any zoom, as it was on the whole-pixel zooms the old grid
+/// allowed, and every surface puts the same boundary on the same column —
+/// a cell is then its zoom's width give or take one pixel. Under a pixel a
+/// cell is left where it falls: rounding there would stack boundaries on
+/// one pixel and leave a one-frame block no width at all.
+double timelineFrameEdge(int frameIndex, double cellExtent) {
+  final exact = frameIndex * cellExtent;
+  return cellExtent >= 1 ? exact.roundToDouble() : exact;
+}
+
+/// The playhead's cell along the frame axis, counted from frame 0's
+/// boundary: the cell the law lays ([timelineFrameEdge]), and never under
+/// a pixel.
+///
+/// 🗣️F-210 (유저 2026-09-28): 「타임라인 줌 최대로 줄이면 현재 인덱스 헤드
+/// 세로줄?이 사라지는데, 사라지지않게 1픽셀이라도 보이게」 — under a pixel a
+/// cell is left where it falls, an eighth of one at the floor, so there the
+/// playhead takes the whole pixel its frame starts in.
+({double start, double end}) timelinePlayheadSpan(
+  int frameIndex,
+  double cellExtent,
+) {
+  final start = timelineFrameEdge(frameIndex, cellExtent);
+  if (cellExtent >= 1) {
+    return (start: start, end: timelineFrameEdge(frameIndex + 1, cellExtent));
+  }
+  final pixel = start.floorToDouble();
+  return (start: pixel, end: pixel + 1);
+}
+
+/// The frame whose cell holds [offset] — [timelineFrameEdge] read
+/// backwards: the last frame whose leading boundary is at or before it.
+/// Unclamped; the caller holds it to its own frames.
+///
+/// A boundary within [_boundarySlack] counts as reached: an offset built
+/// by adding a span's width to its start's boundary lands on the far
+/// boundary give or take a rounding error, and must name that frame.
+int timelineFrameAt(double offset, double cellExtent) {
+  if (cellExtent <= 0) {
+    return 0;
+  }
+  // The boundaries sit within half a pixel of the plain quotient's, so it
+  // is at most one frame off either way.
+  final reach = offset + _boundarySlack;
+  var frame = (reach / cellExtent).floor();
+  if (timelineFrameEdge(frame + 1, cellExtent) <= reach) {
+    frame += 1;
+  } else if (timelineFrameEdge(frame, cellExtent) > reach) {
+    frame -= 1;
+  }
+  return frame;
+}
+
+/// Far under any pixel, far over a double's error at a timeline's extent.
+const double _boundarySlack = 1e-9;
+
 int? frameIndexFromLocalX({
   required double localX,
   required double horizontalScrollOffset,
@@ -21,8 +84,10 @@ int? frameIndexFromLocalX({
     return null;
   }
 
-  final frameIndex = ((localX + horizontalScrollOffset) / frameCellWidth)
-      .floor();
+  final frameIndex = timelineFrameAt(
+    localX + horizontalScrollOffset,
+    frameCellWidth,
+  );
 
   return clampFrameIndex(
     frameIndex: frameIndex,
@@ -41,6 +106,8 @@ int? clampFrameIndex({
   return frameIndex.clamp(0, visibleFrameCount - 1).toInt();
 }
 
+/// [frameIndex]'s leading boundary in a surface whose [frameStartIndex]
+/// stands at [leadingFrameSpacerWidth] — the law's boundaries, moved as one.
 double frameVisibleX({
   required int frameIndex,
   required int frameStartIndex,
@@ -48,7 +115,8 @@ double frameVisibleX({
   required double leadingFrameSpacerWidth,
 }) {
   return leadingFrameSpacerWidth +
-      (frameIndex - frameStartIndex) * frameCellWidth;
+      timelineFrameEdge(frameIndex, frameCellWidth) -
+      timelineFrameEdge(frameStartIndex, frameCellWidth);
 }
 
 double frameRangeVisibleWidth({
@@ -56,7 +124,11 @@ double frameRangeVisibleWidth({
   required int endFrameIndexExclusive,
   required double frameCellWidth,
 }) {
-  return math.max(0, endFrameIndexExclusive - startFrameIndex) * frameCellWidth;
+  return math.max(
+    0.0,
+    timelineFrameEdge(endFrameIndexExclusive, frameCellWidth) -
+        timelineFrameEdge(startFrameIndex, frameCellWidth),
+  );
 }
 
 /// A scrub's per-gesture frame dedupe.

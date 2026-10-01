@@ -1,14 +1,11 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
-import 'package:anicel/src/ui/input/control_press_claim.dart'
-    show SurfaceDragClaim;
+import 'package:anicel/src/ui/canvas/row_transform_box.dart';
 
 void main() {
   const frameSize = CanvasSize(width: 1920, height: 1080);
@@ -108,61 +105,66 @@ void main() {
     });
   });
 
-  test('the rotate lever runs from the top edge midpoint to its knob', () {
-    final lever = cameraRotateLeverInViewport(
-      pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
-      cameraFrameSize: frameSize,
-      viewport: CanvasViewport(zoom: 0.5),
+  testWidgets('the frame only DRAWS — a press goes through it to what is '
+      'beneath', (tester) async {
+    var tappedBelow = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: () => tappedBelow = true,
+                  child: const ColoredBox(color: Colors.white),
+                ),
+              ),
+              Positioned.fill(
+                child: CameraFrameOverlay(
+                  pose: CameraPose(center: CanvasPoint(x: 100, y: 100)),
+                  cameraFrameSize: frameSize,
+                  viewport: CanvasViewport(),
+                  dimOpacity: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
 
-    // Top edge midpoint (500, 30), sticking 24 screen px away from the
-    // center (500, 300).
-    expect(lever.base, const Offset(500, 30));
-    expect(lever.knob, const Offset(500, 6));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('camera-frame-overlay')),
+      warnIfMissed: false,
+    );
+    expect(tappedBelow, isTrue);
   });
 
-  test('the lever base is the top edge midpoint at any rotation — the line '
-      'the painter draws and the knob it joins are ONE derivation', () {
-    final lever = cameraRotateLeverInViewport(
-      pose: CameraPose(
-        center: CanvasPoint(x: 1000, y: 600),
-        rotationDegrees: 90,
-      ),
-      cameraFrameSize: frameSize,
-      viewport: CanvasViewport(zoom: 0.5),
-    );
-    final corners = cameraFrameCornersInViewport(
-      pose: CameraPose(
-        center: CanvasPoint(x: 1000, y: 600),
-        rotationDegrees: 90,
-      ),
-      cameraFrameSize: frameSize,
-      viewport: CanvasViewport(zoom: 0.5),
-    );
-
-    expect(lever.base.dx, closeTo((corners[0].dx + corners[1].dx) / 2, 1e-9));
-    expect(lever.base.dy, closeTo((corners[0].dy + corners[1].dy) / 2, 1e-9));
-    expect(
-      (lever.knob - lever.base).distance,
-      closeTo(CameraFrameOverlay.rotateLeverLength, 1e-9),
-    );
-  });
-
-  group('CameraFrameOverlay interaction', () {
+  // F-222 ③: the frame is grabbed through the box every row wears; what is
+  // the camera's own is how the box's values map onto the camera's.
+  group('CameraFrameBox', () {
     // Camera center (1000, 600) at viewport zoom 0.5 = screen (500, 300);
-    // top-left corner handle (20, 30); rotate knob (500, 6).
-    Future<List<CameraPose>> pumpInteractiveOverlay(WidgetTester tester) async {
-      final committed = <CameraPose>[];
+    // its top-left corner shows at (20, 30). The stage is a 1920×1080
+    // canvas, whose pasteboard covers the whole test screen.
+    Future<List<_Commit>> pumpBox(WidgetTester tester) async {
+      final committed = <_Commit>[];
+      RowBoxLanding<T> into<T>(String member) => (
+        changed: (_) {},
+        committed: (value) => committed.add((member: member, value: value!)),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: CameraFrameOverlay(
+            body: CameraFrameBox(
               pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
               cameraFrameSize: frameSize,
+              canvasSize: const CanvasSize(width: 1920, height: 1080),
               viewport: CanvasViewport(zoom: 0.5),
-              dimOpacity: 0.5,
-              interactive: true,
-              onPoseCommitted: committed.add,
+              claimsCanvas: true,
+              onCancelled: () {},
+              move: into('move'),
+              zoom: into('zoom'),
+              turn: into('rotation'),
             ),
           ),
         ),
@@ -170,219 +172,55 @@ void main() {
       return committed;
     }
 
-    Offset overlayOrigin(WidgetTester tester) => tester.getTopLeft(
-      find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
-    );
-
-    testWidgets('dragging moves the camera and commits once on release', (
+    testWidgets('the inside moves the camera, in canvas pixels', (
       tester,
     ) async {
-      final committed = await pumpInteractiveOverlay(tester);
+      final committed = await pumpBox(tester);
 
-      await tester.drag(
-        find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
-        const Offset(50, -30),
-      );
+      await tester.dragFrom(const Offset(400, 300), const Offset(50, -30));
       await tester.pump();
 
       // Screen delta divided by the viewport zoom 0.5 = canvas delta.
-      expect(committed, hasLength(1));
-      expect(committed.single.center.x, closeTo(1000 + 100, 1e-6));
-      expect(committed.single.center.y, closeTo(600 - 60, 1e-6));
+      expect(committed, [
+        (member: 'move', value: CanvasPoint(x: 1100, y: 540)),
+      ]);
     });
 
-    testWidgets('dragging a corner handle scales the zoom around the '
-        'center', (tester) async {
-      final committed = await pumpInteractiveOverlay(tester);
-      final origin = overlayOrigin(tester);
+    testWidgets('a corner zooms about the centre — dragged halfway in, the '
+        'frame halves and the zoom doubles', (tester) async {
+      final committed = await pumpBox(tester);
 
-      // From the top-left corner to half its distance from the center:
-      // the view rect halves, so the zoom doubles.
-      final gesture = await tester.startGesture(origin + const Offset(20, 30));
-      await gesture.moveTo(origin + const Offset(260, 165));
-      await gesture.up();
+      await tester.dragFrom(const Offset(20, 30), const Offset(240, 135));
       await tester.pump();
 
       expect(committed, hasLength(1));
-      expect(committed.single.zoom, closeTo(2, 1e-6));
-      expect(committed.single.center.x, closeTo(1000, 1e-6));
-      expect(committed.single.center.y, closeTo(600, 1e-6));
-      expect(committed.single.rotationDegrees, closeTo(0, 1e-6));
+      expect(committed.single.member, 'zoom', reason: 'the zoom alone');
+      expect(committed.single.value as double, closeTo(2, 1e-6));
     });
 
-    testWidgets('dragging the rotate knob spins the camera around the '
-        'center', (tester) async {
-      final committed = await pumpInteractiveOverlay(tester);
-      final origin = overlayOrigin(tester);
+    testWidgets('outside the frame, on stage, turns the camera about its '
+        'centre', (tester) async {
+      final committed = await pumpBox(tester);
 
-      // The knob starts straight above the center (-90°); dragging to the
-      // center's right (0°) is a 90° clockwise turn.
-      final gesture = await tester.startGesture(origin + const Offset(500, 6));
-      await gesture.moveTo(origin + const Offset(770, 300));
-      await gesture.up();
+      // Straight above the centre, past the top edge (y 30), swung to the
+      // centre's right: a quarter turn clockwise.
+      await tester.dragFrom(const Offset(500, 10), const Offset(270, 290));
       await tester.pump();
 
       expect(committed, hasLength(1));
-      expect(committed.single.rotationDegrees, closeTo(90, 1e-6));
-      expect(committed.single.zoom, closeTo(1, 1e-6));
-      expect(committed.single.center.x, closeTo(1000, 1e-6));
-      expect(committed.single.center.y, closeTo(600, 1e-6));
+      expect(committed.single.member, 'rotation', reason: 'the turn alone');
+      expect(committed.single.value as double, closeTo(90, 1e-6));
     });
 
-    testWidgets('non-interactive overlay ignores pointers', (tester) async {
-      var tappedBelow = false;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Stack(
-              children: [
-                Positioned.fill(
-                  child: GestureDetector(
-                    onTap: () => tappedBelow = true,
-                    child: const ColoredBox(color: Colors.white),
-                  ),
-                ),
-                Positioned.fill(
-                  child: CameraFrameOverlay(
-                    pose: CameraPose(center: CanvasPoint(x: 100, y: 100)),
-                    cameraFrameSize: frameSize,
-                    viewport: CanvasViewport(),
-                    dimOpacity: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('camera-frame-overlay')),
-        warnIfMissed: false,
-      );
-      expect(tappedBelow, isTrue);
-    });
-
-    testWidgets('PEN-13: a FINGER only moves the camera when the one-finger '
-        'slot is Touch drawing; pen/mouse always operate', (tester) async {
-      // Corpus baseline pins draw — flip is the tablet default the report
-      // came from.
-      AppInput.settings.value = AppInput.settings.value.copyWith(
-        touchDragOneFinger: CanvasTouchDragAction.flip,
-      );
-      addTearDown(() {
-        AppInput.settings.value = AppInputSettings.testCorpusBaseline;
-      });
-      final committed = await pumpInteractiveOverlay(tester);
-
-      await tester.drag(
-        find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
-        const Offset(50, -30),
-        kind: PointerDeviceKind.touch,
-      );
-      await tester.pump();
-      expect(committed, isEmpty, reason: 'flip slot: fingers never drive');
-
-      await tester.drag(
-        find.byKey(const ValueKey<String>('camera-frame-overlay-gesture')),
-        const Offset(50, -30),
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pump();
-      expect(committed, hasLength(1), reason: 'the mouse always operates');
-    });
-
-    testWidgets('PEN-13: a second finger during a SUB-SLOP touch drag '
-        'aborts it (screen gesture); a committed drag survives', (
-      tester,
-    ) async {
-      // Baseline slot = draw: fingers may drive the camera.
-      final committed = await pumpInteractiveOverlay(tester);
-      final origin = overlayOrigin(tester);
-
-      // Sub-slop: 8px of travel, then a second finger lands — aborted.
-      final first = await tester.startGesture(
-        origin + const Offset(400, 300),
-        kind: PointerDeviceKind.touch,
-      );
-      await first.moveBy(const Offset(8, 0));
-      await tester.pump();
-      final second = await tester.startGesture(
-        origin + const Offset(500, 300),
-        kind: PointerDeviceKind.touch,
-        pointer: 9,
-      );
-      await tester.pump();
-      await first.moveBy(const Offset(60, 0));
-      await first.up();
-      await second.up();
-      await tester.pump();
-      expect(committed, isEmpty, reason: 'the pair is a screen gesture');
-
-      // Committed: 40px of travel first — the late finger changes nothing.
-      final third = await tester.startGesture(
-        origin + const Offset(400, 300),
-        kind: PointerDeviceKind.touch,
-        pointer: 11,
-      );
-      await third.moveBy(const Offset(40, 0));
-      await tester.pump();
-      final fourth = await tester.startGesture(
-        origin + const Offset(500, 300),
-        kind: PointerDeviceKind.touch,
-        pointer: 12,
-      );
-      await tester.pump();
-      await third.moveBy(const Offset(20, 0));
-      await third.up();
-      await fourth.up();
-      await tester.pump();
-      expect(committed, hasLength(1), reason: 'the committed drag lives');
-      expect(committed.single.center.x, closeTo(1000 + 120, 1e-6));
-    });
-
-    testWidgets('F-194: a PEN takes a corner on the canvas — the surface '
-        'under it holds from the first movement, and so does this', (
-      tester,
-    ) async {
-      final committed = <CameraPose>[];
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            // The canvas's claim, as `CanvasViewportGestureLayer` wears it
-            // around everything on the canvas.
-            body: SurfaceDragClaim(
-              child: CameraFrameOverlay(
-                pose: CameraPose(center: CanvasPoint(x: 1000, y: 600)),
-                cameraFrameSize: frameSize,
-                viewport: CanvasViewport(zoom: 0.5),
-                dimOpacity: 0.5,
-                interactive: true,
-                onPoseCommitted: committed.add,
-              ),
-            ),
-          ),
-        ),
-      );
-      final origin = overlayOrigin(tester);
-
-      // The corner drag above, in the small steps a hand makes — each
-      // shorter than a pen's pan slop.
-      final gesture = await tester.startGesture(
-        origin + const Offset(20, 30),
-        kind: PointerDeviceKind.stylus,
-      );
-      for (var step = 1; step <= 24; step += 1) {
-        await gesture.moveTo(
-          origin + Offset(20 + 10.0 * step, 30 + 5.625 * step),
-        );
-        await tester.pump();
-      }
-      await gesture.up();
-      await tester.pump();
-
-      expect(committed, hasLength(1), reason: 'the pen drove the camera');
-      expect(committed.single.zoom, closeTo(2, 1e-6));
+    testWidgets('it wears no cross and draws no outline of its own — the '
+        'frame\'s hairline is the outline', (tester) async {
+      await pumpBox(tester);
+      final box = tester.widget<RowTransformBox>(find.byType(RowTransformBox));
+      expect(box.cross, isNull);
+      expect(box.outlined, isFalse);
     });
   });
 }
+
+/// What one drag committed: the member its handle drives, and the value.
+typedef _Commit = ({String member, Object value});

@@ -332,8 +332,11 @@ void main() {
       );
     });
 
-    test('INSIDE a hold it splits — but the tail keeps its own cel instead '
-        'of being handed to the clip', () {
+    // 🗣️F-236 (유저 2026-09-29): 「블록 중간에 붙여넣는거랑 프레임 추가랑
+    // 똑같은 법 통일」 — one untimed comma takes the rest of the hold, as an
+    // added frame does. ↩️T3 split the hold, kept the clip to its one cell
+    // and handed the rest back to `a` behind it.
+    test('INSIDE a hold it takes the rest of it, as an added frame does', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(1);
 
@@ -346,13 +349,9 @@ void main() {
       expect(layer.timeline[0]!.length, 1);
       expect(
         layer.timeline[1],
-        const TimelineExposure.drawing(FrameId('b'), length: 1),
+        const TimelineExposure.drawing(FrameId('b'), length: 2),
       );
-      expect(
-        layer.timeline[2],
-        const TimelineExposure.drawing(FrameId('a'), length: 2),
-        reason: 'the rest of a is still a',
-      );
+      expect(layer.timeline[2], isNull, reason: 'no `a` comes back after it');
     });
 
     test('on an EMPTY cell it takes the clip\'s length, not the distance to '
@@ -370,11 +369,14 @@ void main() {
         const TimelineExposure.drawing(FrameId('a'), length: 1),
         reason: 'the old rule stretched it to 3, reaching b at 6',
       );
+      // 🗣️F-235 (유저 2026-09-29): 「블록, 빈 공간에 붙여넣는건데 대체 왜 뒤가
+      // 밀려나냐니까?」 ↩️b used to move to 7 even though there was room.
       expect(
-        fixture.layer.timeline[7],
+        fixture.layer.timeline[6],
         const TimelineExposure.drawing(FrameId('b'), length: 2),
-        reason: 'b moved aside even though there was room',
+        reason: 'there was room, so b stays',
       );
+      expect(fixture.layer.timeline.containsKey(7), isFalse);
     });
 
     test('requires the source frame to exist in the layer', () {
@@ -407,21 +409,18 @@ void main() {
         'A1',
       );
 
-      final conflict = fixture.controller.conflictingFrameIdForRename(
-        layer: fixture.layer,
-        frameId: const FrameId('b'),
-        name: 'A1',
-      );
-      expect(conflict, const FrameId('a'));
+      final conflicts = fixture.controller.nameConflicts(fixture.layer, {
+        const FrameId('b'): 'A1',
+      });
+      expect(conflicts, {const FrameId('b'): const FrameId('a')});
     });
 
-    test('linkFrameForLayer rewires uses and collects the orphaned source', () {
+    test('a join rewires uses and collects the orphaned source', () {
       final fixture = _fixture();
 
-      fixture.controller.linkFrameForLayer(
+      fixture.controller.nameFramesForLayer(
         layerId: _layerId,
-        sourceFrameId: const FrameId('a'),
-        targetFrameId: const FrameId('b'),
+        joins: {const FrameId('a'): const FrameId('b')},
       );
 
       final layer = fixture.layer;
@@ -438,6 +437,54 @@ void main() {
         ),
         2,
       );
+    });
+
+    // I-18: a batch of names — 자동 이름 지정's one edit.
+    List<Frame> named(String a, String b) => [
+      Frame(id: const FrameId('a'), duration: 1, strokes: const [], name: a),
+      Frame(id: const FrameId('b'), duration: 1, strokes: const [], name: b),
+    ];
+
+    test('a name held INSIDE the batch is no conflict — 3 4 numbered from '
+        '4 reads 4 5, as ONE undo step', () {
+      final history = HistoryManager();
+      final fixture = _fixture(
+        frames: named('3', '4'),
+        historyManager: history,
+      );
+      final names = {const FrameId('a'): '4', const FrameId('b'): '5'};
+
+      expect(fixture.controller.nameConflicts(fixture.layer, names), isEmpty);
+      fixture.controller.nameFramesForLayer(layerId: _layerId, names: names);
+
+      expect([for (final frame in fixture.layer.frames) frame.name], [
+        '4',
+        '5',
+      ]);
+      expect(history.undoCount, 1, reason: 'ONE step');
+      history.undo();
+      expect([for (final frame in fixture.layer.frames) frame.name], [
+        '3',
+        '4',
+      ]);
+    });
+
+    test('a joined drawing takes no name: its blocks show the holder, and '
+        'the drawing nobody shows any more leaves the bank', () {
+      final fixture = _fixture(frames: named('2', '1'));
+
+      fixture.controller.nameFramesForLayer(
+        layerId: _layerId,
+        names: {const FrameId('a'): '1'},
+        joins: {const FrameId('a'): const FrameId('b')},
+      );
+
+      final layer = fixture.layer;
+      expect(layer.timeline[0]!.frameId, const FrameId('b'));
+      expect([for (final frame in layer.frames) frame.id], [
+        const FrameId('b'),
+      ]);
+      expect(layer.frames.single.name, '1');
     });
   });
 

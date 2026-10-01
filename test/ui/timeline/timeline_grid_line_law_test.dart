@@ -85,7 +85,10 @@ void main() {
       'snap (D8)', () {
     expect(timelineFrameBoundaryLinePosition(0, 24), timelineGridLineSnap);
     expect(timelineFrameBoundaryLinePosition(6, 24), 144 + 0.5);
-    expect(timelineFrameBoundaryLinePosition(3, 7.5), 22.5 + 0.5);
+    // F-220: a boundary lands on the law's whole pixel — 22.5 rounds to 23
+    // — so a one-pixel line is one column at a zoom that is not whole
+    // pixels.
+    expect(timelineFrameBoundaryLinePosition(3, 7.5), 23 + 0.5);
   });
 
   test('cadence thins the base line but never the beats — the one answer '

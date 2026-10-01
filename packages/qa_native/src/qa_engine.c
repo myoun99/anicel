@@ -60,6 +60,15 @@ static inline int32_t qa_round_byte(double value) {
   return whole + (value - (double)whole >= 0.5 ? 1 : 0);
 }
 
+// The same rounding onto the stroke's 16-bit plane (ABI 40): llround,
+// clamped to [0, 65535].
+static inline int32_t qa_round_wide(double value) {
+  if (!(value >= 0.5)) return 0;
+  if (value >= 65534.5) return 65535;
+  const int32_t whole = (int32_t)value;
+  return whole + (value - (double)whole >= 0.5 ? 1 : 0);
+}
+
 // The SIMD this build has — one fact for the file, read by the flood
 // fill's spans and the dab's pixel pairs. SSE2 is baseline on x64 and NEON
 // on aarch64, so neither needs a runtime dispatch; 32-bit ARM keeps the
@@ -335,6 +344,9 @@ typedef struct {
   // For each tip mask row, its first and last inked column (first > last:
   // a bare row). Null when the tip is rotated or absent. v39.
   const int32_t* tip_row_ink;
+  // The table the dab lays its share through (qa_dab_even), or NULL where
+  // it lays whole. v41.
+  const double* evening;
 } qa_dab_spec;
 
 QA_EXPORT int32_t qa_dab_spec_sizeof(void) {
@@ -480,6 +492,197 @@ static inline int qa_dab_edge(
   return 1;
 }
 
+// 🚨★★★A DAB LAYS ITS SHARE OF ONE STAMP PER TENTH OF ITS SIZE (ABI 41; 유저
+// 2026-10-01, board `one-pixel-steps-change-a-brush-with-its-size`: 「엔진이
+// 쌓임을 환산 — 크기와 무관하게(클튜처럼)」, 「환산은 커널에서 — 모든
+// 브러시」). The law and its reasons are written once, beside `stampShareOf`
+// in brush_dab_share.dart. A dab that lays a share lays `1 - (1 - a)^share`
+// where it would lay `a` whole — read off the table Dart built for that
+// share (`evening`: entries 0..1024 over a in [0, 1], and a 1026th that
+// repeats a = 1, so a laid alpha of 1 reads its pair like any other and no
+// pixel branches), linearly between two entries: no pixel pays a power, and
+// the Dart and C kernels read the same numbers. `evenedLaid`'s arithmetic,
+// operation by operation — and qa_d2_even's, lane by lane.
+static inline double qa_dab_even(const double* table, double whole) {
+  const double scaled = whole * 1024.0;
+  const double x = scaled < 1024.0 ? scaled : 1024.0;
+  const int32_t i = (int32_t)x;
+  const double low = table[i];
+  return low + (table[i + 1] - low) * (x - (double)i);
+}
+
+// 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
+// 「최대 100%로 해두더라도 필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
+// 10%만큼만 진해진다」). A dab raises what is under it TOWARDS its opacity,
+// at its flow, and never past it: the ink its coverage and flow would lay
+// over nothing, scaled by how much of the way to the ceiling is left —
+// (o - d) / (1 - d). Over nothing that is exactly the old alpha, so a first
+// dab lands what it always did; where dabs pile up they settle at o, not at
+// opaque. ↩️Opacity multiplied the dab's alpha like flow did, and a light
+// press piled up to the full slider wherever a stroke crossed itself.
+//
+// ⚠️What is under the dab is its STROKE's own buffer: a stroke of brush dabs
+// never lands on artwork dab by dab — it piles up on an empty buffer and
+// composites once (brush_commit_builder, erase-live-and-dab-route-round-
+// apart) — so d is how far the stroke itself has got, never the paint below.
+//
+// An opacity of 1 settles at opaque, which is plain source-over — the old
+// arithmetic, kept byte for byte, so a brush whose opacity no dynamic moves
+// lands exactly what it did. An ERASE dab keeps the multiplier: a brush
+// eraser piles up coverage on its buffer (where this applies) and erases
+// once, and nothing else raises an alpha.
+//
+// Same arithmetic, operation by operation, as blendDabTilesDart and the
+// reference blendBrushDabStrokePixel. Returns a negative alpha where the
+// pixel already stands at the ceiling and the dab lays nothing.
+//
+// What the dab would lay whole goes through its share first (qa_dab_even).
+static inline double qa_dab_source_alpha(
+    const qa_dab_spec* s,
+    double coverage,
+    double effective_opacity,
+    double destination_alpha,
+    int erase) {
+  if (erase || s->dab_opacity >= 1.0) {
+    const double whole = s->source_alpha_norm * effective_opacity * s->dab_flow;
+    return s->evening == NULL ? whole : qa_dab_even(s->evening, whole);
+  }
+  if (destination_alpha >= s->dab_opacity) {
+    return -1.0;
+  }
+  const double whole = s->source_alpha_norm * coverage * s->dab_flow;
+  return (s->evening == NULL ? whole : qa_dab_even(s->evening, whole)) *
+         (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
+}
+
+// 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
+// `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+// 제안한대로 16비트?」). Every dab rounded what it left to a byte and the next
+// dab read that byte back, so a soft tail laying under half a level a dab
+// never piled up at all, and the rest piled up one rounding a dab — 10
+// levels off a float pile at flow 3%, size 160 (measured). A stroke tile now
+// carries a second plane, RGBA at 16 bits (alpha * 65535, a channel * 257),
+// and a dab reads what is under it THERE and writes both planes from the
+// same double. The bytes are the plane's view: the display, the commit and
+// every kernel downstream read them exactly as before.
+//
+// ⚠️The view is rounded from the double, not from the plane, so a first dab
+// over nothing lands exactly the byte it always did.
+//
+// 🚨A DAB OVER NOTHING OR OVER ITS OWN COLOUR LANDS ITS OWN COLOUR, EXACTLY
+// (ABI 40). The blend's colour, (c·a + d·b·(1 − a)) / (a + b·(1 − a)), is c
+// in real numbers when the plane under it holds c or nothing (b = 0); in
+// doubles it lands within a few units in the last place of c — some 1e-11
+// of a step on the 16-bit plane — so both planes round it to c and c·257,
+// exactly what the formula would have rounded to. A one-colour stroke is
+// this case from its second dab on, and the three divisions it skips were
+// most of what the plane cost (2026-10-01, a soft size-100 stroke: 9.6 ms
+// before the plane, 24.1 ms with it, measured before this was written).
+// `own` holds the dab's colour widened (c · 257); the Dart kernel and the
+// reference (`strokeSourceOverAt`) take the same road.
+static inline int qa_dab_over_own_colour(
+    const uint16_t* wide,
+    const int32_t* own) {
+  return wide[3] == 0 ||
+         (wide[0] == own[0] && wide[1] == own[1] && wide[2] == own[2]);
+}
+
+// qa_dab_store for a pixel on the own-colour road (qa_dab_over_own_colour,
+// out_alpha above 0): the channels are the dab's own colour exactly, so
+// only the alpha rounds — `own` holds the colour widened (0..2) and as
+// bytes (3..5). The same bytes qa_dab_store would write.
+static inline int32_t qa_dab_store_own(
+    uint8_t* pixel,
+    uint16_t* wide,
+    double out_alpha,
+    const int32_t* own) {
+  const int32_t out_a = qa_round_byte(out_alpha * 255.0);
+  const int32_t wide_a = qa_round_wide(out_alpha * 65535.0);
+  if (wide[3] != (uint16_t)wide_a || wide[0] != (uint16_t)own[0] ||
+      wide[1] != (uint16_t)own[1] || wide[2] != (uint16_t)own[2]) {
+    wide[0] = (uint16_t)own[0];
+    wide[1] = (uint16_t)own[1];
+    wide[2] = (uint16_t)own[2];
+    wide[3] = (uint16_t)wide_a;
+  }
+  const uint8_t out_r = (uint8_t)own[3];
+  const uint8_t out_g = (uint8_t)own[4];
+  const uint8_t out_b = (uint8_t)own[5];
+  if (pixel[3] != (uint8_t)out_a || pixel[0] != out_r ||
+      pixel[1] != out_g || pixel[2] != out_b) {
+    pixel[0] = out_r;
+    pixel[1] = out_g;
+    pixel[2] = out_b;
+    pixel[3] = (uint8_t)out_a;
+    return 1;
+  }
+  return 0;
+}
+
+// Returns 1 when a BYTE moved — the change set is the view's: a tile whose
+// bytes never moved has nothing for the commit to adopt.
+static inline int32_t qa_dab_store(
+    uint8_t* pixel,
+    uint16_t* wide,
+    double out_alpha,
+    double red,
+    double green,
+    double blue,
+    int erase) {
+  int32_t out_r;
+  int32_t out_g;
+  int32_t out_b;
+  int32_t out_a;
+  int32_t wide_r;
+  int32_t wide_g;
+  int32_t wide_b;
+  int32_t wide_a;
+  if (out_alpha == 0.0) {
+    out_r = 0;
+    out_g = 0;
+    out_b = 0;
+    out_a = 0;
+    wide_r = 0;
+    wide_g = 0;
+    wide_b = 0;
+    wide_a = 0;
+  } else {
+    if (erase) {
+      out_r = pixel[0];
+      out_g = pixel[1];
+      out_b = pixel[2];
+      wide_r = wide[0];
+      wide_g = wide[1];
+      wide_b = wide[2];
+    } else {
+      out_r = qa_round_byte(red);
+      out_g = qa_round_byte(green);
+      out_b = qa_round_byte(blue);
+      wide_r = qa_round_wide(red * 257.0);
+      wide_g = qa_round_wide(green * 257.0);
+      wide_b = qa_round_wide(blue * 257.0);
+    }
+    out_a = qa_round_byte(out_alpha * 255.0);
+    wide_a = qa_round_wide(out_alpha * 65535.0);
+  }
+  if ((uint16_t)wide_r != wide[0] || (uint16_t)wide_g != wide[1] ||
+      (uint16_t)wide_b != wide[2] || (uint16_t)wide_a != wide[3]) {
+    wide[0] = (uint16_t)wide_r;
+    wide[1] = (uint16_t)wide_g;
+    wide[2] = (uint16_t)wide_b;
+    wide[3] = (uint16_t)wide_a;
+  }
+  if ((uint8_t)out_r != pixel[0] || (uint8_t)out_g != pixel[1] ||
+      (uint8_t)out_b != pixel[2] || (uint8_t)out_a != pixel[3]) {
+    pixel[0] = (uint8_t)out_r;
+    pixel[1] = (uint8_t)out_g;
+    pixel[2] = (uint8_t)out_b;
+    pixel[3] = (uint8_t)out_a;
+    return 1;
+  }
+  return 0;
+}
+
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
 // ①, 유저 2026-09-25 「1번 할 생각 있어」 — SIMD). Every canvas dab is a
 // prerendered tip mask (BrushTipStampCache) and most carry no dual or
@@ -507,6 +710,22 @@ static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return _mm_add_pd(a, b); }
 static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return _mm_sub_pd(a, b); }
 static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return _mm_mul_pd(a, b); }
 static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return _mm_div_pd(a, b); }
+// qa_dab_even for a pair, in registers: each lane reads its two entries with
+// one load. ↩️The lanes went through memory one by one — two scalar stores
+// and a vector reload the CPU cannot forward — and a soft size-300 stroke
+// laying its share cost a third more than laying it whole (2026-10-01).
+static inline qa_d2 qa_d2_even(const double* table, qa_d2 whole) {
+  const qa_d2 top = _mm_set1_pd(1024.0);
+  const qa_d2 x = _mm_min_pd(_mm_mul_pd(whole, top), top);
+  const __m128i i = _mm_cvttpd_epi32(x);
+  const qa_d2 pair0 = _mm_loadu_pd(table + _mm_cvtsi128_si32(i));
+  const qa_d2 pair1 =
+      _mm_loadu_pd(table + _mm_cvtsi128_si32(_mm_srli_si128(i, 4)));
+  const qa_d2 low = _mm_unpacklo_pd(pair0, pair1);
+  const qa_d2 high = _mm_unpackhi_pd(pair0, pair1);
+  return _mm_add_pd(
+      low, _mm_mul_pd(_mm_sub_pd(high, low), _mm_sub_pd(x, _mm_cvtepi32_pd(i))));
+}
 #else
 typedef float64x2_t qa_d2;
 static inline qa_d2 qa_d2_splat(double v) { return vdupq_n_f64(v); }
@@ -516,6 +735,17 @@ static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return vaddq_f64(a, b); }
 static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return vsubq_f64(a, b); }
 static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return vmulq_f64(a, b); }
 static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return vdivq_f64(a, b); }
+static inline qa_d2 qa_d2_even(const double* table, qa_d2 whole) {
+  const qa_d2 top = vdupq_n_f64(1024.0);
+  const qa_d2 x = vminq_f64(vmulq_f64(whole, top), top);
+  const int64x2_t i = vcvtq_s64_f64(x);
+  const qa_d2 pair0 = vld1q_f64(table + vgetq_lane_s64(i, 0));
+  const qa_d2 pair1 = vld1q_f64(table + vgetq_lane_s64(i, 1));
+  const qa_d2 low = vzip1q_f64(pair0, pair1);
+  const qa_d2 high = vzip2q_f64(pair0, pair1);
+  return vaddq_f64(
+      low, vmulq_f64(vsubq_f64(high, low), vsubq_f64(x, vcvtq_f64_s64(i))));
+}
 #endif
 
 // One channel of a pair's source-over: (source * alpha + destination *
@@ -537,10 +767,12 @@ static inline qa_d2 qa_d2_over(
 
 // Blends pixels [x, x_end) of one row of a plain tipped dab two at a time
 // while a pair fits; returns the first pixel it left for the scalar loop.
-// `row` is the tile row's first pixel (canvas x = tile_left).
+// `row` and `wide_row` are the tile row's first pixel on its two planes
+// (canvas x = tile_left).
 static int32_t qa_dab_blend_pairs(
     const qa_dab_spec* s,
     uint8_t* row,
+    uint16_t* wide_row,
     int32_t tile_left,
     int32_t x,
     int32_t x_end,
@@ -548,6 +780,7 @@ static int32_t qa_dab_blend_pairs(
     int erase,
     int aa_threshold,
     double aa_contrast,
+    const int32_t* own,
     int32_t* changed) {
   const int32_t size = s->tip_size;
   const int32_t y0 = s->tip_v_texel0[v_index];
@@ -556,7 +789,7 @@ static int32_t qa_dab_blend_pairs(
   const qa_d2 v_one_minus = qa_d2_splat(s->tip_v_one_minus[v_index]);
   const qa_d2 v_fraction = qa_d2_splat(s->tip_v_fraction[v_index]);
   const qa_d2 one = qa_d2_splat(1.0);
-  const qa_d2 byte_max = qa_d2_splat(255.0);
+  const qa_d2 wide_max = qa_d2_splat(65535.0);
   const qa_d2 alpha_norm = qa_d2_splat(s->source_alpha_norm);
   const qa_d2 flow = qa_d2_splat(s->dab_flow);
 
@@ -609,66 +842,92 @@ static int32_t qa_dab_blend_pairs(
     }
 
     uint8_t* pixel = row + (ptrdiff_t)(x - tile_left) * 4;
-    const double lanes_a[2] = {(double)pixel[3], (double)pixel[7]};
-    const qa_d2 source_alpha =
-        qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
-    const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), byte_max);
+    uint16_t* wide = wide_row + (ptrdiff_t)(x - tile_left) * 4;
+    const double lanes_a[2] = {(double)wide[3], (double)wide[7]};
+    const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), wide_max);
+    qa_d2 source_alpha;
+    if (erase || s->dab_opacity >= 1.0) {
+      source_alpha =
+          qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
+      if (s->evening != NULL) {
+        // Its share (qa_d2_even). A lane the loop drops lays 0, reads the
+        // table's first pair and is never written.
+        source_alpha = qa_d2_even(s->evening, source_alpha);
+      }
+    } else {
+      // Under its ceiling a dab's alpha depends on what each pixel already
+      // holds (qa_dab_source_alpha), so the lanes take the scalar's own
+      // function one by one.
+      double lanes_d[2];
+      double settled[2] = {0.0, 0.0};
+      qa_d2_store(lanes_d, destination_alpha);
+      for (int i = 0; i < 2; i += 1) {
+        if (!keep[i]) {
+          continue;
+        }
+        settled[i] = qa_dab_source_alpha(s, coverage[i], effective[i],
+                                         lanes_d[i], erase);
+        if (settled[i] < 0.0) {
+          keep[i] = 0;
+          settled[i] = 0.0;
+        }
+      }
+      if (!keep[0] && !keep[1]) {
+        continue;
+      }
+      source_alpha = qa_d2_load(settled);
+    }
     const qa_d2 inverse = qa_d2_sub(one, source_alpha);
     double out_alpha[2];
-    double red[2];
-    double green[2];
-    double blue[2];
+    double red[2] = {0.0, 0.0};
+    double green[2] = {0.0, 0.0};
+    double blue[2] = {0.0, 0.0};
     if (erase) {
       qa_d2_store(out_alpha, qa_d2_mul(destination_alpha, inverse));
     } else {
       const qa_d2 alpha =
           qa_d2_add(source_alpha, qa_d2_mul(destination_alpha, inverse));
-      const double lanes_r[2] = {(double)pixel[0], (double)pixel[4]};
-      const double lanes_g[2] = {(double)pixel[1], (double)pixel[5]};
-      const double lanes_b[2] = {(double)pixel[2], (double)pixel[6]};
       qa_d2_store(out_alpha, alpha);
-      qa_d2_store(red, qa_d2_over(qa_d2_splat((double)s->source_r),
-                                  source_alpha, lanes_r, destination_alpha,
-                                  inverse, alpha));
-      qa_d2_store(green, qa_d2_over(qa_d2_splat((double)s->source_g),
-                                    source_alpha, lanes_g, destination_alpha,
+      // Over nothing or over its own colour a lane lands its own colour
+      // exactly (qa_dab_over_own_colour); the pair pays the colour blend
+      // only when a lane needs it.
+      const int own_colour[2] = {qa_dab_over_own_colour(wide, own),
+                                 qa_dab_over_own_colour(wide + 4, own)};
+      if (!own_colour[0] || !own_colour[1]) {
+        const double lanes_r[2] = {(double)wide[0] / 257.0,
+                                   (double)wide[4] / 257.0};
+        const double lanes_g[2] = {(double)wide[1] / 257.0,
+                                   (double)wide[5] / 257.0};
+        const double lanes_b[2] = {(double)wide[2] / 257.0,
+                                   (double)wide[6] / 257.0};
+        qa_d2_store(red, qa_d2_over(qa_d2_splat((double)s->source_r),
+                                    source_alpha, lanes_r, destination_alpha,
                                     inverse, alpha));
-      qa_d2_store(blue, qa_d2_over(qa_d2_splat((double)s->source_b),
-                                   source_alpha, lanes_b, destination_alpha,
-                                   inverse, alpha));
+        qa_d2_store(green, qa_d2_over(qa_d2_splat((double)s->source_g),
+                                      source_alpha, lanes_g,
+                                      destination_alpha, inverse, alpha));
+        qa_d2_store(blue, qa_d2_over(qa_d2_splat((double)s->source_b),
+                                     source_alpha, lanes_b, destination_alpha,
+                                     inverse, alpha));
+      }
+      for (int i = 0; i < 2; i += 1) {
+        if (keep[i] && own_colour[i] && out_alpha[i] != 0.0) {
+          if (qa_dab_store_own(pixel + i * 4, wide + i * 4, out_alpha[i],
+                               own)) {
+            *changed = 1;
+          }
+          keep[i] = 0;
+        }
+      }
     }
 
     for (int i = 0; i < 2; i += 1) {
       if (!keep[i]) {
         continue;
       }
-      uint8_t* p = pixel + i * 4;
-      int32_t out_r;
-      int32_t out_g;
-      int32_t out_b;
-      int32_t out_a;
-      if (out_alpha[i] == 0.0) {
-        out_r = 0;
-        out_g = 0;
-        out_b = 0;
-        out_a = 0;
-      } else if (erase) {
-        out_r = p[0];
-        out_g = p[1];
-        out_b = p[2];
-        out_a = qa_round_byte(out_alpha[i] * 255.0);
-      } else {
-        out_r = qa_round_byte(red[i]);
-        out_g = qa_round_byte(green[i]);
-        out_b = qa_round_byte(blue[i]);
-        out_a = qa_round_byte(out_alpha[i] * 255.0);
-      }
-      if ((uint8_t)out_r != p[0] || (uint8_t)out_g != p[1] ||
-          (uint8_t)out_b != p[2] || (uint8_t)out_a != p[3]) {
-        p[0] = (uint8_t)out_r;
-        p[1] = (uint8_t)out_g;
-        p[2] = (uint8_t)out_b;
-        p[3] = (uint8_t)out_a;
+      if (qa_dab_store(pixel + i * 4, wide + i * 4, out_alpha[i],
+                       erase ? 0.0 : red[i], erase ? 0.0 : green[i],
+                       erase ? 0.0 : blue[i], erase)) {
         *changed = 1;
       }
     }
@@ -679,9 +938,11 @@ static int32_t qa_dab_blend_pairs(
 
 // 🚨A ROW OF AN UNROTATED TIP VISITS ONLY THE PIXELS WHOSE TEXELS CAN HOLD
 // INK (ABI 39, 2026-09-25, board `brush-kernel-next` ②; 유저 「2번도
-// 있고」 — the skip of the pixels outside the dab). Every brush dab reaches
-// this kernel as a mask prerendered per quantized size (BrushTipStampCache),
-// so the ROUND case is this path, not the analytic one below: a round mask
+// 있고」 — the skip of the pixels outside the dab). Every ANALYTIC brush dab
+// reaches this kernel as a mask prerendered per quantized size
+// (BrushTipStampCache; a raster tip arrives as its own mask, and a rotated
+// one takes the scalar loop — F-251), so the ROUND case is this path, not
+// the analytic one below: a round mask
 // is bare in its corners, about a fifth of the box, and each of those
 // pixels was sampled bilinearly to a coverage of 0 and thrown away.
 //
@@ -732,9 +993,11 @@ static int qa_tip_row_reach(
 // Blends one dab into one tile over the given canvas-space spans. Pixel
 // visit set and math are identical to the Dart loop (which walks rows
 // outermost; per-dab each pixel is touched exactly once either way).
-// Returns nonzero when any destination byte changed.
+// [tile_wide] is the tile's 16-bit plane on the same grid (see
+// qa_dab_store). Returns nonzero when any destination byte changed.
 QA_EXPORT int32_t qa_dab_blend_tile(
     uint8_t* tile_pixels,
+    uint16_t* tile_wide,
     int32_t tile_size,
     int32_t tile_left,
     int32_t tile_top,
@@ -756,6 +1019,11 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 #if defined(QA_DAB_PAIRS)
   const int pairs = has_tip && unrotated_tip && !has_dual && !has_tex;
 #endif
+  // The dab's colour on the 16-bit plane, then as bytes
+  // (qa_dab_over_own_colour, qa_dab_store_own).
+  const int32_t own[6] = {s->source_r * 257, s->source_g * 257,
+                          s->source_b * 257, s->source_r,
+                          s->source_g,       s->source_b};
   int32_t changed = 0;
 
   for (int32_t y = span_top; y < span_bottom_exclusive; y += 1) {
@@ -777,8 +1045,9 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 #if defined(QA_DAB_PAIRS)
     if (pairs) {
       x = qa_dab_blend_pairs(
-          s, tile_pixels + (ptrdiff_t)local_row_offset * 4, tile_left,
-          row_left, row_right, v_index, erase, aa_threshold, aa_contrast,
+          s, tile_pixels + (ptrdiff_t)local_row_offset * 4,
+          tile_wide + (ptrdiff_t)local_row_offset * 4, tile_left, row_left,
+          row_right, v_index, erase, aa_threshold, aa_contrast, own,
           &changed);
     }
 #endif
@@ -901,66 +1170,48 @@ QA_EXPORT int32_t qa_dab_blend_tile(
       if (effective_opacity == 0.0) {
         continue;
       }
-      const double source_alpha =
-          s->source_alpha_norm * effective_opacity * s->dab_flow;
 
-      uint8_t* pixel =
-          tile_pixels + (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
-      const uint8_t dest_r = pixel[0];
-      const uint8_t dest_g = pixel[1];
-      const uint8_t dest_b = pixel[2];
-      const uint8_t dest_a = pixel[3];
-      const double destination_alpha = (double)dest_a / 255.0;
-
-      int32_t out_r;
-      int32_t out_g;
-      int32_t out_b;
-      int32_t out_a;
-      if (erase) {
-        const double out_alpha = destination_alpha * (1.0 - source_alpha);
-        if (out_alpha == 0.0) {
-          out_r = 0;
-          out_g = 0;
-          out_b = 0;
-          out_a = 0;
-        } else {
-          out_r = dest_r;
-          out_g = dest_g;
-          out_b = dest_b;
-          out_a = qa_round_byte(out_alpha * 255.0);
-        }
-      } else {
-        const double out_alpha =
-            source_alpha + destination_alpha * (1.0 - source_alpha);
-        if (out_alpha == 0.0) {
-          out_r = 0;
-          out_g = 0;
-          out_b = 0;
-          out_a = 0;
-        } else {
-          const double inverse_source_alpha = 1.0 - source_alpha;
-          out_r = qa_round_byte(
-              ((double)s->source_r * source_alpha +
-               (double)dest_r * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_g = qa_round_byte(
-              ((double)s->source_g * source_alpha +
-               (double)dest_g * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_b = qa_round_byte(
-              ((double)s->source_b * source_alpha +
-               (double)dest_b * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_a = qa_round_byte(out_alpha * 255.0);
-        }
+      const ptrdiff_t at = (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
+      uint8_t* pixel = tile_pixels + at;
+      uint16_t* wide = tile_wide + at;
+      const double destination_alpha = (double)wide[3] / 65535.0;
+      const double source_alpha = qa_dab_source_alpha(
+          s, coverage, effective_opacity, destination_alpha, erase);
+      if (source_alpha < 0.0) {
+        continue;
       }
 
-      if ((uint8_t)out_r != dest_r || (uint8_t)out_g != dest_g ||
-          (uint8_t)out_b != dest_b || (uint8_t)out_a != dest_a) {
-        pixel[0] = (uint8_t)out_r;
-        pixel[1] = (uint8_t)out_g;
-        pixel[2] = (uint8_t)out_b;
-        pixel[3] = (uint8_t)out_a;
+      const double inverse_source_alpha = 1.0 - source_alpha;
+      double out_alpha;
+      double red = 0.0;
+      double green = 0.0;
+      double blue = 0.0;
+      if (erase) {
+        out_alpha = destination_alpha * inverse_source_alpha;
+      } else {
+        out_alpha = source_alpha + destination_alpha * inverse_source_alpha;
+        if (out_alpha != 0.0 && qa_dab_over_own_colour(wide, own)) {
+          if (qa_dab_store_own(pixel, wide, out_alpha, own)) {
+            changed = 1;
+          }
+          continue;
+        }
+        if (out_alpha != 0.0) {
+          red = ((double)s->source_r * source_alpha +
+                 (double)wide[0] / 257.0 * destination_alpha *
+                     inverse_source_alpha) /
+                out_alpha;
+          green = ((double)s->source_g * source_alpha +
+                   (double)wide[1] / 257.0 * destination_alpha *
+                       inverse_source_alpha) /
+                  out_alpha;
+          blue = ((double)s->source_b * source_alpha +
+                  (double)wide[2] / 257.0 * destination_alpha *
+                      inverse_source_alpha) /
+                 out_alpha;
+        }
+      }
+      if (qa_dab_store(pixel, wide, out_alpha, red, green, blue, erase)) {
         changed = 1;
       }
     }
@@ -1041,6 +1292,28 @@ QA_EXPORT void qa_copy_bytes(
     const uint8_t* src,
     int64_t length) {
   memcpy(dst, src, (size_t)length);
+}
+
+// Plain memset exposed to Dart (ABI 40), for the same reason as
+// qa_copy_bytes: the VM's typed-data fillRange runs a loop in debug builds,
+// and since the stroke's 16-bit plane a new stroke tile zeroes three times
+// the bytes it did (measured 2026-10-01: with the loop, a 600-dab size-30
+// stroke's commit took 9.7 ms against 5.2 without the plane, nearly all of
+// the difference spent zeroing and widening its four tiles).
+QA_EXPORT void qa_zero_bytes(uint8_t* dst, int64_t length) {
+  memset(dst, 0, (size_t)length);
+}
+
+// A stroke tile's 16-bit plane widened from its bytes (ABI 40): each value
+// a byte * 257, which reads back as exactly that byte (qa_dab_store) — the
+// commit scratch's `widenStrokeBytes` at native speed.
+QA_EXPORT void qa_widen_bytes(
+    const uint8_t* bytes,
+    uint16_t* wide,
+    int64_t count) {
+  for (int64_t i = 0; i < count; i += 1) {
+    wide[i] = (uint16_t)(bytes[i] * 257);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1960,6 +2233,10 @@ typedef struct {
   const uint8_t* stroke_pixels;  // the live stroke's straight RGBA
   const uint8_t* mask_pixels;    // selection coverage, 1 byte/px; NULL = all
   uint8_t* premul_out;           // premultiplied upload; NULL = skip
+  // --- ABI 40: the stroke tile's 16-bit plane, RGBA on the same grid as
+  // tile_pixels — what the dab kernel piles up in (qa_dab_store). Only the
+  // dab batch reads it; every other kernel's spans leave it NULL.
+  uint16_t* tile_wide;
 } qa_tile_span;
 
 QA_EXPORT int32_t qa_tile_span_sizeof(void) {
@@ -2278,7 +2555,7 @@ static int32_t qa_dab_blend_rows(
     if (qa_dab_meet(batch, d, span, top, bottom_exclusive, meet) == 0) {
       continue;
     }
-    if (qa_dab_blend_tile(span->tile_pixels, batch->tile_size,
+    if (qa_dab_blend_tile(span->tile_pixels, span->tile_wide, batch->tile_size,
                           span->tile_left, span->tile_top, meet[0], meet[2],
                           meet[1], meet[3], &batch->specs[d])) {
       changed = 1;
@@ -5563,4 +5840,10 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v39: qa_dab_spec gains tip_row_ink - each tip mask row's first and last
 // inked column - and an unrotated tip's row visits only the pixels whose
 // texels can hold ink (qa_tip_row_reach). Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 39; }
+// v40: qa_tile_span gains tile_wide - the stroke tile's 16-bit plane - and
+// qa_dab_blend_tile takes it: a dab reads what is under it from the plane
+// and writes both planes (qa_dab_store). Sizeof moves.
+// v41: qa_dab_spec gains evening - the table a dab lays its share of one
+// stamp per tenth of its size through (qa_dab_even) - and the laid alpha
+// reads it in qa_dab_source_alpha and the pair path. Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 41; }

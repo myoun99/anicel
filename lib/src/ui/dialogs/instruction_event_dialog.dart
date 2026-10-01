@@ -5,6 +5,7 @@ import '../timeline/instruction_icon_palette.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 import '../text/app_strings.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
@@ -52,7 +53,15 @@ class InstructionEventDialog extends StatefulWidget {
     this.editing = false,
     this.onEditInstructionSet,
     this.previewAxis = Axis.horizontal,
+    this.namedByItsCuts,
   });
+
+  /// A span whose writing is not the user's: this names a draft the way its
+  /// row shows it — a transition's, whose targets are certain (F-229, 유저:
+  /// 「트랜지션 레이어는 대상이 확실해서 시작이름 끝이름 기호이름 이런거 정할
+  /// 필요가 없으니 이쪽에서 등록」). Non-null leaves the name and end-name
+  /// fields out, previews the derived writing, and hands none of it back.
+  final InstructionEvent Function(InstructionEvent draft)? namedByItsCuts;
 
   final CameraInstructionSet instructionSet;
   final String? initialInstructionId;
@@ -125,20 +134,37 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
     if (instructionId == null) {
       return;
     }
+    final written = widget.namedByItsCuts == null;
     Navigator.of(context).pop(
       InstructionEventDialogResult(
         instructionId: instructionId,
-        text: _trimmedOrNull(_textController),
-        valueA: _trimmedOrNull(_valueAController),
-        valueB: _trimmedOrNull(_valueBController),
+        text: written ? _trimmedOrNull(_textController) : null,
+        valueA: written ? _trimmedOrNull(_valueAController) : null,
+        valueB: written ? _trimmedOrNull(_valueBController) : null,
         memo: _trimmedOrNull(_memoController),
       ),
     );
   }
 
+  /// The event as the fields stand, for the preview — named the way its row
+  /// shows it when the writing is not the user's.
+  InstructionEvent _draft(String instructionId) {
+    final draft = InstructionEvent(
+      instructionId: instructionId,
+      length: InstanceEditPreview.maxKoma,
+      text: _trimmedOrNull(_textController),
+      valueA: _trimmedOrNull(_valueAController),
+      valueB: _trimmedOrNull(_valueBController),
+    );
+    return widget.namedByItsCuts?.call(draft) ?? draft;
+  }
+
   @override
   Widget build(BuildContext context) {
     final instructionId = _instructionId;
+    final picked = widget.instructionSet.defs
+        .where((def) => def.id == instructionId)
+        .firstOrNull;
     final strings = AppText.strings;
     return InstanceEditDialogShell(
       title: widget.editing
@@ -152,60 +178,58 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           AppWindowField(
             label: strings.instructionMarkLabel,
             emphasized: true,
-            child: DropdownButtonFormField<String>(
+            child: PanelFlyoutButton(
               key: const ValueKey<String>('instruction-def-dropdown'),
-              initialValue: _instructionId,
-              items: [
-                for (final def in widget.instructionSet.defs)
-                  DropdownMenuItem<String>(
-                    key: ValueKey<String>('instruction-option-${def.id}'),
-                    value: def.id,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(instructionIconFor(def.iconKey), size: 16),
-                        const SizedBox(width: 8),
-                        Text(def.name),
-                      ],
+              label: picked?.name ?? '',
+              icon: picked == null ? null : instructionIconFor(picked.iconKey),
+              expand: true,
+              entriesBuilder: () =>
+                  widget.instructionSet.defs.asFlyoutValueChoices(
+                    current: picked,
+                    choiceOf: (def) => PanelFlyoutChoice(
+                      key: 'instruction-option-${def.id}',
+                      label: def.name,
+                      icon: instructionIconFor(def.iconKey),
+                    ),
+                    onPicked: (def) => setState(() => _instructionId = def.id),
+                  ),
+            ),
+          ),
+          if (widget.namedByItsCuts == null) ...[
+            const SizedBox(height: 12),
+            AppWindowField(
+              label: strings.instructionNameLabel,
+              child: TextField(
+                key: const ValueKey<String>('instruction-text-field'),
+                controller: _textController,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: AppWindowField(
+                    label: strings.instructionStartLabel,
+                    child: TextField(
+                      key: const ValueKey<String>('instruction-value-a-field'),
+                      controller: _valueAController,
                     ),
                   ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: AppWindowField(
+                    label: strings.instructionEndLabel,
+                    child: TextField(
+                      key: const ValueKey<String>('instruction-value-b-field'),
+                      controller: _valueBController,
+                    ),
+                  ),
+                ),
               ],
-              onChanged: (value) => setState(() => _instructionId = value),
             ),
-          ),
-          const SizedBox(height: 12),
-          AppWindowField(
-            label: strings.instructionNameLabel,
-            child: TextField(
-              key: const ValueKey<String>('instruction-text-field'),
-              controller: _textController,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: AppWindowField(
-                  label: strings.instructionStartLabel,
-                  child: TextField(
-                    key: const ValueKey<String>('instruction-value-a-field'),
-                    controller: _valueAController,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: AppWindowField(
-                  label: strings.instructionEndLabel,
-                  child: TextField(
-                    key: const ValueKey<String>('instruction-value-b-field'),
-                    controller: _valueBController,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          ],
           const SizedBox(height: 12),
           AppWindowField(
             label: strings.instructionMemoLabel,
@@ -232,13 +256,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           ? null
           : InstanceEditPreview.instruction(
               axis: widget.previewAxis,
-              event: InstructionEvent(
-                instructionId: instructionId,
-                length: InstanceEditPreview.maxKoma,
-                text: _trimmedOrNull(_textController),
-                valueA: _trimmedOrNull(_valueAController),
-                valueB: _trimmedOrNull(_valueBController),
-              ),
+              event: _draft(instructionId),
               defById: widget.instructionSet.defById,
             ),
       onSubmit: instructionId == null ? null : _submit,

@@ -30,8 +30,10 @@ import 'package:anicel/src/ui/canvas/colour_key_shader.dart';
 /// premultiplied and straight are the same bytes.
 ///
 /// ⚠️WHAT THIS PROVES AND WHERE. `flutter_tester` rasterises through Skia,
-/// which is also what Windows ships in debug and release. Impeller on mobile
-/// is not exercised here; the shader is written so no plausible float
+/// or through Impeller on Vulkan under `--enable-impeller`. ↩️This used to
+/// say Skia is also what Windows ships; since the app went to Impeller on
+/// every platform, Windows runs the shader as GLES through ANGLE, which
+/// this runner does not have. The shader is written so no plausible float
 /// precision can change an answer (see its 255-scale/half-step note), which
 /// is a design that cannot go wrong rather than one that happens not to.
 void main() {

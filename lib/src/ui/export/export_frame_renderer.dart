@@ -18,6 +18,8 @@ import '../../models/movie_cel.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
+import '../../services/brush_frame_store.dart' show CelRead;
+import '../../models/composite_tree.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
@@ -28,6 +30,8 @@ import '../../services/playback/playback_frame_mapping.dart'
         resolveTransitionContributions,
         sourceOverWeights,
         trackGroupSourceOverWeights;
+import '../../services/camera_frame_corners.dart'
+    show CameraView, cameraViewOver, pictureView;
 import '../camera/camera_frame_render_service.dart';
 import '../../services/composite_effect_paint.dart'
     show alphaOnly, resolveCompositeEffectPlan;
@@ -41,17 +45,19 @@ import 'export_cel_group_plan.dart';
 import 'export_plan.dart';
 import 'offscreen_raster.dart';
 
-/// Renders export output at full quality straight from the brush store, so
-/// exports never depend on the playback quality setting or its caches.
-///
-/// Surfaces are cached per cut and retained per FRAME's covering set: a
-/// single-cut stream holds one cut's cels at a time (as before), and the
-/// stack bake (R3a) holds one cut per covering track while streaming.
 /// The ground a frame is rendered on unless a caller names another — what
 /// the storyboard's and the conte's pictures stand on, and so what a conte
 /// picture drawn live stands on too.
 const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 
+/// Where a cel stands in the project: its cut, its row, its drawing.
+typedef _CelAt = (CutId, LayerId, FrameId);
+
+/// Renders export output at full quality straight from the brush store, so
+/// exports never depend on the playback quality setting or its caches.
+///
+/// It reads the store as a LOOK ([CelRead.look]) and holds only what the
+/// frame it draws and the one before it read ([_startFrame]).
 class ExportFrameRenderer {
   ExportFrameRenderer({
     required this.session,
@@ -70,55 +76,79 @@ class ExportFrameRenderer {
   /// transforms. The cut fade and the camera work are cut-level and stay.
   final bool applyLayerFx;
 
-  /// Cel surfaces per cut. Single-cut streams retain exactly one cut, as
-  /// before; the STACK bake (R3a) interleaves every covering track's cut
-  /// within one frame, so retention follows the frame's covering SET —
-  /// "the last cut seen" would thrash the whole store per frame.
-  final Map<CutId, Map<(LayerId, FrameId), BitmapSurface?>> _surfacesByCut =
-      {};
+  /// The cels the frame being drawn has read, and the ones the frame before
+  /// it read — all this renderer holds (card `render-reads-thaw-into-hot`).
+  /// A LOOK is decoded for the render and never kept by the store, so what
+  /// is held here is held outside every budget.
+  ///
+  /// ↩️It held its CUT's cels for the whole run (07-29, #780 — every cel was
+  /// hot then, so a read held nothing new): on a long cut, every drawing at
+  /// the canvas's size at once. Two frames are all the cache is for — a
+  /// drawing held across a run of frames is read once for the run.
+  var _thisFrame = <_CelAt, BitmapSurface?>{};
+  var _frameBefore = <_CelAt, BitmapSurface?>{};
+
+  /// Starts the next frame: what the frame before the last one read is let
+  /// go, and what the last one read is kept for one more.
+  ///
+  /// ⚠️Once per frame a caller asked for — a transition's two cuts are one
+  /// frame, and the composite inside a video frame starts none ([_composite]).
+  void _startFrame() {
+    _frameBefore = _thisFrame;
+    _thisFrame = {};
+  }
 
   BitmapSurface? _surfaceFor(Cut cut, Layer layer, Frame frame) {
-    // 🚨A MOVIE's pictures are read through, never held here: a stream
-    // holds its cut's surfaces for the whole run, and a movie is a
-    // full-canvas picture per FRAME — a 30-second take would pin every one
-    // of them past the store's byte budget. The store keeps what its budget
-    // allows; [_hydrate] puts back what a frame needs.
+    // 🚨A MOVIE's pictures are read through, never held here: a movie is a
+    // full-canvas picture per FRAME, and the store's budget decides how long
+    // one lives; [_hydrate] puts back what a frame needs.
     if (movieCelOf(frame.id) != null) {
       return _readSurface(cut, layer, frame);
     }
-    final surfaces = _surfacesByCut.putIfAbsent(cut.id, () => {});
-    return surfaces.putIfAbsent(
-      (layer.id, frame.id),
-      () => _readSurface(cut, layer, frame),
+    final at = (cut.id, layer.id, frame.id);
+    return _thisFrame.putIfAbsent(
+      at,
+      () => _frameBefore.containsKey(at)
+          ? _frameBefore[at]
+          : _readSurface(cut, layer, frame),
     );
   }
 
   BitmapSurface? _readSurface(Cut cut, Layer layer, Frame frame) {
+    _celReads += 1;
     final frameKey = session.brushFrameKeyForCut(cut, layer.id, frame.id);
     // R19 P3b: the baked raster is the truth — a READ-ONLY reference
     // (valid display cache first, else baked; the coordinator donates
-    // on every commit, undo and redo). Nothing is stored back, so
-    // batch exports don't grow the shared cache; null = an empty cel.
+    // on every commit, undo and redo); null = an empty cel.
+    //
+    // 🚨A LOOK: a cel that is cold or only in the file is decoded for this
+    // render and nothing is kept. ↩️It thawed into the hot tier (the cold
+    // tier, R20-A1, made a read do that) — measured 09-28, the storyboard's
+    // pictures of a 13-cut film took the tier from 149 to 529MB and pushed
+    // the cut being drawn toward cooling. A look still decodes at the
+    // canvas's size, which is why those pictures render one at a time
+    // ([StoryboardCutThumbnailStore]).
     return session.renderCaches.brushFrameStore.currentSurfaceWithoutReplay(
       frameKey,
       canvasSize: cut.canvasSize,
+      read: CelRead.look,
     );
   }
+
+  int _celReads = 0;
+
+  /// How many cels this renderer has read from the store (test hook).
+  @visibleForTesting
+  int get debugCelReads => _celReads;
 
   /// How many surfaces the renderer holds right now (test hook) — a movie's
   /// pictures are never among them.
   @visibleForTesting
-  int get debugHeldSurfaceCount {
-    var held = 0;
-    for (final surfaces in _surfacesByCut.values) {
-      for (final surface in surfaces.values) {
-        if (surface != null) {
-          held += 1;
-        }
-      }
-    }
-    return held;
-  }
+  int get debugHeldSurfaceCount => {
+    for (final frame in [_thisFrame, _frameBefore])
+      for (final MapEntry(:key, :value) in frame.entries)
+        if (value != null) key,
+  }.length;
 
   /// Decodes the movie pictures [cut] shows at [frameIndex] before its
   /// composite is planned: export walks frames nobody is looking at, so
@@ -159,27 +189,14 @@ class ExportFrameRenderer {
     );
   }
 
-  void _retainSurfacesFor(Iterable<CutId> cutIds) {
-    final keep = cutIds.toSet();
-    _surfacesByCut.removeWhere((cutId, _) => !keep.contains(cutId));
-  }
-
-  /// Holds the cels of every cut about to be drawn and returns each
-  /// contribution's UNIT ALPHA: its own share of the frame times its
+  /// Each contribution's UNIT ALPHA: its own share of the frame times its
   /// track's static opacity and fade.
   ///
   /// ⚠️Both bakes below need exactly this before they can weigh anything,
   /// and they weigh it differently afterwards ([sourceOverWeights] within
   /// one canvas, [trackGroupSourceOverWeights] across tracks). The half
   /// they share is here; the half they don't stays at the call site.
-  List<double> _retainAndUnitAlphas(
-    List<({Cut cut, double opacity})> contributions, {
-    Iterable<CutId> alsoRetain = const [],
-  }) {
-    _retainSurfacesFor([
-      ...alsoRetain,
-      for (final contribution in contributions) contribution.cut.id,
-    ]);
+  List<double> _unitAlphas(List<({Cut cut, double opacity})> contributions) {
     return [
       for (final contribution in contributions)
         contribution.opacity *
@@ -222,34 +239,68 @@ class ExportFrameRenderer {
     ExportSizeMode mode, {
     CanvasSize? outputSize,
     bool withNameTags = false,
+  }) {
+    _startFrame();
+    return _composite(
+      task,
+      _viewFor(task.cut, task.frameIndex, mode),
+      outputSize: outputSize,
+      withNameTags: withNameTags,
+    );
+  }
+
+  /// A panel's picture — the storyboard's, the conte's: [cut] at
+  /// [frameIndex] through its camera, or over the canvas [region] a conte
+  /// cell's moving camera sweeps ([pictureView]) — [width] pixels wide, in
+  /// the shape of what it shows, reduced as the canvas's display reduces
+  /// ([CameraFrameRenderService.renderThroughCamera]'s `displayLevels`).
+  Future<ui.Image> renderPicture(
+    Cut cut,
+    int frameIndex, {
+    required int width,
+    ui.Rect? region,
+  }) async {
+    final view = pictureView(
+      _viewFor(cut, frameIndex, ExportSizeMode.camera),
+      region,
+    );
+    _startFrame();
+    await _hydrate(cut, frameIndex);
+    return renderService.renderThroughCamera(
+      nodes: _nodesFor(ExportFrameTask(cut: cut, frameIndex: frameIndex)),
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
+      outputSize: view.frameSize.scaledToWidth(width),
+      displayLevels: true,
+    );
+  }
+
+  /// What a render of [cut] at [frameIndex] looks through in [mode]: its
+  /// camera there, or the whole canvas — a camera standing square over all
+  /// of it, at its own size.
+  CameraView _viewFor(Cut cut, int frameIndex, ExportSizeMode mode) =>
+      switch (mode) {
+        ExportSizeMode.camera => (
+          pose: session.camera.cameraPoseForCut(cut, frameIndex),
+          frameSize: session.camera.cameraFrameSize,
+        ),
+        ExportSizeMode.canvas => cameraViewOver(cut.canvasSize.canvasRect),
+      };
+
+  /// [renderComposite] inside a frame that has already started, through
+  /// [view].
+  Future<ui.Image> _composite(
+    ExportFrameTask task,
+    CameraView view, {
+    CanvasSize? outputSize,
+    bool withNameTags = false,
   }) async {
     final cut = task.cut;
-    // The single-cut streams' retention: one cut's cels at a time.
-    _retainSurfacesFor([cut.id]);
     await _hydrate(cut, task.frameIndex);
-    final pose = mode == ExportSizeMode.camera
-        ? session.camera.cameraPoseForCut(cut, task.frameIndex)
-        : CameraPose(
-            center: CanvasPoint(
-              x: cut.canvasSize.width / 2,
-              y: cut.canvasSize.height / 2,
-            ),
-          );
     return renderService.renderThroughCamera(
-      // The rows' own fx switches apply here too (AE semantics: the layer
-      // fx switch affects the render) — WYSIWYG with playback. They live on
-      // the layers now (R8), so the dialog's 'Apply layer FX' master toggle
-      // is expressed by rendering an FX-STRIPPED VIEW of the cut rather
-      // than by threading an override through the plan.
-      nodes: planCutFrameCompositeTree(
-        cut: _cutForRender(cut),
-        frameIndex: task.frameIndex,
-        surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-      ),
-      pose: pose,
-      cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.camera.cameraFrameSize
-          : cut.canvasSize,
+      nodes: _nodesFor(task),
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
       outputSize: outputSize,
       overlayPass: !withNameTags
           ? null
@@ -265,6 +316,19 @@ class ExportFrameRenderer {
             },
     );
   }
+
+  /// [task]'s composite tree. The rows' own fx switches apply here too (AE
+  /// semantics: the layer fx switch affects the render) — WYSIWYG with
+  /// playback. They live on the layers now (R8), so the dialog's 'Apply
+  /// layer FX' master toggle is expressed by rendering an FX-STRIPPED VIEW
+  /// of the cut rather than by threading an override through the plan.
+  List<CompositeNode<CutFrameCompositeLayer>> _nodesFor(
+    ExportFrameTask task,
+  ) => planCutFrameCompositeTree(
+    cut: _cutForRender(task.cut),
+    frameIndex: task.frameIndex,
+    surfaceResolver: (layer, frame) => _surfaceFor(task.cut, layer, frame),
+  );
 
   /// The BACKDROP ground (R3b) under a video frame — and nothing at all
   /// when [preserveAlpha].
@@ -321,6 +385,7 @@ class ExportFrameRenderer {
     ExportSizeMode mode, {
     bool preserveAlpha = false,
   }) async {
+    _startFrame();
     if (mode == ExportSizeMode.camera) {
       return _renderTrackStackForVideo(task, preserveAlpha: preserveAlpha);
     }
@@ -355,7 +420,11 @@ class ExportFrameRenderer {
     }
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
-    final image = await renderComposite(task, mode, withNameTags: true);
+    final image = await _composite(
+      task,
+      _viewFor(task.cut, task.frameIndex, mode),
+      withNameTags: true,
+    );
     // The V effects are TRACK data on the global axis (R4).
     final trackFrame = session.rowSpans.trackGlobalFrameOf(
       task.cut.id,
@@ -451,8 +520,7 @@ class ExportFrameRenderer {
   /// only one cut contributes (the ordinary bake) or when the contributors
   /// disagree on their canvas size, which leaves no shared space to mix in.
   ///
-  /// The weights come out already source-over composed, and the surfaces of
-  /// every contributing cut are retained before the caller starts drawing.
+  /// The weights come out already source-over composed.
   ({
     List<TransitionContribution> contributions,
     CanvasSize size,
@@ -485,7 +553,7 @@ class ExportFrameRenderer {
         return null;
       }
     }
-    final unitAlphas = _retainAndUnitAlphas([
+    final unitAlphas = _unitAlphas([
       for (final contribution in contributions)
         (cut: contribution.cut, opacity: contribution.opacity),
     ]);
@@ -529,12 +597,16 @@ class ExportFrameRenderer {
           for (var i = 0; i < contributions.length; i += 1) {
             final contribution = contributions[i];
             final cut = contribution.cut;
-            final image = await renderComposite(
+            final image = await _composite(
               ExportFrameTask(
                 cut: cut,
                 frameIndex: contribution.localFrameIndex,
               ),
-              ExportSizeMode.canvas,
+              _viewFor(
+                cut,
+                contribution.localFrameIndex,
+                ExportSizeMode.canvas,
+              ),
               withNameTags: true,
             );
             images.add(image);
@@ -601,13 +673,10 @@ class ExportFrameRenderer {
     // The unit alphas, and then the source-over weights that make the stack
     // read as that mix (see [sourceOverWeights]) — grouped by track here,
     // because an upper track thins only its own contribution.
-    final unitAlphas = _retainAndUnitAlphas(
-      [
-        for (final position in positions)
-          (cut: position.cut, opacity: position.opacity),
-      ],
-      alsoRetain: [task.cut.id],
-    );
+    final unitAlphas = _unitAlphas([
+      for (final position in positions)
+        (cut: position.cut, opacity: position.opacity),
+    ]);
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
     final size = session.camera.cameraFrameSize;
@@ -738,7 +807,7 @@ class ExportFrameRenderer {
     ExportSizeMode mode, {
     CanvasSize? outputSize,
   }) async {
-    _retainSurfacesFor([task.cut.id]);
+    _startFrame();
     // A cel has no time of its own, so the group's FX sample at the base
     // cel's FIRST exposure — the same honest frame the camera pose uses.
     var firstExposure = 0;
@@ -787,23 +856,11 @@ class ExportFrameRenderer {
     if (layers.isEmpty) {
       return null;
     }
-    CameraPose pose;
-    if (mode == ExportSizeMode.camera) {
-      pose = session.camera.cameraPoseForCut(task.cut, firstExposure);
-    } else {
-      pose = CameraPose(
-        center: CanvasPoint(
-          x: task.cut.canvasSize.width / 2,
-          y: task.cut.canvasSize.height / 2,
-        ),
-      );
-    }
+    final view = _viewFor(task.cut, firstExposure, mode);
     return renderService.renderThroughCamera(
       layers: layers,
-      pose: pose,
-      cameraFrameSize: mode == ExportSizeMode.camera
-          ? session.camera.cameraFrameSize
-          : task.cut.canvasSize,
+      pose: view.pose,
+      cameraFrameSize: view.frameSize,
       outputSize: outputSize,
     );
   }

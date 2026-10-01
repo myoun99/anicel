@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/painting.dart' show TextPainter;
 
+import 'word_bake.dart';
+
 /// How far a WORD is narrowed along one axis so it keeps to its room — THE
 /// rule every word in a block obeys, on each axis on its own.
 ///
@@ -31,6 +33,45 @@ double wordCondensation({required double extent, required double room}) {
 
 const double _steps = 64;
 
+/// How far each LETTER GAP of a word gives way before the word narrows — THE
+/// tightening every word in a block keeps, along its line.
+///
+/// 🗣️F-234-Q1 (유저 2026-09-29, 「글자 사이부터 줄이기」): 「좁혀야 할 때 먼저
+/// 글자 사이 간격만 줄이고(글자 모양은 또렷하게 그대로), 그래도 모자랄 때만
+/// 좁힌다」. A narrowed glyph loses the font's pixel fitting and smears over
+/// two pixels (measured: 「1」 one column and dark as it is, two columns and
+/// grey at 6% narrowing), so a word a little too long for its block takes the
+/// difference out of its letter gaps and keeps its shapes.
+///
+/// [extent] is the word's natural length along its line and [gaps] the gaps
+/// between its letters — a one-letter word has none to give. A gap gives at
+/// most [maxGapTightening], the measure the answer came with (「두세 글자
+/// 이름엔 줄일 간격이 1~2px 뿐」), stepped up by a quarter pixel so a baked
+/// word keys on few variants; [wordCondensation] narrows what is left.
+double wordTightening({
+  required double extent,
+  required int gaps,
+  required double room,
+}) {
+  if (extent <= room || gaps <= 0) {
+    return 0;
+  }
+  final perGap = (extent - room) / gaps;
+  final stepped = (perGap / _tighteningStep).ceilToDouble() * _tighteningStep;
+  return stepped < maxGapTightening ? stepped : maxGapTightening;
+}
+
+/// The most one letter gap gives way ([wordTightening]).
+const double maxGapTightening = 1;
+
+const double _tighteningStep = 0.25;
+
+/// The letter gaps of [text] — one fewer than its letters (code points).
+int wordLetterGaps(String text) {
+  final letters = text.runes.length;
+  return letters > 1 ? letters - 1 : 0;
+}
+
 /// A word's narrowing on the two screen axes.
 typedef WordFit = ({double x, double y});
 
@@ -43,9 +84,42 @@ WordFit wordFit(Size word, Size room) => (
   y: wordCondensation(extent: word.height, room: room.height),
 );
 
+/// How a surface sets a word: [paintFittedText] on a screen,
+/// [paintScaledText] on paper — what a renderer both of them share is
+/// handed, so each sets its words its own way.
+typedef WordSetter =
+    void Function(
+      Canvas canvas,
+      TextPainter painter,
+      Offset origin,
+      WordFit fit,
+    );
+
 /// Paints [painter] with its top-left at [origin], narrowed by [fit] — THE
-/// way a word is set narrow, so no surface scales a word on its own.
+/// way a SCREEN sets a word narrow, so no screen scales a word on its own.
 void paintFittedText(
+  Canvas canvas,
+  TextPainter painter,
+  Offset origin, [
+  WordFit fit = wordFitsAsItIs,
+]) {
+  // F-224: a word narrowed under the legible size is drawn from its bake,
+  // as a tile word is — scaled here it speckles on the engine.
+  if (fit != wordFitsAsItIs &&
+      paintBakedWord(canvas, painter, origin, fit)) {
+    return;
+  }
+  paintScaledText(canvas, painter, origin, fit);
+}
+
+/// Paints [painter] with its top-left at [origin], scaled by [fit] — how
+/// PAPER sets a word narrow, and how a screen does until the word's bake
+/// lands.
+///
+/// ⛔Paper never draws a word from its bake: a bake is rasterised for the
+/// screen's own pixels, and a sheet is drawn at its panel's zoom or its
+/// export's scale, neither of which is the grid a bake is cut for.
+void paintScaledText(
   Canvas canvas,
   TextPainter painter,
   Offset origin, [

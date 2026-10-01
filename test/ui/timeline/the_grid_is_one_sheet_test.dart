@@ -152,7 +152,9 @@ void main() {
         rows: [(extent: 28, ground: host)],
       ).paint(spy, const Size(40, 28));
       bool lined(int frame) => spy.lines.any(
-        (l) => (l.from.dx - (frame * 2.4 + timelineGridLineSnap)).abs() < 1e-6,
+        (l) =>
+            (l.from.dx - timelineFrameBoundaryLinePosition(frame, 2.4)).abs() <
+            1e-6,
       );
       expect(lined(5), isFalse);
       expect(lined(6), isTrue);
@@ -307,8 +309,7 @@ void main() {
       final box = timelineFrameSpanRect(
         timelineBlockEdgeGripPlacement(
           edge: TimelineBlockEdge.start,
-          startIndex: 10,
-          endIndexExclusive: 14,
+          block: (startIndex: 10, endIndexExclusive: 14),
           crossAxisExtent: paper,
         ),
         const TimelineFrameGeometry(

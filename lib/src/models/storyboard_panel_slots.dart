@@ -18,6 +18,7 @@ import 'dart:collection';
 
 import 'block_run_move.dart';
 import 'cut_id.dart';
+import 'storyboard_coverage.dart' show storyboardConteStart;
 import 'timeline_exposure.dart';
 
 /// One panel of the flattened track: which cut it belongs to, its ordinal
@@ -94,9 +95,13 @@ List<StoryboardPanelSlot> panelSlotsOfCuts(List<StoryboardCutInput> cuts) {
 /// [timeline] with its division keys moved to where the panel layout put
 /// them — the conte row's half of the same answer.
 ///
-/// The keys are cut-local, so they are read straight off the panel lengths
-/// of that cut; every block keeps its entry (and its breakdown dots) and
-/// only its key moves. Null when nothing moved.
+/// The keys are read straight off the panel lengths of that cut, from where
+/// its conte starts in the cut's own frames ([storyboardConteStart] — 0,
+/// or the のりしろ an arriving O.L asks for); every block keeps its entry
+/// (and its breakdown dots) and only its key moves. The panels are the
+/// row's REAL blocks: the ghosts that hold its first and last panel through
+/// the のりしろ are the run-edge pass's, derived again once this is written.
+/// Null when nothing moved.
 SplayTreeMap<int, TimelineExposure>? conteTimelineFromPanels({
   required SplayTreeMap<int, TimelineExposure>? timeline,
   required List<int> panelLengths,
@@ -104,12 +109,15 @@ SplayTreeMap<int, TimelineExposure>? conteTimelineFromPanels({
   if (timeline == null || panelLengths.isEmpty) {
     return null;
   }
-  final entries = timeline.entries.toList();
+  final entries = [
+    for (final entry in timeline.entries)
+      if (!entry.value.ghost) entry,
+  ];
   if (entries.length != panelLengths.length) {
     return null;
   }
   final next = SplayTreeMap<int, TimelineExposure>();
-  var cursor = 0;
+  var cursor = storyboardConteStart(timeline);
   var moved = false;
   for (var i = 0; i < entries.length; i += 1) {
     if (entries[i].key != cursor) {

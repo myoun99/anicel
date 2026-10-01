@@ -50,7 +50,7 @@ void main() {
       reason: 'fixture premise: a second cut, active, starting after the first',
     );
     final se = session.activeTrack.seLayers.first;
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       se.id,
       TransformTrack.empty().copyWith(
         rotation: PropertyTrack(
@@ -200,7 +200,7 @@ void main() {
     );
     addTearDown(session.dispose);
     final layer = session.activeLayer!;
-    session.updateLayerTransformTrack(
+    session.laneVerbs.updateLayerTransformTrack(
       layer.id,
       TransformTrack.empty().copyWith(
         rotation: PropertyTrack(keys: {2: const PropertyKey(30.0)}),
@@ -217,15 +217,17 @@ void main() {
     expect(session.laneMove.beginLaneRangeMoveDrag(), isTrue);
     session.laneMove.updateLaneRangeMoveDrag(frameDelta: 3);
 
-    final preview = session.dragPreview.value! as BlockMoveDragPreview;
+    final preview = session.dragPreview.value;
     expect(
-      preview.previewLayers[layer.id]!.transformTrack.rotation.keys.keys
-          .toList(),
+      timelineDragPreviewLayerFor(
+        preview,
+        layer.id,
+      )!.transformTrack.rotation.keys.keys.toList(),
       [5],
     );
     expect(
-      preview.previewGlobalLayers,
-      isEmpty,
+      timelineDragPreviewGlobalLayerFor(preview, layer.id),
+      isNull,
       reason: 'a cut row has one axis — a second form would be a second answer',
     );
     session.laneMove.cancelLaneRangeMoveDrag();

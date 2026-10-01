@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
+import 'package:vector_math/vector_math_64.dart' show Matrix4;
 
 import '../../core/contain_rect.dart';
 import '../../models/brush_frame_key.dart';
@@ -13,7 +14,8 @@ import '../../models/conte/conte_words.dart';
 import '../../models/sheet_marks.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
-import '../sheet_painting.dart' show sheetWordsSize, tracedRoundedRect;
+import '../sheet_painting.dart'
+    show SheetPictureOverInk, pictureOutline, sheetWordsSize;
 import '../theme/app_theme.dart' show AppTypography;
 
 /// The conte sheet as ONE vector PDF.
@@ -98,8 +100,9 @@ class ContePdfPicture {
 
 /// Writes [pages] as one PDF document.
 ///
-/// [pictures] maps `(cutId, pictureFrame)` to the pre-rendered cell
-/// composites and [images] a media asset path (the logo) to its pixels;
+/// [pictures] maps a picture's key ([SheetPicture.key]) to the
+/// pre-rendered cell composites and [images] a media asset path (the logo)
+/// to its pixels;
 /// absent entries print the page without them, like the panel does while
 /// a render is pending. [inkPictures] maps a sheet-ink window's
 /// [BrushFrameKey] to its composed raster (R5), drawn over the finished
@@ -108,9 +111,10 @@ Future<Uint8List> writeContePdf({
   required ConteSheetSource source,
   required List<ContePageLayout> pages,
   required ContePdfFonts fonts,
-  Map<(String, int), ContePdfPicture> pictures = const {},
+  Map<SheetPictureKey, ContePdfPicture> pictures = const {},
   Map<String, ContePdfPicture> images = const {},
   Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
+  List<SheetPictureOverInk> Function(ContePageLayout page)? picturesOverInkOf,
   required ConteWords words,
 }) async {
   final document = PdfDocument();
@@ -140,6 +144,7 @@ Future<Uint8List> writeContePdf({
     writer.writePage(
       contePageMarks(page, source, words: words),
       ui.Size(page.metrics.pageWidth, page.metrics.pageHeight),
+      picturesOverInk: picturesOverInkOf?.call(page) ?? const [],
     );
   }
   return document.save();
@@ -162,7 +167,7 @@ class _ContePdfPageWriter {
   final PdfTtfFont bold;
   final PdfTtfFont hangul;
   final PdfTtfFont hangulBold;
-  final Map<(String, int), PdfImage> pictures;
+  final Map<SheetPictureKey, PdfImage> pictures;
   final Map<String, PdfImage> images;
   final Map<BrushFrameKey, PdfImage> inkPictures;
 
@@ -172,10 +177,19 @@ class _ContePdfPageWriter {
   late PdfGraphics _g;
   late double _pageHeight;
 
+  /// The page's pictures and where each shows its cut's canvas — no ink on
+  /// the paper shows there (F-216).
+  List<SheetPictureOverInk> _overInk = const [];
+
   double _y(double top) => _pageHeight - top;
 
-  void writePage(List<SheetMark> marks, ui.Size paper) {
+  void writePage(
+    List<SheetMark> marks,
+    ui.Size paper, {
+    List<SheetPictureOverInk> picturesOverInk = const [],
+  }) {
     _pageHeight = paper.height;
+    _overInk = picturesOverInk;
     final pdfPage = PdfPage(
       document,
       pageFormat: PdfPageFormat(paper.width, paper.height),
@@ -188,11 +202,6 @@ class _ContePdfPageWriter {
 
   void _print(SheetMark mark) {
     switch (mark) {
-      case SheetFill(:final rect, :final argb, :final cornerRadius)
-          when cornerRadius > 0:
-        _g.setFillColor(PdfColor.fromInt(argb));
-        _traceRounded(rect, cornerRadius);
-        _g.fillPath();
       case SheetFill(:final rect, :final argb):
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetRule(:final rect, :final argb):
@@ -201,22 +210,12 @@ class _ContePdfPageWriter {
         _fillRect(rect, PdfColor.fromInt(argb));
       case SheetWords():
         _words(mark);
-      case SheetPicture(
-        :final cutId,
-        :final pictureFrame,
-        :final slot,
-        :final frame,
-        :final cornerRadius,
-      ):
-        final image = pictures[(cutId, pictureFrame)];
+      case SheetStroke():
+        _stroke(mark);
+      case SheetPicture(:final key, :final frame):
+        final image = pictures[key];
         if (image != null && !frame.isEmpty) {
-          _g.saveContext();
-          if (cornerRadius > 0) {
-            _traceRounded(slot, cornerRadius);
-            _g.clipPath();
-          }
           _drawnIn(image, frame);
-          _g.restoreContext();
         }
       case SheetImage(:final assetPath, :final slot):
         final image = images[assetPath];
@@ -237,14 +236,31 @@ class _ContePdfPageWriter {
     _g.fillPath();
   }
 
-  /// The app's corner as a path on the page ([tracedRoundedRect]).
-  void _traceRounded(ui.Rect rect, double radius) {
-    final points = tracedRoundedRect(rect, radius);
+  /// A line, as the Canvas printer draws it — its alpha too: a PDF colour
+  /// is RGB alone, and a stroke's opacity is a state of the page's own
+  /// (a camera's trails, H47).
+  void _stroke(SheetStroke stroke) {
+    final points = stroke.points;
+    if (points.length < 2) {
+      return;
+    }
+    final color = PdfColor.fromInt(stroke.argb);
+    final seeThrough = color.alpha < 1;
+    if (seeThrough) {
+      _g.saveContext();
+      _g.setGraphicState(PdfGraphicState(strokeOpacity: color.alpha));
+    }
+    _g.setStrokeColor(color);
+    _g.setLineWidth(stroke.width);
+    _g.setLineJoin(PdfLineJoin.miter);
     _g.moveTo(points.first.dx, _y(points.first.dy));
     for (final point in points.skip(1)) {
       _g.lineTo(point.dx, _y(point.dy));
     }
-    _g.closePath();
+    _g.strokePath(close: stroke.closed);
+    if (seeThrough) {
+      _g.restoreContext();
+    }
   }
 
   void _contained(PdfImage image, ui.Rect slot) {
@@ -265,13 +281,29 @@ class _ContePdfPageWriter {
       _g.drawImage(image, rect.left, _y(rect.bottom), rect.width, rect.height);
 
   /// An ink raster where its [placement] lays it, clipped to its window —
-  /// the screen's `paintSheetInkWindow`, in PDF.
+  /// the screen's `paintSheetInkWindow`, in PDF — and out of every picture
+  /// over it where that shows its cut's canvas, exactly ([pictureOutline]):
+  /// the ink's ring past that edge (`sheetInkApron`) never lies over the
+  /// picture. Each picture cuts one more clip, and clips intersect.
   void _clippedTo(PdfImage image, SheetInkPlacement placement) {
     final window = placement.window;
     final laid = placement.rasterRect(image.width, image.height);
     _g.saveContext();
     _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
     _g.clipPath();
+    for (final over in _overInk) {
+      final outline = pictureOutline(over);
+      if (outline.length < 3 || !over.picture.slot.overlaps(window)) {
+        continue;
+      }
+      _g.drawRect(window.left, _y(window.bottom), window.width, window.height);
+      _g.moveTo(outline.first.dx, _y(outline.first.dy));
+      for (final point in outline.skip(1)) {
+        _g.lineTo(point.dx, _y(point.dy));
+      }
+      _g.closePath();
+      _g.clipPath(evenOdd: true);
+    }
     _g.drawImage(image, laid.left, _y(laid.bottom), laid.width, laid.height);
     _g.restoreContext();
   }
@@ -345,6 +377,17 @@ class _ContePdfPageWriter {
     final ascent = (words.bold ? bold : regular).ascent * size;
 
     _g.saveContext();
+    if (words.turn != 0) {
+      // Clockwise on the page about the slot's corner — the other way round
+      // in PDF space, whose y runs up.
+      final (x, y) = (slot.left, _y(slot.top));
+      _g.setTransform(
+        Matrix4.identity()
+          ..translateByDouble(x, y, 0, 1)
+          ..rotateZ(-words.turn)
+          ..translateByDouble(-x, -y, 0, 1),
+      );
+    }
     _g.drawRect(slot.left, _y(slot.bottom), slot.width, slot.height);
     _g.clipPath();
     _g.setFillColor(PdfColor.fromInt(words.argb));

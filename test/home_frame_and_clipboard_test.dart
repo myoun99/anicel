@@ -49,6 +49,15 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Rename only'), findsNothing);
+    // I-18: the notice lists the frames the link takes — here the ONE being
+    // renamed, the unnamed second drawing.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('app-notice-details-list')),
+        matching: find.byType(Text),
+      ),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey<String>('frame-name-conflict-cancel-button')),

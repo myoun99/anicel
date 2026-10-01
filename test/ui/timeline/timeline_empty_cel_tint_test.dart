@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_hooks.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -469,17 +470,25 @@ void main() {
             height: 200,
             child: TimelineFrameRowsScrollBody(
               rows: [TimelineDisplayRow.layer(layer, layerIndex: 0)],
-              playbackFrameCount: 24,
+              hooks: TimelineGridHooks(
+                activeLayerId: null,
+                frameCursor: ValueNotifier<int>(0),
+                playbackFrameCount: 24,
+                exposureStateForLayer: stateFor,
+                celContent: celContent,
+                onSelectLayer: onSelectLayer,
+                onSelectFrame: onSelectFrame,
+                onToggleLayerVisibility: (_) {},
+                onLayerOpacityChanged: (_, _) {},
+                onToggleLayerTimesheet: (_) {},
+                onLayerMarkSelected: (_, _) {},
+              ),
               frameStartIndex: 0,
               frameEndIndexExclusive: 24,
               leadingFrameSpacerWidth: 0,
               trailingFrameSpacerWidth: 0,
               totalFrameContentWidth: 24 * 24,
               metrics: TimelineGridMetrics.defaults,
-              exposureStateForLayer: stateFor,
-              celContent: celContent,
-              onSelectLayer: onSelectLayer,
-              onSelectFrame: onSelectFrame,
             ),
           ),
         ),

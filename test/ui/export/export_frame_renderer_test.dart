@@ -180,7 +180,7 @@ void main() {
         ],
       );
       // Animated opacity 0 at frame 0: the layer's FX hide it entirely.
-      session.updateLayerTransformTrack(
+      session.laneVerbs.updateLayerTransformTrack(
         layer.id,
         TransformTrack.empty().copyWith(
           opacity: PropertyTrack<double>().withKey(0, 0),

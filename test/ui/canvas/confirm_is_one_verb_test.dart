@@ -114,7 +114,7 @@ void main() {
     CutId cut = cutId,
     int step = 4,
   }) {
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(keyFor(frameId, cut: cut));
     final size = surface.canvasSize;
     return [
@@ -213,7 +213,7 @@ void main() {
 
   /// How many ink pixels [frameId]'s cel holds right of canvas x [edge].
   int inkRightOf(WidgetTester tester, FrameId frameId, double edge) {
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(keyFor(frameId));
     final size = surface.canvasSize;
     var ink = 0;
@@ -236,7 +236,7 @@ void main() {
       'drawn — not whole', (tester) async {
     await pumpApp(tester);
     await strokeAt(tester, Offset.zero);
-    final coordinator = sessionOf(tester).pixelEditingCoordinator!;
+    final coordinator = sessionOf(tester).pixelEditing.coordinator!;
     final surface = coordinator.currentSurfaceOf(keyFor(frameA));
     final size = surface.canvasSize;
     var left = size.width;

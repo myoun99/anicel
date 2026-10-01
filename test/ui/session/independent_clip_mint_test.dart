@@ -25,6 +25,7 @@ void main() {
             ),
         },
         length: length,
+        timed: true,
       );
 
   ({

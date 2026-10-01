@@ -59,7 +59,7 @@ void main() {
       path: moviePath,
       settings: const ImportFileSettings(
         mode: ImportFileMode.reference,
-        sound: false,
+        movieParts: MovieParts.picture,
         inFrame: 4,
       ),
     );
@@ -175,7 +175,7 @@ void main() {
         settings: const ImportFileSettings(
           mode: ImportFileMode.reference,
           bake: true,
-          sound: false,
+          movieParts: MovieParts.picture,
         ),
       );
     }

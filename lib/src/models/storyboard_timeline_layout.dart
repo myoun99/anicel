@@ -14,6 +14,7 @@ class StoryboardTimelineLayoutEntry {
     required this.endFrame,
     required this.duration,
     required this.cut,
+    this.mediaLead = 0,
   });
 
   final TrackId trackId;
@@ -24,6 +25,14 @@ class StoryboardTimelineLayoutEntry {
   final int endFrame;
   final int duration;
   final Cut cut;
+
+  /// How many of this entry's frames come BEFORE its cut's conte start —
+  /// the のりしろ an O.L arriving into the cut asks, played when the entry
+  /// is the cut's OWN drawn run (single-cut playback, F-227 ④) rather than
+  /// its place on the track. What its first frame shows on the track is
+  /// the conte start less this (`cutMediaStartFrame`'s answer) — the one
+  /// number the picture and the sound both play from.
+  final int mediaLead;
 }
 
 List<StoryboardTimelineLayoutEntry> buildStoryboardTimelineLayout(

@@ -59,8 +59,10 @@ class _LayerGridScroll {
     required double requestedOffset,
     required double viewportWidth,
   }) {
-    final totalFrameContentWidth =
-        _state._renderedFrameCount * _state._metrics.frameCellWidth;
+    final totalFrameContentWidth = timelineFrameEdge(
+      _state._renderedFrameCount,
+      _state._metrics.frameCellWidth,
+    );
 
     return resolveTimelineHorizontalOffset(
       requestedOffset: requestedOffset,

@@ -1,6 +1,4 @@
 import '../../services/persistence/versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import '../../services/persistence/app_support_path.dart';
 import 'editor_panel_layout.dart';
@@ -34,13 +32,11 @@ class WorkspaceLayoutStore {
   );
 
   /// Writes the layout payload, creating the app-data directory as needed.
-  Future<void> save(Map<String, Object?> payload) async {
-    final file = File(filePath);
-    await file.parent.create(recursive: true);
-    await file.writeAsString(
-      jsonEncode({'version': layoutVersion, ...payload}),
-    );
-  }
+  Future<void> save(Map<String, Object?> payload) => saveVersionedSettings(
+    filePath: filePath,
+    version: layoutVersion,
+    json: payload,
+  );
 }
 
 /// A sanitized restored workspace layout.

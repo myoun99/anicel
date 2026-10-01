@@ -3,32 +3,33 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
-
-import '../helpers/panel_finders.dart';
 
 /// 🚨A rebuild on the floor that lands OUTSIDE a frame lays out the floor
 /// and nothing above it (F-166, 2026-09-26).
 ///
 /// The floor is built inside a `LayoutBuilder`, which owns the build scope
 /// of everything on it: a `setState` down there from a pointer handler or a
-/// listener — the canvas panel's at every pen-up — makes the builder lay
-/// itself out again on the next frame. Handed the Row's loose height, the
-/// builder was no relayout boundary and that relayout climbed every box up
-/// to the Scaffold: 21 layouts per pen-up on the real app, each one a
-/// repaint mark and a semantics update.
+/// listener makes the builder lay itself out again on the next frame.
+/// Handed the Row's loose height, the builder was no relayout boundary and
+/// that relayout climbed every box up to the Scaffold: 21 layouts per
+/// pen-up on the real app, each one a repaint mark and a semantics update.
+///
+/// ↩️The pen-up and the pixel edit it was measured with no longer reach the
+/// floor: the canvas area rides a layer of its own (F-244), so its rebuilds
+/// stop there. What still lands in the floor's scope is its own furniture —
+/// the region's grips, the rails, the docks' chrome — and a region resize is
+/// the one every hand makes.
 ///
 /// ⚠️The premise is checked beside the claim: the floor's builder DOES lay
 /// out in that frame — a trigger that never reached it would pass against
 /// the defect.
 void main() {
-  Future<EditorWorkspace> openApp(WidgetTester tester) async {
+  Future<void> openApp(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
-    return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace));
   }
 
   final floorBox = find.byKey(const ValueKey<String>('workspace-floor'));
@@ -77,50 +78,32 @@ void main() {
         (tester.renderObject(floorBox) as RenderProxyBox).child,
       );
 
-  testWidgets('a pixel edit rebuilds the canvas panel and lays out nothing '
-      'above the floor', (tester) async {
-    final session = (await openApp(tester)).session;
-    session.createDrawingAtCurrentFrame();
-    await tester.pumpAndSettle();
-
-    final laidOut = await laidOutBy(tester, () async {
-      // Between frames, where a commit's announcement lands.
-      session.renderCaches.brushFrameStore.celPixelRevision.value += 1;
-    });
-
-    expect(
-      laidOut,
-      contains(floorBuilder(tester)),
-      reason: 'premise: the canvas panel rebuilt, so the floor laid out',
-    );
-    expect(laidOut.intersection(aboveTheFloor(tester)), isEmpty);
-  });
-
-  testWidgets('a stroke\'s pen-up lays out nothing above the floor', (
+  testWidgets('a region resize lays out the floor and nothing above it', (
     tester,
   ) async {
-    final session = (await openApp(tester)).session;
-    session.createDrawingAtCurrentFrame();
-    await tester.pumpAndSettle();
-
-    final pen = await tester.startGesture(
-      visibleCanvasPoint(tester),
-      kind: PointerDeviceKind.stylus,
+    await openApp(tester);
+    final grip = find.byKey(const ValueKey<String>('dock-resize-bottom'));
+    final hand = await tester.startGesture(
+      tester.getCenter(grip),
+      kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
-    for (var step = 0; step < 4; step += 1) {
-      await pen.moveBy(const Offset(12, 8));
+    for (var step = 0; step < 3; step += 1) {
+      await hand.moveBy(const Offset(0, -12));
       await tester.pump();
     }
-    final laidOut = await laidOutBy(tester, pen.up);
+    final laidOut = await laidOutBy(
+      tester,
+      () => hand.moveBy(const Offset(0, -12)),
+    );
+    await hand.up();
     await tester.pumpAndSettle();
 
     expect(
       laidOut,
       contains(floorBuilder(tester)),
-      reason: 'premise: the pen-up rebuilt on the floor',
+      reason: 'premise: the resize rebuilt on the floor, so the floor laid out',
     );
     expect(laidOut.intersection(aboveTheFloor(tester)), isEmpty);
-    session.playbackRig.prerenderScheduler.cancel();
   });
 }

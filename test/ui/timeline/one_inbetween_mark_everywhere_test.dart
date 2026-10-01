@@ -36,6 +36,8 @@ import 'package:anicel/src/ui/canvas/flip_hud_overlay.dart';
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/inbetween_mark_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
+    show timelineFrameEdge;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -158,7 +160,7 @@ void main() {
           ),
         },
       ),
-      cutFrameCount: 8,
+      drawnFrameCount: 8,
     );
     final painter = TimelineRowCellsPainter(
       layer: repeated,
@@ -215,7 +217,12 @@ void main() {
               isTrue,
               reason: '$where: $disc leaves $paper',
             );
-            final roomyCell = cell >= 14 && crossExtent == rowExtent;
+            // The cell the law laid (F-220): at a zoom just under 14 the
+            // first cell is already 14 whole pixels.
+            final laid =
+                timelineFrameEdge(frame + 1, cell) -
+                timelineFrameEdge(frame, cell);
+            final roomyCell = laid >= 14 && crossExtent == rowExtent;
             expect(
               place.radius,
               roomyCell ? roomy : lessThan(roomy),

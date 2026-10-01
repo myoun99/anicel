@@ -26,13 +26,15 @@ import '../../models/project.dart';
 import '../../models/property_track.dart' show PropertyKey;
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
+import '../../models/timesheet_sheet_kind.dart';
 import '../../models/exposure_memo.dart';
 import '../../models/track.dart';
 import '../../models/track_id.dart';
+import '../../models/track_transitions.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
-import '../command.dart' show Command, CompositeCommand;
+import '../command.dart' show Command, oneStepOf;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -69,6 +71,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'linked_cut_field_command.dart';
 import 'update_cut_mark_command.dart';
+import 'update_cut_sheet_kind_command.dart';
 import 'update_cut_staff_name_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
@@ -183,6 +186,7 @@ class CutCommandCoordinator {
   );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);
+  void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
@@ -202,6 +206,11 @@ class CutCommandCoordinator {
   }) => _cuts.setCutStaffNames(cutIds: cutIds, names: names);
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) =>
       _cuts.setCutMark(cutIds: cutIds, mark: mark);
+  void setTimesheetFormat({
+    required TimesheetInfo info,
+    CutId? cutId,
+    TimesheetSheetKind? kind,
+  }) => _cuts.setTimesheetFormat(info: info, cutId: cutId, kind: kind);
   void updateCutThumbnailFrame({
     required CutId cutId,
     required int? frameIndex,
@@ -392,19 +401,17 @@ class CutCommandCoordinator {
       );
     }
 
-    final rename = UpdateLayerNameCommand(
-      repository: repository,
-      cutId: cutId,
-      layerId: layerId,
-      name: trimmedName,
-    );
-    historyManager.execute(
-      followers.isEmpty
-          ? rename
-          : CompositeCommand(
-              description: 'Rename layer and its default-named attaches',
-              commands: [rename, ...followers],
-            ),
+    historyManager.executeAsOneStep(
+      'Rename layer and its default-named attaches',
+      [
+        UpdateLayerNameCommand(
+          repository: repository,
+          cutId: cutId,
+          layerId: layerId,
+          name: trimmedName,
+        ),
+        ...followers,
+      ],
     );
   }
 
@@ -552,25 +559,22 @@ class CutCommandCoordinator {
                 null,
       );
       if (emptied.isNotEmpty) {
-        historyManager.execute(
-          CompositeCommand(
-            description:
-                'Delete layer ${layer.name} and its empty '
-                '${emptied.length == 1 ? 'folder' : 'folders'}',
-            commands: [
+        historyManager.executeAsOneStep(
+          'Delete layer ${layer.name} and its empty '
+          '${emptied.length == 1 ? 'folder' : 'folders'}',
+          [
+            DeleteLayerCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: layerId,
+            ),
+            for (final folder in emptied)
               DeleteLayerCommand(
                 repository: repository,
                 cutId: cutId,
-                layerId: layerId,
+                layerId: folder.id,
               ),
-              for (final folder in emptied)
-                DeleteLayerCommand(
-                  repository: repository,
-                  cutId: cutId,
-                  layerId: folder.id,
-                ),
-            ],
-          ),
+          ],
         );
         return;
       }
@@ -595,29 +599,27 @@ class CutCommandCoordinator {
       for (final row in cut.layers)
         if (attachOrganizerBaseOf(row, cut.layers) == layerId) row,
     ];
-    historyManager.execute(
-      CompositeCommand(
-        description: 'Delete layer ${layer.name} and its attach layers',
-        commands: [
-          for (final attached in attachedRows)
-            DeleteLayerCommand(
-              repository: repository,
-              cutId: cutId,
-              layerId: attached.id,
-            ),
-          for (final organizer in organizerRows)
-            DeleteLayerCommand(
-              repository: repository,
-              cutId: cutId,
-              layerId: organizer.id,
-            ),
+    historyManager.executeAsOneStep(
+      'Delete layer ${layer.name} and its attach layers',
+      [
+        for (final attached in attachedRows)
           DeleteLayerCommand(
             repository: repository,
             cutId: cutId,
-            layerId: layerId,
+            layerId: attached.id,
           ),
-        ],
-      ),
+        for (final organizer in organizerRows)
+          DeleteLayerCommand(
+            repository: repository,
+            cutId: cutId,
+            layerId: organizer.id,
+          ),
+        DeleteLayerCommand(
+          repository: repository,
+          cutId: cutId,
+          layerId: layerId,
+        ),
+      ],
     );
   }
 
@@ -834,31 +836,19 @@ class CutCommandCoordinator {
     final cut = _requireCut(cutId);
     final after = rederiveRunBehaviors(
       spans(before),
-      cutFrameCount: cut.duration,
+      drawnFrameCount: cutDrawnFrameCount(repository.requireProject(), cutId)!,
     );
     final notes = note != null && cut.metadata.note != note;
-    if (after == before && !notes) {
-      return;
-    }
-    historyManager.execute(
-      CompositeCommand(
-        description: description,
-        commands: [
-          if (after != before)
-            UpdateLayerTimelineCommand(
-              repository: repository,
-              before: before,
-              after: after,
-            ),
-          if (notes)
-            UpdateCutNoteCommand(
-              repository: repository,
-              cutId: cutId,
-              note: note,
-            ),
-        ],
-      ),
-    );
+    historyManager.executeAsOneStep(description, [
+      if (after != before)
+        UpdateLayerTimelineCommand(
+          repository: repository,
+          before: before,
+          after: after,
+        ),
+      if (notes)
+        UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
+    ]);
   }
 
   /// Replaces an SE layer's audio clip list; one undo step, no-op when
@@ -940,19 +930,14 @@ class CutCommandCoordinator {
     required List<LayerEffect> effects,
     String description = 'Edit layer effects',
   }) {
-    final commands = layerEffectsCommands(
-      cutId: cutId,
-      layerId: layerId,
-      effects: effects,
-      description: description,
-    );
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
+    historyManager.executeAsOneStep(
+      description,
+      layerEffectsCommands(
+        cutId: cutId,
+        layerId: layerId,
+        effects: effects,
+        description: description,
+      ),
     );
   }
 
@@ -976,7 +961,7 @@ class CutCommandCoordinator {
     LayerAttachDrop attach = const LayerAttachDrop(),
     String description = 'Move layers',
   }) {
-    final commands = [
+    historyManager.executeAsOneStep(description, [
       ...layerPlacementCommands(
         cutId: cutId,
         order: order,
@@ -992,12 +977,7 @@ class CutCommandCoordinator {
         attach: attach,
         description: description,
       ),
-    ];
-    historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
+    ]);
   }
 
   /// The commands one row-placement write needs, INCLUDING the 겸용 link
@@ -1270,7 +1250,7 @@ class CutCommandCoordinator {
   ///
   /// Not a loop over [relinkMediaAsset]: that pushes N history entries, and
   /// a user who pointed the app at the wrong folder wants one ctrl-Z rather
-  /// than thirty. [CompositeCommand] already exists for exactly this.
+  /// than thirty. [oneStepOf] already exists for exactly this.
   ///
   /// The same three guards apply per entry, plus one the single form cannot
   /// need: **two assets may not claim the same destination.** The matcher
@@ -1308,15 +1288,8 @@ class CutCommandCoordinator {
         ),
       );
     }
-    if (commands.isEmpty) {
-      // Nothing survived the guards — no undo step for a no-op.
-      return const {};
-    }
-    historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
+    // Nothing survived the guards — no undo step for a no-op.
+    historyManager.executeAsOneStep(description, commands);
     return made;
   }
 

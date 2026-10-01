@@ -113,11 +113,14 @@ void main() {
 
   test('a GHOST exposure is refused — it is rederived, so a memo written '
       'on it would be gone on the next derive', () {
+    // The block at 1 holds back to the cut's start: frame 0 is its ghost.
+    // (A ghost with no hold to derive it cannot be stored — the repository
+    // settles run edges on every write, F-227.)
     final repository = repositoryWith({
-      0: const TimelineExposure.drawing(
+      1: const TimelineExposure.drawing(
         FrameId('frame-1'),
         length: 1,
-        ghostOf: endHoldGhost,
+        startEdge: holdMark,
       ),
     });
     expect(

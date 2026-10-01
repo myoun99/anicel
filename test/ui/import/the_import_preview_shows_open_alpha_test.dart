@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_preview.dart';
 
 import '../../helpers/solid_png_fixture.dart';
@@ -17,6 +19,15 @@ import '../../helpers/the_file_itself.dart';
 /// 그대로 공용화해서 재사용하도록」). It used to draw the file straight onto
 /// the dark well, where open alpha and a dark picture look the same.
 void main() {
+  late EditorSessionManager session;
+
+  setUp(
+    () => session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    ),
+  );
+  tearDown(() => session.dispose());
+
   testWidgets('a transparent file is shown over the shared checker', (
     tester,
   ) async {
@@ -42,6 +53,7 @@ void main() {
             width: 400,
             height: 300,
             child: ImportPreview(
+              session: session,
               path: path,
               inFrame: 0,
               outFrame: null,

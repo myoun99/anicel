@@ -87,8 +87,15 @@ import UniformTypeIdentifiers
           result: result)
       case "exportFile":
         let arguments = call.arguments as? [String: Any]
-        self.exportFile(
-          sourcePath: arguments?["sourcePath"] as? String, result: result)
+        let sourcePath = arguments?["sourcePath"] as? String
+        self.exportFiles(
+          sourcePaths: sourcePath.map { [$0] } ?? [], grants: true,
+          result: result)
+      case "exportFiles":
+        let arguments = call.arguments as? [String: Any]
+        self.exportFiles(
+          sourcePaths: arguments?["sourcePaths"] as? [String] ?? [],
+          grants: false, result: result)
       case "resolveBookmark":
         let arguments = call.arguments as? [String: Any]
         self.resolveBookmark(
@@ -414,6 +421,16 @@ import UniformTypeIdentifiers
   /// `asCopy: false` is the whole fix: the file stays where the user put it,
   /// the app receives its real URL, and a security-scoped bookmark can be
   /// minted from that URL so the reference survives a relaunch.
+  ///
+  /// ⚠️A Drive file not yet on the device keeps the picker spinning before
+  /// it lets go (유저 2026-09-27, import on Apple). That wait is the
+  /// picker's own: it asks the provider for the file as the user picks
+  /// (Apple's Document Provider guide — providePlaceholder and
+  /// startProvidingItem "may be triggered as the user interacts with the
+  /// document picker view controller"), and iOS gives the app no switch
+  /// for it, where macOS's NSOpenPanel does (canDownloadUbiquitousContents,
+  /// set in the macOS runner). Every door that picks a file here — the
+  /// project's and the import's — waits the same way.
   private func pickFiles(
     utis: [String], allowMultiple: Bool, result: @escaping FlutterResult
   ) {
@@ -455,23 +472,28 @@ import UniformTypeIdentifiers
   /// `forExporting` shows the FILE's own name, so the Dart side stages the
   /// file under its final name first — a caller whose staged name differs
   /// from its suggestedName gets the staged name on this platform.
-  private func exportFile(sourcePath: String?, result: @escaping FlutterResult) {
-    guard let sourcePath, !sourcePath.isEmpty else {
+  ///
+  /// SEVERAL at once since drive-folder-windows-Q1 (유저 2026-09-27: 「내보내기가
+  /// 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」): an export that hands its
+  /// outputs over when it is done passes them all, files and folders alike,
+  /// to ONE picker.
+  ///
+  /// [grants]: Save As needs the destination's bookmark — it is what lets
+  /// every later save write there with no UI at all — so its answer takes
+  /// the scope and mints one. Handed-over outputs are never written again,
+  /// and a scope per output would leak a kernel sandbox extension for each
+  /// frame of a sequence; their answer only says where they landed.
+  private func exportFiles(
+    sourcePaths: [String], grants: Bool, result: @escaping FlutterResult
+  ) {
+    let urls = sourcePaths.filter { !$0.isEmpty }.map { URL(fileURLWithPath: $0) }
+    guard !urls.isEmpty else {
       result(["status": "unavailable"])
       return
     }
-    let url = URL(fileURLWithPath: sourcePath)
-    let picker: UIDocumentPickerViewController
-    if #available(iOS 14.0, *) {
-      picker = UIDocumentPickerViewController(forExporting: [url], asCopy: false)
-    } else {
-      // The pre-14 spelling of the same two choices: move, not export.
-      picker = UIDocumentPickerViewController(url: url, in: .moveToService)
-    }
-    // The delegate reports the DESTINATION url, so the ordinary grant path
-    // mints a bookmark for it — which is what lets every later save write
-    // there with no UI at all.
-    present(picker: picker, allowMultiple: false, result: result)
+    // The deployment target is iOS 15, so there is no pre-14 spelling.
+    let picker = UIDocumentPickerViewController(forExporting: urls, asCopy: false)
+    present(picker: picker, allowMultiple: false, grants: grants, result: result)
   }
 
   /// The one place a picker reaches the screen. Shared so the folder and file
@@ -480,7 +502,7 @@ import UniformTypeIdentifiers
   /// took.
   private func present(
     picker: UIDocumentPickerViewController, allowMultiple: Bool,
-    result: @escaping FlutterResult
+    grants: Bool = true, result: @escaping FlutterResult
   ) {
     // REFUSE a second request rather than replacing the first. Replacing it
     // would drop the only strong reference to delegate #1 — the picker's own
@@ -495,7 +517,7 @@ import UniformTypeIdentifiers
     }
     pendingPickResult = result
 
-    let delegate = DocumentPickerDelegate(owner: self)
+    let delegate = DocumentPickerDelegate(owner: self, grants: grants)
     pickerDelegate = delegate
     picker.delegate = delegate
     picker.allowsMultipleSelection = allowMultiple
@@ -695,11 +717,16 @@ import UniformTypeIdentifiers
 /// answers is whether `dart:io` can write inside the granted scope, because
 /// the entire folder-grant design rests on it.
 private final class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
-  init(owner: AppDelegate) {
+  init(owner: AppDelegate, grants: Bool) {
     self.owner = owner
+    self.grants = grants
   }
 
   private weak var owner: AppDelegate?
+
+  /// Whether the answer opens each item's scope and mints its bookmark —
+  /// see `exportFiles` for the one pick that must not.
+  private let grants: Bool
 
   func documentPicker(
     _ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]
@@ -707,7 +734,16 @@ private final class DocumentPickerDelegate: NSObject, UIDocumentPickerDelegate {
     guard let owner else { return }
     // Every URL, not just the first: file mode allows multiple selection and
     // dropping the rest here would look like the picker ignoring the user.
-    owner.finishPick(owner.grantPayload(for: urls))
+    owner.finishPick(grants ? owner.grantPayload(for: urls) : placedPayload(for: urls))
+  }
+
+  /// Where handed-over outputs landed — the paths alone.
+  private func placedPayload(for urls: [URL]) -> [String: Any?] {
+    if urls.isEmpty {
+      return ["status": "cancelled"]
+    }
+    let items: [[String: Any?]] = urls.map { ["path": $0.path, "bookmark": nil] }
+    return ["status": "granted", "items": items]
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {

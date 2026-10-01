@@ -7,8 +7,11 @@
 /// whole thing testable without a canvas.
 library;
 
+import 'dart:ui' show Offset, Rect, Size;
+
 import '../cut_id.dart';
 import '../frame_id.dart';
+import '../se_line_type.dart';
 
 /// One panel of a cut, as the sheet reads it.
 ///
@@ -23,10 +26,8 @@ class ConteCellSource {
     this.frameId,
     this.inkId,
     this.action = '',
-    this.rowSpan = 1,
-    this.encroachFraction = 0,
-    this.cameraLabels = const [],
-  }) : assert(rowSpan >= 1, 'A cell occupies at least one row.');
+    this.camera,
+  });
 
   /// Cut-LOCAL frames.
   final int startFrame;
@@ -46,25 +47,80 @@ class ConteCellSource {
   /// The ACTION column's text — the exposure's `actionMemo`.
   final String action;
 
-  /// How many sheet ROWS the cell takes.
-  ///
-  /// Camera work decides it (design): a vertical move claims one extra row
-  /// per screen-height travelled, so a long PAN reads as a tall cell the way
-  /// it does on paper. A non-integer amount leaves the remainder as margin,
-  /// which is what hand-drawn sheets do too.
-  final int rowSpan;
-
-  /// How far the picture reaches INTO the text columns, as a fraction of
-  /// the action column's width. A horizontal camera move widens the picture
-  /// rather than moving the columns: the column positions are fixed for the
-  /// whole sheet, and only the cells that need it encroach.
-  final double encroachFraction;
-
-  /// The camera frame labels drawn on the picture — the keyframe names when
-  /// they have them, `IN`/`OUT` otherwise.
-  final List<String> cameraLabels;
+  /// What the camera does while the cell is on screen — or null while it
+  /// holds still, every frame it shows in the cell framing one place. It
+  /// decides how much of the sheet the cell's picture takes and what is
+  /// drawn over it.
+  final ConteCameraWork? camera;
 
   int get lengthFrames => endFrameExclusive - startFrame;
+}
+
+/// A cell's camera work, on the cut's canvas: the camera's frame at the
+/// cell's first and last frames and at each key between (H54 — the camera
+/// as the cell shows it, not only where it was keyed), the trail each
+/// corner draws through them, and the canvas they sweep together — the
+/// picture the cell shows (유저 2026-09-29: 「일단 카메라 팬대로 해당
+/// 코마에서 보여주고」).
+class ConteCameraWork {
+  const ConteCameraWork({
+    required this.screen,
+    required this.field,
+    required this.keys,
+    required this.trails,
+  });
+
+  /// What one window shows, in canvas pixels: the widest of the key
+  /// frames — a pushed-in frame lies inside it.
+  final Size screen;
+
+  /// The canvas the camera sweeps: every corner of every key.
+  final Rect field;
+
+  /// The camera's frames the cell marks, first to last: its first frame,
+  /// each key between, its last frame — an end the camera stands at a key
+  /// for being that key.
+  final List<ConteCameraKey> keys;
+
+  /// The trail each corner of the frame draws from key to key — four
+  /// polylines, top-left first (`cameraCornerTrails`).
+  final List<List<Offset>> trails;
+}
+
+/// Where a camera key stands among the cell's keys — what its frame shows
+/// and which colour it wears.
+enum ConteCameraKeyRole {
+  /// The first key: its frame drawn, IN's green.
+  first,
+
+  /// A key between: no frame, only the turn of its trails — and its name,
+  /// where it has one (유저 2026-09-30, after Storyboard Pro: 「첫/끝 키
+  /// 말고 중간키는 실루엣을 안그려」).
+  between,
+
+  /// The last key: its frame drawn, OUT's red.
+  last,
+}
+
+/// One camera frame the sheet marks: a key, or the camera at the cell's
+/// first or last frame where no key stands (H54).
+class ConteCameraKey {
+  const ConteCameraKey({
+    required this.corners,
+    required this.role,
+    this.label,
+  });
+
+  /// The camera's frame at the key, on the canvas: top-left first.
+  final List<Offset> corners;
+
+  final ConteCameraKeyRole role;
+
+  /// What the sheet writes at the frame's top-left: the key's name, else
+  /// IN for the first and OUT for the last; null for an unnamed key between
+  /// (유저 2026-09-30: 「카메라 마크 이름있으면 A,B 이런식으로 이름
+  /// 따라가고 없으면 스토리보드프로 규칙 그대로따라서 IN OUT」).
+  final String? label;
 }
 
 /// A line of dialogue, as the sheet reads it. Dialogue lives on the SE
@@ -75,6 +131,7 @@ class ConteDialogueLine {
     required this.startFrame,
     required this.text,
     this.speaker = '',
+    this.delivery = SeLineType.on,
   });
 
   /// Cut-LOCAL, clipped to the cut. A line that begins in an earlier cut
@@ -83,9 +140,22 @@ class ConteDialogueLine {
   final String text;
   final String speaker;
 
+  /// The line's delivery (I-20) — written after the speaker when the sheets
+  /// print it ([SeLineType.printsOnSheets]).
+  final SeLineType delivery;
+
   /// The sheet's own rendering: `speaker「line」`, the shape a Japanese
   /// conte's DIALOGUE column uses. An unnamed speaker prints the line bare.
-  String get printed => speaker.isEmpty ? text : '$speaker「$text」';
+  ///
+  /// 🗣️I-20-Q2 (유저 2026-09-30): 「콘티 대사 칸에도 찍는다 — 이름 뒤 괄호」 —
+  /// `speaker(OFF)「line」`, and only OFF · MONO (「ON일때는 … 콘티용지에는
+  /// 표시하지않음」). A delivery with no speaker still says whose voice it is
+  /// not: `(OFF)「line」`.
+  String get printed {
+    final said = delivery.printsOnSheets ? '(${delivery.label})' : '';
+    final who = '$speaker$said';
+    return who.isEmpty ? text : '$who「$text」';
+  }
 }
 
 /// One cut's row band on the sheet.
@@ -112,9 +182,6 @@ class ConteCutSource {
 
   final List<ConteCellSource> cells;
   final List<ConteDialogueLine> dialogue;
-
-  /// How many sheet rows the whole cut claims.
-  int get rowSpan => cells.fold(0, (total, cell) => total + cell.rowSpan);
 }
 
 /// The whole sheet's content.

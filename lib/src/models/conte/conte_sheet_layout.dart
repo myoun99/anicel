@@ -12,7 +12,6 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
-import '../../core/app_corner_radii.dart';
 import 'conte_sheet_source.dart';
 
 /// The sheet's fixed measurements — the first preset's page (유저
@@ -108,18 +107,18 @@ class ConteSheetMetrics {
   double rowTop(int rowOnPage) => bodyTop + rowOnPage * rowHeight;
 
   /// Row [row]'s picture window — the silhouette's hole.
+  ///
+  /// ↩️SQUARE, like every window of the sheet (유저 2026-09-30: 「칸 자체를
+  /// 둥근걸 버리고 네모낳게 한다는게 맞아. 보통칸이든 뭐든 진짜 상관없이
+  /// 그냥 기본을」). It wore the app's window corner from 09-25 (「지브리콘티
+  /// 처럼 모서리 둥글게하자」) until a window grown by camera work had to be
+  /// drawn: 「근데 그냥 둥근모서리 포기하자. 사각형으로하자」.
   Rect windowRect(int row) => Rect.fromLTRB(
     pictureLeft + silhouetteBorder,
     rowTop(row) + silhouetteBorder,
     actionLeft - silhouetteBorder,
     rowTop(row + 1) - silhouetteBorder,
   );
-
-  /// A picture window's corner — the app's window corner (유저 2026-09-25:
-  /// 「지브리콘티처럼 모서리 둥글게하자. 우리 앱 통일 모서리 따라서」).
-  /// The camera's picture inside is cut to it; 「그거는 전혀 문제없고
-  /// 의도한 대가야」.
-  double get windowRadius => AppCornerRadii.window;
 
   Rect get pageNumberSlot =>
       Rect.fromLTWH(marginX, topBandTop, 120, topBandHeight);
@@ -155,6 +154,7 @@ class ContePlacedCell {
     required this.actionRect,
     required this.dialogueRect,
     required this.rowOnPage,
+    this.rowSpan = 1,
   });
 
   final String cutId;
@@ -164,8 +164,10 @@ class ContePlacedCell {
   final int cellIndex;
   final ConteCellSource source;
 
-  /// The picture's box, thick black border and all. Wider than the picture
-  /// column when the cell encroaches (a horizontal camera move).
+  /// The picture's box, thick black border and all — over more rows and
+  /// into the columns beside it when the camera works ([conteCameraPlan]),
+  /// but only as far as the picture in it: the rows the cell takes are the
+  /// cell's, and what the box leaves of them is paper.
   final Rect pictureRect;
 
   /// The ACTION and DIALOGUE text boxes.
@@ -181,6 +183,44 @@ class ContePlacedCell {
 
   final int rowOnPage;
 
+  /// How many sheet ROWS the cell takes: its picture's, and one more under
+  /// them where its words moved down ([conteCameraPlan]).
+  final int rowSpan;
+
+  /// Where the cell's words start — ACTION, dialogue and length alike: its
+  /// first row, or the row under its picture
+  /// ([ConteCameraPlan.wordsBelow]).
+  double get wordsTop => actionRect.top;
+
+  /// This cell with its text boxes ending at [action] and [dialogue] where
+  /// those are given ([_wordsStopAtPictures]).
+  ContePlacedCell _withWordsEndingAt({double? action, double? dialogue}) =>
+      ContePlacedCell(
+        cutId: cutId,
+        cutName: cutName,
+        cellIndex: cellIndex,
+        source: source,
+        pictureRect: pictureRect,
+        actionRect: action == null
+            ? actionRect
+            : Rect.fromLTRB(
+                actionRect.left,
+                actionRect.top,
+                actionRect.right,
+                math.min(actionRect.bottom, action),
+              ),
+        dialogueRect: dialogue == null
+            ? dialogueRect
+            : Rect.fromLTRB(
+                dialogueRect.left,
+                dialogueRect.top,
+                dialogueRect.right,
+                math.min(dialogueRect.bottom, dialogue),
+              ),
+        rowOnPage: rowOnPage,
+        rowSpan: rowSpan,
+      );
+
   /// The cell's whole ROW BAND — cut column through the TIME column, the
   /// full rows the cell claims. The conte ink's anchor rect (R5) and the
   /// clip that keeps a cell's strokes off its neighbours; built exactly
@@ -189,8 +229,89 @@ class ContePlacedCell {
     metrics.cutColumnLeft,
     metrics.rowTop(rowOnPage),
     metrics.bodyRight,
-    metrics.rowTop(rowOnPage + source.rowSpan),
+    metrics.rowTop(rowOnPage + rowSpan),
   );
+}
+
+/// The most rows a cell's picture takes, however far its camera travels
+/// (유저 2026-09-30: 「그림으로서는 가로도 세로도 길면 4코마분까지만
+/// 차지하게 하고, 5코마째에서 해당 칸에 들어갔어야할 액션이랑 se
+/// 넣는거지」) — a page's fifth row is left for the words it pushed down.
+const int conteCameraPictureRowsMax = 4;
+
+/// Where a cell's camera work lays its picture on the page.
+typedef ConteCameraPlan = ({
+  /// The rows the picture takes.
+  int pictureRows,
+
+  /// Where the picture's box ends on the right, and how tall it is — the
+  /// picture and the silhouette's black round it, and not a row more (유저
+  /// 2026-09-30, H48: 「칸은 2칸공간 차지하더라도 검은칸은 필요한 만큼만」):
+  /// past the picture column's edge into the columns beside it, or short
+  /// of it.
+  double pictureRight,
+  double pictureHeight,
+
+  /// Whether the cell's words — ACTION, dialogue and its length — print on
+  /// the row under the picture instead of beside it.
+  bool wordsBelow,
+
+  /// The paper a pixel of the swept canvas takes: a screen to a row's
+  /// window, less where the sweep would pass the picture's rows or the
+  /// page's right edge.
+  double scale,
+});
+
+/// How much of the page [work] takes (유저 2026-09-30).
+///
+/// The picture shows the canvas the camera sweeps at a screen a row: down
+/// over as many rows as it is screens tall, up to
+/// [conteCameraPictureRowsMax], and right as far as it is wide — into the
+/// ACTION column, then the dialogue's, then the time's (「필요한만큼 알아서
+/// 침범」 · 「se칸까지」 · 「초수칸까지도 확장가능하게해」). A sweep larger than
+/// that is laid smaller ([ConteCameraPlan.scale]).
+///
+/// Once the picture takes the whole ACTION column there is no room for the
+/// cell's words beside it, and they ALL move to the row under it — the
+/// length too (「침범해서 공간없으면 아래칸을 쓰는게」 · 「초수도
+/// 다음코마에 넣으면되니까」 · 「내려갈땐 다 같이 내려가도록하자」).
+ConteCameraPlan conteCameraPlan(ConteSheetMetrics m, ConteCameraWork? work) {
+  if (work == null) {
+    return (
+      pictureRows: 1,
+      pictureRight: m.actionLeft,
+      pictureHeight: m.rowHeight,
+      wordsBelow: false,
+      scale: 1,
+    );
+  }
+  final screensTall = work.field.height / work.screen.height;
+  final rows = (screensTall - 1e-9).ceil().clamp(1, conteCameraPictureRowsMax);
+  final scale = _fieldScale(m, work, rows);
+  final right =
+      m.pictureLeft + work.field.width * scale + 2 * m.silhouetteBorder;
+  return (
+    pictureRows: rows,
+    pictureRight: right,
+    pictureHeight: work.field.height * scale + 2 * m.silhouetteBorder,
+    wordsBelow: right >= m.dialogueLeft - 1e-9,
+    scale: scale,
+  );
+}
+
+/// [ConteCameraPlan.scale] for a picture [pictureRows] rows tall.
+double _fieldScale(
+  ConteSheetMetrics m,
+  ConteCameraWork work,
+  int pictureRows,
+) {
+  final tallest = pictureRows * m.rowHeight - 2 * m.silhouetteBorder;
+  final widest = m.bodyRight - m.pictureLeft - 2 * m.silhouetteBorder;
+  return [
+    m.windowHeight / work.screen.height,
+    tallest / work.field.height,
+    widest / work.field.width,
+  ].reduce(math.min);
 }
 
 /// The lines that START in [cell]'s span, in the sheet's printed shape —
@@ -325,6 +446,32 @@ List<ContePageLayout> layoutConteBook(
   ];
 }
 
+/// [cells] as their words read on the page: a cell's text runs to the
+/// page's foot, but not into a later cell's picture standing in its column
+/// (camera work, [conteCameraPlan]) — a picture and a value never overlap,
+/// which is what lets the page's strata stack in any order.
+List<ContePlacedCell> _wordsStopAtPictures(List<ContePlacedCell> cells) => [
+  for (final (index, cell) in cells.indexed)
+    cell._withWordsEndingAt(
+      action: _firstPictureIn(cells.skip(index + 1), cell.actionRect),
+      dialogue: _firstPictureIn(cells.skip(index + 1), cell.dialogueRect),
+    ),
+];
+
+/// The top of the first of the [later] cells' pictures that stands in
+/// [words]' column, below where they start — or null.
+double? _firstPictureIn(Iterable<ContePlacedCell> later, Rect words) {
+  for (final cell in later) {
+    final picture = cell.pictureRect;
+    if (picture.right > words.left &&
+        picture.left < words.right &&
+        picture.top >= words.top) {
+      return picture.top;
+    }
+  }
+  return null;
+}
+
 /// Lays [source] out onto pages.
 ///
 /// The rule for breaking is the design's: a cell never straddles a page. A
@@ -377,7 +524,7 @@ List<ContePageLayout> layoutConteSheet(
     pages.add(
       ContePageLayout(
         pageIndex: pages.length,
-        cells: cells,
+        cells: _wordsStopAtPictures(cells),
         cutBands: bands,
         emptyRowsFrom: hole ? row : null,
         metrics: metrics,
@@ -398,47 +545,54 @@ List<ContePageLayout> layoutConteSheet(
       final cell = cut.cells[index];
       // A cell never straddles a page: one that does not fit moves whole,
       // and what it leaves behind is the hole the big X marks.
-      if (row + cell.rowSpan > metrics.rowsPerPage) {
+      final plan = conteCameraPlan(metrics, cell.camera);
+      final rowSpan = plan.pictureRows + (plan.wordsBelow ? 1 : 0);
+      if (row + rowSpan > metrics.rowsPerPage) {
         flushPage(hole: true);
         seenOnAPageAlready = true;
       }
       final top = metrics.rowTop(row);
-      final bottom = metrics.rowTop(row + cell.rowSpan);
-      final pictureRight =
-          metrics.actionLeft + metrics.actionWidth * cell.encroachFraction;
+      final wordsTop = plan.wordsBelow
+          ? metrics.rowTop(row + plan.pictureRows)
+          : top;
       cells.add(
         ContePlacedCell(
           cutId: cut.cutId.value,
           cutName: cut.name,
           cellIndex: index,
           source: cell,
+          // At the top of the cell's rows (유저 2026-09-30, H48:
+          // 「위쪽정렬로 배치」).
           pictureRect: Rect.fromLTRB(
             metrics.pictureLeft,
             top,
-            pictureRight,
-            bottom,
+            plan.pictureRight,
+            top + plan.pictureHeight,
           ),
           // The text runs to the page's foot: the columns have no
           // horizontal rules, so the next cell's anchor is what ends it.
           actionRect: Rect.fromLTRB(
-            math.max(metrics.actionLeft, pictureRight),
-            top,
+            plan.wordsBelow
+                ? metrics.actionLeft
+                : math.max(metrics.actionLeft, plan.pictureRight),
+            wordsTop,
             metrics.dialogueLeft,
             metrics.bodyBottom,
           ),
           dialogueRect: Rect.fromLTRB(
             metrics.dialogueLeft,
-            top,
+            wordsTop,
             metrics.timeLeft,
             metrics.bodyBottom,
           ),
           rowOnPage: row,
+          rowSpan: rowSpan,
         ),
       );
       bandStartRow.putIfAbsent(cut.cutId.value, () => row);
       bandFirstPage.putIfAbsent(cut.cutId.value, () => !seenOnAPageAlready);
-      bandEndRow[cut.cutId.value] = row + cell.rowSpan;
-      row += cell.rowSpan;
+      bandEndRow[cut.cutId.value] = row + rowSpan;
+      row += rowSpan;
       if (row >= metrics.rowsPerPage) {
         if (index == cut.cells.length - 1) {
           endingHere.add(cut);

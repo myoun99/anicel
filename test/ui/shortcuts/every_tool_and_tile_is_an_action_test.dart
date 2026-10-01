@@ -81,10 +81,24 @@ void main() {
       const ShapeTilePress(CanvasTool.select, CanvasShapeKind.lasso),
       const SingleActivator(LogicalKeyboardKey.keyW),
     );
-    // 「잘라내기는 잘라내기 툴 자체에 c로 설정」
+    // 🗣️I-53: 「잘라내기도구에서 올가미 잘라내기를 단축키 c로 두도록
+    // 변경하고, 스탬프를 v로」. ↩️C was the cut tool's own (「잘라내기는
+    // 잘라내기 툴 자체에 c로 설정」, 09-13), and the tool has none now.
     expectDefault(
-      const RailToolPress(CanvasTool.cut),
+      const ShapeTilePress(CanvasTool.cut, CanvasShapeKind.lasso),
       const SingleActivator(LogicalKeyboardKey.keyC),
+    );
+    expectDefault(
+      const ToolTilePress(CanvasTool.cutStamp),
+      const SingleActivator(LogicalKeyboardKey.keyV),
+    );
+    expect(
+      editorActionDefinitions
+          .firstWhere(
+            (d) => d.id == toolActionIdFor(const RailToolPress(CanvasTool.cut)),
+          )
+          .defaultActivators,
+      isEmpty,
     );
     // 「채우기툴을 f로 변경하고, 가이드 툴을 g로 지정」
     expectDefault(
@@ -107,10 +121,21 @@ void main() {
     );
   });
 
-  test('🪦the retired keys are nobody\'s: V, M and L alone, and Ctrl+Y as '
-      'a second redo', () {
+  test('🪦the retired keys are nobody\'s: M and L alone, V off the transform '
+      'tool, and Ctrl+Y as a second redo', () {
+    // 「이동툴이라기보단 그냥 변형툴이잖아. v 삭제하고 v 관련 잔재있으면
+    // 삭제」 took V off the tool; ↩️I-53 handed it to the stamp, so V alone
+    // is someone's again — just never the transform tool's.
+    expect(
+      editorActionDefinitions
+          .firstWhere(
+            (d) =>
+                d.id == toolActionIdFor(const RailToolPress(CanvasTool.move)),
+          )
+          .defaultActivators,
+      isEmpty,
+    );
     for (final retired in const [
-      SingleActivator(LogicalKeyboardKey.keyV),
       SingleActivator(LogicalKeyboardKey.keyM),
       SingleActivator(LogicalKeyboardKey.keyL),
     ]) {

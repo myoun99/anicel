@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/playback/audio_recorder.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 import '../../helpers/temp_dir.dart';
 import '../../helpers/written_wav.dart';
+import '../../helpers/canned_audio_recorder.dart';
 
 /// The landing half of recording (AUDIO-PRO R5 → REC1-B rolling record):
 /// a finished take becomes a WAV named `<lane>_T<n>`, a pool entry and a
@@ -278,7 +279,7 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(0.5));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
     // Record = play + capture: the transport rolls the whole track.
     expect(manager.playbackRig.playback.isPlaying, isTrue);
@@ -305,7 +306,7 @@ void main() {
     final manager = session();
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
-    manager.voiceRecording.debugVoiceRecorderFactory = () => _FakeRecorder(takeOfSeconds(0.5));
+    manager.voiceRecording.debugVoiceRecorderFactory = () => CannedAudioRecorder(takeOfSeconds(0.5));
     expect(manager.voiceRecording.startVoiceRecording(), VoiceRecordStartResult.started);
 
     manager.playbackRig.playback.stop();
@@ -351,7 +352,7 @@ void main() {
       expect(manager.activeLayerId, isNot(laneId), reason: 'fixture');
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5));
+          () => CannedAudioRecorder(takeOfSeconds(0.5));
 
       expect(
         manager.voiceRecording.startVoiceRecording(),
@@ -378,7 +379,7 @@ void main() {
       manager.selectLayer(manager.activeLayerId!);
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5));
+          () => CannedAudioRecorder(takeOfSeconds(0.5));
 
       expect(
         manager.voiceRecording.startVoiceRecording(),
@@ -434,7 +435,7 @@ void main() {
       );
       // Outlasts the 13-frame run-up the head trim eats.
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(4));
+          () => CannedAudioRecorder(takeOfSeconds(4));
 
       expect(
         manager.voiceRecording.startVoiceRecording(),
@@ -467,7 +468,7 @@ void main() {
       );
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5));
+          () => CannedAudioRecorder(takeOfSeconds(0.5));
 
       expect(
         manager.voiceRecording.startVoiceRecording(),
@@ -499,7 +500,7 @@ void main() {
       final manager = session();
       manager.selectLayer(manager.activeTrack.seLayers.first.id);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5)); // 12 frames captured
+          () => CannedAudioRecorder(takeOfSeconds(0.5)); // 12 frames captured
       expect(
         manager.voiceRecording.startVoiceRecording(),
         VoiceRecordStartResult.started,
@@ -532,7 +533,7 @@ void main() {
       final playback = manager.playbackRig.playback;
       playback.play(scope: PlaybackScope.allCuts, startGlobalFrame: 0);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5));
+          () => CannedAudioRecorder(takeOfSeconds(0.5));
       expect(
         manager.voiceRecording.startVoiceRecording(),
         VoiceRecordStartResult.started,
@@ -567,7 +568,7 @@ void main() {
       expect(manager.activeCutOrNull, isNull, reason: 'fixture: in the gap');
       final lanesBefore = laneIdsOf(manager);
       manager.voiceRecording.debugVoiceRecorderFactory =
-          () => _FakeRecorder(takeOfSeconds(0.5));
+          () => CannedAudioRecorder(takeOfSeconds(0.5));
 
       expect(
         manager.voiceRecording.startVoiceRecording(),
@@ -605,31 +606,3 @@ class _DeafRecorder extends AudioRecorder {
 
 /// A microphone stand-in: start always succeeds at the take's rate and
 /// stop hands the prepared take back once.
-class _FakeRecorder extends AudioRecorder {
-  _FakeRecorder(this.recording);
-
-  final AudioRecording recording;
-  bool _started = false;
-
-  @override
-  bool get isRecording => _started;
-
-  @override
-  int start({
-    required int sampleRate,
-    bool useNullBackend = false,
-    int deviceIndex = -1,
-  }) {
-    _started = true;
-    return recording.sampleRate;
-  }
-
-  @override
-  AudioRecording? stop() {
-    if (!_started) {
-      return null;
-    }
-    _started = false;
-    return recording;
-  }
-}

@@ -31,26 +31,47 @@
 /// explicit table means reordering this enum cannot silently re-map every
 /// imported brush. The verified decision, and exactly which of its claims
 /// are measured, live with `_antiAliasOf` in `sut_decoder.dart`.
+///
+/// ↩️🚨★★★I-50 (유저 2026-09-30, 「경도와 따로 — 단계마다 고정 폭, 클튜 샘플로
+/// 맞춤」 — after 「aa 값이 3인데도 너무 약함」): for an ANALYTIC round tip the
+/// step is no longer a contrast on the hardness ramp. That ramp is zero wide
+/// on a hardness-100% nib (G펜, 잉크 펜, 마루 펜 …), so tightening it did
+/// nothing and every step drew the same staircase — what edge those pens had
+/// was the stamp's bilinear sampling, about a pixel. The step now GIVES the
+/// tip an edge [edgeWidth] canvas pixels wide INSIDE its rim: the rim stays
+/// where the size puts it and the ramp grows inward — and where the hardness
+/// ramp is the wider of the two, that ramp stands as it was.
+/// ↩️「굵기 안바꾸고」 was first read as "half coverage stays put", and the
+/// first cut of this law centred the ramp there. Measured against the
+/// user's Clip Studio lines (`参考/brush/cls_gpen_AA.png`, board I-50) that
+/// drew every line a pixel and more too thick; the lines fit a ramp that
+/// ENDS at the rim — so the rim is the thickness that holds, and the
+/// half-coverage width narrows with the step as Clip Studio's does. The
+/// ladder `k` below stays for every other tip: a raster tip has no distance
+/// to its edge to widen, and a square's edge was never widened.
 enum BrushAntiAlias {
   /// 없음 — a hard edge. The ramp collapses to a threshold at half
   /// coverage, which is the cut this engine already uses for its own hard
   /// edges (`qa_engine.c`'s fill writes `coverage = 0.5 - d`).
+  ///
+  /// ⚠️The threshold cuts a raster tip's MASK coverage too, so a grain or
+  /// chalk tip at 없음 is binarised whole — a preset that wants a pixel line
+  /// pairs it with a plain round tip (written on Anime Pen until board
+  /// F-218 retired that preset).
   none,
 
-  /// 1단계 — `k = 4`.
+  /// 1단계 — `k = 4` off a round tip.
   low,
 
-  /// 2단계 — `k = 2`.
+  /// 2단계 — `k = 2` off a round tip.
   medium,
 
-  /// 3단계 — `k = 1`: the ramp the engine drew before this existed, so a
-  /// brush that says nothing draws exactly as it always did.
+  /// 3단계 — `k = 1` off a round tip, the ramp it always had; on a round
+  /// tip the widest edge ([edgeWidth]). A brush that says nothing is here.
   high;
 
-  /// The contrast factor, or `null` for [none]'s threshold.
-  ///
-  /// ⚠️Read this ONCE per dab and hoist it — [applyTo] is the definition,
-  /// not the hot path. `BrushDabPlan` keeps the hoisted pair.
+  /// The contrast factor every tip but an analytic round one takes, or
+  /// `null` for [none]'s threshold (`brushDabEdgeLaw` says which applies).
   double? get contrast => switch (this) {
     none => null,
     low => 4.0,
@@ -58,12 +79,26 @@ enum BrushAntiAlias {
     high => 1.0,
   };
 
-  /// [coverage] with this edge applied. The definition of the law; the
-  /// rasterizers inline it against hoisted values.
-  double applyTo(double coverage) => switch (this) {
-    none => coverage >= 0.5 ? 1.0 : 0.0,
-    high => coverage,
-    _ => ((coverage - 0.5) * contrast! + 0.5).clamp(0.0, 1.0).toDouble(),
+  /// How wide, in canvas pixels, the edge an ANALYTIC round tip is given at
+  /// this step — the distance its coverage takes to fall from 1 at the hard
+  /// radius to 0 at the rim. 0 for [none], whose cut happens after sampling.
+  ///
+  /// 📏Fitted 2026-10-01 (board I-50) to the user's Clip Studio G펜 lines at
+  /// size 10 AND 50, drawn through this engine's own stamp path — the 8-bit
+  /// stamp, its bilinear sampling, the interpolator's step, each dab laying
+  /// its share of one stamp per tenth of the size (`stampShareOf`) — and
+  /// compared by the lines' edge spread
+  /// (`a_g_pen_edge_matches_clip_studio_test`). ↩️The first fit read size 10
+  /// alone: with the dabs piling a pixel apart, fifty of them across a width
+  /// Clip Studio covers with a handful tightened every ramp, and size 50
+  /// could not be matched at all. Once a dab lays its share, 1단계 and 3단계
+  /// hold at both sizes as they were, and 2단계 narrows from 1.875 to 1.6
+  /// (swept against both rows, `one-pixel-steps-change-a-brush-with-its-size`).
+  double get edgeWidth => switch (this) {
+    none => 0.0,
+    low => 0.4375,
+    medium => 1.6,
+    high => 2.75,
   };
 
   String toJson() => name;

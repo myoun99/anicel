@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/history_manager.dart';
 import '../input/control_press_claim.dart' show PressFireWatch;
 import '../input/value_control_pointers.dart';
-import 'package:anicel/src/models/app_input_settings.dart';
+import '../input/finger_mode_devices.dart';
 import 'layer_rail_columns.dart';
 import 'layer_label_controls.dart'
     show
@@ -512,50 +512,54 @@ class _RailSwipeDetectorState extends State<_RailSwipeDetector> {
       _engaged = false;
     }
 
-    return AxisGestureDetector(
-      axis: widget.axis,
-      behavior: HitTestBehavior.translucent,
-      // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
-      // 사양 통일」). The doc above claims the outer vertical scroll keeps
-      // working outside the band; it did not, and a finger on the rail
-      // scrolled nothing at all (measured — the frame area beside it moved
-      // 90px on the same drag).
-      //
-      // ⛔A recognizer that has already WON cannot hand the gesture back:
-      // declining inside `onVerticalDragStart` leaves the swipe undone and
-      // the scroll dead, which is the shape this file's own neighbours are
-      // warned about ([AppInput.toolPointerDevices]). The band check runs
-      // after the arena is over, so it can only ever be the second half of
-      // the answer.
-      //
-      // 결정 10 is the first half, already written and already read by every
-      // other edit pan on this surface: a finger scrolls the timeline, and
-      // becomes the pointer the moment one finger is the drawing hand.
-      supportedDevices: AppInput.timelineEditPanDevices,
-      // 🚨I-1, measured: with the default `DragStartBehavior.start` a swipe
-      // MISSES A ROW, and which row depends on what you compare against.
-      // The recognizer reports its start at the position where it WON the
-      // arena — one slop-length, ~18px, past the press on a 28px row — and
-      // it deliberately drops the movement that won as a delta, so no update
-      // ever names the row in between. Press the top row's toggle and drag:
-      // either the row you pressed or the row under the slop went unpainted.
-      //
-      // `down` is the answer rather than a remembered press position,
-      // because it fixes BOTH halves: the start reports the press, and the
-      // slop movement arrives as an update. The reason the default exists —
-      // content must not jump by the slop when the drag begins — does not
-      // apply to a gesture that moves nothing and only paints the rows it
-      // passes.
-      dragStartBehavior: DragStartBehavior.down,
-      // 🚨ONE recogniser family, chosen by the axis — the law this rail
-      // wrote down first; [AxisGestureDetector] is where it lives now, for
-      // every axis drag.
-      onDragDown: down,
-      onDragStart: start,
-      onDragUpdate: update,
-      onDragEnd: end,
-      onDragCancel: cancel,
-      child: widget.child,
+    return FingerModeDevices.timelineEditPan(
+      builder: (context, devices) => AxisGestureDetector(
+        axis: widget.axis,
+        behavior: HitTestBehavior.translucent,
+        // 🚨F-8 (유저 2026-08-24: 「레이어영역도 … **터치로 스크롤할수있게**
+        // 사양 통일」). The doc above claims the outer vertical scroll keeps
+        // working outside the band; it did not, and a finger on the rail
+        // scrolled nothing at all (measured — the frame area beside it
+        // moved 90px on the same drag).
+        //
+        // ⛔A recognizer that has already WON cannot hand the gesture back:
+        // declining inside `onVerticalDragStart` leaves the swipe undone and
+        // the scroll dead, which is the shape this file's own neighbours are
+        // warned about ([AppInput.toolPointerDevices]). The band check runs
+        // after the arena is over, so it can only ever be the second half
+        // of the answer.
+        //
+        // 결정 10 is the first half, already written and already read by
+        // every other edit pan on this surface: a finger scrolls the
+        // timeline, and becomes the pointer the moment one finger is the
+        // drawing hand.
+        supportedDevices: devices,
+        // 🚨I-1, measured: with the default `DragStartBehavior.start` a
+        // swipe MISSES A ROW, and which row depends on what you compare
+        // against. The recognizer reports its start at the position where
+        // it WON the arena — one slop-length, ~18px, past the press on a
+        // 28px row — and it deliberately drops the movement that won as a
+        // delta, so no update ever names the row in between. Press the top
+        // row's toggle and drag: either the row you pressed or the row
+        // under the slop went unpainted.
+        //
+        // `down` is the answer rather than a remembered press position,
+        // because it fixes BOTH halves: the start reports the press, and
+        // the slop movement arrives as an update. The reason the default
+        // exists — content must not jump by the slop when the drag begins —
+        // does not apply to a gesture that moves nothing and only paints
+        // the rows it passes.
+        dragStartBehavior: DragStartBehavior.down,
+        // 🚨ONE recogniser family, chosen by the axis — the law this rail
+        // wrote down first; [AxisGestureDetector] is where it lives now,
+        // for every axis drag.
+        onDragDown: down,
+        onDragStart: start,
+        onDragUpdate: update,
+        onDragEnd: end,
+        onDragCancel: cancel,
+        child: widget.child,
+      ),
     );
   }
 }

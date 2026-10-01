@@ -1,5 +1,6 @@
 import '../../models/composite_tree.dart';
 import '../../models/cut.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
@@ -23,16 +24,16 @@ import 'session_roles.dart';
 class EditingStackMap {
   EditingStackMap({
     required OpacityVerbs opacityVerbs,
-    required SessionInternals internals,
+    required ProjectAccess project,
     required this.cut,
     required this.stackCut,
     required this.frameIndex,
     required this.activeLayerId,
   }) : _opacityVerbs = opacityVerbs,
-       _internals = internals;
+       _project = project;
 
   final OpacityVerbs _opacityVerbs;
-  final SessionInternals _internals;
+  final ProjectAccess _project;
   final Cut cut;
   final Cut stackCut;
   final int frameIndex;
@@ -63,18 +64,36 @@ class EditingStackMap {
     },
   );
 
+  /// The cel the brush holds on the row being drawn on: the one [cut] — as
+  /// COMMITTED — exposes at [frameIndex]. A drag moves the picture
+  /// ([stackCut]); the brush stays on its cel until the release.
+  late final FrameId? _heldCel = activeLayerId == null
+      ? null
+      : exposedCelIdAt(
+          cut: cut,
+          layerId: activeLayerId!,
+          frameIndex: frameIndex,
+        );
+
   /// The row being drawn on with NOTHING exposed at this frame — the plan
   /// still placed it, in its folder and at its z, so the first stroke
   /// lands where the picture says it should (유저 확정 2026-09-04: 재생과
   /// 똑같이). The hand-built block this replaced appended it at the top
   /// level and lost all three.
-  CanvasStackRow _live(CutFrameCompositeLiveRow node) {
+  ///
+  /// Null — nothing drawn — while a drag has moved the brush's cel away
+  /// from here: the live surface would show that cel where the drag shows
+  /// none ([_leaf] says why the row still reports its opacity and keys).
+  CanvasStackRow? _live(CutFrameCompositeLiveRow node) {
     activeLayerOpacity = _opacityVerbs.stackLayerOpacity(
       node.layer,
       stackCut.layers,
       frameIndex,
     );
     activeSourceEffects = splitSourceEffects(node.render.effects).source;
+    if (_heldCel != null) {
+      return null;
+    }
     return CanvasActiveLayerRow(
       opacity: node.render.opacity,
       blendMode: node.render.blendMode,
@@ -84,16 +103,42 @@ class EditingStackMap {
     );
   }
 
-  /// A cached row — or the ACTIVE one when the brush cannot draw on it.
+  /// A cached row — or the ACTIVE one when the brush cannot draw on it, or
+  /// while a drag shows another cel on it than the one the brush holds.
   ///
   /// A brush-banned active layer (SE/instruction, R6-④; a media REFERENCE
   /// layer, §6-z23) has no interactive surface — it composites like any
   /// other stack row so its existing cels keep displaying read-only.
+  ///
+  /// 🚨A DRAG THAT MOVES THE BRUSH'S CEL (canvas-follows-block-moves, 유저
+  /// 2026-09-28 「따라가게」): the live surface draws the cel the brush holds,
+  /// so while a block, a comma or a file puts another cel at the playhead the
+  /// row composites THAT cel as an image, like every other row, and goes live
+  /// again on the release. It still reports its opacity and its keys — they
+  /// are the ROW's, and the panel wraps the live surface in them: an opacity
+  /// that fell to the default would unwrap it and remount it twice per drag.
   CanvasStackRow _leaf(CutFrameCompositeEntry entry) {
-    if (entry.layer.id != activeLayerId ||
-        !layerAcceptsBrushInput(entry.layer)) {
+    final active =
+        entry.layer.id == activeLayerId && layerAcceptsBrushInput(entry.layer);
+    if (active) {
+      // ⛔MUTANT SURVIVES ON THE HIDDEN-ROW ARM BELOW, and the
+      // classification is NEVER APPLIED (2026-09-08): `_resolveLayerNode`
+      // asks the row's own eye BEFORE it builds an entry, so a hidden row
+      // never reaches this walk at all — no entry, no leaf, no active node.
+      // Kept as the local statement of "the eye is off ⇒ nothing shows" for
+      // a caller that hands this map a tree built some other way.
+      activeLayerOpacity = !entry.layer.isVisible
+          ? 0.0
+          : _opacityVerbs.stackLayerOpacity(
+              entry.layer,
+              stackCut.layers,
+              frameIndex,
+            );
+      activeSourceEffects = splitSourceEffects(entry.effects).source;
+    }
+    if (!active || entry.frame.id != _heldCel) {
       return CanvasLayerImageRequest(
-        frameKey: _internals.brushFrameKeyForCut(
+        frameKey: _project.brushFrameKeyForCut(
           cut,
           entry.layer.id,
           entry.frame.id,
@@ -105,20 +150,6 @@ class EditingStackMap {
         effects: entry.effects,
       );
     }
-    // ⛔MUTANT SURVIVES ON THE HIDDEN-ROW ARM BELOW, and the classification
-    // is NEVER APPLIED (2026-09-08): `_resolveLayerNode` asks the row's own
-    // eye BEFORE it builds an entry, so a hidden row never reaches this
-    // walk at all — no entry, no leaf, no active node. Kept as the local
-    // statement of "the eye is off ⇒ nothing shows" for a caller that hands
-    // this map a tree built some other way.
-    activeLayerOpacity = !entry.layer.isVisible
-        ? 0.0
-        : _opacityVerbs.stackLayerOpacity(
-            entry.layer,
-            stackCut.layers,
-            frameIndex,
-          );
-    activeSourceEffects = splitSourceEffects(entry.effects).source;
     return CanvasActiveLayerRow(
       opacity: entry.opacity,
       // The active row's CEL key — the SAME key the image branch above
@@ -126,7 +157,7 @@ class EditingStackMap {
       // stack reads it off the widget it replaces and composes the cel's
       // image on the spot, so the row does not go blank for the frames an
       // asynchronous build takes ([CanvasActiveLayerRow.frameKey]).
-      frameKey: _internals.brushFrameKeyForCut(
+      frameKey: _project.brushFrameKeyForCut(
         cut,
         entry.layer.id,
         entry.frame.id,

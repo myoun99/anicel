@@ -175,7 +175,9 @@ TvpImportPlan planTvpImport({
           blendMode: _blendModeFor(source, warnings),
           kind: LayerKind.animation,
         ),
-        cutFrameCount: duration,
+        // A cut that has not landed owes no のりしろ; if a transition crosses
+        // where it lands, the repository's write derives the rest.
+        drawnFrameCount: duration,
       ),
     );
   }

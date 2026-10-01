@@ -1,6 +1,4 @@
 import '../../services/persistence/versioned_settings_file.dart';
-import 'dart:convert';
-import 'dart:io';
 
 import '../../models/brush_hand_settings.dart';
 export '../../models/brush_hand_settings.dart' show BrushHandSettings;
@@ -66,14 +64,13 @@ class BrushHandSettingsStore {
   /// bank is a few hundred bytes written once a slider settles (the
   /// workspace debounces it), far below a frame. ⛔Queuing the async writes
   /// instead left a write still open when the next thing touched the file.
-  Future<void> save(Map<String, BrushHandSettings> bank) async {
-    final file = File(filePath);
-    file.parent.createSync(recursive: true);
-    file.writeAsStringSync(
-      jsonEncode({
-        'version': version,
-        'brushes': brushHandSettingsBankToJson(bank),
-      }),
-    );
-  }
+  /// (Every settings file's asynchronous writes keep their order now —
+  /// [saveVersionedSettings] — and this one stays synchronous for that
+  /// last reason.)
+  Future<void> save(Map<String, BrushHandSettings> bank) async =>
+      saveVersionedSettingsSync(
+        filePath: filePath,
+        version: version,
+        json: {'brushes': brushHandSettingsBankToJson(bank)},
+      );
 }

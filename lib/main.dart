@@ -21,7 +21,6 @@ import 'src/ui/effective_device_pixel_ratio.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/layout/device_grid_audit.dart';
 import 'src/ui/shortcuts/keyboard_ime_switch.dart';
-import 'src/models/app_input_settings.dart' show AppInput;
 import 'src/services/diagnostics/memory_black_box.dart';
 import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/text/app_strings.dart';
@@ -161,13 +160,12 @@ class AnicelApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // The theme rides the LIVE accent settings (UI-R22 #5) and the
-    // pointer-input policy (UI-R22 #6): changing either rebuilds the app
-    // so gesture device sets and scroll behaviors re-derive.
+    // The theme rides the LIVE accent settings (UI-R22 #5). ↩️Not the input
+    // settings: their rebuild re-derived nothing but a whole-app theme lerp
+    // (auto-frame-toggle-hitch, 2026-09-29 — see [buildAppTheme]).
     return ListenableBuilder(
       listenable: Listenable.merge([
         AppColors.accentSettings,
-        AppInput.settings,
         // Settings ▸ Frame Timing Overlay: a MaterialApp property, so the
         // toggle has to reach this build — that is what makes it usable
         // on a tablet, where a --dart-define costs a rebuild and an

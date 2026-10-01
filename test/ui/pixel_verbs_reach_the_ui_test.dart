@@ -117,6 +117,20 @@ void main() {
       tester.appIconButton(find.byKey(ValueKey<String>(key))).onPressed !=
       null;
 
+  /// Presses the 색 편집 head, scrolled into view first: the bar is a strip
+  /// that scrolls once the shared pill outgrows the panel, and the head sits
+  /// at its far end (I-18's 자동 이름 지정 took the last of this window's
+  /// room).
+  Future<void> pressTheHead(WidgetTester tester) async {
+    final head = find.byKey(
+      const ValueKey<String>('shared-colour-edit-button'),
+    );
+    await tester.ensureVisible(head);
+    await tester.pumpAndSettle();
+    await tester.tap(head);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
     'the 색 편집 head answers DURING a scrub — the bar\'s own law, '
     'named for the verbs behind it',
@@ -167,10 +181,7 @@ void main() {
       // ⛔The head itself runs nothing — 색 편집 is a category, so a press
       // that also did one of the four would be one button answering two
       // questions. It opens, and the four are inside.
-      await tester.tap(find.byKey(const ValueKey<String>(
-        'shared-colour-edit-button',
-      )));
-      await tester.pumpAndSettle();
+      await pressTheHead(tester);
 
       for (final key in [
         // The retired buttons' own key strings, kept — so a test aimed at
@@ -215,10 +226,7 @@ void main() {
       }
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('shared-colour-edit-button')),
-      );
-      await tester.pumpAndSettle();
+      await pressTheHead(tester);
       for (final (row, keys) in const [
         ('shared-replace-colour-button', '7'),
         ('shared-clear-pixels-button', 'Backspace'),
@@ -282,10 +290,7 @@ void main() {
       }
 
       final byItem = await clearBy(() async {
-        await tester.tap(
-          find.byKey(const ValueKey<String>('shared-colour-edit-button')),
-        );
-        await tester.pumpAndSettle();
+        await pressTheHead(tester);
         await tester.tap(
           find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
         );
@@ -314,10 +319,7 @@ void main() {
   /// Empties the cel under the playhead the way the user does: the 색 편집
   /// head, then 픽셀 비우기 inside it.
   Future<void> clearPixelsFromTheHead(WidgetTester tester) async {
-    await tester.tap(
-      find.byKey(const ValueKey<String>('shared-colour-edit-button')),
-    );
-    await tester.pumpAndSettle();
+    await pressTheHead(tester);
     await tester.tap(
       find.byKey(const ValueKey<String>('shared-clear-pixels-button')),
     );

@@ -205,7 +205,23 @@ import 'dart:io';
 ///   sampled to a coverage of 0 and thrown away (board `brush-kernel-next`
 ///   ②). Skipped pixels are exactly those the loop would `continue` on, so
 ///   the bytes do not move. `qa_dab_spec_sizeof` moves.
-const int kQaEngineAbiVersion = 39;
+/// - v40: `qa_tile_span.tile_wide` — the stroke tile's 16-bit plane — and
+///   `qa_dab_blend_tile` takes it. A dab reads what is under it from the
+///   plane and writes both planes from the same double (`qa_dab_store`), so
+///   a soft tail that lays under half a level a dab piles up at last and the
+///   rest stops piling up a rounding a dab (board
+///   `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+///   제안한대로 16비트?」). The bytes stay the view everything downstream
+///   reads. `qa_tile_span_sizeof` moves.
+/// - v41: `qa_dab_spec.evening` — the table a dab lays its share of one
+///   stamp per tenth of its size through (`stampShareOf`, `qa_dab_even`) —
+///   and the laid alpha reads it, so a brush piles up the same at every
+///   size (board `one-pixel-steps-change-a-brush-with-its-size`, 유저
+///   2026-10-01 「환산은 커널에서 — 모든 브러시」). The table is built once
+///   per share in Dart and copied into the batch arena once per batch, so no
+///   pixel pays a power and both kernels read the same numbers.
+///   `qa_dab_spec_sizeof` moves.
+const int kQaEngineAbiVersion = 41;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

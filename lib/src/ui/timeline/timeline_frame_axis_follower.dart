@@ -1,6 +1,10 @@
+import 'dart:math' as math;
+
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../layout/device_grid_scroll_controller.dart';
+import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_policy.dart';
 import 'timeline_frame_window.dart';
 
@@ -31,7 +35,9 @@ class TimelineFrameAxisFollower {
     required this.baseFrameCount,
     required this.rebuild,
     required this.isMounted,
-  });
+  }) {
+    frameAxisOffset.addListener(_followTheAxis);
+  }
 
   final ScrollController controller;
 
@@ -59,7 +65,17 @@ class TimelineFrameAxisFollower {
 
   ScrollPosition? _watchedPosition;
 
-  bool _rereadScheduled = false;
+  late final _OnceAfterThisFrame _reread = _OnceAfterThisFrame(() {
+    if (isMounted()) {
+      handleScroll();
+    }
+  });
+
+  late final _OnceAfterThisFrame _follow = _OnceAfterThisFrame(() {
+    if (isMounted()) {
+      _followTheAxis();
+    }
+  });
 
   /// The offset the axis is PAINTED at: the position itself, read now —
   /// what [ScrollFollower] moves a ruler by, so a press on that ruler
@@ -68,6 +84,11 @@ class TimelineFrameAxisFollower {
       singleScrollPixelsOf(controller) ?? frameAxisOffset.value;
 
   /// The controller's listener.
+  ///
+  /// ⛔A scrollable folded away does not write the axis — the row on screen
+  /// owns it then, and this one only follows ([_followTheAxis]). Clamped to
+  /// its own range, or pulled there by its own layout, it would hand the
+  /// row a place the row never turned to.
   void handleScroll() {
     if (!controller.hasClients) {
       return;
@@ -77,7 +98,57 @@ class TimelineFrameAxisFollower {
     if (offset == frameAxisOffset.value) {
       return;
     }
-    frameAxisOffset.value = offset;
+    if (scrollableIsShown(controller.position)) {
+      frameAxisOffset.value = offset;
+    }
+    _standAt(offset);
+  }
+
+  /// 🚨THE SCROLLABLE STANDS WHERE THE AXIS STANDS, whoever turned it
+  /// (유저 2026-09-27: 「접힌 오버레이도 … 스크롤이동이나 다 구조적으로
+  /// 동기화」). A folded panel keeps its whole subtree now, and the folded
+  /// row turns the axis this scrollable shares ([pageKeptAxis]) while it is
+  /// hidden. Caught up only by the open layout's own pull
+  /// ([TimelineScrollOffsetSync]), the first frame open painted the page it
+  /// was folded on and jumped after it — and the storyboard, which has no
+  /// such pull, stayed there for good.
+  ///
+  /// ⚠️Written from the middle of a build (the folded row anchoring a
+  /// zoom), the move waits for the frame's end: moving a position there
+  /// dirties the widgets that follow it while another subtree is building.
+  void _followTheAxis() {
+    if (!controller.hasClients) {
+      return;
+    }
+    final position = controller.position;
+    if (frameAxisOffset.value == position.pixels ||
+        !position.hasContentDimensions) {
+      return;
+    }
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      _follow.ask();
+      return;
+    }
+    // 🗣️F-225 (유저 2026-09-29): 「발생해서 스크롤 바뀐상태에서 타임라인
+    // 펼치면 스크롤 동기화 안되어있음」. The axis may stand past the built end
+    // — the folded row turns it by value, and a walk or a page reaches past
+    // it ([jumpToReveal]) — and the scrollable goes there too, the cells
+    // grown under it below ([_standAt]). ↩️It was held to the built end, so
+    // the grid opened on a page the row had already left.
+    final target = math.max(position.minScrollExtent, frameAxisOffset.value);
+    if (target == position.pixels) {
+      return;
+    }
+    controller.jumpTo(target);
+    // The jump to the axis's own number finds nothing to write in
+    // [handleScroll], so it cuts the windows here.
+    _standAt(target);
+  }
+
+  /// The windows and the endless room, cut for the scrollable standing at
+  /// [offset].
+  void _standAt(double offset) {
     final bucket = timelineFrameWindowBucketOf(
       offset: offset,
       cellExtent: cellExtent(),
@@ -114,18 +185,7 @@ class TimelineFrameAxisFollower {
   /// The host calls this from the layout that sizes the axis's viewport:
   /// that pass is where every such correction happens. One callback a
   /// frame, however many layouts ask.
-  void rereadAfterLayout() {
-    if (_rereadScheduled) {
-      return;
-    }
-    _rereadScheduled = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _rereadScheduled = false;
-      if (isMounted()) {
-        handleScroll();
-      }
-    });
-  }
+  void rereadAfterLayout() => _reread.ask();
 
   void _watchScrollActivity() {
     final position = controller.position;
@@ -156,9 +216,33 @@ class TimelineFrameAxisFollower {
     }
   }
 
-  /// Drops the activity watch; the host disposes the controller itself.
+  /// Drops the activity watch and the axis; the host disposes the
+  /// controller itself.
   void dispose() {
+    frameAxisOffset.removeListener(_followTheAxis);
     _watchedPosition?.isScrollingNotifier.removeListener(handleScrollActivity);
     _watchedPosition = null;
+  }
+}
+
+/// A job run ONCE after this frame, however many times it is asked for
+/// before then — the follower's two frame-end jobs, the re-read after a
+/// layout and the follow held back from a build, were one body written
+/// twice.
+class _OnceAfterThisFrame {
+  _OnceAfterThisFrame(this._job);
+
+  final VoidCallback _job;
+  bool _asked = false;
+
+  void ask() {
+    if (_asked) {
+      return;
+    }
+    _asked = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _asked = false;
+      _job();
+    });
   }
 }

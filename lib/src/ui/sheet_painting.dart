@@ -3,10 +3,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../core/contain_rect.dart';
+import '../core/convex_clip.dart' show convexIntersection;
 import '../models/brush_frame_key.dart';
 import '../models/canvas_viewport.dart';
 import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
+import 'canvas/display_resample.dart';
 import 'canvas/viewport_canvas_transform.dart';
 
 /// Draws one baked ink window: the raster where its [placement] lays it,
@@ -55,6 +57,20 @@ void paintSheetImageContained(
   );
 }
 
+/// The quality a cell's picture, [image] as it was rendered, is laid into
+/// its [shot] with: what is left of the reduction, as the canvas's display
+/// takes it — the picture was rendered down by the display's own levels
+/// (`CameraFrameRenderService.renderThroughCamera`'s `displayLevels`), so
+/// the print and the live composite beside it reduce one way (F-215, 유저
+/// 2026-09-30: 「왜 브러시허용이랑 렌더링이랑 연관있는거냐고」). ↩️It was
+/// `medium`, which mipmaps where an engine has mips and does not where it
+/// has none.
+FilterQuality sheetPictureQuality(
+  ui.Image image,
+  Rect shot,
+  double devicePixelRatio,
+) => filterQualityForDisplayScale(shot.width * devicePixelRatio / image.width);
+
 /// Draws [image] filling [rect] — the one image draw a sheet prints a
 /// picture or a media image through, owning the quality its caller names.
 void paintSheetImageIn(
@@ -69,33 +85,6 @@ void paintSheetImageIn(
     rect,
     Paint()..filterQuality = quality,
   );
-}
-
-/// The app's corner round [rect] — a superellipse on flat sides — as the
-/// points of its outline, TRACED from the engine's own shape, the one a
-/// sheet clips its pictures to: what a PDF draws in its place (a PDF has
-/// no superellipse, and a circle's arc would be a second corner), and what
-/// of the paper a picture takes from the pen. Traced every half point; the
-/// points a flat side adds say nothing, so they go.
-List<Offset> tracedRoundedRect(Rect rect, double radius) {
-  final shape = Path()
-    ..addRSuperellipse(
-      ui.RSuperellipse.fromRectAndRadius(rect, Radius.circular(radius)),
-    );
-  final points = <Offset>[];
-  for (final metric in shape.computeMetrics()) {
-    double? heading;
-    for (var along = 0.0; along < metric.length; along += 0.5) {
-      final tangent = metric.getTangentForOffset(along)!;
-      // A flat side keeps one heading: where it starts traces it.
-      if (heading != null && (tangent.angle - heading).abs() < 1e-6) {
-        continue;
-      }
-      heading = tangent.angle;
-      points.add(tangent.position);
-    }
-  }
-  return points;
 }
 
 /// Lays down a sheet's PAPER — the one way the timesheet, the conte and the
@@ -247,11 +236,30 @@ class SheetDeviceGrid {
     );
   }
 
-  /// The app's corner of [radius] paper units round [cut], a rect already
-  /// cut on this grid — THE shape a window's well fills and its picture is
-  /// clipped to, so the two are one call and agree to the device pixel.
-  ui.RSuperellipse rounded(Rect cut, double radius) =>
-      ui.RSuperellipse.fromRectAndRadius(cut, Radius.circular(radius * scale));
+  /// [paper] where this grid lays it, off the grid — a point of a shape the
+  /// grid does not cut: the cut's canvas, turned with its camera.
+  Offset onDevice(Offset paper) =>
+      Offset(dx + scale * paper.dx, dy + scale * paper.dy);
+
+  /// Where [picture]'s PRINT shows on this grid: the frame it fills, cut
+  /// on the NEAREST lines, as the well under it is.
+  Rect printedPicture(SheetPicture picture) => snap(picture.frame);
+
+  /// Where a LIVE composite of [picture] shows on this grid: its frame cut
+  /// INSIDE (F-197) — the composite ends where its frame ends, and a clip
+  /// reaching past that end showed the ground under the frame's edge, a
+  /// light line round a dark picture.
+  Rect livePicture(SheetPicture picture) => inside(picture.frame);
+
+  /// Where [shot] shows the cut's canvas: the shot, and in it the canvas
+  /// [canvas] outlines on the paper. The paper's own ink shows everywhere
+  /// else — up to this edge, on this grid, and the piece of a stroke either
+  /// side keeps a ring past it (`sheetInkApron`, F-216).
+  Path pictureCanvas(Rect shot, List<Offset> canvas) => Path.combine(
+    PathOperation.intersect,
+    Path()..addRect(shot),
+    Path()..addPolygon([for (final point in canvas) onDevice(point)], true),
+  );
 
   /// [rule]'s rectangle cut on the grid — never thinner than one device
   /// pixel, so a rule survives any zoom out, and widened AWAY from the edge
@@ -306,11 +314,79 @@ class SheetDeviceGrid {
   }
 }
 
-/// A cut's picture at a frame, for a window that draws it [shownHeight]
-/// device pixels tall — what the panel's picture law is asked with. An
-/// export's pictures are rendered before it prints, and ignore it.
+/// A picture the paper's ink yields to: the picture, [canvas] — the corners
+/// of the cut's canvas on the paper, as its camera lays them — and
+/// [canvasToPaper], the map that lays them there (`conteCanvasToPaper`):
+/// the one its live composite is drawn through, and so the one its print
+/// is laid by (F-215).
+typedef SheetPictureOverInk = ({
+  SheetPicture picture,
+  List<Offset> canvas,
+  Matrix4 canvasToPaper,
+});
+
+/// Where [over]'s picture shows its cut's canvas on [grid], the brush on or
+/// off: its frame cut INSIDE, as its live composite is
+/// ([SheetDeviceGrid.livePicture], F-197), and in it the canvas — what the
+/// paper's ink yields to on screen (F-216), in a live window and in the
+/// print alike (F-215).
+Path pictureShowsOnScreen(SheetDeviceGrid grid, SheetPictureOverInk over) =>
+    grid.pictureCanvas(grid.livePicture(over.picture), over.canvas);
+
+/// The view a picture's live composite draws its cut's canvas through: the
+/// page's [view] after [canvasToPaper]. Its painter snaps it to the device
+/// grid at its own scale ([renderSnappedViewport]).
+CanvasViewport pictureCanvasViewport(
+  CanvasViewport view,
+  Matrix4 canvasToPaper,
+) => viewportOfSimilarity(
+  viewportTransformMatrix(view).multiplied(canvasToPaper),
+)!;
+
+/// Where the print of [over]'s picture is laid on screen so that each of its
+/// pixels lands where the live composite shows it (F-215, 유저 2026-10-01:
+/// 「픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀? 이동. 대체 왜?」): its frame through
+/// the page's [view], moved by the snap the composite's own painter gives
+/// the canvas ([pictureCanvasViewport]). ↩️It was the frame cut on the
+/// page's grid ([SheetDeviceGrid.printedPicture]): the print pinned its
+/// edges to the grid, the composite its canvas's origin, and the brush
+/// switch moved the picture by the difference.
+Rect pictureLaidAsLive(
+  SheetPictureOverInk over,
+  CanvasViewport view,
+  double devicePixelRatio,
+) {
+  final canvas = pictureCanvasViewport(view, over.canvasToPaper);
+  final snapped = renderSnappedViewport(canvas, devicePixelRatio);
+  final frame = over.picture.frame;
+  return Rect.fromLTRB(
+    view.panX + view.zoom * frame.left,
+    view.panY + view.zoom * frame.top,
+    view.panX + view.zoom * frame.right,
+    view.panY + view.zoom * frame.bottom,
+  ).shift(Offset(snapped.panX - canvas.panX, snapped.panY - canvas.panY));
+}
+
+/// Where [over] shows its cut's canvas, exactly, on the paper: the
+/// camera's frame in its slot, and the canvas in it — what the pen takes
+/// for the picture, and what no ink on the paper shows in a print that
+/// needs no grid (the PDF).
+List<Offset> pictureOutline(SheetPictureOverInk over) {
+  final frame = over.picture.frame;
+  return convexIntersection([
+    frame.topLeft,
+    frame.topRight,
+    frame.bottomRight,
+    frame.bottomLeft,
+  ], over.canvas);
+}
+
+/// [picture]'s image — what its [SheetPicture.key] names — for a window
+/// that draws it [shownHeight] device pixels tall: what the panel's picture
+/// law is asked with. An export's pictures are rendered before it prints,
+/// and ignore it.
 typedef SheetPictureLookup =
-    ui.Image? Function(String cutId, int pictureFrame, double shownHeight);
+    ui.Image? Function(SheetPicture picture, double shownHeight);
 
 /// The images a Canvas printer finds by what a mark names.
 class SheetMarkImages {
@@ -366,13 +442,14 @@ double sheetWordsSize(SheetWords words, SheetTextStyle style) {
 /// replays the same list).
 ///
 /// Fills, rules and pictures are cut on the device grid ([SheetDeviceGrid]),
-/// flat fills and rules without anti-aliasing; words and ink are drawn in
-/// paper space.
+/// flat fills and rules without anti-aliasing; words, lines and ink are
+/// drawn in paper space.
 class SheetCanvasPrinter {
   const SheetCanvasPrinter({
     required this.style,
     this.layers,
     this.images = const SheetMarkImages(),
+    this.picturesOverInk = const [],
   });
 
   /// The face the words print in.
@@ -383,6 +460,10 @@ class SheetCanvasPrinter {
 
   final SheetMarkImages images;
 
+  /// The pictures the paper's ink yields to: no ink shows where one shows
+  /// its cut's canvas, up to the edge its print shows it by (F-216).
+  final List<SheetPictureOverInk> picturesOverInk;
+
   /// Prints [marks] onto [canvas], in their order.
   void paint(
     Canvas canvas,
@@ -390,7 +471,12 @@ class SheetCanvasPrinter {
     ({CanvasViewport? viewport, double devicePixelRatio, Size paper}) sheet,
     Iterable<SheetMark> marks,
   ) {
-    final page = _SheetCanvas(canvas, SheetDeviceGrid.of(size, sheet), this);
+    final page = _SheetCanvas(
+      canvas,
+      SheetDeviceGrid.of(size, sheet),
+      sheet.viewport,
+      this,
+    );
     canvas.save();
     if (sheet.viewport != null) {
       canvas.clipRect(Offset.zero & size);
@@ -407,10 +493,15 @@ class SheetCanvasPrinter {
 /// One [SheetCanvasPrinter.paint]: the canvas, where its paper lands on the
 /// device, and the printer's face and images.
 class _SheetCanvas {
-  _SheetCanvas(this.canvas, this.grid, this.printer);
+  _SheetCanvas(this.canvas, this.grid, this.view, this.printer);
 
   final Canvas canvas;
   final SheetDeviceGrid grid;
+
+  /// The panel's view, as it is handed in — before the grid snaps it — or
+  /// null for an export, which has none.
+  final CanvasViewport? view;
+
   final SheetCanvasPrinter printer;
 
   void printMark(SheetMark mark) {
@@ -422,6 +513,8 @@ class _SheetCanvas {
         _flat(grid.snapRule(mark), argb);
       case SheetWords():
         _inPaperSpace(() => _words(mark));
+      case SheetStroke():
+        _inPaperSpace(() => _stroke(mark));
       case SheetPicture():
         _picture(mark);
       case SheetImage(:final assetPath, :final slot):
@@ -441,26 +534,48 @@ class _SheetCanvas {
             ? null
             : images.inkImageFor?.call(key);
         if (image != null) {
+          canvas.save();
+          _yieldToPictures(placement.window);
           _inPaperSpace(
             () => paintSheetInkWindow(canvas, image, placement),
           );
+          canvas.restore();
         }
     }
   }
 
-  /// A fill cut on the grid. The app's corner is a curve, so a rounded fill
-  /// is anti-aliased; its flat sides are still cut on the grid, so they stay
-  /// one colour to the pixel.
-  void _fill(SheetFill fill) {
-    if (fill.cornerRadius <= 0) {
-      _flat(grid.snap(fill.rect), fill.argb);
+  /// No ink of [window] shows where a picture over it shows its cut's
+  /// canvas — cut at the edge the print shows that picture by, so the ink's
+  /// ring past the edge (`sheetInkApron`) never lies over the picture. An
+  /// export's: on screen the ink is printed as the live windows draw it,
+  /// and yields where they do ([pictureShowsOnScreen], F-215).
+  void _yieldToPictures(Rect window) {
+    final over = [
+      for (final picture in printer.picturesOverInk)
+        if (picture.picture.slot.overlaps(window)) picture,
+    ];
+    if (over.isEmpty) {
       return;
     }
-    canvas.drawRSuperellipse(
-      grid.rounded(grid.snap(fill.rect), fill.cornerRadius),
-      Paint()..color = Color(fill.argb),
-    );
+    var shows = Path()
+      ..addRect(
+        Rect.fromPoints(
+          grid.onDevice(window.topLeft),
+          grid.onDevice(window.bottomRight),
+        ).inflate(1),
+      );
+    for (final (:picture, canvas: cut, canvasToPaper: _) in over) {
+      shows = Path.combine(
+        PathOperation.difference,
+        shows,
+        grid.pictureCanvas(grid.printedPicture(picture), cut),
+      );
+    }
+    canvas.clipPath(shows);
   }
+
+  /// A fill cut on the grid, one colour to the pixel.
+  void _fill(SheetFill fill) => _flat(grid.snap(fill.rect), fill.argb);
 
   void _flat(Rect rect, int argb) {
     canvas.drawRect(
@@ -471,9 +586,8 @@ class _SheetCanvas {
     );
   }
 
-  /// A picture cut on the grid its window is cut on: clipped to the shape
-  /// the well under it fills ([_fill]), its frame filled to the same device
-  /// pixels.
+  /// A picture cut on the grid its window is cut on: its frame filled to
+  /// the device pixels the well under it fills ([_fill]).
   ///
   /// 🗣️F-197 (유저 2026-09-27): 「해당컷 채우기로 전면 검정색됫는데 …
   /// 줌하거나 팬할때 그림이랑 실루엣 경계에 흰 여백? 선이 생김」 · 「팬은
@@ -482,24 +596,70 @@ class _SheetCanvas {
   /// device pixel, the picture covered part of that pixel and the light well
   /// showed through the rest. A pan keeps each edge's place in its pixel
   /// (whole pixels, the snap's phase), so only a zoom ever moved it.
+  ///
+  /// On screen the print is laid again over that, where the live composite
+  /// shows each of its pixels ([pictureLaidAsLive], F-215) and cut at the
+  /// window's edge: the copy under it keeps the edge covered whichever way
+  /// the composite's snap moves the picture.
   void _picture(SheetPicture picture) {
-    final frame = grid.snap(picture.frame);
+    final shot = grid.printedPicture(picture);
     final image = printer.images.pictureFor?.call(
-      picture.cutId,
-      picture.pictureFrame,
-      frame.height * grid.devicePixelRatio,
+      picture,
+      shot.height * grid.devicePixelRatio,
     );
     if (image == null) {
       return;
     }
-    canvas.save();
-    if (picture.cornerRadius > 0) {
-      canvas.clipRSuperellipse(
-        grid.rounded(grid.snap(picture.slot), picture.cornerRadius),
-      );
+    paintSheetImageIn(
+      canvas,
+      image,
+      shot,
+      sheetPictureQuality(image, shot, grid.devicePixelRatio),
+    );
+    final laid = _laidAsLive(picture);
+    if (laid == null) {
+      return;
     }
-    paintSheetImageIn(canvas, image, frame, FilterQuality.medium);
+    canvas.save();
+    canvas.clipRect(shot);
+    paintSheetImageIn(
+      canvas,
+      image,
+      laid,
+      sheetPictureQuality(image, laid, grid.devicePixelRatio),
+    );
     canvas.restore();
+  }
+
+  /// Where [picture]'s live composite would lay it, on screen — null for an
+  /// export, and for a picture no ink yields to (no map of its canvas).
+  Rect? _laidAsLive(SheetPicture picture) {
+    final shown = view;
+    if (shown == null) {
+      return null;
+    }
+    for (final over in printer.picturesOverInk) {
+      if (over.picture == picture) {
+        return pictureLaidAsLive(over, shown, grid.devicePixelRatio);
+      }
+    }
+    return null;
+  }
+
+  /// A line, anti-aliased: a camera's frame may be turned, and no grid
+  /// holds a turned edge.
+  void _stroke(SheetStroke stroke) {
+    if (stroke.points.length < 2) {
+      return;
+    }
+    canvas.drawPath(
+      Path()..addPolygon(stroke.points, stroke.closed),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke.width
+        ..strokeJoin = StrokeJoin.miter
+        ..color = Color(stroke.argb),
+    );
   }
 
   void _inPaperSpace(VoidCallback draw) {
@@ -537,6 +697,11 @@ class _SheetCanvas {
             : double.infinity,
       );
     canvas.save();
+    if (words.turn != 0) {
+      canvas.translate(slot.left, slot.top);
+      canvas.rotate(words.turn);
+      canvas.translate(-slot.left, -slot.top);
+    }
     canvas.clipRect(slot);
     painter.paint(
       canvas,

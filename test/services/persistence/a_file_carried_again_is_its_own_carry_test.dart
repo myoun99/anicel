@@ -416,7 +416,7 @@ void main() {
       final placed = await tester.runAsync(
         () => session.importDoors.importVideoFile(
           path: movie,
-          settings: ImportFileSettings(mode: mode, sound: false),
+          settings: ImportFileSettings(mode: mode, movieParts: MovieParts.picture),
         ),
       );
       expect(placed, isTrue);

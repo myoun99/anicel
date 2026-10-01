@@ -10,13 +10,17 @@ import 'package:anicel/src/models/app_input_settings.dart';
 /// 유저 2026-08-24: 「타임라인패널 x시트일 경우, 플립 그냥 반전시키자. 세로가
 /// 프레임이동 가로가 레이어이동 되도록. 그게 직관적임」.
 ///
-/// ↩️This pinned the flip resolving the axis ITSELF — sideways fired
-/// row-walk ids on the X-sheet. The shell asks the same question again when
-/// those ids arrive, so on the X-sheet the answer flipped twice: 유저
-/// 2026-08-31 실기: 「터치는 위아래 터치 조작이 여전히 레이어이동, 심각한건
-/// 플립ui는 프레임이동의 ui 보여주고있음」. The gesture now fires the arrow
-/// keys' DIRECTION ids on every sheet, and what the sheet decides is the
-/// HUD's axis — the same question the shell's walk asks, answered once there.
+/// 🗣️F-241 (유저 2026-09-29): a flip is an ARROW on the sheet, turned to the
+/// timeline's reading by the one turn a pressed arrow key takes
+/// (`FlipHudController.timelineArrowFor`), then the move that key makes — so
+/// on the X-sheet sideways walks the layers and downward the blocks, and the
+/// HUD draws the axis the sheet runs its frames along.
+///
+/// ↩️It fired the arrow keys' DIRECTION ids on every sheet and the shell
+/// turned them — after the flip had first turned them ITSELF and the shell
+/// turned them again (유저 2026-08-31 실기: 「터치는 위아래 터치 조작이
+/// 여전히 레이어이동, 심각한건 플립ui는 프레임이동의 ui 보여주고있음」). The
+/// keys are meanings now, and one turn answers both entrances.
 void main() {
   const flipFingers = 3;
 
@@ -88,8 +92,8 @@ void main() {
     expect(flip.axis, FlipHudAxis.frame);
   });
 
-  testWidgets('on the X-SHEET, sideways fires the SAME sideways ids — and the '
-      'HUD shows rows', (tester) async {
+  testWidgets('on the X-SHEET, sideways walks the LAYERS — the turn a '
+      'pressed arrow takes — and the HUD shows rows', (tester) async {
     final flip = await flipDrag(
       tester,
       travel: const Offset(160, 0),
@@ -97,15 +101,16 @@ void main() {
     );
     expect(flip.actions, isNotEmpty);
     expect(
-      flip.actions.every((id) => id.startsWith('drawing-')),
+      flip.actions.every((id) => id.startsWith('layer-')),
       isTrue,
-      reason: 'a direction, not a meaning: the shell reads the sheet once',
+      reason: 'across the frames on the sheet: the layer moves',
     );
     expect(flip.axis, FlipHudAxis.row);
   });
 
-  testWidgets('and downward fires the downward ids there, with the HUD on '
-      'frames', (tester) async {
+  testWidgets('and downward walks the BLOCKS there, with the HUD on frames', (
+    tester,
+  ) async {
     final flip = await flipDrag(
       tester,
       travel: const Offset(0, 160),
@@ -113,7 +118,7 @@ void main() {
     );
     expect(flip.actions, isNotEmpty);
     expect(
-      flip.actions.every((id) => id.startsWith('layer-')),
+      flip.actions.every((id) => id.startsWith('drawing-')),
       isTrue,
     );
     expect(

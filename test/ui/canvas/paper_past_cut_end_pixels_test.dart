@@ -173,7 +173,7 @@ void main() {
     // cannot be blamed on the session.
     expect(s.currentFrameIndex, frameIndex);
     expect(s.requireActiveCut.duration, 4);
-    expect(s.editingPlayheadInGap, isFalse);
+    expect(s.editingSession.playheadInGap, isFalse);
 
     final (paper, ink) = await settledColors(tester);
     expect(
@@ -203,7 +203,7 @@ void main() {
     s.selectGlobalFrame(50);
     await tester.pump();
 
-    expect(s.editingPlayheadInGap, isTrue);
+    expect(s.editingSession.playheadInGap, isTrue);
     final (paper, ink) = await countColors(tester);
     expect(
       paper,
