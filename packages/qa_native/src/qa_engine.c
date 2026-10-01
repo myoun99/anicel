@@ -744,9 +744,11 @@ static int32_t qa_dab_blend_pairs(
 
 // 🚨A ROW OF AN UNROTATED TIP VISITS ONLY THE PIXELS WHOSE TEXELS CAN HOLD
 // INK (ABI 39, 2026-09-25, board `brush-kernel-next` ②; 유저 「2번도
-// 있고」 — the skip of the pixels outside the dab). Every brush dab reaches
-// this kernel as a mask prerendered per quantized size (BrushTipStampCache),
-// so the ROUND case is this path, not the analytic one below: a round mask
+// 있고」 — the skip of the pixels outside the dab). Every ANALYTIC brush dab
+// reaches this kernel as a mask prerendered per quantized size
+// (BrushTipStampCache; a raster tip arrives as its own mask, and a rotated
+// one takes the scalar loop — F-251), so the ROUND case is this path, not
+// the analytic one below: a round mask
 // is bare in its corners, about a fifth of the box, and each of those
 // pixels was sampled bilinearly to a coverage of 0 and thrown away.
 //

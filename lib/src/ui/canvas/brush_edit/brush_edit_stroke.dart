@@ -165,7 +165,8 @@ class _BrushEditStroke {
     }
     // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
     // — the overlay, the commit, undo replay and the .anicel all see the
-    // same resolved (quantized, prerotated-mask) dabs.
+    // same resolved dabs (an analytic tip quantized into a prerotated mask,
+    // a raster tip as it is — F-251).
     //
     // ⚠️ Symmetry replicates HERE TOO. This is the stroke's FIRST dab, laid
     // at pointer-down rather than through [advanceStrokeTo], and it is a

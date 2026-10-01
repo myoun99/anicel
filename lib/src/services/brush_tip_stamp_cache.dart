@@ -9,16 +9,16 @@ import '../models/brush_tip_shape.dart';
 import 'brush_dab_tip_geometry.dart';
 
 /// The prerendered tip-stamp cache (R20-B — the CSP/Photoshop brush
-/// architecture): every tip, analytic circles included, renders ONCE per
-/// quantized parameter set into a raster coverage mask, and dabs are
-/// REWRITTEN at generation time to consume that mask as an unrotated
-/// [BrushTipMask].
+/// architecture): every ANALYTIC tip renders ONCE per quantized parameter
+/// set into a raster coverage mask, and dabs are REWRITTEN at generation
+/// time to consume that mask as an unrotated [BrushTipMask].
 ///
 /// Why this shape:
 ///  - Rotation is baked into the mask (1° steps), so every dab —
 ///    including direction-following rotated raster tips, previously the
 ///    slow per-pixel-rotation path — rides the fast unrotated-lattice
 ///    path in the rasterizers AND the C kernel, with NO engine changes.
+///    ↩️Not raster tips any more — see below.
 ///  - Subpixel placement needs no phase quantization: the existing
 ///    bilinear lattice sampling shifts the mask continuously.
 ///  - live == commit parity holds by construction: dabs resolve ONCE at
@@ -26,9 +26,22 @@ import 'brush_dab_tip_geometry.dart';
 ///    dab is what the overlay rasterizer, the commit materializer, undo
 ///    replay and the .anicel all see.
 ///
+/// 🚨★★★A RASTER TIP IS NOT BAKED — the kernels sample it where it is,
+/// under the dab's own angle and roundness (board F-251, 2026-10-01,
+/// measured). Baking one costs its SOURCE's resolution per 1° of angle: a
+/// 6px dab of a 256px tip rendered 65,536 texels and uploaded 512KB, and
+/// with a random or stroke-following angle nearly every dab missed — 227
+/// such masks fill the whole budget — so the user's TVPaint pencil spent
+/// ~3ms a dab. Sampled in place the same dab costs ~10µs, at the source's
+/// full detail (one resample, not two), and keeps its CORNERS: the baked
+/// mask held only the dab's axis-aligned box, so a rotated tip lost
+/// whatever reached past it. ⛔Do not buy the speed back by baking at a
+/// lower resolution — that was measured too, and the grain went with it.
+///
 /// Quantization (user-approved: stroke bytes may change vs the old
 /// direct-analytic path): size 1/4 px steps up to 64 px then ~1.1%
-/// log steps; hardness/roundness 1/128 steps; angle 1° steps.
+/// log steps; hardness/roundness 1/128 steps; angle 1° steps — and none
+/// for a circle, whose stamp is the same at every angle.
 class BrushTipStampCache {
   BrushTipStampCache({this.byteBudget = defaultByteBudget});
 
@@ -53,16 +66,13 @@ class BrushTipStampCache {
   int get residentBytes => _bytes;
   int get entryCount => _masks.length;
 
-  /// Rewrites [dab] to its cached-raster-tip form: quantized size, the
-  /// prerendered mask, `angleDegrees: 0`, `roundness: 1` (both baked into
-  /// the mask). Stamp dabs (lift/fill pixels) and already-resolved dabs
-  /// pass through untouched.
+  /// Rewrites an analytic [dab] to its cached-stamp form: quantized size,
+  /// the prerendered mask, `angleDegrees: 0`, `roundness: 1` (both baked
+  /// into the mask). A dab that already carries a mask — a raster tip, or
+  /// one this cache resolved — and a stamp dab (lift/fill pixels) pass
+  /// through untouched.
   BrushDab resolveDab(BrushDab dab) {
-    if (dab.stamp != null) {
-      return dab;
-    }
-    final sourceTip = dab.tipMask;
-    if (sourceTip != null && sourceTip.id.startsWith(resolvedIdPrefix)) {
+    if (dab.stamp != null || dab.tipMask != null) {
       return dab;
     }
     final sizeQ = quantizeSizeStep(dab.size);
@@ -72,17 +82,20 @@ class BrushTipStampCache {
       1,
       128,
     );
-    final angleQ = ((dab.angleDegrees.round() % 360) + 360) % 360;
-    final tipId = sourceTip?.id ?? 'analytic:${dab.tipShape.name}';
+    final round = dab.tipShape == BrushTipShape.round;
+    // A circle is the same stamp at every angle ([brushTipGeometry] turns
+    // only an ellipse), so its angle is not part of what the stamp is.
+    final angleQ = round && roundnessQ == 128
+        ? 0
+        : ((dab.angleDegrees.round() % 360) + 360) % 360;
     // I-50: an analytic ROUND tip's stamp carries the anti-alias step's edge
     // ([brushTipGeometry]), so the step is part of what the stamp is; every
     // other tip's step applies after sampling, as before.
-    final bakedStep = sourceTip == null && dab.tipShape == BrushTipShape.round
-        ? dab.antiAlias
-        : null;
+    final bakedStep = round ? dab.antiAlias : null;
     final step = bakedStep == null ? '' : '|${bakedStep.name}';
     final key =
-        '$resolvedIdPrefix$tipId|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
+        '${resolvedIdPrefix}analytic:${dab.tipShape.name}'
+        '|$sizeQ|$hardnessQ|$roundnessQ|$angleQ$step';
 
     var mask = _masks.remove(key);
     if (mask != null) {
@@ -90,7 +103,6 @@ class BrushTipStampCache {
     } else {
       mask = _render(
         key: key,
-        sourceTip: sourceTip,
         tipShape: dab.tipShape,
         size: size,
         hardness: hardnessQ / 128.0,
@@ -154,7 +166,6 @@ class BrushTipStampCache {
   /// anti-alias step's edge (I-50).
   BrushTipMask _render({
     required String key,
-    required BrushTipMask? sourceTip,
     required BrushTipShape tipShape,
     required double size,
     required double hardness,
@@ -170,11 +181,8 @@ class BrushTipStampCache {
     // reported 8K/1000px stall. Above the cap the bilinear lattice
     // upsamples the mask; an analytic tip's edge softens by at most
     // ~radius/cap pixels (≈2px at 1000px — the CSP/PS big-brush
-    // contract). Raster source tips keep more of their native detail.
-    var maskSize = (size.ceil() + 2).clamp(4, 256);
-    if (sourceTip != null) {
-      maskSize = math.max(maskSize, math.min(sourceTip.size, 512));
-    }
+    // contract).
+    final maskSize = (size.ceil() + 2).clamp(4, 256);
 
     final tip = brushTipGeometry((
       size: radius * 2.0,
@@ -182,7 +190,7 @@ class BrushTipStampCache {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipShape: tipShape,
-      tipMask: sourceTip,
+      tipMask: null,
       edgeWidth: bakedStep?.edgeWidth ?? 0.0,
     ));
 
