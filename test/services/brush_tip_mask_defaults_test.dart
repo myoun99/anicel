@@ -23,12 +23,17 @@ void main() {
     leafBrushTipMask,
     paperGrainTextureMask,
     canvasWeaveTextureMask,
+    coldPressTextureMask,
   ];
 
-  test('every bundled mask is 64 a side with an alpha per cell', () {
+  test('every bundled mask is 64 a side with an alpha per cell — but the '
+      'cold-press paper, whose tooth needs 256', () {
+    // Board F-218: a 64-texel tile scaled up to read as paper repeats every
+    // couple of centimetres of a stroke (see `coldPressTextureMask`).
     for (final mask in masks) {
-      expect(mask.size, 64, reason: mask.id);
-      expect(mask.alpha.length, 64 * 64, reason: mask.id);
+      final side = mask.id == 'builtin-cold-press' ? 256 : 64;
+      expect(mask.size, side, reason: mask.id);
+      expect(mask.alpha.length, side * side, reason: mask.id);
     }
   });
 
@@ -61,6 +66,8 @@ void main() {
       'builtin-leaf': 131836,
       'builtin-paper-grain': 702170,
       'builtin-canvas-weave': 692736,
+      // Measured 2026-10-01 as it first shipped (board F-218).
+      'builtin-cold-press': 12500549,
     };
 
     expect(
