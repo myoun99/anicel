@@ -99,8 +99,11 @@ void main() {
     // 12% at full flow: the first dab lands 30.6 → 31, and every dab after
     // it finds the pixel already at the ceiling.
     expect(alphaAfter(pile(40, opacity: 0.12)), 31);
-    // At half flow it climbs towards the same 12% and stops short of it.
-    expect(alphaAfter(pile(40, opacity: 0.12, flow: 0.5)), 30);
+    // At half flow it climbs towards the same 12% — and on the stroke's
+    // 16-bit plane it gets there: 30.6 → 31. ↩️On bytes it stuck a level
+    // short, at 30, once half the gap left was under half a level (ABI 40,
+    // `a_stroke_piles_up_on_a_wide_plane_test`).
+    expect(alphaAfter(pile(40, opacity: 0.12, flow: 0.5)), 31);
     expect(
       alphaAfter(pile(2, opacity: 0.12, flow: 0.5)),
       greaterThan(alphaAfter(pile(1, opacity: 0.12, flow: 0.5))),

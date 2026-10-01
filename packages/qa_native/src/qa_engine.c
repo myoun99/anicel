@@ -60,6 +60,15 @@ static inline int32_t qa_round_byte(double value) {
   return whole + (value - (double)whole >= 0.5 ? 1 : 0);
 }
 
+// The same rounding onto the stroke's 16-bit plane (ABI 40): llround,
+// clamped to [0, 65535].
+static inline int32_t qa_round_wide(double value) {
+  if (!(value >= 0.5)) return 0;
+  if (value >= 65534.5) return 65535;
+  const int32_t whole = (int32_t)value;
+  return whole + (value - (double)whole >= 0.5 ? 1 : 0);
+}
+
 // The SIMD this build has — one fact for the file, read by the flood
 // fill's spans and the dab's pixel pairs. SSE2 is baseline on x64 and NEON
 // on aarch64, so neither needs a runtime dispatch; 32-bit ARM keeps the
@@ -502,7 +511,7 @@ static inline int qa_dab_edge(
 // once, and nothing else raises an alpha.
 //
 // Same arithmetic, operation by operation, as blendDabTilesDart and the
-// reference blendBrushDabPixelCoverage. Returns a negative alpha where the
+// reference blendBrushDabStrokePixel. Returns a negative alpha where the
 // pixel already stands at the ceiling and the dab lays nothing.
 static inline double qa_dab_source_alpha(
     const qa_dab_spec* s,
@@ -518,6 +527,84 @@ static inline double qa_dab_source_alpha(
   }
   return s->source_alpha_norm * coverage * s->dab_flow *
          (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
+}
+
+// 🚨A STROKE PILES UP ON A 16-BIT PLANE (ABI 40; board
+// `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+// 제안한대로 16비트?」). Every dab rounded what it left to a byte and the next
+// dab read that byte back, so a soft tail laying under half a level a dab
+// never piled up at all, and the rest piled up one rounding a dab — 10
+// levels off a float pile at flow 3%, size 160 (measured). A stroke tile now
+// carries a second plane, RGBA at 16 bits (alpha * 65535, a channel * 257),
+// and a dab reads what is under it THERE and writes both planes from the
+// same double. The bytes are the plane's view: the display, the commit and
+// every kernel downstream read them exactly as before.
+//
+// ⚠️The view is rounded from the double, not from the plane, so a first dab
+// over nothing lands exactly the byte it always did.
+//
+// Returns 1 when a BYTE moved — the change set is the view's: a tile whose
+// bytes never moved has nothing for the commit to adopt.
+static inline int32_t qa_dab_store(
+    uint8_t* pixel,
+    uint16_t* wide,
+    double out_alpha,
+    double red,
+    double green,
+    double blue,
+    int erase) {
+  int32_t out_r;
+  int32_t out_g;
+  int32_t out_b;
+  int32_t out_a;
+  int32_t wide_r;
+  int32_t wide_g;
+  int32_t wide_b;
+  int32_t wide_a;
+  if (out_alpha == 0.0) {
+    out_r = 0;
+    out_g = 0;
+    out_b = 0;
+    out_a = 0;
+    wide_r = 0;
+    wide_g = 0;
+    wide_b = 0;
+    wide_a = 0;
+  } else {
+    if (erase) {
+      out_r = pixel[0];
+      out_g = pixel[1];
+      out_b = pixel[2];
+      wide_r = wide[0];
+      wide_g = wide[1];
+      wide_b = wide[2];
+    } else {
+      out_r = qa_round_byte(red);
+      out_g = qa_round_byte(green);
+      out_b = qa_round_byte(blue);
+      wide_r = qa_round_wide(red * 257.0);
+      wide_g = qa_round_wide(green * 257.0);
+      wide_b = qa_round_wide(blue * 257.0);
+    }
+    out_a = qa_round_byte(out_alpha * 255.0);
+    wide_a = qa_round_wide(out_alpha * 65535.0);
+  }
+  if ((uint16_t)wide_r != wide[0] || (uint16_t)wide_g != wide[1] ||
+      (uint16_t)wide_b != wide[2] || (uint16_t)wide_a != wide[3]) {
+    wide[0] = (uint16_t)wide_r;
+    wide[1] = (uint16_t)wide_g;
+    wide[2] = (uint16_t)wide_b;
+    wide[3] = (uint16_t)wide_a;
+  }
+  if ((uint8_t)out_r != pixel[0] || (uint8_t)out_g != pixel[1] ||
+      (uint8_t)out_b != pixel[2] || (uint8_t)out_a != pixel[3]) {
+    pixel[0] = (uint8_t)out_r;
+    pixel[1] = (uint8_t)out_g;
+    pixel[2] = (uint8_t)out_b;
+    pixel[3] = (uint8_t)out_a;
+    return 1;
+  }
+  return 0;
 }
 
 // 🚨A PLAIN TIPPED DAB BLENDS TWO PIXELS AT A TIME (board `brush-kernel-next`
@@ -577,10 +664,12 @@ static inline qa_d2 qa_d2_over(
 
 // Blends pixels [x, x_end) of one row of a plain tipped dab two at a time
 // while a pair fits; returns the first pixel it left for the scalar loop.
-// `row` is the tile row's first pixel (canvas x = tile_left).
+// `row` and `wide_row` are the tile row's first pixel on its two planes
+// (canvas x = tile_left).
 static int32_t qa_dab_blend_pairs(
     const qa_dab_spec* s,
     uint8_t* row,
+    uint16_t* wide_row,
     int32_t tile_left,
     int32_t x,
     int32_t x_end,
@@ -596,7 +685,7 @@ static int32_t qa_dab_blend_pairs(
   const qa_d2 v_one_minus = qa_d2_splat(s->tip_v_one_minus[v_index]);
   const qa_d2 v_fraction = qa_d2_splat(s->tip_v_fraction[v_index]);
   const qa_d2 one = qa_d2_splat(1.0);
-  const qa_d2 byte_max = qa_d2_splat(255.0);
+  const qa_d2 wide_max = qa_d2_splat(65535.0);
   const qa_d2 alpha_norm = qa_d2_splat(s->source_alpha_norm);
   const qa_d2 flow = qa_d2_splat(s->dab_flow);
 
@@ -649,8 +738,9 @@ static int32_t qa_dab_blend_pairs(
     }
 
     uint8_t* pixel = row + (ptrdiff_t)(x - tile_left) * 4;
-    const double lanes_a[2] = {(double)pixel[3], (double)pixel[7]};
-    const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), byte_max);
+    uint16_t* wide = wide_row + (ptrdiff_t)(x - tile_left) * 4;
+    const double lanes_a[2] = {(double)wide[3], (double)wide[7]};
+    const qa_d2 destination_alpha = qa_d2_div(qa_d2_load(lanes_a), wide_max);
     qa_d2 source_alpha;
     if (erase || s->dab_opacity >= 1.0) {
       source_alpha =
@@ -688,9 +778,12 @@ static int32_t qa_dab_blend_pairs(
     } else {
       const qa_d2 alpha =
           qa_d2_add(source_alpha, qa_d2_mul(destination_alpha, inverse));
-      const double lanes_r[2] = {(double)pixel[0], (double)pixel[4]};
-      const double lanes_g[2] = {(double)pixel[1], (double)pixel[5]};
-      const double lanes_b[2] = {(double)pixel[2], (double)pixel[6]};
+      const double lanes_r[2] = {(double)wide[0] / 257.0,
+                                 (double)wide[4] / 257.0};
+      const double lanes_g[2] = {(double)wide[1] / 257.0,
+                                 (double)wide[5] / 257.0};
+      const double lanes_b[2] = {(double)wide[2] / 257.0,
+                                 (double)wide[6] / 257.0};
       qa_d2_store(out_alpha, alpha);
       qa_d2_store(red, qa_d2_over(qa_d2_splat((double)s->source_r),
                                   source_alpha, lanes_r, destination_alpha,
@@ -707,33 +800,9 @@ static int32_t qa_dab_blend_pairs(
       if (!keep[i]) {
         continue;
       }
-      uint8_t* p = pixel + i * 4;
-      int32_t out_r;
-      int32_t out_g;
-      int32_t out_b;
-      int32_t out_a;
-      if (out_alpha[i] == 0.0) {
-        out_r = 0;
-        out_g = 0;
-        out_b = 0;
-        out_a = 0;
-      } else if (erase) {
-        out_r = p[0];
-        out_g = p[1];
-        out_b = p[2];
-        out_a = qa_round_byte(out_alpha[i] * 255.0);
-      } else {
-        out_r = qa_round_byte(red[i]);
-        out_g = qa_round_byte(green[i]);
-        out_b = qa_round_byte(blue[i]);
-        out_a = qa_round_byte(out_alpha[i] * 255.0);
-      }
-      if ((uint8_t)out_r != p[0] || (uint8_t)out_g != p[1] ||
-          (uint8_t)out_b != p[2] || (uint8_t)out_a != p[3]) {
-        p[0] = (uint8_t)out_r;
-        p[1] = (uint8_t)out_g;
-        p[2] = (uint8_t)out_b;
-        p[3] = (uint8_t)out_a;
+      if (qa_dab_store(pixel + i * 4, wide + i * 4, out_alpha[i],
+                       erase ? 0.0 : red[i], erase ? 0.0 : green[i],
+                       erase ? 0.0 : blue[i], erase)) {
         *changed = 1;
       }
     }
@@ -799,9 +868,11 @@ static int qa_tip_row_reach(
 // Blends one dab into one tile over the given canvas-space spans. Pixel
 // visit set and math are identical to the Dart loop (which walks rows
 // outermost; per-dab each pixel is touched exactly once either way).
-// Returns nonzero when any destination byte changed.
+// [tile_wide] is the tile's 16-bit plane on the same grid (see
+// qa_dab_store). Returns nonzero when any destination byte changed.
 QA_EXPORT int32_t qa_dab_blend_tile(
     uint8_t* tile_pixels,
+    uint16_t* tile_wide,
     int32_t tile_size,
     int32_t tile_left,
     int32_t tile_top,
@@ -844,9 +915,9 @@ QA_EXPORT int32_t qa_dab_blend_tile(
 #if defined(QA_DAB_PAIRS)
     if (pairs) {
       x = qa_dab_blend_pairs(
-          s, tile_pixels + (ptrdiff_t)local_row_offset * 4, tile_left,
-          row_left, row_right, v_index, erase, aa_threshold, aa_contrast,
-          &changed);
+          s, tile_pixels + (ptrdiff_t)local_row_offset * 4,
+          tile_wide + (ptrdiff_t)local_row_offset * 4, tile_left, row_left,
+          row_right, v_index, erase, aa_threshold, aa_contrast, &changed);
     }
 #endif
     for (; x < row_right; x += 1) {
@@ -969,68 +1040,41 @@ QA_EXPORT int32_t qa_dab_blend_tile(
         continue;
       }
 
-      uint8_t* pixel =
-          tile_pixels + (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
-      const uint8_t dest_r = pixel[0];
-      const uint8_t dest_g = pixel[1];
-      const uint8_t dest_b = pixel[2];
-      const uint8_t dest_a = pixel[3];
-      const double destination_alpha = (double)dest_a / 255.0;
+      const ptrdiff_t at = (ptrdiff_t)(local_row_offset + (x - tile_left)) * 4;
+      uint8_t* pixel = tile_pixels + at;
+      uint16_t* wide = tile_wide + at;
+      const double destination_alpha = (double)wide[3] / 65535.0;
       const double source_alpha = qa_dab_source_alpha(
           s, coverage, effective_opacity, destination_alpha, erase);
       if (source_alpha < 0.0) {
         continue;
       }
 
-      int32_t out_r;
-      int32_t out_g;
-      int32_t out_b;
-      int32_t out_a;
+      const double inverse_source_alpha = 1.0 - source_alpha;
+      double out_alpha;
+      double red = 0.0;
+      double green = 0.0;
+      double blue = 0.0;
       if (erase) {
-        const double out_alpha = destination_alpha * (1.0 - source_alpha);
-        if (out_alpha == 0.0) {
-          out_r = 0;
-          out_g = 0;
-          out_b = 0;
-          out_a = 0;
-        } else {
-          out_r = dest_r;
-          out_g = dest_g;
-          out_b = dest_b;
-          out_a = qa_round_byte(out_alpha * 255.0);
-        }
+        out_alpha = destination_alpha * inverse_source_alpha;
       } else {
-        const double out_alpha =
-            source_alpha + destination_alpha * (1.0 - source_alpha);
-        if (out_alpha == 0.0) {
-          out_r = 0;
-          out_g = 0;
-          out_b = 0;
-          out_a = 0;
-        } else {
-          const double inverse_source_alpha = 1.0 - source_alpha;
-          out_r = qa_round_byte(
-              ((double)s->source_r * source_alpha +
-               (double)dest_r * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_g = qa_round_byte(
-              ((double)s->source_g * source_alpha +
-               (double)dest_g * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_b = qa_round_byte(
-              ((double)s->source_b * source_alpha +
-               (double)dest_b * destination_alpha * inverse_source_alpha) /
-              out_alpha);
-          out_a = qa_round_byte(out_alpha * 255.0);
+        out_alpha = source_alpha + destination_alpha * inverse_source_alpha;
+        if (out_alpha != 0.0) {
+          red = ((double)s->source_r * source_alpha +
+                 (double)wide[0] / 257.0 * destination_alpha *
+                     inverse_source_alpha) /
+                out_alpha;
+          green = ((double)s->source_g * source_alpha +
+                   (double)wide[1] / 257.0 * destination_alpha *
+                       inverse_source_alpha) /
+                  out_alpha;
+          blue = ((double)s->source_b * source_alpha +
+                  (double)wide[2] / 257.0 * destination_alpha *
+                      inverse_source_alpha) /
+                 out_alpha;
         }
       }
-
-      if ((uint8_t)out_r != dest_r || (uint8_t)out_g != dest_g ||
-          (uint8_t)out_b != dest_b || (uint8_t)out_a != dest_a) {
-        pixel[0] = (uint8_t)out_r;
-        pixel[1] = (uint8_t)out_g;
-        pixel[2] = (uint8_t)out_b;
-        pixel[3] = (uint8_t)out_a;
+      if (qa_dab_store(pixel, wide, out_alpha, red, green, blue, erase)) {
         changed = 1;
       }
     }
@@ -2030,6 +2074,10 @@ typedef struct {
   const uint8_t* stroke_pixels;  // the live stroke's straight RGBA
   const uint8_t* mask_pixels;    // selection coverage, 1 byte/px; NULL = all
   uint8_t* premul_out;           // premultiplied upload; NULL = skip
+  // --- ABI 40: the stroke tile's 16-bit plane, RGBA on the same grid as
+  // tile_pixels — what the dab kernel piles up in (qa_dab_store). Only the
+  // dab batch reads it; every other kernel's spans leave it NULL.
+  uint16_t* tile_wide;
 } qa_tile_span;
 
 QA_EXPORT int32_t qa_tile_span_sizeof(void) {
@@ -2348,7 +2396,7 @@ static int32_t qa_dab_blend_rows(
     if (qa_dab_meet(batch, d, span, top, bottom_exclusive, meet) == 0) {
       continue;
     }
-    if (qa_dab_blend_tile(span->tile_pixels, batch->tile_size,
+    if (qa_dab_blend_tile(span->tile_pixels, span->tile_wide, batch->tile_size,
                           span->tile_left, span->tile_top, meet[0], meet[2],
                           meet[1], meet[3], &batch->specs[d])) {
       changed = 1;
@@ -5633,4 +5681,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v39: qa_dab_spec gains tip_row_ink - each tip mask row's first and last
 // inked column - and an unrotated tip's row visits only the pixels whose
 // texels can hold ink (qa_tip_row_reach). Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 39; }
+// v40: qa_tile_span gains tile_wide - the stroke tile's 16-bit plane - and
+// qa_dab_blend_tile takes it: a dab reads what is under it from the plane
+// and writes both planes (qa_dab_store). Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 40; }

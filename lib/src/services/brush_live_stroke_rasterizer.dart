@@ -1,4 +1,4 @@
-import 'dart:ffi' show Pointer, Uint8;
+import 'dart:ffi' show Pointer, Uint16, Uint16Pointer, Uint8;
 import 'dart:collection';
 
 import 'dart:math' as math;
@@ -219,6 +219,13 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
   final Map<int, Uint8List> _tiles = <int, Uint8List>{};
   final Map<int, QaNativeTileBuffer> _nativeBuffers =
       <int, QaNativeTileBuffer>{};
+
+  /// Each stroke tile's 16-bit plane, what its dabs pile up in
+  /// ([BrushDabTileBuffers], ABI 40); [_tiles] holds its 8-bit view, which
+  /// is all the display and the commit read. Native-backed the same way.
+  final Map<int, Uint16List> _wides = <int, Uint16List>{};
+  final Map<int, QaNativeTileBuffer> _nativeWides =
+      <int, QaNativeTileBuffer>{};
   final QaNativeEngine? _native = QaNativeEngine.instance;
 
   /// The C route's batch: every dab of one [blendFrom] call lands in one
@@ -228,11 +235,15 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       : NativeDabBatcher(
           _native,
           tileSize: tileSize,
-          pointerFor: (coord) {
-            // _tileBuffer also bumps the tile revision, which is what marks
+          planesFor: (coord) {
+            // _tilePlanes also bumps the tile revision, which is what marks
             // a resident pre-blend result stale.
-            _tileBuffer(coord.x, coord.y);
-            return _nativeBuffers[_tileKey(coord.x, coord.y)]!.pointer;
+            _tilePlanes(coord.x, coord.y);
+            final key = _tileKey(coord.x, coord.y);
+            return (
+              pixels: _nativeBuffers[key]!.pointer,
+              wide: _nativeWides[key]!.pointer.cast<Uint16>(),
+            );
           },
         );
 
@@ -351,6 +362,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
       for (final buffer in _nativeBuffers.values) {
         native.releaseTileBuffer(buffer);
       }
+      for (final buffer in _nativeWides.values) {
+        native.releaseTileBuffer(buffer);
+      }
       for (final result in _results.values) {
         final buffer = result.native;
         if (buffer != null) {
@@ -370,6 +384,8 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
     _nativeBuffers.clear();
     _tiles.clear();
+    _nativeWides.clear();
+    _wides.clear();
     _tileCoords.clear();
     _tileRevisions.clear();
     _maskTiles.clear();
@@ -969,25 +985,28 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     return promoted;
   }
 
-  Uint8List _tileBuffer(int tileX, int tileY) {
+  BrushDabTileBuffers _tilePlanes(int tileX, int tileY) {
     final key = _tileKey(tileX, tileY);
     // A dab is about to write here: the coordinate's resident result (if
     // any) is now stale. Over-bumping is safe — the counter is only ever
     // compared for equality, and a redundant re-blend costs one tile.
     _tileRevisions[key] = (_tileRevisions[key] ?? 0) + 1;
-    return _tiles.putIfAbsent(key, () {
+    final bytes = _tiles.putIfAbsent(key, () {
       _tileCoords[key] = TileCoord(x: tileX, y: tileY);
+      final values = tileSize * tileSize * 4;
       final native = _native;
       if (native != null) {
-        final buffer = native.acquireTileBuffer(
-          tileSize * tileSize * 4,
-          zeroed: true,
-        );
+        final buffer = native.acquireTileBuffer(values, zeroed: true);
+        final wide = native.acquireTileBuffer(values * 2, zeroed: true);
         _nativeBuffers[key] = buffer;
+        _nativeWides[key] = wide;
+        _wides[key] = wide.pointer.cast<Uint16>().asTypedList(values);
         return buffer.view;
       }
-      return Uint8List(tileSize * tileSize * 4);
+      _wides[key] = Uint16List(values);
+      return Uint8List(values);
     });
+    return (bytes: bytes, wide: _wides[key]!);
   }
 
   @override
@@ -1125,9 +1144,9 @@ class BrushLiveStrokeRasterizer implements ActiveStrokePixelSource {
     }
 
     // No engine: the Dart reference blend, the same one the commit falls
-    // back to. _tileBuffer creates the tile and bumps its revision, which
+    // back to. _tilePlanes creates the tile and bumps its revision, which
     // is exactly what the old inline loop did per (row, tile).
-    blendDabTilesDart(plan, tileSize: tileSize, bufferFor: _tileBuffer);
+    blendDabTilesDart(plan, tileSize: tileSize, bufferFor: _tilePlanes);
 
     return DirtyRegion(
       left: plan.left,

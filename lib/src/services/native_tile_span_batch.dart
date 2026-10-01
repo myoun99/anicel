@@ -1,4 +1,4 @@
-import 'dart:ffi' show Pointer, Uint8;
+import 'dart:ffi' show Pointer, Uint16, Uint8;
 import 'dart:typed_data';
 
 import '../models/dirty_region.dart';
@@ -22,6 +22,9 @@ import '../native/qa_native_engine.dart';
 /// [pointerFor] returns the tile's native scratch pointer, CREATING the
 /// buffer if this is the first span to touch the tile. It is called
 /// exactly once per span, in span order (tile row outer, column inner).
+///
+/// The spans it stages carry no 16-bit plane: only the dab batch piles up
+/// in one ([stageTileSpansCovering]).
 List<TileCoord> stageTileSpans(
   QaNativeEngine native, {
   required DirtyRegion clip,
@@ -31,18 +34,23 @@ List<TileCoord> stageTileSpans(
   native,
   clips: [clip],
   tileSize: tileSize,
-  pointerFor: pointerFor,
+  planesFor: (coord) => (pixels: pointerFor(coord), wide: null),
 );
+
+/// A stroke tile's native planes: its RGBA bytes and, for the dab batch,
+/// the 16-bit plane its dabs pile up in (ABI 40, `qa_dab_store`).
+typedef TilePlanePointers = ({Pointer<Uint8> pixels, Pointer<Uint16>? wide});
 
 /// [stageTileSpans] for a batch of regions (ABI 38 — the generic dabs of a
 /// call, `qa_dab_blend_batch`): one span per tile ANY of [clips] touches,
 /// the rect they make there together, each tile once. One region stages
-/// exactly the spans it always did.
+/// exactly the spans it always did. [planesFor] is [stageTileSpans]'s
+/// `pointerFor` with the tile's 16-bit plane beside it.
 List<TileCoord> stageTileSpansCovering(
   QaNativeEngine native, {
   required List<DirtyRegion> clips,
   required int tileSize,
-  required Pointer<Uint8> Function(TileCoord coord) pointerFor,
+  required TilePlanePointers Function(TileCoord coord) planesFor,
 }) {
   final spans = <TileCoord, DirtyRegion>{};
   for (final clip in clips) {
@@ -63,9 +71,11 @@ List<TileCoord> stageTileSpansCovering(
   for (var index = 0; index < coords.length; index += 1) {
     final coord = coords[index];
     final span = spans[coord]!;
+    final planes = planesFor(coord);
     native.setTileSpan(
       index,
-      tilePixels: pointerFor(coord),
+      tilePixels: planes.pixels,
+      tileWide: planes.wide,
       tileLeft: coord.x * tileSize,
       tileTop: coord.y * tileSize,
       spanLeft: span.left,

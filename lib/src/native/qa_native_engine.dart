@@ -1675,6 +1675,8 @@ class QaNativeEngine {
     Pointer<Uint8>? strokePixels,
     Pointer<Uint8>? maskPixels,
     Pointer<Uint8>? premulOut,
+    // ABI 40 — only the dab batch reads it.
+    Pointer<Uint16>? tileWide,
   }) {
     final span = _tileSpans.pointer[index];
     span.tilePixels = tilePixels;
@@ -1689,6 +1691,7 @@ class QaNativeEngine {
     span.strokePixels = strokePixels ?? nullptr;
     span.maskPixels = maskPixels ?? nullptr;
     span.premulOut = premulOut ?? nullptr;
+    span.tileWide = tileWide ?? nullptr;
   }
 
   /// ABI 24: stages, blends and premultiplies every staged span in ONE
@@ -2386,6 +2389,11 @@ final class QaTileSpanStruct extends Struct {
   external Pointer<Uint8> strokePixels;
   external Pointer<Uint8> maskPixels;
   external Pointer<Uint8> premulOut;
+
+  /// ABI 40 — the stroke tile's 16-bit plane on the same grid as
+  /// [tilePixels], what the dab batch piles up in (`qa_dab_store`). Every
+  /// other kernel's spans leave it null.
+  external Pointer<Uint16> tileWide;
 }
 
 /// Mirror of the C `qa_dab_spec` — field order/types must match EXACTLY

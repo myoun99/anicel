@@ -72,7 +72,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       : NativeDabBatcher(
           nativeScratch.native,
           tileSize: tileSize,
-          pointerFor: nativeScratch.pointerFor,
+          planesFor: nativeScratch.pointersFor,
           onTileChanged: changedCoords.add,
         );
 
@@ -120,7 +120,7 @@ BrushSurfaceMaterialization materializeBrushDabSequenceOnBitmapSurface({
       plan,
       tileSize: tileSize,
       bufferFor: (tileX, tileY) =>
-          scratch.bufferFor(TileCoord(x: tileX, y: tileY)),
+          scratch.planesFor(TileCoord(x: tileX, y: tileY)),
       onTileChanged: (tileX, tileY) =>
           changedCoords.add(TileCoord(x: tileX, y: tileY)),
     );

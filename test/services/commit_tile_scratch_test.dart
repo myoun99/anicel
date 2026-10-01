@@ -78,6 +78,35 @@ void main() {
       expect(tile.size, tileSize);
       expect(tile.pixels, everyElement(0xC3));
     });
+
+    // ABI 40: a dab piles up on the tile's 16-bit plane (`qa_dab_store`).
+    test('the 16-bit plane starts as the bytes WIDENED — every value reads '
+        'back as exactly its byte', () {
+      final scratch = build(surfaceWithTile(present, 0x7F));
+      final planes = scratch.planesFor(present);
+      expect(planes.bytes, everyElement(0x7F));
+      expect(planes.wide, everyElement(0x7F * 257));
+      scratch.releaseUnfinished();
+    });
+
+    test('the plane is not widened again between dabs — a dab reads the '
+        'plane the dab before it left', () {
+      final scratch = build(surfaceWithTile(present, 0));
+      scratch.planesFor(present).wide[0] = 1234;
+      expect(scratch.planesFor(present).wide[0], 1234);
+      scratch.releaseUnfinished();
+    });
+
+    test('a write of the bytes alone makes the plane stale — the next dab '
+        'widens what the bytes hold now', () {
+      // The stamp blitter and the stroke blend write bytes only: a plane
+      // that missed one would pile the next dab over the old picture.
+      final scratch = build(surfaceWithTile(present, 0));
+      scratch.planesFor(present).wide[0] = 1234;
+      scratch.bufferFor(present)[0] = 0x40;
+      expect(scratch.planesFor(present).wide[0], 0x40 * 257);
+      scratch.releaseUnfinished();
+    });
   }
 
   group('DartCommitScratch', () {
@@ -142,6 +171,30 @@ void main() {
       final scratch = NativeCommitScratch(engine, surfaceWithTile(coord, 0));
       scratch.bufferFor(coord)[3] = 0x5A;
       expect(scratch.pointerFor(coord).asTypedList(byteLength)[3], 0x5A);
+      scratch.releaseUnfinished();
+    });
+
+    test('the dab batch\'s two pointers and the Dart planes are the SAME '
+        'memory', () {
+      final coord = TileCoord(x: 0, y: 0);
+      final scratch = NativeCommitScratch(engine, surfaceWithTile(coord, 0));
+      final planes = scratch.planesFor(coord);
+      planes.bytes[3] = 0x5A;
+      planes.wide[3] = 0xBEEF;
+      final pointers = scratch.pointersFor(coord);
+      expect(pointers.pixels.asTypedList(byteLength)[3], 0x5A);
+      expect(pointers.wide.asTypedList(byteLength)[3], 0xBEEF);
+      scratch.releaseUnfinished();
+    });
+
+    test('finish gives the plane back to the pool — the bytes are the tile '
+        'now, the plane is nobody\'s', () {
+      final coord = TileCoord(x: 0, y: 0);
+      final scratch = NativeCommitScratch(engine, surfaceWithTile(coord, 0));
+      scratch.planesFor(coord);
+      final parked = engine.tilePoolParkedBytes;
+      scratch.finish(coord);
+      expect(engine.tilePoolParkedBytes, parked + byteLength * 2);
       scratch.releaseUnfinished();
     });
   });

@@ -205,7 +205,15 @@ import 'dart:io';
 ///   sampled to a coverage of 0 and thrown away (board `brush-kernel-next`
 ///   ②). Skipped pixels are exactly those the loop would `continue` on, so
 ///   the bytes do not move. `qa_dab_spec_sizeof` moves.
-const int kQaEngineAbiVersion = 39;
+/// - v40: `qa_tile_span.tile_wide` — the stroke tile's 16-bit plane — and
+///   `qa_dab_blend_tile` takes it. A dab reads what is under it from the
+///   plane and writes both planes from the same double (`qa_dab_store`), so
+///   a soft tail that lays under half a level a dab piles up at last and the
+///   rest stops piling up a rounding a dab (board
+///   `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
+///   제안한대로 16비트?」). The bytes stay the view everything downstream
+///   reads. `qa_tile_span_sizeof` moves.
+const int kQaEngineAbiVersion = 40;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

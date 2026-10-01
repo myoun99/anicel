@@ -1,6 +1,7 @@
 import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
 import '../models/rgba_color.dart';
+import '../models/stroke_pixel.dart';
 import 'rgba_blend.dart';
 
 double effectiveBrushPixelOpacity({
@@ -10,13 +11,17 @@ double effectiveBrushPixelOpacity({
   return dab.opacity * coverage.coverage;
 }
 
-RgbaColor blendBrushDabPixelCoverage({
+/// What [dab] leaves on one pixel of its stroke at [coverage] — the
+/// reference for the tile kernels' pixel (`blendDabTilesDart`,
+/// `qa_dab_blend_tile`): what is under the dab comes off [destination]'s
+/// 16-bit plane and the result lands on both planes (ABI 40).
+StrokePixel blendBrushDabStrokePixel({
   required BrushDab dab,
   required BrushPixelCoverage coverage,
-  required RgbaColor destination,
+  required StrokePixel destination,
 }) {
   if (dab.erase) {
-    return rgbaDestinationOut(
+    return strokeDestinationOut(
       source: RgbaColor.fromArgbInt(dab.color),
       destination: destination,
       opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
@@ -24,7 +29,7 @@ RgbaColor blendBrushDabPixelCoverage({
     );
   }
   if (dab.opacity >= 1.0) {
-    return rgbaSourceOver(
+    return strokeSourceOver(
       source: RgbaColor.fromArgbInt(dab.color),
       destination: destination,
       opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
@@ -39,12 +44,12 @@ RgbaColor blendBrushDabPixelCoverage({
       flow: dab.flow,
     ),
     opacity: dab.opacity,
-    destinationAlpha: destination.a / 255.0,
+    destinationAlpha: destination.a / 65535.0,
   );
   if (sourceAlpha == null || sourceAlpha == 0.0) {
     return destination;
   }
-  return rgbaSourceOverAt(
+  return strokeSourceOverAt(
     source: source,
     destination: destination,
     sourceAlpha: sourceAlpha,
