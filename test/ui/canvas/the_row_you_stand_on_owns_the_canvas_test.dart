@@ -19,6 +19,7 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_offset.dart';
@@ -258,6 +259,42 @@ void main() {
       const Offset(40, 30),
     );
     expect(commands.region, isNotNull, reason: 'a marquee was drawn');
+    expect(
+      committedRow(session).transformTrack.position.isEmpty,
+      isTrue,
+      reason: 'the row did not move',
+    );
+
+    await drag(
+      tester,
+      onScreen(tester, boxOf(tester).corners[2]),
+      const Offset(30, 30),
+    );
+    expect(
+      committedRow(session).transformTrack.scale.keyAt(0),
+      isNotNull,
+      reason: 'the corner is the box\'s whatever tool is in hand',
+    );
+  });
+
+  testWidgets('the CUT tool in hand, the inside of the box is the cut\'s '
+      'outline — and a corner is still the box\'s', (tester) async {
+    final session = await open(
+      tester,
+      standOn: onTheTransform,
+      tool: CanvasTool.cut,
+    );
+    final slot = tester
+        .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel).first)
+        .cutPieceSlot!;
+    expect(slot.isEmpty, isTrue, reason: 'the premise');
+
+    await drag(
+      tester,
+      onScreen(tester, awayFromTheHandles(boxOf(tester).corners)),
+      const Offset(40, 30),
+    );
+    expect(slot.isNotEmpty, isTrue, reason: 'a piece was cut');
     expect(
       committedRow(session).transformTrack.position.isEmpty,
       isTrue,
