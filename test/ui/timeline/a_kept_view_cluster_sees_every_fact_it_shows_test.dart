@@ -1,13 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_view_cluster.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
+
+import '../../helpers/home_page_probes.dart' show showStoryboardPanel;
 
 typedef _Inputs = ({
   ValueNotifier<int> cursor,
@@ -188,4 +202,85 @@ void main() {
       expect(kept, shown(cluster(tester)));
     });
   }
+
+  // The storyboard keeps its own by the same facts. What moves there moves
+  // through the app, and the cluster must show what its host was handed;
+  // the cut's name is `the_cut_name_stands_by_the_zoom_test`'s.
+  group('the storyboard\'s, through the app', () {
+    Future<EditorSessionManager> openStoryboard(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: HomePage(
+            initialProject: Project(
+              id: const ProjectId('kept-cluster'),
+              name: 'Kept cluster',
+              createdAt: DateTime.utc(2026, 10, 1),
+              tracks: [
+                Track(
+                  id: const TrackId('t'),
+                  name: 'Video',
+                  cuts: [
+                    Cut(
+                      id: const CutId('cut-0'),
+                      name: 'cut-0',
+                      duration: 48,
+                      canvasSize: const CanvasSize(width: 640, height: 360),
+                      layers: layers,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await showStoryboardPanel(tester);
+      return tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+    }
+
+    StoryboardTabHost host(WidgetTester tester) =>
+        tester.widget<StoryboardTabHost>(find.byType(StoryboardTabHost));
+
+    testWidgets('the zoom', (tester) async {
+      await openStoryboard(tester);
+      final before = host(tester).pixelsPerFrame;
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-zoom-in-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(host(tester).pixelsPerFrame, isNot(before), reason: 'premise');
+      expect(cluster(tester).pixelsPerFrame, host(tester).pixelsPerFrame);
+    });
+
+    testWidgets('the notation', (tester) async {
+      await openStoryboard(tester);
+      final before = host(tester).showSeconds;
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('storyboard-time-display-toggle-button'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(host(tester).showSeconds, isNot(before), reason: 'premise');
+      expect(cluster(tester).showSeconds, host(tester).showSeconds);
+    });
+
+    testWidgets('the rate', (tester) async {
+      final session = await openStoryboard(tester);
+      session.projectSettings.setProjectFrameRate(
+        const ProjectFrameRate.integer(30),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        cluster(tester).projectFrameRate,
+        const ProjectFrameRate.integer(30),
+      );
+    });
+  });
 }
