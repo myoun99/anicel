@@ -498,14 +498,14 @@ static inline int qa_dab_edge(
 // 브러시」). The law and its reasons are written once, beside `stampShareOf`
 // in brush_dab_share.dart. A dab that lays a share lays `1 - (1 - a)^share`
 // where it would lay `a` whole — read off the table Dart built for that
-// share (`evening`, 1025 entries over a in [0, 1]), linearly between two
-// entries: no pixel pays a power, and the Dart and C kernels read the same
-// numbers. `evenedLaid`'s arithmetic, operation by operation.
+// share (`evening`: entries 0..1024 over a in [0, 1], and a 1026th that
+// repeats a = 1, so a laid alpha of 1 reads its pair like any other and no
+// pixel branches), linearly between two entries: no pixel pays a power, and
+// the Dart and C kernels read the same numbers. `evenedLaid`'s arithmetic,
+// operation by operation — and qa_d2_even's, lane by lane.
 static inline double qa_dab_even(const double* table, double whole) {
-  const double x = whole * 1024.0;
-  if (x >= 1024.0) {
-    return table[1024];
-  }
+  const double scaled = whole * 1024.0;
+  const double x = scaled < 1024.0 ? scaled : 1024.0;
   const int32_t i = (int32_t)x;
   const double low = table[i];
   return low + (table[i + 1] - low) * (x - (double)i);
@@ -710,6 +710,22 @@ static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return _mm_add_pd(a, b); }
 static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return _mm_sub_pd(a, b); }
 static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return _mm_mul_pd(a, b); }
 static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return _mm_div_pd(a, b); }
+// qa_dab_even for a pair, in registers: each lane reads its two entries with
+// one load. ↩️The lanes went through memory one by one — two scalar stores
+// and a vector reload the CPU cannot forward — and a soft size-300 stroke
+// laying its share cost a third more than laying it whole (2026-10-01).
+static inline qa_d2 qa_d2_even(const double* table, qa_d2 whole) {
+  const qa_d2 top = _mm_set1_pd(1024.0);
+  const qa_d2 x = _mm_min_pd(_mm_mul_pd(whole, top), top);
+  const __m128i i = _mm_cvttpd_epi32(x);
+  const qa_d2 pair0 = _mm_loadu_pd(table + _mm_cvtsi128_si32(i));
+  const qa_d2 pair1 =
+      _mm_loadu_pd(table + _mm_cvtsi128_si32(_mm_srli_si128(i, 4)));
+  const qa_d2 low = _mm_unpacklo_pd(pair0, pair1);
+  const qa_d2 high = _mm_unpackhi_pd(pair0, pair1);
+  return _mm_add_pd(
+      low, _mm_mul_pd(_mm_sub_pd(high, low), _mm_sub_pd(x, _mm_cvtepi32_pd(i))));
+}
 #else
 typedef float64x2_t qa_d2;
 static inline qa_d2 qa_d2_splat(double v) { return vdupq_n_f64(v); }
@@ -719,6 +735,17 @@ static inline qa_d2 qa_d2_add(qa_d2 a, qa_d2 b) { return vaddq_f64(a, b); }
 static inline qa_d2 qa_d2_sub(qa_d2 a, qa_d2 b) { return vsubq_f64(a, b); }
 static inline qa_d2 qa_d2_mul(qa_d2 a, qa_d2 b) { return vmulq_f64(a, b); }
 static inline qa_d2 qa_d2_div(qa_d2 a, qa_d2 b) { return vdivq_f64(a, b); }
+static inline qa_d2 qa_d2_even(const double* table, qa_d2 whole) {
+  const qa_d2 top = vdupq_n_f64(1024.0);
+  const qa_d2 x = vminq_f64(vmulq_f64(whole, top), top);
+  const int64x2_t i = vcvtq_s64_f64(x);
+  const qa_d2 pair0 = vld1q_f64(table + vgetq_lane_s64(i, 0));
+  const qa_d2 pair1 = vld1q_f64(table + vgetq_lane_s64(i, 1));
+  const qa_d2 low = vzip1q_f64(pair0, pair1);
+  const qa_d2 high = vzip2q_f64(pair0, pair1);
+  return vaddq_f64(
+      low, vmulq_f64(vsubq_f64(high, low), vsubq_f64(x, vcvtq_f64_s64(i))));
+}
 #endif
 
 // One channel of a pair's source-over: (source * alpha + destination *
@@ -823,16 +850,9 @@ static int32_t qa_dab_blend_pairs(
       source_alpha =
           qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
       if (s->evening != NULL) {
-        // Its share, lane by lane (qa_dab_even) — a table read, not a
-        // vector op.
-        double lanes[2];
-        qa_d2_store(lanes, source_alpha);
-        for (int i = 0; i < 2; i += 1) {
-          if (keep[i]) {
-            lanes[i] = qa_dab_even(s->evening, lanes[i]);
-          }
-        }
-        source_alpha = qa_d2_load(lanes);
+        // Its share (qa_d2_even). A lane the loop drops lays 0, reads the
+        // table's first pair and is never written.
+        source_alpha = qa_d2_even(s->evening, source_alpha);
       }
     } else {
       // Under its ceiling a dab's alpha depends on what each pixel already

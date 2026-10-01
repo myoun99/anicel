@@ -43,7 +43,10 @@ double stampShareOf(BrushDab dab) {
 }
 
 /// Entries past the first in an evening table: a laid alpha `a` in [0, 1]
-/// reads entry `a * eveningTableSteps`, linearly between two.
+/// reads entry `a * eveningTableSteps`, linearly between two. One more
+/// entry repeats `a = 1`, so a laid alpha of 1 reads its pair like any
+/// other — the C kernel's pair path reads both lanes' pairs without a
+/// branch (`qa_d2_even`).
 const int eveningTableSteps = 1024;
 
 /// The tables built so far — a stroke lays a few shares, and a table is
@@ -78,10 +81,11 @@ Float64List eveningTableFor(double share) {
     if (_tables.length >= _tableCap) {
       _tables.clear();
     }
-    table = Float64List(eveningTableSteps + 1);
+    table = Float64List(eveningTableSteps + 2);
     for (var i = 0; i <= eveningTableSteps; i += 1) {
       table[i] = 1.0 - math.pow(1.0 - i / eveningTableSteps, share);
     }
+    table[eveningTableSteps + 1] = table[eveningTableSteps];
     _tables[share] = table;
   }
   _lastShare = share;
@@ -92,10 +96,8 @@ Float64List eveningTableFor(double share) {
 /// What a dab laying [laid] whole lays at the share [table] was built for —
 /// `qa_dab_even`'s arithmetic, operation by operation.
 double evenedLaid(Float64List table, double laid) {
-  final x = laid * eveningTableSteps;
-  if (x >= eveningTableSteps) {
-    return table[eveningTableSteps];
-  }
+  final scaled = laid * eveningTableSteps;
+  final x = scaled < eveningTableSteps ? scaled : eveningTableSteps.toDouble();
   final i = x.toInt();
   final low = table[i];
   return low + (table[i + 1] - low) * (x - i);
