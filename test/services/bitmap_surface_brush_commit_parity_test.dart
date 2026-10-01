@@ -1109,5 +1109,34 @@ void main() {
         }
       }
     });
+
+    test('🚨a hard dab at full flow lays its share of a whole stamp alike — '
+        'the table read at a = 1', () {
+      // A laid alpha of exactly 1 reads the table's last pair: the opaque
+      // road through the pair path (qa_d2_even), the settling one through
+      // the scalar (qa_dab_even) — the two clamps at the table's end.
+      final cache = BrushTipStampCache();
+      for (final masked in [false, true]) {
+        expectParity(
+          surface: blankSurface(tileSize: 256),
+          sequence: strokeOf([
+            for (var i = 0; i < 10; i += 1)
+              () {
+                final one = dab(
+                  x: 60.2 + i * 1.3,
+                  y: 70.4,
+                  size: 40,
+                  hardness: 1,
+                  opacity: i.isEven ? 1.0 : 0.6,
+                  flow: 1,
+                  sequence: i,
+                ).copyWith(pathStep: i == 0 ? null : 1.3);
+                return masked ? cache.resolveDab(one) : one;
+              }(),
+          ]),
+          reason: '${masked ? 'masked' : 'analytic'}, full flow',
+        );
+      }
+    });
   });
 }
