@@ -442,8 +442,26 @@ BrushTipMask _generateCanvasWeaveMask() {
 /// last bit differently on another platform.
 BrushTipMask _generateColdPressMask() {
   const size = 256;
+  final (tooth, highest) = _coldPressTooth(size);
+  final swell = _seamlessValueNoise(8, 0x51ED270B, size: size);
+  final fibre = _seamlessValueNoise(64, 0x7C3A9E25, size: size);
+  final alpha = Uint8List(size * size);
+  for (var index = 0; index < alpha.length; index += 1) {
+    final height =
+        tooth[index] / highest * 0.65 + swell[index] * 0.2 + fibre[index] * 0.15;
+    // Smoothstep of the depth: broad hollows, broad crowns.
+    final depth = (1.0 - height).clamp(0.0, 1.0);
+    final paint = 0.3 + depth * depth * (3.0 - 2.0 * depth) * 0.7;
+    alpha[index] = (255 * paint).round().clamp(0, 255);
+  }
+  return BrushTipMask(id: 'builtin-cold-press', size: size, alpha: alpha);
+}
+
+/// The cold-press TOOTH (see [_generateColdPressMask]): the dome heights of
+/// a [size]-texel tile, row-major, and the highest of them.
+(List<double>, double) _coldPressTooth(int size) {
   const cell = 16;
-  const cells = size ~/ cell;
+  final cells = size ~/ cell;
   const reach = cell * 1.1;
   final pointX = List<double>.filled(cells * cells, 0);
   final pointY = List<double>.filled(cells * cells, 0);
@@ -488,18 +506,7 @@ BrushTipMask _generateColdPressMask() {
       }
     }
   }
-  final swell = _seamlessValueNoise(8, 0x51ED270B, size: size);
-  final fibre = _seamlessValueNoise(64, 0x7C3A9E25, size: size);
-  final alpha = Uint8List(size * size);
-  for (var index = 0; index < alpha.length; index += 1) {
-    final height =
-        tooth[index] / highest * 0.65 + swell[index] * 0.2 + fibre[index] * 0.15;
-    // Smoothstep of the depth: broad hollows, broad crowns.
-    final depth = (1.0 - height).clamp(0.0, 1.0);
-    final paint = 0.3 + depth * depth * (3.0 - 2.0 * depth) * 0.7;
-    alpha[index] = (255 * paint).round().clamp(0, 255);
-  }
-  return BrushTipMask(id: 'builtin-cold-press', size: size, alpha: alpha);
+  return (tooth, highest);
 }
 
 /// Value noise on a [lattice]×[lattice] grid, smoothly interpolated up to

@@ -194,14 +194,43 @@ void main() {
     await pick(tester, id);
   }
 
+  /// Opens the first tab holding at least [count] brushes, picks its first
+  /// and returns the tab. ⚠️These cases are about the library, not about
+  /// the tab the roster opens on — board F-218 put the two-brush Basic tab
+  /// first, and a case reading the third brush of the opening tab broke.
+  Future<List<BrushPresetId>> openTabWithAtLeast(
+    WidgetTester tester,
+    int count,
+  ) async {
+    final shown = panel(tester);
+    for (final group in shown.groups) {
+      final ids = [
+        for (final preset in shown.presets)
+          if (preset.groupShownAmong(shown.groups) == group.id) preset.id,
+      ];
+      if (ids.length < count) {
+        continue;
+      }
+      final tabKey = find.byKey(
+        ValueKey<String>('brush-preset-tab-${group.id.value}'),
+      );
+      await tester.ensureVisible(tabKey);
+      await tester.tap(tabKey);
+      await tester.pumpAndSettle();
+      await pickInView(tester, ids.first);
+      return tabOf(tester, ids.first);
+    }
+    throw StateError('⛔premise: no tab holds $count brushes');
+  }
+
   // 🗣️F-250 (유저 2026-10-01): 「브러시 위치 바꾸는것도 언두에 기록. 그룹바꾸든
   // 순서바꾸든. 그리고 브러시 삭제하면 현재 선택된 브러시 ui가 없어지는데,
   // 제대로 삭제하면 그 외 브러시 선택시키도록」.
   testWidgets('🚨F-250: a brush moved in the library goes back with one undo '
       '— and a brush deleted since stays deleted', (tester) async {
     await pumpWithPresets(tester);
+    final tab = await openTabWithAtLeast(tester, 4);
     final before = order(tester);
-    final tab = tabOf(tester, panel(tester).selectedPresetId!);
     final moved = [...panel(tester).presets];
     moved.insert(0, moved.removeAt(before.indexOf(tab[2])));
     panel(tester).onPresetsReordered!(moved);
@@ -224,7 +253,7 @@ void main() {
   testWidgets('🚨F-250: deleting the brush in hand hands every tool that held '
       'it the brush beside it', (tester) async {
     await pumpWithPresets(tester);
-    final tab = tabOf(tester, panel(tester).selectedPresetId!);
+    final tab = await openTabWithAtLeast(tester, 3);
     final doomed = tab[1];
     await pickInView(tester, doomed);
     await takeUp(tester, 'eraser');
