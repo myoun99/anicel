@@ -866,16 +866,54 @@ void blendDabTilesDart(
                 outAlpha;
           }
         }
-        if (storeDabPixel(
-          bytes,
-          wide,
-          offset,
-          outAlpha: outAlpha,
-          red: red,
-          green: green,
-          blue: blue,
-          erase: erase,
-        )) {
+        // Both planes from the same doubles, each written only where it
+        // moves — `qa_dab_store`'s arithmetic, operation by operation: the
+        // view rounded from the double, never from the plane, and the
+        // change set the view's.
+        var outR = 0;
+        var outG = 0;
+        var outB = 0;
+        var outA = 0;
+        var wideR = 0;
+        var wideG = 0;
+        var wideB = 0;
+        var wideA = 0;
+        if (outAlpha != 0.0) {
+          if (erase) {
+            outR = bytes[offset];
+            outG = bytes[offset + 1];
+            outB = bytes[offset + 2];
+            wideR = wide[offset];
+            wideG = wide[offset + 1];
+            wideB = wide[offset + 2];
+          } else {
+            outR = red.round().clamp(0, 255);
+            outG = green.round().clamp(0, 255);
+            outB = blue.round().clamp(0, 255);
+            wideR = (red * 257.0).round().clamp(0, 65535);
+            wideG = (green * 257.0).round().clamp(0, 65535);
+            wideB = (blue * 257.0).round().clamp(0, 65535);
+          }
+          outA = (outAlpha * 255.0).round().clamp(0, 255);
+          wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
+        }
+        if (wideR != wide[offset] ||
+            wideG != wide[offset + 1] ||
+            wideB != wide[offset + 2] ||
+            wideA != wide[offset + 3]) {
+          wide[offset] = wideR;
+          wide[offset + 1] = wideG;
+          wide[offset + 2] = wideB;
+          wide[offset + 3] = wideA;
+        }
+        if (outR != bytes[offset] ||
+            outG != bytes[offset + 1] ||
+            outB != bytes[offset + 2] ||
+            outA != bytes[offset + 3]) {
+          bytes[offset] = outR;
+          bytes[offset + 1] = outG;
+          bytes[offset + 2] = outB;
+          bytes[offset + 3] = outA;
           tileChanged = true;
         }
       }
@@ -885,66 +923,4 @@ void blendDabTilesDart(
       }
     }
   }
-}
-
-/// One dab's result written to a pixel's two planes at [offset], each only
-/// where it moves — `qa_dab_store`'s arithmetic, operation by operation.
-/// Returns true when a BYTE moved: the change set is the view's.
-bool storeDabPixel(
-  Uint8List bytes,
-  Uint16List wide,
-  int offset, {
-  required double outAlpha,
-  required double red,
-  required double green,
-  required double blue,
-  required bool erase,
-}) {
-  var outR = 0;
-  var outG = 0;
-  var outB = 0;
-  var outA = 0;
-  var wideR = 0;
-  var wideG = 0;
-  var wideB = 0;
-  var wideA = 0;
-  if (outAlpha != 0.0) {
-    if (erase) {
-      outR = bytes[offset];
-      outG = bytes[offset + 1];
-      outB = bytes[offset + 2];
-      wideR = wide[offset];
-      wideG = wide[offset + 1];
-      wideB = wide[offset + 2];
-    } else {
-      outR = red.round().clamp(0, 255);
-      outG = green.round().clamp(0, 255);
-      outB = blue.round().clamp(0, 255);
-      wideR = (red * 257.0).round().clamp(0, 65535);
-      wideG = (green * 257.0).round().clamp(0, 65535);
-      wideB = (blue * 257.0).round().clamp(0, 65535);
-    }
-    outA = (outAlpha * 255.0).round().clamp(0, 255);
-    wideA = (outAlpha * 65535.0).round().clamp(0, 65535);
-  }
-  if (wideR != wide[offset] ||
-      wideG != wide[offset + 1] ||
-      wideB != wide[offset + 2] ||
-      wideA != wide[offset + 3]) {
-    wide[offset] = wideR;
-    wide[offset + 1] = wideG;
-    wide[offset + 2] = wideB;
-    wide[offset + 3] = wideA;
-  }
-  if (outR != bytes[offset] ||
-      outG != bytes[offset + 1] ||
-      outB != bytes[offset + 2] ||
-      outA != bytes[offset + 3]) {
-    bytes[offset] = outR;
-    bytes[offset + 1] = outG;
-    bytes[offset + 2] = outB;
-    bytes[offset + 3] = outA;
-    return true;
-  }
-  return false;
 }
