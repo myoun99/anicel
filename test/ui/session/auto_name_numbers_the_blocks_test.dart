@@ -217,8 +217,10 @@ void main() {
     );
     expect(
       namingOf(s).timelineTargets,
-      isNull,
-      reason: 'a band on the TRACK axis claims it too, as 링크 독립\'s does',
+      isNotNull,
+      reason: 'R5q1: a band on the TRACK axis — the storyboard\'s cut '
+          'selection as often as not — leaves the timeline\'s press on its '
+          'own drawings',
     );
   });
 

@@ -164,13 +164,12 @@ class BlockNaming {
     if (_selection.frameRangeSelection.value != null) {
       return _bandRows();
     }
-    // A band on the TRACK axis claims the press as well — the band source
-    // 링크 독립 reads is 「the cut's band, else the track's」
-    // (`selectionBlockStartsByLayer`). The S rows it sweeps number no
-    // drawings, so it numbers none: never a redirect onto the active row.
-    if (_selection.trackFrameRangeSelection.value != null) {
-      return const [];
-    }
+    // ↩️A band on the TRACK axis claimed this press for a day (81877d28a),
+    // after 링크 독립's band source (「the cut's band, else the track's」).
+    // It is the pill's button, and the pill's one ladder reads the cut's
+    // band alone; a track band is the storyboard's cut selection as often as
+    // not, and R5q1 (유저 2026-08-25) keeps the timeline's press on the
+    // timeline's own: 「삭제·편집도 패널을 따라 대상을 바꾼다」.
     return [?_fromThePlayhead(_selection.activeLayer)];
   }
 
