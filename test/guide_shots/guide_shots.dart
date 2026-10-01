@@ -243,6 +243,31 @@ EditorSessionManager sessionOf(WidgetTester tester) =>
 
 Finder byKey(String key) => find.byKey(ValueKey<String>(key));
 
+/// A mouse resting on the workspace grip `dock-resize-[grip]`, shot as
+/// [frame] of the grip's rect, and taken away again.
+Future<void> hoverShot(
+  WidgetTester tester,
+  String name,
+  String grip,
+  Rect Function(Rect edge) frame,
+) async {
+  final edge = tester.getRect(byKey('dock-resize-$grip'));
+  // No addPointer: the pen strokes' mouse is still on the screen, and
+  // adding it a second time trips the mouse tracker. A move is a hover.
+  final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  await mouse.moveTo(edge.center - const Offset(40, 40));
+  await mouse.moveTo(edge.center);
+  await settle(tester, 3);
+  await shot(
+    tester,
+    name,
+    rect: frame(edge).intersect(Offset.zero & window),
+    ratio: 2,
+  );
+  await mouse.removePointer();
+  await settle(tester, 3);
+}
+
 /// Drags the workspace grip `dock-resize-[grip]` by [by], as a person
 /// resizing a panel would.
 Future<void> dragGrip(WidgetTester tester, String grip, Offset by) async {
@@ -863,6 +888,30 @@ void guideShots(AppLanguage language) {
       await settleReal(tester);
       await shot(tester, 'overview');
       await shot(tester, 'toolbar', rect: toolbarRow(tester), ratio: 2);
+
+      // The panels' edges, pointed at: lit where a drag resizes.
+      await hoverShot(
+        tester,
+        'resize-bottom',
+        'bottom',
+        (edge) => Rect.fromLTRB(
+          edge.left,
+          edge.top - 80,
+          edge.left + 760,
+          edge.bottom + 70,
+        ),
+      );
+      await hoverShot(
+        tester,
+        'resize-side',
+        'rail-R2',
+        (edge) => Rect.fromLTRB(
+          edge.left - 200,
+          edge.top - 8,
+          edge.right + 340,
+          edge.bottom + 8,
+        ),
+      );
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
 
       // The conte layer: its row stood on, in its second panel.
