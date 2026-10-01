@@ -165,9 +165,10 @@ void main() {
     );
     first.setUiScale(1.25);
     // The block frame lines (유저 2026-09-24) — a user setting, app-wide like
-    // the accents; OFF here because ON is the default a lost store returns.
+    // the accents; ON here because OFF is the default a lost store returns
+    // (↩️the other way round until 2026-10-01, 「기본값 off로」).
     appSettingsOf(first).setFrameGridSettings(
-      const AppFrameGridSettings(blockFrameLines: false),
+      const AppFrameGridSettings(blockFrameLines: true),
     );
     // The count window's entry (I-24-open-entry) — seconds+frames, because
     // frames is the default a lost store returns.
@@ -205,7 +206,7 @@ void main() {
           AppInput.settings.value.pressureCurveGamma == 1.5 &&
           AppSave.settings.value.periodicSnapshotMinutes == 7 &&
           AppMemory.settings.value.allowanceBytes == 3 << 30 &&
-          !AppFrameGridSettings.settings.value.blockFrameLines &&
+          AppFrameGridSettings.settings.value.blockFrameLines &&
           AppFrameCountSettings.settings.value.lastEntry ==
               FrameCountEntry.secondsPlusFrames &&
           appSettingsOf(second).audioSyncSettings.value.offset == 42,
@@ -219,7 +220,7 @@ void main() {
     expect(AppInput.settings.value.pressureCurveGamma, 1.5);
     expect(AppSave.settings.value.periodicSnapshotMinutes, 7);
     expect(AppMemory.settings.value.allowanceBytes, 3 << 30);
-    expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
+    expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
     expect(
       AppFrameCountSettings.settings.value.lastEntry,
       FrameCountEntry.secondsPlusFrames,

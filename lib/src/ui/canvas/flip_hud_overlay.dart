@@ -292,7 +292,7 @@ class FlipHudPainter extends CustomPainter
     required this.baseTextStyle,
     this.scrollCentre,
     this.standing = false,
-    this.blockFrameLines = true,
+    this.blockFrameLines = false,
   });
 
   /// Whether the frame lines cross a block's body — the user's switch

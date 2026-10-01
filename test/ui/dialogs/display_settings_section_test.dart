@@ -110,7 +110,8 @@ void main() {
       () => AppFrameGridSettings.settings.value = const AppFrameGridSettings(),
     );
 
-    testWidgets('are a switch in this section, ON by default', (tester) async {
+    // ↩️ON by default until 2026-10-01 (유저: 「기본값 off로」).
+    testWidgets('are a switch in this section, OFF by default', (tester) async {
       await pump(tester);
       expect(find.byKey(row), findsOneWidget);
       expect(
@@ -120,7 +121,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(shown(tester), isTrue);
+      expect(shown(tester), isFalse);
     });
 
     testWidgets('a press flips the live setting, and a second one puts it '
@@ -128,21 +129,21 @@ void main() {
       await pump(tester);
       await tester.tap(find.byKey(row));
       await tester.pump();
-      expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
-      expect(shown(tester), isFalse);
-      await tester.tap(find.byKey(row));
-      await tester.pump();
       expect(AppFrameGridSettings.settings.value.blockFrameLines, isTrue);
       expect(shown(tester), isTrue);
+      await tester.tap(find.byKey(row));
+      await tester.pump();
+      expect(AppFrameGridSettings.settings.value.blockFrameLines, isFalse);
+      expect(shown(tester), isFalse);
     });
 
     testWidgets('the row follows a value it did not set', (tester) async {
       await pump(tester);
       session.appSettings.setFrameGridSettings(
-        const AppFrameGridSettings(blockFrameLines: false),
+        const AppFrameGridSettings(blockFrameLines: true),
       );
       await tester.pump();
-      expect(shown(tester), isFalse);
+      expect(shown(tester), isTrue);
     });
   });
 }

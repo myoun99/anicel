@@ -351,12 +351,13 @@ void main() {
           ),
         ),
       );
-      expect(TimelineGridLaw.maybeOf(inner)!.blockFrameLines, isTrue,
-          reason: 'on by default');
+      // ↩️On by default until 2026-10-01 (유저: 「기본값 off로」).
+      expect(TimelineGridLaw.maybeOf(inner)!.blockFrameLines, isFalse,
+          reason: 'off by default');
       AppFrameGridSettings.settings.value =
-          const AppFrameGridSettings(blockFrameLines: false);
+          const AppFrameGridSettings(blockFrameLines: true);
       await tester.pump();
-      expect(TimelineGridLaw.maybeOf(inner)!.blockFrameLines, isFalse);
+      expect(TimelineGridLaw.maybeOf(inner)!.blockFrameLines, isTrue);
     });
 
     testWidgets('the SE paper span draws the law\'s lines where the switch '
