@@ -31,6 +31,7 @@ class TimelineViewCluster extends StatelessWidget {
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.globalFrame,
+    this.cutName = '',
     this.trailing = const <Widget>[],
   });
 
@@ -45,6 +46,16 @@ class TimelineViewCluster extends StatelessWidget {
   /// refreshes the label too. Null (the timeline tab) keeps the plain
   /// cut-local counter.
   final ValueListenable<int?>? globalFrame;
+
+  /// The name of the cut whose frames the counter counts (I-57, 유저
+  /// 2026-10-01: 「현재 컷의 이름을 표기하고싶음. 위치는 타임라인/콘티패널
+  /// 동일하게. 타임라인 줌의 마이너스버튼 왼쪽. 즉 로컬/글로벌 인덱스를
+  /// 왼쪽에 두고, 그 사이에 컷이름」) — between the counter and the zoom's −
+  /// button, on both panels, because both mount this one bar.
+  final String cutName;
+
+  /// How wide the cut's name may grow before it is cut short, at 1×.
+  static const double _cutNameMaxWidth = 160;
 
   final ProjectFrameRate projectFrameRate;
   final bool showSeconds;
@@ -170,6 +181,24 @@ class TimelineViewCluster extends StatelessWidget {
               ],
             );
           },
+        ),
+        const SizedBox(width: 4),
+        // I-57: the cut the counter counts, named between the counter and
+        // the zoom it stands beside — the slot is always laid, the name is
+        // what changes.
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _cutNameMaxWidth),
+          child: Text(
+            cutName,
+            key: const ValueKey<String>('timeline-cut-name'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.onSurface,
+            ),
+          ),
         ),
         const SizedBox(width: 4),
         // UI-R11 #11: the flanking glyphs are real STEP buttons now, not

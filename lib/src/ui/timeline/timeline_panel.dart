@@ -117,6 +117,7 @@ class TimelinePanel extends StatefulWidget {
     this.timelineFrameAxisOffset,
     this.xsheetFrameAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
+    this.cutName = '',
     this.expandedLaneLayerIds = const {},
     this.laneOpenOf,
     this.laneGroupOnOf,
@@ -173,6 +174,9 @@ class TimelinePanel extends StatefulWidget {
   /// #29: the (project, cut) world the rows' resolvers answer from — see
   /// [TimelineRowCellsPainter.substrateGeneration].
   final String substrateGeneration;
+
+  /// The name of the cut the panel shows, for the bar's counter (I-57).
+  final String cutName;
 
   /// Track-owned rows whose display clone starts with a block spilling in
   /// from an earlier cut, each with how far into it the cut starts — see
@@ -683,6 +687,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
               showSeconds: widget.showSeconds,
               pixelsPerFrame: widget.pixelsPerFrame,
               onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+              cutName: widget.cutName,
               trailing: [
                 // R26 #42's standard button, like every other control on
                 // this bar. It was the last plain Material `IconButton`
