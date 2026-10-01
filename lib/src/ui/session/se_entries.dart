@@ -77,10 +77,6 @@ class SeEntries {
     // that already IS [maxLocal] to itself.
     final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
     final project = _project.repository.requireProject();
-    // Rows on the tracks BELOW this one: unconfigured defaults stack the
-    // whole project's SE rows, so two covered tracks in the multitrack
-    // stack never land on the same spot.
-    var rowOffset = 0;
     for (final track in project.tracks) {
       // Cheap gate: most tracks hold no SE writing at all, and this runs
       // per painted frame per covered track.
@@ -96,11 +92,9 @@ class SeEntries {
             localFrameIndex: localFrame,
             canvas: cut.canvasSize,
             cameraFrame: _camera.cameraFrameSize,
-            rowOffset: rowOffset,
           );
         }
       }
-      rowOffset += track.seLayers.length;
     }
     return const [];
   }

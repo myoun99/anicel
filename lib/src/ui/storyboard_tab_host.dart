@@ -802,27 +802,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // This rail IS the track's global axis — the master
                       // one — so it reads and writes the span unshifted.
                       selection: _session.laneRangeSelection,
-                      // C②: the head LANE arrives resolved by the PANEL off
-                      // its own row geometry — the stale hand-kept walk
+                      // C②: the span arrives resolved by the PANEL off its
+                      // own row geometry — the stale hand-kept walk
                       // (transform lanes for a rail that draws fx lanes,
                       // null for every SE anchor) retired with it.
                       onSelectUpdate:
-                          (
-                            layerId,
-                            laneId,
-                            anchorIndex,
-                            headIndex,
-                            headLaneId,
-                            span,
-                          ) => _session.updateLaneRangeSelectionDrag(
-                            layerId: layerId,
-                            laneId: laneId,
-                            anchorIndex: anchorIndex,
-                            headIndex: headIndex,
-                            panel: WorkingPanel.storyboard,
-                            headLaneId: headLaneId,
-                            spanLaneIds: span,
-                          ),
+                          (layerId, laneId, anchorIndex, headIndex, span) =>
+                              _session.updateLaneRangeSelectionDrag(
+                                layerId: layerId,
+                                laneId: laneId,
+                                anchorIndex: anchorIndex,
+                                headIndex: headIndex,
+                                panel: WorkingPanel.storyboard,
+                                spanLaneIds: span,
+                              ),
                       // R10: a lane band is a place you can STAND. The
                       // storyboard's strips run on the GLOBAL axis, so the
                       // frame the tap reports is a global one.

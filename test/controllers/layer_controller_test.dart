@@ -201,7 +201,6 @@ void main() {
 
         fixture.controller.addLayerWithDefaults(
           layerId: const LayerId('layer-a-added'),
-          name: 'Layer A Added',
         );
 
         expect(
@@ -225,7 +224,6 @@ void main() {
 
         fixture.controller.addLayerWithDefaults(
           layerId: const LayerId('layer-b-added'),
-          name: 'Layer B Added',
         );
 
         expect(

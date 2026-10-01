@@ -144,7 +144,6 @@ TimelineLaneRangeCallbacks timelineGridLaneRangeCallbacks({
           laneId,
           anchorIndex,
           headIndex,
-          headLane,
           // The span comes off the SAME drawn rows the head did — 절대명령
           // 2「선택범위는 레이어 불문 자유롭게」, and the reason three
           // per-family walks could go.

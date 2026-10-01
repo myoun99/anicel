@@ -54,7 +54,7 @@ void main() {
 
   TimelineLaneRangeHooks laneHooks() => TimelineLaneRangeHooks(
     selection: ValueNotifier<TimelineLaneSelection?>(null),
-    onSelectUpdate: (_, _, _, _, _, _) {},
+    onSelectUpdate: (_, _, _, _, _) {},
     onTapAt: (_, _, _) {},
     onTapClear: () {},
     onMoveBegin: () => false,

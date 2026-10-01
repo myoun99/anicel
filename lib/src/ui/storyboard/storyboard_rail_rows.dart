@@ -1227,12 +1227,6 @@ class _StoryboardRailRows {
                 laneId,
                 anchorIndex,
                 headIndex,
-                resolveInGroupHeadLane(
-                  rows: addresses,
-                  layerId: layerId,
-                  laneId: laneId,
-                  rowDelta: rowDelta,
-                ),
                 // The span off the SAME drawn rows — 절대명령 2.
                 laneSpanOverDrawnRows(
                   rows: addresses,

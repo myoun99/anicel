@@ -293,7 +293,7 @@ void main() {
         gridHooks(
           laneRange: TimelineLaneRangeHooks(
             selection: laneSelection,
-            onSelectUpdate: (_, _, anchor, head, _, _) =>
+            onSelectUpdate: (_, _, anchor, head, _) =>
                 heard.selects.add((anchor, head)),
             onTapAt: (_, _, _) {},
             onTapClear: () => heard.clears += 1,

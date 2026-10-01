@@ -786,17 +786,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // of it that falls inside the window, on the window's own
               // numbers.
               selection: _session.cutLocalLaneRangeSelection,
-              // C②: the head LANE arrives resolved by the grid, off the
-              // rows it actually draws — the host's own lane-list walk
-              // retired with it.
+              // C②: the span arrives resolved by the grid, off the rows it
+              // actually draws — the host's own lane-list walk retired with
+              // it.
               onSelectUpdate:
-                  (layerId, laneId, anchorIndex, headIndex, headLaneId, span) =>
+                  (layerId, laneId, anchorIndex, headIndex, span) =>
                       _session.updateLaneRangeSelectionDrag(
                         layerId: layerId,
                         laneId: laneId,
                         anchorIndex: anchorIndex,
                         headIndex: headIndex,
-                        headLaneId: headLaneId,
                         spanLaneIds: span,
                       ),
               onTapAt: _standOnLane,

@@ -164,7 +164,6 @@ class LayerController {
 
   void addLayerWithDefaults({
     required LayerId layerId,
-    String? name,
     LayerKind kind = LayerKind.animation,
   }) {
     final cut = _findCutOrNull();

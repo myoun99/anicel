@@ -62,17 +62,12 @@ class ResolvedSeNameTag {
 /// A row contributes nothing when its eye is off, when no SE block covers
 /// the frame, or when the covering block carries no writing at all — an
 /// empty red box would say less than nothing.
-///
-/// [rowOffset] shifts the unconfigured rows' stacked defaults for the
-/// tracks below this one (the multitrack stack), so two covered tracks
-/// never pile their tags on one spot.
 List<ResolvedSeNameTag> resolveSeNameTagsAt({
   required List<Layer> trackSeLayers,
   required int cutStartFrame,
   required int localFrameIndex,
   required CanvasSize canvas,
   required CanvasSize cameraFrame,
-  int rowOffset = 0,
 }) {
   if (localFrameIndex < 0) {
     return const [];

@@ -1202,7 +1202,7 @@ void main() {
     expect(s.dragPreview.value, isNull);
   });
 
-  test('R26 #3: a lane span covers MULTIPLE lane rows (headLaneId), the '
+  test('R26 #3: a lane span covers MULTIPLE lane rows (spanLaneIds), the '
       'group header anchors the whole group, and the move shifts every '
       'spanned lane as one rigid undo', () {
     final (s, a, _) = fixture();
@@ -1230,7 +1230,6 @@ void main() {
       anchorIndex: 1,
       headIndex: 4,
       spanLaneIds: const ['position', 'scale'],
-      headLaneId: 'scale',
     );
     final span = s.laneRangeSelection.value!;
     expect(span.spanLaneIds, ['position', 'scale']);

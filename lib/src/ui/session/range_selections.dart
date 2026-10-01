@@ -502,10 +502,11 @@ class RangeSelections {
   /// block snap). Starting a lane selection clears the cell selection
   /// (mutual exclusion, the F4 rule).
   ///
-  /// R26 #3 — the cells' grammar on lane rows: [headLaneId] (the lane row
-  /// under the pointer) spans the selection across the layer's lane group
-  /// in display order; the group HEADER as anchor selects every member
-  /// lane. Starting on ANOTHER layer's lanes activates that layer
+  /// R26 #3 — the cells' grammar on lane rows: the lane row under the
+  /// pointer spans the selection across the layer's lane group in display
+  /// order, and the group HEADER as anchor selects every member lane — the
+  /// rail slices that span out of the rows it drew and hands it over as
+  /// [spanLaneIds]. Starting on ANOTHER layer's lanes activates that layer
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
   /// [panel] is the panel the drag is on, and it says two things the panel
@@ -524,7 +525,6 @@ class RangeSelections {
     required String laneId,
     required int anchorIndex,
     required int headIndex,
-    String? headLaneId,
     required List<String> spanLaneIds,
     WorkingPanel panel = WorkingPanel.timeline,
   }) {

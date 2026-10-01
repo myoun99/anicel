@@ -136,7 +136,6 @@ void main() {
           seNameTagTrackingLaneId,
           seNameTagBoldLaneId,
         ],
-        headLaneId: seNameTagBoldLaneId,
       );
 
       final selection = s.laneRangeSelection.value;
@@ -159,7 +158,6 @@ void main() {
         anchorIndex: 2,
         headIndex: 2,
         spanLaneIds: seNameTagLaneSelectionOrder,
-        headLaneId: seNameTagShowLineLaneId,
       );
 
       expect(

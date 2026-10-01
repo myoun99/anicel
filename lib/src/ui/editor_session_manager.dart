@@ -949,7 +949,6 @@ class EditorSessionManager extends ChangeNotifier
     required String laneId,
     required int anchorIndex,
     required int headIndex,
-    String? headLaneId,
     required List<String> spanLaneIds,
     WorkingPanel panel = WorkingPanel.timeline,
   }) => rangeSelections.updateLaneRangeSelectionDrag(
@@ -957,7 +956,6 @@ class EditorSessionManager extends ChangeNotifier
     laneId: laneId,
     anchorIndex: anchorIndex,
     headIndex: headIndex,
-    headLaneId: headLaneId,
     spanLaneIds: spanLaneIds,
     panel: panel,
   );
