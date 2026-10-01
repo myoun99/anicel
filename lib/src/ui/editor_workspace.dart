@@ -15,6 +15,7 @@ import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_shape_kind.dart';
+import '../models/cut_id.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
@@ -770,6 +771,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   );
   final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
 
+  /// The cut [_timelinePixelsPerFrame] was last set for (F-253) — a notify
+  /// that leaves the active cut where it was leaves the zoom alone.
+  CutId? _timelineZoomCut;
+
+  /// The timeline's zoom follows the active cut: each cut shows at the zoom
+  /// it was left at ([TimelineZoomMemory]), and a cut nobody zoomed at the
+  /// default — not at the zoom the last cut was left at.
+  void _followTimelineZoomToCut() {
+    final session = widget.session;
+    final cut = session.activeCutId;
+    if (cut == _timelineZoomCut) {
+      return;
+    }
+    _timelineZoomCut = cut;
+    _timelinePixelsPerFrame.value =
+        session.timelineZoom.zoomOf(cut) ?? TimelinePanel.defaultPixelsPerFrame;
+  }
+
+  /// The zoom slider's one writer: the timeline shows [value], and the
+  /// active cut remembers it.
+  void _setTimelineZoom(double value) {
+    _timelinePixelsPerFrame.value = value;
+    widget.session.timelineZoom.remember(widget.session.activeCutId, value);
+  }
+
   /// The storyboard's V rows share ONE height (user's rule), kept here so
   /// it survives a tab switch the way the zoom does — as the splitter or a
   /// saved layout SET it. What the rows are drawn at is
@@ -1134,6 +1160,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // whenever a different one is opened under us.
     _viewersSeededFrom = null;
     _syncViewersWithProject();
+    // F-253: the zoom is the cut's — this project's active cut's, from now.
+    _timelineZoomCut = null;
+    _followTimelineZoomToCut();
+    session.addListener(_followTimelineZoomToCut);
     session.addListener(_syncViewersWithProject);
   }
 
@@ -1193,6 +1223,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.unbindSession();
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
+    session.removeListener(_followTimelineZoomToCut);
   }
 
   // ── the flip HUD: its own object, in its own file ───────────────────

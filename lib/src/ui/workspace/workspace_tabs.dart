@@ -872,9 +872,7 @@ class _WorkspaceTabs {
               },
               pixelsPerFrame: _state._timelinePixelsPerFrame.value,
               pixelsPerFrameListenable: _state._timelinePixelsPerFrame,
-              onPixelsPerFrameChanged: (value) {
-                _state._timelinePixelsPerFrame.value = value;
-              },
+              onPixelsPerFrameChanged: _state._setTimelineZoom,
               showSeconds: _state._showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _state._showSecondsDisplay.value = show;

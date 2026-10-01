@@ -132,6 +132,7 @@ import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
+import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
 import 'session/drawing_block_move_drag.dart';
@@ -703,6 +704,11 @@ class EditorSessionManager extends ChangeNotifier
   /// standing law reads it (F-169), and the rows it names are this
   /// project's (I-7).
   late final RailView railView = RailView();
+
+  /// The timeline zoom each of this project's cuts was left at (F-253) —
+  /// held here, not on the window, because the cuts it names are this
+  /// project's (I-7).
+  late final TimelineZoomMemory timelineZoom = TimelineZoomMemory();
 
   /// Where this project's CANVAS is framed — its zoom, pan and turn; null
   /// until something frames it, which the canvas resolves to the identity
