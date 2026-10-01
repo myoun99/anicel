@@ -552,7 +552,7 @@ class _SelectionSettings extends StatelessWidget {
     final onMask = onMaskOptionsChanged;
     final commands = selectionCommands;
     final canvas = canvasSize;
-    final VoidCallback? invert = commands == null || canvas == null
+    final invert = commands == null || canvas == null
         ? null
         : () => commands.invertSelection(canvasSize: canvas);
     // R26 #12: the rectangle/lasso CHOICE lives in the tool library
