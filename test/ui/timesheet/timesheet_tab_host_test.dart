@@ -102,7 +102,9 @@ void main() {
 
       expect(find.byKey(_inkLayerKey), findsNothing, reason: 'the premise');
       expect(printed().ink.map((window) => window.key), contains(band));
-      expect(printed().inkImageFor!(band), isNotNull);
+      // On screen the print draws the surface itself, as the live window
+      // does (F-215).
+      expect(printed().inkSurfaceFor!(band), isNotNull);
       expect(printed().liveInkKeys, isEmpty);
 
       await tester.tap(find.byKey(_inkToggleKey));
