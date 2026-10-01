@@ -88,6 +88,7 @@ class _DialogueFitPainter extends CustomPainter
         topCenter: Offset(size.width / 2, 0),
         extent: size.height,
         style: style,
+        setWord: paintFittedText,
         maxCrossExtent: size.width,
       );
       return;

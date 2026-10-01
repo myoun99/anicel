@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 
 import 'vertical_writing.dart';
+import 'word_bake.dart' show RepaintOnWordBakes;
+import 'word_condensation.dart';
 import '../repaint_props.dart';
 
 // Hosts pick a Latin form when they mount the widget, so the choice has to
@@ -58,6 +60,17 @@ double paintVerticalText(
   required double top,
   required double mainExtent,
   required double naturalCellExtent,
+
+  /// How the host sets a glyph: a screen's from its bake, paper's scaled
+  /// ([WordSetter]).
+  required WordSetter setWord,
+
+  /// The whole column narrowed about the canvas origin, on the screen's
+  /// axes — what `canvas.scale` around this call would draw, handed down
+  /// so each glyph is SET at its narrowing rather than scaled after it
+  /// (F-224: scaled, a narrowed glyph speckles). The extent this returns
+  /// is the column's own, before it.
+  WordFit narrowing = wordFitsAsItIs,
   double minFontSize = 4,
   double cellPadding = 3,
   double? maxCellWidth,
@@ -131,6 +144,8 @@ double paintVerticalText(
       fontSize: fontSize,
       maxCrossExtent: widthLimit,
       spanExtent: cellSpan,
+      setWord: setWord,
+      narrowing: narrowing,
     );
   }
   return fit.totalExtent;
@@ -151,12 +166,17 @@ double paintVerticalText(
 /// alone: it is handed the glyph's advance there, once the form and the
 /// width fit are applied, and answers the factor. SE dialogue passes it so
 /// a glyph keeps to its frame cell (F-93).
+///
+/// [narrowing] and [setWord] are the column's ([paintVerticalText]): the
+/// cell sits where the narrowed column puts it and is set at its share.
 void paintVerticalTextCell(
   Canvas canvas,
   VerticalTextCell cell, {
   required TextPainter painter,
   required Offset center,
   required double fontSize,
+  required WordSetter setWord,
+  WordFit narrowing = wordFitsAsItIs,
   double maxCrossExtent = double.infinity,
   double spanExtent = 0,
   double Function(double extentAlongColumn)? alongColumnScale,
@@ -172,20 +192,6 @@ void paintVerticalTextCell(
     fontSize: fontSize,
     room: (across: maxCrossExtent, span: spanExtent),
   );
-  canvas.save();
-  switch (cell.form) {
-    case VerticalGlyphForm.rotated:
-    case VerticalGlyphForm.sideways:
-      // Turned 90° clockwise about the cell's centre ([verticalGlyphFit]).
-      canvas.translate(center.dx, center.dy);
-      canvas.rotate(math.pi / 2);
-    case VerticalGlyphForm.tateChuYoko:
-      canvas.translate(center.dx, center.dy);
-    case VerticalGlyphForm.shifted:
-    case VerticalGlyphForm.upright:
-      final shift = cell.shiftEm * fontSize;
-      canvas.translate(center.dx + shift, center.dy - shift);
-  }
   final along =
       alongColumnScale?.call(
         verticalGlyphAdvance(
@@ -196,14 +202,34 @@ void paintVerticalTextCell(
         ),
       ) ??
       1.0;
-  if (scale != 1.0 || along != 1.0) {
-    if (turned) {
-      canvas.scale(scale * along, scale);
-    } else {
-      canvas.scale(scale, scale * along);
-    }
+  // The glyph's own narrowing, the column's [narrowing] in it — which a
+  // glyph lying down the column takes across its own axes.
+  final fit = turned
+      ? (x: narrowing.y * scale * along, y: narrowing.x * scale)
+      : (x: narrowing.x * scale, y: narrowing.y * scale * along);
+  canvas.save();
+  switch (cell.form) {
+    case VerticalGlyphForm.rotated:
+    case VerticalGlyphForm.sideways:
+      // Turned 90° clockwise about the cell's centre ([verticalGlyphFit]).
+      canvas.translate(narrowing.x * center.dx, narrowing.y * center.dy);
+      canvas.rotate(math.pi / 2);
+    case VerticalGlyphForm.tateChuYoko:
+      canvas.translate(narrowing.x * center.dx, narrowing.y * center.dy);
+    case VerticalGlyphForm.shifted:
+    case VerticalGlyphForm.upright:
+      final shift = cell.shiftEm * fontSize;
+      canvas.translate(
+        narrowing.x * (center.dx + shift),
+        narrowing.y * (center.dy - shift),
+      );
   }
-  painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+  setWord(
+    canvas,
+    painter,
+    Offset(-painter.width * fit.x / 2, -painter.height * fit.y / 2),
+    fit,
+  );
   canvas.restore();
 }
 
@@ -420,7 +446,8 @@ double _maxShiftEm(List<VerticalTextCell> cells) {
   return most;
 }
 
-class _VerticalWritingPainter extends CustomPainter with RepaintOnProps {
+class _VerticalWritingPainter extends CustomPainter
+    with RepaintOnProps, RepaintOnWordBakes {
   const _VerticalWritingPainter({
     required this.text,
     required this.style,
@@ -454,6 +481,7 @@ class _VerticalWritingPainter extends CustomPainter with RepaintOnProps {
       top: 0,
       mainExtent: size.height,
       naturalCellExtent: fontSize * lineHeight,
+      setWord: paintFittedText,
       // The leading is proportional here, unlike the timesheet's fixed-row
       // sheet: at the natural extent this returns the full font size, and
       // as cells pack it gives the leading back first.

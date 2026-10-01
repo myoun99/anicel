@@ -4,8 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/text/word_bake.dart';
 import 'package:anicel/src/ui/text/word_condensation.dart';
+
+import '../../helpers/dart_sources.dart';
 
 /// F-224 — a narrowed word is drawn from its bake.
 ///
@@ -185,6 +188,131 @@ void main() {
     });
   });
 
+  testWidgets('a word bakes one narrowing at a time — a zoom passes the '
+      'rest on the bake it has', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final word = _word('せりふ', fontSize: 12);
+    void Function(Canvas) paintAt(double x) =>
+        (canvas) => paintFittedText(canvas, word, Offset.zero, (x: x, y: 1.0));
+    // Two narrowings asked in one frame, the way a zoom asks them.
+    expect(paintAt(0.25), paints..paragraph());
+    expect(paintAt(0.5), paints..paragraph());
+    await _pumpUntilABakeLands(tester);
+    // The first narrowing's bake: a pixel a pixel, with its margin.
+    final first = Rect.fromLTWH(
+      0,
+      0,
+      (word.width * 0.25).ceil() + 2.0,
+      word.height.ceil() + 2.0,
+    );
+    expect(
+      paintAt(0.5),
+      paints..drawImageRect(source: first),
+      reason: 'the second narrowing waited for the first to land',
+    );
+  });
+
+  group('down a column', () {
+    // Upright, lying down, two digits standing as one, and a small kana
+    // leaning off its centre.
+    const text = 'リー12っ';
+    const style = TextStyle(fontSize: 10, color: Color(0xFF000000));
+
+    /// Where each glyph of the column lands, and narrowed how — the set
+    /// glyph's box through the canvas's transform at the moment it is set.
+    List<({String glyph, WordFit fit, Rect box})> setGlyphs(
+      void Function(Canvas canvas, WordSetter setWord) paint,
+    ) {
+      final canvas = Canvas(ui.PictureRecorder());
+      final set = <({String glyph, WordFit fit, Rect box})>[];
+      paint(canvas, (canvas, painter, origin, fit) {
+        set.add((
+          glyph: (painter.text! as TextSpan).text!,
+          fit: fit,
+          box: MatrixUtils.transformRect(
+            Matrix4.fromFloat64List(canvas.getTransform()),
+            origin & Size(painter.width * fit.x, painter.height * fit.y),
+          ),
+        ));
+      });
+      return set;
+    }
+
+    double column(
+      Canvas canvas,
+      WordSetter setWord, {
+      WordFit narrowing = wordFitsAsItIs,
+    }) => paintVerticalText(
+      canvas,
+      text,
+      style: style,
+      centerX: 10,
+      top: 0,
+      mainExtent: 60,
+      naturalCellExtent: 13,
+      narrowing: narrowing,
+      setWord: setWord,
+    );
+
+    test('each glyph is set at its share of the narrowing — a turned one '
+        'across its own axes', () {
+      final own = setGlyphs(column);
+      final set = setGlyphs(
+        (canvas, setWord) =>
+            column(canvas, setWord, narrowing: (x: 0.5, y: 0.25)),
+      );
+      expect(set.map((g) => g.glyph), ['リ', 'ー', '12', 'っ']);
+      for (var i = 0; i < set.length; i += 1) {
+        final (:x, :y) = own[i].fit;
+        final turned = set[i].glyph == 'ー';
+        expect(
+          set[i].fit,
+          turned ? (x: x * 0.25, y: y * 0.5) : (x: x * 0.5, y: y * 0.25),
+          reason: '${set[i].glyph}: its own fit, narrowed',
+        );
+      }
+    });
+
+    test('a narrowed column sets each glyph where the column scaled after '
+        'drew it', () {
+      const narrowing = (x: 0.5, y: 0.25);
+      final scaled = setGlyphs((canvas, setWord) {
+        canvas.scale(narrowing.x, narrowing.y);
+        column(canvas, setWord);
+      });
+      final narrowed = setGlyphs(
+        (canvas, setWord) => column(canvas, setWord, narrowing: narrowing),
+      );
+      expect(narrowed, hasLength(4), reason: 'fixture: four cells');
+      for (var i = 0; i < narrowed.length; i += 1) {
+        expect(
+          narrowed[i].box,
+          rectMoreOrLessEquals(scaled[i].box, epsilon: 1e-9),
+          reason: '${narrowed[i].glyph} lands where it was drawn',
+        );
+      }
+    });
+  });
+
+  test('paper alone sets its words scaled — every screen sets them from '
+      'their bakes', () {
+    // ⛔Paper cannot draw a word from its bake (`paintScaledText`); a
+    // screen that took the paper's setter would speckle again (F-224).
+    final scaled = [
+      for (final file in dartFilesUnder('lib'))
+        if (_squash(file.readAsStringSync()).contains(
+          'setWord:paintScaledText',
+        ))
+          libPath(file),
+    ];
+    expect(scaled, isNotEmpty, reason: 'premise: the sheet sets its words');
+    expect(
+      scaled.where((path) => !path.startsWith('lib/src/ui/timesheet/')),
+      isEmpty,
+    );
+  });
+
   test('every painter that sets a narrowed word paints again when its '
       'bake lands', () {
     // A CENSUS: the files that reach a narrowed word — set it themselves,
@@ -194,6 +322,7 @@ void main() {
     // joins the list.
     const census = {
       'lib/src/ui/text/word_condensation.dart': null,
+      'lib/src/ui/text/vertical_writing_text.dart': '_VerticalWritingPainter',
       'lib/src/ui/timeline/timeline_glyph_cache.dart': null,
       'lib/src/ui/canvas/flip_hud_overlay.dart': 'FlipHudPainter',
       'lib/src/ui/storyboard_cut_blocks_painter.dart':
@@ -217,11 +346,8 @@ void main() {
       r'TimelineGlyphPlacement|paintWindow\(',
     );
     final found = {
-      for (final file in Directory('lib').listSync(recursive: true))
-        if (file is File &&
-            file.path.endsWith('.dart') &&
-            reaching.hasMatch(file.readAsStringSync()))
-          file.path.replaceAll(r'\', '/'),
+      for (final file in dartFilesUnder('lib'))
+        if (reaching.hasMatch(file.readAsStringSync())) libPath(file),
     };
     expect(found, census.keys.toSet());
     for (final MapEntry(key: path, value: painter) in census.entries) {

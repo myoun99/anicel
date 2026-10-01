@@ -84,9 +84,42 @@ WordFit wordFit(Size word, Size room) => (
   y: wordCondensation(extent: word.height, room: room.height),
 );
 
+/// How a surface sets a word: [paintFittedText] on a screen,
+/// [paintScaledText] on paper — what a renderer both of them share is
+/// handed, so each sets its words its own way.
+typedef WordSetter =
+    void Function(
+      Canvas canvas,
+      TextPainter painter,
+      Offset origin,
+      WordFit fit,
+    );
+
 /// Paints [painter] with its top-left at [origin], narrowed by [fit] — THE
-/// way a word is set narrow, so no surface scales a word on its own.
+/// way a SCREEN sets a word narrow, so no screen scales a word on its own.
 void paintFittedText(
+  Canvas canvas,
+  TextPainter painter,
+  Offset origin, [
+  WordFit fit = wordFitsAsItIs,
+]) {
+  // F-224: a word narrowed under the legible size is drawn from its bake,
+  // as a tile word is — scaled here it speckles on the engine.
+  if (fit != wordFitsAsItIs &&
+      paintBakedWord(canvas, painter, origin, fit)) {
+    return;
+  }
+  paintScaledText(canvas, painter, origin, fit);
+}
+
+/// Paints [painter] with its top-left at [origin], scaled by [fit] — how
+/// PAPER sets a word narrow, and how a screen does until the word's bake
+/// lands.
+///
+/// ⛔Paper never draws a word from its bake: a bake is rasterised for the
+/// screen's own pixels, and a sheet is drawn at its panel's zoom or its
+/// export's scale, neither of which is the grid a bake is cut for.
+void paintScaledText(
   Canvas canvas,
   TextPainter painter,
   Offset origin, [
@@ -94,11 +127,6 @@ void paintFittedText(
 ]) {
   if (fit == wordFitsAsItIs) {
     painter.paint(canvas, origin);
-    return;
-  }
-  // F-224: a word narrowed under the legible size is drawn from its bake,
-  // as a tile word is — scaled here it speckles on the engine.
-  if (paintBakedWord(canvas, painter, origin, fit)) {
     return;
   }
   canvas

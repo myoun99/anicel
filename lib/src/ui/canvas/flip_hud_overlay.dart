@@ -686,6 +686,7 @@ class FlipHudPainter extends CustomPainter
       top: top,
       mainExtent: bottom - top,
       naturalCellExtent: fontSize * 1.15,
+      setWord: paintFittedText,
       cellPadding: fontSize * 0.15,
       maxCellWidth: box.width - 4,
       mainAlignment: 1,

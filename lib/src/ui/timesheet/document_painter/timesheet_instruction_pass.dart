@@ -225,6 +225,7 @@ class _TimesheetInstructionPass {
           needed / 2,
       mainExtent: needed,
       naturalCellExtent: naturalCellExtent,
+      setWord: paintScaledText,
       cellPadding: fontSize * (lineHeight - 1),
       maxCellWidth: glyphWidth,
       latinForm: VerticalLatinForm.upright,

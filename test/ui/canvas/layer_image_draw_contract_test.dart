@@ -267,7 +267,13 @@ void main() {
 /// through `drawHalvings`, and drawn 1:1 in the level's pixels
 /// (`_paintLandingAtLevel`). The 1:1 blit class, on the tile paint
 /// (`FilterQuality.none`), the blit a level tile gets.
-const int _knownRawDraws = 30;
+/// **31** on 2026-10-01 (board `F-224`, 유저 「8%정도에서 대사 텍스트가
+/// 많으면 안보이는데 … 더 잘 보이게」): +1 in text/word_bake — a narrowed word
+/// drawn from its bake (`paintBakedWord`), rasterised at the word's own
+/// device pixels and drawn back onto them: the 1:1 blit class, owning
+/// `FilterQuality.low` on its own Paint for the frames a zoom draws it from
+/// the bake of the narrowing before.
+const int _knownRawDraws = 31;
 
 final RegExp _rawImageDraw = RegExp(
   r'\.drawImage\(|\.drawImageRect\(|\.drawImageNine\(',

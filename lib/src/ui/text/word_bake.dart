@@ -7,6 +7,7 @@ import 'package:flutter/rendering.dart' show CustomPainter;
 import 'package:flutter/scheduler.dart';
 
 import '../../core/bake_once_lru.dart';
+import '../../services/straight_rgba_image.dart' show uploadRawRgba;
 
 /// A word's coverage as its final device pixels: [alpha] is [width] ×
 /// [height], one byte a pixel, with a one-pixel margin on every side; the
@@ -309,28 +310,43 @@ final class BakedWords {
     if (exact != null) {
       return exact;
     }
-    unawaited(_images.ensure(key, () => _land(key, bake)));
+    if (!_baking.contains(word)) {
+      unawaited(_images.ensure(key, () => _land(key, bake)));
+    }
     final latest = _latestOf[word];
     return latest == null ? null : _images.peek(latest);
   }
+
+  /// The words with a bake in flight. One narrowing at a time a word: a
+  /// zoom moves its narrowing every frame, and the narrowings it passes
+  /// through are drawn from the bake it has instead of each baked in turn.
+  final Set<_Word> _baking = {};
 
   Future<ui.Image?> _land(
     _Bake key,
     Future<BakedWordCoverage?> Function() bake,
   ) async {
-    final coverage = await bake();
-    if (coverage == null) {
+    _baking.add(key.word);
+    try {
+      final coverage = await bake();
+      if (coverage == null) {
+        return null;
+      }
+      final image = await _imageOf(coverage);
+      // Bounded with the images it points into: past four words an image,
+      // the stale ones only point at retired bakes.
+      if (_latestOf.length > 4 * _capacity) {
+        _latestOf.clear();
+      }
+      _latestOf[key.word] = key;
+      _announceLanding();
+      return image;
+    } on Object {
+      // A bake the engine refused leaves the word painted as it always was.
       return null;
+    } finally {
+      _baking.remove(key.word);
     }
-    final image = await _imageOf(coverage);
-    // Bounded with the images it points into: past four words an image,
-    // the stale ones only point at retired bakes.
-    if (_latestOf.length > 4 * _capacity) {
-      _latestOf.clear();
-    }
-    _latestOf[key.word] = key;
-    _announceLanding();
-    return image;
   }
 
   void _announceLanding() {
@@ -346,24 +362,17 @@ final class BakedWords {
       ..scheduleFrame();
   }
 
-  /// [coverage] as white ink on clear — tinted where it is drawn.
+  /// [coverage] as white ink on clear, premultiplied — tinted where it is
+  /// drawn.
   static Future<ui.Image> _imageOf(BakedWordCoverage coverage) {
     final rgba = Uint8List(coverage.width * coverage.height * 4);
     for (var i = 0; i < coverage.alpha.length; i += 1) {
       final a = coverage.alpha[i];
-      rgba[i * 4] = 255;
-      rgba[i * 4 + 1] = 255;
-      rgba[i * 4 + 2] = 255;
+      rgba[i * 4] = a;
+      rgba[i * 4 + 1] = a;
+      rgba[i * 4 + 2] = a;
       rgba[i * 4 + 3] = a;
     }
-    final done = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      rgba,
-      coverage.width,
-      coverage.height,
-      ui.PixelFormat.rgba8888,
-      done.complete,
-    );
-    return done.future;
+    return uploadRawRgba(rgba, width: coverage.width, height: coverage.height);
   }
 }

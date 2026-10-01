@@ -22,13 +22,14 @@ import 'vertical_writing_text.dart';
 /// how far down it runs; [style] carries the whole look, so the screen's
 /// w600 12pt and the sheet's regular 9pt are values rather than two
 /// placers. `style.fontSize` must be set — the vertical cell sizes
-/// against it.
+/// against it. [setWord] is how the host sets a glyph ([WordSetter]).
 void paintDialogueFitColumn(
   Canvas canvas,
   String text, {
   required Offset topCenter,
   required double extent,
   required TextStyle style,
+  required WordSetter setWord,
   double maxCrossExtent = double.infinity,
 }) {
   final glyphs = text.characters.toList(growable: false);
@@ -53,6 +54,7 @@ void paintDialogueFitColumn(
       painter: painter,
       center: Offset(topCenter.dx, topCenter.dy + centers[i]),
       fontSize: style.fontSize!,
+      setWord: setWord,
       maxCrossExtent: maxCrossExtent,
       alongColumnScale: condense,
     );

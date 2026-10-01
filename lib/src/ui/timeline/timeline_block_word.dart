@@ -351,8 +351,7 @@ class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
     final slot = _set.height / _slots;
     canvas
       ..save()
-      ..translate(origin.dx, origin.dy)
-      ..scale(fit.x, fit.y);
+      ..translate(origin.dx, origin.dy);
     paintVerticalText(
       canvas,
       _text,
@@ -361,6 +360,10 @@ class RenderTimelineBlockColumn extends RenderTimelineBuiltWord {
       top: 0,
       mainExtent: _set.height,
       naturalCellExtent: slot,
+      // F-224: narrowed glyph by glyph, each set at its share — scaled as
+      // a whole after, a narrowed glyph speckles.
+      narrowing: fit,
+      setWord: paintFittedText,
       cellPadding: slot - _fontSize,
       maxCellWidth: _set.width,
       mainAlignment: 0.5,

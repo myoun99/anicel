@@ -25,6 +25,7 @@ import '../text/vertical_writing.dart'
     show verticalTextCells, verticalTextSpanCount;
 import '../canvas/viewport_canvas_transform.dart';
 import '../text/vertical_writing_text.dart';
+import '../text/word_condensation.dart' show paintScaledText;
 import '../theme/app_theme.dart';
 import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/timeline_instruction_row_visual.dart'
@@ -890,6 +891,7 @@ class TimesheetDocumentPainter extends CustomPainter
       top: top,
       mainExtent: rows * TimesheetDocumentLayout.rowHeight,
       naturalCellExtent: TimesheetDocumentLayout.rowHeight,
+      setWord: paintScaledText,
       maxCellWidth: columnWidth - 2,
     );
   }

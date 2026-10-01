@@ -205,6 +205,7 @@ class _TimesheetSePass {
         color: TimesheetDocumentPainter._ink,
         fontSize: 9,
       ),
+      setWord: paintScaledText,
     );
   }
 

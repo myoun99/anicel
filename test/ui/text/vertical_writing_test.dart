@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:anicel/src/ui/text/vertical_writing.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
+import 'package:anicel/src/ui/text/word_condensation.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -474,6 +475,7 @@ void main() {
         painter: painter,
         center: Offset.zero,
         fontSize: 14,
+        setWord: paintScaledText,
         maxCrossExtent: column,
         alongColumnScale: (extent) {
           advance = extent;
@@ -505,6 +507,7 @@ void main() {
         top: 0,
         mainExtent: 52,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(canvas.glyphCount, 4);
       expect(canvas.rotations.length, 1);
@@ -521,6 +524,7 @@ void main() {
         top: 0,
         mainExtent: 52,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(canvas.glyphCount, 2);
       expect(canvas.rotations, isEmpty);
@@ -536,6 +540,7 @@ void main() {
         top: 0,
         mainExtent: 13,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       // fontSize is min(10, 13 - 3) = 10, so the shift is 5px each way from
       // the cell centre (10, 6.5).
@@ -553,6 +558,7 @@ void main() {
         top: 0,
         mainExtent: 50,
         naturalCellExtent: 13,
+        setWord: paintScaledText,
       );
       expect(painted, 0);
       expect(canvas.calls, isEmpty);
