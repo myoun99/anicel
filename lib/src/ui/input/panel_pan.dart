@@ -84,9 +84,12 @@ class _PanelPanDriverState extends State<PanelPanDriver>
   ///
   /// 🚨★**FINGERS THAT LAND TOGETHER ARE ONE GESTURE**, the canvas's law
   /// (PEN-12 #4): a finger that makes a 「없음」 count holds every finger
-  /// already down whose scroll has not started, so a two-finger drag set to
-  /// 「없음」 cannot creep with the finger that landed first. A scroll that
-  /// HAS started keeps its finger — the arena has already answered for it.
+  /// already down whose gesture has not started. The scroller lets go of
+  /// them by itself — a finger it may not take makes it withdraw whole
+  /// (`handleNonAllowedPointer`) — but an EDIT drag takes every finger while
+  /// one finger draws (결정 10), and without the hold it would edit with the
+  /// finger that landed first. A gesture that HAS started keeps its finger:
+  /// the arena has already answered for it.
   ///
   /// ⚠️A lone finger set to 「없음」 holds nothing: the scrollers never take
   /// it ([_FingerGatedDevices]), and a TAP — a cell picked, a button pressed

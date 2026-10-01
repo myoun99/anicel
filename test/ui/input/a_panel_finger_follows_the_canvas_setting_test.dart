@@ -11,10 +11,12 @@ import 'package:anicel/src/ui/input/panel_pan.dart';
 void main() {
   late ScrollController controller;
   late int taps;
+  late int edits;
 
   setUp(() {
     controller = ScrollController();
     taps = 0;
+    edits = 0;
   });
   tearDown(() {
     controller.dispose();
@@ -35,7 +37,14 @@ void main() {
               itemBuilder: (context, index) => GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => taps += 1,
-                child: Text('row $index'),
+                // An edit drag, on the timeline's own device set: it takes
+                // a finger exactly while one finger draws (결정 10).
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  supportedDevices: AppInput.timelineEditPanDevices,
+                  onPanStart: (_) => edits += 1,
+                  child: Text('row $index'),
+                ),
               ),
             ),
           ),
@@ -108,5 +117,26 @@ void main() {
 
     await dragWith(tester, 1);
     expect(controller.offset, greaterThan(0), reason: 'one finger flips');
+  });
+
+  // The scroller lets go of the first finger on its own when the second is
+  // one it may not take; an EDIT drag takes every finger while one finger
+  // draws, so the finger that landed first is held here or it edits.
+  testWidgets('one finger drawing, two set to 「없음」: a two-finger drag '
+      'neither scrolls nor edits — the first finger is held too', (
+    tester,
+  ) async {
+    await pumpPanel(
+      tester,
+      const AppInputSettings(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+        touchDragTwoFingers: CanvasTouchDragAction.none,
+      ),
+    );
+
+    await dragWith(tester, 2);
+
+    expect(controller.offset, 0);
+    expect(edits, 0);
   });
 }
