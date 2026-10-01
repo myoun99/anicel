@@ -86,7 +86,16 @@ sealed class SheetWindow {
   /// its cut's canvas ([SheetPictureWindow]) — on [grid], the one rounding
   /// every edge of the sheet goes through (F-216).
   Path takesOnScreen(SheetDeviceGrid grid, CanvasViewport panelViewport) =>
-      Path()..addRect(screenRect(panelViewport));
+      Path()..addRect(shownOn(grid));
+
+  /// The window's rect as the screen shows it: cut on [grid] — the one
+  /// rounding every edge of the sheet goes through — so the live frame and
+  /// the print clip the same whole pixels, whichever space they reach the
+  /// rect from (F-215: a book's live layer reaches its pages' windows moved
+  /// down the stack, each page's print reaches them where they lie, and
+  /// the unrounded corner of one came out a level apart). Nearest lines: a
+  /// pixel on the edge two windows share is exactly one of theirs.
+  Rect shownOn(SheetDeviceGrid grid) => grid.snap(documentRect);
 
   /// How much wider than its surface's own shape this window shows it
   /// ([SheetInkPlacement.stretch]).
@@ -118,8 +127,9 @@ sealed class SheetWindow {
   /// ([sheetInkRegions]). The surface under it does not move.
   SheetWindow shiftedBy(Offset by);
 
-  /// The window's on-screen rect under the panel transform — what its view
-  /// is clipped to on screen.
+  /// The window's on-screen rect under the panel transform, unrounded —
+  /// where its view lays its surface ([sheetInkStretch]). What the screen
+  /// shows of it is cut on the grid ([shownOn]).
   Rect screenRect(CanvasViewport panelViewport) => Rect.fromLTWH(
     panelViewport.panX + panelViewport.zoom * documentRect.left,
     panelViewport.panY + panelViewport.zoom * documentRect.top,
@@ -370,8 +380,8 @@ SheetInkAbove sheetInkAbovePicture(SheetPictureOverInk over) => (
   takes: (grid) => pictureShowsOnScreen(grid, over),
 );
 
-/// Where a [window] shows its own surface on screen: its rect
-/// ([SheetWindow.screenRect]), less what it [yieldsTo] there.
+/// Where a [window] shows its own surface on screen: its rect on the grid
+/// ([SheetWindow.shownOn]), less what it [yieldsTo] there.
 typedef SheetInkShown = ({SheetWindow window, Rect shows, List<Path> yieldsTo});
 
 /// Where each of [windows] shows its own surface on screen, in their order:
@@ -389,7 +399,7 @@ List<SheetInkShown> sheetInkWindowsShown(
   for (var index = 0; index < windows.length; index += 1)
     (
       window: windows[index],
-      shows: windows[index].screenRect(viewport),
+      shows: windows[index].shownOn(grid),
       yieldsTo: [
         for (final upper in [
           for (final later in windows.skip(index + 1))
@@ -495,11 +505,11 @@ void printSheetInkAsLive(
   }
 }
 
-/// What a sheet's painter prints its ink by: on screen — a [viewport] and
-/// the ink's surfaces ([inkSurfaceFor]) — as the live windows draw it
-/// ([printSheetInkAsLive]); for an export, its rasters in paper space, the
-/// painter's own. ONE decision for the conte's, the envelope's and the
-/// timesheet's painters (F-215).
+/// How a sheet's painter prints its ink on screen — a [viewport] and the
+/// ink's surfaces ([inkSurfaceFor]) — as the live windows draw it
+/// ([printSheetInkAsLive]), ONE way for the conte's, the envelope's and the
+/// timesheet's painters (F-215). An export hands in rasters and no
+/// surfaces, and the painter lays those in paper space itself.
 mixin SheetInkOnScreen {
   CanvasViewport? get viewport;
   double get effectiveRatio;
@@ -509,11 +519,9 @@ mixin SheetInkOnScreen {
   /// never composites twice.
   Set<BrushFrameKey> get liveInkKeys;
 
-  /// Whether the ink is printed as the live windows draw it.
-  bool get printsInkAsLive => viewport != null && inkSurfaceFor != null;
-
   /// Prints [ink] as the live windows draw it, the pictures [above] taking
-  /// their place over it — nothing where the ink is not printed that way.
+  /// their place over it — nothing without a view and surfaces (an
+  /// export).
   void printInkAsLive(
     Canvas canvas,
     Size size,

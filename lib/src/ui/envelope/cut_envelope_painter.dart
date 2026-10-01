@@ -116,7 +116,7 @@ class CutEnvelopePainter extends CustomPainter
     if (_draws(SheetPaintLayer.content)) {
       _paintContent(canvas);
     }
-    if (_draws(SheetPaintLayer.ink) && !printsInkAsLive) {
+    if (_draws(SheetPaintLayer.ink)) {
       _paintInk(canvas);
     }
     canvas.restore();

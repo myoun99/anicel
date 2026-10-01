@@ -796,7 +796,7 @@ class TimesheetDocumentPainter extends CustomPainter
       _bands.paintCutEndLine(canvas);
       _se.paintSeCrossingMarks(canvas);
     }
-    if (_draws(SheetPaintLayer.ink) && !printsInkAsLive) {
+    if (_draws(SheetPaintLayer.ink)) {
       _paintInk(canvas);
     }
 

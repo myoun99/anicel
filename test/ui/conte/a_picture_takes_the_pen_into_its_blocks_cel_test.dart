@@ -697,10 +697,16 @@ void main() {
       final pageTopLeft =
           conteBodyTopLeft(tester) -
           tester.getTopLeft(find.byKey(boundary));
-      return contePictureSlot(
-        page.cells.single,
-        page.metrics,
-      ).shift(pageTopLeft);
+      // On the screen: the view's zoom lays a paper unit that many logical
+      // pixels wide.
+      final zoom = (view ?? CanvasViewport()).zoom;
+      final slot = contePictureSlot(page.cells.single, page.metrics);
+      return Rect.fromLTWH(
+        pageTopLeft.dx + zoom * slot.left,
+        pageTopLeft.dy + zoom * slot.top,
+        zoom * slot.width,
+        zoom * slot.height,
+      );
     }
 
     Future<_Screen> shoot(WidgetTester tester) async {
@@ -779,9 +785,8 @@ void main() {
         'draw them (유저 2026-10-01: 「허용 on하면 칸 잉크는 선명해지고 '
         '살짝오른쪽이동, 픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀? 이동. 대체 '
         '왜?」)', (tester) async {
-      // A ratio, a zoom and a pan that leave every edge inside a device
-      // pixel: the print's snap and the live views' each have something to
-      // round.
+      // A ratio that leaves edges inside device pixels, so the print's snap
+      // and the live views' each have something to round.
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
       // The camera at 4× frames canvas x 240–400, y 135–225: white, and
@@ -798,21 +803,50 @@ void main() {
         return recorder.endRecording().toImage(160, 90);
       }))!;
       addTearDown(printed.dispose);
-      await pumpPanel(
-        tester,
-        framed(zoom: 4, inkId: 'band'),
-        printed: printed,
-        band: hatched,
-        view: CanvasViewport(zoom: 1.37, panX: 13.3, panY: 7.7),
-      );
-      final off = await shoot(tester);
-      brushOn.value = true;
-      final on = await shoot(tester);
-      expect(
-        on.unlike(off),
-        isEmpty,
-        reason: 'device pixels the brush switch changed',
-      );
+      bool hatch(Color color) =>
+          color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
+      bool isBlue(Color color) => color == blue;
+      // Swept, not sampled: a shift under a pixel moves a nearest sample
+      // only where it carries one across a boundary, and one view can sit
+      // where neither print does.
+      final moved = <String>[];
+      for (final zoom in const [1.13, 1.37, 1.71, 2.29]) {
+        for (final (panX, panY) in const [(13.3, 7.7), (5.61, 21.47)]) {
+          final slot = await pumpPanel(
+            tester,
+            framed(zoom: 4, inkId: 'band'),
+            printed: printed,
+            band: hatched,
+            view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
+          );
+          final off = await shoot(tester);
+          // The band beside the picture: no silhouette there to stand in
+          // for the handwriting.
+          final band = Rect.fromLTWH(
+            slot.right + 20,
+            slot.top + 10,
+            60,
+            slot.height - 20,
+          );
+          expect(
+            off.countIn(band, hatch),
+            greaterThan(200),
+            reason: 'LIVENESS — the band\'s handwriting prints at $zoom',
+          );
+          expect(
+            off.countIn(slot, isBlue),
+            greaterThan(200),
+            reason: 'LIVENESS — the picture prints at $zoom',
+          );
+          brushOn.value = true;
+          final on = await shoot(tester);
+          final unlike = on.unlike(off);
+          if (unlike.isNotEmpty) {
+            moved.add('at $zoom ($panX, $panY): $unlike');
+          }
+        }
+      }
+      expect(moved, isEmpty, reason: 'device pixels the brush switch moved');
     });
 
     testWidgets('the camera\'s work is printed over the live picture — its '

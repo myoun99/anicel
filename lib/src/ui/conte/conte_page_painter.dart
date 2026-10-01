@@ -148,7 +148,6 @@ class ContePagePainter extends CustomPainter
   @override
   void paint(Canvas canvas, Size size) {
     final printed = marks();
-    final asLive = printsInkAsLive;
     SheetCanvasPrinter(
       style: conteTextStyle,
       layers: layers,
@@ -167,10 +166,7 @@ class ContePagePainter extends CustomPainter
         devicePixelRatio: effectiveRatio,
         paper: Size(metrics.pageWidth, metrics.pageHeight),
       ),
-      [
-        for (final mark in printed)
-          if (!(asLive && mark is SheetInk)) mark,
-      ],
+      printed,
     );
     if (layers?.contains(SheetPaintLayer.ink) ?? true) {
       printInkAsLive(

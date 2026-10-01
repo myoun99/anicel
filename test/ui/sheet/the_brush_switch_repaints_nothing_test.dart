@@ -16,6 +16,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -28,6 +29,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
@@ -99,10 +101,14 @@ void main() {
     }))!;
   }
 
-  /// A session over [_project] with the cut's art cel red all over, the
-  /// brush switch as [brushOn] says — and that cel's key.
-  BrushFrameKey openSession({required bool brushOn}) {
-    session = EditorSessionManager(initialProject: _project());
+  /// A session over [_project] on a [sheet] timesheet with the cut's art
+  /// cel red all over, the brush switch as [brushOn] says — and that cel's
+  /// key.
+  BrushFrameKey openSession({
+    required bool brushOn,
+    TimesheetSheetKind sheet = TimesheetSheetKind.sixSeconds,
+  }) {
+    session = EditorSessionManager(initialProject: _project(sheet: sheet));
     addTearDown(session.dispose);
     final drawn = session.cutById(_drawn)!;
     final key = session.brushFrameKeyForCut(drawn, _art, _artFrame);
@@ -211,9 +217,12 @@ void main() {
   for (final sheet in sheets) {
     /// The sheet's host, rebuilt on every signal as the workspace rebuilds
     /// it (`workspace_tabs.dart`), with the brush off and all it shows
-    /// drawn.
-    Future<void> mount(WidgetTester tester) async {
-      openSession(brushOn: false);
+    /// drawn — on a [kind] timesheet.
+    Future<void> mount(
+      WidgetTester tester, {
+      TimesheetSheetKind kind = TimesheetSheetKind.sixSeconds,
+    }) async {
+      openSession(brushOn: false, sheet: kind);
       final (host, write) = (await tester.runAsync(sheet.mount))!;
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -290,17 +299,25 @@ void main() {
     }
 
     // The conte's is pinned with its pictures, beside its other live pins
-    // (`a_picture_takes_the_pen_into_its_blocks_cel_test.dart`).
-    if (sheet.sheet != 'conte') {
-      testWidgets('🗣️F-215: ${sheet.sheet}: the handwriting is the same '
-          'device pixels with the brush on as off — printed where and as '
-          'its live window draws it (유저 2026-10-01: 「허용 on하면 칸 '
-          '잉크는 선명해지고 살짝오른쪽이동 … 대체 왜?」)', (tester) async {
+    // (`a_picture_takes_the_pen_into_its_blocks_cel_test.dart`). The
+    // timesheet's twice: the 3-second sheet lays its writing wider than its
+    // surface (`SheetInkPlacement.stretch`), the 6-second does not.
+    for (final kind in [
+      if (sheet.sheet != 'conte') TimesheetSheetKind.sixSeconds,
+      if (sheet.sheet == 'timesheet') TimesheetSheetKind.threeSeconds,
+    ]) {
+      testWidgets('🗣️F-215: ${sheet.sheet}'
+          '${sheet.sheet == 'timesheet' ? ' (${kind.name})' : ''}: the '
+          'handwriting is the same device pixels with the brush on as off — '
+          'printed where and as its live window draws it (유저 2026-10-01: '
+          '「허용 on하면 칸 잉크는 선명해지고 살짝오른쪽이동 … 대체 왜?」)', (
+        tester,
+      ) async {
         // A ratio that leaves the ink's edges inside device pixels, so the
         // print and the live window each have something to snap.
         tester.view.devicePixelRatio = 1.25;
         addTearDown(tester.view.resetDevicePixelRatio);
-        await mount(tester);
+        await mount(tester, kind: kind);
         final off = await shoot(tester, pixelRatio: 1.25);
         brushAllowed.value = true;
         await _settle(tester);
@@ -529,7 +546,7 @@ bool _isBlue(Color color) =>
 
 const CanvasSize _canvas = CanvasSize(width: 640, height: 360);
 
-Project _project() => Project(
+Project _project({required TimesheetSheetKind sheet}) => Project(
   id: const ProjectId('switch-project'),
   name: 'Switch',
   createdAt: DateTime.utc(2026, 9, 29),
@@ -543,6 +560,7 @@ Project _project() => Project(
           name: '39',
           duration: 10,
           canvasSize: _canvas,
+          metadata: CutMetadata(sheetKind: sheet),
           layers: [
             // The block at the cut's start is written on: its band prints,
             // and a live brush's window over it is what stands the print
