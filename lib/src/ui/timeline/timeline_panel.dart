@@ -691,7 +691,9 @@ class _TimelinePanelState extends State<TimelinePanel> {
           // right.
           TimelineCommandBar(
             leading: showToolbar ? widget.timelineActionToolbar : null,
-            cluster: keptWhileSame(
+            // The facts typed at the call: inferred, a field missing from
+            // them compiles and throws at the first build instead.
+            cluster: keptWhileSame<Type, TimelineViewClusterFacts>(
               _kept,
               TimelineViewCluster,
               (
