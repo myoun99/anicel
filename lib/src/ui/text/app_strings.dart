@@ -4120,7 +4120,10 @@ enum AppStrings {
     'noticeFillRegionOpen': '領域が閉じていないため塗りつぶせません（キャンバス外まで塗るには囲まれた領域が必要です）。',
     'noticeCameraKeysCopied': 'カメラのキーフレームを After Effects 用にコピーしました。',
     'tlSameAsSelected': '選択中と同じ種類',
-    'tlKindAnimation': '動画',
+    // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
+    // 이름바꾸자. 일본어도 アニメーション」). ⛔Not 動画 — that word is the
+    // in-between PROCESS (`layerProcess.inbetween`), another axis.
+    'tlKindAnimation': 'アニメーション',
     'tlKindStoryboard': '絵コンテ',
     'tlKindImage': '画像',
     'tlKindAdjustment': '調整レイヤー',
@@ -5470,7 +5473,10 @@ enum AppStrings {
         '영역이 닫혀 있지 않아 채우지 못했습니다 (캔버스 밖까지 채우려면 둘러싸인 영역이 필요합니다).',
     'noticeCameraKeysCopied': '카메라 키프레임을 After Effects 용으로 복사했습니다.',
     'tlSameAsSelected': '선택한 것과 같은 종류',
-    'tlKindAnimation': '동화',
+    // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
+    // 이름바꾸자」). ⛔Not 동화 — that word is the in-between PROCESS
+    // (`layerProcess.inbetween`), another axis.
+    'tlKindAnimation': '애니메이션',
     'tlKindStoryboard': '콘티',
     'tlKindImage': '이미지',
     'tlKindAdjustment': '조정 레이어',
