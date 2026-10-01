@@ -344,6 +344,9 @@ typedef struct {
   // For each tip mask row, its first and last inked column (first > last:
   // a bare row). Null when the tip is rotated or absent. v39.
   const int32_t* tip_row_ink;
+  // The table the dab lays its share through (qa_dab_even), or NULL where
+  // it lays whole. v41.
+  const double* evening;
 } qa_dab_spec;
 
 QA_EXPORT int32_t qa_dab_spec_sizeof(void) {
@@ -489,6 +492,25 @@ static inline int qa_dab_edge(
   return 1;
 }
 
+// 🚨★★★A DAB LAYS ITS SHARE OF ONE STAMP PER TENTH OF ITS SIZE (ABI 41; 유저
+// 2026-10-01, board `one-pixel-steps-change-a-brush-with-its-size`: 「엔진이
+// 쌓임을 환산 — 크기와 무관하게(클튜처럼)」, 「환산은 커널에서 — 모든
+// 브러시」). The law and its reasons are written once, beside `stampShareOf`
+// in brush_dab_share.dart. A dab that lays a share lays `1 - (1 - a)^share`
+// where it would lay `a` whole — read off the table Dart built for that
+// share (`evening`, 1025 entries over a in [0, 1]), linearly between two
+// entries: no pixel pays a power, and the Dart and C kernels read the same
+// numbers. `evenedLaid`'s arithmetic, operation by operation.
+static inline double qa_dab_even(const double* table, double whole) {
+  const double x = whole * 1024.0;
+  if (x >= 1024.0) {
+    return table[1024];
+  }
+  const int32_t i = (int32_t)x;
+  const double low = table[i];
+  return low + (table[i + 1] - low) * (x - (double)i);
+}
+
 // 🚨★★★A DAB'S OPACITY IS THE LEVEL IT SETTLES AT (F-205, 유저 2026-09-28:
 // 「최대 100%로 해두더라도 필압 약하게하면 해당 선들 겹쳐도 필압에맞춰서
 // 10%만큼만 진해진다」). A dab raises what is under it TOWARDS its opacity,
@@ -513,6 +535,8 @@ static inline int qa_dab_edge(
 // Same arithmetic, operation by operation, as blendDabTilesDart and the
 // reference blendBrushDabStrokePixel. Returns a negative alpha where the
 // pixel already stands at the ceiling and the dab lays nothing.
+//
+// What the dab would lay whole goes through its share first (qa_dab_even).
 static inline double qa_dab_source_alpha(
     const qa_dab_spec* s,
     double coverage,
@@ -520,12 +544,14 @@ static inline double qa_dab_source_alpha(
     double destination_alpha,
     int erase) {
   if (erase || s->dab_opacity >= 1.0) {
-    return s->source_alpha_norm * effective_opacity * s->dab_flow;
+    const double whole = s->source_alpha_norm * effective_opacity * s->dab_flow;
+    return s->evening == NULL ? whole : qa_dab_even(s->evening, whole);
   }
   if (destination_alpha >= s->dab_opacity) {
     return -1.0;
   }
-  return s->source_alpha_norm * coverage * s->dab_flow *
+  const double whole = s->source_alpha_norm * coverage * s->dab_flow;
+  return (s->evening == NULL ? whole : qa_dab_even(s->evening, whole)) *
          (s->dab_opacity - destination_alpha) / (1.0 - destination_alpha);
 }
 
@@ -796,6 +822,18 @@ static int32_t qa_dab_blend_pairs(
     if (erase || s->dab_opacity >= 1.0) {
       source_alpha =
           qa_d2_mul(qa_d2_mul(alpha_norm, qa_d2_load(effective)), flow);
+      if (s->evening != NULL) {
+        // Its share, lane by lane (qa_dab_even) — a table read, not a
+        // vector op.
+        double lanes[2];
+        qa_d2_store(lanes, source_alpha);
+        for (int i = 0; i < 2; i += 1) {
+          if (keep[i]) {
+            lanes[i] = qa_dab_even(s->evening, lanes[i]);
+          }
+        }
+        source_alpha = qa_d2_load(lanes);
+      }
     } else {
       // Under its ceiling a dab's alpha depends on what each pixel already
       // holds (qa_dab_source_alpha), so the lanes take the scalar's own
@@ -5785,4 +5823,7 @@ QA_EXPORT int32_t qa_cel_pixel_pass_tile(const uint8_t* in_pixels,
 // v40: qa_tile_span gains tile_wide - the stroke tile's 16-bit plane - and
 // qa_dab_blend_tile takes it: a dab reads what is under it from the plane
 // and writes both planes (qa_dab_store). Sizeof moves.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 40; }
+// v41: qa_dab_spec gains evening - the table a dab lays its share of one
+// stamp per tenth of its size through (qa_dab_even) - and the laid alpha
+// reads it in qa_dab_source_alpha and the pair path. Sizeof moves.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 41; }

@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import '../models/rgba_color.dart';
 import '../models/stroke_pixel.dart';
+import 'brush_dab_share.dart';
 
 double effectiveSourceAlpha({
   required RgbaColor source,
@@ -35,12 +38,14 @@ double? _contributingSourceAlpha({
 
 /// Source-over onto a pixel of a stroke: what is under the source comes off
 /// the destination's 16-bit plane, and the result lands on both planes
-/// ([StrokePixel], ABI 40).
+/// ([StrokePixel], ABI 40). With an [evening] table the source lays its
+/// share of what it would lay whole ([evenedLaid], ABI 41).
 StrokePixel strokeSourceOver({
   required RgbaColor source,
   required StrokePixel destination,
   required double opacity,
   required double flow,
+  Float64List? evening,
 }) {
   final sourceAlpha = _contributingSourceAlpha(
     source: source,
@@ -53,7 +58,9 @@ StrokePixel strokeSourceOver({
   return strokeSourceOverAt(
     source: source,
     destination: destination,
-    sourceAlpha: sourceAlpha,
+    sourceAlpha: evening == null
+        ? sourceAlpha
+        : evenedLaid(evening, sourceAlpha),
   );
 }
 
@@ -107,21 +114,23 @@ StrokePixel strokeSourceOverAt({
 /// Destination-out: removes [destination] alpha by the source's effective
 /// alpha (the eraser blend). Straight-alpha convention: RGB stays the
 /// destination's; a fully erased pixel zeroes out entirely, matching
-/// [strokeSourceOver]'s zero-alpha handling.
+/// [strokeSourceOver]'s zero-alpha handling — and its [evening].
 StrokePixel strokeDestinationOut({
   required RgbaColor source,
   required StrokePixel destination,
   required double opacity,
   required double flow,
+  Float64List? evening,
 }) {
-  final sourceAlpha = _contributingSourceAlpha(
+  final whole = _contributingSourceAlpha(
     source: source,
     opacity: opacity,
     flow: flow,
   );
-  if (sourceAlpha == null) {
+  if (whole == null) {
     return destination;
   }
+  final sourceAlpha = evening == null ? whole : evenedLaid(evening, whole);
   final destinationAlpha = destination.a / 65535.0;
   final outAlpha = destinationAlpha * (1.0 - sourceAlpha);
 

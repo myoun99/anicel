@@ -213,7 +213,15 @@ import 'dart:io';
 ///   `one-pixel-steps-change-a-brush-with-its-size` Q2, 유저 2026-10-01 「a는
 ///   제안한대로 16비트?」). The bytes stay the view everything downstream
 ///   reads. `qa_tile_span_sizeof` moves.
-const int kQaEngineAbiVersion = 40;
+/// - v41: `qa_dab_spec.evening` — the table a dab lays its share of one
+///   stamp per tenth of its size through (`stampShareOf`, `qa_dab_even`) —
+///   and the laid alpha reads it, so a brush piles up the same at every
+///   size (board `one-pixel-steps-change-a-brush-with-its-size`, 유저
+///   2026-10-01 「환산은 커널에서 — 모든 브러시」). The table is built once
+///   per share in Dart and copied into the batch arena once per batch, so no
+///   pixel pays a power and both kernels read the same numbers.
+///   `qa_dab_spec_sizeof` moves.
+const int kQaEngineAbiVersion = 41;
 
 /// Test hook: point EVERY engine loader at a locally built binary.
 ///

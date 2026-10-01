@@ -34,6 +34,7 @@ class BrushDab {
     this.antiAlias = BrushAntiAlias.high,
     this.erase = false,
     this.stamp,
+    this.pathStep,
   }) {
     if (!textureScale.isFinite || textureScale <= 0.0) {
       throw ArgumentError.value(
@@ -66,6 +67,7 @@ class BrushDab {
     _validateFinite(angleDegrees, 'angleDegrees');
     _validateSquareIsAxisAligned(tipShape, tipMask, roundness, angleDegrees);
     _validateSequence(sequence);
+    _validatePathStep(pathStep);
   }
 
   final CanvasPoint center;
@@ -186,6 +188,18 @@ class BrushDab {
   /// the rect.
   final BrushStampImage? stamp;
 
+  /// How long a stretch of the stroke this dab stands for, in canvas
+  /// pixels — the step the interpolator laid it at. NULL for the dab that
+  /// opens a stroke (a tap is only that) and for a dab not laid along a path.
+  ///
+  /// 🚨★★★EVERY DAB LAYS WHAT THIS STEP IS WORTH (유저 2026-10-01
+  /// `one-pixel-steps-change-a-brush-with-its-size` A: 「엔진이 쌓임을 환산 —
+  /// 크기와 무관하게(클튜처럼)」, Q2 「환산은 커널에서 — 모든 브러시」): the
+  /// steps floor at one pixel, so a big brush lays far more stamps per width
+  /// than a small one and piled up darker and harder-edged for it. The
+  /// kernels even that out on the laid alpha (`stampShareOf`).
+  final double? pathStep;
+
   BrushDab copyWith({
     CanvasPoint? center,
     int? color,
@@ -214,6 +228,7 @@ class BrushDab {
     BrushAntiAlias? antiAlias,
     bool? erase,
     BrushStampImage? stamp,
+    double? pathStep,
   }) {
     return BrushDab(
       center: center ?? this.center,
@@ -243,6 +258,7 @@ class BrushDab {
       antiAlias: antiAlias ?? this.antiAlias,
       erase: erase ?? this.erase,
       stamp: stamp ?? this.stamp,
+      pathStep: pathStep ?? this.pathStep,
     );
   }
 
@@ -279,6 +295,7 @@ class BrushDab {
     if (antiAlias != BrushAntiAlias.high) 'antiAlias': antiAlias.name,
     if (erase) 'erase': true,
     if (stamp != null) 'stamp': stamp!.toJson(),
+    if (pathStep != null) 'pathStep': pathStep,
   };
 
   factory BrushDab.fromJson(Map<String, dynamic> json) {
@@ -327,6 +344,7 @@ class BrushDab {
       stamp: json['stamp'] == null
           ? null
           : BrushStampImage.fromJson(json['stamp'] as Map<String, dynamic>),
+      pathStep: (json['pathStep'] as num?)?.toDouble(),
     );
   }
 
@@ -360,7 +378,8 @@ class BrushDab {
           other.textureDensity == textureDensity &&
           other.antiAlias == antiAlias &&
           other.erase == erase &&
-          other.stamp == stamp;
+          other.stamp == stamp &&
+          other.pathStep == pathStep;
 
   @override
   int get hashCode => Object.hashAll([
@@ -391,6 +410,7 @@ class BrushDab {
     antiAlias,
     erase,
     stamp,
+    pathStep,
   ]);
 
   @override
@@ -508,6 +528,16 @@ void _validateFinite(double value, String fieldName) {
       value,
       fieldName,
       'BrushDab.$fieldName must be finite.',
+    );
+  }
+}
+
+void _validatePathStep(double? value) {
+  if (value != null && (!value.isFinite || value <= 0.0)) {
+    throw ArgumentError.value(
+      value,
+      'pathStep',
+      'BrushDab.pathStep must be finite and greater than 0, or null.',
     );
   }
 }

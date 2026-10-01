@@ -3,9 +3,10 @@
 // 유저 2026-09-30: 「경도와 따로 — 단계마다 고정 폭, 클튜 샘플로 맞춤」, and the
 // sample was their own Clip Studio G펜 lines (`参考/brush/cls_gpen_AA.png`,
 // size 10 and 50 at every step). The widths in `BrushAntiAlias.edgeWidth`
-// were fitted to the size-10 row; THIS is the pin that the fit still holds
-// — a line drawn the way the canvas draws one (the interpolator's step, the
-// stamp cache, the kernel), measured the way the sample was.
+// are fitted to both rows; THIS is the pin that the fit still holds — a line
+// drawn the way the canvas draws one (the interpolator's step, the stamp
+// cache, the kernel and each dab's share of a stamp), measured the way the
+// sample was.
 //
 // 📏The measure is the slanted-edge method: every row that crosses the edge
 // samples the edge profile at a new subpixel phase, so a slanted line gives
@@ -26,20 +27,29 @@ import 'package:anicel/src/services/brush_dab_interpolator.dart';
 import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 
-/// Clip Studio's size-10 G펜 row, measured 2026-10-01 by the same method
-/// (10–90% band, full band) — board I-50.
+/// Clip Studio's G펜 rows at size 10 and 50, measured 2026-10-01 by the same
+/// method (10–90% band, full band) — board I-50.
 const _clipStudio = {
-  BrushAntiAlias.low: (tenToNinety: 0.79, full: 1.28),
-  BrushAntiAlias.medium: (tenToNinety: 0.97, full: 1.86),
-  BrushAntiAlias.high: (tenToNinety: 1.25, full: 2.37),
+  10: {
+    BrushAntiAlias.low: (tenToNinety: 0.79, full: 1.28),
+    BrushAntiAlias.medium: (tenToNinety: 0.97, full: 1.86),
+    BrushAntiAlias.high: (tenToNinety: 1.25, full: 2.37),
+  },
+  // ↩️The size-50 row held only once a big brush stopped piling its stamps a
+  // pixel apart (`one-pixel-steps-change-a-brush-with-its-size` A).
+  50: {
+    BrushAntiAlias.low: (tenToNinety: 0.87, full: 1.49),
+    BrushAntiAlias.medium: (tenToNinety: 1.22, full: 2.25),
+    BrushAntiAlias.high: (tenToNinety: 1.69, full: 3.02),
+  },
 };
 
 const _side = 200;
 
-/// A straight size-10 G-pen line at -62°, laid by the interpolator the
-/// canvas uses at the roster's finest spacing and resolved through the
-/// stamp cache, landed on an empty surface.
-List<int> _line(BrushAntiAlias step) {
+/// A straight G-pen line at -62°, laid by the interpolator the canvas uses
+/// at the roster's finest spacing and resolved through the stamp cache,
+/// landed on an empty surface.
+List<int> _line(BrushAntiAlias step, {double size = 10}) {
   BrushDab at(double t) {
     const angle = -62.0 * math.pi / 180.0;
     return BrushDab(
@@ -48,7 +58,7 @@ List<int> _line(BrushAntiAlias step) {
         y: _side / 2 + t * math.sin(angle) + 0.291,
       ),
       color: 0xFF000000,
-      size: 10,
+      size: size,
       opacity: 1,
       flow: 1,
       hardness: 1,
@@ -152,17 +162,20 @@ double _crossing(Map<int, double> profile, double level) {
 }
 
 void main() {
-  for (final step in _clipStudio.keys) {
-    test('AA ${step.name}: the edge Clip Studio draws at size 10', () {
-      final p = _profile(_line(step)).profile;
-      final tenToNinety = _crossing(p, 0.1) - _crossing(p, 0.9);
-      final full = _crossing(p, 1 / 255) - _crossing(p, 254 / 255);
-      final target = _clipStudio[step]!;
-      // Landed 2026-10-01 at 0.79/1.11 · 0.98/2.05 · 1.18/2.54 — the fit is
-      // of the whole profile, so neither band is exact on its own.
-      expect(tenToNinety, closeTo(target.tenToNinety, 0.1));
-      expect(full, closeTo(target.full, 0.25));
-    });
+  for (final MapEntry(key: size, value: row) in _clipStudio.entries) {
+    for (final MapEntry(key: step, value: target) in row.entries) {
+      test('AA ${step.name}: the edge Clip Studio draws at size '
+          '${size.toInt()}', () {
+        final p = _profile(_line(step, size: size.toDouble())).profile;
+        final tenToNinety = _crossing(p, 0.1) - _crossing(p, 0.9);
+        final full = _crossing(p, 1 / 255) - _crossing(p, 254 / 255);
+        // Landed 2026-10-01 at 0.79/1.10 · 0.93/1.87 · 1.20/2.53 (size 10)
+        // and 0.90/1.60 · 1.19/2.45 · 1.69/3.19 (size 50) — the fit is of
+        // the whole profile, so neither band is exact on its own.
+        expect(tenToNinety, closeTo(target.tenToNinety, 0.1));
+        expect(full, closeTo(target.full, 0.25));
+      });
+    }
   }
 
   test('🚨the ramp grows INWARD: each step up narrows the half-coverage '

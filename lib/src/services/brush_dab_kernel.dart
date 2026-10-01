@@ -13,6 +13,7 @@ import '../models/pasteboard_bounds.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import 'brush_dab_dirty_region.dart';
+import 'brush_dab_share.dart';
 import 'brush_dab_tip_geometry.dart';
 import 'brush_stroke_blend.dart';
 import 'brush_tip_mask_sampling.dart';
@@ -119,6 +120,7 @@ class BrushDabPlan {
     required this.dualVLattice,
     required this.textureULattice,
     required this.textureVLattice,
+    required this.evening,
   });
 
   /// The dab's region after the PASTEBOARD clip (canvas + one canvas size
@@ -195,6 +197,10 @@ class BrushDabPlan {
   final TiledMaskAxisLattice? dualVLattice;
   final TiledMaskAxisLattice? textureULattice;
   final TiledMaskAxisLattice? textureVLattice;
+
+  /// The table the dab lays its share through ([evenedLaid]), or null where
+  /// it lays whole — the law is beside [stampShareOf].
+  final Float64List? evening;
 
   /// Resolves [dab] against the pasteboard, or null when it paints nothing.
   ///
@@ -359,6 +365,7 @@ class BrushDabPlan {
               period: textureMask.size * dab.textureScale,
               offset: 0.0,
             ),
+      evening: eveningTableOf(dab),
     );
   }
 }
@@ -571,6 +578,7 @@ void _prepareDab(QaNativeEngine native, int index, BrushDabPlan plan) {
     texVOneMinus: plan.textureVLattice?.oneMinusFraction,
     // Only the lattice path narrows its rows by the ink (ABI 39).
     tipRowInk: plan.unrotatedTip ? plan.tipMask!.inkedColumns : null,
+    evening: plan.evening,
   );
 }
 
@@ -642,6 +650,7 @@ void blendDabTilesDart(
   final tileXStart = plan.tileXStart;
   final tileXEnd = plan.tileXEnd;
   final erase = plan.erase;
+  final evening = plan.evening;
   // The dab's colour on the 16-bit plane (`qa_dab_over_own_colour`).
   final ownR = sourceR * 257;
   final ownG = sourceG * 257;
@@ -807,17 +816,18 @@ void blendDabTilesDart(
         // reasons are written once, beside `qa_dab_source_alpha` in
         // qa_engine.c; this is its arithmetic, operation by operation.
         // Opacity 1 (or an erase) is the old grouping,
-        // ((a/255) * (dab.opacity * coverage)) * flow.
+        // ((a/255) * (dab.opacity * coverage)) * flow. What the dab would
+        // lay whole goes through its share first (`stampShareOf`).
         final double sourceAlpha;
         if (erase || dabOpacity >= 1.0) {
-          sourceAlpha = sourceAlphaNorm * effectiveOpacity * dabFlow;
+          final whole = sourceAlphaNorm * effectiveOpacity * dabFlow;
+          sourceAlpha = evening == null ? whole : evenedLaid(evening, whole);
         } else if (destinationAlpha >= dabOpacity) {
           continue;
         } else {
+          final whole = sourceAlphaNorm * coverage * dabFlow;
           sourceAlpha =
-              sourceAlphaNorm *
-              coverage *
-              dabFlow *
+              (evening == null ? whole : evenedLaid(evening, whole)) *
               (dabOpacity - destinationAlpha) /
               (1.0 - destinationAlpha);
         }

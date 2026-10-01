@@ -77,6 +77,15 @@ class BrushDabInterpolator {
         // laid during the one hand movement that carried the pen from
         // `previous` to `nextRaw`, so they all travelled at its speed.
         sequence: firstSequence + index,
+        // The stretch of the stroke each dab stands for (`BrushDab.pathStep`)
+        // — the subdivision's ACTUAL spacing, anywhere from half the step
+        // up: it follows the pointer's pace from one move to the next, and
+        // the dabs a move lays pile up by what they really cover.
+        // ↩️It was the step itself while the share was baked into the stamp
+        // (board `one-pixel-steps-change-a-brush-with-its-size`, the first
+        // try): a stamp baked per pace would have baked a new mask per move.
+        // The share is read in the kernel now, so nothing is baked.
+        pathStep: distance / stepCount,
       );
     });
   }

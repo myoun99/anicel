@@ -168,6 +168,16 @@ final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
 /// dab: each soft brush took the flow that gives, at its own size, the
 /// density it had, `1 − (1 − flow)^(old step / new step)` (Airbrush at 40 px:
 /// a 2 px step became 1, and 0.12 became 0.062).
+///
+/// 🚨**A FLOW SAYS WHAT ONE STAMP PER TENTH OF THE SIZE LAYS** (유저
+/// 2026-10-01, board `one-pixel-steps-change-a-brush-with-its-size`:
+/// 「엔진이 쌓임을 환산 — 크기와 무관하게(클튜처럼)」). A dab lays its share of
+/// such a stamp (`stampShareOf`), so one flow piles up the same at every
+/// size. Every brush that lays a share at its own size took the flow that
+/// lays there what its pixel-apart pile laid before, `1 − (1 − flow)^(1 /
+/// share)` — twenty of them (Soft Round at 24 px: share 0.417, 0.394 became
+/// 0.6992; Airbrush at 40 px: share 0.25, 0.062 became 0.2259). A brush at
+/// flow 1 keeps it: whole is whole at any share.
 final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
   // ---- Basic -----------------------------------------------------------
   // 🚨THE TWO ROUNDS ARE OLD BRUSHES UNDER NEW NAMES (board F-218): the ids
@@ -193,7 +203,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       // Photoshop's Soft Round is hardness 0: the falloff starts at the
       // centre.
       hardness: 0.0,
-      flow: 0.394,
+      flow: 0.6992,
       spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
     ),
@@ -445,7 +455,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       size: 16,
       hardness: 0.8,
       opacity: 0.7,
-      flow: 0.436,
+      flow: 0.6,
       spacing: BrushShape.minSpacing,
     ),
   ),
@@ -561,7 +571,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _dryMediaGroup,
     settings: BrushSettings(
       size: 16,
-      flow: 0.8,
+      flow: 0.8996,
       spacing: 0.07,
       tipMask: grainBrushTipMask,
       textureMaskSource: canvasWeaveTextureMask,
@@ -576,7 +586,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _dryMediaGroup,
     settings: BrushSettings(
       size: 26,
-      flow: 0.75,
+      flow: 0.8233,
       spacing: 0.08,
       // ⚠️Roundness squashes a MASKED tip too — the mask sampler divides by
       // it the same way the analytic ellipse does — and the panel's tip icon
@@ -606,7 +616,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 28,
       hardness: 0.3,
-      flow: 0.265,
+      flow: 0.5774,
       opacity: 0.8,
       spacing: BrushShape.minSpacing,
       opacityPressureCurve: BrushPressureCurve.identity(),
@@ -621,8 +631,9 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
       hardness: 0.3,
       // ⚠️Lower than Watercolor's on purpose: the paper multiplies every
       // dab, and a pile that reaches the stroke's ceiling has no tooth left
-      // to show — at 0.265 the hollows and the crowns both filled.
-      flow: 0.18,
+      // to show — at Watercolor's flow the hollows and the crowns both
+      // filled (measured as it shipped, board F-218).
+      flow: 0.4261,
       opacity: 0.8,
       spacing: BrushShape.minSpacing,
       textureMaskSource: coldPressTextureMask,
@@ -637,7 +648,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _watercolorGroup,
     settings: BrushSettings(
       size: 34,
-      flow: 0.35,
+      flow: 0.5775,
       opacity: 0.8,
       spacing: 0.05,
       // The wet edge lives in the TIP, not in a new engine field.
@@ -663,7 +674,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 22,
       hardness: 0.6,
-      flow: 0.716,
+      flow: 0.9375,
       opacity: 0.9,
       spacing: BrushShape.minSpacing,
       mixesGroundColor: true,
@@ -680,7 +691,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 44,
       hardness: 0.35,
-      flow: 0.207,
+      flow: 0.6392,
       opacity: 0.75,
       spacing: BrushShape.minSpacing,
       // A wide flat sable held square to the paper: the angle stays put so
@@ -702,7 +713,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 22,
-      flow: 0.75,
+      flow: 0.9375,
       spacing: 0.05,
       roundness: 0.3,
       angleDegrees: 45,
@@ -717,7 +728,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 20,
       hardness: 0.65,
-      flow: 0.853,
+      flow: 0.9784,
       spacing: BrushShape.minSpacing,
       textureMaskSource: canvasWeaveTextureMask,
       textureScale: 1.5,
@@ -731,7 +742,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 26,
-      flow: 0.9,
+      flow: 0.9975,
       spacing: BrushShape.minSpacing,
       tipMask: bristleBrushTipMask,
       // Bristles rake along the stroke, so the tip turns with it.
@@ -781,7 +792,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _oilGroup,
     settings: BrushSettings(
       size: 30,
-      flow: 0.75,
+      flow: 0.9009,
       spacing: 0.06,
       tipMask: bristleBrushTipMask,
       rotationMode: BrushTipRotationMode.direction,
@@ -802,7 +813,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 40,
       hardness: 0.05,
-      flow: 0.062,
+      flow: 0.2259,
       opacity: 0.9,
       // Tight spacing is what makes an airbrush build rather than band.
       spacing: BrushShape.minSpacing,
@@ -820,7 +831,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 36,
       hardness: 0.35,
-      flow: 0.3,
+      flow: 0.51,
       opacity: 0.85,
       spacing: 0.05,
       dualMask: splatterBrushTipMask,
@@ -837,7 +848,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 24,
       hardness: 0.35,
-      flow: 0.7,
+      flow: 0.91,
       spacing: 0.05,
       mixesGroundColor: true,
       // 🚨STRETCH 0.35, NEVER 1.0 — and this is arithmetic, not taste. The
@@ -860,7 +871,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 34,
       hardness: 0.12,
-      flow: 0.3,
+      flow: 0.51,
       spacing: 0.05,
       textureMaskSource: paperGrainTextureMask,
       textureScale: 2.6,
@@ -880,7 +891,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     groupId: _blendGroup,
     settings: BrushSettings(
       size: 14,
-      flow: 0.4,
+      flow: 0.5111,
       spacing: 0.05,
       tipMask: grainBrushTipMask,
       textureMaskSource: paperGrainTextureMask,
@@ -965,7 +976,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 16,
       hardness: 1.0,
-      flow: 0.9,
+      flow: 0.9749,
       spacing: 0.06,
       tipMask: bristleBrushTipMask,
       rotationMode: BrushTipRotationMode.fixed,
@@ -1000,7 +1011,7 @@ final List<BrushPreset> defaultBrushPresets = List.unmodifiable(<BrushPreset>[
     settings: BrushSettings(
       size: 20,
       hardness: 1.0,
-      flow: 0.85,
+      flow: 0.9775,
       spacing: 0.05,
       dualMask: chalkBrushTipMask,
       dualMaskScale: 0.6,

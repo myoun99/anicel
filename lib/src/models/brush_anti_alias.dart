@@ -84,16 +84,20 @@ enum BrushAntiAlias {
   /// radius to 0 at the rim. 0 for [none], whose cut happens after sampling.
   ///
   /// 📏Fitted 2026-10-01 (board I-50) to the user's Clip Studio G펜 lines at
-  /// size 10, drawn through this engine's own stamp path — the 8-bit stamp,
-  /// its bilinear sampling, the interpolator's 1px step — and compared by
-  /// the lines' edge spread (RMS 2.2 · 4.5 · 3.6 of 255). ⚠️At size 50 Clip
-  /// Studio's edge stays wider than these draw: the 1px step piles fifty
-  /// stamps across a width Clip Studio covers with a handful, and the pile
-  /// tightens every ramp — hardness ramps included (board I-50).
+  /// size 10 AND 50, drawn through this engine's own stamp path — the 8-bit
+  /// stamp, its bilinear sampling, the interpolator's step, each dab laying
+  /// its share of one stamp per tenth of the size (`stampShareOf`) — and
+  /// compared by the lines' edge spread
+  /// (`a_g_pen_edge_matches_clip_studio_test`). ↩️The first fit read size 10
+  /// alone: with the dabs piling a pixel apart, fifty of them across a width
+  /// Clip Studio covers with a handful tightened every ramp, and size 50
+  /// could not be matched at all. Once a dab lays its share, 1단계 and 3단계
+  /// hold at both sizes as they were, and 2단계 narrows from 1.875 to 1.6
+  /// (swept against both rows, `one-pixel-steps-change-a-brush-with-its-size`).
   double get edgeWidth => switch (this) {
     none => 0.0,
     low => 0.4375,
-    medium => 1.875,
+    medium => 1.6,
     high => 2.75,
   };
 

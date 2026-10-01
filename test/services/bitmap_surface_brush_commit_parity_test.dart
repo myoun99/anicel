@@ -1066,5 +1066,48 @@ void main() {
         );
       }
     });
+
+    test('🚨a dab laying its share agrees across all three transcriptions', () {
+      // ABI 41 (`stampShareOf`, `qa_dab_even`): a dab laid closer than a
+      // tenth of its size lays its share through a table, on the opaque
+      // road and the settling one, painting and erasing, on the scalar loop
+      // and two pixels at a time. A dab without a path step lays whole, so
+      // the cases above never reach the table.
+      final cache = BrushTipStampCache();
+      final painted = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blankSurface(tileSize: 256),
+        sequence: strokeOf([
+          for (var i = 0; i < 6; i += 1)
+            dab(x: 52.0 + i * 9.0, y: 66.0, size: 30, sequence: i),
+        ]),
+      ).surface;
+      for (final masked in [false, true]) {
+        for (final erase in [false, true]) {
+          expectParity(
+            surface: erase ? painted : blankSurface(tileSize: 256),
+            sequence: strokeOf([
+              for (var i = 0; i < 14; i += 1)
+                () {
+                  final one = dab(
+                    x: 58.3 + i * 1.7,
+                    y: 64.9 + (i % 3) * 0.6,
+                    size: 34 + i * 2.0,
+                    hardness: i.isEven ? 0.2 : 0.9,
+                    color: i % 4 == 3 ? 0xFF22AA66 : 0xFF3355CC,
+                    opacity: i % 3 == 0 ? 1.0 : 0.7,
+                    flow: 0.45,
+                    sequence: i,
+                  ).copyWith(pathStep: i == 0 ? null : 1.7);
+                  return (masked ? cache.resolveDab(one) : one).copyWith(
+                    erase: erase,
+                  );
+                }(),
+            ]),
+            reason: '${masked ? 'masked' : 'analytic'}, '
+                '${erase ? 'erasing' : 'painting'}, laying a share',
+          );
+        }
+      }
+    });
   });
 }

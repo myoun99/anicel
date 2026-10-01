@@ -2,6 +2,7 @@ import '../models/brush_dab.dart';
 import '../models/brush_pixel_coverage.dart';
 import '../models/rgba_color.dart';
 import '../models/stroke_pixel.dart';
+import 'brush_dab_share.dart';
 import 'rgba_blend.dart';
 
 double effectiveBrushPixelOpacity({
@@ -14,18 +15,21 @@ double effectiveBrushPixelOpacity({
 /// What [dab] leaves on one pixel of its stroke at [coverage] — the
 /// reference for the tile kernels' pixel (`blendDabTilesDart`,
 /// `qa_dab_blend_tile`): what is under the dab comes off [destination]'s
-/// 16-bit plane and the result lands on both planes (ABI 40).
+/// 16-bit plane and the result lands on both planes (ABI 40), the dab
+/// laying its share of what it would lay whole (`stampShareOf`, ABI 41).
 StrokePixel blendBrushDabStrokePixel({
   required BrushDab dab,
   required BrushPixelCoverage coverage,
   required StrokePixel destination,
 }) {
+  final evening = eveningTableOf(dab);
   if (dab.erase) {
     return strokeDestinationOut(
       source: RgbaColor.fromArgbInt(dab.color),
       destination: destination,
       opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
       flow: dab.flow,
+      evening: evening,
     );
   }
   if (dab.opacity >= 1.0) {
@@ -34,15 +38,17 @@ StrokePixel blendBrushDabStrokePixel({
       destination: destination,
       opacity: effectiveBrushPixelOpacity(dab: dab, coverage: coverage),
       flow: dab.flow,
+      evening: evening,
     );
   }
   final source = RgbaColor.fromArgbInt(dab.color);
+  final whole = effectiveSourceAlpha(
+    source: source,
+    opacity: coverage.coverage,
+    flow: dab.flow,
+  );
   final sourceAlpha = settledDabAlpha(
-    laid: effectiveSourceAlpha(
-      source: source,
-      opacity: coverage.coverage,
-      flow: dab.flow,
-    ),
+    laid: evening == null ? whole : evenedLaid(evening, whole),
     opacity: dab.opacity,
     destinationAlpha: destination.a / 65535.0,
   );
