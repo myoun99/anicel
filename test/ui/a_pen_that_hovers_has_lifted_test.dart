@@ -61,13 +61,14 @@ void main() {
       reason: 'the premise: a press still down refuses every undo',
     );
 
-    // The pen back over the canvas, in the air, as a new pointer.
-    final back = await tester.createGesture(
-      kind: PointerDeviceKind.stylus,
-      pointer: 41,
+    // The pen back over the canvas, in the air — a new pointer of a new
+    // device, the way the platform hands a pen back after it left the
+    // tablet's range.
+    final back = TestPointer(41, PointerDeviceKind.stylus, 7);
+    await tester.sendEventToBinding(
+      back.addPointer(location: canvas + const Offset(60, 40)),
     );
-    await back.addPointer(location: canvas + const Offset(60, 40));
-    await back.moveTo(canvas + const Offset(70, 45));
+    await tester.sendEventToBinding(back.hover(canvas + const Offset(70, 45)));
     await tester.pump();
     await pressUndo(tester);
 
