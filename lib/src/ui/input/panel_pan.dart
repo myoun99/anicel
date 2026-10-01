@@ -224,7 +224,7 @@ class _FingerGatedDevices extends SetBase<PointerDeviceKind> {
 
   @override
   PointerDeviceKind? lookup(Object? element) =>
-      contains(element) ? element as PointerDeviceKind : null;
+      element is PointerDeviceKind && contains(element) ? element : null;
 
   @override
   Iterator<PointerDeviceKind> get iterator => base.iterator;
