@@ -52,6 +52,14 @@ class BrushPresetFileService {
   /// release that reaches someone who has drawn with their own brushes has to
   /// put carry-forward back before it bumps this number, or the bump eats
   /// their library. Nothing here enforces that; this comment is the warning.
+  ///
+  /// ⛔**A ROSTER CHANGE DOES NOT BUMP IT EITHER** (유저 2026-09-24, board
+  /// `preset-spacing-library-delivery`: 「굳이 뭐 안해도되. 내가 그냥 지금
+  /// 있는거 삭제해서 초기화시킬테니 그런 이행코드같은거 만들지마」). 유저 has
+  /// brushes of their own now, which a bump would eat without asking; they
+  /// bring a new roster in themselves with "Reset brush library". ↩️So "what
+  /// makes a roster change reach the person running the app" above no longer
+  /// holds — board F-218 reworked the roster under version 9.
   // 8: the paper texture stores its SOURCE plus invert/brightness/contrast,
   // where 7 stored one mask with the levels already baked in. A 7 file would
   // read its baked mask back as a source and bake the levels a second time.
