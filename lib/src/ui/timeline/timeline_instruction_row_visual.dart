@@ -239,8 +239,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
           TimelineFrameSpan(
             placement: timelineBlockEdgeGripPlacement(
               edge: edge,
-              startIndex: start,
-              endIndexExclusive: endExclusive,
+              block: (startIndex: start, endIndexExclusive: endExclusive),
               crossAxisExtent: timelineRowPaperExtent(crossAxisExtent),
             ),
             child: TimelineBlockEdgeGrip(

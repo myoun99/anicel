@@ -300,8 +300,10 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       final rect = timelineFrameSpanRect(
         timelineBlockEdgeGripPlacement(
           edge: edge,
-          startIndex: block.startIndex,
-          endIndexExclusive: block.endIndexExclusive,
+          block: (
+            startIndex: block.startIndex,
+            endIndexExclusive: block.endIndexExclusive,
+          ),
           crossAxisExtent: crossAxisExtent,
           band: gripPaper?.band,
         ),

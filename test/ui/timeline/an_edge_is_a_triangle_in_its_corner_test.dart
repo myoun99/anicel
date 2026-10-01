@@ -52,8 +52,7 @@ void main() {
   }) => timelineFrameSpanRect(
     timelineBlockEdgeGripPlacement(
       edge: edge,
-      startIndex: from,
-      endIndexExclusive: from + length,
+      block: (startIndex: from, endIndexExclusive: from + length),
       // The rows hand the grip their PAPER (I-44).
       crossAxisExtent: paper,
     ),

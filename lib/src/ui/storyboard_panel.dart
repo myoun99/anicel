@@ -3962,8 +3962,10 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
     return TimelineFrameSpan(
       placement: timelineBlockEdgeGripPlacement(
         edge: edge,
-        startIndex: block.startIndex,
-        endIndexExclusive: block.endIndexExclusive,
+        block: (
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+        ),
         // I-44: on the SE paper, which stops a seam short of the row.
         crossAxisExtent: timelineRowPaperExtent(height),
       ),

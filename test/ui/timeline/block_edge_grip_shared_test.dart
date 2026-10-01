@@ -205,8 +205,7 @@ void main() {
                 TimelineFrameSpan(
                   placement: timelineBlockEdgeGripPlacement(
                     edge: TimelineBlockEdge.start,
-                    startIndex: 0,
-                    endIndexExclusive: 3,
+                    block: (startIndex: 0, endIndexExclusive: 3),
                     crossAxisExtent: 60,
                   ),
                   child: TimelineBlockEdgeGrip(
@@ -270,8 +269,7 @@ void main() {
                 TimelineFrameSpan(
                   placement: timelineBlockEdgeGripPlacement(
                     edge: TimelineBlockEdge.end,
-                    startIndex: 0,
-                    endIndexExclusive: 3,
+                    block: (startIndex: 0, endIndexExclusive: 3),
                     crossAxisExtent: 60,
                   ),
                   child: BlockEdgeGrip(

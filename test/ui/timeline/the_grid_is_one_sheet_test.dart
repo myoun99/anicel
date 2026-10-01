@@ -309,8 +309,7 @@ void main() {
       final box = timelineFrameSpanRect(
         timelineBlockEdgeGripPlacement(
           edge: TimelineBlockEdge.start,
-          startIndex: 10,
-          endIndexExclusive: 14,
+          block: (startIndex: 10, endIndexExclusive: 14),
           crossAxisExtent: paper,
         ),
         const TimelineFrameGeometry(

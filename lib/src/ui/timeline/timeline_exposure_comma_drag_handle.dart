@@ -92,17 +92,16 @@ const double _gripCrossShare = 1 / 2;
 /// edge's in its last, neither over a picture.
 TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   required TimelineBlockEdge edge,
-  required int startIndex,
-  required int endIndexExclusive,
+  required ({int startIndex, int endIndexExclusive}) block,
   required double crossAxisExtent,
   double? band,
 }) {
   final start = edge == TimelineBlockEdge.start;
   final across = band ?? crossAxisExtent * _gripCrossShare;
   return TimelineFrameSpanPlacement(
-    startIndex: start ? startIndex : endIndexExclusive,
+    startIndex: start ? block.startIndex : block.endIndexExclusive,
     mainExtent: _gripMainExtent,
-    fitsIn: (startIndex: startIndex, endIndexExclusive: endIndexExclusive),
+    fitsIn: block,
     anchorAtTrailingEdge: !start,
     crossInset: start ? crossAxisExtent - across : 0,
     crossExtent: across,
