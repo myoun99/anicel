@@ -31,8 +31,10 @@ import '../storyboard_cut_block_probe.dart';
 /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
 /// 전처럼 연하게」, 10-01 「재생헤드가 선 블록」), on the conte: the unit you
 /// stand on wears the standing wash — an S row's sound, the one cell beside
-/// it, a lane's cell — and the V row's cut wears it in its plate instead
-/// (`storyboard_cut_block_bands_test`), never over its pictures.
+/// it, a lane's cell — and the V row's cut wears it on its bands instead
+/// (`storyboard_cut_block_bands_test`), never over its pictures. One
+/// standing place: on an S row, the S row's block alone (유저 10-01 「s행에서면
+/// s행블록만 칠해지도록」).
 ///
 /// The timeline's half is `the_block_you_stand_on_wears_the_wash_test`.
 void main() {
@@ -161,11 +163,25 @@ void main() {
       end: 4,
       row: rowOf(tester, 'storyboard-se-row-0-1'),
     ));
+    expect(
+      cutBlocksPainter(tester).blocks().single.isStanding,
+      isFalse,
+      reason: 'one standing place — the V row\'s cut wears none',
+    );
 
     session.selectGlobalFrame(5);
     await tester.pumpAndSettle();
     expect(washed(tester, 5).start, 5);
     expect(washed(tester, 5).end, 6);
+  });
+
+  testWidgets('a stand on another row repaints the V row at once — its '
+      'bands let go of the wash', (tester) async {
+    final session = await openConte(tester);
+    final render = tester.renderObject(cutBlocksFinder());
+    expect(render.debugNeedsPaint, isFalse, reason: 'premise: settled');
+    session.standing.selectRow(const LayerRowAddress(LayerId('se-row-1')));
+    expect(render.debugNeedsPaint, isTrue);
   });
 
   testWidgets('on the transition row, its span', (tester) async {
@@ -183,7 +199,7 @@ void main() {
   });
 
   testWidgets('on the V row, nothing over its pictures — the cut under the '
-      'playhead wears it in its plate', (tester) async {
+      'playhead wears it on its bands', (tester) async {
     await openConte(tester);
     expect(
       find.byKey(const ValueKey<String>('storyboard-standing-cell')),

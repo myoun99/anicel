@@ -17,6 +17,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -34,8 +35,10 @@ import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
     show timelineCellWritesNothing;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
+        storyboardCutBandColor,
         storyboardCutBlockBackgroundColor,
         storyboardPanelPictureGroundColor,
+        timelineSelectedFrameBorderColor,
         timelineStandingWashColor;
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
@@ -133,6 +136,7 @@ Future<void> _pump(
   double pixelsPerFrame = 12,
   StoryboardThumbnailResolver? thumbnailFor,
   ValueListenable<CutId?>? cutUnderPlayhead,
+  TimelineRowAddress? selectedRow,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -143,6 +147,7 @@ Future<void> _pump(
           project: _project(storyboardLayer: storyboardLayer, cutMark: cutMark),
           activeCutId: activeCutId,
           cutUnderPlayhead: cutUnderPlayhead,
+          selectedRow: selectedRow,
           pixelsPerFrame: pixelsPerFrame,
           thumbnails: thumbnailFor == null
               ? null
@@ -445,40 +450,85 @@ void main() {
     );
   });
 
-  testWidgets('🗣️F-248: the cut under the playhead wears the standing wash '
-      'in its plate, under its pictures — 「외곽라인말고 블럭을 바탕색으로서 '
-      '강조색 표시. 전처럼 연하게」', (tester) async {
-    final under = ValueNotifier<CutId?>(const CutId('cut-1'));
-    addTearDown(under.dispose);
-    await _pump(
-      tester,
-      storyboardLayer: _dividedStoryboardLayer('cut-1'),
-      cutUnderPlayhead: under,
-    );
-    int plate() => _painted(tester).plates.single.color.toARGB32();
+  group('🗣️F-248: the cut you stand on wears the standing wash on its four '
+      'bands — 「썸네일 제외한 띠 부분. 컷이나 콘티블록 띠만」', () {
+    Future<ValueNotifier<CutId?>> stand(
+      WidgetTester tester, {
+      TimelineRowAddress? on,
+    }) async {
+      final under = ValueNotifier<CutId?>(const CutId('cut-1'));
+      addTearDown(under.dispose);
+      await _pump(
+        tester,
+        storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
+        cutMark: _art,
+        cutUnderPlayhead: under,
+        selectedRow: on,
+      );
+      return under;
+    }
 
-    expect(
-      plate(),
-      Color.alphaBlend(timelineStandingWashColor, conteSheetInk).toARGB32(),
-    );
-    under.value = null;
-    expect(
-      tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
-      isTrue,
-      reason: 'the crossing repaints the row',
-    );
-    await tester.pump();
-    expect(plate(), conteSheetInk.toARGB32(), reason: 'it goes with the cut');
+    ({List<int> bands, int plate}) painted(WidgetTester tester) {
+      final block = requireCutBlock(tester, 'cut-1');
+      final spy = _painted(tester);
+      return (
+        bands: [
+          for (final band in [
+            block.topBand,
+            block.innerTopBand,
+            block.innerBottomBand,
+            block.bottomBand,
+          ])
+            spy.fillOf(band),
+        ],
+        plate: spy.plates.single.color.toARGB32(),
+      );
+    }
+
+    int washed(Color label) =>
+        Color.alphaBlend(timelineStandingWashColor, label).toARGB32();
+
+    testWidgets('on the V row: the bands, never the plate around its '
+        'pictures — and they go with the cut', (tester) async {
+      final under = await stand(tester, on: const TrackRowAddress(_trackId));
+      final conte = layerMarkColor(_conte);
+      final cut = layerMarkColor(_art);
+      final stood = painted(tester);
+      expect(stood.bands, [
+        washed(cut),
+        washed(conte),
+        washed(conte),
+        washed(cut),
+      ]);
+      expect(stood.plate, conteSheetInk.toARGB32());
+
+      under.value = null;
+      expect(
+        tester.renderObject(cutBlocksFinder()).debugNeedsPaint,
+        isTrue,
+        reason: 'the crossing repaints the row',
+      );
+      await tester.pump();
+      expect(painted(tester).bands.first, cut.toARGB32());
+    });
+
+    testWidgets('standing nowhere on this rail, none', (tester) async {
+      await stand(tester);
+      expect(
+        painted(tester).bands.first,
+        layerMarkColor(_art).toARGB32(),
+      );
+    });
   });
 
-  test('a hovered cut under the playhead lifts its washed plate, not the '
-      'bare ink', () {
-    final scheme = ThemeData.dark().colorScheme;
+  test('a selected band you stand on wears both — the wash under the '
+      'selection\'s tint', () {
+    const label = Color(0xFF406080);
     expect(
-      storyboardCutBlockBackgroundColor(scheme, hovered: true, standing: true),
+      storyboardCutBandColor(label, rangeSelected: true, standing: true),
       Color.alphaBlend(
-        scheme.onSurface.withValues(alpha: 0.10),
-        Color.alphaBlend(timelineStandingWashColor, conteSheetInk),
+        timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+        Color.alphaBlend(timelineStandingWashColor, label),
       ),
     );
   });
@@ -540,7 +590,6 @@ void main() {
       storyboardCutBlockBackgroundColor(
         painter.colorScheme,
         hovered: false,
-        standing: false,
       ).toARGB32(),
       reason: 'the block keeps its resting plate around the picture',
     );

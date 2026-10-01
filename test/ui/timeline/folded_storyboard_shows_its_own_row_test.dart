@@ -3,6 +3,9 @@ import 'package:flutter/rendering.dart' show RenderCustomPaint;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -168,17 +171,35 @@ void main() {
     expect(render.debugNeedsPaint, isTrue, reason: 'the folded row heard it');
   });
 
-  testWidgets('F-248: the cut under the playhead wears the standing wash in '
-      'its plate here too — the same channel as the open row', (tester) async {
+  // F-248: the cut you stand on wears the standing wash on its bands here
+  // too, while the conte's row you stand on is this one — one standing place.
+  List<CutId> standing(WidgetTester tester) => [
+    for (final block
+        in (tester.widget<CustomPaint>(_cutBlocks()).painter!
+                as StoryboardCutBlocksPainter)
+            .blocks())
+      if (block.isStanding) block.cutId,
+  ];
+
+  testWidgets('F-248: standing on the V row, the cut under the playhead is '
+      'the one stood on — the same channel as the open row', (tester) async {
     await _pumpFolded(tester, storyboard: true);
-    final painter =
-        tester.widget<CustomPaint>(_cutBlocks()).painter!
-            as StoryboardCutBlocksPainter;
-    final standing = [
-      for (final block in painter.blocks())
-        if (block.isStanding) block.cutId,
-    ];
-    expect(standing, hasLength(1));
+    expect(standing(tester), hasLength(1));
+  });
+
+  testWidgets('F-248: standing on an S row instead, none is', (tester) async {
+    await _pumpFolded(tester, storyboard: true);
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final rows = session.activeTrack.seLayers;
+    expect(rows, isNotEmpty, reason: 'premise: an S row to stand on');
+    final render = tester.renderObject<RenderCustomPaint>(_cutBlocks());
+    expect(render.debugNeedsPaint, isFalse, reason: 'premise: settled');
+    session.standing.selectRow(LayerRowAddress(rows.first.id));
+    expect(render.debugNeedsPaint, isTrue, reason: 'the row heard it at once');
+    await tester.pump();
+    expect(standing(tester), isEmpty);
   });
 
   testWidgets('a folded TIMELINE is untouched — it still shows its own rail '

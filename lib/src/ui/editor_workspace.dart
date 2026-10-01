@@ -104,7 +104,8 @@ import 'envelope/cut_envelope_ink.dart';
 import 'envelope/cut_envelope_tab_host.dart';
 import 'sheet/sheet_image_cache.dart';
 import 'storyboard_cut_thumbnail_store.dart';
-import 'storyboard_cut_blocks_painter.dart' show storyboardCutBlocksPainterFor;
+import 'storyboard_cut_blocks_painter.dart'
+    show StandingCut, storyboardCutBlocksPainterFor;
 import 'storyboard_panel.dart'
     show StoryboardPanel, StoryboardPlayheadTint, StoryboardTrackLabelRow;
 import 'storyboard_playhead_mapping.dart';

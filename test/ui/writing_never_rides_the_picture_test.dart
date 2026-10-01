@@ -98,11 +98,7 @@ void main() {
     final resting = visual(cutLabel: paper, conteLabel: null);
     expect(
       ground(resting, StoryboardBand.conte),
-      storyboardCutBlockBackgroundColor(
-        scheme,
-        hovered: false,
-        standing: false,
-      ),
+      storyboardCutBlockBackgroundColor(scheme, hovered: false),
     );
     expect(
       timelineTextOnColor(ground(resting, StoryboardBand.conte)),

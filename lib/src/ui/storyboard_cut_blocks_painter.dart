@@ -74,10 +74,10 @@ Color storyboardCarriedWritingGround(
           storyboardCutBlockBackgroundColor(
             colorScheme,
             hovered: block.isHovered,
-            standing: block.isStanding,
           ),
   },
   rangeSelected: block.isRangeSelected,
+  standing: block.isStanding,
 );
 
 /// Which of a cut block's two pairs of bands a piece of writing stands in.
@@ -190,7 +190,7 @@ class StoryboardCutBlockVisual {
   final bool isRangeSelected;
   final bool isHovered;
 
-  /// The cut under the playhead (F-248) — its plate wears the standing wash.
+  /// The cut you stand on (F-248) — its bands wear the standing wash.
   final bool isStanding;
 
   /// The cut's name, drawn top-left.
@@ -279,6 +279,35 @@ StoryboardCutBlocksPainter storyboardCutBlocksPainterFor({
 /// re-subscribe the painter's `repaint` merge every pass.
 final ValueNotifier<CutId?> _noHover = ValueNotifier<CutId?>(null);
 
+/// The cut a V row's bands mark as stood on (F-248): the cut under the
+/// playhead [cut] while that row is the one you stand on ([standsOnRow]).
+///
+/// 🗣️유저 2026-10-01: 「s행에서면 s행블록만 칠해지도록」 — one standing place,
+/// as the timeline's lane takes the wash off its layer's row. Heard through
+/// [changes], which carry both answers; it holds nothing of its own, so a
+/// host builds one per build.
+class StandingCut implements ValueListenable<CutId?> {
+  const StandingCut({
+    required this.changes,
+    required this.standsOnRow,
+    required this.cut,
+  });
+
+  final Listenable changes;
+  final bool Function() standsOnRow;
+  final ValueListenable<CutId?> cut;
+
+  @override
+  CutId? get value => standsOnRow() ? cut.value : null;
+
+  @override
+  void addListener(VoidCallback listener) => changes.addListener(listener);
+
+  @override
+  void removeListener(VoidCallback listener) =>
+      changes.removeListener(listener);
+}
+
 /// The cut row's blocks, PAINTED (the storyboard's half of the timeline's
 /// row painterization).
 ///
@@ -365,10 +394,10 @@ class StoryboardCutBlocksPainter extends CustomPainter
   final TimelineRowAddress rowAddress;
   final ValueListenable<CutId?> hoveredCutId;
 
-  /// The cut under the playhead (F-248), whose plate wears the standing
-  /// wash: the session's one answer for the cut being looked at
-  /// (`CutUnderPlayhead`), which moves on crossings only — so this row
-  /// repaints once a cut, never a tick. Null where nobody stands.
+  /// The cut you stand on (F-248), whose bands wear the standing wash — a
+  /// [StandingCut]: the cut under the playhead while this row is the one
+  /// you stand on. It moves on crossings and stands, so this row repaints
+  /// once a cut, never a tick. Null where nobody stands.
   final ValueListenable<CutId?>? standingCutId;
 
   final ColorScheme colorScheme;
@@ -866,7 +895,6 @@ class StoryboardCutBlocksPainter extends CustomPainter
       storyboardCutBlockBackgroundColor(
         colorScheme,
         hovered: block.isHovered,
-        standing: block.isStanding,
       );
 
   @override

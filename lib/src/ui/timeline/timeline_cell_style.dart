@@ -462,38 +462,45 @@ Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
 /// outline to read — and the outline went (「심플이즈베스트」).
 ///
 /// 🗣️F-212 (유저 2026-09-28): 「현재 블록을 알리는 바탕색 오버레이도 일단
-/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wore the plate
-/// every cut wears. ↩️Its plate was the accent's container colour.
-/// ↩️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색 표시.
-/// 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the cut [standing] under the
-/// playhead wears the standing wash over the ink again — in its plate, under
-/// its pictures, since a state colours what is not the picture.
+/// 삭제. 재생 헤드 오버레이로 충분」 — the cut you stand in wears the plate
+/// every cut wears. ↩️Its plate was the accent's container colour. F-248
+/// gives the cut you stand on its wash back on its BANDS, not here
+/// ([storyboardCutBandColor]).
 Color storyboardCutBlockBackgroundColor(
   ColorScheme colorScheme, {
   required bool hovered,
-  required bool standing,
-}) {
-  final ground = standing
-      ? Color.alphaBlend(timelineStandingWashColor, conteSheetInk)
-      : conteSheetInk;
-  return hovered
-      ? Color.alphaBlend(colorScheme.onSurface.withValues(alpha: 0.10), ground)
-      : ground;
-}
+}) => hovered
+    ? Color.alphaBlend(
+        colorScheme.onSurface.withValues(alpha: 0.10),
+        conteSheetInk,
+      )
+    : conteSheetInk;
 
 /// A cut block's BAND in its label's colour [label] — under the colour-only
 /// range tint when the block is range-selected: a cut selection colours
 /// what is not the picture (design), and the bands are that.
-Color storyboardCutBandColor(Color label, {required bool rangeSelected}) =>
-    rangeSelected
-    // 0.12 = the timeline's selected-CELL tint: the shared range-selection
-    // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above
-    // this, and the pair must sum to the timeline's look, not overshoot it.
-    ? Color.alphaBlend(
-        timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
-        label,
-      )
-    : label;
+///
+/// 🗣️F-248 (유저 2026-10-01 「썸네일 제외한 띠 부분. 컷이나 콘티블록 띠만
+/// 칠해지고싶은데」): the cut you stand on ([standing]) wears the standing
+/// wash on the same four bands — never on its pictures or its plate.
+Color storyboardCutBandColor(
+  Color label, {
+  required bool rangeSelected,
+  required bool standing,
+}) {
+  final ground = standing
+      ? Color.alphaBlend(timelineStandingWashColor, label)
+      : label;
+  return rangeSelected
+      // 0.12 = the timeline's selected-CELL tint: the shared range-selection
+      // band ([timelineRangeSelectionBandDecorationAt], 0.18) rides above
+      // this, and the pair must sum to the timeline's look, not overshoot it.
+      ? Color.alphaBlend(
+          timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
+          ground,
+        )
+      : ground;
+}
 
 /// The effective ground of the strip's PANEL PICTURES (B1 2026-08-17) —
 /// what writing laid over the pictures reads against.

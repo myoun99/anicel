@@ -77,17 +77,12 @@ class _StoryboardStanding {
     return ValueListenableBuilder<TimelineRowAddress?>(
       valueListenable: currentRow,
       builder: (context, standing, _) {
-        var row = standing;
-        var band = row == null ? null : _trackRowBand(track, row);
-        if (band == null) {
-          row = _state.widget.selectedRow;
-          band = row == null ? null : _trackRowBand(track, row);
-        }
-        if (row == null || band == null) {
+        final on = _standingOn(track, standing);
+        if (on == null) {
           return const SizedBox.shrink();
         }
-        final standingRow = row;
-        final rowBand = band;
+        final standingRow = on.row;
+        final rowBand = on.band;
         final dragPreview = _state.widget.dragPreview;
         return ListenableBuilder(
           listenable: Listenable.merge([playhead, ?dragPreview]),
@@ -120,12 +115,50 @@ class _StoryboardStanding {
     );
   }
 
+  /// The row you stand on in [track]'s group and the band it lies in: the
+  /// session's [current] row where this rail has it, the rail's own
+  /// [StoryboardPanel.selectedRow] otherwise (see [trackStandingCell]) — ONE
+  /// answer for the standing cell, the wash and the V row's bands.
+  ({TimelineRowAddress row, ({double top, double height}) band})? _standingOn(
+    Track track,
+    TimelineRowAddress? current,
+  ) {
+    for (final row in [current, _state.widget.selectedRow]) {
+      if (row == null) {
+        continue;
+      }
+      final band = _trackRowBand(track, row);
+      if (band != null) {
+        return (row: row, band: band);
+      }
+    }
+    return null;
+  }
+
+  /// The cut whose bands wear the standing wash on [track]'s V row — the cut
+  /// under the playhead while that row is the one you stand on; null where
+  /// the panel is handed no cut.
+  ValueListenable<CutId?>? standingCutOn(Track track) {
+    final cut = _state.widget.cutUnderPlayhead;
+    if (cut == null) {
+      return null;
+    }
+    final currentRow = _state.widget.currentRowHooks?.currentRow;
+    return StandingCut(
+      changes: Listenable.merge([cut, ?currentRow]),
+      standsOnRow: () =>
+          _standingOn(track, currentRow?.value)?.row ==
+          TrackRowAddress(track.id),
+      cut: cut,
+    );
+  }
+
   /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
   /// 표시. 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the unit you stand on
   /// wears the standing wash, as on the timeline — an S row's sound or span,
-  /// a lane's cell. The V row's cut wears it in its plate instead, under the
-  /// pictures ([StoryboardCutBlocksPainter.standingCutId]): a state colours
-  /// what is not the picture — so no unit here.
+  /// a lane's cell. The V row's cut wears it on its bands instead, never
+  /// over its pictures ([standingCutOn]; 10-01 「썸네일 제외한 띠 부분」) —
+  /// so no unit here.
   ({int startIndex, int endIndexExclusive})? _standingUnit(
     Track track,
     TimelineRowAddress row,

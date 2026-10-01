@@ -4858,7 +4858,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       gripGround: storyboardCutBlockBackgroundColor(
         Theme.of(context).colorScheme,
         hovered: false,
-        standing: false,
       ),
       gripGrounds: () =>
           StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
