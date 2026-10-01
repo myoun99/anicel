@@ -111,23 +111,10 @@ class _TimesheetSePass {
     }
 
     if (seName.isNotEmpty) {
-      // R6-②: a soft accent tint with dark ink writing — the full-strength
-      // accent read too loud against the paper. FULL column width (R7-②:
-      // the name box, the red bars and the SE column must share ONE exact
-      // width — the old 1px inset read as a mismatched overlay).
-      canvas.drawRect(
-        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
-        Paint()..color = _painter.accent.withValues(alpha: 0.3),
-      );
-      _painter._text(
+      _paintNameBox(
         canvas,
         seName,
-        Offset(centerX, cellTop + 4),
-        fontSize: 7,
-        bold: true,
-        color: TimesheetDocumentPainter._ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 4,
+        Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, _nameBoxHeight),
       );
     }
 
@@ -152,6 +139,29 @@ class _TimesheetSePass {
   }
 
   static const double _nameBoxHeight = 12.0;
+
+  /// The entry's name chip, over [box].
+  ///
+  /// R6-②: a soft accent tint with dark ink writing — the full-strength
+  /// accent read too loud against the paper. FULL column width (R7-②: the
+  /// name box, the red bars and the SE column must share ONE exact width —
+  /// the old 1px inset read as a mismatched overlay).
+  void _paintNameBox(Canvas canvas, String seName, Rect box) {
+    canvas.drawRect(
+      box,
+      Paint()..color = _painter.accent.withValues(alpha: 0.3),
+    );
+    _painter._text(
+      canvas,
+      seName,
+      Offset(box.center.dx, box.top + 2),
+      fontSize: 7,
+      bold: true,
+      color: TimesheetDocumentPainter._ink,
+      centeredAtX: true,
+      maxWidth: box.width - 4,
+    );
+  }
 
   /// How far above the entry's red bar the delivery's writing starts — one
   /// line of the name's size, so it sits on the bar rather than across it.
