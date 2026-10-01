@@ -1033,5 +1033,38 @@ void main() {
         reason: 'resolved round tips',
       );
     });
+
+    test('🚨two colours crossing take the colour blend on every road — the '
+        'own-colour road is only for a dab over its own colour', () {
+      // ABI 40 (`qa_dab_over_own_colour`): a dab over nothing or over its own
+      // colour skips the colour blend, and every other pixel must still pay
+      // it — on the scalar loop, two pixels at a time (masked tips), and in
+      // the reference. One colour alone cannot tell the roads apart.
+      final cache = BrushTipStampCache();
+      const colours = [0xFFCC2211, 0xFF1144DD, 0x9922AA44];
+      for (final masked in [false, true]) {
+        expectParity(
+          surface: blankSurface(tileSize: 256),
+          sequence: strokeOf([
+            for (var i = 0; i < 9; i += 1)
+              () {
+                final one = dab(
+                  x: 72.4 + i * 6.1,
+                  y: 70.9 + (i % 3) * 4.2,
+                  size: 24 + i * 2.5,
+                  hardness: i.isEven ? 0.3 : 0.8,
+                  color: colours[i % colours.length],
+                  // Both the opaque road and the settling one.
+                  opacity: i.isEven ? 1.0 : 0.8,
+                  flow: 0.6,
+                  sequence: i,
+                );
+                return masked ? cache.resolveDab(one) : one;
+              }(),
+          ]),
+          reason: masked ? 'masked, two colours' : 'analytic, two colours',
+        );
+      }
+    });
   });
 }

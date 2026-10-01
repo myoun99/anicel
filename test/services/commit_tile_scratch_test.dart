@@ -187,6 +187,23 @@ void main() {
       scratch.releaseUnfinished();
     });
 
+    test('a zeroed buffer is zero even when the pool hands back a used '
+        'one', () {
+      // `qa_zero_bytes` (ABI 40): the pool parks a released block and hands
+      // that same block, dirty, to the next acquire of its size.
+      final dirty = engine.acquireTileBuffer(byteLength, zeroed: false);
+      dirty.view.fillRange(0, byteLength, 0xAB);
+      engine.releaseTileBuffer(dirty);
+      final again = engine.acquireTileBuffer(byteLength, zeroed: true);
+      expect(
+        again.pointer.address,
+        dirty.pointer.address,
+        reason: 'premise: the pool handed the used block back',
+      );
+      expect(again.view, everyElement(0));
+      engine.releaseTileBuffer(again);
+    });
+
     test('finish gives the plane back to the pool — the bytes are the tile '
         'now, the plane is nobody\'s', () {
       final coord = TileCoord(x: 0, y: 0);
