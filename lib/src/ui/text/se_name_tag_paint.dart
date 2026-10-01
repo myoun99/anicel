@@ -59,15 +59,12 @@ void paintSeNameTags(
         layouts.add(
           layoutTextCel(
             content: delivery.copyWith(
-              position:
-                  anchor +
-                  _deliveryShift(
-                    tag,
-                    delivery,
-                    box: nameInk,
-                    anchor: anchor,
-                    canvasSize: canvasSize,
-                  ),
+              position: _deliveryPosition(
+                tag,
+                delivery,
+                box: nameInk,
+                canvasSize: canvasSize,
+              ),
             ),
             canvas: canvasSize,
             maxWidth: tag.widthBudget,
@@ -110,19 +107,19 @@ void paintSeNameTags(
   }
 }
 
-/// How far [delivery], laid out at [anchor], moves to sit over [box]:
-/// centred on it and a line's gap above it.
+/// Where [delivery] is laid out to sit over [box]: centred on it and a
+/// line's gap above it.
 ///
 /// 🗣️I-20 (유저 2026-09-30): 「위치는 캐릭터 이름 박스 위 중앙정렬」. The
 /// painter and [seNameTagDeliveryBounds] both ask here, so the rule is
 /// written once.
-ui.Offset _deliveryShift(
+ui.Offset _deliveryPosition(
   ResolvedSeNameTag tag,
   TextCelContent delivery, {
   required ui.Rect box,
-  required ui.Offset anchor,
   required CanvasSize canvasSize,
 }) {
+  final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
   final probe = layoutTextCel(
     content: delivery.copyWith(position: anchor),
     canvas: canvasSize,
@@ -131,7 +128,8 @@ ui.Offset _deliveryShift(
   final ink = probe.inkBounds;
   probe.dispose();
   final gap = delivery.style.fontSize * 0.3;
-  return ui.Offset(box.center.dx - ink.center.dx, box.top - gap - ink.bottom);
+  return anchor +
+      ui.Offset(box.center.dx - ink.center.dx, box.top - gap - ink.bottom);
 }
 
 /// Where the delivery tag lands for [tag], or null when it has none —
@@ -144,16 +142,15 @@ ui.Rect? seNameTagDeliveryBounds(
   if (delivery == null || delivery.text.isEmpty) {
     return null;
   }
-  final anchor = seNameTagAnchorOf(tag, canvasSize: canvasSize);
-  final shift = _deliveryShift(
-    tag,
-    delivery,
-    box: seNameTagBoxBounds(tag, canvasSize: canvasSize),
-    anchor: anchor,
-    canvasSize: canvasSize,
-  );
   final landed = layoutTextCel(
-    content: delivery.copyWith(position: anchor + shift),
+    content: delivery.copyWith(
+      position: _deliveryPosition(
+        tag,
+        delivery,
+        box: seNameTagBoxBounds(tag, canvasSize: canvasSize),
+        canvasSize: canvasSize,
+      ),
+    ),
     canvas: canvasSize,
     maxWidth: tag.widthBudget,
   );

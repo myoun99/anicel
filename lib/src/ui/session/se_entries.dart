@@ -167,8 +167,7 @@ class SeEntries {
       layer.id,
       frame.id,
       dialogue: dialogue,
-      seName: seName,
-      seType: seType,
+      fields: (seName: seName, seType: seType),
     );
   }
 
@@ -182,8 +181,7 @@ class SeEntries {
     LayerId layerId,
     FrameId frameId, {
     required String dialogue,
-    String? seName,
-    required SeLineType seType,
+    required SeEntryFields fields,
   }) {
     final layer = requireLayerAnywhere(
       _project.repository.requireProject(),
@@ -197,7 +195,7 @@ class SeEntries {
       frameId: frameId,
       name: dialogue,
       allowDuplicateName: true,
-      seEntry: (seName: seName, seType: seType),
+      seEntry: fields,
     );
     _changes.notifyChanged();
   }

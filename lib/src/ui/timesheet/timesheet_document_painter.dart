@@ -11,6 +11,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
+import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';

@@ -392,8 +392,7 @@ Future<void> editSeEntryInstance(
       layerId,
       entryId,
       dialogue: dialogue,
-      seName: fields.seName,
-      seType: fields.seType,
+      fields: fields,
     ),
     setOffset: (token, offset) =>
         session.audioClips.setAudioClipOffset(layerId, token, offset),

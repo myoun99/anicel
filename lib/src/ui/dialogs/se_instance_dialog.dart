@@ -138,6 +138,26 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     );
   }
 
+  // 🗣️I-20 (유저 2026-09-30): 「se 블록의 타입으로서 on off mono 타입
+  // 추가」 — one of three, always; a grouped choice wears the pills.
+  Widget _typeField(AppStrings strings) => AppWindowField(
+    label: strings.seTypeLabel,
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: PillStrip(
+        items: [
+          for (final type in SeLineType.values)
+            PillItem(
+              keyValue: 'se-type-${type.name}',
+              label: type.label,
+              selected: _seType == type,
+              onTap: () => setState(() => _seType = type),
+            ),
+        ],
+      ),
+    ),
+  );
+
   Widget _linkedAudioField(AppStrings strings) {
     final theme = Theme.of(context);
     final remaining = [
@@ -218,25 +238,7 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
             ),
           ),
           const SizedBox(height: 12),
-          // 🗣️I-20 (유저 2026-09-30): 「se 블록의 타입으로서 on off mono 타입
-          // 추가」 — one of three, always; a grouped choice wears the pills.
-          AppWindowField(
-            label: strings.seTypeLabel,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: PillStrip(
-                items: [
-                  for (final type in SeLineType.values)
-                    PillItem(
-                      keyValue: 'se-type-${type.name}',
-                      label: type.label,
-                      selected: _seType == type,
-                      onTap: () => setState(() => _seType = type),
-                    ),
-                ],
-              ),
-            ),
-          ),
+          _typeField(strings),
           const SizedBox(height: 12),
           AppWindowField(
             label: strings.seDialogueLabel,

@@ -118,6 +118,7 @@ void main() {
     'seInstanceNewTitle': (s) => s.seInstanceNewTitle,
     'seInstanceEditTitle': (s) => s.seInstanceEditTitle,
     'seNameLabel': (s) => s.seNameLabel,
+    'seTypeLabel': (s) => s.seTypeLabel,
     'seDialogueLabel': (s) => s.seDialogueLabel,
     'tlResetGroup': (s) => s.tlResetGroup,
     'seNameTagShowLineLabel': (s) => s.seNameTagShowLineLabel,
