@@ -12,7 +12,10 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 /// conte and the envelope have since R3 #11.
 void main() {
   Future<Rect> pumpNarrow(WidgetTester tester) async {
-    await tester.binding.setSurfaceSize(const Size(560, 1000));
+    // Narrower than 640, and wide enough for the top strip: at 560 the
+    // strip's own row overflowed by 30, a failure about the strip and not
+    // about the slot this pins.
+    await tester.binding.setSurfaceSize(const Size(620, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       MaterialApp(theme: buildAppTheme(), home: const HomePage()),
