@@ -32,6 +32,7 @@ import '../../services/transform_box_law.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import '../brush/transform_tool_options.dart';
+import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
 import 'float_warp.dart';
 import 'selection_ants_painter.dart';

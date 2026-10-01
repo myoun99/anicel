@@ -9,7 +9,8 @@ import '../../services/selection_affine.dart';
 import '../brush/transform_tool_options.dart';
 import 'canvas_viewport_offset.dart';
 import 'float_warp.dart';
-import 'selection_ants_painter.dart' show SelectionTransformChrome;
+import 'box_chrome.dart' show SelectionTransformChrome;
+import 'box_press.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
 
@@ -44,7 +45,7 @@ class BoxOnScreen {
   final FloatWarp warp;
 
   /// Screen-space hit slack around a handle (≥ touch-friendly).
-  static const double handleHitRadius = 16;
+  static const double handleHitRadius = boxHandleHitRadius;
 
   int? hitTestPlacedPoint(Offset local, List<CanvasPoint>? points) {
     if (points == null) {
@@ -203,50 +204,37 @@ class BoxOnScreen {
     return _mapLocalToViewport(affine, handleLocal(handle, width, height)!);
   }
 
+  /// Where a press lands on the open box — through the one order every box
+  /// keeps ([boxPressAt]).
+  ///
+  /// ⚠️The stage gate is the one the move already asked for — see the
+  /// `onStage` check on the move path. ⛔Not a new rule: the same sentence,
+  /// asked once instead of twice.
   TransformHandle? hitTestTransformHandle(Offset local, TransformBox box) {
     final affine = box.affine;
-    // ⚠️THE CROSS IS ON TOP, SO IT IS GRABBED FIRST. It is painted over
-    // everything else, and 「what you see is what you grab」 is the only
-    // rule that survives the user dragging it onto a scale handle — which
-    // nothing stops them doing, because nothing clamps it.
-    final anchor = viewport.canvasToViewportOffset(affine.anchorCanvas);
-    if ((local - anchor).distance <= handleHitRadius) {
-      return TransformHandle.anchor;
-    }
-    for (final handle in scaleHandles) {
-      final position = scaleHandleViewport(
-        handle,
-        affine,
-        box.baseWidth,
-        box.baseHeight,
-      );
-      if ((local - position).distance <= handleHitRadius) {
-        return handle;
-      }
-    }
-    final canvasPoint = viewport.viewportOffsetToCanvas(local);
-    if (_transformedBoxShape(box).containsPoint(canvasPoint)) {
-      return TransformHandle.inside;
-    }
-    // 🚨★★★**OUTSIDE THE BOX IS THE ROTATION.** 유저 2026-09-22: 「우선
-    // **사각형 밖 조작은 회전으로 통하도록**. 지금 있는 **회전 꼭짓점은
-    // 잔재 싹 삭제**하고. 사각형 내부 조작은 지금처럼 위치이동」.
-    //
-    // ↩️A knob stuck out of the top edge and was hit-tested first. It is
-    // gone with everything that drew it — the lever, the circle, the
-    // offsets that placed it — because a whole half-plane is a bigger
-    // target than a 5px circle and needs no aiming.
-    //
-    // ⚠️On stage only. Off the pasteboard the press is not this tool's at
-    // all, which is the gate the move already asked for — see the
-    // `onStage` check on the move path. ⛔Not a new rule: the same
-    // sentence, asked once instead of twice.
-    return canvasSize.containsPasteboardPoint(
-          x: canvasPoint.x,
-          y: canvasPoint.y,
-        )
-        ? TransformHandle.rotate
-        : null;
+    final handles = scaleHandles;
+    final hit = boxPressAt(
+      local,
+      anchor: viewport.canvasToViewportOffset(affine.anchorCanvas),
+      handles: [
+        for (final handle in handles)
+          scaleHandleViewport(handle, affine, box.baseWidth, box.baseHeight),
+      ],
+      inside: (press) => _transformedBoxShape(
+        box,
+      ).containsPoint(viewport.viewportOffsetToCanvas(press)),
+      onStage: (press) {
+        final at = viewport.viewportOffsetToCanvas(press);
+        return canvasSize.containsPasteboardPoint(x: at.x, y: at.y);
+      },
+    );
+    return switch (hit?.press) {
+      null => null,
+      BoxPress.anchor => TransformHandle.anchor,
+      BoxPress.handle => handles[hit!.handle],
+      BoxPress.inside => TransformHandle.inside,
+      BoxPress.turn => TransformHandle.rotate,
+    };
   }
 
   /// What the ants painter draws over the box: the outline, the grips and
