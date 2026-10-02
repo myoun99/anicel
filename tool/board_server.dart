@@ -2265,6 +2265,20 @@ function renderRail(){
   rail.innerHTML = html + facet('담당', owners, 'owner', S.owner) + facet('영역', areas, 'area', S.area);
 }
 
+// 🆕확인 for the picked rows sits beside 모두 고르기, in the group they were
+// picked from (유저 2026-10-02: 「검증항목에서 모두고르기 옆에 확인버튼
+// 만들어줘」). ⛔It was a bar over the list that appeared only once something
+// was picked — UI that pops into existence. Both buttons are always there;
+// only their words and whether they can be pressed change.
+function pickControls(g, i){
+  var picked = g.rows.filter(function(c){ return S.picked.has(c.id); }).length;
+  var all = g.rows.length > 0 && picked === g.rows.length;
+  return '<span class="picks"><button class="ghost sm" data-pickall="' + i + '"' +
+    (g.rows.length ? '' : ' disabled') + '>' + (all ? '모두 풀기' : '모두 고르기') + '</button>' +
+    '<button class="sm" data-confirm="' + i + '"' + (picked ? '' : ' disabled') + '>확인' +
+    (picked ? ' ' + picked + '장' : '') + '</button><span class="state"></span></span>';
+}
+
 function renderList(){
   var list = document.getElementById('list');
   if (S.view === 'system' && !S.q) { list.innerHTML = systemHtml(); return; }
@@ -2277,17 +2291,12 @@ function renderList(){
   if (S.view === 'doing' && !S.q) html += '<button class="ghost sm" onclick="refreshPrs(event)">PR 다시 읽기</button>';
   if (S.q && S.old === null) html += '<button class="ghost sm" onclick="findOld()">지난 카드에서도 찾기</button>';
   html += '<span class="state"></span></div>';
-  if (S.picked.size) {
-    html += '<div class="bulk"><span>' + S.picked.size + '장 고름</span>' +
-      '<button onclick="confirmPicked(event)">확인 — 문제 없음</button>' +
-      '<button class="ghost" onclick="clearPicked()">고른 것 풀기</button><span class="state"></span></div>';
-  }
   groups.forEach(function(g, i){
     var key = S.view + ':' + g.t;
     var shown = S.more[key] !== undefined ? S.more[key] : (g.fold ? 0 : PAGE);
     html += '<section class="grp"><div class="gh"><span class="gt">' + esc(g.t) + '</span>' +
       '<span class="gn">' + g.rows.length + '</span>' + (g.note ? '<span class="note">' + esc(g.note) + '</span>' : '');
-    if (g.pick && g.rows.length) html += '<button class="ghost sm pickall" data-group="' + i + '">모두 고르기</button>';
+    if (g.pick) html += pickControls(g, i);
     html += '</div>';
     if (!g.rows.length) html += '<p class="none">없음</p>';
     html += g.rows.slice(0, shown).map(function(c){ return rowHtml(c, g); }).join('');
@@ -2497,15 +2506,19 @@ function refreshPrs(ev){
     .then(function(){ return afterWrite(); })
     .catch(function(e){ say(head, '실패: ' + e.message); });
 }
-function confirmPicked(ev){
-  var bar = ev.target.closest('.bulk');
-  var ids = Array.from(S.picked);
+// Every check a picked row's card still waits on is ticked — a card holding
+// three gets all three (유저 2026-10-02: 「카드에 여러 실기확인있으면 여러
+// 실기확인에도 확인 찍히도록」); the lines are `confirmRecords`'.
+function confirmGroup(btn){
+  var g = document.getElementById('list')._groups[Number(btn.dataset.confirm)];
+  var ids = g.rows.filter(function(c){ return S.picked.has(c.id); })
+    .map(function(c){ return c.id; });
   if (!ids.length) return;
-  post('/dismiss', {ids: ids}, bar)
-    .then(function(){ S.picked.clear(); return afterWrite(); })
-    .catch(function(e){ say(bar, '실패: ' + e.message); });
+  var box = btn.closest('.picks');
+  post('/dismiss', {ids: ids}, box)
+    .then(function(){ ids.forEach(function(id){ S.picked.delete(id); }); return afterWrite(); })
+    .catch(function(e){ say(box, '실패: ' + e.message); });
 }
-function clearPicked(){ S.picked.clear(); renderList(); }
 function findOld(){
   fetch('/api/find?q=' + encodeURIComponent(S.q), {cache: 'no-store'})
     .then(function(r){ return r.json(); })
@@ -2601,13 +2614,15 @@ document.addEventListener('click', function(e){
   if (a) { S.area = S.area === a.dataset.area ? null : a.dataset.area; renderAll(); return; }
   var m = e.target.closest('[data-more]');
   if (m) { var k = m.dataset.more; S.more[k] = (S.more[k] || 0) + PAGE; renderList(); return; }
-  var all = e.target.closest('.pickall');
+  var all = e.target.closest('[data-pickall]');
   if (all) {
-    var g = document.getElementById('list')._groups[Number(all.dataset.group)];
+    var g = document.getElementById('list')._groups[Number(all.dataset.pickall)];
     var on = g.rows.some(function(c){ return !S.picked.has(c.id); });
     g.rows.forEach(function(c){ if (on) S.picked.add(c.id); else S.picked.delete(c.id); });
     renderList(); return;
   }
+  var ok = e.target.closest('[data-confirm]');
+  if (ok) { confirmGroup(ok); return; }
   var pk = e.target.closest('[data-pick]');
   if (pk) { if (pk.checked) S.picked.add(pk.dataset.pick); else S.picked.delete(pk.dataset.pick);
     renderList(); return; }
@@ -2701,15 +2716,13 @@ padding:1px 9px;font-size:12px;cursor:pointer;color:var(--ink2);font-weight:400}
 .list{overflow:auto;min-width:0;padding-bottom:48px}
 .vhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 18px 2px}
 .vhead h2{margin:0;font-size:16px}
-.bulk{display:flex;align-items:center;gap:8px;margin:8px 18px;padding:6px 10px;
-border:1px solid var(--line2);border-radius:6px;background:var(--card);font-size:13px}
 .grp{margin-top:6px}
 .gh{display:flex;align-items:center;gap:8px;padding:9px 18px 6px;
 position:sticky;top:0;background:var(--bg);z-index:1}
 .gt{font-size:12px;font-weight:700;color:var(--ink2)}
 .gn{font-family:var(--mono);font-size:12px;color:var(--ink3)}
 .note{font-size:11.5px;color:var(--ink3)}
-.gh .pickall{margin-left:auto}
+.gh .picks{margin-left:auto;display:flex;align-items:center;gap:6px}
 .none{margin:0;padding:6px 18px 8px;font-size:12.5px;color:var(--ink3)}
 .row{display:grid;grid-template-columns:14px 104px minmax(0,1fr) auto;gap:10px;
 align-items:center;padding:7px 18px;border-top:1px solid var(--line);cursor:pointer}
@@ -2854,6 +2867,7 @@ button.alt:hover{background:var(--live);color:var(--card)}
 button.sm{padding:2px 9px;font-size:11.5px;font-weight:500}
 button.ghost{border-color:var(--line2);background:transparent;color:var(--ink3)}
 button.ghost:hover{border-color:var(--ink2);color:var(--ink);background:transparent}
+button[disabled]{opacity:.4;cursor:default;pointer-events:none}
 .state{font-size:12px;color:var(--ink3)}
 a{color:var(--live)}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}

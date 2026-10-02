@@ -224,6 +224,29 @@ void main() {
       expect(statusOf(cardOf(movedOn)), BoardStatus.backlog);
     });
 
+    test('🚨확인 on a picked row stamps every check its card holds', () {
+      // 유저 2026-10-02: 「카드에 여러 실기확인있으면 여러 실기확인에도 확인
+      // 찍히도록」. Drawn on a card that stays on the board, so the story is
+      // there to read.
+      final lines = moved([tried, triedAgain], '백로그');
+      final before = cardOf(lines);
+      expect(checksWaiting(before), hasLength(2), reason: '⛔premise');
+      expect(
+        confirmRecords(card: before, now: now).map((l) => l['ref']),
+        checksWaiting(before),
+        reason: 'one tick per check, each naming the check it clears',
+      );
+      final html = renderCards(read(plus(
+        lines,
+        (c) => confirmRecords(card: c, now: now),
+      )));
+      expect(
+        RegExp('<span class="chip ok">확인함</span>').allMatches(html),
+        hasLength(2),
+      );
+      expect(html, isNot(contains('class="tick"')), reason: 'no box is left');
+    });
+
     test('🚨a card finished, reopened and sent to 검증 waits on the new check',
         () {
       // 🧪A 완료 ended every check for good, so it sat in 검증 with no box.
