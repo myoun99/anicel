@@ -369,12 +369,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// 동사통일화** 가능하게」. `editSelectionInstance` walks delete's ladder
   /// and falls through to the playhead's cell when nothing is selected,
   /// which is what this used to do unconditionally.
-  Future<void> _editActiveInstance() => editSelectionInstance(
+  ///
+  /// F-261: through [editOnPanel], the door its key opens too.
+  Future<void> _editActiveInstance() => editOnPanel(
     context,
     _session,
+    panel: TimelineToolbarPanelContext(_session, waitIn: context),
     previewAxis: _previewAxis,
-    // R5q1: this is the TIMELINE panel.
-    cutsAreThisPanels: false,
   );
 
   /// The end-line drag's session hooks (UI-R18 #14): the boundary grip

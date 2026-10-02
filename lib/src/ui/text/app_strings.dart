@@ -843,7 +843,6 @@ enum AppStrings {
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
-  String get tlSharedEdit => _s('tlSharedEdit');
 
   /// The shared pill's link-independent button (I-45) — the user's own
   /// word for it, 「링크 독립」.
@@ -1076,7 +1075,6 @@ enum AppStrings {
   // --- Playback transport and the sheet page rail ---
   String get playbackQuality => _s('playbackQuality');
   String get playbackStop => _s('playbackStop');
-  String get playbackToStart => _s('playbackToStart');
   String get sheetPreviousPage => _s('sheetPreviousPage');
   String get sheetNextPage => _s('sheetNextPage');
   String get sheetPageDrag => _s('sheetPageDrag');
@@ -2286,7 +2284,6 @@ enum AppStrings {
     'shortcutRecordingHint': 'Press keys… (Esc cancels)',
     'playbackQuality': 'Playback quality',
     'playbackStop': 'Stop',
-    'playbackToStart': 'To start',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
     'sheetPageDrag': 'Page (drag / double-tap)',
@@ -2810,7 +2807,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
-    'tlSharedEdit': 'Edit',
     'tlSharedUnlink': 'Make independent',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
@@ -3324,6 +3320,7 @@ enum AppStrings {
     'shortcutAction.drawing-previous': '前のブロック',
     'shortcutAction.drawing-next': '次のブロック',
     'shortcutAction.playback-toggle': '再生 / 一時停止',
+    'shortcutAction.playback-to-start': '先頭へ',
     'shortcutAction.canvas-pan-hold': '移動（押している間）',
     'shortcutAction.voice-record-toggle': '音声収録（開始/停止）',
     'shortcutAction.edit-undo': '元に戻す',
@@ -3373,6 +3370,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': 'ピクセルコピー',
     'shortcutAction.edit-paste-pixels-above': 'ピクセルを上に貼り付け',
     'shortcutAction.edit-paste-pixels-below': 'ピクセルを下に貼り付け',
+    'shortcutAction.edit-instance': '編集',
     'shortcutAction.edit-auto-name': '自動命名',
     'blendMode.passThrough': '通過',
     'blendMode.normal': '通常',
@@ -3523,7 +3521,6 @@ enum AppStrings {
     'shortcutRecordingHint': 'キーを押してください…（Escで中止）',
     'playbackQuality': '再生品質',
     'playbackStop': '停止',
-    'playbackToStart': '先頭へ',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
     'sheetPageDrag': 'ページ（ドラッグ / ダブルタップ）',
@@ -4171,7 +4168,6 @@ enum AppStrings {
     'tlDetachLayer': 'アタッチを解除',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
-    'tlSharedEdit': '編集',
     'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
@@ -4682,6 +4678,7 @@ enum AppStrings {
     'shortcutAction.drawing-previous': '이전 블록',
     'shortcutAction.drawing-next': '다음 블록',
     'shortcutAction.playback-toggle': '재생 / 일시정지',
+    'shortcutAction.playback-to-start': '처음으로',
     'shortcutAction.canvas-pan-hold': '이동(누르는 동안)',
     'shortcutAction.voice-record-toggle': '음성 녹음 (시작/정지)',
     'shortcutAction.edit-undo': '실행 취소',
@@ -4731,6 +4728,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': '픽셀 복사',
     'shortcutAction.edit-paste-pixels-above': '픽셀 위 붙여넣기',
     'shortcutAction.edit-paste-pixels-below': '픽셀 아래 붙여넣기',
+    'shortcutAction.edit-instance': '편집',
     'shortcutAction.edit-auto-name': '자동 이름 지정',
     'blendMode.passThrough': '통과',
     'blendMode.normal': '표준',
@@ -4881,7 +4879,6 @@ enum AppStrings {
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
     'playbackQuality': '재생 품질',
     'playbackStop': '정지',
-    'playbackToStart': '처음으로',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
     'sheetPageDrag': '페이지 (드래그 / 더블탭)',
@@ -5525,7 +5522,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
-    'tlSharedEdit': '편집',
     'tlSharedUnlink': '링크 독립',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
@@ -6071,6 +6067,7 @@ enum AppStrings {
     'shortcutAction.drawing-previous': 'Bloc précédent',
     'shortcutAction.drawing-next': 'Bloc suivant',
     'shortcutAction.playback-toggle': 'Lecture / Pause',
+    'shortcutAction.playback-to-start': 'Au début',
     'shortcutAction.canvas-pan-hold': 'Déplacer (maintenir)',
     'shortcutAction.voice-record-toggle':
         'Enregistrer la voix (démarrer/arrêter)',
@@ -6121,6 +6118,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': 'Copier les pixels',
     'shortcutAction.edit-paste-pixels-above': 'Coller les pixels dessus',
     'shortcutAction.edit-paste-pixels-below': 'Coller les pixels dessous',
+    'shortcutAction.edit-instance': 'Modifier',
     'shortcutAction.edit-auto-name': 'Nommer automatiquement',
     'blendMode.passThrough': 'Transfert',
     'blendMode.normal': 'Normal',
@@ -6280,7 +6278,6 @@ enum AppStrings {
     'shortcutRecordingHint': 'Appuyez sur des touches… (Échap annule)',
     'playbackQuality': 'Qualité de lecture',
     'playbackStop': 'Arrêter',
-    'playbackToStart': 'Au début',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
     'sheetPageDrag': 'Page (glisser / double-tap)',
@@ -6950,7 +6947,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
-    'tlSharedEdit': 'Modifier',
     'tlSharedUnlink': 'Rendre indépendant',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
@@ -7432,6 +7428,7 @@ enum AppStrings {
     'shortcutAction.drawing-previous': '上一个块',
     'shortcutAction.drawing-next': '下一个块',
     'shortcutAction.playback-toggle': '播放 / 暂停',
+    'shortcutAction.playback-to-start': '回到开头',
     'shortcutAction.canvas-pan-hold': '移动（按住）',
     'shortcutAction.voice-record-toggle': '录音（开始/停止）',
     'shortcutAction.edit-undo': '撤销',
@@ -7481,6 +7478,7 @@ enum AppStrings {
     'shortcutAction.edit-copy-pixels': '复制像素',
     'shortcutAction.edit-paste-pixels-above': '粘贴像素到上方',
     'shortcutAction.edit-paste-pixels-below': '粘贴像素到下方',
+    'shortcutAction.edit-instance': '编辑',
     'shortcutAction.edit-auto-name': '自动命名',
     'blendMode.passThrough': '穿透',
     'blendMode.normal': '正常',
@@ -7626,7 +7624,6 @@ enum AppStrings {
     'shortcutRecordingHint': '请按键…（Esc 取消）',
     'playbackQuality': '播放质量',
     'playbackStop': '停止',
-    'playbackToStart': '回到开头',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',
     'sheetPageDrag': '页面（拖动 / 双击）',
@@ -8228,7 +8225,6 @@ enum AppStrings {
     'tlDetachLayer': '解除附属',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
-    'tlSharedEdit': '编辑',
     'tlSharedUnlink': '取消链接',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',

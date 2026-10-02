@@ -54,16 +54,17 @@ import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
-import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
-    show toggleVoiceRecordingWithFeedback;
+    show playOrStop, skipToStart, toggleVoiceRecordingWithFeedback;
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'shortcuts/shortcut_settings_store.dart';
-import 'timeline/instance_editor_commands.dart' show autoNameWithWindow;
+import 'timeline/frame_panel_sill_controls.dart' show panelTransportFor;
+import 'timeline/instance_editor_commands.dart'
+    show autoNameWithWindow, editOnPanel;
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
@@ -885,8 +886,31 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.drawingNext:
         _session.frameVerbs.flipRow(forward: true);
         _session.revealSelection();
+      // 🗣️F-261: the transport's buttons, pressed by key on the panel being
+      // worked in — the panel the flip follows (유저 2026-10-02: 「콘티패널에
+      // 포커스있으면 플립이 콘티패널기준 작동 … 그거랑 동일하게 법 통일해서
+      // 재생」). ↩️The play key played the active cut whichever panel it was.
+      //
+      // 🚨T28: play or stop, and nothing in between — the button's own press.
+      // (A middle branch used to resume a paused transport — a state that no
+      // longer exists.) Its STOP half is never reached from here: the gate
+      // every bound actuation passes first (T28-c, [_consumedByPlayback])
+      // has already stopped a running transport, so a key only ever plays —
+      // the mutation campaign found that arm unreachable.
       case EditorActionIds.playbackToggle:
-        _togglePlayback();
+        final transport = panelTransportFor(_session.workingPanel, _session);
+        playOrStop(
+          _session.playbackRig.playback,
+          scope: transport.scope,
+          startFrame: transport.startFrame,
+        );
+      case EditorActionIds.playbackToStart:
+        final transport = panelTransportFor(_session.workingPanel, _session);
+        skipToStart(
+          _session.playbackRig.playback,
+          scope: transport.scope,
+          onSkipToStart: transport.skipToStart,
+        );
       case EditorActionIds.voiceRecordToggle:
         unawaited(toggleVoiceRecordingWithFeedback(context, _session));
       case EditorActionIds.undo:
@@ -959,6 +983,24 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             showTimelineCommaCountDialog(context, _session, panel: panel),
           );
         }
+      // 🗣️F-261: the shared pill's Edit, pressed by key — its button's door
+      // on the panel being worked in, behind the gate that button reads. A
+      // timeline turned to its X-sheet previews down the page: the sheet's
+      // direction is the one answer the arrows and the flip read (F-28).
+      case EditorActionIds.editInstance:
+        final panel = _workingPanel;
+        if (panel.canEditInstance) {
+          unawaited(
+            editOnPanel(
+              context,
+              _session,
+              panel: panel,
+              previewAxis: _flipHud.framesRunVertically
+                  ? Axis.vertical
+                  : Axis.horizontal,
+            ),
+          );
+        }
       // I-18: 자동 이름 지정, pressed by key — the shared pill's button on the
       // panel being worked in, behind the gate that button reads.
       case EditorActionIds.editAutoName:
@@ -1022,19 +1064,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     if (panel.canSetComma) {
       panel.setComma(comma);
     }
-  }
-
-  /// 🚨T28: play or stop, and nothing in between. The middle branch
-  /// used to resume a paused transport — a state that no longer
-  /// exists. The STOP half lives in the gate every bound actuation
-  /// passes first (T28-c, [_consumedByPlayback]): a running transport
-  /// is already stopped by the time this key arrives, so here it only
-  /// ever plays — the mutation campaign found the stop arm unreachable.
-  void _togglePlayback() {
-    _session.playbackRig.playback.play(
-      scope: PlaybackScope.activeCut,
-      startGlobalFrame: _session.currentFrameIndex,
-    );
   }
 
   void _abandonPolygonOrCancelTransform() {

@@ -6,6 +6,8 @@ import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../editor_session_manager.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import 'audio_level_meter.dart';
@@ -42,6 +44,39 @@ Future<void> toggleVoiceRecordingWithFeedback(
   if (message != null && context.mounted) {
     await showAppNotice(context, title: strings.commonNotice, message: message);
   }
+}
+
+/// The play button's press — and its key's (F-261), so the key does what
+/// the button on the panel being worked in does: the transport playing
+/// THIS [scope] stops, anything else plays [scope] from [startFrame]
+/// (frame 0 without one).
+void playOrStop(
+  CanvasPlaybackController controller, {
+  required PlaybackScope scope,
+  int Function()? startFrame,
+}) {
+  if (controller.isActive &&
+      controller.scope == scope &&
+      controller.isPlaying) {
+    controller.stop();
+    return;
+  }
+  controller.play(scope: scope, startGlobalFrame: startFrame?.call());
+}
+
+/// 「처음으로」's press — and its key's (F-261): the transport running THIS
+/// [scope] seeks itself; otherwise [onSkipToStart] moves the host's
+/// editing playhead to its axis origin (REC1-B).
+void skipToStart(
+  CanvasPlaybackController controller, {
+  required PlaybackScope scope,
+  VoidCallback? onSkipToStart,
+}) {
+  if (controller.isActive && controller.scope == scope) {
+    controller.seekToGlobalFrame(0);
+    return;
+  }
+  onSkipToStart?.call();
 }
 
 /// 🚨T29 — the drop readout's fixed slot. Wide enough for a four-digit
@@ -146,7 +181,7 @@ class PlaybackTransportControls extends StatelessWidget {
             // the count grows leftward into its own space and no button
             // ever moves. That is what keeping 「오른쪽정렬」 buys.
             _droppedFramesSlot(),
-            _skipToStartButton(controlsThisScope),
+            _skipToStartButton(),
             // 🚨T28 — ONE button: play, or stop. 「재생, 일시정지상태의
             // 필요성을 못느끼겠음. 삭제하고 재생/정지 상태만 남김」.
             //
@@ -288,33 +323,25 @@ class PlaybackTransportControls extends StatelessWidget {
     return AppIconButton(
       keyValue: 'playback-play-button',
       tooltip: isPlayingHere ? 'Stop' : 'Play',
+      shortcuts: const [EditorActionIds.playbackToggle],
       isSelected: isPlayingHere,
       icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),
-      onPressed: () {
-        if (isPlayingHere) {
-          controller.stop();
-        } else {
-          controller.play(
-            scope: scope,
-            startGlobalFrame: playbackStartFrame?.call(),
-          );
-        }
-      },
+      onPressed: () =>
+          playOrStop(controller, scope: scope, startFrame: playbackStartFrame),
     );
   }
 
-  AppIconButton _skipToStartButton(bool controlsThisScope) {
+  AppIconButton _skipToStartButton() {
     return AppIconButton(
       keyValue: 'playback-skip-to-start-button',
-      tooltip: AppText.strings.playbackToStart,
+      tooltip: editorActionLabel(EditorActionIds.playbackToStart),
+      shortcuts: const [EditorActionIds.playbackToStart],
       icon: const Icon(Icons.skip_previous),
-      onPressed: () {
-        if (controlsThisScope) {
-          controller.seekToGlobalFrame(0);
-        } else {
-          onSkipToStart?.call();
-        }
-      },
+      onPressed: () => skipToStart(
+        controller,
+        scope: scope,
+        onSkipToStart: onSkipToStart,
+      ),
     );
   }
 

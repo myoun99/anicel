@@ -103,8 +103,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.appIconButton(rowToggle).tooltip, 'Onion skin (on)');
 
-    // The O key toggles the ACTIVE layer back off.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyO);
+    // The Q key toggles the ACTIVE layer back off (F-261: 「어니언스킨을
+    // Q로」 — it was O).
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyQ);
     await tester.pumpAndSettle();
     expect(tester.appIconButton(rowToggle).tooltip, 'Onion skin');
 

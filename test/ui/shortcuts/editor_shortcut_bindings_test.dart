@@ -57,7 +57,15 @@ void main() {
       reason: 'Space dispatches no intent — the hold takes it on the way',
     );
     final playback = bindings.definitionFor(EditorActionIds.playbackToggle)!;
-    expect(playback.defaultActivators, isEmpty);
+    // ↩️F-261 (유저 2026-10-02): 「재생/정지버튼은 S로」 — a key again, and
+    // still not Space.
+    expect(
+      activatorsEqual(
+        playback.defaultActivators.single,
+        const SingleActivator(LogicalKeyboardKey.keyS),
+      ),
+      isTrue,
+    );
     expect(playback.defaultTouchGesture, 'fourFingerTap');
   });
 
@@ -66,7 +74,8 @@ void main() {
   // the `>` key's place — and on a layout that types `.` under Shift, the
   // `.` it types belongs to a binding that names `.`, not to the zoom: two
   // typed forms of one character would leave the press to map order.
-  // Unobservable through the defaults, so it is pinned here.
+  // Unobservable through the defaults, so it is pinned here. ↩️The zoom left
+  // Shift+. in F-261; the rule holds for any binding recorded with Shift.
   test('a binding WITH Shift gets no typed form — only one that names a '
       'character does', () {
     expect(

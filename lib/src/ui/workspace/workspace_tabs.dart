@@ -71,6 +71,21 @@ class _WorkspaceTabs {
     child: PanelAwareListenableBuilder(listenable: listenable, builder: host),
   );
 
+  /// A frame panel's 문턱: the transport [panel]'s keys press too
+  /// ([panelTransportFor]) and the camera-view toggle both panels share.
+  Widget _sill(WorkingPanel panel, {required String cameraViewKeyValue}) {
+    final session = _state.widget.session;
+    final transport = panelTransportFor(panel, session);
+    return FramePanelSillControls(
+      session: session,
+      scope: transport.scope,
+      cameraViewEnabled: _state._views._cameraViewEnabled,
+      cameraViewKeyValue: cameraViewKeyValue,
+      playbackStartFrame: transport.startFrame,
+      onSkipToStart: transport.skipToStart,
+    );
+  }
+
   /// Both viewers, built from one place: same panel, same code, different
   /// [MediaViewerSlot]. Anything that reads as "the main one does X"
   /// belongs in the slot or in the callbacks, never in a second copy of
@@ -791,13 +806,9 @@ class _WorkspaceTabs {
           // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
           // every verb a rough pass needs is still on screen while folded.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => FramePanelSillControls(
-            session: _state.widget.session,
-            scope: PlaybackScope.activeCut,
-            cameraViewEnabled: _state._views._cameraViewEnabled,
+          sillTrailing: (context) => _sill(
+            WorkingPanel.timeline,
             cameraViewKeyValue: 'timeline-camera-view-button',
-            playbackStartFrame: () => _state.widget.session.currentFrameIndex,
-            onSkipToStart: () => _state.widget.session.selectFrameIndex(0),
           ),
           builder: (context) => _panelHost(
             // The session subscription lives HERE now (HomePage no longer
@@ -932,15 +943,9 @@ class _WorkspaceTabs {
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
           collapsedExtent: TimelineCommandBar.heightIn(_state.context),
-          sillTrailing: (context) => FramePanelSillControls(
-            session: _state.widget.session,
-            scope: PlaybackScope.allCuts,
-            cameraViewEnabled: _state._views._cameraViewEnabled,
+          sillTrailing: (context) => _sill(
+            WorkingPanel.storyboard,
             cameraViewKeyValue: 'storyboard-camera-view-button',
-            playbackStartFrame: () =>
-                _state.widget.session.playheadCursors.trackFrameNow() ?? 0,
-            onSkipToStart: () =>
-                seekStoryboardPlayheadToTrackStart(_state.widget.session),
           ),
           builder: (context) => _panelHost(
             // Session subscription — the timeline tab's list exactly, and

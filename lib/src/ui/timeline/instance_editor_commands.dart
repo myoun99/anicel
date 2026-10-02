@@ -27,7 +27,15 @@ import '../text/place_lines.dart' show drawingPlaceLines, rowPlaceLines;
 import '../widgets/pill_strip.dart' show PillItem, PillStrip;
 import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
-import 'toolbar_panel_context.dart' show ToolbarPanelContext;
+import 'toolbar_panel_context.dart'
+    show
+        StoryboardEditCellBand,
+        StoryboardEditCut,
+        StoryboardEditLaneKey,
+        StoryboardEditSeEntry,
+        StoryboardEditTransitionSpan,
+        StoryboardToolbarPanelContext,
+        ToolbarPanelContext;
 
 /// THE instance editor, in one place: what a double-tap on a cell opens, and
 /// what the frame pill's `Edit Instance` opens at the playhead.
@@ -209,6 +217,59 @@ Future<void> editSelectionInstance(
     case PillSubject.cells:
       await editActiveInstance(context, session, previewAxis: previewAxis);
     case PillSubject.nothing:
+      break;
+  }
+}
+
+/// 🚨T25 · F-261 — the shared pill's Edit on [panel], pressed by its button
+/// or by its key: what opens is what that panel's gate read.
+///
+/// ③/B8: the storyboard edits THE BLOCK UNDER ITS CURSOR, whatever the
+/// standing row holds — the cut's rename, the SE entry's dialog, the
+/// transition span's editor, a lane key's rename. One resolver
+/// ([StoryboardToolbarPanelContext.editTarget]) feeds the button's gate AND
+/// this dispatch, so lit and does-something cannot come apart. The timeline
+/// edits its selection's instance — R5q1: not cuts, 「타임라인에서는
+/// 타임라인의 것을」 — its previews running along [previewAxis].
+///
+/// ↩️Each host held its half as the button's own callback, so a key had no
+/// door to press (F-261: 「일단 편집버튼」).
+Future<void> editOnPanel(
+  BuildContext context,
+  EditorSessionManager session, {
+  required ToolbarPanelContext panel,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  if (panel is! StoryboardToolbarPanelContext) {
+    await editSelectionInstance(
+      context,
+      session,
+      previewAxis: previewAxis,
+      cutsAreThisPanels: false,
+    );
+    return;
+  }
+  switch (panel.editTarget) {
+    case StoryboardEditCut():
+      await renameActiveCutWithDialog(context, session);
+    case StoryboardEditSeEntry(:final layerId, :final globalFrame):
+      await editSeEntryInstance(
+        context,
+        session,
+        layerId: layerId,
+        globalFrame: globalFrame,
+      );
+    case StoryboardEditTransitionSpan():
+      await editTransitionSpanInstance(context, session);
+    case StoryboardEditLaneKey():
+      // Lane-key state is session-shared, so the shared cell entrance
+      // serves it from this panel too.
+      await editActiveInstance(context, session);
+    case StoryboardEditCellBand():
+      // F-186: the timeline's band, so the timeline's Edit — the same
+      // subject its gate read.
+      await editSelectionInstance(context, session, cutsAreThisPanels: false);
+    case null:
       break;
   }
 }

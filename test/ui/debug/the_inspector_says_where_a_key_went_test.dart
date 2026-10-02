@@ -54,8 +54,9 @@ void main() {
       reason: 'the answer pairs with the key it answers',
     );
 
-    // Unbound: Q binds nothing by default.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyQ);
+    // Unbound: J binds nothing by default (↩️it was Q, the onion skin's
+    // since F-261).
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
     await tester.pump();
     expect(InputInspector.notes['bind'], contains('no binding'));
 
@@ -64,7 +65,7 @@ void main() {
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
     await tester.pump();
-    expect(InputInspector.notes['bind'], contains('Key Q'));
+    expect(InputInspector.notes['bind'], contains('Key J'));
     InputInspector.visible.value = true;
     await tester.pump();
 

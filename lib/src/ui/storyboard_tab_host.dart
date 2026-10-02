@@ -368,40 +368,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   StoryboardToolbarPanelContext get _toolbarPanel =>
       StoryboardToolbarPanelContext(_session, waitIn: context);
 
-  /// ③/B8 Edit Instance on THIS panel: THE BLOCK UNDER THE CURSOR, whatever
-  /// the standing row holds — the cut's rename, the SE entry's dialog, the
-  /// transition span's editor, a lane key's rename. One resolver
-  /// ([StoryboardToolbarPanelContext.editTarget]) feeds the button's gate
-  /// AND this dispatch, so lit and does-something cannot come apart (T25).
-  void _editInstanceHere() {
-    switch (_toolbarPanel.editTarget) {
-      case StoryboardEditCut():
-        unawaited(renameActiveCutWithDialog(context, _session));
-      case StoryboardEditSeEntry(:final layerId, :final globalFrame):
-        unawaited(
-          editSeEntryInstance(
-            context,
-            _session,
-            layerId: layerId,
-            globalFrame: globalFrame,
-          ),
-        );
-      case StoryboardEditTransitionSpan():
-        unawaited(editTransitionSpanInstance(context, _session));
-      case StoryboardEditLaneKey():
-        // Lane-key state is session-shared, so the shared cell entrance
-        // serves it from this panel too.
-        unawaited(editActiveInstance(context, _session));
-      case StoryboardEditCellBand():
-        // F-186: the timeline's band, so the timeline's Edit — the same
-        // subject its gate read.
-        unawaited(
-          editSelectionInstance(context, _session, cutsAreThisPanels: false),
-        );
-      case null:
-        break;
-    }
-  }
+  /// ③/B8 Edit Instance on THIS panel: [editOnPanel] with this panel's
+  /// context — the door its key opens too (F-261).
+  void _editInstanceHere() =>
+      unawaited(editOnPanel(context, _session, panel: _toolbarPanel));
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
   /// copy of it: transport + cut group left, the shared view cluster right.
