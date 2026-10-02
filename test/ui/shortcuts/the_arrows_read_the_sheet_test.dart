@@ -89,6 +89,37 @@ void main() {
     );
   });
 
+  // F-28's 「입구는 달라도 통하는건 하나」: the flip asks the moves' own table
+  // which move walks a way — the extra finger the frame step, as Shift is on
+  // the keys — instead of a switch of its own.
+  test('the table the flip reads: a way and the extra finger name the move, '
+      'and the extra finger on a row is still the row', () {
+    expect(
+      sheetMoveActionId(SheetArrow.right, fine: true),
+      EditorActionIds.frameNext,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.left, fine: true),
+      EditorActionIds.framePrevious,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.right, fine: false),
+      EditorActionIds.drawingNext,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.left, fine: false),
+      EditorActionIds.drawingPrevious,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.up, fine: true),
+      EditorActionIds.layerUp,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.down, fine: false),
+      EditorActionIds.layerDown,
+    );
+  });
+
   test('⛔no move on a Ctrl chord — and a direction key, bare or under '
       'Shift, belongs to the six moves alone', () {
     final bindings = EditorShortcutBindings();
