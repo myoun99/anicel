@@ -29,13 +29,13 @@ void main() {
   String page(List<String> lines) {
     final f = File('${dir.path}/board.jsonl')
       ..writeAsStringSync(lines.map((l) => '$l\n').join());
-    return renderBoard(readBoard(f));
+    return renderCards(readBoard(f));
   }
 
   String panelOf(String html, String id) {
     final start = html.indexOf('id="c-$id"');
     expect(start, greaterThan(-1), reason: '⛔premise: the card is drawn');
-    final next = html.indexOf('<details class="p ', start + 1);
+    final next = html.indexOf('<article class="p det"', start + 1);
     return html.substring(start, next < 0 ? html.length : next);
   }
 
@@ -95,12 +95,20 @@ void main() {
     // `<details class="lg">` with no id — so a shot pasted into a per-check
     // box posted an empty id and went nowhere. Cards are the ones named
     // `c-<id>`; the handler asks for that now.
-    final html = page([check]);
-    expect(html, contains("""closest('details[id^="c-"]')"""));
+    // ⚠️By the id ALONE: since the list-and-detail page (2026-10-02) a card
+    // is an `<article>`, and `details[id^="c-"]` found nothing there — the
+    // same silent empty paste, reached from the other side.
+    final script = boardScript();
+    expect(script, contains("""closest('[id^="c-"]')"""));
     expect(
-      html,
+      script,
       isNot(contains("ta.closest('details');")),
       reason: 'the loose walk is gone, not shadowed',
+    );
+    expect(
+      page([check]),
+      contains('<article class="p det" id="c-C-x"'),
+      reason: '⛔premise: the card the handler looks for is named that way',
     );
   });
 

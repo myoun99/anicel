@@ -530,7 +530,8 @@ Iterable<String> _workThatShipped(
       // ⚠️`c.state` IS the section — `placeByStory` already folded it out of
       // the story. Deriving it again from the stage word missed a card with
       // NO 대분류 at all, which defaults to 바로 가능 and is the loudest case.
-      final idle = c.state == 'open' || c.state == 'queue';
+      final idle =
+          c.state == 'open' || c.state == 'queue' || c.state == 'known';
       if (idle && !stillOwed(c)) {
         shipped.add(c.id);
       }

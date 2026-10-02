@@ -27,7 +27,7 @@ void main() {
   String page(List<String> lines) {
     final f = File('${dir.path}/board.jsonl')
       ..writeAsStringSync(lines.map((l) => '$l\n').join());
-    return renderBoard(readBoard(f));
+    return renderCards(readBoard(f));
   }
 
   group('질문은 고를 것이 있어야 질문이다', () {
@@ -105,6 +105,9 @@ void main() {
         '{"kind":"item","id":"W","at":"확인 완료","ref":"2026-08-31T01:00:00Z",'
             '"said":"확인 — 문제 없음","ts":"2026-08-31T02:00:00Z"}',
       ]);
+      // ⚠️Premise: the page draws only the cards still on the board, so a
+      // card that ended here would pass the next line by not being drawn.
+      expect(html, contains('id="c-W"'));
       expect(
         html,
         isNot(contains('class="tick"')),

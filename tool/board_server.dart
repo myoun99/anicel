@@ -395,24 +395,19 @@ Future<void> _handle(HttpRequest req) async {
             'ts': _now(),
           });
         }
+      // ↩️확인 on the rows picked in the list: every check each card still
+      // waits on, ticked quietly — the very lines [tickRecords] writes. It was
+      // `state: archived` on the card (#1200, 2026-08-24, when one card was
+      // one check), which on today's board would also end a card that waits
+      // on a check from somewhere else — 🧪brush-fidelity and I-4 sat in 백로그
+      // with work left when this was written.
       case '/dismiss':
+        final board = _board();
         for (final id in (body['ids'] as List?) ?? [body['id']]) {
-          _append({
-            'kind': 'item',
-            'id': id,
-            'state': 'archived',
-            'ts': _now(),
-          });
+          final card = board.where((c) => c.id == '$id').firstOrNull;
+          if (card == null) continue;
+          confirmRecords(card: card, now: _now).forEach(_append);
         }
-      // 🚨★★★THE USER ASKS FOR A MOVE; I MAKE IT (유저 2026-08-31: 「대기중/
-      // 착수 가능 등에서 내가 아 이건 순서 보류하고 싶다 싶을 때 **가볍게
-      // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋을 거
-      // 같아**」).
-      //
-      // ⚠️ONE LINE, and its 대분류 is 분류 전 — not the section they asked
-      // for. Everything the user writes comes back to me to act on, which has
-      // been the law since 2026-08-26 and is the reason **유저는 분류 체계를
-      // 몰라도 된다**: the request is the entry's text, and moving the card is
       // 🚨★★★THE WRITER COUNTS, SO THE READER KEEPS ONE RULE (유저
       // 2026-08-31: 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데, 그걸
       // 그냥 **대분류 확인이라는 항목을 만드는 작업으로 하면** 자연스럽게
@@ -429,9 +424,7 @@ Future<void> _handle(HttpRequest req) async {
       case '/tick':
         final id = '${body['id']}';
         final ref = '${body['ref'] ?? ''}';
-        final card = readBoard(File(_recordsPath))
-            .where((c) => c.id == id)
-            .firstOrNull;
+        final card = _board().where((c) => c.id == id).firstOrNull;
         final note = '${body['note'] ?? ''}'.trim();
         // What the lines say, and why a tick can write two of them, lives on
         // [tickRecords] — a route that only appends is a route no test can
@@ -445,14 +438,65 @@ Future<void> _handle(HttpRequest req) async {
         )) {
           _append(line);
         }
-      case '/ask-move':
+      // ↩️🚨★★★ONE PRESS MOVES THE CARD (유저 2026-10-02, on the redesign
+      // that said 「상태는 한 번 누르면 바로 바뀝니다 … 바뀐 일은 이야기에
+      // 「사용자가 옮김」으로 남으니 흔적은 그대로 남습니다」: 「문제없어
+      // 진행해줘. 최대한 프로들이랑 똑같으면되」).
+      //
+      // It reverses this, written on 2026-08-31 for the request 「대기중/착수
+      // 가능 등에서 내가 아 이건 순서 보류하고 싶다 싶을 때 **가볍게 순서
+      // 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋을 거 같아**」:
+      // 「⚠️ONE LINE, and its 대분류 is 분류 전 — not the section they asked
+      // for. Everything the user writes comes back to me to act on … **유저는
+      // 분류 체계를 몰라도 된다**: the request is the entry's text, and moving
+      // the card is mine. ⛔A button that moved the card itself would move
+      // something nobody had read, and the request would leave no trace in
+      // the story.」
+      //
+      // ⇒ The trace half still holds: the move IS an entry, the user's own,
+      // under the status word it moved to — so the story says who moved it and
+      // when, and the fold places the card by it like any other word.
+      case '/move':
+        final id = '${body['id']}';
+        final line = moveRecord(
+          card: _board().where((c) => c.id == id).firstOrNull,
+          id: id,
+          to: '${body['to'] ?? ''}',
+          now: _now,
+        );
+        if (line == null) {
+          req.response.statusCode = 400;
+          await req.response.close();
+          return;
+        }
+        _append(line);
+      // 🆕A field, last-wins, with no entry: a priority is a dial on the card,
+      // not something that happened in its story.
+      case '/priority':
+        final id = '${body['id']}';
+        final card = _board().where((c) => c.id == id).firstOrNull;
         _append({
-          'kind': 'item',
-          'id': body['id'],
-          'at': '유저',
-          'said': '${body['to'] ?? ''}${ro('${body['to'] ?? ''}')} 옮겨 주세요',
+          'kind': card?.kind ?? 'item',
+          'id': id,
+          'priority': '${body['priority'] ?? ''}'.trim(),
           'ts': _now(),
         });
+      // 🆕「이 빌드로 시험 중」: what master is right now, and when — the build
+      // verification is grouped by.
+      case '/build':
+        final commit = _master();
+        _append({
+          'kind': 'build',
+          'id': 'build-${_now().substring(0, 19).replaceAll(':', '')}',
+          'title': commit,
+          'ts': _now(),
+        });
+        req.response
+          ..statusCode = 200
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'ok': true, 'commit': commit}));
+        await req.response.close();
+        return;
       case '/intake':
         newId = _intake(body);
       case '/edit':
@@ -507,6 +551,36 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     return;
   }
+  if (path == '/api/board') {
+    final data = await _boardJson();
+    req.response
+      ..headers.contentType = ContentType.json
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(jsonEncode(data));
+    await req.response.close();
+    return;
+  }
+  if (path == '/api/find') {
+    req.response
+      ..headers.contentType = ContentType.json
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(jsonEncode(_find(req.uri.queryParameters['q'] ?? '')));
+    await req.response.close();
+    return;
+  }
+  if (path == '/card') {
+    final html = _detail(
+      _board(),
+      await _prs(),
+      req.uri.queryParameters['id'] ?? '',
+    );
+    req.response
+      ..headers.contentType = ContentType.html
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(html);
+    await req.response.close();
+    return;
+  }
   if (path != '/') {
     req.response.statusCode = 404;
     await req.response.close();
@@ -520,11 +594,11 @@ Future<void> _handle(HttpRequest req) async {
   // fresh page, and asking is the one gesture that already means 「throw this
   // page away」.
   //
-  // ⚠️`partial` IS THE SAFETY, and it is the user's other requirement:
+  // ⚠️ONLY THE PAGE ITSELF REBUILDS, and it is the user's other requirement:
   // 「내가 소스가 바뀌기 전에 답한 것도 안 사라지게 잘 하는 것도 중요하고」.
-  // The page refetches this same path to redraw one card after a submit, and
-  // handing THAT over would kill the server in the middle of the flow that
-  // just recorded an answer. Those fetches say `partial=1` and never rebuild.
+  // After a submit the page reads `/api/board` and `/card`, never this path,
+  // so handing over cannot kill the server in the middle of the flow that
+  // just recorded an answer.
   //
   // ✅The answer itself is never at risk either way: `_append` writes the line
   // SYNCHRONOUSLY, so it is on disk before the reply is sent and a restart
@@ -534,8 +608,7 @@ Future<void> _handle(HttpRequest req) async {
   // ⚠️Windows will not overwrite a running exe, so this process has to end for
   // the rebuild to work — the page it serves first says so and waits for the
   // new board on the same port.
-  final partial = req.uri.queryParameters['partial'] == '1';
-  if (!partial && _sourceMoved()) {
+  if (_sourceMoved()) {
     req.response
       ..headers.contentType = ContentType.html
       ..headers.set('Cache-Control', 'no-store')
@@ -543,14 +616,23 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     _relaunch();
   }
-  final entries = readBoard(File(_recordsPath));
-  final gh = await _prs();
+  final boot = await _boardJson();
   req.response
     ..headers.contentType = ContentType.html
     ..headers.set('Cache-Control', 'no-store')
-    ..write(_render(entries, gh, await _checkouts(),
-        landedPage: int.tryParse(req.uri.queryParameters['landed'] ?? '') ?? 1));
+    ..write(_shell(boot));
   await req.response.close();
+}
+
+/// The commit master is at now, short — what a build marks.
+String _master() {
+  try {
+    final r = Process.runSync('git', ['-C', _gitRoot, 'rev-parse', '--short', 'master'],
+        stdoutEncoding: utf8);
+    return r.exitCode == 0 ? (r.stdout as String).trim() : '';
+  } on Object catch (_) {
+    return '';
+  }
 }
 
 String _now() => DateTime.now().toIso8601String();
@@ -615,7 +697,7 @@ String _intake(Map<String, dynamic> body) {
 /// reasoned from, and an append-only log that quietly loses entries is worse
 /// than one that keeps a few dead ones.
 bool _purge(String id) {
-  final entry = readBoard(File(_recordsPath)).where((e) => e.id == id);
+  final entry = _board().where((e) => e.id == id);
   if (entry.isEmpty || entry.first.state != 'inbox') return false;
   final kept = File(_recordsPath).readAsLinesSync().where((line) {
     final t = line.trim();
@@ -640,7 +722,7 @@ bool _purge(String id) {
 String _nextId(String prefix) {
   final used = <int>{};
   final pattern = RegExp('^$prefix-([0-9]+)\$');
-  for (final e in readBoard(File(_recordsPath))) {
+  for (final e in _board()) {
     final m = pattern.firstMatch(e.id);
     if (m != null) used.add(int.parse(m.group(1)!));
   }
@@ -906,55 +988,8 @@ Future<List<_Checkout>> _readCheckouts() async {
 
 // ------------------------------------------------------------------ render
 
-/// The only thing a waiting item's badge has to say is WHAT IT WAITS ON.
-///
-/// It used to say 「나중」 and 「게이트」 side by side, which are the same news
-/// (not now) told two ways, and 「열림」 on everything else, which is the
-/// section's name repeated on every row. What was missing is the one fact that
-/// changes what to do about it: whose move is it.
-///
-/// `open` is deliberately absent — a ready item wears no badge at all, because
-/// the section it sits in already said so.
-const _stateLabels = <String, String>{
-  'wip': '하는 중',
-  'ask': '답할 것',
-  // 유저 2026-08-25: 「대기중의 지시대기는 사실상 상담대기니까 이름 상담대기로
-  // 바꾸자」. 「지시 대기」는 유저가 명령을 안 내려서 멈춰 있다고 읽히는데,
-  // 실제로 멈춰 있는 이유는 아직 이야기가 안 끝나서다.
-  // 🆕2026-08-31 유저가 다시 이름을 골랐다 — 상담 대기 → 대화 중,
-  // 순서 대기 → 나중에. 칸 이름과 배지를 같은 말로 두기 위해서다.
-  'gate': '대화 중',
-  'queue': '나중에',
-  'mine': '내가 정리 중',
-  'hands': '실기 확인',
-  'inbox': '분류 전',
-};
-
-/// Item states that mean "not startable yet". Anything else with no PR is
-/// ready to go.
-const _waiting = <String>{'ask', 'gate', 'queue', 'mine'};
-
-
-
-
-
-
-
-
-
 String _esc(String s) => const HtmlEscape().convert(s);
 
-/// 🚨★★★THE PAGE, FROM CARDS ALONE — the one public way in, so a test can
-/// look at WHAT THE BOARD DRAWS.
-///
-/// ⛔Every board bug on 2026-08-31 was in here and none of them could be
-/// caught: a question drawn as an ordinary row, a hands-on check with no memo
-/// box, a memo box holding words it no longer edits. The model was right each
-/// time. `test/tool/` covered the model and could not see the screen.
-///
-/// ⚠️It takes cards and nothing else. gh and git status are what a server
-/// fetches; a page with neither still has to be correct, and that is exactly
-/// the page a test should assert on.
 /// The lines a tick on [id] appends: the tick itself, and the user's words
 /// beside it when there are any. [card] is what the board holds for [id]
 /// right now (null if nothing), [ref] the `ts` of the check being cleared.
@@ -990,15 +1025,50 @@ List<Map<String, dynamic>> tickRecords({
   required String note,
   required String Function() now,
 }) {
-  final kind = card?.kind ?? 'item';
   final left = card == null
       ? const <String>[]
       : checksWaiting(card).where((ts) => ts != ref).toList();
+  return _tickLines(card, id, ref, note, now, last: left.isEmpty);
+}
+
+/// The lines 확인 on the list's picked rows appends for [card]: every check it
+/// still waits on, ticked quietly, oldest first — each as [tickRecords]
+/// writes it.
+List<Map<String, dynamic>> confirmRecords({
+  required BoardCard card,
+  required String Function() now,
+}) {
+  final waiting = checksWaiting(card);
+  return [
+    for (var i = 0; i < waiting.length; i++)
+      ..._tickLines(card, card.id, waiting[i], '', now,
+          last: i == waiting.length - 1),
+  ];
+}
+
+/// One tick's lines; [last] says no other check on the card is left waiting.
+List<Map<String, dynamic>> _tickLines(
+  BoardCard? card,
+  String id,
+  String ref,
+  String note,
+  String Function() now, {
+  required bool last,
+}) {
+  final kind = card?.kind ?? 'item';
+  // ⚠️The last tick ends the card only where cards wait to be tried — 검증
+  // (유저 2026-08-31: 「그냥 내가 실기 확인 제출해서 0개 되면 사라지는데」,
+  // said of that section). A card that moved on with a check still unticked
+  // keeps its place: this check passing is not the card finishing, the same
+  // law [foldChecksIntoCards] keeps the other way round. ⚠️No card at all is
+  // a PR stand-in, and ticking one buries it, as it always did.
+  final ends =
+      last && (card == null || statusOf(card) == BoardStatus.verify);
   return [
     {
       'kind': kind,
       'id': id,
-      'at': left.isEmpty ? '완료' : '확인 완료',
+      'at': ends ? '완료' : '확인 완료',
       'ref': ref,
       'said': note.isEmpty ? '확인 — 문제 없음' : '확인함',
       'ts': now(),
@@ -1018,11 +1088,73 @@ List<Map<String, dynamic>> tickRecords({
   ];
 }
 
-String renderBoard(List<BoardCard> entries) =>
-    _render(entries, _Gh(const [], ok: false), const []);
+/// The line a move of [id] to [to] appends, or null when [to] is not a status
+/// word. [card] is what the board holds for [id] right now.
+///
+/// The user's own entry under the word it moved to — `said` is what marks a
+/// line as theirs — so the story says who moved the card and when, and the
+/// fold places it by that word like any other. ⚠️The card's own kind, for the
+/// reason [tickRecords] gives.
+Map<String, dynamic>? moveRecord({
+  required BoardCard? card,
+  required String id,
+  required String to,
+  required String Function() now,
+}) {
+  if (!kStatusWord.values.contains(to)) return null;
+  return {
+    'kind': card?.kind ?? 'item',
+    'id': id,
+    'at': to,
+    'said': '$to${ro(to)} 옮김',
+    'ts': now(),
+  };
+}
 
-String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
-    {int landedPage = 1}) {
+// ---------------------------------------------------------------- the board
+
+/// 🆕🚨★★★THE LIVE BOARD IS A LIST AND ONE OPEN CARD (유저 2026-10-02: 「보드가
+/// 너무 느려. 피드백같은거 제출누르고 반영되기까지 10초는 걸리는거같아」 ·
+/// 「전체적으로도 최대한 프로들이랑 똑같으면되」).
+///
+/// 🧪Measured before: ONE page of 15.6MB, 97.5% of it the stories folded inside
+/// 425 cards nobody had opened, and every submit fetched it whole again to
+/// redraw one card — 0.4s to read the file, 0.5s to draw it, seconds more for
+/// the browser to parse it. ⇒ The page is a shell ([_shell]); the list is a
+/// JSON of card HEADS ([_headOf]); a card's body is drawn only when it is
+/// opened ([_detail]). That is the list-and-detail shape every tracker uses,
+/// and the body is drawn by the very same renderers the old page used.
+///
+/// ⛔No timer and no push: the board changes when a person acts on it or
+/// reloads it (유저 2026-08-31: 「그냥 새로고침 누르면 갱신되도록」).
+
+/// The file as last read. ⚠️Re-read when it changes, and after a minute even
+/// if it did not: 하는 중 expires by the clock ([wentQuiet]), not by a write.
+({int size, DateTime modified, DateTime at, List<BoardCard> cards})? _held;
+
+List<BoardCard> _board() {
+  final file = File(_recordsPath);
+  final stat = file.statSync();
+  final held = _held;
+  if (held != null &&
+      held.size == stat.size &&
+      held.modified == stat.modified &&
+      DateTime.now().difference(held.at) < const Duration(minutes: 1)) {
+    return held.cards;
+  }
+  final cards = readBoard(file);
+  _held = (
+    size: stat.size,
+    modified: stat.modified,
+    at: DateTime.now(),
+    cards: cards,
+  );
+  return cards;
+}
+
+/// What every body renderer reads besides its own card — set before any body
+/// is drawn.
+void _prepare(List<BoardCard> entries, _Gh gh) {
   // `deleted` joins `archived` as a state that stops a card being drawn. Two
   // words for two different endings, kept apart on purpose: 「archived」 is I
   // put this away, 「deleted」 is the user ticked it and it is finished. The
@@ -1035,11 +1167,11 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
           e.state != 'archived' && e.state != 'deleted' && e.foldedInto == null)
       .toList();
   // Laws are not work: they never appear as a card of their own, they attach
-  // to the cards whose tag they name. Set before anything renders.
+  // to the cards whose tag they name.
   _laws = alive.where((e) => e.kind == 'law').toList();
   _records = alive.where((e) => e.kind == 'record').toList();
-  // The question index, before anything renders — see [_byOrigin] for why it
-  // reads `entries` and not `alive`.
+  // The question index — see [_byOrigin] for why it reads `entries` and not
+  // `alive`.
   final byOrigin = <String, List<BoardCard>>{};
   for (final e in entries) {
     if (!cardAsks(e)) continue;
@@ -1055,46 +1187,106 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
     });
   }
   _byOrigin = byOrigin;
-  final inbox = alive.where((e) => e.state == 'inbox').toList();
-  // 🚨★★★답할 것 LISTS CARDS, NOT QUESTIONS (유저 2026-08-31: 「질문이
-  // 생기면 참조카드 + 원본카드 여러 개 생기는 게 아니라 원본 카드 안에
-  // 질문 UI 같은 거 만들어서 답할 것 대분류로 옮기는 거지」).
-  //
-  // The card is here because its newest 대분류 is a 질문 — see
-  // [foldQuestionsIntoCards]. ⛔No second reader: this does NOT ask 「does
-  // it have an unanswered question」 anywhere. The story already answered.
-  //
-  // ⚠️A question whose origin is not in the file was never folded, so it still
-  // stands as a card of its own — that is what `foldedInto == null` keeps.
-  final asks = alive
-      .where((e) =>
-          e.foldedInto == null &&
-          (e.state == 'ask' || (cardAsks(e) && e.answer == null)))
-      .toList();
-  // 🚨★★★실기 확인 = cards whose newest 대분류 says so. Nothing lands here by
-  // merging any more (유저 2026-08-31: 「머지는 PR마다 여러 번 되는데 실기
-  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」).
-  // A merge is an event and a section is a place; putting a card here because
-  // a PR landed made the two share an axis, and they always drift apart.
-  final checks = alive.where((e) => e.state == 'hands').toList();
+  _prState = {for (final pr in gh.prs) pr.number: pr.state};
+}
 
-  // Every PR a live card ever claimed, not just its newest. An older one left
-  // out here comes back as an orphan `pr-N` placeholder beside the card that
-  // actually owns it.
-  final claimed = <int, BoardCard>{
-    for (final e in alive)
-      for (final n in e.prs) n: e,
+/// Whether [e] is a card a person works on — not a law, a record or a build,
+/// and not a question folded into the card that asked it.
+bool _isCard(BoardCard e) =>
+    e.foldedInto == null &&
+    !const {'law', 'record', 'build', 'meta'}.contains(e.kind);
+
+/// How long a finished card stays on the 완료 list. Older ones are still found
+/// by search ([_find]); a list of every card ever finished is not a list.
+const _doneShows = Duration(days: 14);
+
+bool _ended(BoardStatus s) =>
+    s == BoardStatus.done || s == BoardStatus.canceled;
+
+/// 분류 대기 receives different arrivals, and which one a row is decides what
+/// I do with it. The chip says so on the row (유저 2026-08-26: 「분류전으로
+/// 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already carry their
+/// own tag from intake, so only the returning kinds need one.
+String _arrivalOf(BoardCard e) {
+  // 🚨A card that arrived because a question of its was ANSWERED is something
+  // to READ, not a half-finished filing.
+  final answeredQuestion =
+      (_byOrigin[e.id] ?? const <BoardCard>[]).any((q) => q.answer != null);
+  return switch (e.kind) {
+    'decision' => '대답',
+    'check' => '실기 피드백',
+    // An item only 「arrives」 if the user wrote on it — a plain working card
+    // has nothing new to announce.
+    _ => e.answer != null
+        ? '유저 피드백'
+        : (answeredQuestion && e.state == 'inbox' ? '대답' : ''),
   };
-  // 🚨A PR WHOSE CARD IS DEAD MUST NOT COME BACK AS A PLACEHOLDER.
-  //
-  // ⚠️Read from `entries`, not `alive` — the dead cards are precisely the ones
-  // `alive` filtered out, so looking there finds nothing and the row returns
-  // on the very next render. Measured, not reasoned: ticking a landing left
-  // it on screen, which would have read as 「the tick does nothing」.
-  //
-  // Two ways to die and both count. `archived` is I put it away; `deleted` is
-  // the user ticked it. And two ways to be named: a landing nobody claimed is
-  // remembered by its `pr-N` id, a claimed one by the number its card holds.
+}
+
+/// Where a card stands on the live board: [statusOf], and a card with an open
+/// PR is in flight whatever its story last said.
+///
+/// 🚨★★★지금 IS BUILT FROM CARDS (유저 2026-08-27: 「이거 답할것이 원본
+/// 카드에서 포인터로서 존재하는거랑 똑같은 규칙이나 로직 적용하면
+/// 지금항목에 새 카드가 추가되는게아니라 카드에 공정으로서 포인터로
+/// 기록하면 확실할거같은데 어때. 규칙 통일화되는거지」). A PR is something
+/// that HAPPENED to a card, which is what a 구현 stage already says; a card in
+/// flight is a card whose PR is open.
+BoardStatus _liveStatus(BoardCard e, Set<int> openPrs) {
+  final status = statusOf(e);
+  final idle = status == BoardStatus.triage ||
+      status == BoardStatus.backlog ||
+      status == BoardStatus.todo;
+  return idle && e.prs.any(openPrs.contains) ? BoardStatus.doing : status;
+}
+
+/// One card's HEAD — everything a list row shows, and nothing of its story.
+Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
+  final status = _liveStatus(e, openPrs);
+  final turn = turnOf(e);
+  final waiting = checksWaiting(e);
+  return {
+    'id': e.id,
+    'title': e.title.isEmpty ? e.id : e.title,
+    'status': status.name,
+    'q': [
+      for (final q in openQuestions(e))
+        if (q.title.isEmpty) q.id else q.title,
+    ],
+    'talk': inConversation(e),
+    'checks': waiting.length,
+    'since': waiting.isEmpty ? '' : waiting.first,
+    'user': turn.user,
+    'me': turn.me,
+    'arrival': _arrivalOf(e),
+    'prio': e.priority,
+    'owner': ownerOf(e),
+    'type': e.tags.where(kTypeTags.contains).firstOrNull ?? '',
+    'areas': [for (final t in e.tags) if (!kTypeTags.contains(t)) t],
+    'created': e.created,
+    'updated': e.updated,
+    'gap': _isGap(e),
+    'prs': [
+      for (final n in e.prs) {'n': n, 'state': _prState[n] ?? ''},
+    ],
+  };
+}
+
+/// Every PR stand-in: an open PR that no card claims.
+///
+/// 🚨★★★THE ROWS COME FROM CARDS, NOT FROM `gh pr list` — `--limit 40` is a
+/// window that slides, and one PR can close several cards. An open PR NOBODY
+/// claimed still gets a stand-in: not a row pretending to be a card, but the
+/// board saying a merge is coming with nothing written about it.
+///
+/// 🚨A PR WHOSE CARD IS DEAD MUST NOT COME BACK AS A PLACEHOLDER. ⚠️Read from
+/// ALL cards: the dead ones are precisely the ones a live-only list leaves
+/// out, and ticking a landing left it on screen that way once.
+List<BoardCard> _standIns(List<BoardCard> entries, _Gh gh) {
+  final claimed = <int>{
+    for (final e in entries)
+      if (e.state != 'archived' && e.state != 'deleted') ...e.prs,
+  };
   final buriedIds = <String>{};
   final buriedPrs = <int>{};
   for (final e in entries) {
@@ -1102,331 +1294,211 @@ String _render(List<BoardCard> entries, _Gh gh, List<_Checkout> gits,
     buriedIds.add(e.id);
     buriedPrs.addAll(e.prs);
   }
+  return [
+    for (final pr in gh.prs)
+      if (pr.state == 'OPEN' &&
+          !claimed.contains(pr.number) &&
+          !buriedPrs.contains(pr.number) &&
+          !buriedIds.contains('pr-${pr.number}'))
+        _prEntry(pr)..prs.add(pr.number),
+  ];
+}
 
-  // 🚨★★★THE ROWS COME FROM CARDS, NOT FROM `gh pr list`.
-  //
-  // Building them from the PR list looked natural and was wrong twice over,
-  // both found by a card that simply was not on screen:
-  //
-  //  1. **`--limit 40` is a WINDOW, and a window slides.** Nineteen cards had
-  //     already fallen out the bottom — F-2, F-3, F-5, F-6 … — merged, alive,
-  //     never checked, and invisible. ⛔A check list whose rows disappear on
-  //     their own is worse than no check list, because it looks finished.
-  //  2. **One PR can close several cards.** #1214 closed three; one PR, one
-  //     row meant two of them were unreachable no matter what the limit was.
-  //
-  // A card is the SUBJECT of a check; the PR is a detail on it. So the card is
-  // the row, and `gh` is consulted for what only it knows — whether a PR is
-  // still open, and when it merged.
+/// The list: every live card's head, the finished ones of the last two weeks,
+/// the builds, and what the machine says — checkouts and PRs.
+Future<Map<String, Object?>> _boardJson() async {
+  final entries = _board();
+  final gh = await _prs();
+  final gits = await _checkouts();
+  _prepare(entries, gh);
   final openPrs = {
     for (final pr in gh.prs)
       if (pr.state == 'OPEN') pr.number,
   };
-  _prState = {for (final pr in gh.prs) pr.number: pr.state};
-  // 🚨★★★지금 IS BUILT FROM CARDS TOO (유저 2026-08-27: 「이거 답할것이 원본
-  // 카드에서 포인터로서 존재하는거랑 똑같은 규칙이나 로직 적용하면 지금항목에
-  // 새 카드가 추가되는게아니라 카드에 공정으로서 포인터로 기록하면
-  // 확실할거같은데 어때. 규칙 통일화되는거지」).
-  //
-  // Right, and it is the same disease one storey up. A question does not
-  // become a card of its own — it is a pointer on the card that raised it.
-  // A PR should not either: it is something that HAPPENED to a card, which
-  // is what a 구현 stage already says. Building 지금 by walking `gh.prs` gave
-  // every open PR a row with an English commit title and no story, exactly
-  // the rows 확인할 것 stopped drawing one round ago.
-  //
-  // ⚠️An open PR NOBODY claimed still gets a stand-in — see `_isGap`. That is
-  // not a row pretending to be a card; it is the board saying a merge is
-  // coming with nothing written about it.
-  final nowCards = <BoardCard>[];
-  for (final e in alive) {
-    if (e.answer != null) continue;
-    if (!e.prs.any(openPrs.contains)) continue;
-    nowCards.add(e);
-  }
-  for (final pr in gh.prs) {
-    if (pr.state != 'OPEN') continue;
-    if (claimed.containsKey(pr.number)) continue;
-    if (buriedPrs.contains(pr.number)) continue;
-    if (buriedIds.contains('pr-${pr.number}')) continue;
-    nowCards.add(_prEntry(pr)..prs.add(pr.number));
-  }
-  final now = [for (final e in nowCards) _itemPanel(e)];
-
-
-  // 실기 확인 = the cards whose newest 대분류 says so, and nothing else.
-  //
-  // ⛔A LIST OF LANDINGS USED TO BE HALF OF THIS SECTION, built from `gh` and
-  // sorted by merge time, with three hand-written rules stopping a row
-  // appearing twice — a check nested under its landing, a check whose landing
-  // was on another page, a card that was both. All of it existed because a
-  // MERGE put a card here. A merge is an event and a section is a place, and
-  // 유저 2026-08-31 ended the pairing: 「머지는 PR마다 여러 번 되는데 실기
-  // 확인은 다르잖아 … 작업 완료되면 실기 확인만 대분류로서 존재하게」.
-  // ⇒ Nothing can double up now, because there is only one way in.
-  final units = <BoardCard>[...checks];
-  final pages =
-      units.isEmpty ? 1 : (units.length + _landedPerPage - 1) ~/ _landedPerPage;
-  final page = landedPage.clamp(1, pages);
-
-  // EVERY page is rendered, and the pager only moves a class. Turning a page
-  // used to refetch the whole board — measured at 0.5s on a warm cache and
-  // 3.7s when the `gh` window had expired, for a change that touches nothing
-  // but these rows (유저: 「그냥 누르자마자 전환되게하고싶은데」). Sending
-  // both pages costs less than sending the other 610KB of board twice.
-  //
-  // ⛔A PR BADGE, A `here` SET AND A `subs` MAP USED TO LIVE IN THIS LOOP, to
-  // nest a hands-on check under the landing it belonged to and to badge each
-  // landing with its newest PR. All of it went with the landings themselves:
-  // every row is one card that says 실기 확인, and its PRs are 구현 entries
-  // inside it.
-  final toCheck = <String>[];
-  for (var p = 1; p <= pages; p++) {
-    final rows = StringBuffer();
-    for (final e in units.skip((p - 1) * _landedPerPage).take(_landedPerPage)) {
-      rows.write(_checkRow(e));
+  final since = DateTime.now().subtract(_doneShows);
+  final heads = <Map<String, Object?>>[];
+  for (final e in [...entries.where(_isCard), ..._standIns(entries, gh)]) {
+    if (_ended(statusOf(e))) {
+      final at = DateTime.tryParse(e.updated);
+      if (at == null || at.isBefore(since)) continue;
     }
-    toCheck.add('<div class="pg${p == page ? ' on' : ''}" data-pg="$p">'
-        '$rows</div>');
+    heads.add(_headOf(e, openPrs));
   }
+  return {
+    'cards': heads,
+    'builds': [
+      for (final b in buildsOf(entries)) {'ts': b.ts, 'commit': b.commit},
+    ],
+    'checkouts': [
+      for (final c in gits)
+        {
+          'name': c.path.split(RegExp(r'[\\/]')).last,
+          'path': c.path,
+          'branch': c.branch,
+          'ahead': c.ahead,
+          'behind': c.behind,
+          'dirty': c.dirty,
+        },
+    ],
+    'prs': [
+      for (final pr in gh.prs)
+        {
+          'n': pr.number,
+          'state': pr.state,
+          'title': pr.title,
+          'checks': pr.checks,
+          'merged': pr.mergedAt?.toIso8601String(),
+        },
+    ],
+    'ghOk': gh.ok,
+    'bad': badLines,
+  };
+}
 
-  // 🚨★★★ONE READER FOR 「has this card ended」 — the model's, which is the
-  // one `board_say` refuses by and the gate judges by (2026-09-15).
-  final ended = endedCards(entries);
-  final loose = alive
-      .where((e) =>
-          e.kind == 'item' &&
-          e.state != 'inbox' &&
-          // A card whose newest 대분류 is a 질문 is drawn in 답할 것, with the
-          // question open inside it. Listing it here too would be one subject
-          // in two rows — the shape this round exists to end.
-          e.state != 'ask' &&
-          // A card waiting to be tried on a device is drawn in 실기 확인.
-          e.state != 'hands' &&
-          // An ANSWERED QUESTION that is still only a question has ended, and
-          // only that. ↩️Two other questions stood here: `e.answer == null`
-          // (「an answered item has been looked at and reported on」) and a
-          // claimed PR hiding its card unless it still had leftovers (「a
-          // claimed PR normally means the card is being CHECKED」). Both were
-          // second readers of what the story already says — an old check
-          // submit leaves `answer: ok` on ordinary work, and since 2026-08-31
-          // a merge moves no card. On 2026-09-15 they drew F-28, R27-rest,
-          // F-18 and I-8 on no section at all while their stories said 남은
-          // 것 and 나중에, which looks exactly like a card that ended.
-          !ended.containsKey(e.id))
-      .toList();
-  // Work can be underway before there is a PR to point at -- an investigation,
-  // a round mid-flight. Without this those items sat in 착수 가능 claiming to
-  // be unstarted, which is the one thing they are not.
-  final underway = loose.where((e) => e.state == 'wip').toList();
-  final rest = loose.where((e) => e.state != 'wip').toList();
-  final ready = rest.where((e) => !_waiting.contains(e.state)).toList();
-  // 🚨TWO DIFFERENT WAITS, TWO SECTIONS (유저 2026-08-31: 「대기중엔 상담대기
-  // /답대기/순서대기 있는데, **순서대기만 별도 항목 필터로서 만들어서 따로
-  // 두고 싶어**」). 나중에 is 「I could start this, I chose not to yet」;
-  // 대화 중 is 「I cannot start this until we finish talking」. Lumping them
-  // made the second invisible inside the first.
-  final later = rest.where((e) => e.state == 'queue').toList();
-  final talking =
-      rest.where((e) => _waiting.contains(e.state) && e.state != 'queue').toList();
-  now.addAll(underway.map(_itemPanel));
+/// Finished cards older than the 완료 list, found by search — the list stays
+/// short and nothing that ever happened is out of reach.
+List<Map<String, Object?>> _find(String query) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return const [];
+  final entries = _board();
+  final since = DateTime.now().subtract(_doneShows);
+  final out = <Map<String, Object?>>[];
+  for (final e in entries.where(_isCard).toList().reversed) {
+    if (!_ended(statusOf(e))) continue;
+    final at = DateTime.tryParse(e.updated);
+    if (at != null && !at.isBefore(since)) continue;
+    final hay = '${e.id} ${e.title} ${e.tags.join(' ')}'.toLowerCase();
+    if (!hay.contains(q)) continue;
+    out.add(_headOf(e, const {}));
+    if (out.length >= 40) break;
+  }
+  return out;
+}
 
+/// One card, opened: its head as fields, then its body.
+String _detail(List<BoardCard> entries, _Gh gh, String id) {
+  _prepare(entries, gh);
+  final openPrs = {
+    for (final pr in gh.prs)
+      if (pr.state == 'OPEN') pr.number,
+  };
+  final card = entries.where((c) => c.id == id && _isCard(c)).firstOrNull ??
+      _standIns(entries, gh).where((c) => c.id == id).firstOrNull;
+  if (card == null) {
+    return '<p class="d gone">「${_esc(id)}」 는 지금 보드에 없습니다.</p>';
+  }
+  return _article(card, openPrs);
+}
+
+/// The body each card is drawn with. ⚠️data-kind is what `send` writes back:
+/// a question card answers, a card in 검증 is ticked per check, and every
+/// other card takes feedback — `item` so a memo on a working card is filed as
+/// feedback and comes back to me, exactly like one left on a 확인할 것 row,
+/// ⛔and NOT as `check`, which would delete the card if the box were
+/// submitted empty.
+String _article(BoardCard e, Set<int> openPrs) {
+  final status = _liveStatus(e, openPrs);
+  final kind = cardAsks(e)
+      ? 'decision'
+      : (status == BoardStatus.verify ? 'check' : 'item');
+  final body = switch (kind) {
+    'decision' => _askCardBody(e),
+    'check' => _checkCardBody(e),
+    _ => _itemCardBody(e),
+  };
+  final id = _esc(e.id);
   final b = StringBuffer();
-  b.writeln('<!doctype html><html><head><meta charset="utf-8">'
+  b.writeln('<article class="p det" id="c-$id" data-kind="$kind" '
+      'data-status="${status.name}">');
+  b.writeln('<header class="dh">');
+  b.writeln('<div class="dtop"><span class="did">$id</span>'
+      '<span class="state"></span></div>');
+  b.writeln('<h2 class="dt">${_esc(e.title.isEmpty ? e.id : e.title)}</h2>');
+  b.writeln('<dl class="fields">');
+  // 🆕ONE PRESS MOVES THE CARD — see `/move` for the decision it reverses.
+  b.write('<dt>상태</dt><dd><select class="move" '
+      'onchange="move(\'$id\', this.value, this)">');
+  for (final s in BoardStatus.values) {
+    final selected = s == status ? ' selected' : '';
+    b.write('<option value="${kStatusWord[s]}"$selected>'
+        '${kStatusName[s]}</option>');
+  }
+  b.writeln('</select></dd>');
+  b.write('<dt>우선순위</dt><dd><span class="seg">');
+  for (final p in const ['긴급', '높음', '보통', '낮음', '']) {
+    final on = e.priority == p ? ' aria-pressed="true"' : '';
+    b.write('<button type="button"$on '
+        'onclick="setPrio(\'$id\', \'$p\', this)">${p.isEmpty ? '미정' : p}</button>');
+  }
+  b.writeln('</span></dd>');
+  final owner = ownerOf(e);
+  b.writeln('<dt>담당</dt><dd>${owner.isEmpty ? '<span class="none">미정</span>' : _esc(owner)}</dd>');
+  if (e.tags.isNotEmpty) {
+    b.writeln('<dt>태그</dt><dd>${[
+      for (final t in e.tags) '<span class="chip">${_esc(t)}</span>',
+    ].join()}</dd>');
+  }
+  final waiting = checksWaiting(e);
+  b.writeln('<dt>날짜</dt><dd class="mono">만든 날 ${_esc(_day(e.created))}'
+      ' · 바뀐 날 ${_esc(_day(e.updated))}'
+      '${waiting.isEmpty ? '' : ' · 검증 대기 ${_esc(_day(waiting.first))}부터'}'
+      '</dd>');
+  b.writeln('</dl></header>');
+  b.writeln('<div class="body">$body</div>');
+  b.writeln('</article>');
+  return b.toString();
+}
+
+/// The shell: styles, the boot data, the script. The list and the open card
+/// are drawn by the script from [_boardJson] and `/card`.
+String _shell(Map<String, Object?> boot) {
+  // `</` would end the script tag; `<\/` is the same string to JSON.
+  final data = jsonEncode(boot).replaceAll('</', r'<\/');
+  return '<!doctype html><html lang="ko"><head><meta charset="utf-8">'
       '<meta name="viewport" content="width=device-width,initial-scale=1">'
-      '<title>Anicel 보드</title><style>${_css()}</style></head><body>');
-  b.writeln('<div class="wrap">');
-  b.write('<h1>Anicel 보드</h1>');
-  b.write('<p class="stamp">분류 전 <b>${inbox.length}</b> · 답할 것 <b>${asks.length}</b>'
-      ' · 하는 중 <b>${now.length}</b> · 바로 가능 <b>${ready.length}</b>'
-      ' · 대화 중 <b>${talking.length}</b> · 나중에 <b>${later.length}</b>'
-      ' · 실기 확인 <b>${checks.length}</b>'
-      );
-  if (!gh.ok) {
-    b.write(' · <span class="warn">gh 를 못 불렀습니다 — PR 칸은 비어 있습니다</span>');
-  }
-  b.writeln('</p>');
-  b.writeln('<p class="rule" id="ruleline">줄을 누르면 펼쳐집니다. '
-      '메모 칸에 <b>스크린샷을 그대로 붙여넣을 수</b> 있습니다'
-      '(Win+Shift+S → Ctrl+V).</p>');
-  if (badLines.isNotEmpty) {
-    b.writeln('<p class="alarm">⚠️ 기록 파일에서 <b>${badLines.length}줄</b>을 '
-        '읽지 못했습니다 — 그 항목은 이 화면에 <b>없습니다</b>. '
-        '줄 ${badLines.join(', ')}</p>');
-  }
-
-  b.write(_intakeForm());
-  // 🚨★★★THE SEVEN SECTIONS, IN THE ORDER 유저 NAMED THEM (2026-08-31). The
-  // names are the words a person would use, and 대기 중 is split because
-  // 「나중에」 and 「대화 중」 are two different waits: 「순서 대기만 별도
-  // 항목 필터로서 만들어서 따로 두고 싶어」.
-  //
-  // ⚠️A section name and the 대분류 that puts a card in it are the SAME WORD
-  // wherever they can be — see [kSection]. Three differ on purpose,
-  // because the event and the place have different names: 유저 → 분류 전,
-  // 질문 → 답할 것, 남은 것 → 바로 가능.
-  b.write(_group('분류 전', inbox.length, '내가 읽고 분류한다', inbox.map(_itemPanel)));
-  b.write(_group('답할 것', asks.length, '고르고 제출',
-      asks.map((e) => cardAsks(e) ? _askPanel(e) : _itemPanel(e))));
-  // The refresh lives here because this is the only section it changes, and a
-  // control parked away from what it affects is a control you have to remember
-  // the meaning of.
-  b.write(_group('하는 중', now.length, '', now,
-      control: _ctl('<button class="ghost sm" title="PR 상태는 페이지를 열 때만 읽습니다. '
-          '지금 다시 읽으려면 누르세요 — 이 칸만 갱신됩니다." '
-          'onclick="refresh(event)">↻</button>')));
-  b.write(_group('바로 가능', ready.length, '명령만 내리면 착수', ready.map(_itemPanel)));
-  b.write(_group('대화 중', talking.length, '이야기가 안 끝났다',
-      talking.map(_itemPanel)));
-  b.write(_group('나중에', later.length, '순서를 미뤄 둔 것', later.map(_itemPanel)));
-  // ONE list (유저 2026-08-26). The count is the whole thing, not the page:
-  // this section used to show a number that was really a cap, and that is
-  // exactly what made it lie.
-  b.write(_group('실기 확인', checks.length,
-      '체크 = 문제 없음 · 메모 = 문제', toCheck,
-      footer: _pager(units.length, page),
-      control: _ctl('<button class="ghost sm" title="이 페이지의 모든 항목을 체크합니다" '
-          'onclick="pickAll(event)">전체선택</button>'
-          '<button class="ghost sm" title="체크한 항목을 목록에서 치웁니다" '
-          'onclick="confirmPicked(event)">확인</button>')));
-  b.write(_group('로컬 상태', gits.length, '', gits.map(_checkoutPanel)));
-
-  b.writeln('<script>${_js()}</script>');
-  b.writeln('</div></body></html>');
-  return b.toString();
+      '<title>Anicel 보드</title><style>${_css()}</style></head><body>'
+      '<header class="top"><h1>Anicel 보드</h1>'
+      '<input id="q" type="search" placeholder="찾기 — 번호 · 제목 · 태그  /"'
+      ' autocomplete="off">'
+      '<button class="new" type="button" onclick="compose()">＋ 새로 적기</button>'
+      '<span class="stamp" id="stamp"></span></header>'
+      '<div class="app"><nav class="rail" id="rail"></nav>'
+      '<main class="list" id="list"></main>'
+      '<aside class="detail" id="detail"></aside></div>'
+      '<script id="boot" type="application/json">$data</script>'
+      '<script>${_js()}</script></body></html>';
 }
 
-/// A section is always drawn, even empty.
+/// 🚨★★★WHAT THE BOARD DRAWS FOR EACH CARD, from cards alone — the public way
+/// in, so a test can look at the markup a person acts on.
 ///
-/// Hiding it when the count is zero made the board's shape change under you --
-/// 지금 vanished when nothing was in flight, and an empty PR section looked
-/// identical to a broken `gh`. A heading that says 0 is information; a heading
-/// that is absent is a question.
-String _group(String title, int n, String why, Iterable<String> panels,
-    {String control = '', String footer = ''}) {
-  final b = StringBuffer();
-  b.writeln('<details class="grp" open id="g-${_esc(title)}">'
-      '<summary class="gh">'
-      '<span class="gt">${_esc(title)}</span><span class="n">$n</span>'
-      '${why.isEmpty ? '' : '<span class="why">${_esc(why)}</span>'}'
-      '$control</summary>');
-  b.writeln('<div class="stack">');
-  if (n == 0) {
-    b.writeln('<p class="none">없음</p>');
-  }
-  for (final p in panels) {
-    b.writeln(p);
-  }
-  b.writeln(footer);
-  b.writeln('</div></details>');
-  return b.toString();
+/// ⛔Every board bug on 2026-08-31 was in the renderer and none of them could
+/// be caught: a question drawn as an ordinary row, a hands-on check with no
+/// memo box, a memo box holding words it no longer edits. The model was right
+/// each time.
+///
+/// ⚠️It takes cards and nothing else. gh and git are what a server fetches; a
+/// card with neither still has to be drawn right, and that is exactly the
+/// card a test should assert on. Every card the list holds, opened in turn.
+String renderCards(List<BoardCard> entries) {
+  final gh = _Gh(const [], ok: false);
+  _prepare(entries, gh);
+  return [
+    for (final e in entries.where(_isCard))
+      if (!_ended(statusOf(e))) _article(e, const {}),
+  ].join('\n');
 }
 
-/// A group header's control cluster: STATUS FIRST, then the buttons.
-///
-/// The order is the whole point. `.ctl` is pushed to the right edge by
-/// `margin-left:auto`, so the cluster grows leftward -- put the status text
-/// after the buttons and every message ("1개 선택", "읽는 중…", "실패: …")
-/// shoves them sideways under the reader's cursor. Put it first and the
-/// buttons never move.
-///
-/// It is a function rather than two more string literals because both control
-/// rows had the wrong order, written the same way twice. A law that lives in
-/// one place cannot be half-applied by the next row that gets added.
-String _ctl(String buttons) =>
-    '<span class="ctl"><span class="state"></span>$buttons</span>';
+/// The page's script, for a test that asks what the page DOES.
+String boardScript() => _js();
 
-/// How many landed rows fit on one page.
-const _landedPerPage = 20;
-
-/// The pager for 확인할 것.
-///
-/// It is drawn even when there is only one page: a control that appears only
-/// once the list is long enough is a control nobody knows exists.
-///
-/// 🆕The 「1 / 2」 caption is gone (유저 2026-08-28: 「페이지텍스트 1/2랑 옆에
-/// 버튼 1 2 이거 하나로 합칠수있잖아」). It said twice what the buttons say
-/// once — the lit button IS the current page, and how many buttons there are
-/// IS how many pages there are. The section header already carries the total.
-String _pager(int total, int page) {
-  final pages = total <= _landedPerPage ? 1 : (total + _landedPerPage - 1) ~/ _landedPerPage;
-  final b = StringBuffer('<div class="pager">');
-  for (var i = 1; i <= pages; i++) {
-    final cls = i == page ? 'pg-btn on' : 'pg-btn';
-    // ⛔Not a plain href. A page change is a change to ONE section, and a
-    // navigation throws away every panel on the board you had open to read
-    // (유저 2026-08-26: 「페이지 바뀔때마다 페이지 바뀌는데 그게아니라 새로고침
-    // 안하고 그냥 내부 위젯만 바꾼다거나 가능한가?」). The href stays for
-    // middle-click and for a browser with no JS.
-    b.write('<a class="$cls" href="?landed=$i" '
-        'onclick="return goPage($i)">$i</a>');
-  }
-  b.write('</div>');
-  return b.toString();
-}
-
-/// The intake. Two buttons rather than a type dropdown, because the choice is
-/// the whole classification a person can make while still mid-thought: this is
-/// broken (feedback) or this would be good (idea). Everything else -- number,
-/// title, which area it belongs to -- is sorted out later, on the board.
-String _intakeForm() {
-  return '''
-<details class="p intake" id="c-intake">
-<summary><span class="k">＋</span><span class="t">새 피드백 · 아이디어</span>
-</summary>
-<div class="body">
-<textarea id="intake-text" rows="4"
- placeholder="떠오른 대로 적으세요. 번호와 제목은 제가 붙입니다.&#10;스크린샷은 Ctrl+V 로 그대로 붙여넣기."></textarea>
-<div id="intake-shots" class="shots"></div>
-<input type="text" id="intake-tag" placeholder="분야 (비워도 됩니다 — 제가 정리합니다)">
-<div class="foot">
-<button onclick="file('feedback')">피드백 — 지금 이게 잘못됐다</button>
-<button class="alt" onclick="file('idea')">아이디어 — 이런 게 있으면 좋겠다</button>
-<button class="ghost" onclick="file('draft')">임시저장 — 아직 정리 전</button>
-<span class="state"></span></div>
-</div></details>
-''';
-}
-
-/// The chips that say something about STATE rather than subject, and the tint
-/// each one gets (유저 2026-08-26: 「태그구분만 알기쉽게 잘 하자」).
-///
-/// 분류 전 is where this earns its keep: five different things arrive there —
-/// new feedback, an idea, a draft, an answer to a question, and a hands-on
-/// check that came back with a problem — and they need different work from
-/// me. Read as a traffic light: red is broken, amber was reported, green is
-/// answered, plain is a thought.
-///
-/// ⛔Subject tags (저장 · 렌더링 · 브러시 …) stay untinted on purpose. If
-/// everything is coloured then nothing is, and the subject is the one thing
-/// the section header cannot tell you.
-const _chipTint = <String, String>{
-  '카드 없음': 'bad',
-  '실기 피드백': 'bad',
-  '유저 피드백': 'bad',
-  '피드백': 'run',
-  '대답': 'ok',
-};
-
-String _head(String id, String title, List<String> tags, String badge, String cls,
-    {String lead = '', String date = ''}) {
-  final chips = tags.map((t) {
-    final tint = _chipTint[t];
-    return '<span class="chip${tint == null ? '' : ' $tint'}">'
-        '${_esc(t)}</span>';
-  }).join();
-  final when = _day(date);
-  // An empty badge renders nothing: a ready item is already labelled by the
-  // section it sits in, and repeating that on every row is noise, not news.
-  final mark = badge.isEmpty
-      ? ''
-      : '<span class="chip${cls.isEmpty ? '' : ' $cls'} badge">'
-          '${_esc(badge)}</span>';
-  return '<summary>$lead<span class="k">${_esc(id)}</span>'
-      '<span class="t">${_esc(title)}</span>'
-      '<span class="right">$chips$mark'
-      '${when.isEmpty ? '' : '<span class="when">${_esc(when)}</span>'}'
-      '</span></summary>';
+/// Every card's head as the list receives it — for a test that asks where a
+/// card stands.
+List<Map<String, Object?>> boardHeads(List<BoardCard> entries) {
+  _prepare(entries, _Gh(const [], ok: false));
+  return [
+    for (final e in entries.where(_isCard)) _headOf(e, const {}),
+  ];
 }
 
 /// `2026-08-26T00:36:17.5` → `08-26`. The year is dropped because every
@@ -1545,21 +1617,15 @@ String _askBody(BoardCard d, {required bool answered}) {
 }
 
 /// A question whose origin is not in the file is a card in its own right —
-/// nothing folded it, so it still needs a panel. ⚠️Every other question is
-/// drawn by [_story] as an entry.
-String _askPanel(BoardCard d) {
-  final b = StringBuffer();
-  b.writeln('<details class="p ask" id="c-${_esc(d.id)}" data-kind="decision">');
-  b.writeln(_head(d.id, d.title, d.tags, '', '', date: d.updated));
-  b.writeln('<div class="body">');
-  b.writeln(_care(d));
-  b.writeln(_recordPanels(d));
-  b.writeln(_askBody(d, answered: d.answer != null));
-  b.writeln('</div></details>');
-  return b.toString();
-}
+/// nothing folded it, so it still needs a body. ⚠️Every other question is
+/// drawn by [_story] as an entry of the card that asked it.
+String _askCardBody(BoardCard d) => [
+      _care(d),
+      _recordPanels(d),
+      _askBody(d, answered: d.answer != null),
+    ].join('\n');
 
-/// ONE row of 실기 확인 — a card waiting to be tried on a device.
+/// A card in 검증 — waiting to be tried on a device.
 ///
 /// ⛔THIS PANEL USED TO SERVE TWO LISTS. 최근 착지 came from `gh` for free
 /// but had NOWHERE to report a result; 실기 확인 had the memo box but had to
@@ -1574,30 +1640,17 @@ String _askPanel(BoardCard d) {
 /// The two ANSWERS stay distinct, because they mean different things and cost
 /// different amounts (유저 확정): the TICK is 「봤고 문제 없음」 and sweeps
 /// many rows at once through 확인; the MEMO is 「문제가 있다」 and is written
-/// per row.
-String _checkRow(BoardCard c) {
+/// per row. ⚠️The sweep is the list's now — a box on each row and one 확인
+/// for the ones picked — and the memo is the box beside each check here.
+///
+/// data-kind is `check` ([_article]): the result of looking at a thing is a
+/// check result. ⚠️It also routes the submit — a tick writes 완료, a memo
+/// comes back as 유저 (see `/submit`).
+String _checkCardBody(BoardCard c) {
   final b = StringBuffer();
-  final gap = _isGap(c);
-  final tags = [if (gap) '카드 없음', ...c.tags];
-  // data-kind is what `send` writes back, and it is `check` on BOTH shapes:
-  // data-kind is what `send` writes back: the result of looking at a thing is
-  // a check result. ⚠️It also routes the submit — a tick writes 완료, a memo
-  // comes back as 유저 (see `/submit`).
-  b.writeln('<details class="p chk" id="c-${_esc(c.id)}" data-kind="check">');
-  b.writeln(_head(
-    c.id,
-    c.title,
-    tags,
-    '',
-    'run',
-    lead: '<input type="checkbox" class="pick" value="${_esc(c.id)}" '
-        'onclick="event.stopPropagation()">',
-    date: c.updated,
-  ));
-  b.writeln('<div class="body">');
   b.writeln(_care(c));
   b.writeln(_recordPanels(c));
-  if (gap) {
+  if (_isGap(c)) {
     // ⛔Said out loud rather than papered over. The row stays tickable — the
     // user may well have opened the PR and been satisfied — but it must not
     // pretend to be a written check, because a tick on one of these buries
@@ -1632,7 +1685,6 @@ String _checkRow(BoardCard c) {
   // moved INTO the check it answers, which is where 유저 asked for it —
   // 「실기확인 항목마다 메모란도 존재해야하지않을까? 원래 실기확인은 그렇잖아」.
   b.writeln(_shotStrip(c.id));
-  b.writeln('</div></details>');
   return b.toString();
 }
 
@@ -1653,10 +1705,10 @@ BoardCard _prEntry(_Pr pr) => BoardCard('pr-${pr.number}', 'item')..title = pr.t
 /// looking exactly like the written ones.
 bool _isGap(BoardCard e) => e.id.startsWith('pr-');
 
-String _itemPanel(BoardCard e) {
-  // No badge for a ready item, and none for the inbox either: both are already
-  // named by the section they sit in. The tag (피드백 / 아이디어 / 임시) is the
-  // part that actually differs between rows.
+/// A working card's body: its laws and records, its story, and a box for
+/// feedback — or, while it is still a filing nobody has sorted, the box that
+/// adds to it.
+String _itemCardBody(BoardCard e) {
   final inbox = e.state == 'inbox';
   // 🚨A card that arrived because a question of its was ANSWERED. The inbox
   // editor exists to fix a filing made mid-thought; an origin pushed here by
@@ -1665,32 +1717,6 @@ String _itemPanel(BoardCard e) {
   // hidden.
   final answeredQuestion =
       (_byOrigin[e.id] ?? const <BoardCard>[]).any((q) => q.answer != null);
-  // 🚨★★★NO BADGE THAT REPEATS ITS OWN SECTION (유저 2026-08-31: 「나중에
-  // 항목의 나중에 태그 필요없고, 대화중도 필요없고 … 답할것도 답할것
-  // 태그 필요없고」).
-  //
-  // Every section is now a 대분류 spelled the same way, so `_stateLabels`
-  // hands back the name of the box the row is already sitting in — a chip
-  // that says 「나중에」 on every row of 나중에. ⛔The file already forbids
-  // this twice, for 미제출 and for 미확인; the overhaul turned every
-  // remaining badge into the same thing.
-  //
-  // ⚠️ONE survives: `mine`. 대화 중 holds both `gate` and `mine`, so 「내가
-  // 정리 중」 is the one label that still says something the section does not.
-  final badge = e.state == 'mine' ? _stateLabels['mine']! : '';
-  // 분류 전 now receives three different arrivals, and which one a row is
-  // decides what I do with it. The chip says so on the row (유저 2026-08-26:
-  // 「분류전으로 옮기고 대답 태그 붙이면」). ⚠️Plain feedback and ideas already
-  // carry their own tag from intake, so only the returning kinds need one.
-  final arrival = switch (e.kind) {
-    'decision' => '대답',
-    'check' => '실기 피드백',
-    // An item only 「arrives」 if the user wrote on it — a plain working card
-    // has nothing new to announce.
-    _ => e.answer != null
-        ? '유저 피드백'
-        : (answeredQuestion && inbox ? '대답' : ''),
-  };
   // The user's own writing is not editable once it is an ANSWER — editing it
   // would rewrite what they said, which is the one thing this whole redesign
   // exists to stop.
@@ -1700,30 +1726,6 @@ String _itemPanel(BoardCard e) {
   final editable =
       inbox && e.kind == 'item' && e.answer == null && !answeredQuestion;
   final b = StringBuffer();
-  // data-kind drives what `send` writes back. `item` so a memo on a working
-  // card is filed as feedback and lands in 분류 전, exactly like one left on
-  // a 확인할 것 row — ⛔and NOT as `check`, which would delete the card if the
-  // box were submitted empty.
-  b.writeln('<details class="p${inbox ? ' box' : ''}" id="c-${_esc(e.id)}"'
-      ' data-kind="item">');
-  b.writeln(_head(
-      e.id,
-      e.title,
-      [
-        // ⚠️Same law in both panels: a stand-in for a PR nobody wrote a card
-        // for says so, wherever it is drawn. It reached 지금 unmarked when
-        // this lived only in `_checkRow`.
-        if (_isGap(e)) '카드 없음',
-        if (arrival.isNotEmpty) arrival,
-        // ⛔No PR chip here. A card can ship in several passes, and a head
-        // badge holds one — so it lives in the story as a 구현 stage, where
-        // there is room for all of them and for what each one did.
-        ...e.tags,
-      ],
-      badge,
-      '',
-      date: e.updated));
-  b.writeln('<div class="body">');
   if (editable) {
     // 🚨★★★EMPTY, because what this button does is ADD (유저 2026-08-31:
     // 「지금은 그게아니라 **추가로 메모다는거잖아. 그 구조는 좋은데**
@@ -1740,6 +1742,12 @@ String _itemPanel(BoardCard e) {
     // ⚠️Empty box ⇒ empty submit must be REFUSED. The head fields ARE
     // last-wins, so a blank press would leave the card with no summary and
     // no title. The story is right above; this box is only its next line.
+    // 🚨★★★AND ITS STORY, ALWAYS. A card in 분류 전 used to show the edit box
+    // and NOTHING ELSE, so a card that arrived here because the user pressed
+    // 「나중에 로」 showed no sign of having been asked — the request was in
+    // the file and invisible on screen. ⛔That is the same 「별개로 둠」 this
+    // round is removing everywhere else (유저: 「싹 다 타임라인흐름이야」).
+    b.writeln(_story(e));
     b.writeln('<textarea rows="4" placeholder="덧붙일 말 — 위의 이야기에 '
         '한 줄로 붙습니다 (스크린샷은 Ctrl+V)"></textarea>');
     b.writeln(_shotStrip(e.id));
@@ -1747,50 +1755,31 @@ String _itemPanel(BoardCard e) {
         '<button onclick="save(\'${_esc(e.id)}\')">추가</button>'
         '<button class="ghost" onclick="purge(\'${_esc(e.id)}\')">삭제</button>'
         '<span class="state"></span></div>');
-    // 🚨★★★AND ITS STORY, ALWAYS. A card in 분류 전 used to show the edit box
-    // and NOTHING ELSE, so a card that arrived here because the user pressed
-    // 「나중에 로」 showed no sign of having been asked — the request was in
-    // the file and invisible on screen. ⛔That is the same 「별개로 둠」 this
-    // round is removing everywhere else (유저: 「싹 다 타임라인흐름이야」).
-    b.writeln(_story(e));
-  } else {
-    b.writeln(_care(e));
-    b.writeln(_recordPanels(e));
-    if (_isGap(e)) {
-      b.writeln('<p class="d gap"><b>카드 없음</b> — 이 PR에는 '
-          '「무엇을 하는 일인지」를 적은 카드가 없습니다. 제목도 PR 제목 '
-          '그대로입니다.</p>');
-    }
-    b.writeln(_story(e));
-    b.writeln(_shotStrip(e.id));
-    // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
-    // 2026-08-26, looking at a card that had just moved OUT of that section:
-    // 「이거 해당칸에 피드백첨부하면되겟지?」).
-    //
-    // The memo box used to live only where the board happened to be asking a
-    // question. But a card is an organism the whole way down — noticing
-    // something about work that has not shipped yet is the CHEAPEST moment to
-    // say so, and making that depend on which list the card is in is the same
-    // 「write it in two places」 problem in a different coat.
-    b.writeln('<textarea rows="2" placeholder="여기에 피드백 — 원문 그대로 '
-        '남습니다 (스크린샷은 Ctrl+V)"></textarea>');
-    b.writeln('<div class="foot">'
-        '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
-        '<span class="state"></span></div>');
+    return b.toString();
   }
-  // 🚨★★★MOVING A CARD SHOULD COST ONE PRESS (유저 2026-08-31: 「가볍게
-  // 순서 대기 쪽으로 옮기는 게 힘든데, 그거 하는 기능 있으면 좋겠어」).
-  // ⚠️These ASK; they do not move. The press writes one 유저 entry saying
-  // where it should go, which lands the card in 분류 전 for me to read — see
-  // `/ask-move`. ⛔A button that moved the card itself would move something
-  // nobody had read, and the request would leave no trace in the story.
-  b.writeln('<div class="foot moves">');
-  for (final to in const ['나중에', '대화 중', '바로 가능', '실기 확인']) {
-    b.writeln('<button class="ghost sm" '
-        'onclick="askMove(event,\'${_esc(e.id)}\',\'$to\')">$to${ro(to)}</button>');
+  b.writeln(_care(e));
+  b.writeln(_recordPanels(e));
+  if (_isGap(e)) {
+    b.writeln('<p class="d gap"><b>카드 없음</b> — 이 PR에는 '
+        '「무엇을 하는 일인지」를 적은 카드가 없습니다. 제목도 PR 제목 '
+        '그대로입니다.</p>');
   }
-  b.writeln('<span class="state"></span></div>');
-  b.writeln('</div></details>');
+  b.writeln(_story(e));
+  b.writeln(_shotStrip(e.id));
+  // 🚨EVERY CARD TAKES FEEDBACK, not just the ones in 확인할 것 (유저
+  // 2026-08-26, looking at a card that had just moved OUT of that section:
+  // 「이거 해당칸에 피드백첨부하면되겟지?」).
+  //
+  // The memo box used to live only where the board happened to be asking a
+  // question. But a card is an organism the whole way down — noticing
+  // something about work that has not shipped yet is the CHEAPEST moment to
+  // say so, and making that depend on which list the card is in is the same
+  // 「write it in two places」 problem in a different coat.
+  b.writeln('<textarea rows="2" placeholder="여기에 피드백 — 원문 그대로 '
+      '남습니다 (스크린샷은 Ctrl+V)"></textarea>');
+  b.writeln('<div class="foot">'
+      '<button onclick="send(\'${_esc(e.id)}\')">피드백 제출</button>'
+      '<span class="state"></span></div>');
   return b.toString();
 }
 
@@ -1870,31 +1859,6 @@ String _recordPanels(BoardCard e) {
   return b.toString();
 }
 
-/// One checkout, said plainly enough to decide from.
-///
-/// The badge is the branch, because that is the thing you are choosing between;
-/// the trouble line only appears when there IS trouble. A checkout that is
-/// aligned and clean says 정렬됨 and nothing else — "깨끗하다" and "최신이다" are
-/// different claims, and conflating them is how a main checkout sat five
-/// commits behind while looking fine.
-String _checkoutPanel(_Checkout c) {
-  final name = c.path.split(RegExp(r'[\\/]')).last;
-  final trouble = c.trouble;
-  final b = StringBuffer();
-  b.writeln('<details class="p" id="c-git-${_esc(name)}">');
-  b.writeln(_head(name, trouble.isEmpty ? '정렬됨 · 깨끗' : trouble,
-      const [], c.branch, trouble.isEmpty ? 'ok' : 'run'));
-  b.writeln('<div class="body">');
-  b.writeln('<p class="d mono">${_esc(c.path)}</p>');
-  b.writeln('<p class="d">브랜치 <b>${_esc(c.branch)}</b> · '
-      'origin/master 기준 <b>${c.behind}</b> 뒤 / <b>${c.ahead}</b> 앞 · '
-      '커밋 안 된 파일 <b>${c.dirty}</b></p>');
-  b.writeln('</div></details>');
-  return b.toString();
-}
-
-
-
 /// The 구현 stage's chip: the number, and what that PR is doing right now.
 ///
 /// ⛔A PR outside `gh pr list`'s window gets the number alone. Saying 「머지」
@@ -1926,6 +1890,11 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
   final live = leftover && lastSection(e) == '남은 것' && _lastIsThis(e, i);
   final ask = entry.ask;
   final answered = ask?.answer != null;
+  // 🆕유저 2026-10-02: 「실기확인 눈에 안띄니까 질문처럼 답함 대기 이런 태그
+  // 붙이고싶어」 — a hands-on check wears the question's chip, in the
+  // question's place: 확인함 once ticked, 대기 until then.
+  final check = mine == '실기 확인' || mine == '검증';
+  final checked = check && _cleared(e, entry.ts);
   final b = StringBuffer();
   // ⚠️`open` is an ATTRIBUTE, not a class. Written inside the class string it
   // renders as `class="lg open"` — valid HTML, silently folded, and 68 stages
@@ -1940,6 +1909,8 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
       '<span class="lgp">${_esc(peek)}</span>'
       '${ask == null ? '' : '<span class="chip ${answered ? 'ok' : 'run'}">'
           '${answered ? '답함' : '대기'}</span>'}'
+      '${!check ? '' : '<span class="chip ${checked ? 'ok' : 'run'}">'
+          '${checked ? '확인함' : '대기'}</span>'}'
       '${entry.pr == null ? '' : _prChip(entry.pr!)}'
       '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
   if (ask == null) {
@@ -1973,7 +1944,7 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
   // brings them back, because nothing shows them. The form lives on the entry
   // now, exactly like a question's, and the card leaves when the last one is
   // ticked.
-  if (mine == '실기 확인' && !_cleared(e, entry.ts)) {
+  if (check && !checked) {
     // 🚨★★★A MEMO PER CHECK (유저 2026-08-31: 「실기확인 항목마다 메모란도
     // 존재해야하지않을까? **원래 실기확인은 그렇잖아**」).
     //
@@ -2074,399 +2045,736 @@ String _story(BoardCard e) {
   return b.toString();
 }
 
-/// Paste-to-attach is wired at the document, not per textarea, so every memo
-/// box on the page gets it -- including ones added later. A screenshot is the
-/// cheapest thing a person can give and the most expensive thing to describe
-/// in words, so it should never be the box that does not take one.
-String _js() => '''
-var queued = [];
-function stateOf(el){ return el.querySelector('.state'); }
+/// The page's script: the list, drawn from the heads; the open card, fetched
+/// from `/card`; and every action, each followed by ONE fresh read of the
+/// list and of the card that is open.
+///
+/// ⚠️A raw string: `$` is the script's own, never Dart's.
+String _js() => r'''
+var DATA = JSON.parse(document.getElementById('boot').textContent);
+var queued = [];   // screenshots pasted into the composer, not yet filed
 
+// Per-viewer conveniences only — the board itself lives in the records file.
+function remember(k, v){
+  try {
+    if (v === undefined) return localStorage.getItem('board.' + k);
+    localStorage.setItem('board.' + k, v);
+  } catch (e) { return null; }
+  return null;
+}
+
+var S = {view: remember('view') || 'me', q: '', owner: null, area: null,
+         sel: null, more: {}, picked: new Set(), old: null};
+
+var STATUS = {triage:'분류 대기', backlog:'백로그', todo:'할 일',
+  doing:'진행 중', verify:'검증', known:'알려진 문제', done:'완료',
+  canceled:'취소'};
+var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
+var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
+  ['backlog','백로그'], ['triage','분류 대기'], ['known','알려진 문제'],
+  ['done','완료'], ['system','시스템']];
+var PAGE = 60;
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function day(ts){ return ts ? ts.slice(5, 10) : ''; }
+function age(ts){
+  var t = Date.parse(ts || '');
+  return isNaN(t) ? null : Math.max(0, Math.floor((Date.now() - t) / 864e5));
+}
+function prioRank(p){ var i = PRIOS.indexOf(p || ''); return i < 0 ? 4 : i; }
+function live(c){ return c.status !== 'done' && c.status !== 'canceled'; }
+function oldest(k){ return function(a, b){ return (a[k] || '') < (b[k] || '') ? -1 : 1; }; }
+function newest(k){ return function(a, b){ return (a[k] || '') < (b[k] || '') ? 1 : -1; }; }
+
+function matches(c){
+  if (S.owner !== null && (c.owner || '') !== S.owner) return false;
+  if (S.area !== null && c.areas.indexOf(S.area) < 0) return false;
+  if (!S.q) return true;
+  var hay = (c.id + ' ' + c.title + ' ' + c.areas.join(' ') + ' ' + c.type +
+    ' ' + (c.owner || '')).toLowerCase();
+  return hay.indexOf(S.q.toLowerCase()) >= 0;
+}
+
+// Verification belongs to the build it is tried on, the way a QA list does:
+// what this build brought, what landed after it, what was carried over. With
+// no build marked yet it falls back to the day each card landed.
+function verifyGroups(rows){
+  var b = DATA.builds;
+  if (b.length) {
+    var last = b[b.length - 1];
+    var prev = b.length > 1 ? b[b.length - 2] : null;
+    // ⚠️Two weeks unlooked-at is its own pile whatever the builds say: the
+    // first build marked has no build before it, and would otherwise hand
+    // over everything ever left as 「this build」.
+    var stale = function(c){ return age(c.since) > 14; };
+    var after = rows.filter(function(c){ return c.since > last.ts; });
+    var before = rows.filter(function(c){ return c.since <= last.ts; });
+    var inBuild = before.filter(function(c){ return !stale(c) && (!prev || c.since > prev.ts); });
+    var carried = before.filter(function(c){ return !stale(c) && prev && c.since <= prev.ts; });
+    return [
+      {t:'이 빌드에서 볼 것', note: last.commit + ' · ' + day(last.ts) + ' 빌드', rows: inBuild},
+      {t:'다음 빌드에서', note:'빌드 뒤에 착지', rows: after},
+      {t:'이월', note:'지난 빌드부터', rows: carried, fold: true},
+      {t:'이월 · 2주 넘음', rows: before.filter(stale), fold: true},
+    ];
+  }
+  var spans = [['오늘 · 어제', 0, 1], ['이번 주', 2, 7], ['지난주', 8, 14], ['2주 넘음', 15, 1e9]];
+  return spans.map(function(s, i){
+    return {t: s[0], note: i === 0 ? '빌드 기록 전 — 착지한 날로 묶음' : '',
+      rows: rows.filter(function(c){ var a = age(c.since); return a >= s[1] && a <= s[2]; }),
+      fold: i >= 2};
+  });
+}
+
+function byKey(rows, key, order){
+  var groups = {};
+  rows.forEach(function(c){ (groups[key(c)] = groups[key(c)] || []).push(c); });
+  var names = Object.keys(groups);
+  if (order) names.sort(order);
+  return names.map(function(n){ return {t: n, rows: groups[n]}; });
+}
+
+function groupsFor(view){
+  var pool = DATA.cards.filter(matches);
+  if (S.q) {
+    var found = pool.slice().sort(function(a, b){
+      return (live(a) ? 0 : 1) - (live(b) ? 0 : 1) || (a.updated < b.updated ? 1 : -1);
+    });
+    var g = byKey(found, function(c){ return STATUS[c.status]; });
+    if (S.old && S.old.length) g.push({t: '지난 카드', rows: S.old});
+    return g;
+  }
+  if (view === 'me') {
+    var decide = pool.filter(function(c){ return live(c) && c.q.length; }).sort(oldest('updated'));
+    var talk = pool.filter(function(c){ return live(c) && !c.q.length && c.talk && c.user; }).sort(oldest('updated'));
+    var checks = pool.filter(function(c){ return live(c) && !c.q.length && c.checks > 0; }).sort(oldest('since'));
+    var out = [
+      {t:'결정 필요', rows: decide, skip: ['decide']},
+      {t:'답 기다림', note:'대화 — 사용자 차례', rows: talk, skip: ['talk']},
+    ];
+    verifyGroups(checks).forEach(function(x){
+      x.t = '검증 · ' + x.t; x.pick = true; x.skip = ['check']; out.push(x);
+    });
+    return out;
+  }
+  if (view === 'doing') {
+    var doing = pool.filter(function(c){ return c.status === 'doing'; }).sort(newest('updated'));
+    return byKey(doing, function(c){ return c.owner || '담당 미정'; }).map(function(g){
+      // WIP: a session holding more than two at once is spread thin.
+      if (g.rows.length > 2 && g.t !== '담당 미정') g.note = '동시에 ' + g.rows.length + '장';
+      return g;
+    });
+  }
+  if (view === 'todo' || view === 'backlog') {
+    var rows = pool.filter(function(c){ return c.status === view; });
+    var stale = view === 'backlog' ? rows.filter(function(c){ return age(c.updated) > 30; }) : [];
+    var fresh = rows.filter(function(c){ return stale.indexOf(c) < 0; });
+    var g2 = byKey(fresh, function(c){ return c.prio || '미정'; }, function(a, b){
+      return prioRank(a === '미정' ? '' : a) - prioRank(b === '미정' ? '' : b);
+    }).map(function(g){ g.rows.sort(oldest('updated')); g.skip = ['prio']; return g; });
+    if (stale.length) g2.push({t:'30일 넘게 그대로', rows: stale.sort(oldest('updated')), fold: true});
+    return g2;
+  }
+  if (view === 'triage') {
+    return [
+      {t:'새로 들어온 것', rows: pool.filter(function(c){ return c.status === 'triage'; }).sort(oldest('created'))},
+      {t:'사용자가 덧붙임', note:'제 차례', skip: ['me'], rows: pool.filter(function(c){
+        return live(c) && c.status !== 'triage' && c.me; }).sort(oldest('updated'))},
+    ];
+  }
+  if (view === 'known') {
+    return [{t:'알려진 문제', rows: pool.filter(function(c){ return c.status === 'known'; }).sort(newest('updated'))}];
+  }
+  if (view === 'done') {
+    return [
+      {t:'완료', note:'최근 14일', rows: pool.filter(function(c){ return c.status === 'done'; }).sort(newest('updated'))},
+      {t:'취소', rows: pool.filter(function(c){ return c.status === 'canceled'; }).sort(newest('updated'))},
+    ];
+  }
+  return [];
+}
+
+function countFor(view){
+  if (view === 'system') return DATA.checkouts.length;
+  var seen = {};
+  groupsFor(view).forEach(function(g){ g.rows.forEach(function(c){ seen[c.id] = 1; }); });
+  return Object.keys(seen).length;
+}
+
+// 🚨★★★NO CHIP THAT REPEATS ITS OWN GROUP (유저 2026-08-31: 「나중에 항목의
+// 나중에 태그 필요없고, 대화중도 필요없고 … 답할것도 답할것 태그
+// 필요없고」) — each group names the flags its rows would only repeat.
+// 🆕The 실기 대기 chip (유저 2026-10-02: 「실기확인 눈에 안띄니까 질문처럼 답함
+// 대기 이런 태그 붙이고싶어」): a check still waiting on a card that has moved
+// on is folded inside its story, so the row says so.
+function flagsOf(c){
+  var f = [];
+  if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
+  if (c.talk) f.push(['talk', c.user ? '답 기다림' : '대화 중', c.user ? 'run' : '']);
+  if (c.checks && c.status !== 'verify') f.push(['check', '실기 대기', 'run']);
+  if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
+  if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
+  if (c.gap) f.push(['gap', '카드 없음', 'bad']);
+  return f;
+}
+
+function rowHtml(c, g){
+  var skip = g.skip || [];
+  var chips = flagsOf(c).filter(function(f){ return skip.indexOf(f[0]) < 0; })
+    .map(function(f){ return '<span class="chip ' + f[2] + '">' + esc(f[1]) + '</span>'; }).join('');
+  var when = c.checks ? c.since : c.updated;
+  var a = age(when);
+  var pick = g.pick
+    ? '<input type="checkbox" class="pick" data-pick="' + esc(c.id) + '"' + (S.picked.has(c.id) ? ' checked' : '') + '>'
+    : '<span class="dot s-' + c.status + '" title="' + STATUS[c.status] + '"></span>';
+  var prio = c.prio && skip.indexOf('prio') < 0 ? '<span class="pri p' + prioRank(c.prio) + '">' + esc(c.prio) + '</span>' : '';
+  var areas = c.areas.slice(0, 2).map(function(t){ return '<span class="chip">' + esc(t) + '</span>'; }).join('');
+  return '<div class="row" tabindex="0" data-id="' + esc(c.id) + '" aria-selected="' + (S.sel === c.id) + '">' +
+    pick + '<span class="rid">' + esc(c.id) + '</span>' +
+    '<span class="rt">' + prio + '<span class="tt">' + esc(c.title) + '</span>' + chips + '</span>' +
+    '<span class="rm">' + areas + (c.owner ? '<span class="own">' + esc(c.owner) + '</span>' : '') +
+    '<span class="age' + (a > 14 ? ' old' : '') + '" title="' + esc(when) + '">' +
+    (c.checks ? '착지 ' : '') + day(when) + ' · ' + (a === null ? '-' : a) + '일</span></span></div>';
+}
+
+function renderRail(){
+  var rail = document.getElementById('rail');
+  var html = '<div class="views">' + VIEWS.map(function(v){
+    var n = countFor(v[0]);
+    return '<button class="view' + (v[0] === 'me' && n ? ' hot' : '') + '" data-view="' + v[0] +
+      '" aria-current="' + (S.view === v[0] && !S.q) + '"><span class="dot s-' + v[0] + '"></span>' +
+      '<span>' + v[1] + '</span><span class="n">' + n + '</span></button>';
+  }).join('') + '</div>';
+  var owners = {}, areas = {};
+  DATA.cards.forEach(function(c){
+    if (!live(c)) return;
+    owners[c.owner || ''] = (owners[c.owner || ''] || 0) + 1;
+    c.areas.forEach(function(t){ areas[t] = (areas[t] || 0) + 1; });
+  });
+  function facet(title, map, attr, on){
+    return '<div class="facet"><h3>' + title + '</h3><div class="chips">' +
+      Object.keys(map).sort(function(a, b){ return map[b] - map[a]; }).map(function(k){
+        return '<button class="fchip" data-' + attr + '="' + esc(k) + '" aria-pressed="' + (on === k) + '">' +
+          esc(k || '미정') + ' <span class="n">' + map[k] + '</span></button>';
+      }).join('') + '</div></div>';
+  }
+  rail.innerHTML = html + facet('담당', owners, 'owner', S.owner) + facet('영역', areas, 'area', S.area);
+}
+
+function renderList(){
+  var list = document.getElementById('list');
+  if (S.view === 'system' && !S.q) { list.innerHTML = systemHtml(); return; }
+  var groups = groupsFor(S.view);
+  var title = S.q ? '찾기 — 「' + esc(S.q) + '」' : VIEWS.filter(function(v){ return v[0] === S.view; })[0][1];
+  var html = '<div class="vhead"><h2>' + title + '</h2>';
+  if (S.view === 'me' && !S.q) {
+    html += '<button class="ghost sm" onclick="markBuild(event)" title="지금 master 를 빌드했다고 적습니다 — 검증이 이 빌드 기준으로 묶입니다">이 빌드로 시험 중</button>';
+  }
+  if (S.view === 'doing' && !S.q) html += '<button class="ghost sm" onclick="refreshPrs(event)">PR 다시 읽기</button>';
+  if (S.q && S.old === null) html += '<button class="ghost sm" onclick="findOld()">지난 카드에서도 찾기</button>';
+  html += '<span class="state"></span></div>';
+  if (S.picked.size) {
+    html += '<div class="bulk"><span>' + S.picked.size + '장 고름</span>' +
+      '<button onclick="confirmPicked(event)">확인 — 문제 없음</button>' +
+      '<button class="ghost" onclick="clearPicked()">고른 것 풀기</button><span class="state"></span></div>';
+  }
+  groups.forEach(function(g, i){
+    var key = S.view + ':' + g.t;
+    var shown = S.more[key] !== undefined ? S.more[key] : (g.fold ? 0 : PAGE);
+    html += '<section class="grp"><div class="gh"><span class="gt">' + esc(g.t) + '</span>' +
+      '<span class="gn">' + g.rows.length + '</span>' + (g.note ? '<span class="note">' + esc(g.note) + '</span>' : '');
+    if (g.pick && g.rows.length) html += '<button class="ghost sm pickall" data-group="' + i + '">모두 고르기</button>';
+    html += '</div>';
+    if (!g.rows.length) html += '<p class="none">없음</p>';
+    html += g.rows.slice(0, shown).map(function(c){ return rowHtml(c, g); }).join('');
+    if (g.rows.length > shown) {
+      html += '<button class="more" data-more="' + esc(key) + '">' + (shown ? '더 보기' : '펼치기') +
+        ' · ' + (g.rows.length - shown) + '장</button>';
+    }
+    html += '</section>';
+  });
+  list.innerHTML = html;
+  list._groups = groups;
+}
+
+function systemHtml(){
+  var h = '<div class="vhead"><h2>시스템</h2><button class="ghost sm" onclick="refreshPrs(event)">PR 다시 읽기</button><span class="state"></span></div>';
+  h += '<section class="grp"><div class="gh"><span class="gt">체크아웃</span><span class="gn">' + DATA.checkouts.length + '</span></div>';
+  h += DATA.checkouts.map(function(c){
+    var trouble = [c.behind ? c.behind + ' 뒤' : '', c.ahead ? c.ahead + ' 앞' : '',
+      c.dirty ? '커밋 안 된 파일 ' + c.dirty : ''].filter(Boolean).join(' · ');
+    return '<div class="row static"><span class="dot s-system"></span><span class="rid">' + esc(c.name) +
+      '</span><span class="rt"><span class="tt mono">' + esc(c.path) + '</span></span><span class="rm">' +
+      '<span class="chip">' + esc(c.branch) + '</span><span class="chip ' + (trouble ? 'run' : 'ok') + '">' +
+      esc(trouble || 'origin/master 와 같음 · 깨끗') + '</span></span></div>';
+  }).join('') + '</section>';
+  h += '<section class="grp"><div class="gh"><span class="gt">PR</span><span class="gn">' + DATA.prs.length + '</span>' +
+    (DATA.ghOk ? '' : '<span class="note warn">gh 를 못 불렀습니다</span>') + '</div>';
+  h += DATA.prs.map(function(p){
+    var cls = p.state === 'OPEN' ? 'run' : (p.state === 'MERGED' ? 'ok' : 'bad');
+    return '<div class="row static"><span class="dot s-system"></span><span class="rid">#' + p.n +
+      '</span><span class="rt"><span class="tt">' + esc(p.title) + '</span></span><span class="rm">' +
+      '<span class="chip ' + cls + '">' + esc(p.state) + '</span><span class="chip">' + esc(p.checks) + '</span></span></div>';
+  }).join('') + '</section>';
+  return h;
+}
+
+function renderStamp(){
+  var parts = [];
+  if (!DATA.ghOk) parts.push('<span class="warn">gh 를 못 불렀습니다 — PR 정보가 비어 있습니다</span>');
+  if (DATA.bad && DATA.bad.length) parts.push('<span class="warn">기록 ' + DATA.bad.length + '줄을 읽지 못했습니다 (줄 ' + DATA.bad.join(', ') + ')</span>');
+  document.getElementById('stamp').innerHTML = parts.join(' · ');
+}
+
+function renderAll(){ renderRail(); renderList(); renderStamp(); }
+
+// ---- the open card
+
+// What a person typed in the open card survives a fresh read of it — except
+// in the box whose own submit caused the read, which must come back empty.
+function typedIn(pane, skip){
+  var typed = {};
+  pane.querySelectorAll('[data-kind]').forEach(function(o){
+    if (!o.id || o.id === skip) return;
+    var i = 0;
+    o.querySelectorAll('textarea, input[type=text]').forEach(function(f){
+      if (f.closest('[data-kind]') !== o) return;
+      if (f.value) typed[o.id + '#' + i] = f.value;
+      i++;
+    });
+  });
+  return typed;
+}
+function putBack(pane, typed){
+  pane.querySelectorAll('[data-kind]').forEach(function(o){
+    if (!o.id) return;
+    var i = 0;
+    o.querySelectorAll('textarea, input[type=text]').forEach(function(f){
+      if (f.closest('[data-kind]') !== o) return;
+      var v = typed[o.id + '#' + i];
+      if (v) f.value = v;
+      i++;
+    });
+  });
+}
+
+function openCard(id, skip){
+  var pane = document.getElementById('detail');
+  var same = S.sel === id;
+  var typed = same ? typedIn(pane, skip) : {};
+  var openRows = [];
+  if (same) pane.querySelectorAll('details[open]').forEach(function(d){
+    var s = d.querySelector('summary'); if (s) openRows.push(s.textContent);
+  });
+  S.sel = id;
+  document.querySelectorAll('.row[data-id]').forEach(function(r){
+    r.setAttribute('aria-selected', String(r.dataset.id === id));
+  });
+  document.body.classList.add('reading');
+  return fetch('/card?id=' + encodeURIComponent(id), {cache: 'no-store'})
+    .then(function(r){ return r.text(); })
+    .then(function(html){
+      if (S.sel !== id) return;
+      var top = same ? pane.scrollTop : 0;
+      pane.innerHTML = html + '<button class="close ghost sm" onclick="closeCard()">닫기</button>';
+      putBack(pane, typed);
+      if (same) pane.querySelectorAll('details').forEach(function(d){
+        var s = d.querySelector('summary');
+        if (s && openRows.indexOf(s.textContent) >= 0) d.open = true;
+      });
+      pane.scrollTop = top;
+    });
+}
+function closeCard(){
+  S.sel = null;
+  document.getElementById('detail').innerHTML = '';
+  document.body.classList.remove('reading');
+  document.querySelectorAll('.row[aria-selected="true"]').forEach(function(r){ r.setAttribute('aria-selected', 'false'); });
+}
+
+function loadBoard(){
+  return fetch('/api/board', {cache: 'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(d){ DATA = d; });
+}
+// ONE fresh read after every write: the list, and the open card.
+function afterWrite(skip){
+  return loadBoard().then(function(){
+    renderAll();
+    // The composer is not a card: what is typed there is not the server's.
+    if (S.sel && S.sel !== 'intake') return openCard(S.sel, skip);
+  });
+}
+
+// ---- actions
+
+function stateOf(el){ return el ? el.querySelector('.state') : null; }
+function say(el, text){ var s = stateOf(el); if (s) s.textContent = text; }
 async function post(url, body, el){
-  stateOf(el).textContent = '저장 중…';
-  const r = await fetch(url, {method:'POST', body: JSON.stringify(body)});
-  if(!r.ok) throw new Error(r.status);
+  say(el, '저장 중…');
+  var r = await fetch(url, {method: 'POST', body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(r.status);
   return r.json();
 }
 function send(id){
-  const c = document.getElementById('c-'+id);
-  const r = c.querySelector('input[name="ans-'+id+'"]:checked');
-  const t = c.querySelector('textarea');
-  const answer = r ? r.value : '';
-  const memo = t ? (t.value||'').trim() : '';
-  if(c.dataset.kind === 'decision' && !answer && !memo){
-    stateOf(c).textContent = '고르거나 메모를 적어 주세요'; return;
-  }
+  var c = document.getElementById('c-' + id);
+  var r = c.querySelector('input[name="ans-' + id + '"]:checked');
+  // ⛔Not the first box in the card: a card's story can hold a question's
+  // box and a check's box ABOVE its own feedback box, and the first one found
+  // was then the one read — the 「ONE CHECK, ONE BOX」 failure in another
+  // place. A card's own box is a child of its body; a question's is its own.
+  var t = c.dataset.kind === 'item'
+    ? c.querySelector(':scope > .body > textarea')
+    : c.querySelector('textarea');
+  var answer = r ? r.value : '';
+  var memo = t ? (t.value || '').trim() : '';
+  if (c.dataset.kind === 'decision' && !answer && !memo) { say(c, '고르거나 메모를 적어 주세요'); return; }
   // ⛔An empty memo on a working card is not a tick — there is nothing here to
-  // tick. Only 확인할 것 rows carry that meaning.
-  if(c.dataset.kind === 'item' && !memo){
-    stateOf(c).textContent = '적을 내용이 있어야 제출됩니다'; return;
-  }
-  post('/submit', {id:id, kind:c.dataset.kind, answer:answer||'ok', memo:memo}, c)
-    .then(()=>redraw(c.id))
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+  // tick. Only a check's own box carries that meaning.
+  if (c.dataset.kind === 'item' && !memo) { say(c, '적을 내용이 있어야 제출됩니다'); return; }
+  post('/submit', {id: id, kind: c.dataset.kind, answer: answer || 'ok', memo: memo}, c)
+    .then(function(){ if (t) t.value = ''; return afterWrite(c.id); })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
 }
-// One press = one 유저 entry saying where the card should go. The card lands
-// in 분류 전 and I move it -- the button never moves it itself.
 // One hands-on check, ticked on its own. The card leaves only when the last
-// of them is cleared -- see `placeByStory`.
+// of them is cleared — see `placeByStory`.
 function tick(ev, id, ref){
   ev.stopPropagation();
-  const c = document.getElementById('c-'+id);
-  // The box beside THIS button, not the card's shared one -- a card can hold
+  var c = document.getElementById('c-' + id);
+  // The box beside THIS button, not the card's shared one — a card can hold
   // several checks and each carries its own words.
-  const box = ev.target.closest('.tick');
-  const t = box ? box.querySelector('textarea') : null;
-  const note = t ? (t.value||'').trim() : '';
-  post('/tick', {id:id, ref:ref, note:note}, c)
-    .then(()=>redraw(c.id))
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
-}
-function askMove(ev, id, to){
-  ev.stopPropagation();
-  const c = document.getElementById('c-'+id);
-  post('/ask-move', {id:id, to:to}, c)
-    .then(()=>redraw(c.id))
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
-}
-// An anchor onto a folded <details> scrolls to a closed row and looks like a
-// dead link. Open it first, then scroll, then flash it so the eye lands.
-function jump(id){
-  const c = document.getElementById('c-'+id);
-  // ⚠️Silence here reads as a broken link. Say so instead — the row is not on
-  // the page, which is information, not a failure.
-  if(!c){ alert(id + ' 는 지금 화면에 없습니다 (보관됐거나 다른 페이지).'); return; }
-  c.open = true;
-  c.scrollIntoView({behavior:'smooth', block:'center'});
-  c.classList.add('lit');
-  setTimeout(()=>c.classList.remove('lit'), 1400);
-}
-function drop(id){
-  const c = document.getElementById('c-'+id);
-  post('/dismiss', {id:id}, c)
-    .then(()=>redraw())
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+  var box = ev.target.closest('.tick');
+  var t = box ? box.querySelector('textarea') : null;
+  var note = t ? (t.value || '').trim() : '';
+  post('/tick', {id: id, ref: ref, note: note}, box || c)
+    .then(function(){ if (t) t.value = ''; return afterWrite(c.id); })
+    .catch(function(e){ say(box || c, '실패: ' + e.message); });
 }
 function save(id){
-  const c = document.getElementById('c-'+id);
-  const text = (c.querySelector('textarea').value||'').trim();
-  // The box starts empty now, so an empty press is a press with nothing to
-  // say -- and sending it would blank the card's own words and title.
-  if(!text){ stateOf(c).textContent = '적을 내용이 있어야 추가됩니다'; return; }
-  post('/edit', {id:id, text:text}, c)
-    .then(()=>redraw(c.id))
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+  var c = document.getElementById('c-' + id);
+  var t = c.querySelector('.body > textarea');
+  var text = t ? (t.value || '').trim() : '';
+  // The box starts empty, so an empty press is a press with nothing to say —
+  // and sending it would blank the card's own words and title.
+  if (!text) { say(c, '적을 내용이 있어야 추가됩니다'); return; }
+  post('/edit', {id: id, text: text}, c)
+    .then(function(){ t.value = ''; return afterWrite(c.id); })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
 }
 function purge(id){
-  const c = document.getElementById('c-'+id);
-  if(!confirm(id + ' 을(를) 완전히 지웁니다. 번호도 다시 쓰입니다.')) return;
-  post('/purge', {id:id}, c)
-    .then(()=>redraw())
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+  var c = document.getElementById('c-' + id);
+  if (!confirm(id + ' 을(를) 완전히 지웁니다. 번호도 다시 쓰입니다.')) return;
+  post('/purge', {id: id}, c)
+    .then(function(){ closeCard(); return afterWrite(); })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
 }
-// Redraws every section from the server WITHOUT reloading the page.
-//
-// There is no auto-refresh on this board and never was -- no timer, no meta
-// refresh. What there was is worse: every action called location.reload(), and
-// a reload empties every textarea on the page. Paste a screenshot into a card
-// while writing a note and the note is gone, which is exactly the thing you
-// least want a notes board to do. Measured before the fix: type into the
-// intake box, reload, both the text and the tag come back empty.
-//
-// It also felt like the scroll position was lost. The browser does restore
-// scrollY -- but every open panel closes on reload, the page collapses to a
-// fraction of its height, and the restored offset lands nowhere near what you
-// were reading.
-//
-// So: fetch the page, swap the sections, and put back the three things a
-// person had invested in it -- what they typed, what they had open, where they
-// were. Nothing here is a timer; it runs only when an action asks for it.
-// `skipId` is the card whose fields must NOT be restored -- the one whose own
-// submit caused this redraw. Everywhere else the person's text wins, including
-// over a value the server rendered: an inbox card arrives with its saved note
-// already in the box, and someone halfway through rewriting it holds the newer
-// version. Letting the server win there silently reverted their edit, which a
-// first attempt at this did.
-function redraw(skipId, done){
-  const typed = {}, opened = [];
-  // Open state covers groups AND cards; fields are read from cards only.
-  // A group is a <details> too, so scanning every <details> for fields picked
-  // up each card's box a second time under the GROUP's key -- and that copy
-  // ignored skipId, so it wrote the stale draft straight back over the value
-  // the server had just returned.
-  document.querySelectorAll('details').forEach(function(d){
-    if(d.id && d.open) opened.push(d.id);
-  });
-  document.querySelectorAll('details.p').forEach(function(d){
-    if(!d.id || d.id === skipId) return;
-    d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
-      if(f.value) typed[d.id + '#' + i] = f.value;
-    });
-  });
-  const y = window.scrollY;
-  // ⚠️Re-fetch the page you are ON. Asking for `/` returns page 1, so
-  // submitting anything from page 2 used to teleport you back to the top of a
-  // list you had scrolled past.
-  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
-    .then(r=>r.text())
-    .then(html=>{
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      doc.querySelectorAll('.grp').forEach(function(fresh){
-        const live = document.getElementById(fresh.id);
-        if(live) live.replaceWith(fresh);
-      });
-      const s = doc.querySelector('.stamp');
-      if(s && document.querySelector('.stamp')){
-        document.querySelector('.stamp').replaceWith(s);
-      }
-      opened.forEach(function(id){
-        const d = document.getElementById(id);
-        if(d) d.open = true;
-      });
-      document.querySelectorAll('details.p').forEach(function(d){
-        if(!d.id) return;
-        d.querySelectorAll('textarea, input[type=text]').forEach(function(f, i){
-          const v = typed[d.id + '#' + i];
-          if(v) f.value = v;
-        });
-      });
-      // Thumbnails of shots pasted but not yet submitted live only in `queued`.
-      const strip = document.getElementById('intake-shots');
-      if(strip && queued.length){
-        queued.forEach(function(d){
-          const img = document.createElement('img');
-          img.src = d;
-          strip.appendChild(img);
-        });
-      }
-      window.scrollTo(0, y);
-      if(done) done();
-    });
+function move(id, word, el){
+  var c = document.getElementById('c-' + id);
+  post('/move', {id: id, to: word}, c)
+    .then(function(){ return afterWrite(); })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
 }
-// Turns a page of 확인할 것 by swapping that one section's DOM.
-//
-// The rows change; nothing else on the board does. So nothing else should move
-// — not the scroll position, not the panels you had open elsewhere, not a memo
-// you were halfway through typing. A navigation loses all three.
-//
-// ⚠️Open state is restored for the panels that survive the swap. A row that
-// was on the old page and is not on the new one is simply gone, which is what
-// turning a page means.
-// Which page of 확인할 것 is on screen — read from the pager the server drew,
-// so there is no second copy of this fact to drift.
-function curPage(){
-  const on = document.querySelector('.pager a.on');
-  return on ? (parseInt(on.textContent, 10) || 1) : 1;
+function setPrio(id, p, el){
+  var c = document.getElementById('c-' + id);
+  post('/priority', {id: id, priority: p}, c)
+    .then(function(){ return afterWrite(); })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
 }
-// Every page is already in the document, so turning one is a class swap.
-//
-// It used to refetch the whole board — measured at 0.5s warm and 3.7s once the
-// `gh` window had expired, to change rows that were already decided when the
-// page was drawn (유저 2026-08-28: 「특히 페이지 전환할떄 너무느려. 그냥
-// 누르자마자 전환되게하고싶은데」). Nothing needs saving and restoring either:
-// open panels and half-typed memos are not touched, because nothing is
-// replaced. The scroll does not move for the same reason.
-function goPage(n){
-  const pgs = document.querySelectorAll('.pg');
-  if(!pgs.length) return true;   // nothing to swap: let the link navigate
-  pgs.forEach(function(d){
-    d.classList.toggle('on', parseInt(d.dataset.pg, 10) === n);
-  });
-  document.querySelectorAll('.pager a.pg-btn').forEach(function(a){
-    a.classList.toggle('on', parseInt(a.textContent, 10) === n);
-  });
-  return false;
+function markBuild(ev){
+  var head = ev.target.closest('.vhead');
+  post('/build', {}, head)
+    .then(function(r){ say(head, (r.commit || '') + ' 빌드로 적었습니다'); return afterWrite(); })
+    .catch(function(e){ say(head, '실패: ' + e.message); });
 }
-// Swaps just the 지금 section rather than reloading: everything else on the
-// page is unaffected by a PR lookup, and a full reload throws away every panel
-// you had open to read.
-function swapSection(id, done){
-  return fetch('/?partial=1&landed=' + curPage(), {cache:'no-store'})
-    .then(r=>r.text())
-    .then(html=>{
-      const doc = new DOMParser().parseFromString(html, 'text/html');
-      const fresh = doc.getElementById(id);
-      const live = document.getElementById(id);
-      if(fresh && live){ live.replaceWith(fresh); }
-      const s = doc.querySelector('.stamp');
-      if(s){ document.querySelector('.stamp').replaceWith(s); }
-      if(done) done();
-    });
-}
-function refresh(ev){
-  // The button lives inside a <summary>, so without this the click also folds
-  // the section it was meant to update.
-  ev.preventDefault(); ev.stopPropagation();
-  const c = ev.target.closest('.ctl');
-  stateOf(c).textContent = '읽는 중…';
-  fetch('/refresh', {method:'POST', body:'{}'})
-    .then(()=>swapSection('g-지금'))
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
-}
-function pickAll(ev){
-  ev.preventDefault(); ev.stopPropagation();
-  const c = ev.target.closest('.ctl');
-  // This page only -- the other pages are not in the document, so there is
-  // nothing here that could tick a row the reader has not seen.
-  const boxes = [...c.closest('.grp').querySelectorAll('.pick')];
-  const turnOn = boxes.some(b => !b.checked);
-  boxes.forEach(b => b.checked = turnOn);
-  stateOf(c).textContent = turnOn ? boxes.length + '개 선택' : '';
+function refreshPrs(ev){
+  var head = ev.target.closest('.vhead');
+  say(head, '읽는 중…');
+  post('/refresh', {}, null)
+    .then(function(){ return afterWrite(); })
+    .catch(function(e){ say(head, '실패: ' + e.message); });
 }
 function confirmPicked(ev){
-  ev.preventDefault(); ev.stopPropagation();
-  const c = ev.target.closest('.ctl');
-  const ids = [...c.closest('.grp').querySelectorAll('.pick:checked')].map(x=>x.value);
-  if(ids.length === 0){ stateOf(c).textContent = '체크한 게 없습니다'; return; }
-  post('/dismiss', {ids:ids}, c)
-    .then(()=>redraw())
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+  var bar = ev.target.closest('.bulk');
+  var ids = Array.from(S.picked);
+  if (!ids.length) return;
+  post('/dismiss', {ids: ids}, bar)
+    .then(function(){ S.picked.clear(); return afterWrite(); })
+    .catch(function(e){ say(bar, '실패: ' + e.message); });
 }
-function file(kind){
-  const c = document.getElementById('c-intake');
-  const text = (document.getElementById('intake-text').value||'').trim();
-  if(!text && queued.length === 0){
-    stateOf(c).textContent = '내용을 적거나 스크린샷을 붙여넣어 주세요'; return;
-  }
-  post('/intake', {kind:kind, text:text,
-                   tag:(document.getElementById('intake-tag').value||'').trim()}, c)
-    .then(async res => {
-      for(const data of queued){
-        await fetch('/shot', {method:'POST',
-          body: JSON.stringify({id:res.id, data:data})});
-      }
-      queued = [];
-      // The intake card is not inside any group, so a redraw cannot reset it.
-      // What was just filed has to be cleared here or it sits there looking
-      // unfiled and gets typed over or submitted twice.
-      document.getElementById('intake-text').value = '';
-      document.getElementById('intake-tag').value = '';
-      document.getElementById('intake-shots').innerHTML = '';
-      redraw('c-intake');
-    })
-    .catch(e=>stateOf(c).textContent = '실패: '+e.message);
+function clearPicked(){ S.picked.clear(); renderList(); }
+function findOld(){
+  fetch('/api/find?q=' + encodeURIComponent(S.q), {cache: 'no-store'})
+    .then(function(r){ return r.json(); })
+    .then(function(rows){ S.old = rows; renderList(); });
 }
 
+// ---- the composer
+
+// Two buttons rather than a type dropdown, because the choice is the whole
+// classification a person can make while still mid-thought: this is broken
+// (feedback) or this would be good (idea). Everything else — number, title,
+// which area it belongs to — is sorted out later, on the board.
+function compose(){
+  closeCard();
+  S.sel = 'intake';
+  document.body.classList.add('reading');
+  document.getElementById('detail').innerHTML =
+    '<article class="p det" id="c-intake"><header class="dh"><div class="dtop"><span class="did">새로 적기</span>' +
+    '<span class="state"></span></div></header><div class="body">' +
+    '<textarea id="intake-text" rows="6" placeholder="떠오른 대로 적으세요. 번호와 제목은 제가 붙입니다.&#10;스크린샷은 Ctrl+V 로 그대로 붙여넣기."></textarea>' +
+    '<div id="intake-shots" class="shots"></div>' +
+    '<input type="text" id="intake-tag" placeholder="분야 (비워도 됩니다 — 제가 정리합니다)">' +
+    '<div class="foot"><button onclick="file(\'feedback\')">피드백 — 지금 이게 잘못됐다</button>' +
+    '<button class="alt" onclick="file(\'idea\')">아이디어 — 이런 게 있으면 좋겠다</button>' +
+    '<button class="ghost" onclick="file(\'draft\')">임시저장 — 아직 정리 전</button></div></div>' +
+    '<button class="close ghost sm" onclick="closeCard()">닫기</button></article>';
+  document.getElementById('intake-text').focus();
+}
+function file(kind){
+  var c = document.getElementById('c-intake');
+  var text = (document.getElementById('intake-text').value || '').trim();
+  if (!text && queued.length === 0) { say(c, '내용을 적거나 스크린샷을 붙여넣어 주세요'); return; }
+  post('/intake', {kind: kind, text: text,
+                   tag: (document.getElementById('intake-tag').value || '').trim()}, c)
+    .then(async function(res){
+      for (var i = 0; i < queued.length; i++) {
+        await fetch('/shot', {method: 'POST', body: JSON.stringify({id: res.id, data: queued[i]})});
+      }
+      queued = [];
+      return loadBoard().then(function(){ renderAll(); return openCard(res.id); });
+    })
+    .catch(function(e){ say(c, '실패: ' + e.message); });
+}
+
+// Paste-to-attach is wired at the document, not per textarea, so every memo
+// box on the page gets it — including ones added later. A screenshot is the
+// cheapest thing a person can give and the most expensive thing to describe
+// in words, so it should never be the box that does not take one.
 document.addEventListener('paste', function(e){
-  const ta = e.target;
-  if(!ta || ta.tagName !== 'TEXTAREA') return;
-  const items = (e.clipboardData && e.clipboardData.items) || [];
-  for(const it of items){
-    if(it.type.indexOf('image/') !== 0) continue;
+  var ta = e.target;
+  if (!ta || ta.tagName !== 'TEXTAREA') return;
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it.type.indexOf('image/') !== 0) continue;
     e.preventDefault();
-    const reader = new FileReader();
+    var reader = new FileReader();
     reader.onload = function(){
       // 🚨THE CARD, not the entry. Entries are `<details class="lg">` with
-      // NO id, so once a textarea lived inside one (#1427) this found the
-      // entry and posted an empty id — a screenshot pasted into a per-check
-      // memo box went nowhere and said nothing. Cards are the ones named
-      // `c-<id>`, including intake (`c-intake`).
-      const card = ta.closest('details[id^="c-"]');
-      if(!card) return;
-      const id = card.id.replace(/^c-/, '');
-      if(id === 'intake'){
+      // NO id, so once a textarea lived inside one (#1427) a loose walk found
+      // the entry and posted an empty id — a screenshot pasted into a
+      // per-check memo box went nowhere and said nothing. Cards are the ones
+      // named `c-<id>`, including the composer (`c-intake`).
+      var card = ta.closest('[id^="c-"]');
+      if (!card) return;
+      var id = card.id.replace(/^c-/, '');
+      if (id === 'intake') {
         queued.push(reader.result);
-        const strip = document.getElementById('intake-shots');
-        const img = document.createElement('img');
+        var img = document.createElement('img');
         img.src = reader.result;
-        strip.appendChild(img);
-        stateOf(card).textContent = '스크린샷 ' + queued.length + '장 — 제출하면 같이 올라갑니다';
+        document.getElementById('intake-shots').appendChild(img);
+        say(card, '스크린샷 ' + queued.length + '장 — 제출하면 같이 올라갑니다');
       } else {
-        stateOf(card).textContent = '스크린샷 올리는 중…';
-        fetch('/shot', {method:'POST',
-          body: JSON.stringify({id:id, data:reader.result})})
-          .then(()=>redraw())
-          .catch(err=>stateOf(card).textContent = '실패: '+err.message);
+        say(card, '스크린샷 올리는 중…');
+        fetch('/shot', {method: 'POST', body: JSON.stringify({id: id, data: reader.result})})
+          .then(function(){ return afterWrite(); })
+          .catch(function(err){ say(card, '실패: ' + err.message); });
       }
     };
     reader.readAsDataURL(it.getAsFile());
   }
 });
+
+// ---- input
+
+document.addEventListener('click', function(e){
+  var v = e.target.closest('[data-view]');
+  if (v) { S.view = v.dataset.view; S.q = ''; S.old = null; document.getElementById('q').value = '';
+    remember('view', S.view); renderAll(); return; }
+  var o = e.target.closest('[data-owner]');
+  if (o) { S.owner = S.owner === o.dataset.owner ? null : o.dataset.owner; renderAll(); return; }
+  var a = e.target.closest('[data-area]');
+  if (a) { S.area = S.area === a.dataset.area ? null : a.dataset.area; renderAll(); return; }
+  var m = e.target.closest('[data-more]');
+  if (m) { var k = m.dataset.more; S.more[k] = (S.more[k] || 0) + PAGE; renderList(); return; }
+  var all = e.target.closest('.pickall');
+  if (all) {
+    var g = document.getElementById('list')._groups[Number(all.dataset.group)];
+    var on = g.rows.some(function(c){ return !S.picked.has(c.id); });
+    g.rows.forEach(function(c){ if (on) S.picked.add(c.id); else S.picked.delete(c.id); });
+    renderList(); return;
+  }
+  var pk = e.target.closest('[data-pick]');
+  if (pk) { if (pk.checked) S.picked.add(pk.dataset.pick); else S.picked.delete(pk.dataset.pick);
+    renderList(); return; }
+  var r = e.target.closest('.row[data-id]');
+  if (r) openCard(r.dataset.id);
+});
+document.getElementById('q').addEventListener('input', function(e){
+  S.q = e.target.value.trim(); S.old = null; renderAll();
+});
+document.addEventListener('keydown', function(e){
+  var el = document.activeElement;
+  var typing = el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+  if (e.key === '/' && !typing) { e.preventDefault(); document.getElementById('q').focus(); return; }
+  if (e.key === 'Escape') { if (typing) el.blur(); else closeCard(); return; }
+  if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === 'j' || e.key === 'k') {
+    var rows = Array.from(document.querySelectorAll('#list .row[data-id]'));
+    if (!rows.length) return;
+    var i = rows.findIndex(function(x){ return x.dataset.id === S.sel; });
+    i = e.key === 'j' ? Math.min(rows.length - 1, i + 1) : Math.max(0, i - 1);
+    rows[i].scrollIntoView({block: 'nearest'});
+    openCard(rows[i].dataset.id);
+    e.preventDefault();
+    return;
+  }
+  if (e.key === 'n') { e.preventDefault(); compose(); return; }
+  if ((e.key === 'Enter' || e.key === ' ') && el && el.classList && el.classList.contains('row')) {
+    e.preventDefault(); openCard(el.dataset.id);
+  }
+});
+
+renderAll();
 ''';
 
+/// The page's styles: the live board's palette, carried over, on an app shell
+/// — a rail of views, one list, one open card.
 String _css() => '''
 :root{--ink:#16181d;--ink2:#3d434f;--ink3:#6b7280;--bg:#f7f6f3;--card:#fff;
---line:#e2e0da;--line2:#cfccc4;--ok:#0f6f5c;--okbg:#eaf5f2;--run:#8a5a10;
---runbg:#f6edd9;--bad:#9a3412;--badbg:#fdeee7;--live:#1d4ed8;
+--sunk:#efede8;--line:#e2e0da;--line2:#cfccc4;--ok:#0f6f5c;--okbg:#eaf5f2;
+--run:#8a5a10;--runbg:#f6edd9;--bad:#9a3412;--badbg:#fdeee7;--live:#1d4ed8;
+--livebg:#e8eefc;
 --mono:ui-monospace,"Cascadia Mono",Menlo,monospace;
 --sans:"Segoe UI",-apple-system,"Noto Sans KR",system-ui,sans-serif}
 @media(prefers-color-scheme:dark){:root{
 --ink:#eceef2;--ink2:#b9bfcb;--ink3:#838b99;--bg:#14161a;--card:#1c1f25;
---line:#2b2f37;--line2:#3a3f49;--ok:#5fc9ae;--okbg:#142824;--run:#e0b25e;
---runbg:#332912;--bad:#e08a63;--badbg:#2c1a12;--live:#86aaf5}}
+--sunk:#181a1f;--line:#2b2f37;--line2:#3a3f49;--ok:#5fc9ae;--okbg:#142824;
+--run:#e0b25e;--runbg:#332912;--bad:#e08a63;--badbg:#2c1a12;--live:#86aaf5;
+--livebg:#1a2337;color-scheme:dark}}
 *{box-sizing:border-box}
+html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);
-font-size:15px;line-height:1.55;word-break:keep-all}
-.wrap{max-width:820px;margin:0 auto;padding:28px 16px 72px}
-h1{font-size:22px;margin:0 0 3px;letter-spacing:-.02em}
-h2{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;
-color:var(--ink3);margin:26px 0 7px;display:flex;align-items:baseline;gap:8px}
-.gh .n{font-family:var(--mono);color:var(--ink);font-size:13px}
-.gh .why{font-size:12px;color:var(--ink3)}
-.stamp{font-family:var(--mono);font-size:12px;color:var(--ink3);margin:0}
+font-size:14px;line-height:1.55;word-break:keep-all;display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--live);outline-offset:2px}
+.mono{font-family:var(--mono);font-size:12px;word-break:break-all}
+.top{flex:none;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+padding:10px 16px;border-bottom:1px solid var(--line)}
+.top h1{margin:0;font-size:16px;letter-spacing:-.01em}
+#q{flex:1;min-width:200px;max-width:460px;border:1px solid var(--line2);
+background:var(--card);border-radius:6px;padding:6px 10px}
+.stamp{font-size:12px;color:var(--ink3)}
 .warn{color:var(--bad)}
-.rule{font-size:12.5px;color:var(--ink3);margin:8px 0 16px;
-display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.grp{margin:22px 0 0}
-.gh{display:flex;align-items:baseline;gap:8px;cursor:pointer;list-style:none;
-padding:4px 0 8px;user-select:none}
-.gh::-webkit-details-marker{display:none}
-.gt{font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;
-color:var(--ink3);font-weight:700}
-.grp[open] .gt{color:var(--ink2)}
-.none{font-size:12.5px;color:var(--ink3);margin:0;padding:6px 2px}
-.alarm{background:var(--badbg);color:var(--bad);border:1px solid var(--bad);
-border-radius:5px;padding:9px 12px;font-size:13px;margin:0 0 14px}
-.ctl{margin-left:auto;display:flex;align-items:center;gap:7px;flex:none}
-.pick{flex:none;margin:0}
-.pager{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 2px 2px}
-/* A page button is a BUTTON: a real box you can aim at, not a bare number.
-   The current one is filled rather than outlined -- 유저 2026-08-28: 「1 2
-   버튼을 제대로 사각형실루엣같은거 그려서 버튼이게하고 현재 페이지면 강조색
-   칠하게」. `--card` for the label so it reads on the accent in both themes;
-   white would go grey-on-pale in dark mode, where --live is the light one. */
-.pager a.pg-btn{display:inline-flex;align-items:center;justify-content:center;
-min-width:30px;height:30px;padding:0 8px;border:1px solid var(--line2);
-border-radius:6px;background:var(--card);color:var(--ink2);
-font-size:13px;font-variant-numeric:tabular-nums;text-decoration:none;
-cursor:pointer;user-select:none}
-.pager a.pg-btn:hover{border-color:var(--live);color:var(--live)}
-.pager a.pg-btn.on{background:var(--live);border-color:var(--live);
-color:var(--card);font-weight:600}
-.pager a.pg-btn.on:hover{color:var(--card)}
-/* Every page is in the document; the pager lights exactly one. Turning a page
-   is a class swap, not a refetch. */
-.pg{display:none}
-.pg.on{display:block}
-.mono{font-family:var(--mono);font-size:11.5px;word-break:break-all}
-.stack{display:flex;flex-direction:column;gap:5px}
-.p{background:var(--card);border:1px solid var(--line);border-radius:5px}
-.p[open]{border-color:var(--line2)}
-.ask{border-left:3px solid var(--run)}
-.chk{border-left:3px solid var(--live)}
-.box{border-left:3px solid var(--run)}
-.intake{border:1px dashed var(--line2)}
-summary{display:flex;align-items:center;gap:10px;padding:10px 13px;
-cursor:pointer;list-style:none;user-select:none}
-summary::-webkit-details-marker{display:none}
-summary:hover{background:var(--bg)}
-.k{font-family:var(--mono);font-size:11.5px;color:var(--ink3);flex:none;
-min-width:74px}
-.t{font-weight:600;flex:1;min-width:0}
-.right{display:flex;gap:5px;align-items:center;flex:none}
+.app{flex:1;min-height:0;display:grid;
+grid-template-columns:210px minmax(0,1fr) minmax(0,520px)}
+.rail{border-right:1px solid var(--line);padding:12px 10px;overflow:auto;
+display:flex;flex-direction:column;gap:16px;min-width:0}
+.views{display:flex;flex-direction:column;gap:2px}
+.view{display:flex;align-items:center;gap:8px;border:0;background:none;
+border-radius:6px;padding:6px 8px;cursor:pointer;text-align:left;color:var(--ink2);
+font-weight:400}
+.view:hover{background:var(--sunk);color:var(--ink)}
+.view[aria-current="true"]{background:var(--card);color:var(--ink);font-weight:600;
+box-shadow:0 0 0 1px var(--line)}
+.view .n{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--ink3);
+font-variant-numeric:tabular-nums}
+.view.hot .n{color:var(--run);font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--line2)}
+.s-me{background:var(--run)}.s-triage{background:var(--ink3)}
+.s-backlog{background:transparent;box-shadow:inset 0 0 0 1.5px var(--ink3)}
+.s-todo{background:transparent;box-shadow:inset 0 0 0 1.5px var(--live)}
+.s-doing{background:var(--live)}.s-verify{background:var(--run)}
+.s-known{background:var(--bad)}.s-done{background:var(--ok)}
+.s-canceled{background:var(--line2)}.s-system{background:var(--line2)}
+.facet h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--ink3);font-weight:600}
+.facet .chips{display:flex;flex-wrap:wrap;gap:4px}
+.fchip{border:1px solid var(--line2);background:var(--card);border-radius:999px;
+padding:1px 9px;font-size:12px;cursor:pointer;color:var(--ink2);font-weight:400}
+.fchip .n{font-family:var(--mono);color:var(--ink3)}
+.fchip:hover{background:var(--sunk);color:var(--ink)}
+.fchip[aria-pressed="true"]{background:var(--livebg);border-color:var(--live);color:var(--live)}
+.list{overflow:auto;min-width:0;padding-bottom:48px}
+.vhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 18px 2px}
+.vhead h2{margin:0;font-size:16px}
+.bulk{display:flex;align-items:center;gap:8px;margin:8px 18px;padding:6px 10px;
+border:1px solid var(--line2);border-radius:6px;background:var(--card);font-size:13px}
+.grp{margin-top:6px}
+.gh{display:flex;align-items:center;gap:8px;padding:9px 18px 6px;
+position:sticky;top:0;background:var(--bg);z-index:1}
+.gt{font-size:12px;font-weight:700;color:var(--ink2)}
+.gn{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.note{font-size:11.5px;color:var(--ink3)}
+.gh .pickall{margin-left:auto}
+.none{margin:0;padding:6px 18px 8px;font-size:12.5px;color:var(--ink3)}
+.row{display:grid;grid-template-columns:14px 104px minmax(0,1fr) auto;gap:10px;
+align-items:center;padding:7px 18px;border-top:1px solid var(--line);cursor:pointer}
+.row.static{cursor:default}
+.row:hover{background:var(--sunk)}
+.row[aria-selected="true"]{background:var(--card);box-shadow:inset 3px 0 0 var(--live)}
+.row .pick{margin:0}
+.rid{font-family:var(--mono);font-size:12px;color:var(--ink3);overflow:hidden;
+text-overflow:ellipsis;white-space:nowrap}
+.rt{min-width:0;display:flex;align-items:center;gap:6px}
+.tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rm{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink3);white-space:nowrap}
+.own{max-width:110px;overflow:hidden;text-overflow:ellipsis}
+.age{font-family:var(--mono);font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.age.old{color:var(--bad)}
+.pri{flex:none;font-size:11px;font-weight:700;padding:0 6px;border-radius:3px;
+background:var(--sunk);color:var(--ink2)}
+.pri.p0{background:var(--badbg);color:var(--bad)}.pri.p1{background:var(--runbg);color:var(--run)}
+.more{display:block;margin:6px 18px;width:calc(100% - 36px);border:1px dashed var(--line2);
+background:none;border-radius:6px;padding:6px;cursor:pointer;color:var(--ink2);font-weight:400}
+.more:hover{background:var(--sunk);color:var(--ink)}
+.detail{border-left:1px solid var(--line);overflow:auto;background:var(--card);min-width:0;position:relative}
+.detail .close{position:absolute;top:12px;right:14px}
+.det{border:0;border-radius:0;background:none}
+.dh{padding:16px 20px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.dtop{display:flex;gap:10px;align-items:baseline;padding-right:60px}
+.did{font-family:var(--mono);font-size:12px;color:var(--ink3)}
+.dt{margin:0;font-size:16.5px;line-height:1.45;text-wrap:balance}
+.fields{display:grid;grid-template-columns:72px minmax(0,1fr);gap:6px 12px;margin:0;font-size:13px}
+.fields dt{color:var(--ink3)}
+.fields dd{margin:0;display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
+.fields .none{padding:0}
+select.move{border:1px solid var(--line2);border-radius:6px;background:var(--bg);padding:2px 6px}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:var(--card);padding:1px 9px;font-size:12px;
+font-weight:400;color:var(--ink2)}
+.seg button+button{border-left:1px solid var(--line2)}
+.seg button[aria-pressed="true"]{background:var(--livebg);color:var(--live);font-weight:600}
+.seg button:hover{background:var(--sunk);color:var(--ink)}
+.det>.body{border-top:0;padding:4px 20px 28px}
+.gone{padding:20px}
+body.reading .app{grid-template-columns:210px minmax(0,1fr) minmax(0,520px)}
+@media(max-width:1100px){
+.app{grid-template-columns:180px minmax(0,1fr)}
+.detail{display:none}
+body.reading .app{grid-template-columns:180px minmax(0,1fr)}
+body.reading .detail{display:block;position:fixed;inset:0;z-index:5;border-left:0}
+}
+@media(max-width:700px){
+.app,body.reading .app{grid-template-columns:minmax(0,1fr)}
+.rail{border-right:0;border-bottom:1px solid var(--line);max-height:40vh}
+.views{flex-direction:row;flex-wrap:wrap}
+.row{grid-template-columns:14px minmax(0,1fr) auto}
+.rid,.own{display:none}
+}
+/* ---- a card's body, as the board has always drawn it */
 .chip{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:3px;
 white-space:nowrap;border:1px solid var(--line2);color:var(--ink3)}
 .chip.ok{background:var(--okbg);color:var(--ok);border-color:transparent}
 .chip.run{background:var(--runbg);color:var(--run);border-color:transparent}
 .chip.bad{background:var(--badbg);color:var(--bad);border-color:transparent}
-.body{padding:2px 14px 13px;border-top:1px solid var(--line);
-display:flex;flex-direction:column;gap:7px}
+.chip.live{background:var(--livebg);color:var(--live);border-color:transparent}
+.body{display:flex;flex-direction:column;gap:7px}
 .body>*:first-child{margin-top:10px}
 .d{font-size:13px;color:var(--ink2);margin:0;white-space:pre-wrap}
-/* The date rides the HEAD row, last of everything on the right (유저
-   2026-08-26: 「패널내부가아니라 타이틀쪽 제일오른쪽, 태그오른쪽에」). Mono and
-   fixed-width so the column of dates stays straight down a list whose chips
-   are all different widths, and quiet enough to read as a margin note. */
 .when{font-family:var(--mono);font-size:10.5px;color:var(--ink3);
 white-space:nowrap;flex:none;min-width:38px;text-align:right}
 /* One entry of a card's story. Indented under a hairline so a long history
@@ -2490,16 +2798,11 @@ cursor:pointer;list-style:none}
 .lgp{font-size:12px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;
 white-space:nowrap;flex:1;min-width:0}
 .lg>summary>.when{margin-left:auto}
-/* 「누가 말한거고 어떤 문장인지」 — the user's own stages carry a warmer rail
-   and darker text so the eye can drop down an open card and find their words
-   without reading the labels. ⛔The stage name already says who; this only
-   makes it scannable. */
-/* 남은 것 is the last stage and the loud one — it is the reason the card is
-   not in 확인할 것. 손대기 전에 is the first and the quiet one: it has to be
-   READ before the work, not shouted during it. */
 /* A landing nobody wrote a card for. Loud on purpose: it is a gap in the
    record, not a kind of check. */
 .gap{color:var(--bad)}
+/* 남은 것 is the last stage and the loud one; 손대기 전에 is the first and the
+   quiet one: it has to be READ before the work, not shouted during it. */
 .lg.todo{border-left-color:var(--run)}
 .lg.todo>summary>.lgk{color:var(--run);font-weight:700}
 /* A 남은 것 that has since been superseded: still in the timeline, because
@@ -2507,6 +2810,9 @@ white-space:nowrap;flex:1;min-width:0}
 .lg.done>summary>.lgk{color:var(--ink3);text-decoration:line-through}
 .lg.care{border-left-color:var(--line2)}
 .lg.care>summary>.lgk{color:var(--ink3)}
+/* 「누가 말한거고 어떤 문장인지」 — the user's own stages carry a warmer rail
+   and darker text so the eye can drop down an open card and find their words
+   without reading the labels. */
 .lg.says{border-left-color:var(--run)}
 .lg.says>summary>.lgk{color:var(--run)}
 .lg.says>.d{color:var(--ink)}
@@ -2518,8 +2824,6 @@ white-space:nowrap;flex:1;min-width:0}
 .lg.q>summary .chip{flex:none;margin-left:auto}
 a.chip.link{text-decoration:none;color:var(--ink2)}
 a.chip.link:hover{background:var(--bg)}
-/* The flash a jump leaves behind, so the eye finds where it landed. */
-.p.lit{outline:2px solid var(--run);outline-offset:1px}
 .opt{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;
 border:1px solid var(--line);border-radius:4px;cursor:pointer}
 .opt.rec{border-color:var(--ok)}
@@ -2539,8 +2843,8 @@ textarea{resize:vertical}
 .shots{display:flex;gap:6px;flex-wrap:wrap}
 .shots img{max-height:120px;border:1px solid var(--line2);border-radius:4px;
 cursor:zoom-in}
+.tick{display:flex;flex-direction:column;gap:6px;margin:6px 0 4px}
 .foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.foot.moves{margin-top:6px;border-top:1px solid var(--line);padding-top:8px}
 button{font-family:var(--sans);font-size:13px;font-weight:600;padding:6px 14px;
 border-radius:4px;border:1px solid var(--ok);background:var(--okbg);
 color:var(--ok);cursor:pointer}
@@ -2549,9 +2853,8 @@ button.alt{border-color:var(--live);background:transparent;color:var(--live)}
 button.alt:hover{background:var(--live);color:var(--card)}
 button.sm{padding:2px 9px;font-size:11.5px;font-weight:500}
 button.ghost{border-color:var(--line2);background:transparent;color:var(--ink3)}
-button.ghost:hover{border-color:var(--bad);color:var(--bad);background:transparent}
+button.ghost:hover{border-color:var(--ink2);color:var(--ink);background:transparent}
 .state{font-size:12px;color:var(--ink3)}
 a{color:var(--live)}
-@media(max-width:560px){summary{flex-wrap:wrap}.k{min-width:0}
-.t{flex:1 0 100%;order:3}}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
 ''';
