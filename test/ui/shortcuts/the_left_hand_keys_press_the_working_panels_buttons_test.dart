@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/dialogs/rename_cut_dialog.dart';
+import 'package:anicel/src/ui/dialogs/rename_frame_dialog.dart';
 import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_command_actions.dart'
@@ -176,6 +177,29 @@ void main() {
     expect(find.byType(RenameCutDialog), findsNothing);
   });
 
+  // R5q1 (유저 2026-08-25): 「타임라인에서는 타임라인의 것을」 — asked of the
+  // DOOR, not only of the gate: with a cut range standing, the timeline's
+  // Edit renames the drawing under its playhead, never the cut.
+  testWidgets('D on the timeline with a cut range standing edits the '
+      'timeline\'s own cel — never the cut (R5q1)', (tester) async {
+    final session = await _pump(tester, createDefaultProject());
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('new-frame-button'),
+    );
+    session.updateStoryboardCutSelectionByFrame(
+      anchorGlobalFrame: 0,
+      headGlobalFrame: 1,
+    );
+    await tester.pumpAndSettle();
+    expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔전제');
+
+    await _press(tester, LogicalKeyboardKey.keyD);
+    await tester.pumpAndSettle();
+    expect(find.byType(RenameCutDialog), findsNothing);
+    expect(find.byType(RenameFrameDialog), findsOneWidget, reason: 'LIVENESS');
+  });
+
   testWidgets('D on an X-sheet\'s SE block opens the dialog its button opens, '
       'previewing down the page as the sheet runs', (tester) async {
     final session = await _pump(tester, createDefaultProject());
@@ -187,9 +211,12 @@ void main() {
       const ValueKey<String>('timeline-orientation-toggle-button'),
     );
 
-    Axis previewAxis() => tester
-        .widget<SeInstanceDialog>(find.byType(SeInstanceDialog))
-        .previewAxis;
+    Axis previewAxis() {
+      expect(find.byType(SeInstanceDialog), findsOneWidget);
+      return tester
+          .widget<SeInstanceDialog>(find.byType(SeInstanceDialog))
+          .previewAxis;
+    }
 
     await tapToolbarButton(
       tester,
