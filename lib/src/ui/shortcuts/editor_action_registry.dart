@@ -295,6 +295,7 @@ abstract final class EditorActionIds {
   static const fileSaveAs = 'file-save-as';
 
   /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
+  /// ↩️The key is T since F-261.
   static const layerVisibilitySolo = 'layer-visibility-solo';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
@@ -843,13 +844,13 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Timeline',
     defaultActivators: [],
   ),
-  // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」. On a JIS keyboard
-  // `=` is Shift+-, which presses this through the character it types
-  // (`pressableForms`, a-key-is-the-character-it-types).
+  // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」.
+  // ↩️F-261 (유저 2026-10-02): 「활성레이어솔로도 옮길까 … 지워줘 … T로가자」
+  // — T, the left hand's last free letter, and `=` binds nothing.
   const EditorActionDefinition(
     id: EditorActionIds.layerVisibilitySolo,
     label: 'Solo active layer',
     category: 'Timeline',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.equal)],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
   ),
 ];

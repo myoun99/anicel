@@ -365,7 +365,9 @@ class EditorShortcutBindings extends ChangeNotifier {
 /// [SingleActivator] matches a logical KEY, and Windows names a printable
 /// key by what it types UNSHIFTED. On a JIS keyboard `=` is Shift+-: the
 /// event is `minus` with Shift held, typing '=', and `SingleActivator(equal)`
-/// never sees it — the Solo key had no way in at all.
+/// never sees it — the Solo key had no way in at all. ↩️Solo ships on T
+/// since F-261; the law stands for every binding that names a character,
+/// the ones a user records included.
 ///
 /// ⛔ONLY UNDER SHIFT, and that is not a preference. Shift is the one way a
 /// character arrives under ANOTHER key's name (a key is named by its

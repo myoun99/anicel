@@ -48,6 +48,7 @@ void main() {
       ('rail-onion-skin-button', 'Toggle Onion Skin (Q)'),
       ('playback-play-button', 'Play (S)'),
       ('playback-skip-to-start-button', 'To Start (A)'),
+      ('rail-visibility-solo-button', 'Solo active layer (T)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
       ('tool-brush-button', 'Brush Tool (B)'),
