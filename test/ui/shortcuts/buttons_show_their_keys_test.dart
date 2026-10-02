@@ -44,10 +44,10 @@ void main() {
       ('shared-paste-independent-button', 'Paste independent (Ctrl+V)'),
       ('shared-delete-button', 'Delete (Delete)'),
       // F-261: the left hand's — Edit, the onion, and the sill's transport.
-      ('shared-edit-button', 'Edit (D)'),
+      ('shared-edit-button', 'Edit (X)'),
       ('rail-onion-skin-button', 'Toggle Onion Skin (Q)'),
-      ('playback-play-button', 'Play (S)'),
-      ('playback-skip-to-start-button', 'To Start (A)'),
+      ('playback-play-button', 'Play (Shift+X)'),
+      ('playback-skip-to-start-button', 'To Start (Shift+Z)'),
       ('rail-visibility-solo-button', 'Solo active layer (T)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
@@ -69,10 +69,10 @@ void main() {
     ]) {
       expect(_tooltip(tester, _button(key)), tooltip, reason: key);
     }
-    // ↩️It read 'Zoom In (Shift+.)' until F-261 moved the zoom to X and Z.
+    // ↩️It read 'Zoom In (Shift+.)' until F-261 moved the zoom (Shift+E).
     expect(
       _tooltip(tester, inMainCanvas(_button('canvas-viewport-zoom-in'))),
-      'Zoom In (X)',
+      'Zoom In (Shift+E)',
     );
   });
 
@@ -169,14 +169,15 @@ void main() {
   });
 
   testWidgets('a tool library tile prints its key at the row\'s end the way '
-      'a menu row does — the lasso\'s W', (tester) async {
-    // 🗣️유저 2026-09-13: 「선택도구의 올가미 선택에 w로 두고싶어」.
+      'a menu row does — the lasso\'s Z', (tester) async {
+    // 🗣️유저 2026-09-13: 「선택도구의 올가미 선택에 w로 두고싶어」 —
+    // ↩️F-261 (유저 2026-10-02): W walks up the sheet now, and 「올가미를 z」.
     await _pumpApp(tester);
     await tester.tap(_button('tool-select-button'));
     await tester.pumpAndSettle();
 
     final lasso = find.byKey(const ValueKey<String>('sub-tool-select-lasso'));
-    final key = find.descendant(of: lasso, matching: find.text('W'));
+    final key = find.descendant(of: lasso, matching: find.text('Z'));
     expect(key, findsOneWidget);
     expect(tester.widget<Text>(key).style!.color, AppColors.shortcutKeys);
     expect(

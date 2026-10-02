@@ -91,48 +91,86 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// does.
   SheetArrowTurn? sheet;
 
-  /// [activator]'s pressable forms for [actionId]: an ARROW of a move on
-  /// the sheet ([EditorActionDefinition.readsTheSheet]) is matched turned.
+  /// The sheet's direction keys as the bindings stand: every key bound bare
+  /// to a move that walks a way — not its one-frame step — in the order the
+  /// move lists them (F-261, [SheetKeys]).
+  SheetKeys get sheetKeys {
+    final keysByArrow = {
+      for (final arrow in SheetArrow.values) arrow: <LogicalKeyboardKey>[],
+    };
+    for (final definition in definitions) {
+      if (definition.sheetMove case (:final arrow, fine: false)) {
+        keysByArrow[arrow]!.addAll([
+          for (final activator in activatorsFor(definition.id))
+            if (!activator.shift &&
+                !activator.control &&
+                !activator.alt &&
+                !activator.meta)
+              activator.trigger,
+        ]);
+      }
+    }
+    return SheetKeys(keysByArrow);
+  }
+
+  /// [activator]'s pressable forms for [actionId]: a DIRECTION key of a move
+  /// on the sheet ([EditorActionDefinition.sheetMove]) is matched turned.
   Iterable<ShortcutActivator> _formsOf(
     String actionId,
     SingleActivator activator,
-  ) =>
-      _turns(actionId, activator)
-      ? [SheetTurnedActivator(activator, () => sheet)]
-      : pressableForms(activator);
+  ) {
+    final place = _turnOf(actionId, activator);
+    return place == null
+        ? pressableForms(activator)
+        : [SheetTurnedActivator(activator, () => sheet, place.keys)];
+  }
 
-  bool _turns(String actionId, SingleActivator activator) =>
-      (definitionFor(actionId)?.readsTheSheet ?? false) &&
-      SheetArrow.of(activator.trigger) != null;
+  /// Where [activator] of [actionId] turns: its key's place among the
+  /// direction keys, or null when it does not turn.
+  ({SheetKeys keys, SheetArrow arrow, int set})? _turnOf(
+    String actionId,
+    SingleActivator activator,
+  ) {
+    if (definitionFor(actionId)?.sheetMove == null) {
+      return null;
+    }
+    final keys = sheetKeys;
+    final place = keys.placeOf(activator.trigger);
+    return place == null
+        ? null
+        : (keys: keys, arrow: place.arrow, set: place.set);
+  }
 
   /// [activator] as it reads on the sheet in front of the user — a turned
-  /// arrow shows the key that presses it HERE (유저 F-241: 「단축키 바뀐
+  /// key shows the key that presses it HERE (유저 F-241: 「단축키 바뀐
   /// 상황에서 그에맞게 텍스트 내용도 변경」).
   SingleActivator shownActivatorFor(
     String actionId,
     SingleActivator activator,
   ) {
     final turn = sheet;
-    if (turn == null || !_turns(actionId, activator)) {
+    final place = _turnOf(actionId, activator);
+    if (turn == null || place == null) {
       return activator;
     }
-    final timeline = SheetArrow.of(activator.trigger)!;
-    return _withTrigger(activator, turn.sheetArrowFor(timeline).key);
+    final shown = turn.sheetArrowFor(place.arrow);
+    return _withTrigger(activator, place.keys.keyAt(shown, place.set));
   }
 
   /// [pressed], recorded for [actionId] on the sheet in front of the user,
-  /// as it is kept: a turned arrow is kept as the timeline reads it, so it
+  /// as it is kept: a turned key is kept as the timeline reads it, so it
   /// turns again on the other sheet.
   SingleActivator keptActivatorFor(
     String actionId,
     SingleActivator pressed,
   ) {
     final turn = sheet;
-    if (turn == null || !_turns(actionId, pressed)) {
+    final place = _turnOf(actionId, pressed);
+    if (turn == null || place == null) {
       return pressed;
     }
-    final arrow = SheetArrow.of(pressed.trigger)!;
-    return _withTrigger(pressed, turn.timelineArrowFor(arrow).key);
+    final kept = turn.timelineArrowFor(place.arrow);
+    return _withTrigger(pressed, place.keys.keyAt(kept, place.set));
   }
 
   static SingleActivator _withTrigger(
@@ -403,28 +441,33 @@ Iterable<ShortcutActivator> pressableForms(SingleActivator activator) sync* {
   }
 }
 
-/// [timeline] — an arrow written as the timeline reads it — pressed on
-/// whichever sheet is up: the arrow that arrives is turned by [turn] before
-/// it is matched (F-241, `SheetArrowTurn`). Null turns nothing.
+/// [timeline] — a direction key written as the timeline reads it — pressed
+/// on whichever sheet is up: the key that arrives is turned by [turn] to its
+/// set's key for the way it reads before it is matched (F-241,
+/// `SheetArrowTurn`; F-261, [SheetKeys]). Null turns nothing.
 class SheetTurnedActivator extends ShortcutActivator {
-  const SheetTurnedActivator(this.timeline, this.turn);
+  const SheetTurnedActivator(this.timeline, this.turn, this.keys);
 
   final SingleActivator timeline;
   final SheetArrowTurn? Function() turn;
+  final SheetKeys keys;
 
+  /// The keys of [timeline]'s set — the only ones that can turn into it.
   @override
-  Iterable<LogicalKeyboardKey> get triggers => [
-    for (final arrow in SheetArrow.values) arrow.key,
-  ];
+  Iterable<LogicalKeyboardKey> get triggers =>
+      keys.setOf(keys.placeOf(timeline.trigger)!.set);
 
   @override
   bool accepts(KeyEvent event, HardwareKeyboard state) {
-    final pressed = SheetArrow.of(event.logicalKey);
+    final pressed = keys.placeOf(event.logicalKey);
     if (pressed == null) {
       return false;
     }
-    final read = turn()?.timelineArrowFor(pressed) ?? pressed;
-    return timeline.accepts(_withKey(event, read.key), state);
+    final read = turn()?.timelineArrowFor(pressed.arrow) ?? pressed.arrow;
+    return timeline.accepts(
+      _withKey(event, keys.keyAt(read, pressed.set)),
+      state,
+    );
   }
 
   static KeyEvent _withKey(KeyEvent event, LogicalKeyboardKey key) =>

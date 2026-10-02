@@ -263,9 +263,12 @@ void main() {
 
   // ↩️F-261 (유저 2026-10-02): 「확대축소도 그래서 z랑 x로 … 둘째키로
   // 안남길거야. 그래서 쉬프트.관련은 삭제」 — I-19's Shift+. and Shift+, are
-  // X and Z, and the Shift pair is nothing.
-  testWidgets('X and Z take the canvas bar\'s zoom step, along the zoom snap '
-      'list — and Shift+. / Shift+, zoom no more', (tester) async {
+  // X and Z, and the Shift pair is nothing. ↩️Same day, once WASD walked the
+  // sheet: 「쉬프트q를 축소, 쉬프트e를 확대」.
+  testWidgets('Shift+E and Shift+Q take the canvas bar\'s zoom step, along '
+      'the zoom snap list — and Shift+. / Shift+, zoom no more', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1700, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
@@ -288,11 +291,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(readout(), '100.00%');
 
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyE, shift: true);
     expect(readout(), '125.00%', reason: 'the next entry up, not ×1.25 by luck');
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyE, shift: true);
     expect(readout(), '150.00%');
-    await _press(tester, LogicalKeyboardKey.keyZ);
+    await _press(tester, LogicalKeyboardKey.keyQ, shift: true);
     expect(readout(), '125.00%');
 
     await _press(tester, LogicalKeyboardKey.period, shift: true);
@@ -309,7 +312,7 @@ void main() {
     expect(readout(), '150.00%', reason: 'the button walks the same list');
 
     for (var i = 0; i < 4; i++) {
-      await _press(tester, LogicalKeyboardKey.keyX);
+      await _press(tester, LogicalKeyboardKey.keyE, shift: true);
     }
     expect(
       readout(),

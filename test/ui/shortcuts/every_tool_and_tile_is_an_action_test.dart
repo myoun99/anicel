@@ -76,10 +76,11 @@ void main() {
   }
 
   test('the keys the user named are the defaults', () {
-    // 「선택도구의 올가미 선택에 w로 두고싶어」
+    // 「선택도구의 올가미 선택에 w로 두고싶어」 — ↩️F-261 (유저 2026-10-02):
+    // W walks up the sheet now, and 「올가미를 z」.
     expectDefault(
       const ShapeTilePress(CanvasTool.select, CanvasShapeKind.lasso),
-      const SingleActivator(LogicalKeyboardKey.keyW),
+      const SingleActivator(LogicalKeyboardKey.keyZ),
     );
     // 🗣️I-53: 「잘라내기도구에서 올가미 잘라내기를 단축키 c로 두도록
     // 변경하고, 스탬프를 v로」. ↩️C was the cut tool's own (「잘라내기는

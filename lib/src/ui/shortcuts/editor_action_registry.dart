@@ -11,6 +11,7 @@ import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
 import '../text/model_vocabulary.dart' show BrushBlendModeWords;
+import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
 
 /// The single shortcut intent: every editor action dispatches through ONE
 /// intent type carrying its [actionId], so the app mounts exactly one
@@ -40,7 +41,7 @@ class EditorActionDefinition {
     this.pixelVerb,
     this.blendMode,
     this.pixelClipboardVerb,
-    this.readsTheSheet = false,
+    this.sheetMove,
   });
 
   final String id;
@@ -96,11 +97,28 @@ class EditorActionDefinition {
   /// the same rule as [pixelVerb], for the list's other kind of verb.
   final PixelClipboardVerb? pixelClipboardVerb;
 
-  /// A move on the sheet (F-241): its ARROW keys are written as the timeline
-  /// reads them, and on the X-sheet a pressed arrow is turned to the
-  /// timeline's before it is matched, and a bound one is shown turned
-  /// (`SheetArrowTurn`). A key that is not an arrow never turns.
-  final bool readsTheSheet;
+  /// A move on the sheet (F-241), or null: the way it walks as the timeline
+  /// reads it, and whether it is the one-frame step. Its DIRECTION keys are
+  /// written as the timeline reads them, and on the X-sheet a pressed one is
+  /// turned to the timeline's before it is matched, and a bound one is shown
+  /// turned (`SheetArrowTurn`).
+  ///
+  /// ↩️F-261: 「A key that is not an arrow never turns」 stood here. Which
+  /// keys are direction keys is the bindings' answer now ([SheetKeys]) — the
+  /// keys bound bare to the block and row moves — and this is what tells the
+  /// keys and the flip which move walks which way ([sheetMoveActionId]).
+  final SheetMove? sheetMove;
+}
+
+/// The move that walks [arrow] on the timeline: its one-frame step when
+/// [fine] and the sheet has one that way, the block or row move otherwise —
+/// the extra finger on a row is still the row (F-28).
+String sheetMoveActionId(SheetArrow arrow, {required bool fine}) {
+  String? moveOf({required bool step}) => editorActionDefinitions
+      .where((definition) => definition.sheetMove == (arrow: arrow, fine: step))
+      .firstOrNull
+      ?.id;
+  return (fine ? moveOf(step: true) : null) ?? moveOf(step: false)!;
 }
 
 /// The action a tool button or tile presses, found by its press — so the
@@ -145,9 +163,10 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
       label: shapeTileLabel(verb, shape, AppStrings.of(AppLanguage.en)),
       category: 'Tools',
       defaultActivators: [
-        // 「선택도구의 올가미 선택에 w로 두고싶어」.
+        // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
+        // 2026-10-02): W walks up now, and 「올가미를 z」.
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
-          const SingleActivator(LogicalKeyboardKey.keyW),
+          const SingleActivator(LogicalKeyboardKey.keyZ),
         // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를
         // 단축키 c로 두도록 변경하고, 스탬프를 v로」 — 「잘라내기를
         // 고르고싶으면 올가미 잘라내기의 단축키를 사용할 예정」.
@@ -299,7 +318,8 @@ abstract final class EditorActionIds {
   static const layerVisibilitySolo = 'layer-visibility-solo';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
-  /// 설정에 줌 스냅 설정한대로」. ↩️The keys are X and Z since F-261.
+  /// 설정에 줌 스냅 설정한대로」. ↩️The keys are Shift+E and Shift+Q since
+  /// F-261.
   static const canvasZoomIn = 'canvas-zoom-in';
   static const canvasZoomOut = 'canvas-zoom-out';
 }
@@ -309,7 +329,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️F-241 (유저 2026-09-29): 「이전/다음 프레임, 이전/다음 블록, 위/아래
   // 레이어 이렇게 개편」 — SIX moves, named by what they do, all on the
   // arrows. Their arrows are written as the timeline reads them and turn
-  // with the X-sheet ([EditorActionDefinition.readsTheSheet]).
+  // with the X-sheet ([EditorActionDefinition.sheetMove]).
   // ↩️The Ctrl+arrows were four DIRECTION actions of their own (F-28: 「Step
   // Left」 …): 「이전프레임이랑 왼쪽으로 한걸음이랑 똑같은데 … 싹 삭제」.
   // The one-frame arrow is Shift now: 「컨트롤+화살표가 아니라
@@ -317,14 +337,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 프레임은 ,.가 아니라 쉬프트<>만이야. ,.는 삭제」. A block's second key,
   // Ctrl+`,`/`.`, was never asked for: 「이전원화 다음원화는 왜 단축키
   // 두개인지? … 컨트롤+, 이런건 삭제. 절대 멋대로 넣지말고 넣을땐 보고할것」.
+  // ↩️F-261 (유저 2026-10-02) ASKED for the second set: 「프레임이동은 배치
+  // 바꾼다기보단 배치 추가. ws 위아래, ad 좌우(프레임)이동. 1프레임씩
+  // 이동하는거도 동일하게 쉬프트a 쉬프트d」 — WASD beside the arrows, turning
+  // with the sheet as the arrows do ([SheetKeys]).
   const EditorActionDefinition(
     id: EditorActionIds.framePrevious,
     label: 'Previous Frame',
     category: 'Navigation',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true),
+      SingleActivator(LogicalKeyboardKey.keyA, shift: true),
     ],
-    readsTheSheet: true,
+    sheetMove: (arrow: SheetArrow.left, fine: true),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.frameNext,
@@ -332,22 +357,29 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Navigation',
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.arrowRight, shift: true),
+      SingleActivator(LogicalKeyboardKey.keyD, shift: true),
     ],
-    readsTheSheet: true,
+    sheetMove: (arrow: SheetArrow.right, fine: true),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingPrevious,
     label: 'Previous Block',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowLeft)],
-    readsTheSheet: true,
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowLeft),
+      SingleActivator(LogicalKeyboardKey.keyA),
+    ],
+    sheetMove: (arrow: SheetArrow.left, fine: false),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.drawingNext,
     label: 'Next Block',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowRight)],
-    readsTheSheet: true,
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowRight),
+      SingleActivator(LogicalKeyboardKey.keyD),
+    ],
+    sheetMove: (arrow: SheetArrow.right, fine: false),
   ),
   // The DISPLAYED layer rows (TVP layer nav, UI-R20 #14). ↩️With a live
   // selection the arrows used to NUDGE it (Photoshop behavior) — 유저
@@ -357,15 +389,21 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.layerUp,
     label: 'Layer Up',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowUp)],
-    readsTheSheet: true,
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowUp),
+      SingleActivator(LogicalKeyboardKey.keyW),
+    ],
+    sheetMove: (arrow: SheetArrow.up, fine: false),
   ),
   const EditorActionDefinition(
     id: EditorActionIds.layerDown,
     label: 'Layer Down',
     category: 'Navigation',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.arrowDown)],
-    readsTheSheet: true,
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.arrowDown),
+      SingleActivator(LogicalKeyboardKey.keyS),
+    ],
+    sheetMove: (arrow: SheetArrow.down, fine: false),
   ),
   // 🗣️I-15 (유저 2026-09-11): 「손바닥 툴을 만들지는 않음. 다만 단축키에
   // 이동? 추가하는건 추가하고, 기본값을 휠클릭이 아니라 스페이스바로
@@ -391,13 +429,19 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     // ↩️F-261 (유저 2026-10-02): 「자주쓰는 버튼 그냥 직관적이지 않더라도
     // 왼쪽으로 몰아넣을까 … 재생/정지버튼은 S로두고 처음으로버튼 A, 그리고
     // 편집버튼은 D로두자」 — the left hand's keys, whatever the letter says.
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyS)],
+    // ↩️And once WASD walked the sheet (same day): 「올가미를 z, 편집을 x,
+    // 처음으로를 쉬프트z, 재생을 쉬프트x」.
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyX, shift: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.playbackToStart,
     label: 'To Start',
     category: 'Playback',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyA)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyZ, shift: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.voiceRecordToggle,
@@ -490,12 +534,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // key. The label is the button's own, and a bar button's writing carries
   // no '…' (B9).
   // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
-  // the play key).
+  // the play key). ↩️X once D walked right (「편집을 x」).
   const EditorActionDefinition(
     id: EditorActionIds.editInstance,
     label: 'Edit',
     category: 'Edit',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyD)],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyX)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editAutoName,
@@ -761,18 +805,24 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // ↩️F-261 (유저 2026-10-02): 「확대축소도 그래서 z랑 x로 … 둘째키로
   // 안남길거야. 그래서 쉬프트.관련은 삭제」 — X in and Z out, the outward
   // step on the left as `<` was, and the Shift pair gone.
+  // ↩️Same day, once WASD walked the sheet: 「쉬프트q를 축소, 쉬프트e를
+  // 확대」.
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomIn,
     label: 'Zoom In',
     category: 'View',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyX)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyE, shift: true),
+    ],
     zoomsView: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomOut,
     label: 'Zoom Out',
     category: 'View',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyZ)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyQ, shift: true),
+    ],
     zoomsView: true,
   ),
   // The comma set row (UI-R17 #7, TVP-style): 1-4 set the exposure of the

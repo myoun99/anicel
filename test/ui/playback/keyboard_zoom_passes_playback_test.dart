@@ -27,9 +27,11 @@ import '../../helpers/panel_finders.dart';
 /// (「shift+>(확대) shift+<(축소)」); the pass-through is in the gate's key
 /// half and in the action funnel, both asking `viewZoomPassesPlayback`.
 ///
-/// ↩️F-261 moved the defaults to bare X and Z, so the second answer — what
-/// Shift's own key-down does before the chord exists — is asked of a zoom
-/// bound UNDER Shift, the chord the defaults were.
+/// ⚠️The zoom presses here are the DEFAULT chord, Shift held around the key:
+/// the question the second answer settles is exactly what Shift's own
+/// key-down does before the chord exists. (F-261 moved the chords to
+/// Shift+E and Shift+Q — bare X and Z for a few hours the same day, when a
+/// rebound Shift+. carried the question.)
 void main() {
   Future<EditorSessionManager> pumpEditor(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
@@ -83,42 +85,12 @@ void main() {
     return Offset(panel.center.dx, panel.top + panel.height / 4);
   }
 
-  testWidgets('X — the zoom-in key — while the canvas plays zooms, and the '
-      'canvas keeps playing', (tester) async {
+  testWidgets('Shift+E — the zoom-in chord — while the canvas plays zooms, '
+      'and the canvas keeps playing', (tester) async {
     final session = await playingCanvas(tester);
     final before = textOf(tester, 'canvas-viewport-zoom-label');
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
-    await tester.pump();
-
-    expect(
-      session.playbackRig.playback.isPlaying,
-      isTrue,
-      reason: 'zoom is navigation — 「입력 수단과 무관하게 한 법」 with the '
-          'wheel and the pinch',
-    );
-    expect(
-      textOf(tester, 'canvas-viewport-zoom-label'),
-      isNot(before),
-      reason: 'and the view zoomed',
-    );
-
-    session.playbackRig.transports.stopAll();
-    await tester.pumpAndSettle();
-  });
-
-  testWidgets('a zoom bound under Shift — Shift+. — while the canvas plays '
-      'zooms, and the canvas keeps playing', (tester) async {
-    final session = await playingCanvas(tester);
-    EditorShortcutScope.peek(
-      tester.element(find.byType(EditorCanvasArea)),
-    )!.setActivators(EditorActionIds.canvasZoomIn, const [
-      SingleActivator(LogicalKeyboardKey.period, shift: true),
-    ]);
-    await tester.pump();
-    final before = textOf(tester, 'canvas-viewport-zoom-label');
-
-    await shifted(tester, LogicalKeyboardKey.period);
+    await shifted(tester, LogicalKeyboardKey.keyE);
 
     expect(
       session.playbackRig.playback.isPlaying,
@@ -276,7 +248,7 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('…and while ANOTHER transport plays, a zoom key stops it like '
+  testWidgets('…and while ANOTHER transport plays, a zoom chord stops it like '
       'any key — the hole belongs to its own run', (tester) async {
     final session = await pumpEditor(tester);
     final before = textOf(tester, 'canvas-viewport-zoom-label');
@@ -286,8 +258,7 @@ void main() {
     viewer.play();
     await tester.pump();
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
-    await tester.pump();
+    await shifted(tester, LogicalKeyboardKey.keyE);
 
     expect(viewer.isPlaying, isFalse, reason: 'the gate half: 「정지」');
     expect(
