@@ -1147,12 +1147,32 @@ String stageName(BoardCard e, int i) {
 /// before — the gate and the writer read it — and this is a second reading of
 /// the same story, the way a tracker keeps one event log and draws its views
 /// from it.
-enum BoardStatus { triage, backlog, todo, doing, verify, known, done, canceled }
+///
+/// ↩️🚨대화 중 IS A STATUS AGAIN (유저 2026-10-02: 「답 기다림이랑 백로그랑
+/// 무슨차이지? 이부분 정리해야할거같은데」). The first cut folded it into
+/// 백로그 as a flag and listed it under 나에게 온 것 as 「답 기다림」 — the same
+/// cards in two places, waiting on an answer to no question. It is the user's
+/// own column, named twice (08-25 상담대기: 「실제로 멈춰 있는 이유는 아직
+/// 이야기가 안 끝나서」 · 08-31 대화 중): work held until a talk finishes —
+/// the stage between 백로그 and 할 일, which trackers call 「needs
+/// discussion」.
+enum BoardStatus {
+  triage,
+  backlog,
+  discussion,
+  todo,
+  doing,
+  verify,
+  known,
+  done,
+  canceled,
+}
 
 /// What each status is called on screen.
 const kStatusName = <BoardStatus, String>{
   BoardStatus.triage: '분류 대기',
   BoardStatus.backlog: '백로그',
+  BoardStatus.discussion: '대화 중',
   BoardStatus.todo: '할 일',
   BoardStatus.doing: '진행 중',
   BoardStatus.verify: '검증',
@@ -1166,6 +1186,7 @@ const kStatusName = <BoardStatus, String>{
 const kStatusWord = <BoardStatus, String>{
   BoardStatus.triage: '분류 대기',
   BoardStatus.backlog: '백로그',
+  BoardStatus.discussion: '대화 중',
   BoardStatus.todo: '할 일',
   BoardStatus.doing: '진행 중',
   BoardStatus.verify: '검증',
@@ -1203,7 +1224,8 @@ String placeWordOf(BoardCard e) {
 
 BoardStatus? _statusOfSection(String? section) => switch (section) {
       'inbox' => BoardStatus.triage,
-      'queue' || 'gate' => BoardStatus.backlog,
+      'queue' => BoardStatus.backlog,
+      'gate' => BoardStatus.discussion,
       'open' => BoardStatus.todo,
       'wip' || 'mine' => BoardStatus.doing,
       'hands' => BoardStatus.verify,
@@ -1224,9 +1246,6 @@ BoardStatus statusOf(BoardCard e) {
   // card nobody has filed yet.
   return _statusOfSection(e.state) ?? BoardStatus.triage;
 }
-
-/// Whether the card is in a conversation — 대화 중 is a flag now, not a place.
-bool inConversation(BoardCard e) => kSection[placeWordOf(e)] == 'gate';
 
 /// The questions on this card nobody has answered yet, oldest first.
 List<BoardCard> openQuestions(BoardCard e) => [
@@ -1254,13 +1273,16 @@ bool userSpokeLast(BoardCard e) {
 
 /// 🆕Whose move it is — both can be true at once: a card can hold a question
 /// for the user while I owe an answer to their last memo.
+///
+/// ⚠️The user's turn is something they can press: a question to answer, a
+/// check to tick. ↩️A card in 대화 중 used to count as well, and that is how
+/// it came to be listed as 「답 기다림」 — a talk is held together, not
+/// answered from the board.
 ({bool user, bool me}) turnOf(BoardCard e) {
   final status = statusOf(e);
   final ended = status == BoardStatus.done || status == BoardStatus.canceled;
   if (ended) return (user: false, me: false);
-  final user = openQuestions(e).isNotEmpty ||
-      (inConversation(e) && !userSpokeLast(e)) ||
-      checksWaiting(e).isNotEmpty;
+  final user = openQuestions(e).isNotEmpty || checksWaiting(e).isNotEmpty;
   return (user: user, me: userSpokeLast(e) || status == BoardStatus.triage);
 }
 
