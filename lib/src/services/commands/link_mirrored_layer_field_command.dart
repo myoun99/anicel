@@ -8,8 +8,9 @@ import 'link_mirror.dart';
 import 'mirrored_field_command.dart';
 
 /// Writes ONE shared layer field through every link mirror of the layer in
-/// a single command ("레인만 각자, 나머지는 하나": linked members are "the
-/// same layer" seen from different cuts), and one undo step restores every
+/// a single command (linked members are "the same layer" seen from
+/// different cuts — its name, mark and kind are one, while how each use
+/// shows it is that use's own since T9), and one undo step restores every
 /// member's own previous value.
 ///
 /// 🚨ONE law for the name, mark and kind commands — three copies of the

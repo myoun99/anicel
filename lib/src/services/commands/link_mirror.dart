@@ -9,13 +9,19 @@ import '../project_lookup.dart';
 /// The (cut, layer) addresses a MIRRORED property edit must apply to:
 /// every member of [layerId]'s link group, or just itself when unlinked.
 ///
-/// "레인만 각자, 나머지는 하나" — commands touching shared layer
-/// properties (name, mark, kind, eye, static opacity, structure, and an
-/// FX chain's SHAPE) fan out through this inside ONE command execution,
-/// which is what makes the mirror drift-free and single-undo. Only the
-/// LANE VALUES stay per-use: timeline entries, effect parameter values
-/// and their keyframe tracks, transform tracks. Sharing a lane's numbers
+/// Commands touching shared layer properties (name, mark, kind, structure,
+/// the transform switch, and an FX chain's SHAPE) fan out through this
+/// inside ONE command execution, which is what makes the mirror
+/// drift-free and single-undo. Per-use, and never through here: the LANE
+/// VALUES (timeline entries, effect parameter values and their keyframe
+/// tracks, transform tracks) and the DISPLAY of a use (eye, static
+/// opacity, blend — `UpdateLayerDisplayCommand`). Sharing a lane's numbers
 /// is the named-union link's job, not the mirror's.
+///
+/// ↩️This used to read 「레인만 각자, 나머지는 하나」 and list the eye and
+/// static opacity as shared. T9 (유저 확정 2026-08-13, `1d110b574` 「A link
+/// shares the drawing, not the eye」) made the three display values each
+/// use's own, and retired the sentence.
 List<({CutId cutId, LayerId layerId})> linkMirrorTargets(
   Project project, {
   required CutId cutId,

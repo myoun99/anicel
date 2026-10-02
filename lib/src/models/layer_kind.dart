@@ -663,10 +663,12 @@ enum LayerKind {
   /// to the joined cut yourself.
   bool get joinsLinkedCutConvert => linksIntoLinkedCut && !filtersBelow;
 
-  /// Whether this kind's EFFECT CHAIN mirrors across a 겸용 link group.
+  /// Whether this kind's effect VALUES mirror across a 겸용 link group too.
+  /// The chain's SHAPE — which effects, in what order, each on or off —
+  /// mirrors for every kind (`CutCommandCoordinator.layerEffectsCommands`).
   ///
-  /// For every drawing row the answer is NO: the chain is per-use 연출, the
-  /// same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
+  /// For every drawing row the answer is NO: the numbers are per-use 연출,
+  /// the same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
   /// inverts it, because its chain is not decoration ON a picture — it IS the
   /// row's entire content. A shared adjustment whose chain stayed local would
   /// arrive in the other cuts as an empty shell that filters nothing, so for
