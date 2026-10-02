@@ -995,9 +995,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               context,
               _session,
               panel: panel,
-              previewAxis: _flipHud.framesRunVertically
-                  ? Axis.vertical
-                  : Axis.horizontal,
+              previewAxis: _flipHud.framesRunAlong(horizontal: true)
+                  ? Axis.horizontal
+                  : Axis.vertical,
             ),
           );
         }

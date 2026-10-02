@@ -206,10 +206,6 @@ void main() {
     session.layerStack.addLayerOfKind(LayerKind.se);
     createActiveInstance(session);
     await tester.pumpAndSettle();
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('timeline-orientation-toggle-button'),
-    );
 
     Axis previewAxis() {
       expect(find.byType(SeInstanceDialog), findsOneWidget);
@@ -218,6 +214,16 @@ void main() {
           .previewAxis;
     }
 
+    await _press(tester, LogicalKeyboardKey.keyD);
+    await tester.pumpAndSettle();
+    expect(previewAxis(), Axis.horizontal, reason: 'the timeline runs across');
+    await _press(tester, LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    await tapToolbarButton(
+      tester,
+      const ValueKey<String>('timeline-orientation-toggle-button'),
+    );
     await tapToolbarButton(
       tester,
       const ValueKey<String>('shared-edit-button'),
