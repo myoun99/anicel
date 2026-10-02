@@ -28,11 +28,14 @@ void main() {
     AppText.settings.value = AppLanguageSettings(programLanguage: language);
   }
 
+  // 🗣️유저 2026-10-02: 「애니메이션 레이어 이름이 지금 동화,動画 이런식인데.
+  // 그게아니라 애니메이션 레이어로 이름바꾸자. 일본어도 アニメーション이라는 이름
+  // 레이어로」 — 동화/動画 is the in-between PROCESS, not the row kind.
   test('a kind name follows the program language', () {
     speak(AppLanguage.ko);
-    expect(layerKindDisplayName(LayerKind.animation), '동화');
+    expect(layerKindDisplayName(LayerKind.animation), '애니메이션');
     speak(AppLanguage.ja);
-    expect(layerKindDisplayName(LayerKind.animation), '動画');
+    expect(layerKindDisplayName(LayerKind.animation), 'アニメーション');
     speak(AppLanguage.en);
     expect(layerKindDisplayName(LayerKind.animation), 'Animation');
   });
@@ -86,9 +89,9 @@ void main() {
   test('the sentence around the name is the language\'s own, not an English '
       'suffix glued on', () {
     speak(AppLanguage.ko);
-    expect(layerTypeSemanticLabel(LayerKind.animation), '동화 레이어');
+    expect(layerTypeSemanticLabel(LayerKind.animation), '애니메이션 레이어');
     speak(AppLanguage.ja);
-    expect(layerTypeSemanticLabel(LayerKind.animation), '動画レイヤー');
+    expect(layerTypeSemanticLabel(LayerKind.animation), 'アニメーションレイヤー');
     speak(AppLanguage.fr);
     expect(
       layerTypeSemanticLabel(LayerKind.animation),

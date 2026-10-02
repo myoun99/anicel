@@ -43,6 +43,11 @@ void main() {
       ('shared-paste-linked-button', 'Paste linked (Ctrl+B)'),
       ('shared-paste-independent-button', 'Paste independent (Ctrl+V)'),
       ('shared-delete-button', 'Delete (Delete)'),
+      // F-261: the left hand's — Edit, the onion, and the sill's transport.
+      ('shared-edit-button', 'Edit (D)'),
+      ('rail-onion-skin-button', 'Toggle Onion Skin (Q)'),
+      ('playback-play-button', 'Play (S)'),
+      ('playback-skip-to-start-button', 'To Start (A)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
       ('tool-brush-button', 'Brush Tool (B)'),
@@ -63,9 +68,10 @@ void main() {
     ]) {
       expect(_tooltip(tester, _button(key)), tooltip, reason: key);
     }
+    // ↩️It read 'Zoom In (Shift+.)' until F-261 moved the zoom to X and Z.
     expect(
       _tooltip(tester, inMainCanvas(_button('canvas-viewport-zoom-in'))),
-      'Zoom In (Shift+.)',
+      'Zoom In (X)',
     );
   });
 

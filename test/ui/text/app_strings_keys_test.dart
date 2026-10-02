@@ -487,7 +487,6 @@ void main() {
     'shortcutRecordingHint': (s) => s.shortcutRecordingHint,
     'playbackQuality': (s) => s.playbackQuality,
     'playbackStop': (s) => s.playbackStop,
-    'playbackToStart': (s) => s.playbackToStart,
     'sheetPreviousPage': (s) => s.sheetPreviousPage,
     'sheetNextPage': (s) => s.sheetNextPage,
     'sheetPageDrag': (s) => s.sheetPageDrag,
@@ -905,7 +904,6 @@ void main() {
     'tlAttachDropsFxTitle': (s) => s.tlAttachDropsFxTitle,
     'tlAttachDropsFxBody': (s) => s.tlAttachDropsFxBody,
     'tlSelectRowSpan': (s) => s.tlSelectRowSpan,
-    'tlSharedEdit': (s) => s.tlSharedEdit,
     'tlSharedUnlink': (s) => s.tlSharedUnlink,
     'tlAdd': (s) => s.tlAdd,
     'tlBlankX': (s) => s.tlBlankX,
@@ -1018,10 +1016,18 @@ void main() {
     // The '…' convention belongs to menu ENTRIES that open a dialog; on a
     // bar button it reads as an ellipsized label. These two are the bar
     // buttons that wore it.
+    // ↩️F-261: the Edit button wears its registry action's name now, so
+    // that is where its writing is read.
+    final editLabel = editorActionDefinitions
+        .firstWhere((it) => it.id == EditorActionIds.editInstance)
+        .label;
     for (final language in AppLanguage.values) {
       final strings = AppStrings.of(language);
       for (final entry in {
-        'tlSharedEdit': strings.tlSharedEdit,
+        'edit-instance': strings.shortcutLabel(
+          EditorActionIds.editInstance,
+          editLabel,
+        ),
         'tlSetCommasN': strings.tlSetCommasN,
       }.entries) {
         expect(
@@ -1033,6 +1039,11 @@ void main() {
     }
     // The reported case, verbatim: the edit button says 編集 and nothing
     // more.
-    expect(AppStrings.of(AppLanguage.ja).tlSharedEdit, '編集');
+    expect(
+      AppStrings.of(
+        AppLanguage.ja,
+      ).shortcutLabel(EditorActionIds.editInstance, editLabel),
+      '編集',
+    );
   });
 }

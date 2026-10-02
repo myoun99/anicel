@@ -208,7 +208,12 @@ void main() {
   /// Next Block and Layer Up and Down — each answered in the other four
   /// languages by id, less the eight rows the arrows retired. I-15's shape
   /// again: one more line, translated the moment it was written.
-  const untranslatedElsewhere = 88;
+  ///
+  /// 90 (F-261, 2026-10-02): the English rows of two new registry actions,
+  /// Edit and To Start — the shared pill's Edit and the sill's 「처음으로」,
+  /// which wore table strings until they became actions with keys. Each is
+  /// answered in the other four languages by id; the same shape again.
+  const untranslatedElsewhere = 90;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

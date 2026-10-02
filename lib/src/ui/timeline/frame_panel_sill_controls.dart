@@ -1,9 +1,40 @@
 import 'package:flutter/material.dart';
 
+import '../../models/working_panel.dart';
 import '../camera/camera_view_toggle_button.dart';
 import '../editor_session_manager.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_transport_controls.dart';
+import '../storyboard_playhead_mapping.dart'
+    show seekStoryboardPlayheadToTrackStart;
+
+/// What a frame panel's transport drives: its playlist, where a play
+/// starts, and where 「처음으로」 goes while the transport is not running
+/// there.
+typedef PanelTransport = ({
+  PlaybackScope scope,
+  int Function() startFrame,
+  VoidCallback skipToStart,
+});
+
+/// [panel]'s transport — ONE answer for its sill's buttons and their keys
+/// (F-261: a key presses the button on the panel being worked in, the panel
+/// the flip already follows).
+PanelTransport panelTransportFor(
+  WorkingPanel panel,
+  EditorSessionManager session,
+) => switch (panel) {
+  WorkingPanel.timeline => (
+    scope: PlaybackScope.activeCut,
+    startFrame: () => session.currentFrameIndex,
+    skipToStart: () => session.selectFrameIndex(0),
+  ),
+  WorkingPanel.storyboard => (
+    scope: PlaybackScope.allCuts,
+    startFrame: () => session.playheadCursors.trackFrameNow() ?? 0,
+    skipToStart: () => seekStoryboardPlayheadToTrackStart(session),
+  ),
+};
 
 /// What a frame panel puts on the 문턱: its playback transport and the camera
 /// view toggle — right-aligned, ahead of the region's own collapse button.

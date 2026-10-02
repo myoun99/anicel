@@ -210,6 +210,9 @@ abstract final class EditorActionIds {
   /// shortcut ([EditorActionDefinition.hold]).
   static const canvasPanHold = 'canvas-pan-hold';
   static const playbackToggle = 'playback-toggle';
+
+  /// The sill transport's 「처음으로」 (F-261).
+  static const playbackToStart = 'playback-to-start';
   static const voiceRecordToggle = 'voice-record-toggle';
   static const undo = 'edit-undo';
   static const redo = 'edit-redo';
@@ -268,6 +271,10 @@ abstract final class EditorActionIds {
   static const editPasteIndependent = 'edit-paste-independent';
   static const editDelete = 'edit-delete';
 
+  /// 🗣️F-261 (유저 2026-10-02): 「아직 타임라인버튼 단축키에 등록안된거있음.
+  /// 일단 편집버튼」 — the shared pill's Edit (T25).
+  static const editInstance = 'edit-instance';
+
   /// 🗣️I-18 — 자동 이름 지정, the shared pill's button beside Edit.
   static const editAutoName = 'edit-auto-name';
 
@@ -291,7 +298,7 @@ abstract final class EditorActionIds {
   static const layerVisibilitySolo = 'layer-visibility-solo';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
-  /// 설정에 줌 스냅 설정한대로」.
+  /// 설정에 줌 스냅 설정한대로」. ↩️The keys are X and Z since F-261.
   static const canvasZoomIn = 'canvas-zoom-in';
   static const canvasZoomOut = 'canvas-zoom-out';
 }
@@ -380,7 +387,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultTouchGesture: 'fourFingerTap',
     // I-15: 「기존 재생단축키가 스페이스바인데 그냥 해제」 — Space is the
     // pan hold now. Every action stays assignable in the dialog.
-    defaultActivators: [],
+    // ↩️F-261 (유저 2026-10-02): 「자주쓰는 버튼 그냥 직관적이지 않더라도
+    // 왼쪽으로 몰아넣을까 … 재생/정지버튼은 S로두고 처음으로버튼 A, 그리고
+    // 편집버튼은 D로두자」 — the left hand's keys, whatever the letter says.
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyS)],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.playbackToStart,
+    label: 'To Start',
+    category: 'Playback',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyA)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.voiceRecordToggle,
@@ -472,6 +488,14 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 「버튼이면 왠만해선 숏컷 지정 가능하게」). It ships unbound: nobody named a
   // key. The label is the button's own, and a bar button's writing carries
   // no '…' (B9).
+  // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
+  // the play key).
+  const EditorActionDefinition(
+    id: EditorActionIds.editInstance,
+    label: 'Edit',
+    category: 'Edit',
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyD)],
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.editAutoName,
     label: 'Auto Name',
@@ -711,7 +735,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     id: EditorActionIds.onionSkinToggle,
     label: 'Toggle Onion Skin',
     category: 'View',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyO)],
+    // 🗣️F-261 (유저 2026-10-02): 「우선 어니언스킨을 Q로」 — the left hand's.
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCcw,
@@ -731,25 +756,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'View',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyH)],
   ),
-  // 🗣️I-19: 「shift+>(확대) shift+<(축소)」. Written as the key under the
-  // glyph — `>` is Shift+. on the layouts in use — because the logical key
-  // Flutter reports is the unshifted one.
+  // 🗣️I-19: 「shift+>(확대) shift+<(축소)」.
+  // ↩️F-261 (유저 2026-10-02): 「확대축소도 그래서 z랑 x로 … 둘째키로
+  // 안남길거야. 그래서 쉬프트.관련은 삭제」 — X in and Z out, the outward
+  // step on the left as `<` was, and the Shift pair gone.
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomIn,
     label: 'Zoom In',
     category: 'View',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.period, shift: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyX)],
     zoomsView: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasZoomOut,
     label: 'Zoom Out',
     category: 'View',
-    defaultActivators: [
-      SingleActivator(LogicalKeyboardKey.comma, shift: true),
-    ],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyZ)],
     zoomsView: true,
   ),
   // The comma set row (UI-R17 #7, TVP-style): 1-4 set the exposure of the

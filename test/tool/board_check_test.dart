@@ -268,14 +268,13 @@ void main() {
       expect(out, contains('어느 카드의 질문인지'));
     });
 
-    test('🚨★★★an unanswered question whose card is NOT in 답할 것', () {
-      // 🧪THE REAL SHAPE, taken from H25 on 2026-08-31: I raised the question
-      // and wrote 대기중 on the card ONE MINUTE later, so the card sat in
-      // 대화 중 holding a question nobody was being asked.
-      //
-      // ⚠️A question alone does NOT trigger this — folding it in makes it the
-      // newest 대분류, which IS 답할 것. It takes a later 대분류 to bury it,
-      // and that is exactly what the first fixture here got wrong.
+    test('↩️a card moved on with a question open is not misplaced', () {
+      // 🧪THE SHAPE that once demanded it (H25, 2026-08-31): the question
+      // raised, the card moved to 대기중 a minute later — on the old page the
+      // question went silent. ↩️Since 2026-10-02 the list asks every open
+      // question from 결정 필요 wherever its card stands
+      // (`a_card_is_read_on_separate_axes_test`), so the gate must not send a
+      // session to move the card back over the user's own move.
       final out = complaintsFor([
         card('A'),
         question('"title":"질문","where":"w","why":"y","of":"A","options":'
@@ -283,8 +282,7 @@ void main() {
         '{"kind":"item","id":"A","at":"나중에","note":"나중에 하기로",'
             '"ts":"${at('11:00')}"}',
       ]);
-      expect(out, contains('답할 것에 없는'));
-      expect(out, contains('A'));
+      expect(out, isNot(contains('답할 것에 없는')));
     });
 
     // 🚨★★★THE GATE HAS ONE CLOCK, AND THE TEST HANDS IT OVER.

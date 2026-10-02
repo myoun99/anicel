@@ -111,7 +111,6 @@ import 'storyboard_panel.dart'
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import '../models/working_panel.dart';
-import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
 import 'timeline/rail_eyes.dart' show RailEyes;
 import 'timeline/timeline_grid_metrics.dart'

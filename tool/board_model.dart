@@ -134,8 +134,11 @@ class BoardLog {
   final String at;
   final String text;
 
-  /// Whose words these are. Drives nothing but the tint: the stage name
-  /// already says it, and saying it twice is the 「설명 문구」 habit.
+  /// Whose words these are. On screen it drives nothing but the tint: the
+  /// stage name already says it, and saying it twice is the 「설명 문구」
+  /// habit.
+  /// ↩️It also decides whose move it is now ([userSpokeLast], 2026-10-02), so
+  /// a user's line must not lose it — see the bare move in [readBoard].
   final bool byUser;
 
   /// 🚨HOW TO CHECK WHAT THIS STAGE SHIPPED (유저 2026-08-27: 「확인을
@@ -269,6 +272,15 @@ class BoardCard {
   String? recommend;
   String? answer;
   String answerNote = '';
+
+  /// 🆕긴급 · 높음 · 보통 · 낮음, or empty for 미정 — an axis of its own, not
+  /// a section (유저 2026-10-02: 「최대한 프로들이랑 똑같으면되」; the board
+  /// redesign's 「우선순위는 사용자가 정합니다」). Last-wins, like a name.
+  String priority = '';
+
+  /// 🆕Which session holds the card — a field rather than a phrase in a note
+  /// (「담당: …」), so a list can group by it. Last-wins; empty clears it.
+  String owner = '';
 }
 
 /// Folds the append-only log into current state: a later line with the same id
@@ -293,13 +305,18 @@ List<int> badLines = const [];
 /// the `json['…']` sites out of this file and fails if they disagree.
 const kReadFields = <String>{
   'answer', 'answerNote', 'at', 'care', 'how', 'id', 'kind', 'note', 'of',
-  'options', 'pr', 'recommend', 'ref', 'rest', 'said', 'state', 'tag', 'tags',
-  'think', 'title', 'ts', 'under', 'where', 'why',
+  'options', 'owner', 'pr', 'priority', 'recommend', 'ref', 'rest', 'said',
+  'state', 'tag', 'tags', 'think', 'title', 'ts', 'under', 'where', 'why',
 };
 
 /// The `kind` values a reader treats specially. Anything else is a plain card
 /// — which is usually a typo, and always silent.
-const kKinds = <String>{'item', 'decision', 'law', 'meta', 'check', 'record'};
+///
+/// 🆕`build`: the user pressed 「이 빌드로 시험 중」 — its `title` is the master
+/// commit they built, its `ts` when. Not a card: verification groups by it.
+const kKinds = <String>{
+  'item', 'decision', 'law', 'meta', 'check', 'record', 'build',
+};
 
 /// One thing a record said that nobody reads. ⚠️Three fields rather than one
 /// formatted string, because the gate has to ANSWER WITH THEM: the id to
@@ -480,8 +497,21 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     // would not show the move and [placeByStory] would have nothing to read.
     // ⛔The old shape wrote it into a `state` field instead, off the timeline,
     // which is the split this round exists to end.
+    // 🚨AND THE MOVE ITSELF IS NEVER A DUPLICATE, so it does not go through
+    // `stage()`'s dedupe. Two moves to one place are two facts, each at its own
+    // time. 🧪A card moved 할 일 → 백로그 → 할 일 → 백로그 from the board
+    // wrote 「백로그로 옮김」 twice; the dedupe ate the second, and the card
+    // stayed in 할 일 with the move in the file — the H25 loss above, one
+    // level down.
+    // ⚠️Whose move it is comes with it: `said` is the user's words on every
+    // writer that sets it (a memo, a tick, a move from the board), so a move
+    // on such a line is theirs even when its words were deduped away.
+    // ⚠️Otherwise exactly the entry `stage()` would add — the PR still rides
+    // it, and the placeholder pass below still reads it.
     if (at.isNotEmpty && kSection.containsKey(at)) {
-      stage('$at${ro(at)} 옮김', at);
+      e.log.add(BoardLog(ts, at, '$at${ro(at)} 옮김',
+          byUser: json['said'] != null, pr: prLeft,
+          how: prLeft == null ? '' : stageHow, ref: '${json['ref'] ?? ''}'));
     }
     if (json['title'] != null) e.title = json['title'] as String;
     if (json['state'] != null) e.state = json['state'] as String;
@@ -517,6 +547,8 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       e.answer = answered.isEmpty ? null : answered;
     }
     if (json['answerNote'] != null) e.answerNote = json['answerNote'] as String;
+    if (json['priority'] != null) e.priority = '${json['priority']}'.trim();
+    if (json['owner'] != null) e.owner = '${json['owner']}'.trim();
     if (json['under'] != null) e.under = (json['under'] as num).toInt();
     if (json['of'] != null) e.of = '${json['of']}';
     if (json['rest'] != null) e.rest = '${json['rest']}';
@@ -602,9 +634,11 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
 /// the word on the card; `state` is the code the sections were computed from;
 /// nothing made them agree. Seven live cards disagreed when this was written.
 ///
-/// ⚠️This is the INVERSE of [_stateLabels] and must stay so: every value here
-/// is a key there. A word that is not a section (구현 · AI 판단 · 정정 ·
-/// 유저 피드백 …) is deliberately absent — those are stages in the story, not
+/// ⚠️Every value here is a place [_statusOfSection] knows, except `ask`, which
+/// [placeWordOf] reads past — [statusOf] throws on any other. ↩️It used to be
+/// the inverse of the old page's `_stateLabels`, gone with that page
+/// (2026-10-02). A word that is not a section (구현 · AI 판단 · 정정 · 유저
+/// 피드백 …) is deliberately absent — those are stages in the story, not
 /// places to put the card.
 ///
 /// ⚠️Spelling variants are listed, not normalised away: the file already has
@@ -643,6 +677,21 @@ const kSection = <String, String>{
   '하는 중': 'wip',
   '대화 중': 'gate',
   '나중에': 'queue',
+  // 🆕2026-10-02 — 유저: 「보드에 알려진 문제 항목이라는 새 항목 만들어서
+  // 거기 격리하자. 계속 파악은 하고싶어」. Not 나중에: that is work put off;
+  // this is a behaviour accepted as it is, watched rather than scheduled.
+  '알려진 문제': 'known',
+  // 🆕THE REDESIGN'S STATUS WORDS (유저 2026-10-02: 「최대한 프로들이랑
+  // 똑같으면되」) — the same places under the names a tracker uses, so a
+  // writer can say 백로그 instead of 나중에. ⚠️Aliases, not replacements: a
+  // record written last month keeps its word, and both land in one place.
+  '분류 대기': 'inbox',
+  '백로그': 'queue',
+  '할 일': 'open',
+  '검증': 'hands',
+  // 🆕「안 하기로 함 · 중복」 — an ending like 완료, so it shares 완료's
+  // place; the board tells the two apart by the word ([statusOf]).
+  '취소': 'archived',
   // 🚨실기 확인 is a SECTION now, not a kind of card — see [foldChecksIntoCards].
   '실기 확인': 'hands',
   // 🚨끝은 자리가 아니라 끝이다. 유저 2026-08-31: 「확인 다 끝나서 사라지는
@@ -743,20 +792,30 @@ void placeByStory(BoardCard e) {
 /// the reader. Now the writer counts and says which word it is — `확인` while
 /// any remain, `완료` for the last — and the reader keeps its one rule.
 List<String> checksWaiting(BoardCard e) {
+  // A card that has ended has nothing left to try on a device, however it
+  // ended — a 완료 entry, a bulk 확인 from the list (`archived`), or an old
+  // clean tick (`deleted`). ⚠️Reopening writes `open` first, so a card brought
+  // back is read in full again.
+  if (e.state == 'archived' || e.state == 'deleted') return const [];
   final open = <String>[];
   final cleared = <String>{};
-  var endsTheCard = false;
   for (var i = 0; i < e.log.length; i++) {
     final name = stageName(e, i);
-    if (name == '실기 확인') open.add(e.log[i].ts);
-    if (name != '확인 완료' && name != '완료') continue;
+    if (name == '실기 확인' || name == '검증') open.add(e.log[i].ts);
+    if (name != '확인 완료' && name != '완료' && name != '취소') continue;
     final ref = e.log[i].ref;
     // ⚠️No `ref` on a 완료 means 「this card is done」, full stop — what every
-    // 완료 written before per-check ticks existed meant.
-    if (ref.isEmpty && name == '완료') endsTheCard = true;
+    // 완료 written before per-check ticks existed meant. 🆕취소 ends it the
+    // same way: a card nobody will do has nothing left to try on a device.
+    // ↩️But only for the checks written BEFORE it (2026-10-02). It used to
+    // end every check for good, so a card finished, reopened and sent to 검증
+    // again from the board sat in 검증 waiting on nothing — no box to tick.
+    if (ref.isEmpty && (name == '완료' || name == '취소')) {
+      open.clear();
+      continue;
+    }
     cleared.add(ref);
   }
-  if (endsTheCard) return const [];
   return [for (final ts in open) if (!cleared.contains(ts)) ts];
 }
 
@@ -983,7 +1042,7 @@ void foldChecksIntoCards(Map<String, BoardCard> byId, [DateTime? now]) {
       host.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
       continue;
     }
-    if (lastSection(c) == '실기 확인') continue;
+    if (kSection[lastSection(c)] == 'hands') continue;
     c.log.add(BoardLog(at, '실기 확인', text.isEmpty ? c.id : text));
   }
   for (final e in byId.values) {
@@ -1071,6 +1130,168 @@ String stageName(BoardCard e, int i) {
   return '작업 기록';
 }
 
+// ---------------------------------------------------------------- the axes
+
+/// 🆕🚨★★★EACH CARD IS READ ON SEPARATE AXES — where it stands, whose move it
+/// is, who holds it, how urgent — instead of one section answering all of
+/// them (유저 2026-10-02: 「나중에 항목이라던가 착수가능 항목이라던가 이런
+/// 항목 내가 생각해낸거니까 프로들은 어떤식으로 분류하고 그러는지」 ·
+/// 「최대한 프로들이랑 똑같으면되」).
+///
+/// ⛔A section answered three questions at once, so a card true on two of
+/// them could show one: 🧪on 2026-10-02 eleven cards held an unanswered
+/// question and five of them sat in 답할 것; the other six were in 분류 전 ·
+/// 대화 중 · 나중에 · 실기 확인, and nothing on screen said they asked.
+///
+/// ⚠️THE RECORD IS UNCHANGED. [placeByStory] still folds `state` exactly as
+/// before — the gate and the writer read it — and this is a second reading of
+/// the same story, the way a tracker keeps one event log and draws its views
+/// from it.
+enum BoardStatus { triage, backlog, todo, doing, verify, known, done, canceled }
+
+/// What each status is called on screen.
+const kStatusName = <BoardStatus, String>{
+  BoardStatus.triage: '분류 대기',
+  BoardStatus.backlog: '백로그',
+  BoardStatus.todo: '할 일',
+  BoardStatus.doing: '진행 중',
+  BoardStatus.verify: '검증',
+  BoardStatus.known: '알려진 문제',
+  BoardStatus.done: '완료',
+  BoardStatus.canceled: '취소',
+};
+
+/// The word that puts a card in each status — what a move writes. Every one
+/// is a key of [kSection], so the fold places it like any other word.
+const kStatusWord = <BoardStatus, String>{
+  BoardStatus.triage: '분류 대기',
+  BoardStatus.backlog: '백로그',
+  BoardStatus.todo: '할 일',
+  BoardStatus.doing: '진행 중',
+  BoardStatus.verify: '검증',
+  BoardStatus.known: '알려진 문제',
+  BoardStatus.done: '완료',
+  BoardStatus.canceled: '취소',
+};
+
+/// The place word [statusOf] stands the card on, or '' when the story names
+/// none — read past the two words that are no longer places: 유저 (the user
+/// spoke, so the move is mine) and 질문 (a question, so the move is theirs).
+/// ⚠️하는 중 keeps the shelf life [lastSection] gives it.
+String placeWordOf(BoardCard e) {
+  var spoke = '';
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    final name = stageName(e, i);
+    final section = kSection[name];
+    if (name == '유저') {
+      spoke = name;
+      continue;
+    }
+    if (section == null || section == 'ask') continue;
+    if (section == 'wip' && wentQuiet(e)) continue;
+    // 🚨AN ENDING THE USER ANSWERED IS NOT AN ENDING. Their words after it say
+    // something is still wrong — H24, F-28, F-22-rest and R27-rest were lost
+    // for four days to exactly that (see `tickRecords`) — so the card comes
+    // back to be read, where the fold puts it too. 🧪The first cut skipped
+    // 유저 and read the 완료 under it: a last check ticked with 「아직 렉이
+    // 있다」 was drawn finished, with nobody's turn.
+    if (spoke.isNotEmpty && section == 'archived') return spoke;
+    return name;
+  }
+  return '';
+}
+
+BoardStatus? _statusOfSection(String? section) => switch (section) {
+      'inbox' => BoardStatus.triage,
+      'queue' || 'gate' => BoardStatus.backlog,
+      'open' => BoardStatus.todo,
+      'wip' || 'mine' => BoardStatus.doing,
+      'hands' => BoardStatus.verify,
+      'known' => BoardStatus.known,
+      'archived' || 'deleted' => BoardStatus.done,
+      _ => null,
+    };
+
+/// Where the card stands. ⚠️An ending is read off `state`, which the fold
+/// and a tick-dismissal both write; 취소 is told from 완료 by its word.
+BoardStatus statusOf(BoardCard e) {
+  if (e.state == 'archived' || e.state == 'deleted') {
+    return lastSection(e) == '취소' ? BoardStatus.canceled : BoardStatus.done;
+  }
+  final word = placeWordOf(e);
+  if (word.isNotEmpty) return _statusOfSection(kSection[word])!;
+  // No place word in the story: what an older record's own `state` said, or a
+  // card nobody has filed yet.
+  return _statusOfSection(e.state) ?? BoardStatus.triage;
+}
+
+/// Whether the card is in a conversation — 대화 중 is a flag now, not a place.
+bool inConversation(BoardCard e) => kSection[placeWordOf(e)] == 'gate';
+
+/// The questions on this card nobody has answered yet, oldest first.
+List<BoardCard> openQuestions(BoardCard e) => [
+      for (final l in e.log)
+        if (l.ask != null && l.ask!.answer == null) l.ask!,
+    ];
+
+/// Whether the user has SAID something — a memo, an answer, words left on a
+/// check — since I last wrote on the card, so the next move is mine.
+///
+/// ⚠️A move or a clean tick is the user ACTING, not saying: it is looked past,
+/// not counted. 🧪Asking only about the newest entry, a memo followed by a
+/// move went silent — the move was last, and the memo it buried still waited
+/// on me with nothing saying so.
+bool userSpokeLast(BoardCard e) {
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    if (!e.log[i].byUser) return false;
+    final name = stageName(e, i);
+    if (name == '유저' || name.startsWith('유저 ') || name == '임시 메모') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// 🆕Whose move it is — both can be true at once: a card can hold a question
+/// for the user while I owe an answer to their last memo.
+({bool user, bool me}) turnOf(BoardCard e) {
+  final status = statusOf(e);
+  final ended = status == BoardStatus.done || status == BoardStatus.canceled;
+  if (ended) return (user: false, me: false);
+  final user = openQuestions(e).isNotEmpty ||
+      (inConversation(e) && !userSpokeLast(e)) ||
+      checksWaiting(e).isNotEmpty;
+  return (user: user, me: userSpokeLast(e) || status == BoardStatus.triage);
+}
+
+/// 「담당: X」 in a note — how a session said it took a card before [BoardCard.owner]
+/// existed. ⚠️Read only when the field is empty.
+final _ownerInNote = RegExp(r'담당\s*[:：]\s*([^—()\n·*\]\[,.]+)');
+
+/// Which session holds the card: the field, else the newest 「담당:」 in its story.
+String ownerOf(BoardCard e) {
+  if (e.owner.isNotEmpty) return e.owner;
+  for (var i = e.log.length - 1; i >= 0; i--) {
+    final m = _ownerInNote.firstMatch(e.log[i].text);
+    if (m == null) continue;
+    final name = m.group(1)!.trim().replaceFirst(RegExp(r'\s*세션$'), '');
+    if (name.isNotEmpty) return name;
+  }
+  return '';
+}
+
+/// Tags that say what KIND of thing a card is; every other tag names its area.
+const kTypeTags = <String>{'피드백', '아이디어', '임시', '기획'};
+
+/// 🆕A build the user marked — 「이 빌드로 시험 중」. Verification is grouped
+/// by these, the way a QA list belongs to the build it is run on.
+typedef BoardBuild = ({String ts, String commit});
+
+/// Every marked build, oldest first.
+List<BoardBuild> buildsOf(List<BoardCard> cards) => [
+      for (final c in cards)
+        if (c.kind == 'build') (ts: c.created, commit: c.title),
+    ]..sort((a, b) => a.ts.compareTo(b.ts));
 
 /// 「로」 or 「으로」 for [word] — chosen by its last syllable, the way a
 /// person writes it. ⚠️Not decoration: the board writes this particle into

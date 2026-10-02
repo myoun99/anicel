@@ -985,9 +985,12 @@ class TimelineActionToolbar extends StatelessWidget {
         // ⚠️It keeps the key it had on the frame pill. The button moved; it
         // did not become a different button, and every test that reached it
         // still does.
+        // 🗣️F-261: an action now, so it wears that action's name and its key
+        // — I-19's five beside it did the same.
         _iconButton(
           key: const ValueKey<String>('shared-edit-button'),
-          tooltip: AppText.strings.tlSharedEdit,
+          tooltip: editorActionLabel(EditorActionIds.editInstance),
+          shortcuts: const [EditorActionIds.editInstance],
           icon: Icons.edit_outlined,
           // B8: ONE source — the panel. The timeline's context answers with
           // the session's subject (the same answer [editSelectionInstance]

@@ -243,6 +243,31 @@ EditorSessionManager sessionOf(WidgetTester tester) =>
 
 Finder byKey(String key) => find.byKey(ValueKey<String>(key));
 
+/// A mouse resting on the workspace grip `dock-resize-[grip]`, shot as
+/// [frame] of the grip's rect, and taken away again.
+Future<void> hoverShot(
+  WidgetTester tester,
+  String name,
+  String grip,
+  Rect Function(Rect edge) frame,
+) async {
+  final edge = tester.getRect(byKey('dock-resize-$grip'));
+  // No addPointer: the pen strokes' mouse is still on the screen, and
+  // adding it a second time trips the mouse tracker. A move is a hover.
+  final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+  await mouse.moveTo(edge.center - const Offset(40, 40));
+  await mouse.moveTo(edge.center);
+  await settle(tester, 3);
+  await shot(
+    tester,
+    name,
+    rect: frame(edge).intersect(Offset.zero & window),
+    ratio: 2,
+  );
+  await mouse.removePointer();
+  await settle(tester, 3);
+}
+
 /// Drags the workspace grip `dock-resize-[grip]` by [by], as a person
 /// resizing a panel would.
 Future<void> dragGrip(WidgetTester tester, String grip, Offset by) async {
@@ -863,13 +888,66 @@ void guideShots(AppLanguage language) {
       await settleReal(tester);
       await shot(tester, 'overview');
       await shot(tester, 'toolbar', rect: toolbarRow(tester), ratio: 2);
+
+      // The panels' edges, pointed at: lit where a drag resizes.
+      await hoverShot(
+        tester,
+        'resize-bottom',
+        'bottom',
+        (edge) => Rect.fromLTRB(
+          edge.left,
+          edge.top - 80,
+          edge.left + 760,
+          edge.bottom + 70,
+        ),
+      );
+      await hoverShot(
+        tester,
+        'resize-side',
+        'rail-R2',
+        (edge) => Rect.fromLTRB(
+          edge.left - 200,
+          edge.top - 8,
+          edge.right + 340,
+          edge.bottom + 8,
+        ),
+      );
       await shot(tester, 'timeline', rect: timelineRows(tester), ratio: 2);
+
+      // The conte layer: its row stood on, in its second panel.
+      s.selectLayer(conte1);
+      s.selectFrameIndex(13);
+      await settleReal(tester, 4);
+      await shot(tester, 'conte-layer', rect: timelineRows(tester), ratio: 2);
+      s.selectLayer(ballLayer);
+      s.selectFrameIndex(9);
+      await settleReal(tester, 4);
 
       // The sound: S2's lanes open, the bounce's waveform under it.
       await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
       await settleReal(tester, 10);
       await shot(tester, 'sound', rect: timelineRows(tester), ratio: 2);
       await tester.tap(byKey('timeline-lane-toggle-${bounceRow.value}'));
+      await settleReal(tester, 4);
+
+      // The Edit button on a line of dialogue: S1's block, its window.
+      s.selectLayer(seLayerIdForTrack(const TrackId('default-track'), 1));
+      s.selectFrameIndex(18);
+      await settleReal(tester, 4);
+      await tester.tap(byKey('shared-edit-button'));
+      // Past the window's fade in: caught early, the timeline showed
+      // through it.
+      await settle(tester, 10);
+      await settleReal(tester, 4);
+      await shot(
+        tester,
+        'se-edit',
+        rect: windowBody(tester, byKey('instance-edit-dialog')),
+        ratio: 2,
+      );
+      await closeWindow(tester);
+      s.selectLayer(ballLayer);
+      s.selectFrameIndex(9);
       await settleReal(tester, 4);
 
       // The labels: the A row's label menu, open over the rows.
@@ -985,6 +1063,15 @@ void guideShots(AppLanguage language) {
       await shot(
         tester,
         'export',
+        rect: windowBody(tester, find.byType(AppWindow).last),
+      );
+
+      // The same window on its Cels tab.
+      await tester.tap(byKey('export-tab-cels'));
+      await settleReal(tester, 10);
+      await shot(
+        tester,
+        'export-cels',
         rect: windowBody(tester, find.byType(AppWindow).last),
       );
     },

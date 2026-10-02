@@ -530,7 +530,8 @@ Iterable<String> _workThatShipped(
       // ⚠️`c.state` IS the section — `placeByStory` already folded it out of
       // the story. Deriving it again from the stage word missed a card with
       // NO 대분류 at all, which defaults to 바로 가능 and is the loudest case.
-      final idle = c.state == 'open' || c.state == 'queue';
+      final idle =
+          c.state == 'open' || c.state == 'queue' || c.state == 'known';
       if (idle && !stillOwed(c)) {
         shipped.add(c.id);
       }
@@ -597,10 +598,12 @@ Iterable<String> _workThatShipped(
 /// renders `note`, so a card written as one blob arrived as a bare title with
 /// no way to answer.
 ///
-/// 🆕AND THE OTHER HALF, which the overhaul opened: a question is an entry on
-/// its card now, so an unanswered one must leave the card IN 답할 것. Answer
-/// one of three and the card comes back to 분류 전 with two still open and
-/// nothing saying so.
+/// ↩️It also demanded that a card holding an unanswered question stand IN 답할
+/// 것: on the old page a question elsewhere went silent (🧪H25, 2026-08-31,
+/// moved to 대기중 a minute after its question was raised). Gone with that
+/// page (2026-10-02) — the list now asks every unanswered question from
+/// 결정 필요 wherever its card stands, and a card the user moves on with a
+/// question open is their move, not a misplacement to undo.
 Iterable<String> _questionsNobodyCanAnswer(
   List<BoardCard> cards,
   Set<String> acks,
@@ -610,11 +613,9 @@ Iterable<String> _questionsNobodyCanAnswer(
   final thin = <String>[];
   final misdirected = <String>[];
   final orphan = <String>[];
-  final byOrigin = <String, List<BoardCard>>{};
   for (final q in cards) {
     if (q.kind != 'decision') continue;
     final (of, _) = asksOf(q);
-    if (of.isNotEmpty) (byOrigin[of] ??= []).add(q);
     if (!_notEnded(q) || acks.contains(q.id) || q.answer != null) continue;
 
     if (of.isEmpty && q.updated.compareTo(_questionNamingSince) >= 0) {
@@ -637,19 +638,6 @@ Iterable<String> _questionsNobodyCanAnswer(
     }
   }
 
-  // 🆕The card that owns an unanswered question must be IN 답할 것.
-  final hidden = <String>[];
-  for (final c in cards) {
-    if (!_live(c) || acks.contains(c.id)) continue;
-    final open = (byOrigin[c.id] ?? const <BoardCard>[])
-        .where((q) => q.answer == null && _notEnded(q));
-    if (open.isEmpty) continue;
-    // ⚠️By SECTION, not by the word: 질문 and 답할 것 are two stage names for
-    // one column, and comparing the word missed a card I had already moved.
-    if (kSection[lastSection(c)] == 'ask') continue;
-    hidden.add('${c.id}(${open.map((q) => q.id).join('·')})');
-  }
-
   if (unanswerable.isNotEmpty) {
     yield '답할 수 없는 결정 카드: ${unanswerable.join(', ')}\n'
         '답변 라디오는 options 로 그려집니다 — 없으면 제목과 「다른 안」 칸만 '
@@ -670,13 +658,6 @@ Iterable<String> _questionsNobodyCanAnswer(
         '질문은 이제 **카드 안의 항목**입니다 — 이름이 `<원본id>-Q<번호>` 면 '
         '이름이 곧 연결이고, 아니면 `of` 로 원본을 적습니다. 없으면 그 질문은 '
         '자기 혼자 카드로 서고, 답이 돌아갈 카드가 없습니다.';
-  }
-  if (hidden.isNotEmpty) {
-    yield '미답 질문이 있는데 답할 것에 없는 카드: ${hidden.join(', ')}\n'
-        '질문 셋 중 하나만 답하면 카드는 분류 전으로 오고 **남은 둘은 조용해집니다.** '
-        '아직 답을 기다린다면 그 카드의 마지막 대분류는 `질문` 이어야 합니다.\n'
-        '⇒ {"id":…, "at":"질문", "note":"무엇이 아직 미답인지"} 또는 남은 질문을 '
-        '다시 올리세요.';
   }
 }
 
