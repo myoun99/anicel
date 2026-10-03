@@ -69,8 +69,8 @@ class LayerSwitchVerbs {
     _changes.notifyChanged();
   }
 
-  /// R26 #30: the layer's composite blend — display state alongside the
-  /// eye/static opacity (repo-direct, link-group mirrored).
+  /// R26 #30: the layer's composite blend — an undoable edit, and its link
+  /// group's (`LayerController.setLayerBlendMode`).
   void setLayerBlendMode(LayerId layerId, LayerBlendMode blendMode) {
     _controllers.layerController.setLayerBlendMode(
       layerId: layerId,

@@ -8,14 +8,16 @@ import 'link_mirror.dart';
 import 'mirrored_field_command.dart';
 
 /// Writes ONE shared layer field through every link mirror of the layer in
-/// a single command ("레인만 각자, 나머지는 하나": linked members are "the
-/// same layer" seen from different cuts), and one undo step restores every
-/// member's own previous value.
+/// a single command (linked members are "the same layer" seen from
+/// different cuts — its name, mark, kind, blend and static opacity are one,
+/// while whether each use shows it is that use's own since T9), and one
+/// undo step restores every member's own previous value.
 ///
 /// 🚨ONE law for the name, mark and kind commands — three copies of the
-/// same execute/undo walk (the audit's clone scan, 2026-09-03). [write] is
-/// the repository setter for the field, [read] its getter on a layer. The
-/// walk itself is every shared field's, a cut's too ([MirroredFieldCommand]).
+/// same execute/undo walk (the audit's clone scan, 2026-09-03) — and the
+/// blend's and the static opacity's since F-278. [write] is the repository
+/// setter for the field, [read] its getter on a layer. The walk itself is
+/// every shared field's, a cut's too ([MirroredFieldCommand]).
 class LinkMirroredLayerFieldCommand<T>
     extends MirroredFieldCommand<({CutId cutId, LayerId layerId}), T> {
   LinkMirroredLayerFieldCommand({

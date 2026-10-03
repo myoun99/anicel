@@ -80,6 +80,10 @@ Layer createDefaultAnimationLayer({
 /// Starting full is what makes that true from the first instant instead
 /// of after the first edit — the cut cannot then shrink past it
 /// ([minimumCutDurationFor]), and the coverage rule never meets a hole.
+///
+/// ↩️The IMAGE row can lose its picture afterwards (F-98, 유저 2026-09-12:
+/// 「생성하면 기본적으로 프레임 생성되는건 그대로지만 삭제가능하도록」) — a
+/// whole row with nothing on it, never a hole inside one.
 Layer createCoveringLayer({
   required LayerId layerId,
   required FrameId frameId,

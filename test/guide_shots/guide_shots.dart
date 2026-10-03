@@ -6,8 +6,10 @@
 //     flutter test --run-skipped -j 1 test/guide_shots
 //
 // writes `<lang>/img/<scene>.png` under GUIDE_OUT (default `build/guide`),
-// as the app looks on a Windows PC. The suite skips them: they write
-// pictures and check nothing.
+// as the app looks on a Windows PC, and re-writes the key tables of
+// `<lang>/shortcuts.md` from the app's shortcut list (how, and why, is at the
+// head of guide_shortcut_table.dart). The suite skips them: they write pages
+// and pictures and check nothing.
 //
 // One entry file per language (`ko_test.dart` …), so one language's pages
 // are re-made on their own:
@@ -66,6 +68,7 @@ import '../helpers/app_faces.dart';
 import '../helpers/home_page_probes.dart' show tapToolbarButton;
 import '../helpers/panel_finders.dart';
 import '../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
+import 'guide_shortcut_table.dart';
 
 final outRoot = Platform.environment['GUIDE_OUT'] ?? 'build/guide';
 
@@ -867,6 +870,11 @@ void guideShots(AppLanguage language) {
     await loadMonospace();
     await loadIcons();
   });
+
+  test(
+    'guide shortcuts, ${language.name}',
+    () => writeShortcutTable(outRoot, language),
+  );
 
   testWidgets(
     'guide shots, ${language.name}',

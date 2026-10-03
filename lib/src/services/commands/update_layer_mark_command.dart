@@ -4,8 +4,8 @@ import '../../models/layer_mark.dart';
 import '../project_repository.dart';
 import 'link_mirrored_layer_field_command.dart';
 
-/// Updates a layer's mark — mirrored across its link group ("레인만
-/// 각자, 나머지는 하나": the mark is shared identity). One undo step.
+/// Updates a layer's mark — mirrored across its link group (the mark is
+/// shared identity, like the name). One undo step.
 class UpdateLayerMarkCommand extends LinkMirroredLayerFieldCommand<LayerMark> {
   UpdateLayerMarkCommand({
     required super.repository,

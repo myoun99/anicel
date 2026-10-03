@@ -14,7 +14,7 @@ import '../../models/viewport_point.dart';
 import 'canvas_press.dart';
 import 'canvas_touch_contacts.dart';
 import 'canvas_zoom_scale.dart';
-import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
+import '../shortcuts/editor_action_registry.dart' show sheetMoveActionId;
 import '../shortcuts/sheet_arrow.dart';
 import 'flip_hud_controller.dart';
 
@@ -667,17 +667,9 @@ class _CanvasViewportGestureLayerState
         forward: forward,
       );
       final read = widget.flipHud?.timelineArrowFor(pressed) ?? pressed;
-      final actionId = switch (read) {
-        SheetArrow.left => fine
-            ? EditorActionIds.framePrevious
-            : EditorActionIds.drawingPrevious,
-        SheetArrow.right => fine
-            ? EditorActionIds.frameNext
-            : EditorActionIds.drawingNext,
-        SheetArrow.up => EditorActionIds.layerUp,
-        SheetArrow.down => EditorActionIds.layerDown,
-      };
-      widget.onInvokeAction?.call(actionId);
+      // F-261: which move walks that way is the registry's one answer
+      // (`sheetMove`) — the keys read it too.
+      widget.onInvokeAction?.call(sheetMoveActionId(read, fine: fine));
     }
     // The action has LANDED by now (the funnel is synchronous), so the
     // HUD reads where the session actually went rather than guessing.

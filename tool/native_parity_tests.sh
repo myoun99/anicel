@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Which tests exercise the native engine — the ONE answer to that question.
 #
-# Three places ask it: the TestFlight build, the Mac build, and `lane.sh
-# land` when a lane touched the C sources. Three copies of a selector drift
-# apart, and a local gate that picks a different set from the CI it stands
+# Four places ask it: the TestFlight build, the Mac build, the Linux build,
+# and `lane.sh land` when a lane touched the C sources. Copies of a selector
+# drift apart, and a local gate that picks a different set from the CI it stands
 # in for is testing something else while printing the same green. Chosen by
 # what a test IMPORTS rather than from a list, so a new parity test joins
 # without anybody remembering to add it.

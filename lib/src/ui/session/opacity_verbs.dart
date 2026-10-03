@@ -7,6 +7,7 @@ import '../../models/cut_id.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_link_registry.dart';
 import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../../services/cut_frame_composite_plan.dart';
@@ -214,12 +215,8 @@ class OpacityVerbs {
     _changes.notifyChanged();
   }
 
-  void previewLayerOpacity(LayerId layerId, double opacity) {
-    dragPreview.value = (
-      layerIds: {layerId},
-      opacity: opacity.clamp(0.0, 1.0).toDouble(),
-    );
-  }
+  void previewLayerOpacity(LayerId layerId, double opacity) =>
+      previewLayersOpacity({layerId}, opacity);
 
   void commitLayerOpacity(LayerId layerId, double opacity) {
     dragPreview.value = null;
@@ -231,9 +228,32 @@ class OpacityVerbs {
   /// stays untouched (its slider is the camera-view dim).
   void previewLayersOpacity(Set<LayerId> layerIds, double opacity) {
     dragPreview.value = (
-      layerIds: layerIds,
+      layerIds: _withLinkedRowsOfThisCut(layerIds),
       opacity: opacity.clamp(0.0, 1.0).toDouble(),
     );
+  }
+
+  /// [layerIds] with every OTHER row of the active cut that the release
+  /// will write with them: the static opacity is the link group's (F-278,
+  /// `UpdateLayerOpacityCommand`), and a row link-duplicated in this cut is
+  /// a member standing on the same canvas. ⛔Previewing the dragged row
+  /// alone would leave that row at its old strength until the release and
+  /// then jump it — 「먼저 옮기고 되돌리기」 in the other order.
+  Set<LayerId> _withLinkedRowsOfThisCut(Set<LayerId> layerIds) {
+    final cut = _project.activeCutOrNull;
+    final registry = _project.repository.requireProject().linkRegistry;
+    if (cut == null || registry.groups.isEmpty) {
+      return layerIds;
+    }
+    return {
+      for (final layerId in layerIds) ...[
+        layerId,
+        for (final member
+            in registry.groupOf(cutId: cut.id, layerId: layerId)?.members ??
+                const <LayerLinkMember>[])
+          if (member.cutId == cut.id) member.layerId,
+      ],
+    };
   }
 
   void commitLayersOpacity(Set<LayerId> layerIds, double opacity) {

@@ -357,8 +357,17 @@ Iterable<ExportCelGroupTask> _bundleTasks(
 /// 이 규칙은 이미지레이어에만 적용. 애니메이션레이어는 이름없으면 출력안함」,
 /// 「이름없이 BOOK 그대로 출력」. Its cel name is empty, so the file wears the
 /// layer's name alone ([celGroupFileBase]).
+///
+/// ⚠️THE ONE THE ROW SHOWS, not any unnamed cel of its BANK (F-98, 유저
+/// 2026-09-12: 「이름 안정해지면 별개것임」): the bank is the link group's
+/// and holds every 겸용 cut's unnamed picture of the row — each of them 「the
+/// layer」 in its own cut, and no cel of this one.
 String? _fileCelName(Layer axis, Frame frame) =>
-    frame.celNumber ?? (axis.kind.unnamedCelIsTheLayer ? '' : null);
+    frame.celNumber ??
+    (axis.kind.unnamedCelIsTheLayer &&
+            authoredBlockOf(axis)?.frameId == frame.id
+        ? ''
+        : null);
 
 /// [frames] in the order their cels are listed and written: by cel number,
 /// the way a file browser orders names — digits by value, letters without

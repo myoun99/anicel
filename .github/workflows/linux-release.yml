@@ -1,0 +1,141 @@
+# 🐧THE LINUX BUILD ANYONE ELSE CAN OPEN — a release bundle, launched once on
+# a virtual screen, tarred.
+#
+# 유저 2026-10-02 (board, linux-target-Q1): 「회차마다 리눅스 빌드도 rel 에」 —
+# every release round hands out a Linux build beside the Mac zip, the Windows
+# zip and the APK, and it wears the round's TestFlight number like they do.
+# Linux has been a target since 2026-07-19, but until this file nothing had
+# ever compiled the APP for it: CI builds and tests the C engine on Ubuntu,
+# never `flutter build linux`.
+#
+# ⛔NO SCHEDULE AND NO PUSH TRIGGER, for the reason at the head of
+# `macos-developer-id.yml`: 132 runs in a day got the account suspended
+# (2026-08-31). One run per release round, asked for by hand.
+#
+# ⚠️NOBODY HERE OWNS A LINUX MACHINE (유저 2026-08-29: 「나 리눅스없는데
+# 가능한가」). This file proves the bundle builds, that the engine it ships
+# draws the bytes every other platform draws, and that it opens its window.
+# Whether a pen's pressure arrives, or a real GPU keeps up, nobody has seen.
+name: Linux (release bundle)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: The build number to stamp — the release round's TestFlight number.
+        required: true
+        type: string
+
+env:
+  FLUTTER_VERSION: '3.47.4'
+
+jobs:
+  bundle:
+    name: Linux bundle
+    # 🚨22.04, NOT ubuntu-latest. The runner, the plugins and the engine are
+    # compiled HERE, and a binary asks for the newest symbol versions of the
+    # glibc and libstdc++ it was linked against — so the runner's are the
+    # floor of every desk the bundle opens on. 22.04 (glibc 2.35) still
+    # opens on 22.04 and Debian 12; a 24.04 build (2.39) would not. CI's
+    # test shards stay on ubuntu-latest: they hand nothing out.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # Flutter's own list for a Linux desktop build, GStreamer for
+      # audioplayers_linux (gstreamer, -app and -audio), and for the launch
+      # below a virtual screen, Mesa's software GL and a way to find a
+      # window by its title.
+      - name: Linux build packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            xvfb xdotool libgl1-mesa-dri
+      - run: flutter pub get
+
+      # 🔢One number per round, the round's TestFlight number (유저
+      # 2026-10-02: 「제일 높은 테스트플라이트 숫자로 통일」). Required here,
+      # unlike the Mac's input: Linux has no numbering of its own to fall
+      # back to. Read through env, never pasted into the script.
+      - name: Build Flutter Linux
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          case "$BUILD_NUMBER" in
+            ''|*[!0-9]*)
+              echo "::error::build_number must be digits, got '$BUILD_NUMBER'"
+              exit 1
+              ;;
+          esac
+          echo "build number: $BUILD_NUMBER"
+          flutter build linux --release --build-number="$BUILD_NUMBER"
+
+      # The release path's parity check, as TestFlight and the Mac build run
+      # it, but against the engine the bundle SHIPS. On Apple the engine is
+      # compiled into the app binary, so those two build a dylib beside it to
+      # have something to load. Here the plugin build leaves a standalone .so
+      # in the bundle, made by Flutter's clang rather than the gcc build the
+      # CI shards test — so the file handed out is the file checked.
+      - name: Parity against the shipped engine
+        env:
+          QA_ENGINE_PATH: ${{ github.workspace }}/build/linux/x64/release/bundle/lib/libqa_engine.so
+          # A missing engine must FAIL rather than skip: a skipped parity
+          # suite and a passing one look identical in a summary.
+          QA_REQUIRE_NATIVE: '1'
+        run: |
+          set -euo pipefail
+          bash tool/native_parity_tests.sh > "$RUNNER_TEMP/parity.txt"
+          echo "parity subset: $(wc -l < "$RUNNER_TEMP/parity.txt") of $(find test -name '*_test.dart' | wc -l) files"
+          xargs flutter test --no-pub < "$RUNNER_TEMP/parity.txt"
+
+      # The launch the Windows zip gets on the desk: still alive after 15 s,
+      # with its window titled Anicel. Xvfb is the screen and Mesa's llvmpipe
+      # the GPU. It proves every library resolves and the runner makes its
+      # window — nothing about a pen, a real GPU or a speed.
+      - name: Launch on a virtual screen
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          screen=$!
+          sleep 2
+          DISPLAY=:99 build/linux/x64/release/bundle/anicel > "$RUNNER_TEMP/launch.log" 2>&1 &
+          app=$!
+          sleep 15
+          alive=no
+          if kill -0 "$app" 2>/dev/null; then alive=yes; fi
+          window=$(DISPLAY=:99 xdotool search --name '^Anicel$' 2>/dev/null | head -n 1) || true
+          kill "$app" "$screen" 2>/dev/null || true
+          cat "$RUNNER_TEMP/launch.log"
+          if [ "$alive" != yes ]; then
+            echo "::error::the app was gone within 15 s"
+            exit 1
+          fi
+          if [ -z "$window" ]; then
+            echo "::error::no window titled Anicel"
+            exit 1
+          fi
+
+      # A tarball, because the artifact store zips whatever it is given and
+      # a zip drops the executable bit — the bundle would not start from it.
+      - name: Package
+        run: |
+          mkdir -p "$RUNNER_TEMP/pkg"
+          cp -a build/linux/x64/release/bundle "$RUNNER_TEMP/pkg/Anicel"
+          tar -C "$RUNNER_TEMP/pkg" -czf "$RUNNER_TEMP/Anicel-linux.tar.gz" Anicel
+
+      # 90 days is the ceiling a public repository gets, as for the Mac zip.
+      - name: Upload the Linux bundle
+        uses: actions/upload-artifact@v5
+        with:
+          name: anicel-linux
+          path: ${{ runner.temp }}/Anicel-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 90

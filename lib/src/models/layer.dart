@@ -654,6 +654,34 @@ bool layerMarksSheetBook(Layer layer) =>
     layer.onTimesheet &&
     layer.mark.process == LayerProcess.art;
 
+/// The block [layer]'s lane holds that somebody AUTHORED — its first drawing
+/// that is not a ghost — or null when the row stands empty.
+///
+/// An IMAGE row holds at most one ([LayerKind.holdsSingleCel]), so this is
+/// 「the picture this row shows」. ⛔Not the first cel of its BANK: the bank
+/// is its link group's, and holds another cut's picture while this row
+/// shows a different one or none (F-98 — an image row has an empty state,
+/// and links by name alone).
+TimelineExposure? authoredBlockOf(Layer layer) {
+  for (final exposure in layer.timeline.values) {
+    if (exposure.isDrawing && !exposure.ghost) {
+      return exposure;
+    }
+  }
+  return null;
+}
+
+/// Whether [layer]'s lane holds an authored block ([authoredBlockOf]).
+bool rowHoldsABlock(Layer layer) => authoredBlockOf(layer) != null;
+
+/// Whether [layer] is a PICTURE row with no picture — an image row whose
+/// lane holds no block (F-98, 유저 2026-09-12: 「이미지 레이어도 프레임이
+/// 없는 상태는 존재함. 생성하면 기본적으로 프레임 생성되는건 그대로지만
+/// 삭제가능하도록」). The one state in which a row that holds a single cel
+/// has a cel to make: every door that makes one asks this.
+bool pictureRowStandsEmpty(Layer layer) =>
+    layer.kind.holdsSingleCel && !rowHoldsABlock(layer);
+
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find
 /// a row BY WHAT IT IS asks here instead of open-coding a kind comparison.

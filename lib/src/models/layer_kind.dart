@@ -84,14 +84,23 @@ enum LayerKind {
     numbersItsDrawings: true,
   ),
 
-  /// A PICTURE layer (BG/BOOK, imported stills): ONE cel by definition,
-  /// held over the whole cut — the covering grammar the storyboard row
-  /// speaks ("the row end IS the cut end"), minus the conte semantics.
-  /// Frame names default to none (the layer's own name addresses the
-  /// picture); a normal image layer is drawn on like any cel, a
+  /// A PICTURE layer (BG/BOOK, imported stills): ONE cel a cut by
+  /// definition, held over the whole cut — the covering grammar the
+  /// storyboard row speaks ("the row end IS the cut end"), minus the conte
+  /// semantics. Frame names default to none (the layer's own name addresses
+  /// the picture); a normal image layer is drawn on like any cel, a
   /// REFERENCED one ([Layer.mediaReference]) shows a library asset and
   /// refuses the brush. Replaces the old `art` kind, which drew and
   /// composited exactly like animation and only differed in icon.
+  ///
+  /// ↩️IT HAS AN EMPTY STATE, AND ITS NAME IS ITS LINK (F-98, 유저
+  /// 2026-09-12): 「이미지 레이어도 프레임이 없는 상태는 존재함. 생성하면
+  /// 기본적으로 프레임 생성되는건 그대로지만 삭제가능하도록 … 일반
+  /// 애니메이션레이어랑 법 맞추면서 통일/재사용. 그리고 이미지 레이어는
+  /// 이름이 없는 상태인데도 겸용컷이랑 링크되는데, 그게아니라 애니메이션
+  /// 레이어랑 똑같이 이름이 같아야만 링크되도록. 이름 안정해지면 별개것임」.
+  /// The row is born with its picture and may lose it; across 겸용 cuts a
+  /// picture is shared by NAME, each cut's row born with one of its own.
   image(
     'image',
     holdsDrawings: true,
@@ -448,13 +457,19 @@ enum LayerKind {
   /// fixed end-side HOLD (D22), and the repository's covering
   /// normalization re-tiles that hold's ghosts through every duration
   /// change — the coverage is the row's law, not any block's length.
+  /// ↩️A row whose block was deleted covers nothing (F-98): the grammar is
+  /// how its picture is held, not a promise that it has one.
   final bool coversWithoutGaps;
 
-  /// Whether this kind holds ONE cel by definition — the image layer's
-  /// contract: the picture is the layer, so a second cel (and the
+  /// Whether this kind holds ONE cel a cut by definition — the image
+  /// layer's contract: the picture is the layer, so a second cel (and the
   /// create-drawing verb once one exists) has nothing to mean. Cross-cut
   /// paper switching happens through cel NAMES and the 겸용 link banks,
   /// never through a second cel in the same cut.
+  ///
+  /// ⚠️ONE BLOCK ON ITS LANE, not one cel in its BANK: the bank is the link
+  /// group's and holds every 겸용 cut's picture of the row, and the lane may
+  /// hold none (F-98 — `pictureRowStandsEmpty`).
   final bool holdsSingleCel;
 
   /// Whether this kind holds OTHER rows rather than a picture of its own —
@@ -553,10 +568,12 @@ enum LayerKind {
   /// law — lanes each cut's own, a NAMED key one value across the group.
   /// SE/instruction rows stay per-use fixtures.
   ///
-  /// IMAGE rows are included (the shared BG is the classic 겸용 case; the
-  /// linked copy shares the cel id and the covering normalization re-covers
-  /// it) — plus the folder rows that hold them ("폴더 존재/멤버십은 공유
-  /// 구조").
+  /// IMAGE rows are included (the shared BG is the classic 겸용 case) — plus
+  /// the folder rows that hold them ("폴더 존재/멤버십은 공유 구조").
+  /// ↩️The linked copy used to share the cel id, re-covered by the covering
+  /// normalization — an unnamed picture two cuts shared. It is born with a
+  /// picture of its own now and shares one by NAME (F-98, 유저 2026-09-12:
+  /// 「애니메이션 레이어랑 똑같이 이름이 같아야만 링크되도록」).
   final bool linksIntoLinkedCut;
 
   /// Whether a cut may hold at most ONE row of this kind (R9 #7).
@@ -663,10 +680,12 @@ enum LayerKind {
   /// to the joined cut yourself.
   bool get joinsLinkedCutConvert => linksIntoLinkedCut && !filtersBelow;
 
-  /// Whether this kind's EFFECT CHAIN mirrors across a 겸용 link group.
+  /// Whether this kind's effect VALUES mirror across a 겸용 link group too.
+  /// The chain's SHAPE — which effects, in what order, each on or off —
+  /// mirrors for every kind (`CutCommandCoordinator.layerEffectsCommands`).
   ///
-  /// For every drawing row the answer is NO: the chain is per-use 연출, the
-  /// same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
+  /// For every drawing row the answer is NO: the numbers are per-use 연출,
+  /// the same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
   /// inverts it, because its chain is not decoration ON a picture — it IS the
   /// row's entire content. A shared adjustment whose chain stayed local would
   /// arrive in the other cuts as an empty shell that filters nothing, so for

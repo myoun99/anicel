@@ -58,11 +58,11 @@ void main() {
     );
     final playback = bindings.definitionFor(EditorActionIds.playbackToggle)!;
     // ↩️F-261 (유저 2026-10-02): 「재생/정지버튼은 S로」 — a key again, and
-    // still not Space.
+    // still not Space — then 「재생을 쉬프트x」 once S walked down the sheet.
     expect(
       activatorsEqual(
         playback.defaultActivators.single,
-        const SingleActivator(LogicalKeyboardKey.keyS),
+        const SingleActivator(LogicalKeyboardKey.keyX, shift: true),
       ),
       isTrue,
     );

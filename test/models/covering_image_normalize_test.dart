@@ -81,8 +81,17 @@ void main() {
     expect(layer.timeline[0]!.endEdge.mode, TimelineRunEdgeMode.hold);
     expect(layer.timeline[0]!.startEdge.isNone, isTrue);
 
-    final noTimeline = normalized(cutWith(imageLayer()));
-    expect(noTimeline.layers.single.timeline[0]!.length, 1);
+    // ↩️A row with a cel in its BANK and no block on its lane used to be
+    // covered from that cel. F-98 (유저 2026-09-12: 「이미지 레이어도 프레임이
+    // 없는 상태는 존재함 … 삭제가능하도록」): the lane is what the row shows,
+    // and the bank is its link group's — it holds another 겸용 cut's picture
+    // while this row shows none.
+    final noBlock = cutWith(imageLayer());
+    expect(
+      identical(normalized(noBlock), noBlock),
+      isTrue,
+      reason: 'a row with no block stays empty, whatever its bank holds',
+    );
 
     expect(
       identical(shaped, normalized(shaped)),

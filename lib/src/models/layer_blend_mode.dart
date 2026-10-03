@@ -7,8 +7,13 @@ import 'separable_blend_mode.dart';
 /// Applied at COMPOSITE time on every route (playback cache, editing
 /// stack, camera renders, export) — never baked into the artwork.
 /// [normal] is plain srcOver and the serialized default (omitted from
-/// JSON, so pre-blend files read back unchanged). Mirrors across link
-/// groups like the eye/opacity ("레인만 각자, 나머지는 하나").
+/// JSON, so pre-blend files read back unchanged). ONE value across a link
+/// group — 유저 2026-10-04 (F-278): 「겸용컷 블렌드모드도 공유하도록 하자 …
+/// 보이기만 독립적으로 하고」 (`UpdateLayerBlendModeCommand`).
+///
+/// ↩️T9 (유저 확정 2026-08-13) had stopped it mirroring, along with the eye
+/// and static opacity — the opacity mirrors again too (the same day's
+/// answer), and the eye is still each use's own.
 enum LayerBlendMode {
   /// GROUP ROWS ONLY — the folder's default, and Photoshop/CSP's ("통과").
   ///

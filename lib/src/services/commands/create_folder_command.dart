@@ -12,9 +12,11 @@ import 'folder_mirror.dart';
 ///
 /// In 겸용 cuts the same folder appears around the members' counterparts in
 /// the SAME command, and the folder rows join ONE link group — so from here
-/// on the folder's eye, static opacity, blend and name mirror through the
-/// ordinary layer machinery, with its FX lanes and twirl staying per-use
-/// exactly like any other layer's. One undo removes them everywhere.
+/// on the folder's name, blend and static opacity mirror through the
+/// ordinary layer machinery, with its eye (since T9, 유저 확정 2026-08-13),
+/// FX lanes and twirl staying per-use exactly like any other layer's. One
+/// undo removes them everywhere. ↩️The blend and the static opacity were
+/// per-use with them until 유저 2026-10-04 (F-278).
 class CreateFolderCommand extends LinkRegistrySnapshotCommand {
   CreateFolderCommand({
     required super.repository,

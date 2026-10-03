@@ -128,7 +128,9 @@ class LayerStack {
       case LayerKind.image:
         // The COVERING kinds (storyboard, image) are born covering their
         // cut — one cell, edge to edge. There is no "X" in their world,
-        // so they never start empty and then have to be filled.
+        // so they never start empty and then have to be filled. (An image
+        // row can be EMPTIED afterwards, F-98 — its birth is unchanged:
+        // 「생성하면 기본적으로 프레임 생성되는건 그대로」.)
         _layerVerbs.addRowAboveActive(
           (cut) => bornRowOfKind(
             kind,

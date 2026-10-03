@@ -136,28 +136,7 @@ class FrameVerbs {
 
   bool get canCreateDrawingAtCurrentFrame {
     final layer = _selection.activeLayer;
-    // ⛔[LayerKind.takesAuthoredCels], not `holdsDrawings`: the direction row
-    // holds cels since R27 #16 and could not be given one (유저: 「프레임이
-    // 없다고 뜨거든」).
-    if (layer == null || !layer.kind.takesAuthoredCels) {
-      return false;
-    }
-    // SYNCED attach rows (UI-R23 #7 v2): the ALWAYS-MIRROR invariant keeps
-    // one own cel per base cel automatically — there is never anything
-    // left to create by hand. FREE attach rows (UI-R21 #3) fall through
-    // to the normal authoring path below.
-    if (isSyncedAttachedLayer(layer)) {
-      return false;
-    }
-    // A REFERENCE layer's picture comes from the library (any kind) —
-    // nothing to author until rasterized. An IMAGE layer holds ONE cel by
-    // definition — once it exists there is no second cel to create (paper
-    // switching is cel NAMES + link banks, never another cel in the same
-    // cut).
-    if (layer.mediaReference != null) {
-      return false;
-    }
-    if (layer.kind.holdsSingleCel && layer.frames.isNotEmpty) {
+    if (layer == null || !rowTakesNewCels(layer)) {
       return false;
     }
 
@@ -589,3 +568,34 @@ class FrameVerbs {
     };
   }
 }
+
+/// Whether a cel can be AUTHORED on [layer] at all — the ROW's half of every
+/// door that makes one: the press at the playhead
+/// ([FrameVerbs.canCreateDrawingAtCurrentFrame], which the auto-frame of a
+/// stroke asks too) and the band's fill
+/// (`CellInstances.createInstancesForSelection`). Which CELL takes it is
+/// each door's own question.
+///
+/// ⛔ONE ANSWER, so a selection cannot make what the press refuses (절대명령
+/// 2: 「선택이 있든 없든 … 같은 코드가 답한다」). The band asked two of these
+/// four on its own and passed a REFERENCE row and a full picture row through
+/// by never asking — it filled a movie's gaps with cels nothing can draw on.
+///
+/// - ⛔[LayerKind.takesAuthoredCels], not `holdsDrawings`: the direction row
+///   holds cels since R27 #16 and could not be given one (유저: 「프레임이
+///   없다고 뜨거든」).
+/// - SYNCED attach rows (UI-R23 #7 v2): the ALWAYS-MIRROR invariant keeps
+///   one own cel per base cel automatically — there is never anything left
+///   to create by hand. FREE attach rows (UI-R21 #3) author normally.
+/// - A REFERENCE layer's picture comes from the library (any kind) — nothing
+///   to author until rasterized.
+/// - An IMAGE layer holds ONE block by definition — once it stands there is
+///   no second to create (paper switching is cel NAMES + link banks, never
+///   another cel in the same cut). ⚠️The ROW's block, not its bank: the bank
+///   is its link group's, and holds another cut's picture while this row
+///   stands empty ([pictureRowStandsEmpty], F-98).
+bool rowTakesNewCels(Layer layer) =>
+    layer.kind.takesAuthoredCels &&
+    !isSyncedAttachedLayer(layer) &&
+    layer.mediaReference == null &&
+    (!layer.kind.holdsSingleCel || pictureRowStandsEmpty(layer));

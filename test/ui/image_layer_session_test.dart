@@ -4,6 +4,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
@@ -182,40 +183,33 @@ void main() {
     );
   });
 
-  test('the image cel is not deletable by the CELL verb — one picture is '
-      'the row\'s definition, so the row is what you delete (D22)', () {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
+  // ↩️「the image cel is not deletable by the CELL verb — one picture is the
+  // row's definition, so the row is what you delete (D22)」 stood here, for
+  // the playhead and for a band. F-98 (유저 2026-09-12 · 10-04: 「이미지
+  // 레이어도 프레임이 없는 상태는 존재함 … 삭제가능하도록」) gave the row its
+  // empty state: the delete, the row standing empty and what makes its
+  // picture again are pinned in
+  // `session/an_image_row_links_by_name_and_can_stand_empty_test.dart`.
+
+  /// A picture row with NOTHING on it (F-98) — the row the band-claim tests
+  /// below sweep: its band holds no block for any verb to take. ↩️They swept
+  /// a row HOLDING its picture while the delete refused that row (D22).
+  LayerId emptiedImageRow(EditorSessionManager s) {
     s.layerStack.addLayerOfKind(LayerKind.image);
-    final imageId = s.activeLayer!.id;
+    final id = s.activeLayer!.id;
     s.selectFrameIndex(0);
-
+    s.cells.deleteCellAtCurrentFrame();
     expect(
-      s.cells.canDeleteCellAtCurrentFrame,
-      isFalse,
-      reason:
-          'the ghost hold keeps the cel referenced, so the delete would '
-          'be rebuilt by the same write — a lit button that does nothing '
-          'and burns an undo slot',
+      s.activeLayer!.timeline,
+      isEmpty,
+      reason: '⛔전제: the picture row stands empty',
     );
+    return id;
+  }
 
-    // Same answer through the SELECTION rung, which is a second door onto
-    // the same verb.
-    s.updateFrameRangeSelectionDrag(
-      layerId: imageId,
-      anchorIndex: 0,
-      headIndex: 3,
-    );
-    expect(
-      s.cells.canDeleteCellForSelection,
-      isFalse,
-      reason: 'an image-only selection offers no cell delete either',
-    );
-  });
-
-  test('a selection the verbs refuse is a NO-OP, never a redirect: an '
-      'image-only band leaves the active drawing row alone (Delete AND '
-      'comma)', () {
+  test('a selection the verbs refuse is a NO-OP, never a redirect: a band '
+      'over a row with nothing on it leaves the active drawing row alone '
+      '(Delete AND comma)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     final celId = s.layers
@@ -225,8 +219,7 @@ void main() {
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
 
-    s.layerStack.addLayerOfKind(LayerKind.image);
-    final imageId = s.activeLayer!.id;
+    final imageId = emptiedImageRow(s);
     // A cell band never moves the active layer, so sweeping the BG row
     // while a drawing row stays active is the ORDINARY case.
     s.selectLayer(celId);
@@ -267,8 +260,7 @@ void main() {
       'too — a track-row cursor behind it means DELETE THE CUT', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
-    s.layerStack.addLayerOfKind(LayerKind.image);
-    final imageId = s.activeLayer!.id;
+    final imageId = emptiedImageRow(s);
     final cutsBefore = s.activeTrack.cuts.length;
 
     // The storyboard cursor stands on the TRACK row (where the panel's
@@ -356,9 +348,11 @@ void main() {
       expect(
         s.clipboard.canCutRunAtCurrentFrame,
         isFalse,
+        // ↩️The reason was the delete gate's — 「the lift is rebuilt by the
+        // same write」. The delete is lit since F-98; the cut still waits.
         reason:
-            'at index $frameIndex: the lift is rebuilt by the same '
-            'write, so the press would only cost a phantom undo entry',
+            'at index $frameIndex: what is cut has to be able to come '
+            'back, and no paste lands on an image row',
       );
       expect(
         s.canCopyFrameAtCurrentFrame,
@@ -380,8 +374,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     s.frameVerbs.renameSelectedFrame('KEEP');
 
-    s.layerStack.addLayerOfKind(LayerKind.image);
-    final imageId = s.activeLayer!.id;
+    final imageId = emptiedImageRow(s);
     s.selectLayer(celId);
     s.selectFrameIndex(0);
     s.updateFrameRangeSelectionDrag(
@@ -626,8 +619,8 @@ void main() {
       s.canPasteLinkedFrameAtCurrentFrame,
       isFalse,
       reason:
-          'a second exposure of the one cel is rebuilt by the same '
-          'write — the phantom undo entry the cut standdown exists to stop',
+          'a second exposure has no place on a row that holds one block '
+          '— the write would lay the row back as its one held picture',
     );
   });
 
@@ -640,9 +633,15 @@ void main() {
     expect(s.activeLayer!.attachedToLayerId, isNotNull);
   });
 
-  test('겸용: two image rows with the same layer name LINK their single '
-      'unnamed cels by position (the image-layer exception to the '
-      'unnamed-never-conflicts rule)', () {
+  // ↩️「two image rows with the same layer name LINK their single unnamed
+  // cels by position (the image-layer exception to the
+  // unnamed-never-conflicts rule)」 — §6-z23 ③, 2026-07-30. 유저 2026-09-12
+  // (F-98): 「이미지 레이어는 이름이 없는 상태인데도 겸용컷이랑 링크되는데,
+  // 그게아니라 애니메이션 레이어랑 똑같이 이름이 같아야만 링크되도록. 이름
+  // 안정해지면 별개것임」, and 2026-10-04: 「이름이 없으면 독립적인
+  // 그림이니까 링크 안되는게 맞음」.
+  test('겸용: two image rows\' unnamed cels JOIN the bank as two pictures — '
+      'the one rule every drawing row keeps (unnamed never conflicts)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(s.dispose);
     s.layerStack.addLayerOfKind(LayerKind.image);
@@ -670,12 +669,12 @@ void main() {
     );
     expect(
       resolution.retargetedFrameIds,
-      {targetImage.frames.single.id: originImage.frames.single.id},
-      reason: 'single unnamed image cels match by position',
+      isEmpty,
+      reason: 'no name, no identity to match on',
     );
-    expect(resolution.joiningFrameIds, isEmpty);
+    expect(resolution.joiningFrameIds, [targetImage.frames.single.id]);
 
-    // A DRAWING layer's unnamed cels keep the old rule: join, not link.
+    // The same answer a DRAWING layer's unnamed cels get.
     final originDrawing = Layer(
       id: originImage.id,
       name: 'A',

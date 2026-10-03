@@ -113,9 +113,23 @@ void main() {
       expect(statusOf(cardOf([at('나중에')])), BoardStatus.backlog);
       expect(statusOf(cardOf([at('착수 가능')])), BoardStatus.todo);
       expect(statusOf(cardOf([at('실기 확인')])), BoardStatus.verify);
-      final talk = cardOf([at('대화 중')]);
-      expect(statusOf(talk), BoardStatus.backlog);
-      expect(inConversation(talk), isTrue, reason: '대화 중 is a flag now');
+      // ↩️대화 중 and the words before it are a status again, not 백로그 with a
+      // flag — see `BoardStatus`.
+      expect(statusOf(cardOf([at('대화 중')])), BoardStatus.discussion);
+      expect(statusOf(cardOf([at('상담 대기')])), BoardStatus.discussion);
+    });
+
+    test('🚨a card held for a talk waits on nobody\'s answer', () {
+      // 🧪It was listed under 나에게 온 것 as 「답 기다림」: 백로그 with a flag,
+      // so the same card stood in two places, waiting on no question.
+      final card = cardOf(moved([work], '대화 중'));
+      expect(statusOf(card), BoardStatus.discussion);
+      expect(turnOf(card).user, isFalse);
+      expect(
+        turnOf(cardOf([...moved([work], '대화 중'), memo])).me,
+        isTrue,
+        reason: '⛔what the user says on it still comes back to me',
+      );
     });
 
     test('⛔every word the fold places a card by reads as a status', () {

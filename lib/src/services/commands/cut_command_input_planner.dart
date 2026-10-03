@@ -212,8 +212,8 @@ class CreateLinkedCutCommandInputPlan {
   final Map<LayerId, LayerId> layerIdMap;
   final Map<LayerId, String> newGroupIdBySource;
 
-  /// The fresh panel each row that cannot stand empty is born with in the
-  /// new cut (F-99), keyed by its source row.
+  /// The fresh panel each row born with a frame is born with in the new
+  /// cut (F-99), keyed by its source row.
   final Map<LayerId, FrameId> coveringFrameIdBySource;
 }
 
@@ -253,8 +253,8 @@ _mintLinkIds(
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
 /// row of [sourceCut] (every kind that links — drawing rows, their folders,
 /// the conte row and the camera row), and registry group ids. FrameIds are
-/// NOT mapped — identity is the link — except the fresh panel a row that
-/// cannot stand empty is born with (F-99).
+/// NOT mapped — identity is the link — except the fresh panel a row born
+/// with a frame is born with (F-99).
 CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
   required Project project,
   required Cut sourceCut,
@@ -281,11 +281,25 @@ CreateLinkedCutCommandInputPlan planCreateLinkedCutCommandInput({
 }
 
 /// Whether [layer]'s copy in another cut is born covering that cut with a
-/// panel of its own (F-99): a COVERING row is — the conte row. The image row
-/// covers too, but its ONE cel is the picture it shares, and the write
-/// normalization re-covers the row from it (D22).
+/// panel of its own (F-99): a COVERING row is — the conte row, and the image
+/// row, both born with a frame wherever they are made.
+///
+/// ↩️The image row was left out: its one cel was 「the picture it shares」,
+/// and the write normalization re-covered the copy from it — an UNNAMED
+/// picture linked across 겸용 cuts. 유저 2026-09-12 (F-98): 「이미지 레이어는
+/// 이름이 없는 상태인데도 겸용컷이랑 링크되는데, 그게아니라 애니메이션
+/// 레이어랑 똑같이 이름이 같아야만 링크되도록. 이름 안정해지면 별개것임」,
+/// and 2026-10-04: 「물론 이름이 없으면 독립적인 그림이니까 링크 안되는게
+/// 맞음」. So the copy is born with a frame of its own, by the law F-99
+/// already reuses for the conte row (「생성시 기본적으로 프레임 생성되는데 그
+/// 법 그대로 재사용/통일」), and the two link when they are NAMED alike.
+///
+/// ⛔Not an ATTACH row, whatever kind it took from its base: an attach row is
+/// born EMPTY (`FoldersAndAttachments.addAttachedLayer`) — a synced one
+/// mirrors its base and stores no lane at all. It was asked by kind alone,
+/// which handed the conte row's attach rows a panel nothing shows.
 bool _bornWithAFreshPanel(Layer layer) =>
-    layer.kind.coversWithoutGaps && !layer.kind.holdsSingleCel;
+    layer.kind.coversWithoutGaps && !isAttachedLayer(layer);
 
 class ConvertToLinkedCutCommandInputPlan {
   const ConvertToLinkedCutCommandInputPlan({
@@ -300,8 +314,8 @@ class ConvertToLinkedCutCommandInputPlan {
   /// Planned registry group id per newly-linked source layer.
   final Map<LayerId, String> newGroupIdBySource;
 
-  /// The fresh panel each union copy of a row that cannot stand empty is
-  /// born with (F-99), keyed like [unionLayerIdMap].
+  /// The fresh panel each union copy of a row born with a frame is born
+  /// with (F-99), keyed like [unionLayerIdMap].
   final Map<(CutId, LayerId), FrameId> coveringFrameIdBySource;
 }
 
@@ -472,8 +486,9 @@ class AddLayerCommandInputPlan {
 }
 
 /// Plans a layer CREATION across 겸용 cuts: one fresh layer id per sibling
-/// cut, its anchors resolved to that cut's own rows, plus the link group
-/// they join.
+/// cut, its anchors resolved to that cut's own rows, the fresh panel a row
+/// born with a frame is born with there ([_bornWithAFreshPanel]), plus the
+/// link group they join.
 ///
 /// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use SE
 /// and direction fixtures already exist in every cut
@@ -532,12 +547,16 @@ AddLayerCommandInputPlan planAddLayerCommandInput({
         (base != null && mirroredBase == null)) {
       continue;
     }
+    final mirrorId = next();
     mirrors.add(
       AddLayerMirror(
         cutId: sibling,
-        layerId: next(),
+        layerId: mirrorId,
         folderId: mirroredFolder,
         attachedToLayerId: mirroredBase,
+        coveringFrameId: _bornWithAFreshPanel(layer)
+            ? mintFrameId(mirrorId)
+            : null,
       ),
     );
   }

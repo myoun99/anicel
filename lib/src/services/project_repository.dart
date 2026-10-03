@@ -38,7 +38,7 @@ import '../models/track_transitions.dart'
     show drawnFrameCountOf, transitionHandlesByCut;
 import '../models/transition_geometry.dart' show CutTransitionHandles;
 import '../models/track_id.dart';
-import 'project_lookup.dart' show requireMemoBlockAt;
+import 'project_lookup.dart' show attachedMirrorGroupOf, requireMemoBlockAt;
 import 'project_tree_editor.dart';
 import '../core/inserted_at.dart';
 import '../core/mapped_or_same.dart';
@@ -207,7 +207,8 @@ class ProjectRepository {
   ///    [cutWithReconciledAttachedMirrors]): every synced attach row a
   ///    complete mirror of its base — one own cel + link per base cel —
   ///    no matter how the base gained the cel (create, move, paste,
-  ///    undo/redo replay, file load).
+  ///    undo/redo replay, file load). A LINKED attach row's cel for a base
+  ///    cel is its group's one (F-278), read off the other members.
   /// 4. SPANS ON THEIR BLOCKS (R27, [cutWithSpansOnTheirBlocks]): a block
   ///    carries an instruction exactly when its row's spans ride its blocks
   ///    — a direction row's bare block takes the ＋'s span, any other row's
@@ -254,9 +255,6 @@ class ProjectRepository {
     Project project, {
     required Map<CutId, _Settled> memo,
   }) {
-    final firstInstruction = project.cameraInstructions.defs.isEmpty
-        ? null
-        : project.cameraInstructions.defs.first.id;
     final handlesByCut = transitionHandlesByCut(project);
     final settled = <CutId, _Settled>{};
     final tracks = mappedOrSame(project.tracks, (track) {
@@ -270,7 +268,7 @@ class ProjectRepository {
             ? cut
             : _normalizedCut(
                 cut,
-                firstInstruction: firstInstruction,
+                project: project,
                 handles: handles,
                 // The conte row the last write tiled, if this is still it:
                 // its blocks sit where that write put them, whatever an edit
@@ -312,10 +310,13 @@ class ProjectRepository {
     return null;
   }
 
-  /// The five invariants above, in their stated order, over one cut.
+  /// The five invariants above, in their stated order, over one cut of
+  /// [project] — the project being settled, read for the two things a cut
+  /// cannot say alone: the instruction a bare direction block takes, and a
+  /// linked attach row's group.
   static Cut _normalizedCut(
     Cut cut, {
-    required String? firstInstruction,
+    required Project project,
     required CutTransitionHandles handles,
     required int? previousConteStart,
   }) {
@@ -327,8 +328,15 @@ class ProjectRepository {
           handles: handles,
           previousConteStart: previousConteStart,
         ),
+        // A linked attach row's mirror cels are its GROUP's (F-278): the
+        // other members are read off the project being settled.
+        mirrorGroupOf: (attached) => attachedMirrorGroupOf(
+          project,
+          cutId: cut.id,
+          attached: attached,
+        ),
       ),
-      defaultInstructionId: firstInstruction,
+      defaultInstructionId: project.cameraInstructions.defs.firstOrNull?.id,
     );
     final layers = mappedOrSame(
       shaped.layers,

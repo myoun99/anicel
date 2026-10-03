@@ -38,8 +38,8 @@ bool laneExposesFrame(Map<int, TimelineExposure> lane, FrameId frameId) =>
 /// 1을 삭제한다고 다른게 삭제되지않잖아. 똑같은거니까 법 통일해서 해결」 —
 /// 「링크컷으로 연결되있을때」.
 ///
-/// A linked row's cels live in a bank its link group SHARES ("레인만 각자,
-/// 나머지는 하나" — `UpdateLayerTimelineCommand`), and every member keeps
+/// A linked row's cels live in a bank its link group SHARES ("레인만 각자"
+/// — `UpdateLayerTimelineCommand`), and every member keeps
 /// its own lane. The cel-lifetime decisions used to ask the edited row's
 /// lane alone, so a delete in one 겸용 cut took the cel out of the bank and
 /// the bank's mirror swept every other cut's blocks of it. ONE question

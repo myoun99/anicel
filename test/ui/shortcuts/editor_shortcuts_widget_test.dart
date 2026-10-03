@@ -168,7 +168,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.cutStamp);
 
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
+    // ↩️W until F-261: 「올가미를 z」.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.select);
     expect(shapeOf(), CanvasShapeKind.lasso);
@@ -225,8 +226,8 @@ void main() {
     await tester.pump();
     expect(toolOf(), CanvasTool.brush);
 
-    // W: the select tool, tracing its lasso.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
+    // Z: the select tool, tracing its lasso (W until F-261).
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.pumpAndSettle();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();

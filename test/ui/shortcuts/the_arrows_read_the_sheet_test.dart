@@ -48,6 +48,11 @@ void main() {
     return (bindings: bindings, sheet: sheet);
   }
 
+  // ↩️F-261 (유저 2026-10-02): 「프레임이동은 배치 바꾼다기보단 배치 추가. ws
+  // 위아래, ad 좌우(프레임)이동. 1프레임씩 이동하는거도 동일하게 쉬프트a
+  // 쉬프트d」 — the second set, asked for, beside the arrows. F-241's
+  // 「컨트롤+, 이런건 삭제. 절대 멋대로 넣지말고 넣을땐 보고할것」 is why a
+  // block's keys are pinned here exactly.
   test('the six moves, and their keys as the timeline reads them', () {
     String keysOf(String id) => [
       for (final a in definitionFor(id).defaultActivators)
@@ -57,45 +62,90 @@ void main() {
 
     expect(
       keysOf(EditorActionIds.framePrevious),
-      'Shift+Arrow Left',
+      'Shift+Arrow Left · Shift+A',
       reason: '「이전/다음 프레임은 ,.가 아니라 쉬프트<>만이야. ,.는 삭제」',
     );
-    expect(keysOf(EditorActionIds.frameNext), 'Shift+Arrow Right');
-    expect(keysOf(EditorActionIds.drawingPrevious), 'Arrow Left');
-    expect(keysOf(EditorActionIds.drawingNext), 'Arrow Right');
-    expect(keysOf(EditorActionIds.layerUp), 'Arrow Up');
-    expect(keysOf(EditorActionIds.layerDown), 'Arrow Down');
-    for (final id in moves) {
-      expect(definitionFor(id).readsTheSheet, isTrue, reason: id);
-    }
+    expect(keysOf(EditorActionIds.frameNext), 'Shift+Arrow Right · Shift+D');
+    expect(keysOf(EditorActionIds.drawingPrevious), 'Arrow Left · A');
+    expect(keysOf(EditorActionIds.drawingNext), 'Arrow Right · D');
+    expect(keysOf(EditorActionIds.layerUp), 'Arrow Up · W');
+    expect(keysOf(EditorActionIds.layerDown), 'Arrow Down · S');
+
+    final walks = {
+      for (final id in moves) id: definitionFor(id).sheetMove,
+    };
+    expect(walks, {
+      EditorActionIds.framePrevious: (arrow: SheetArrow.left, fine: true),
+      EditorActionIds.frameNext: (arrow: SheetArrow.right, fine: true),
+      EditorActionIds.drawingPrevious: (arrow: SheetArrow.left, fine: false),
+      EditorActionIds.drawingNext: (arrow: SheetArrow.right, fine: false),
+      EditorActionIds.layerUp: (arrow: SheetArrow.up, fine: false),
+      EditorActionIds.layerDown: (arrow: SheetArrow.down, fine: false),
+    });
+    expect(
+      editorActionDefinitions.where((d) => d.sheetMove != null),
+      hasLength(moves.length),
+      reason: 'no move on the sheet beside the six',
+    );
   });
 
-  test('⛔no Ctrl+arrow and no second key for a block is left — and no '
-      'direction action beside the moves', () {
+  // F-28's 「입구는 달라도 통하는건 하나」: the flip asks the moves' own table
+  // which move walks a way — the extra finger the frame step, as Shift is on
+  // the keys — instead of a switch of its own.
+  test('the table the flip reads: a way and the extra finger name the move, '
+      'and the extra finger on a row is still the row', () {
+    expect(
+      sheetMoveActionId(SheetArrow.right, fine: true),
+      EditorActionIds.frameNext,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.left, fine: true),
+      EditorActionIds.framePrevious,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.right, fine: false),
+      EditorActionIds.drawingNext,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.left, fine: false),
+      EditorActionIds.drawingPrevious,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.up, fine: true),
+      EditorActionIds.layerUp,
+    );
+    expect(
+      sheetMoveActionId(SheetArrow.down, fine: false),
+      EditorActionIds.layerDown,
+    );
+  });
+
+  test('⛔no move on a Ctrl chord — and a direction key, bare or under '
+      'Shift, belongs to the six moves alone', () {
+    final bindings = EditorShortcutBindings();
+    addTearDown(bindings.dispose);
+    final keys = bindings.sheetKeys;
     for (final definition in editorActionDefinitions) {
+      final move = moves.contains(definition.id);
       for (final activator in definition.defaultActivators) {
-        final arrow = SheetArrow.of(activator.trigger) != null;
         expect(
-          arrow && activator.control,
+          move && activator.control,
           isFalse,
           reason: '${definition.id}: 「쉬프트+화살표로 변경」',
         );
+        // Ctrl+S saves and Ctrl+D lets go: a chord is its own key. The
+        // bare key and its Shift are the ones the sheet turns.
+        final turnable =
+            keys.placeOf(activator.trigger) != null &&
+            !activator.control &&
+            !activator.alt &&
+            !activator.meta;
         expect(
-          arrow && !moves.contains(definition.id),
+          turnable && !move,
           isFalse,
-          reason: '${definition.id}: an arrow belongs to the six moves',
+          reason: '${definition.id}: a direction key belongs to the moves',
         );
       }
-    }
-    for (final id in [
-      EditorActionIds.drawingPrevious,
-      EditorActionIds.drawingNext,
-    ]) {
-      expect(
-        definitionFor(id).defaultActivators,
-        hasLength(1),
-        reason: '$id: 「컨트롤+, 이런건 삭제」',
-      );
     }
   });
 
@@ -193,6 +243,149 @@ void main() {
       LogicalKeyboardKey.arrowRight,
       reason: 'recorded on the X-sheet, kept for the timeline — so it turns '
           'again there',
+    );
+  });
+
+  // 🚨F-261 (유저 2026-10-02): 「그런 인식못하는 문제같은거 근본 구조적으로 법
+  // 통일해줘」 — the arrows were the only keys the sheet turned. A direction
+  // key is what the BINDINGS say it is now, so WASD, and any four keys a
+  // user records, walk the X-sheet exactly as the arrows do.
+  test('WASD walk the X-sheet as the arrows do — S runs with the frames, '
+      'D and A cross the rows', () {
+    final bindings = rig(xSheet: true).bindings;
+    bool presses(String id, LogicalKeyboardKey key) =>
+        bindings.presses(id, down(key));
+
+    const drawingNext = EditorActionIds.drawingNext;
+    expect(presses(drawingNext, LogicalKeyboardKey.keyS), isTrue);
+    expect(presses(drawingNext, LogicalKeyboardKey.keyD), isFalse);
+    expect(
+      presses(EditorActionIds.drawingPrevious, LogicalKeyboardKey.keyW),
+      isTrue,
+    );
+    expect(presses(EditorActionIds.layerUp, LogicalKeyboardKey.keyD), isTrue);
+    expect(presses(EditorActionIds.layerDown, LogicalKeyboardKey.keyA), isTrue);
+
+    final onTimeline = rig(xSheet: false).bindings;
+    expect(
+      onTimeline.presses(drawingNext, down(LogicalKeyboardKey.keyD)),
+      isTrue,
+      reason: 'the timeline turns nothing',
+    );
+  });
+
+  testWidgets('Shift+the WASD key that runs with the frames is the one-frame '
+      'move on either sheet', (tester) async {
+    for (final xSheet in [false, true]) {
+      final bindings = rig(xSheet: xSheet).bindings;
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      final along = xSheet ? LogicalKeyboardKey.keyS : LogicalKeyboardKey.keyD;
+      final back = xSheet ? LogicalKeyboardKey.keyW : LogicalKeyboardKey.keyA;
+      expect(
+        bindings.presses(EditorActionIds.frameNext, down(along)),
+        isTrue,
+        reason: 'x-sheet: $xSheet',
+      );
+      expect(
+        bindings.presses(EditorActionIds.framePrevious, down(back)),
+        isTrue,
+        reason: 'x-sheet: $xSheet',
+      );
+      expect(
+        bindings.presses(EditorActionIds.drawingNext, down(along)),
+        isFalse,
+        reason: 'Shift makes it a frame, not a block',
+      );
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    }
+  });
+
+  test('a WASD key is SHOWN as it presses on the X-sheet and KEPT as the '
+      'timeline reads it — paired within its own set', () {
+    const w = SingleActivator(LogicalKeyboardKey.keyW);
+    const d = SingleActivator(LogicalKeyboardKey.keyD);
+    const s = SingleActivator(LogicalKeyboardKey.keyS);
+    final onXSheet = rig(xSheet: true).bindings;
+    expect(
+      onXSheet.shownActivatorFor(EditorActionIds.layerUp, w).trigger,
+      LogicalKeyboardKey.keyD,
+      reason: 'W stays in its set — never the arrow →',
+    );
+    expect(
+      onXSheet.shownActivatorFor(EditorActionIds.drawingNext, d).trigger,
+      LogicalKeyboardKey.keyS,
+    );
+    expect(
+      onXSheet.keptActivatorFor(EditorActionIds.drawingNext, s).trigger,
+      LogicalKeyboardKey.keyD,
+    );
+  });
+
+  test('any four keys a user puts on the moves turn as a set — the law is '
+      'the bindings\', not a list of keys', () {
+    final bindings = rig(xSheet: true).bindings;
+    for (final (id, key) in [
+      (EditorActionIds.layerUp, LogicalKeyboardKey.keyI),
+      (EditorActionIds.drawingPrevious, LogicalKeyboardKey.keyJ),
+      (EditorActionIds.layerDown, LogicalKeyboardKey.keyK),
+      (EditorActionIds.drawingNext, LogicalKeyboardKey.keyL),
+    ]) {
+      bindings.setActivators(id, [
+        ...bindings.activatorsFor(id),
+        SingleActivator(key),
+      ]);
+    }
+    bool presses(String id, LogicalKeyboardKey key) =>
+        bindings.presses(id, down(key));
+
+    const drawingNext = EditorActionIds.drawingNext;
+    expect(presses(drawingNext, LogicalKeyboardKey.keyK), isTrue);
+    expect(presses(EditorActionIds.layerUp, LogicalKeyboardKey.keyL), isTrue);
+    expect(presses(drawingNext, LogicalKeyboardKey.keyL), isFalse);
+    expect(
+      bindings
+          .shownActivatorFor(
+            EditorActionIds.layerUp,
+            const SingleActivator(LogicalKeyboardKey.keyI),
+          )
+          .trigger,
+      LogicalKeyboardKey.keyL,
+    );
+  });
+
+  test('a key alone in its place has no partner to turn into — it presses '
+      'its own move on every sheet, and shows and keeps as itself', () {
+    final bindings = rig(xSheet: true).bindings;
+    bindings.setActivators(EditorActionIds.layerUp, [
+      ...bindings.activatorsFor(EditorActionIds.layerUp),
+      const SingleActivator(LogicalKeyboardKey.keyI),
+    ]);
+    const i = SingleActivator(LogicalKeyboardKey.keyI);
+
+    expect(
+      bindings.presses(EditorActionIds.layerUp, down(LogicalKeyboardKey.keyI)),
+      isTrue,
+    );
+    expect(
+      bindings.presses(
+        EditorActionIds.drawingPrevious,
+        down(LogicalKeyboardKey.keyI),
+      ),
+      isFalse,
+      reason: 'up on the X-sheet is the previous block — for a SET',
+    );
+    expect(
+      bindings.shownActivatorFor(EditorActionIds.layerUp, i).trigger,
+      LogicalKeyboardKey.keyI,
+    );
+    expect(
+      bindings.keptActivatorFor(EditorActionIds.layerUp, i).trigger,
+      LogicalKeyboardKey.keyI,
+    );
+    expect(
+      bindings.presses(EditorActionIds.layerUp, down(LogicalKeyboardKey.keyW)),
+      isFalse,
+      reason: '⛔전제: W is still in its set, and turns',
     );
   });
 }

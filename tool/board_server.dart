@@ -1236,6 +1236,7 @@ BoardStatus _liveStatus(BoardCard e, Set<int> openPrs) {
   final status = statusOf(e);
   final idle = status == BoardStatus.triage ||
       status == BoardStatus.backlog ||
+      status == BoardStatus.discussion ||
       status == BoardStatus.todo;
   return idle && e.prs.any(openPrs.contains) ? BoardStatus.doing : status;
 }
@@ -1253,7 +1254,6 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
       for (final q in openQuestions(e))
         if (q.title.isEmpty) q.id else q.title,
     ],
-    'talk': inConversation(e),
     'checks': waiting.length,
     'since': waiting.isEmpty ? '' : waiting.first,
     'user': turn.user,
@@ -2066,13 +2066,13 @@ function remember(k, v){
 var S = {view: remember('view') || 'me', q: '', owner: null, area: null,
          sel: null, more: {}, picked: new Set(), old: null};
 
-var STATUS = {triage:'분류 대기', backlog:'백로그', todo:'할 일',
-  doing:'진행 중', verify:'검증', known:'알려진 문제', done:'완료',
+var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 중',
+  todo:'할 일', doing:'진행 중', verify:'검증', known:'알려진 문제', done:'완료',
   canceled:'취소'};
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
 var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
-  ['backlog','백로그'], ['triage','분류 대기'], ['known','알려진 문제'],
-  ['done','완료'], ['system','시스템']];
+  ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
+  ['known','알려진 문제'], ['done','완료'], ['system','시스템']];
 var PAGE = 60;
 
 function esc(s){
@@ -2148,14 +2148,12 @@ function groupsFor(view){
     if (S.old && S.old.length) g.push({t: '지난 카드', rows: S.old});
     return g;
   }
+  // What the user can press: a question to answer, a check to tick. ↩️A 답
+  // 기다림 group stood here and listed 대화 중 cards — see `BoardStatus`.
   if (view === 'me') {
     var decide = pool.filter(function(c){ return live(c) && c.q.length; }).sort(oldest('updated'));
-    var talk = pool.filter(function(c){ return live(c) && !c.q.length && c.talk && c.user; }).sort(oldest('updated'));
     var checks = pool.filter(function(c){ return live(c) && !c.q.length && c.checks > 0; }).sort(oldest('since'));
-    var out = [
-      {t:'결정 필요', rows: decide, skip: ['decide']},
-      {t:'답 기다림', note:'대화 — 사용자 차례', rows: talk, skip: ['talk']},
-    ];
+    var out = [{t:'결정 필요', rows: decide, skip: ['decide']}];
     verifyGroups(checks).forEach(function(x){
       x.t = '검증 · ' + x.t; x.pick = true; x.skip = ['check']; out.push(x);
     });
@@ -2169,7 +2167,7 @@ function groupsFor(view){
       return g;
     });
   }
-  if (view === 'todo' || view === 'backlog') {
+  if (view === 'todo' || view === 'discussion' || view === 'backlog') {
     var rows = pool.filter(function(c){ return c.status === view; });
     var stale = view === 'backlog' ? rows.filter(function(c){ return age(c.updated) > 30; }) : [];
     var fresh = rows.filter(function(c){ return stale.indexOf(c) < 0; });
@@ -2214,7 +2212,6 @@ function countFor(view){
 function flagsOf(c){
   var f = [];
   if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
-  if (c.talk) f.push(['talk', c.user ? '답 기다림' : '대화 중', c.user ? 'run' : '']);
   if (c.checks && c.status !== 'verify') f.push(['check', '실기 대기', 'run']);
   if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
   if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
@@ -2703,6 +2700,7 @@ font-variant-numeric:tabular-nums}
 .s-me{background:var(--run)}.s-triage{background:var(--ink3)}
 .s-backlog{background:transparent;box-shadow:inset 0 0 0 1.5px var(--ink3)}
 .s-todo{background:transparent;box-shadow:inset 0 0 0 1.5px var(--live)}
+.s-discussion{background:transparent;box-shadow:inset 0 0 0 1.5px var(--run)}
 .s-doing{background:var(--live)}.s-verify{background:var(--run)}
 .s-known{background:var(--bad)}.s-done{background:var(--ok)}
 .s-canceled{background:var(--line2)}.s-system{background:var(--line2)}

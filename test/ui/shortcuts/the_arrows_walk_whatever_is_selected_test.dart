@@ -73,9 +73,10 @@ void main() {
     session.frameVerbs.selectPreviousFrame();
     await tester.pumpAndSettle();
 
-    // W: the select tool mounts the selection layer. Single frames from
-    // here: the ants march for as long as the region exists.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyW);
+    // Z: the select tool mounts the selection layer (W until F-261, when W
+    // took to walking up the sheet). Single frames from here: the ants
+    // march for as long as the region exists.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
     await tester.pumpAndSettle();
     final canvas = session.activeCutOrNull!.canvasSize;
     commands.applyRegion(

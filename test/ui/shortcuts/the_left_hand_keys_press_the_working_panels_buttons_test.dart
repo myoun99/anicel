@@ -26,7 +26,8 @@ import '../../helpers/home_page_probes.dart';
 /// 🗣️F-261 (유저 2026-10-02): 「자주쓰는 버튼 그냥 직관적이지 않더라도
 /// 왼쪽으로 몰아넣을까 … 재생/정지버튼은 S로두고 처음으로버튼 A, 그리고
 /// 편집버튼은 D로두자」 — and 「콘티패널에 포커스있으면 플립이 콘티패널기준
-/// 작동 … 그거랑 동일하게 법 통일해서 재생」.
+/// 작동 … 그거랑 동일하게 법 통일해서 재생」. ↩️Same day, once WASD walked
+/// the sheet: 「올가미를 z, 편집을 x, 처음으로를 쉬프트z, 재생을 쉬프트x」.
 ///
 /// Each key is a BUTTON on the panel being worked in, so each test presses
 /// that panel's button first and asks the key to do the same — on both
@@ -87,14 +88,24 @@ Future<void> _standInCutTwo(
   await tester.pumpAndSettle();
 }
 
-Future<void> _press(WidgetTester tester, LogicalKeyboardKey key) async {
+Future<void> _press(
+  WidgetTester tester,
+  LogicalKeyboardKey key, {
+  bool shift = false,
+}) async {
+  if (shift) {
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+  }
   await tester.sendKeyEvent(key);
+  if (shift) {
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+  }
   await tester.pump();
 }
 
 void main() {
-  testWidgets('S plays what the play button of the panel being worked in '
-      'plays — the timeline its cut, the storyboard the track', (
+  testWidgets('Shift+X plays what the play button of the panel being worked '
+      'in plays — the timeline its cut, the storyboard the track', (
     tester,
   ) async {
     final session = await _pump(tester, _twoCuts());
@@ -115,7 +126,7 @@ void main() {
       session.playbackRig.transports.stopAll();
       await tester.pumpAndSettle();
 
-      await _press(tester, LogicalKeyboardKey.keyS);
+      await _press(tester, LogicalKeyboardKey.keyX, shift: true);
       expect(playback.isPlaying, isTrue, reason: 'S on the $panel');
       expect(playback.scope, scope, reason: 'S plays what its button plays');
       session.playbackRig.transports.stopAll();
@@ -123,9 +134,9 @@ void main() {
     }
   });
 
-  testWidgets('A goes where 「처음으로」 of the panel being worked in goes — '
-      'the timeline to its cut\'s frame 0, the storyboard to the track\'s '
-      'first frame', (tester) async {
+  testWidgets('Shift+Z goes where 「처음으로」 of the panel being worked in '
+      'goes — the timeline to its cut\'s frame 0, the storyboard to the '
+      'track\'s first frame', (tester) async {
     final session = await _pump(tester, _twoCuts());
     for (final (panel, cut) in const [
       (WorkingPanel.timeline, CutId('cut-2')),
@@ -142,14 +153,14 @@ void main() {
       expect(session.currentFrameIndex, 0);
 
       await _standInCutTwo(tester, session);
-      await _press(tester, LogicalKeyboardKey.keyA);
+      await _press(tester, LogicalKeyboardKey.keyZ, shift: true);
       await tester.pumpAndSettle();
       expect(session.activeCutOrNull?.id, cut, reason: 'A on the $panel');
       expect(session.currentFrameIndex, 0);
     }
   });
 
-  testWidgets('D opens the storyboard\'s Edit there — the cut\'s rename — and '
+  testWidgets('X opens the storyboard\'s Edit there — the cut\'s rename — and '
       'not on the timeline, whose Edit never reaches for cuts (R5q1)', (
     tester,
   ) async {
@@ -165,14 +176,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyD);
+    await _press(tester, LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
     await _workIn(tester, WorkingPanel.timeline);
-    await _press(tester, LogicalKeyboardKey.keyD);
+    await _press(tester, LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing);
   });
@@ -180,7 +191,7 @@ void main() {
   // R5q1 (유저 2026-08-25): 「타임라인에서는 타임라인의 것을」 — asked of the
   // DOOR, not only of the gate: with a cut range standing, the timeline's
   // Edit renames the drawing under its playhead, never the cut.
-  testWidgets('D on the timeline with a cut range standing edits the '
+  testWidgets('X on the timeline with a cut range standing edits the '
       'timeline\'s own cel — never the cut (R5q1)', (tester) async {
     final session = await _pump(tester, createDefaultProject());
     await tapToolbarButton(
@@ -194,13 +205,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyD);
+    await _press(tester, LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing);
     expect(find.byType(RenameFrameDialog), findsOneWidget, reason: 'LIVENESS');
   });
 
-  testWidgets('D on an X-sheet\'s SE block opens the dialog its button opens, '
+  testWidgets('X on an X-sheet\'s SE block opens the dialog its button opens, '
       'previewing down the page as the sheet runs', (tester) async {
     final session = await _pump(tester, createDefaultProject());
     session.layerStack.addLayerOfKind(LayerKind.se);
@@ -214,7 +225,7 @@ void main() {
           .previewAxis;
     }
 
-    await _press(tester, LogicalKeyboardKey.keyD);
+    await _press(tester, LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(previewAxis(), Axis.horizontal, reason: 'the timeline runs across');
     await _press(tester, LogicalKeyboardKey.escape);
@@ -233,7 +244,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SeInstanceDialog), findsNothing, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyD);
+    await _press(tester, LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(previewAxis(), Axis.vertical);
   });

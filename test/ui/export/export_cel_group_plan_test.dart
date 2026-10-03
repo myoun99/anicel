@@ -461,6 +461,27 @@ void main() {
     expect(files(built), ['C1_BG.png', 'C2_BG.png']);
   });
 
+  test('⛔the unnamed cel that IS the layer is the one the row SHOWS — a 겸용 '
+      'cut\'s unnamed picture in the same bank is no cel of this cut', () {
+    // 유저 2026-09-12 (F-98): 「이름 안정해지면 별개것임」. The bank is the
+    // link group's: each 겸용 cut's row is born with a picture of its own,
+    // and every member's bank holds all of them.
+    final mine = frame('mine', unnamed: true);
+    final theirs = frame('theirs', unnamed: true);
+    final built = plan([
+      Layer(
+        id: const LayerId('bg'),
+        name: 'BG',
+        kind: LayerKind.image,
+        frames: [theirs, mine],
+        mark: art,
+        timeline: exposed([mine]),
+      ),
+    ], spec: const CelsExportSpec(addArt: true));
+    expect(files(built), ['BG.png']);
+    expect(built.cels.single.baseFrame.id.value, 'mine');
+  });
+
   test('the sheet and the export agree on which drawing is a cel', () {
     // One getter answers both — a blank name is the mark on either side.
     expect(frame('f1', name: '12').celNumber, '12');

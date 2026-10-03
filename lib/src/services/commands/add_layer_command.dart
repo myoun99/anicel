@@ -1,9 +1,11 @@
 import '../../models/cut_id.dart';
+import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
 import '../command.dart';
+import '../editing/default_layer_helpers.dart' show coveringCelFor;
 import '../project_lookup.dart';
 import '../project_repository.dart';
 import '../project_tree_editor.dart';
@@ -24,6 +26,7 @@ class AddLayerMirror {
     required this.layerId,
     this.folderId,
     this.attachedToLayerId,
+    this.coveringFrameId,
   });
 
   final CutId cutId;
@@ -34,6 +37,10 @@ class AddLayerMirror {
 
   /// The sibling's own attach base, when the source rides one.
   final LayerId? attachedToLayerId;
+
+  /// The fresh panel this copy is born covering its cut with, when the row
+  /// is one born with a frame (F-99) — null for a row born empty.
+  final FrameId? coveringFrameId;
 }
 
 /// Adds a layer, and the same layer to every 겸용 (linked) sibling cut in
@@ -46,6 +53,17 @@ class AddLayerMirror {
 /// leaving the siblings blank would give them a row they cannot use.
 /// Everything after creation follows the ordinary rules — lane edits stay
 /// per-use, mirrored properties fan out through [linkMirrorTargets].
+///
+/// ↩️A ROW BORN WITH A FRAME IS BORN WITH ITS OWN IN EVERY CUT — the conte
+/// row and the image row ([AddLayerMirror.coveringFrameId]). The copies
+/// used to start on the source's own cel, an UNNAMED picture the cuts
+/// shared: 유저 2026-09-12 (F-98) 「이미지 레이어는 이름이 없는 상태인데도
+/// 겸용컷이랑 링크되는데, 그게아니라 애니메이션 레이어랑 똑같이 이름이
+/// 같아야만 링크되도록. 이름 안정해지면 별개것임」, and of the conte row
+/// 2026-09-26 「동작은 링크안하고 독립인상태 그대로」. It is the birth 겸용컷
+/// 생성 already gives such a row (F-99: 「생성시 기본적으로 프레임 생성되는데
+/// 그 법 그대로 재사용/통일」): every panel joins the one bank, and each lane
+/// shows its own.
 class AddLayerCommand implements Command {
   AddLayerCommand({
     required this.repository,
@@ -87,10 +105,29 @@ class AddLayerCommand implements Command {
       final source = requireCut(project, cutId);
       final sourceIndex = insertionIndex ?? source.layers.length;
 
+      // Each copy's own panel over ITS cut, and the one bank every member
+      // holds: the source's cels and all of the panels.
+      final panels = {
+        for (final mirror in mirrors)
+          if (mirror.coveringFrameId case final panel?)
+            mirror.layerId: coveringCelFor(
+              frameId: panel,
+              cutDuration: requireCut(project, mirror.cutId).duration,
+            ),
+      };
+      final row = panels.isEmpty
+          ? layer
+          : layer.copyWith(
+              frames: [
+                ...layer.frames,
+                for (final cel in panels.values) cel.frame,
+              ],
+            );
+
       var next = _withLayerInserted(
         project,
         cutId: cutId,
-        layer: layer,
+        layer: row,
         index: sourceIndex,
       );
       for (final mirror in mirrors) {
@@ -98,13 +135,15 @@ class AddLayerCommand implements Command {
         next = _withLayerInserted(
           next,
           cutId: mirror.cutId,
-          layer: layer.copyWith(
+          layer: row.copyWith(
             id: mirror.layerId,
             // Anchors point at the SIBLING's rows; `folderId` takes null
             // through its sentinel, so a source outside any folder puts
             // its copies outside too.
             folderId: mirror.folderId,
             attachedToLayerId: mirror.attachedToLayerId,
+            // Null keeps the source's lane — a row born empty.
+            timeline: panels[mirror.layerId]?.timeline,
           ),
           index: mirroredInsertionIndex(
             project,

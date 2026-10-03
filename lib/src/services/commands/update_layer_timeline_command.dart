@@ -11,8 +11,8 @@ import '../project_repository.dart';
 /// BANK (cel added/removed/renamed), mirrors the bank onto every member
 /// in the same command.
 ///
-/// "레인만 각자, 나머지는 하나": timelines are per-use lanes and never
-/// mirror; the bank is the shared entity, so members simply ADOPT the
+/// "레인만 각자": timelines are per-use lanes and never mirror; the bank is
+/// the shared entity, so members simply ADOPT the
 /// edited layer's frames list wholesale (the invariant says the lists
 /// were identical before the edit — no delta math needed). Exposures of
 /// a member that referenced a now-removed cel are swept: the cel ceased

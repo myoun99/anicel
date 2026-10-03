@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show ValueNotifier;
 
+import '../../models/attached_layer_resolve.dart' show isSyncedAttachedLayer;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/range_snap.dart';
@@ -833,11 +834,44 @@ class RangeSelections {
   /// display starts onto the global axis for track-SE rows (UI-R18 #1),
   /// the track-global one is already stated in commit keys. The two are
   /// mutually exclusive, so at most one answers.
+  ///
+  /// The RESHAPING verbs' form (the comma set, the edge drags): a row whose
+  /// timing is not its own is passed over
+  /// ([RetimeLaw.standsDownFromRetime]).
   Map<LayerId, List<int>>? selectionBlockStartsByLayer() =>
       cutLocalSelectionBlockStartsByLayer() ??
       trackSelectionBlockStartsByLayer();
 
-  Map<LayerId, List<int>>? cutLocalSelectionBlockStartsByLayer() {
+  /// The blocks a DELETE takes across the live selection — and the ones
+  /// 링크 독립 reads its runs off.
+  ///
+  /// ⛔Not [selectionBlockStartsByLayer]: that one passes over every row
+  /// whose TIMING is not its own, the image row among them, and an image
+  /// row's block — pinned where it stands — is still the row's own to
+  /// delete (F-98, 유저 2026-09-12 · 10-04: 「이미지 레이어도 프레임이 없는
+  /// 상태는 존재함 … 삭제가능하도록」). ↩️Both verbs read the one collector,
+  /// so the retime law was answering the delete's question too.
+  ///
+  /// The row a delete passes over is the one holding no blocks of its own —
+  /// the row the same press refuses with no band
+  /// ([CellVerbs.canDeleteCellAtCurrentFrame]): a band or none, one answer.
+  Map<LayerId, List<int>>? selectionBlocksToDeleteByLayer() =>
+      _cutLocalBlockStartsByLayer(passesOver: _holdsNoBlocksOfItsOwn) ??
+      trackSelectionBlockStartsByLayer();
+
+  bool _holdsNoBlocksOfItsOwn(LayerId id) {
+    final layer = _project.rangeLayerById(id);
+    return layer != null && isSyncedAttachedLayer(layer);
+  }
+
+  Map<LayerId, List<int>>? cutLocalSelectionBlockStartsByLayer() =>
+      _cutLocalBlockStartsByLayer(passesOver: _retime.standsDownFromRetime);
+
+  /// The cut-local selection's real block starts per row, in commit keys,
+  /// over the rows [passesOver] does not name.
+  Map<LayerId, List<int>>? _cutLocalBlockStartsByLayer({
+    required bool Function(LayerId id) passesOver,
+  }) {
     final selection = _selection.frameRangeSelection.value;
     if (selection == null) {
       return null;
@@ -847,11 +881,10 @@ class RangeSelections {
       // SYNCED attach rows hold no editable blocks of their own — their
       // mirror blocks are non-ghost now (the synced-block UI), so without
       // this gate a mirror-only selection would light up delete/comma
-      // verbs that then no-op against the stored-empty row.
-      //
-      // and SINGLE-CEL (image) rows with them — see
+      // verbs that then no-op against the stored-empty row. The reshaping
+      // verbs pass over the SINGLE-CEL (image) rows with them — see
       // [EditorSessionManager.standsDownFromRetime].
-      if (_retime.standsDownFromRetime(id)) {
+      if (passesOver(id)) {
         continue;
       }
       final layer = _project.rangeLayerById(id);

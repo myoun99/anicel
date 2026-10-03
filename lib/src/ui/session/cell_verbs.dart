@@ -67,7 +67,7 @@ class CellVerbs {
       // A live selection is deletable wherever the playhead stands (UI-R17
       // #2) — its blocks, and the transition spans it holds
       // (transition-row-range-in-the-cut).
-      _rangeSelections.selectionBlockStartsByLayer() != null ||
+      _rangeSelections.selectionBlocksToDeleteByLayer() != null ||
       _selectionTransitionStarts != null;
 
   /// The transition spans THE live selection holds, either axis.
@@ -123,14 +123,13 @@ class CellVerbs {
     // or undo the creation) — cells are display material there. Free
     // attach rows delete cells like normal (UI-R21 #3).
     //
-    // SINGLE-CEL (image) rows: the one picture IS the row (its cel is
-    // born with it and there is no empty state in its world), so the row
-    // is what you delete. Without this the button lit and did nothing —
-    // the covering normalization rebuilt the cel from the same write, so
-    // the press only cost a phantom undo entry (D22).
-    if (layer == null ||
-        isSyncedAttachedLayer(layer) ||
-        layer.kind.holdsSingleCel) {
+    // ↩️SINGLE-CEL (image) rows stood down here too (D22): the covering
+    // normalization rebuilt the cel from the same write, so the press only
+    // cost a phantom undo entry. F-98 (유저 2026-09-12 · 10-04: 「이미지
+    // 레이어도 프레임이 없는 상태는 존재함 … 삭제가능하도록」) gave the row
+    // its empty state, and its block deletes by the law every drawing row's
+    // does.
+    if (layer == null || isSyncedAttachedLayer(layer)) {
       return false;
     }
 
@@ -155,7 +154,7 @@ class CellVerbs {
     // EVERY spanned layer (UI-R17 #2/#8) and to the transition spans it
     // holds, in one composite undo; the leftover selection covers empty
     // cells so it clears with the delete.
-    final selectionTargets = _rangeSelections.selectionBlockStartsByLayer();
+    final selectionTargets = _rangeSelections.selectionBlocksToDeleteByLayer();
     final transitionTargets = _selectionTransitionStarts;
     if (selectionTargets != null || transitionTargets != null) {
       _project.historyManager.runAsOneStep('Delete selected cells', () {
@@ -205,7 +204,7 @@ class CellVerbs {
   /// (유저 2026-09-23: 「다른 편집버튼등의 로직 그대로 … 선택안하면
   /// 현재프레임, 선택하면 해당 선택한 소재가 기준」): a LANE row claims the
   /// press and has no cels (F-87); a band means every block it touches on
-  /// every row it spans ([RangeSelections.selectionBlockStartsByLayer]); a
+  /// every row it spans ([RangeSelections.selectionBlocksToDeleteByLayer]); a
   /// band that touches none claims the press with nothing in it; with no
   /// band, the block under the playhead on the active row.
   ///
@@ -215,7 +214,7 @@ class CellVerbs {
     if (_laneVerbs.laneVerbRange != null) {
       return const [];
     }
-    final byLayer = _rangeSelections.selectionBlockStartsByLayer();
+    final byLayer = _rangeSelections.selectionBlocksToDeleteByLayer();
     if (byLayer == null) {
       if (cellSelectionClaimsSubject) {
         return const [];

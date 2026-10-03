@@ -242,8 +242,27 @@ final Expando<({Layer base, Layer display})> _displayClones = Expando(
 /// v2, auto-mirroring). DETERMINISTIC — reconciliation after an undo/redo
 /// or a re-executed command re-mints the identical id, so links, brush
 /// frame keys and history replay all stay stable.
-FrameId attachedMirrorCelId(LayerId attachedId, FrameId baseFrameId) =>
-    FrameId('attach-mirror-${attachedId.value}-${baseFrameId.value}');
+///
+/// [mintedUnder] is the row the cel is minted under: the attach row itself,
+/// or the first member of its link group ([AttachedMirrorGroup.mintedUnder])
+/// — so two cuts that come to mirror one base cel in the same write name
+/// the same cel.
+FrameId attachedMirrorCelId(LayerId mintedUnder, FrameId baseFrameId) =>
+    FrameId('attach-mirror-${mintedUnder.value}-${baseFrameId.value}');
+
+/// What a synced attach row's LINK GROUP says about its mirror cels: the
+/// row new ones are minted under, and the group's other rows, whose links
+/// a row lacking one takes.
+///
+/// 🚨F-278 (유저 2026-10-04): 「이미지레이어의 싱크어태치레이어의 그림이
+/// 링크컷끼리 공유안됨. 같은 프레임이름인데도 … 이름이 서로 같은 블록인데도
+/// 링크안됨」. A linked row's pictures are ONE bank its group shares, and a
+/// mirror cel is the attach row's picture OF a base cel — but each row
+/// minted its own (`attach-mirror-<this row>-…`), so two 겸용 cuts showing
+/// the same base cel drew on two different attach cels. 🧪Measured on both
+/// an animation and an image base: an attach row added to linked cuts, and
+/// two cuts converted, each came out with a mirror per cut.
+typedef AttachedMirrorGroup = ({LayerId mintedUnder, List<Layer> others});
 
 /// [cut] with every SYNCED attach row's mirror COMPLETED (UI-R23 #7 v2,
 /// the always-mirror invariant): one own cel + cell link per base cel, so
@@ -251,23 +270,34 @@ FrameId attachedMirrorCelId(LayerId attachedId, FrameId baseFrameId) =>
 /// the base gained the cel (create, cross-row move, paste, redo, load).
 ///
 /// Runs on every repository write as a NORMALIZATION — pure adds only:
-/// missing links gain a fresh empty cel; links whose cel object is missing
-/// (while their base cel lives) get the cel re-materialized under the SAME
-/// id; orphan links (base cel deleted) stay untouched by design
-/// (audio-clip semantics — the cel comes back with the base cel).
-/// Identity-preserving: an already-complete cut returns the SAME instance
-/// (no-op writes stay no-ops for dirty tracking).
-Cut cutWithReconciledAttachedMirrors(Cut cut) {
+/// missing links gain the cel the row's link group already mirrors that
+/// base cel with ([mirrorGroupOf]), or a fresh empty one; links whose cel
+/// object is missing (while their base cel lives) get the cel
+/// re-materialized under the SAME id; orphan links (base cel deleted) stay
+/// untouched by design (audio-clip semantics — the cel comes back with the
+/// base cel). Identity-preserving: an already-complete cut returns the SAME
+/// instance (no-op writes stay no-ops for dirty tracking).
+///
+/// [mirrorGroupOf] answers null for a row no other row is linked to. It is
+/// asked only of a row that lacks a link.
+Cut cutWithReconciledAttachedMirrors(
+  Cut cut, {
+  AttachedMirrorGroup? Function(Layer attached)? mirrorGroupOf,
+}) {
   final layers = mappedOrSame(
     cut.layers,
-    (layer) => _reconciledMirrorRow(layer, cut.layers),
+    (layer) => _reconciledMirrorRow(layer, cut.layers, mirrorGroupOf),
   );
   return identical(layers, cut.layers) ? cut : cut.copyWith(layers: layers);
 }
 
 /// [layer] with its mirror completed against its base in [layers] when it
 /// is a synced attach row with a living base — else [layer] itself.
-Layer _reconciledMirrorRow(Layer layer, List<Layer> layers) {
+Layer _reconciledMirrorRow(
+  Layer layer,
+  List<Layer> layers,
+  AttachedMirrorGroup? Function(Layer attached)? mirrorGroupOf,
+) {
   if (!isSyncedAttachedLayer(layer)) {
     return layer;
   }
@@ -278,6 +308,9 @@ Layer _reconciledMirrorRow(Layer layer, List<Layer> layers) {
   final ownFrameIds = {for (final frame in layer.frames) frame.id};
   List<Frame>? addedFrames;
   Map<FrameId, FrameId>? addedLinks;
+  // Asked once, and only when a link is missing.
+  AttachedMirrorGroup? group;
+  var groupAsked = false;
   for (final entry in base.timeline.entries) {
     final baseFrameId = entry.value.frameId;
     if (!entry.value.isDrawing || entry.value.ghost || baseFrameId == null) {
@@ -295,9 +328,19 @@ Layer _reconciledMirrorRow(Layer layer, List<Layer> layers) {
       }
       continue;
     }
-    final celId = attachedMirrorCelId(layer.id, baseFrameId);
-    (addedFrames ??= []).add(Frame(id: celId, duration: 1, strokes: const []));
-    ownFrameIds.add(celId);
+    if (!groupAsked) {
+      group = mirrorGroupOf?.call(layer);
+      groupAsked = true;
+    }
+    final shared = _mirrorCelOfGroup(group, baseFrameId);
+    final celId =
+        shared?.id ??
+        attachedMirrorCelId(group?.mintedUnder ?? layer.id, baseFrameId);
+    if (ownFrameIds.add(celId)) {
+      (addedFrames ??= []).add(
+        shared ?? Frame(id: celId, duration: 1, strokes: const []),
+      );
+    }
     (addedLinks ??= {})[baseFrameId] = celId;
   }
   if (addedFrames == null && addedLinks == null) {
@@ -309,6 +352,21 @@ Layer _reconciledMirrorRow(Layer layer, List<Layer> layers) {
         ? null
         : {...layer.baseFrameLinks, ...addedLinks},
   );
+}
+
+/// The cel [group]'s other rows already mirror [baseFrameId] with — the
+/// first of them, in the group's order — or null when none does. A link
+/// whose cel object is missing comes back under the same id, as a row's own
+/// does.
+Frame? _mirrorCelOfGroup(AttachedMirrorGroup? group, FrameId baseFrameId) {
+  for (final other in group?.others ?? const <Layer>[]) {
+    final linked = other.baseFrameLinks[baseFrameId];
+    if (linked != null) {
+      return other.frameById(linked) ??
+          Frame(id: linked, duration: 1, strokes: const []);
+    }
+  }
+  return null;
 }
 
 /// The index of [baseId]'s attach group's FIRST row — the below-placement

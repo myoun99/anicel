@@ -116,7 +116,10 @@ class FrameClipboard implements BringsMedia {
         // project the copy pastes independent only.
         !identical(copiedFrame.from, this) ||
         layer.id != copiedFrame.layerId ||
-        !rowHoldsLinks(layer)) {
+        !rowHoldsLinks(layer) ||
+        // An IMAGE row holds ONE block: a second exposure has no place on
+        // it ([canPasteIndependentFrameAtCurrentFrame]'s stand-down).
+        layer.kind.holdsSingleCel) {
       return false;
     }
 
@@ -255,14 +258,18 @@ class FrameClipboard implements BringsMedia {
   /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
   ///
   /// ★It is literally copy followed by the lift half of `spliceTimeline`,
-  /// which is why it needs no rules of its own — with ONE exception: the
-  /// lift has to survive the write. On a SINGLE-CEL (image) row it does
-  /// not. The covering normalization rebuilds the picture's block from
-  /// the same write, so the press changes nothing on screen and costs a
-  /// phantom undo entry — the next Ctrl+Z then eats the user's real
-  /// previous edit. Same standdown, same reason, as the delete gate
-  /// (D22). COPY stays lit: it takes the cel to the clipboard without
-  /// claiming to remove it, which is honest here.
+  /// which is why it needs no rules of its own — with ONE exception: what
+  /// is cut has to be able to come BACK (the paste's T3 note). On a
+  /// SINGLE-CEL (image) row it cannot: both pastes stand down there, so the
+  /// picture would leave for a clipboard no image row takes it from. COPY
+  /// stays lit: it takes the cel to the clipboard without claiming to
+  /// remove it, which is honest here.
+  ///
+  /// ↩️The reason used to be the delete gate's (D22): the covering
+  /// normalization rebuilt the block from the same write, so the press cost
+  /// a phantom undo entry. F-98 gave the image row its empty state and the
+  /// DELETE is lit now; the cut waits for a paste that can land on an image
+  /// row.
   bool get canCutRunAtCurrentFrame {
     // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
     // other rows it lifts a block the user never swept — and being the
@@ -539,10 +546,13 @@ class FrameClipboard implements BringsMedia {
   /// Empty when no band covers the anchor, which is what keeps the
   /// single-row paste on the same code path instead of beside it.
   ///
-  /// ⚠️The kind filter is the delete collector's, for its reason: a SYNCED
-  /// attach row has no timing of its own and a SINGLE-CEL row's block is
-  /// pinned by the covering normalization, so pasting into either writes
-  /// something the next normalize takes straight back out.
+  /// ⚠️The kind filter is the paste gate's own: a SYNCED attach row has no
+  /// timing of its own, and a SINGLE-CEL row holds one block the covering
+  /// normalization keeps — a paste into either writes something the next
+  /// normalize takes straight back out. ↩️It was called 「the delete
+  /// collector's」 while that collector passed image rows over; the delete
+  /// takes an image row's block now (F-98), and a paste still has no second
+  /// place on one.
   List<Layer> _pasteTargetRowsBesides(Layer anchor) {
     final selection = _selection.frameRangeSelection.value;
     if (selection == null || !selection.coversLayer(anchor.id)) {
@@ -942,16 +952,17 @@ typedef UnlinkRun = ({Layer layer, int index, int count});
 /// • SYNCED attach rows own no timeline — linked reuse happens through the
 ///   BASE's links (link the base cel instead). Free attach rows author
 ///   normally (UI-R21 #3).
-/// • An IMAGE row holds ONE cel by definition, so a second exposure of it is
-///   a write the covering normalization rebuilds from the same write (D22) —
-///   nothing changes and the press costs a phantom undo entry. Its two
-///   neighbours on the pill already refused (독립 붙여넣기 always did,
-///   잘라내기 since that round); the linked paste was the third button still
-///   lit for a row nothing touches.
+/// • ↩️An IMAGE row was turned away here too, for the linked paste's reason
+///   — a second exposure on a row that holds one block (D22). That is the
+///   PASTE's stand-down and it says so there
+///   ([FrameClipboard.canPasteLinkedFrameAtCurrentFrame]); a link itself
+///   lives on an image row like on any drawing row — its picture shared
+///   with a 겸용 cut by name — and 링크 독립 gives it a copy of its own
+///   (유저 2026-10-04: 「이미지레이어도 타임라인 링크독립버튼 가능하도록.
+///   작동하면 애니메이션레이어와 동일하게 이름이 사라짐. 독립적인 개체로
+///   돌아가는것」).
 bool rowHoldsLinks(Layer layer) =>
-    layer.kind.isDrawingCel &&
-    !isSyncedAttachedLayer(layer) &&
-    !layer.kind.holdsSingleCel;
+    layer.kind.isDrawingCel && !isSyncedAttachedLayer(layer);
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
 ///

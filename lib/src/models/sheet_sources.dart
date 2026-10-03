@@ -129,9 +129,11 @@ List<SheetBook> sheetBooksOf(List<Layer> layers) {
 /// name alone when the picture has none (유저 2026-09-25: 「레이어이름이
 /// BOOK인데 프레임이름 없으면 BOOK으로 넣고, BOOK인데 프레임이름1이면
 /// BOOK1이렇게」). An image row holds one picture a cut
-/// ([LayerKind.holdsSingleCel]).
+/// ([LayerKind.holdsSingleCel]) — the one its lane shows
+/// ([authoredBlockOf]); its bank may hold other cuts' as well.
 String sheetBookLabel(Layer layer) {
-  final picture = layer.frames.isEmpty ? null : layer.frames.first;
+  final shown = authoredBlockOf(layer)?.frameId;
+  final picture = shown == null ? null : layer.frameById(shown);
   return '${layer.name}${picture?.celNumber ?? ''}';
 }
 
