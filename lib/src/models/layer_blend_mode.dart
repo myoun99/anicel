@@ -12,7 +12,8 @@ import 'separable_blend_mode.dart';
 /// 보이기만 독립적으로 하고」 (`UpdateLayerBlendModeCommand`).
 ///
 /// ↩️T9 (유저 확정 2026-08-13) had stopped it mirroring, along with the eye
-/// and static opacity — those two are still each use's own.
+/// and static opacity — the opacity mirrors again too (the same day's
+/// answer), and the eye is still each use's own.
 enum LayerBlendMode {
   /// GROUP ROWS ONLY — the folder's default, and Photoshop/CSP's ("통과").
   ///

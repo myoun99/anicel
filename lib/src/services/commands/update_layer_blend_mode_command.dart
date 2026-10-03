@@ -15,8 +15,9 @@ import 'link_mirrored_layer_field_command.dart';
 /// ↩️T9 (유저 확정 2026-08-13) had made the blend each use's own, along with
 /// the eye and the static opacity — 「비지블/정적불투명도는 독립되게
 /// 하고싶음」 named those two, and the blend went with them because the
-/// three shared one mirror helper. The eye and the static opacity are still
-/// each use's own ([UpdateLayerDisplayCommand]).
+/// three shared one mirror helper. The static opacity came back to the
+/// group the same day ([UpdateLayerOpacityCommand]); the eye is still each
+/// use's own ([UpdateLayerDisplayCommand]).
 ///
 /// ⚠️THE WHOLE GROUP, a link-duplicated row of the SAME cut included: the
 /// registry holds one group per shared layer and every mirrored field walks

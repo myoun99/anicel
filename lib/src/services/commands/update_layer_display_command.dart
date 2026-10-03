@@ -31,10 +31,12 @@ import '../project_repository.dart';
 /// reopen that. Propagating here would silently reverse a decision nobody
 /// asked about.
 ///
-/// ↩️THE BLEND LEFT (유저 2026-10-04, F-278: 「겸용컷 블렌드모드도
-/// 공유하도록 하자 … 보이기만 독립적으로 하고」): it is the link group's
-/// again and has its own command, `UpdateLayerBlendModeCommand`. What is
-/// written here is what stayed each use's own.
+/// ↩️THE BLEND AND THE STATIC OPACITY LEFT (유저 2026-10-04, F-278:
+/// 「겸용컷 블렌드모드도 공유하도록 하자 … 불투명도도 공유하도록 … 보이기만
+/// 독립적으로 하고」): they are the link group's again and have their own
+/// commands, `UpdateLayerBlendModeCommand` and `UpdateLayerOpacityCommand`.
+/// What is written here is what stayed each use's own — the eye, the twirl
+/// and an SE row's mix.
 ///
 /// ⛔ONE LAYER. A sweep down the eye column, Solo and the master opacity
 /// bar all change many rows and must undo in ONE press (유저: 「일괄로 버튼
@@ -84,7 +86,22 @@ class UpdateLayerDisplayCommand implements Command {
     _previous ??= _DisplayState.of(
       requireLayerAnywhere(repository.requireProject(), layerId),
     );
-    repository.updateLayer(layerId: layerId, update: apply);
+    repository.updateLayer(
+      layerId: layerId,
+      update: (layer) {
+        final applied = apply(layer);
+        // ⛔What [_DisplayState] does not hold, this command must not write:
+        // its undo would leave the value where the edit put it.
+        assert(
+          applied.opacity == layer.opacity &&
+              applied.blendMode == layer.blendMode,
+          'The blend and the static opacity are the link group\'s (F-278): '
+          'UpdateLayerBlendModeCommand and UpdateLayerOpacityCommand write '
+          'them.',
+        );
+        return applied;
+      },
+    );
   }
 
   @override
@@ -109,13 +126,13 @@ class UpdateLayerDisplayCommand implements Command {
 /// film SOUNDS like, which is the reason mute is here (유저 the same day:
 /// 「소리 … 선택범위 레이어 모두 적용. 언두하나」).
 ///
-/// ⛔The blend is not one of them (F-278): another command writes it, through
-/// the link group, so a snapshot of it here would be a value this command
-/// never set putting itself back over one that command did.
+/// ⛔The blend and the static opacity are not among them (F-278): other
+/// commands write those, through the link group, so a snapshot of either
+/// here would be a value this command never set putting itself back over
+/// one those commands did.
 class _DisplayState {
   const _DisplayState({
     required this.isVisible,
-    required this.opacity,
     required this.muted,
     required this.audioGain,
     required this.audioPan,
@@ -124,7 +141,6 @@ class _DisplayState {
 
   factory _DisplayState.of(Layer layer) => _DisplayState(
     isVisible: layer.isVisible,
-    opacity: layer.opacity,
     muted: layer.muted,
     audioGain: layer.audioGain,
     audioPan: layer.audioPan,
@@ -132,7 +148,6 @@ class _DisplayState {
   );
 
   final bool isVisible;
-  final double opacity;
   final bool muted;
   final double audioGain;
   final double audioPan;
@@ -140,7 +155,6 @@ class _DisplayState {
 
   Layer restoreOnto(Layer layer) => layer.copyWith(
     isVisible: isVisible,
-    opacity: opacity,
     muted: muted,
     audioGain: audioGain,
     audioPan: audioPan,

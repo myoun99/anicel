@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/session/cell_instances.dart';
 import 'package:anicel/src/ui/session/cell_verbs.dart';
 import 'package:anicel/src/ui/session/frame_verbs.dart';
 import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
+import 'package:anicel/src/ui/session/opacity_verbs.dart';
 
 /// 🚨F-278 · F-98 — A LINKED ROW'S PICTURES ARE ONE BANK, AND A PICTURE IS
 /// SHARED BY ITS NAME: on an animation row, on an image row, and on the
@@ -36,8 +37,9 @@ import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 /// 이 카드 작업하면서 이미지레이어도 프레임 없는상태. 프레임 삭제 가능하도록
 /// 하라는 카드있을텐데 같이 작업」 · 「이미지레이어도 타임라인 링크독립버튼
 /// 가능하도록. 작동하면 애니메이션레이어와 동일하게 이름이 사라짐. 독립적인
-/// 개체로 돌아가는것」 · 「겸용컷 블렌드모드도 공유하도록 하자 … 보이기만
-/// 독립적으로 하고」.
+/// 개체로 돌아가는것」 · 「겸용컷 블렌드모드도 공유하도록 하자 … 불투명도도
+/// 공유하도록할까 생각하는데 어떻지? 보이기만 독립적으로 하고」 · 「불투명도
+/// 공유도 같이 작업한거지? 블렌드 공유랑 같이?」.
 ///
 /// 유저 2026-09-12 (F-98): 「이미지 레이어도 프레임이 없는 상태는 존재함.
 /// 생성하면 기본적으로 프레임 생성되는건 그대로지만 삭제가능하도록. 없는
@@ -53,6 +55,7 @@ void main() {
   FrameVerbs framesOf(EditorSessionManager s) => s.frameVerbs;
   CellInstances instancesOf(EditorSessionManager s) => s.cellInstances;
   LayerSwitchVerbs switchesOf(EditorSessionManager s) => s.layerSwitches;
+  OpacityVerbs opacityOf(EditorSessionManager s) => s.opacityVerbs;
 
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -744,7 +747,7 @@ void main() {
     });
   });
 
-  group('the blend is the link group\'s', () {
+  group('the blend and the static opacity are the link group\'s', () {
     /// A cel row in two 겸용 cuts.
     ({
       EditorSessionManager s,
@@ -795,9 +798,67 @@ void main() {
       expect(s.historyManager.undoCount, entries + 1);
     });
 
-    // 「보이기만 독립적으로」 — the eye and the static opacity staying each
-    // use's own, and a row link-duplicated in the SAME cut following its
-    // group's blend, are pinned in `editor_session_manager_link_test.dart`
-    // (T9's own test).
+    test('「불투명도도 공유」: the static opacity set in one cut is every '
+        'cut\'s — and one undo puts back each', () {
+      final (:s, :cut1, :row1, :cut2, :row2) = linked();
+      final entries = s.historyManager.undoCount;
+
+      opacityOf(s).commitLayerOpacity(row2, 0.25);
+
+      expect(rowIn(s, cut2, row2).opacity, 0.25);
+      expect(rowIn(s, cut1, row1).opacity, 0.25);
+      expect(s.historyManager.undoCount, entries + 1, reason: 'ONE step');
+
+      s.undo();
+      expect(rowIn(s, cut2, row2).opacity, 1.0);
+      expect(rowIn(s, cut1, row1).opacity, 1.0);
+    });
+
+    test('the master bar reaches the group too, in ONE undo', () {
+      final (:s, :cut1, :row1, :cut2, :row2) = linked();
+      final entries = s.historyManager.undoCount;
+
+      opacityOf(s).commitLayersOpacity({row2}, 0.5);
+
+      expect(rowIn(s, cut2, row2).opacity, 0.5);
+      expect(rowIn(s, cut1, row1).opacity, 0.5);
+      expect(s.historyManager.undoCount, entries + 1);
+    });
+
+    test('the bar\'s DRAG shows what its release writes: a row '
+        'link-duplicated in this cut follows the preview — the other cut\'s '
+        'row is not on this canvas', () {
+      final (:s, :cut1, :row1, :cut2, :row2) = linked();
+      s.selectLayer(row2);
+      s.layerVerbs.linkDuplicateActiveLayer();
+      final twin = s.repository
+          .requireProject()
+          .linkRegistry
+          .groupOf(cutId: cut2, layerId: row2)!
+          .members
+          .firstWhere(
+            (member) => member.cutId == cut2 && member.layerId != row2,
+          )
+          .layerId;
+
+      opacityOf(s).previewLayersOpacity({row2}, 0.3);
+
+      expect(opacityOf(s).dragPreview.value?.layerIds, {row2, twin});
+      expect(opacityOf(s).dragPreview.value?.opacity, 0.3);
+      expect(
+        rowIn(s, cut2, twin).opacity,
+        1.0,
+        reason: 'a preview writes nothing',
+      );
+
+      opacityOf(s).commitLayerOpacity(row2, 0.3);
+      expect(rowIn(s, cut2, twin).opacity, 0.3);
+      expect(rowIn(s, cut1, row1).opacity, 0.3);
+    });
+
+    // 「보이기만 독립적으로」 — the eye staying each use's own, and a row
+    // link-duplicated in the SAME cut following its group's blend and
+    // opacity, are pinned in `editor_session_manager_link_test.dart` (T9's
+    // own test).
   });
 }

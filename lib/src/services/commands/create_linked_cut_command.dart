@@ -35,10 +35,11 @@ import 'transitions_ride_the_cuts.dart';
 /// - Attach structure and folder membership mirror onto planned ids.
 /// - The registry gains one pair per linked row (extending existing
 ///   groups, so a second 겸용 joins the same bank) — folder rows included,
-///   which is what makes a folder's name and blend mirror through the
-///   ordinary layer path with no folder mirror table. Its eye and static
-///   opacity are each use's own, like every row's since T9 (유저 확정
-///   2026-08-13) — ↩️the blend was too, until 유저 2026-10-04 (F-278).
+///   which is what makes a folder's name, blend and static opacity mirror
+///   through the ordinary layer path with no folder mirror table. Its eye
+///   is each use's own, like every row's since T9 (유저 확정 2026-08-13) —
+///   ↩️the blend and the static opacity were too, until 유저 2026-10-04
+///   (F-278).
 ///
 /// ↩️F-97 · F-99 (유저 2026-09-12) — the new cut is a NEW CUT first:
 /// - It is as long as a new cut, not as its source: 「겸용컷 만든다고 해서
