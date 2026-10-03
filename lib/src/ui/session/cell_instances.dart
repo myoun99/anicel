@@ -1,4 +1,3 @@
-import '../../models/attached_layer_resolve.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -166,12 +165,12 @@ class CellInstances {
   }
 
   /// The blank cels [selection] authors on [layer]: one per empty gap,
-  /// each with a fresh frame id — none on a row that takes no authored
-  /// cels, a synced mirror, or a covering row.
+  /// each with a fresh frame id — none on a row no cel can be authored on
+  /// ([rowTakesNewCels], the press's own answer) or a covering row.
   List<({int startIndex, int length, FrameId frameId, String? name})>
   _authoredFillsFor(Layer layer, TimelineFrameRangeSelection selection) {
-    if (!layer.kind.takesAuthoredCels || isSyncedAttachedLayer(layer)) {
-      return const []; // Synced mirrors follow their base; nothing to author.
+    if (!rowTakesNewCels(layer)) {
+      return const [];
     }
     // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
     // frame" in its world, so a selection that happens to span it must
@@ -179,7 +178,14 @@ class CellInstances {
     // by luck (the covering normalization leaves no empty gap to fill),
     // and #1 is about to put folders — and so their image members — into
     // range selections on purpose. Say it instead of relying on it.
-    if (layer.kind.coversWithoutGaps) {
+    //
+    // ↩️A PICTURE ROW STANDING EMPTY IS AUTHORED INTO (F-98, 유저 2026-09-12:
+    // 「이미지 레이어도 프레임이 없는 상태는 존재함 … 일반 애니메이션레이어랑
+    // 법 맞추면서 통일/재사용」): its lane is one gap, the band fills it with
+    // one block, and the write lays that block as the row's picture — the
+    // press with no band makes the same one
+    // (`FrameVerbs.canCreateDrawingAtCurrentFrame`).
+    if (layer.kind.coversWithoutGaps && !pictureRowStandsEmpty(layer)) {
       return const [];
     }
     final layerFills =

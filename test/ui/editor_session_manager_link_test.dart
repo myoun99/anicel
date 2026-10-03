@@ -126,8 +126,13 @@ void main() {
   /// 하나 바꾸면 링크된 레이어들 바꿈」. ⛔This REVERSES the old 「레인만 각자,
   /// 나머지는 하나」: a link shares the DRAWING, and how loudly a given use
   /// shows that drawing is that use's own business.
-  test('a link shares the drawing, not the eye: visibility, static opacity '
-      'and blend are per-use', () {
+  ///
+  /// ↩️THE BLEND WENT BACK TO THE GROUP (유저 2026-10-04, F-278: 「겸용컷
+  /// 블렌드모드도 공유하도록 하자. 지금 블렌드모드 겸용컷끼리 같은레이어인데
+  /// 독립적이야 … 보이기만 독립적으로 하고」). It was pinned per-use here with
+  /// the other two, though the quote above never named it.
+  test('a link shares the drawing, not the eye: visibility and static '
+      'opacity are per-use — and the blend is the link\'s', () {
     final origin = session.activeLayer!;
     layerVerbs.linkDuplicateActiveLayer();
     final copy = session.requireActiveCut.layers.firstWhere(
@@ -153,7 +158,13 @@ void main() {
 
     session.layerSwitches.setLayerBlendMode(copy.id, LayerBlendMode.multiply);
     expect(read(copy.id).blendMode, LayerBlendMode.multiply);
-    expect(read(origin.id).blendMode, origin.blendMode);
+    expect(
+      read(origin.id).blendMode,
+      LayerBlendMode.multiply,
+      reason: 'a row link-duplicated in the SAME cut is a member of the '
+          'group like any other — there is no narrower 「the other cut\'s '
+          'row」 to mirror to',
+    );
 
     // ⚠️And the LINK itself survives all three — this is a display split, not
     // an unlink. The two rows are still one drawing.

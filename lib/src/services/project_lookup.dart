@@ -193,6 +193,36 @@ CelBankLanes celBankLanesOf(
   ]);
 }
 
+/// What ([cutId], [attached])'s link group says about its mirror cels
+/// ([AttachedMirrorGroup]) — null when no other row is linked to it.
+///
+/// ⚠️Read by the write normalization, which sees a project between a
+/// command's writes: a member whose row is not there yet (or any more) is
+/// passed over, not required.
+AttachedMirrorGroup? attachedMirrorGroupOf(
+  Project project, {
+  required CutId cutId,
+  required Layer attached,
+}) {
+  final group = project.linkRegistry.groupOf(
+    cutId: cutId,
+    layerId: attached.id,
+  );
+  if (group == null) {
+    return null;
+  }
+  return (
+    mintedUnder: group.canonical.layerId,
+    others: [
+      for (final member in group.members)
+        if (member.cutId != cutId || member.layerId != attached.id)
+          ?cutPositionOf(project, member.cutId)?.cut.layers.byId(
+            member.layerId,
+          ),
+    ],
+  );
+}
+
 /// Returns the layer matching [layerId] anywhere in [project] — cut layers
 /// AND the tracks' track-owned SE rows (the same reach as the repository's
 /// updateLayerAnywhere seam). Layer ids are globally unique, so the flag

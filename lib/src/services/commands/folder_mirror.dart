@@ -7,10 +7,11 @@ import '../../models/project.dart';
 /// because folder existence and membership are shared structure.
 ///
 /// Everything AFTER creation rides the ordinary layer machinery: the folder
-/// row is a layer, so its name mirrors through its own link-registry group
-/// while its eye, static opacity, blend, FX lanes and twirl stay per-use —
-/// the display three since T9 (유저 확정 2026-08-13), which retired 「레인만
-/// 각자, 나머지는 하나」. No folder-specific mirror table survives.
+/// row is a layer, so its name and blend mirror through its own
+/// link-registry group while its eye, static opacity, FX lanes and twirl
+/// stay per-use — the display two since T9 (유저 확정 2026-08-13), which
+/// retired 「레인만 각자, 나머지는 하나」; ↩️the blend was a third until 유저
+/// 2026-10-04 (F-278). No folder-specific mirror table survives.
 
 /// The OTHER cuts where [memberLayerIds]'s new folder must also appear,
 /// with each member resolved to its linked counterpart there. A cut

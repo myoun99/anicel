@@ -272,26 +272,17 @@ LayerMergeResolution resolveLayerMerge({
 
   final retargeted = <FrameId, FrameId>{};
   final joiningIds = <FrameId>[];
-  // The IMAGE-LAYER exception (§6-z23 ③, user-confirmed): an image row
-  // holds ONE cel by definition and its name defaults to none, so the
-  // single unnamed cels match each other by POSITION — the shared BG
-  // links without anyone naming a frame. Guarded to the single-cel case
-  // on both sides so ambiguity cannot arise; drawing layers keep the
-  // unnamed-never-conflicts rule below (unnamed cels can be many).
-  final imageSingleCelPair =
-      origin.kind.holdsSingleCel &&
-      target.kind.holdsSingleCel &&
-      origin.frames.length == 1 &&
-      target.frames.length == 1 &&
-      origin.frames.single.name == null &&
-      target.frames.single.name == null;
+  // ↩️THE IMAGE-LAYER EXCEPTION IS GONE (§6-z23 ③, user-confirmed
+  // 2026-07-30): two image rows' single unnamed cels matched each other by
+  // POSITION — 「the shared BG links without anyone naming a frame」. 유저
+  // 2026-09-12 (F-98): 「이미지 레이어는 이름이 없는 상태인데도 겸용컷이랑
+  // 링크되는데, 그게아니라 애니메이션 레이어랑 똑같이 이름이 같아야만
+  // 링크되도록. 이름 안정해지면 별개것임」 · 2026-10-04: 「물론 이름이 없으면
+  // 독립적인 그림이니까 링크 안되는게 맞음」. One rule for every drawing
+  // row: the name is the picture's identity, and no name is no identity.
   for (final frame in target.frames) {
     if (originIds.contains(frame.id)) {
       continue; // Already the same physical cel.
-    }
-    if (imageSingleCelPair) {
-      retargeted[frame.id] = origin.frames.single.id;
-      continue;
     }
     final originId = originByName[frame.name];
     // UNNAMED frames never conflict (no identity to match on) — they

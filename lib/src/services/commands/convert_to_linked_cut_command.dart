@@ -163,10 +163,10 @@ class ConvertToLinkedCutCommand implements Command {
     //    (empty timeline — the bank is shared, the rhythm is fresh).
     //
     // ↩️F-99 (유저 2026-09-12): 「콘티레이어 생성시 기본적으로 프레임
-    // 생성되는데 그 법 그대로 재사용/통일」 — a row that cannot stand empty,
-    // the conte row, is born covering the cut it lands in with a fresh panel
-    // instead, and the panel joins the bank of the row it came from
-    // (`_unionCopyOf`).
+    // 생성되는데 그 법 그대로 재사용/통일」 — a row BORN WITH A FRAME, the
+    // conte row and (F-98) the image row, is born covering the cut it lands
+    // in with a fresh panel instead, and the panel joins the bank of the row
+    // it came from (`_unionCopyOf`).
     for (final originLayerId in plan.originOnlyLayerIds) {
       final index = originLayers.indexWhere(
         (layer) => layer.id == originLayerId,
@@ -299,9 +299,9 @@ class ConvertToLinkedCutCommand implements Command {
   }
 
   /// [source]'s union copy with [copyId] — an EMPTY timeline, the bank
-  /// shared — and [source] itself. A row that cannot stand empty is born
-  /// over its new cut's [cutDuration] frames with [panel] instead, and the
-  /// panel joins [source]'s bank too (F-99).
+  /// shared — and [source] itself. A row born with a frame is born over its
+  /// new cut's [cutDuration] frames with [panel] instead, and the panel joins
+  /// [source]'s bank too (F-99).
   ({Layer source, Layer copy}) _unionCopyOf(
     Layer source, {
     required LayerId copyId,

@@ -10,6 +10,7 @@ import '../models/layer_kind.dart';
 import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
+import '../services/commands/update_layer_blend_mode_command.dart';
 import '../services/commands/update_layer_display_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
@@ -178,9 +179,9 @@ class LayerController {
     );
   }
 
-  /// 🚨T9 (유저 2026-08-13) — THE EYE IS PER-USE. So are static opacity and
-  /// blend, and ⛔this REVERSES 「레인만 각자, 나머지는 하나」, which used to be
-  /// quoted right here: 「링크레이어 … **비지블/정적불투명도는 독립되게
+  /// 🚨T9 (유저 2026-08-13) — THE EYE IS PER-USE. So is static opacity, and
+  /// ⛔this REVERSES 「레인만 각자, 나머지는 하나」, which used to be quoted
+  /// right here: 「링크레이어 … **비지블/정적불투명도는 독립되게
   /// 하고싶음.** 지금 하나 바꾸면 링크된 레이어들 바꿈. **겸용컷에서도 같은
   /// 로직 쓰지? 똑같이 적용되도록**」.
   ///
@@ -194,6 +195,10 @@ class LayerController {
   /// edits — and the mirror helper died with it, since these three were its
   /// only callers ([[duplication-program]]: the last step is removing the
   /// predecessor).
+  ///
+  /// ↩️THE BLEND WENT BACK TO THE GROUP (유저 2026-10-04, F-278): it was the
+  /// third of 「these three」 and the quote above never named it —
+  /// [setLayerBlendMode].
   /// Sets visibility on MANY layers as ONE undo step.
   ///
   /// 🚨THE REPORT THAT STARTED THIS: 유저 「일괄로 버튼 조작하고 언두하면
@@ -243,17 +248,29 @@ class LayerController {
             layer.muted == muted ? layer : layer.copyWith(muted: muted),
       );
 
-  /// Sets the composite blend on MANY layers as ONE undo step.
+  /// Sets the composite blend on MANY layers as ONE undo step — each one's
+  /// link group with it ([setLayerBlendMode]).
   void setLayersBlendMode({
     required List<LayerId> layerIds,
     required LayerBlendMode blendMode,
-  }) => _executeDisplayBatch(
-    layerIds: layerIds,
-    debugLabel: 'Set layer blend mode',
-    apply: (layer) => layer.blendMode == blendMode
-        ? layer
-        : layer.copyWith(blendMode: blendMode),
-  );
+  }) {
+    final cutId = _cutId;
+    if (cutId == null) {
+      return; // Gap state: no rows ([layers] is empty there).
+    }
+    _historyManager.executeAsOneStep(
+      'Set layer blend mode (${layerIds.length} layers)',
+      [
+        for (final layerId in layerIds)
+          UpdateLayerBlendModeCommand(
+            repository: _repository,
+            cutId: cutId,
+            layerId: layerId,
+            blendMode: blendMode,
+          ),
+      ],
+    );
+  }
 
   void _executeDisplayBatch({
     required List<LayerId> layerIds,
@@ -296,7 +313,8 @@ class LayerController {
   /// to swallow their members; the eye, static opacity and blend a folder
   /// carries need no method of their own, because a folder IS a layer and
   /// rides [toggleLayerVisibility] / [setLayerOpacity] /
-  /// [setLayerBlendMode] — all four per-use since T9.
+  /// [setLayerBlendMode] — the twirl, the eye and the opacity per-use since
+  /// T9, the blend its link group's (F-278).
   ///
   /// 🚨UNDOABLE too (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
   /// 어태치든」). ⛔I had argued the twirl was the one to leave out —
@@ -352,20 +370,27 @@ class LayerController {
     );
   }
 
-  /// R26 #30: the layer's composite blend — display state, and PER-USE
-  /// like the eye (T9).
+  /// R26 #30: the layer's composite blend — the LINK GROUP'S, one value
+  /// for every use of the layer.
+  ///
+  /// ↩️It was per-use like the eye since T9. 유저 2026-10-04 (F-278):
+  /// 「겸용컷 블렌드모드도 공유하도록 하자. 지금 블렌드모드 겸용컷끼리
+  /// 같은레이어인데 독립적이야 … 보이기만 독립적으로 하고」 — the mirror is
+  /// [UpdateLayerBlendModeCommand]'s.
   void setLayerBlendMode({
     required LayerId layerId,
     required LayerBlendMode blendMode,
   }) {
+    final cutId = _cutId;
+    if (cutId == null) {
+      return; // Gap state: no rows ([layers] is empty there).
+    }
     _historyManager.execute(
-      UpdateLayerDisplayCommand(
+      UpdateLayerBlendModeCommand(
         repository: _repository,
+        cutId: cutId,
         layerId: layerId,
-        debugLabel: 'Set layer blend mode',
-        apply: (layer) => layer.blendMode == blendMode
-            ? layer
-            : layer.copyWith(blendMode: blendMode),
+        blendMode: blendMode,
       ),
     );
   }

@@ -35,9 +35,10 @@ import 'transitions_ride_the_cuts.dart';
 /// - Attach structure and folder membership mirror onto planned ids.
 /// - The registry gains one pair per linked row (extending existing
 ///   groups, so a second 겸용 joins the same bank) — folder rows included,
-///   which is what makes a folder's name mirror through the ordinary layer
-///   path with no folder mirror table. Its eye, static opacity and blend
-///   are each use's own, like every row's since T9 (유저 확정 2026-08-13).
+///   which is what makes a folder's name and blend mirror through the
+///   ordinary layer path with no folder mirror table. Its eye and static
+///   opacity are each use's own, like every row's since T9 (유저 확정
+///   2026-08-13) — ↩️the blend was too, until 유저 2026-10-04 (F-278).
 ///
 /// ↩️F-97 · F-99 (유저 2026-09-12) — the new cut is a NEW CUT first:
 /// - It is as long as a new cut, not as its source: 「겸용컷 만든다고 해서
@@ -45,10 +46,17 @@ import 'transitions_ride_the_cuts.dart';
 ///   하드코딩하지말고」.
 /// - It takes its room the way every cut landing in front of others does
 ///   ([followerGapsAfterInsert]) — it used to push every cut behind it.
-/// - A row that cannot stand empty — the conte row — is born covering the
-///   cut with a fresh panel, the way a new conte row is: 「콘티레이어
+/// - A row BORN WITH A FRAME — the conte row — is born covering the cut
+///   with a fresh panel, the way a new conte row is: 「콘티레이어
 ///   생성시 기본적으로 프레임 생성되는데 그 법 그대로 재사용/통일」. The panel
 ///   joins the shared bank on every member of the row's group.
+///
+/// ↩️F-98 (유저 2026-09-12) · F-278 (유저 2026-10-04) — the IMAGE row is
+/// born the same way. It used to come across showing its source's picture,
+/// unnamed: 「이미지 레이어는 이름이 없는 상태인데도 겸용컷이랑 링크되는데,
+/// 그게아니라 애니메이션 레이어랑 똑같이 이름이 같아야만 링크되도록. 이름
+/// 안정해지면 별개것임」. The source's pictures are still in the bank the two
+/// rows share; a frame NAMED like one of them is that picture.
 class CreateLinkedCutCommand implements Command {
   CreateLinkedCutCommand({
     required this.repository,
@@ -248,8 +256,8 @@ class CreateLinkedCutCommand implements Command {
   }
 
   /// [layer]'s linked copy in the new cut: the same bank and an EMPTY
-  /// timeline the 겸용 cut exposes anew — or, for a row that cannot stand
-  /// empty, its fresh panel over the whole cut (F-99).
+  /// timeline the 겸용 cut exposes anew — or, for a row born with a frame,
+  /// its fresh panel over the whole cut (F-99).
   Layer _linkedCopyOf(Layer layer, {required int cutDuration}) {
     final copy = layer.copyWith(
       id: _requireCopyId(layer.id),

@@ -6,7 +6,8 @@ import '../project_repository.dart';
 /// command, and one undo step puts each member's own previous value back.
 ///
 /// 🚨ONE walk for every shared field: a layer's through its link mirrors
-/// ([LinkMirroredLayerFieldCommand] — its name, mark and kind) and a cut's
+/// ([LinkMirroredLayerFieldCommand] — its name, mark, kind and blend) and a
+/// cut's
 /// through its 겸용 siblings ([LinkedCutFieldCommand] — its drawing guides
 /// and its colour label). Each family was its own copy of this execute/undo
 /// walk until the audit's clone scan caught them — the layer's three on

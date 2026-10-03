@@ -18,6 +18,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/sheet_sources.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 
 Layer cels(String name, {bool onTimesheet = true}) => Layer(
@@ -106,6 +107,32 @@ void main() {
     ).books;
 
     expect(books, [(boundary: 1, label: 'BOOK')]);
+  });
+
+  test('⛔the tag names the picture the row SHOWS — its bank holds a 겸용 '
+      'cut\'s picture of the row too', () {
+    // F-98 (유저 2026-09-12: 「이름 안정해지면 별개것임」): each 겸용 cut's
+    // image row is born with a picture of its own, and every member's bank
+    // holds all of them.
+    Frame cel(String id, String name) =>
+        Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
+    final books = SheetSources.of(
+      cut: cutOf([
+        cels('A'),
+        Layer(
+          id: const LayerId('book'),
+          name: 'BOOK',
+          kind: LayerKind.image,
+          mark: const LayerMark(process: LayerProcess.art),
+          frames: [cel('theirs', '7'), cel('mine', '2')],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('mine'), length: 1),
+          },
+        ),
+      ]),
+    ).books;
+
+    expect(books, [(boundary: 1, label: 'BOOK2')]);
   });
 
   test('a row whose sheet switch is off marks nothing — the switch an '
