@@ -154,6 +154,10 @@ void main() {
       .widget<Text>(find.byKey(const ValueKey<String>('export-transport-line')))
       .data!;
 
+  String headline(WidgetTester tester) => tester
+      .widget<Text>(find.byKey(const ValueKey<String>('export-plan-headline')))
+      .data!;
+
   Future<void> tapRow(WidgetTester tester, String layerId) async {
     await tester.tap(
       find.byKey(ValueKey<String>('export-cels-bundle-$layerId')),
@@ -179,6 +183,12 @@ void main() {
       );
       expect(picker(tester).label, 'C1-C2');
       expect(picker(tester).enabled, isFalse);
+      expect(
+        headline(tester),
+        startsWith('2 labels · 4 files'),
+        reason: 'a label is a ROW of the list, not a row per cut its cels '
+            'are composited in',
+      );
 
       await tapRow(tester, '$standingOn-a');
       expect(transportLine(tester), 'A1.png · 1 / 2');

@@ -802,7 +802,76 @@ void main() {
         'c2-a',
       ]);
       expect(a2.baseFrame.id.value, 'a2');
+      expect(
+        identical(a2.baseFrame, a2.baseLayer.frameById(const FrameId('a2'))),
+        isTrue,
+        reason: 'the cel is the showing cut\'s own row\'s — not the copy the '
+            'window\'s cut holds of it',
+      );
       expect(celGroupFirstExposure(a2), 2);
+    });
+
+    test('a cel BOTH cuts show is composited in the first of them in track '
+        'order — one picture, whichever sibling is open', () {
+      // The same rows with BG 1 shown by C2 as well, ahead of its BG 2.
+      final both = linked.copyWith(
+        tracks: [
+          linked.tracks.single.copyWith(
+            cuts: [
+              for (final cut in linked.tracks.single.cuts)
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      if (layer.name == 'BG' && cut.id.value == 'c2')
+                        layer.copyWith(
+                          timeline: {
+                            0: const TimelineExposure.drawing(
+                              FrameId('bg1'),
+                              length: 1,
+                            ),
+                            1: const TimelineExposure.drawing(
+                              FrameId('bg2'),
+                              length: 1,
+                            ),
+                          },
+                        )
+                      else
+                        layer,
+                  ],
+                ),
+            ],
+          ),
+        ],
+      );
+
+      for (final standingOn in ['c1', 'c2']) {
+        final built = buildExportCelGroupPlan(
+          project: both,
+          activeCutId: CutId(standingOn),
+          spec: const CelsExportSpec(addArt: true),
+        );
+        expect(
+          stacks(built)['BG1.png'],
+          'c1 / p1',
+          reason: 'standing on $standingOn',
+        );
+      }
+    });
+
+    test('with 용지 적용 off no cel of the group wears a paper — a '
+        'sibling\'s cels included', () {
+      final bare = buildExportCelGroupPlan(
+        project: linked,
+        activeCutId: const CutId('c1'),
+        spec: const CelsExportSpec(addArt: true, applyPaper: false),
+      );
+
+      expect(stacks(bare), {
+        'BG1.png': 'c1 / ',
+        'BG2.png': 'c2 / ',
+        'A1.png': 'c1 / ',
+        'A2.png': 'c2 / ',
+      });
     });
 
     test('the list still shows ONE bundle a row — the cels of both cuts '
@@ -881,6 +950,13 @@ void main() {
 
       expect(stacks(built)['A2.png'], 'c2 / NO PAPER');
       expect(stacks(built)['A1.png'], 'c1 / p1');
+      expect(
+        celGroupFirstExposure(
+          built.cels.singleWhere((task) => task.fileName == 'A2.png'),
+        ),
+        0,
+        reason: 'a cel with no frame of its own is sampled at the cut\'s first',
+      );
     });
   });
 
