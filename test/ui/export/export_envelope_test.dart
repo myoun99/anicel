@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_envelope_render.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -205,6 +206,27 @@ void main() {
         final fullPaper = await pixelAt(full, 8, 8);
         final previewPaper = await pixelAt(preview, 4, 4);
         expect(previewPaper, fullPaper);
+      });
+    });
+
+    testWidgets('a box of another shape than the paper holds the paper '
+        'centred — the one contain, not a paper laid from the box\'s corner '
+        '(F-294)', (tester) async {
+      await tester.runAsync(() async {
+        // A 320×240 paper in a box twice as tall: it lies in the middle
+        // half, rows 120 to 360.
+        final tall = await renderCutEnvelopeImage(
+          face: const TextStyle(),
+          layout: analogOn(320, 240),
+          source: const CutEnvelopeSource(),
+          outputSize: (width: 320, height: 480),
+        );
+        addTearDown(tall.dispose);
+
+        expect((await pixelAt(tall, 160, 60)).$4, 0, reason: 'over it');
+        expect((await pixelAt(tall, 8, 128)).$4, 255, reason: 'the paper');
+        expect((await pixelAt(tall, 8, 352)).$4, 255, reason: 'the paper');
+        expect((await pixelAt(tall, 160, 420)).$4, 0, reason: 'under it');
       });
     });
 
@@ -503,6 +525,22 @@ void main() {
       await tapSetting(tester, 'export-envelope-paper-sheet');
       await tapSetting(tester, 'export-envelopescale-2');
       expect(state.debugSpecs.envelope.sheetScale, 2);
+      // The headline says the paper's width — and so does the module's
+      // summary, which it shows folded.
+      expect(
+        find.textContaining(AppText.strings.exEnvelopePaperSheet(7016)),
+        findsOneWidget,
+      );
+      // The first 「Paper」 is the module's title; the other is a layer chip.
+      await tester.tap(find.text(AppText.strings.exPaperLabel).first);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          '${AppText.strings.exPaperLabel} — '
+          '${AppText.strings.exSheetWidth(7016)}',
+        ),
+        findsOneWidget,
+      );
 
       await tester.runAsync(state.export);
       await tester.pump();
