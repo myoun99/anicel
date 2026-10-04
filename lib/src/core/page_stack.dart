@@ -12,11 +12,21 @@ import 'dart:ui';
 class PageStack {
   PageStack(
     List<Size> pages, {
-    this.gap = defaultGap,
-    this.margin = defaultMargin,
-  }) : _pages = List.unmodifiable(pages),
-       _widest = pages.fold(0.0, (wide, page) => math.max(wide, page.width)),
-       _tops = _topsOf(pages, gap: gap, margin: margin);
+    double gap = defaultGap,
+    double margin = defaultMargin,
+  }) : this._(
+         List.unmodifiable(pages),
+         _topsOf(pages, gap: gap, margin: margin),
+         gap: gap,
+         margin: margin,
+       );
+
+  PageStack._(
+    this._pages,
+    this._tops, {
+    required this.gap,
+    required this.margin,
+  }) : _widest = _pages.fold(0.0, (wide, page) => math.max(wide, page.width));
 
   /// The timesheet's numbers, which the stack was first laid with.
   static const double defaultGap = 32;
@@ -27,6 +37,9 @@ class PageStack {
 
   final List<Size> _pages;
   final double _widest;
+
+  /// Where each page starts — and, after the last, where a page past it
+  /// would.
   final List<double> _tops;
 
   static List<double> _topsOf(
@@ -36,14 +49,31 @@ class PageStack {
   }) {
     // Each page starts on a whole unit — an A4 conte page is 841.89pt tall —
     // so at a whole zoom every page lies on the device grid, as the first.
-    final tops = <double>[];
-    var top = margin;
+    final tops = [margin];
     for (final page in pages) {
-      tops.add(top);
-      top += page.height.ceilToDouble() + gap;
+      tops.add(tops.last + page.height.ceilToDouble() + gap);
     }
     return tops;
   }
+
+  /// This stack [factor] times as large — its pages, the gap, the margin
+  /// and where each page lies: the same stack, read in units [factor] to
+  /// one of its own. A sheet panel shows its book in the paper's pixels by
+  /// it (`SheetCanvasPanel`, F-294).
+  ///
+  /// ⛔Not laid again from the pages' sizes. Each page starts on a whole
+  /// unit of the stack's OWN ([_topsOf]); laid again at the larger size they
+  /// would start on whole units of that one, and page after page the two
+  /// stacks would come apart — the book turning to where no page is
+  /// printed.
+  PageStack scaledBy(double factor) => factor == 1
+      ? this
+      : PageStack._(
+          List.unmodifiable([for (final page in _pages) page * factor]),
+          [for (final top in _tops) top * factor],
+          gap: gap * factor,
+          margin: margin * factor,
+        );
 
   int get length => _pages.length;
 
@@ -82,7 +112,7 @@ class PageStack {
     final beyond = math.max(0, index - last);
     return Rect.fromLTWH(
       margin + (_widest - page.width) / 2,
-      _tops[index - beyond] + beyond * (page.height.ceilToDouble() + gap),
+      _tops[index - beyond] + beyond * (_tops[last + 1] - _tops[last]),
       page.width,
       page.height,
     );

@@ -38,7 +38,7 @@ Iterable<SheetInk> conteInkMarks(
       key: conteInkRowKey(CutId(cell.cutId), inkId),
       placement: SheetInkPlacement(
         window: cell.rowBandRect(metrics),
-        scale: conteInkScale.toDouble(),
+        scale: metrics.paperScale,
       ),
     );
   }

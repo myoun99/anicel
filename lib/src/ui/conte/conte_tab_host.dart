@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../core/identity_memo.dart';
 import '../../core/page_stack.dart';
 import '../../models/app_input_settings.dart';
-import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_ink_keys.dart' show conteInkRowIdOf;
 import '../../models/conte/conte_sheet_layout.dart';
@@ -158,10 +157,12 @@ class _ConteTabHostState extends State<ConteTabHost> {
       0,
       pages.indexWhere((page) => page.kind == ContePageKind.body),
     );
-    final view = _view.value;
-    if (view == null) {
+    final kept = _view.value;
+    if (kept == null) {
       return firstBody;
     }
+    // The view is kept in the paper's pixels; the book is laid in points.
+    final view = sheetUnitsView(kept, _metricsOf(pages).paperScale);
     final top = -view.panY / view.zoom;
     return pageReadAt(
       _stackOf(pages),
@@ -170,6 +171,11 @@ class _ConteTabHostState extends State<ConteTabHost> {
       bottom: top,
     );
   }
+
+  /// The measurements [pages] are laid by — every page shares one — or,
+  /// for a book with no page yet, the ones its pages will have.
+  static ConteSheetMetrics _metricsOf(List<ContePageLayout> pages) =>
+      pages.isEmpty ? const ConteSheetMetrics() : pages.first.metrics;
 
   // The book one page under another (F-201), memoized with the pages it
   // lays.
@@ -432,16 +438,15 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final book = CanvasBook(pages: stack, reading: _reading);
     final pageIndex = book.page;
     final onBrushAllowedChanged = widget.onBrushAllowedChanged;
+    final metrics = _metricsOf(pages);
     return SheetCanvasPanel(
       cacheInvalidationSink: _cacheInvalidationSink,
-      canvasSize: pages.isEmpty
-          // The empty-project stand-in matches the real page's PORTRAIT
-          // A4 so the stage geometry holds when pages appear.
-          ? const CanvasSize(width: 596, height: 842)
-          : CanvasSize(
-              width: stack.size.width.ceil(),
-              height: stack.size.height.ceil(),
-            ),
+      sheetSize: pages.isEmpty
+          // The empty-project stand-in is the real page — PORTRAIT A4 — so
+          // the stage geometry holds when pages appear.
+          ? ui.Size(metrics.pageWidth, metrics.pageHeight)
+          : stack.size,
+      paperScale: metrics.paperScale,
       viewport: null,
       viewportController: _view,
       onViewportChanged: widget.onViewportChanged,

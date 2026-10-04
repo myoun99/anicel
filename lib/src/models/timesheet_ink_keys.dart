@@ -23,13 +23,6 @@ const TrackId timesheetInkTrackId = TrackId('timesheet-ink');
 const LayerId timesheetInkStripLayerId = LayerId('sheet-strip');
 const LayerId timesheetInkPageLayerId = LayerId('sheet-page');
 
-/// The timesheet ink's resolution: its surfaces' pixels per sheet unit (a
-/// frame row is 18 of them).
-///
-/// ONE, the canvas's grade — the conte's reason (`conteInkScale`,
-/// one-paper-brush-width-Q2); it was 4.
-const int timesheetInkScale = 1;
-
 /// The two planes' frame ids are these plus the band or the page — minted
 /// by [timesheetInkStripKey] and [timesheetInkPageKey] and read back by
 /// [timesheetInkKeyOfCut], one spelling.

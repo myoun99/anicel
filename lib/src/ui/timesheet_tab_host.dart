@@ -2,9 +2,9 @@ import 'widgets/empty_state_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/cut.dart';
+import '../models/sheet_paper.dart';
 import '../models/sheet_sources.dart';
 import '../models/timesheet_document.dart';
 import 'brush/brush_canvas_panel.dart'
@@ -386,7 +386,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
           // empties out.
           return SheetCanvasPanel(
             cacheInvalidationSink: _cacheInvalidationSink,
-            canvasSize: const CanvasSize(width: 780, height: 1080),
+            // The stage a sheet will stand on: its paper, bare.
+            sheetSize: SheetPaper.timesheet.extent,
             // The GAP state has no cut, so there is no ink and no tool to
             // run: a press moves the page (F-80), which is what this panel
             // already did.
@@ -413,7 +414,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         final document = _document!;
         final pagedLayout = _pagedLayout!;
         inkController?.syncGeometry(pagedLayout);
-        final documentSize = layout.documentSize;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -469,10 +469,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         );
                   return SheetCanvasPanel(
                     cacheInvalidationSink: _cacheInvalidationSink,
-                    canvasSize: CanvasSize(
-                      width: documentSize.width.ceil(),
-                      height: documentSize.height.ceil(),
-                    ),
+                    sheetSize: layout.documentSize,
+                    paperScale: layout.paperScale,
                     viewport: widget.viewport,
                     viewportController: widget.viewportController,
                     onViewportChanged: widget.onViewportChanged,

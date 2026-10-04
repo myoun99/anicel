@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/sheet_paper_view.dart';
 
 /// 🗣️F-214 (유저 2026-09-28): 「콘티 프리뷰패널, 텍스트 편집하려고 하는게
 /// 85%밑 줌에서는 클릭해도 편집ui가 안열림? 그 이상에서만 클릭시 열리는데
@@ -105,12 +106,17 @@ void main() {
         Size(page.metrics.pageWidth, page.metrics.pageHeight),
     ]);
     final seam = stack.pageRect(2).bottom + stack.gap / 2;
+    // The view is said in the page's points; the host keeps it in the
+    // paper's pixels (F-294).
     final view = ValueNotifier<CanvasViewport?>(
       seedFromRender(
         tester,
-        CanvasViewport(
-          panX: -stack.margin,
-          panY: (450 - seam).roundToDouble(),
+        paperViewShowing(
+          CanvasViewport(
+            panX: -stack.margin,
+            panY: (450 - seam).roundToDouble(),
+          ),
+          pages.first.metrics.paperScale,
         ),
       ),
     );

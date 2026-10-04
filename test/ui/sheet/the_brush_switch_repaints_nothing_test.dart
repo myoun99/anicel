@@ -28,6 +28,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/track.dart';
@@ -42,6 +43,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_ink.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -71,10 +73,10 @@ void main() {
   late ValueNotifier<bool> brushAllowed;
   late ValueNotifier<BrushToolState> brushTool;
 
-  BrushStrokeCommitData oneDab() => BrushStrokeCommitData(
+  BrushStrokeCommitData oneDab({double at = 20}) => BrushStrokeCommitData(
     sourceDabs: [
       BrushDab(
-        center: CanvasPoint(x: 20, y: 20),
+        center: CanvasPoint(x: at, y: at),
         color: 0xFF000000,
         size: 4,
         opacity: 1,
@@ -145,12 +147,29 @@ void main() {
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,
               ),
-              () => ink.commitStroke(
-                plane: TimesheetInkPlane.strip,
-                key: timesheetInkStripKey(session.requireActiveCut.id, 0),
-                strokeData: oneDab(),
-                historyManager: session.historyManager,
-              ),
+              () {
+                // On the sheet's SECOND row, on clear paper — 20 of the
+                // sheet's units in from the strip's corner, in the ink's
+                // pixels (the paper's, F-294). ⛔Not on the first row: the
+                // playhead stands there, and its highlight is laid over
+                // the print and under the live windows — ink on that row is
+                // tinted with the brush off and not with it on, a question
+                // of its own (board: timesheet-playhead-row-over-ink).
+                final cut = session.requireActiveCut;
+                final scale = TimesheetDocumentLayout(
+                  document: TimesheetDocument.fromCut(
+                    cut: cut,
+                    projectName: 'Switch',
+                    fps: session.projectSettings.projectFps,
+                  ),
+                ).paperScale;
+                ink.commitStroke(
+                  plane: TimesheetInkPlane.strip,
+                  key: timesheetInkStripKey(cut.id, 0),
+                  strokeData: oneDab(at: 20 * scale),
+                  historyManager: session.historyManager,
+                );
+              },
             );
           },
         ),

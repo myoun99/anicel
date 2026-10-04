@@ -140,11 +140,16 @@ void main() {
     final three = _layout(TimesheetSheetKind.threeSeconds);
     final surface = timesheetInkStripWidth(six.document);
     expect(surface, timesheetInkStripWidth(three.document));
+    // The surface is kept at the paper's grade: its pixels, back in the
+    // sheet's units.
+    final scale = three.paperScale;
+    expect(scale, six.paperScale, reason: 'one paper, either sheet');
     for (final kind in [TimesheetColumnKind.action, TimesheetColumnKind.cel]) {
       for (var at = 8; at < 12; at += 1) {
         final pixel = _pixel(three, _cell(three, _column(three, kind, at), 10));
-        expect(pixel.$2.dx, greaterThan(six.halfWidth), reason: '$kind $at');
-        expect(pixel.$2.dx, lessThan(surface), reason: '$kind $at');
+        final across = pixel.$2.dx / scale;
+        expect(across, greaterThan(six.halfWidth), reason: '$kind $at');
+        expect(across, lessThan(surface), reason: '$kind $at');
       }
     }
   });
@@ -163,7 +168,10 @@ void main() {
     );
     expect(placement.stretch, stretch);
     expect(window.stretch, stretch);
-    // Round trip, and a surface pixel's width is [stretch] paper units.
+    // Round trip, and a surface pixel — one of the paper's — is [stretch]
+    // of its own width across on the sheet.
+    final scale = three.paperScale;
+    expect(placement.scale, scale);
     const paper = Offset(300, 900);
     expect(
       (placement.paperOf(placement.pixelOf(paper)) - paper).distance,
@@ -172,11 +180,11 @@ void main() {
     expect(
       placement.paperOf(const Offset(11, 0)).dx -
           placement.paperOf(const Offset(10, 0)).dx,
-      closeTo(stretch, 1e-9),
+      closeTo(stretch / scale, 1e-9),
     );
     expect(
       placement.surfaceRect.width,
-      closeTo(window.documentRect.width / stretch, 1e-9),
+      closeTo(window.documentRect.width * scale / stretch, 1e-9),
     );
     // The brush sees the surface unstretched; the layer lays it wider.
     final unstretched = placement.unstretched;
@@ -192,7 +200,10 @@ void main() {
     expect(band, timesheetInkStripKey(_cutId, 0).frameId.value);
     expect(
       pixel.dy,
-      closeTo((80 + 0.5) * TimesheetDocumentLayout.rowHeight, 1e-9),
+      closeTo(
+        (80 + 0.5) * TimesheetDocumentLayout.rowHeight * three.paperScale,
+        1e-9,
+      ),
     );
   });
 

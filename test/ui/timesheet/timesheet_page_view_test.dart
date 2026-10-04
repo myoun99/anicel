@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_book.dart';
+import 'package:anicel/src/ui/brush/sheet_canvas_panel.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/canvas_pill.dart';
 import '../../helpers/device_viewport.dart';
+import '../../helpers/sheet_paper_view.dart';
 
 /// THE TIMESHEET'S PAGE VIEW LAYS ITS SHEETS ONE UNDER ANOTHER (F-201,
 /// 유저 2026-09-27 F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
@@ -136,6 +138,14 @@ void main() {
     late EditorSessionManager session;
     late ValueNotifier<int> reading;
 
+    TimesheetDocumentLayout layoutOf() => TimesheetDocumentLayout(
+      document: TimesheetDocument.fromCut(
+        cut: session.activeCutOrNull!,
+        projectName: session.repository.requireProject().name,
+        fps: session.projectSettings.projectFps,
+      ),
+    );
+
     Future<void> pumpHost(
       WidgetTester tester, {
       bool continuous = false,
@@ -164,7 +174,15 @@ void main() {
                 onContinuousChanged: (next) =>
                     setState(() => isContinuous = next),
                 reading: reading,
-                viewport: seedFromRender(tester, render ?? CanvasViewport()),
+                // [render] is said in the sheet's units; the host keeps
+                // its view in the paper's pixels (F-294).
+                viewport: seedFromRender(
+                  tester,
+                  paperViewShowing(
+                    render ?? CanvasViewport(),
+                    layoutOf().paperScale,
+                  ),
+                ),
                 onViewportChanged: (_) {},
                 inkController: inkController,
                 brushToolState: brushTool,
@@ -193,19 +211,15 @@ void main() {
     bool enabled(WidgetTester tester, Key key) =>
         tester.appIconButton(find.byKey(key)).onPressed != null;
 
-    /// The view the panel paints and hit-tests with.
-    CanvasViewport painted(WidgetTester tester) => tester
-        .widget<CanvasViewportGestureLayer>(
-          find.byType(CanvasViewportGestureLayer),
-        )
-        .viewport;
-
-    TimesheetDocumentLayout layoutOf() => TimesheetDocumentLayout(
-      document: TimesheetDocument.fromCut(
-        cut: session.activeCutOrNull!,
-        projectName: session.repository.requireProject().name,
-        fps: session.projectSettings.projectFps,
-      ),
+    /// The view the panel paints and hit-tests with — kept in the paper's
+    /// pixels (F-294) — as the sheet's units read it.
+    CanvasViewport painted(WidgetTester tester) => sheetUnitsView(
+      tester
+          .widget<CanvasViewportGestureLayer>(
+            find.byType(CanvasViewportGestureLayer),
+          )
+          .viewport,
+      layoutOf().paperScale,
     );
 
     /// Where [page]'s top stands on screen, down from the panel's top.

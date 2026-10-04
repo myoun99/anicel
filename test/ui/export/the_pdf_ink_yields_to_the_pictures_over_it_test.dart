@@ -44,8 +44,8 @@ void main() {
     );
     final page = layoutConteSheet(source).single;
     final m = page.metrics;
-    final width = (m.bodyWidth * conteInkScale).ceil();
-    final height = (m.bodyHeight * conteInkScale).ceil();
+    final width = (m.bodyWidth * m.paperScale).ceil();
+    final height = (m.bodyHeight * m.paperScale).ceil();
     final ink = ContePdfPicture(
       rgba: Uint8List(width * height * 4),
       width: width,

@@ -34,7 +34,8 @@ List<SheetInkWindow> timesheetInkWindows({
   final document = layout.document;
   final windows = <SheetInkWindow>[];
   const rowHeight = TimesheetDocumentLayout.rowHeight;
-  const scale = timesheetInkScale;
+  // A pixel of the ink is a pixel of the paper (F-294).
+  final scale = pagedLayout.paperScale;
   SheetInkWindow window(
     String id,
     BrushFrameKey key,
@@ -47,7 +48,7 @@ List<SheetInkWindow> timesheetInkWindows({
     plane: TimesheetInkPlane.of(key),
     placement: SheetInkPlacement(
       window: rect,
-      scale: scale.toDouble(),
+      scale: scale,
       origin: origin,
       stretch: stretch,
     ),

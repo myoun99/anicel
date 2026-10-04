@@ -9,24 +9,30 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
-import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/ui/conte/conte_book_page.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-/// [view] moved so the conte book's first body page stands at the panel's
-/// content origin — where the panel's one page stood before the book's
-/// pages lay one under another (F-201). A test that maps a page's own
-/// coordinates to the screen one for one seeds its view with this.
+import 'sheet_paper_view.dart';
+
+/// [view] — said in the page's own POINTS — moved so the conte book's first
+/// body page stands at the panel's content origin, where the panel's one
+/// page stood before the book's pages lay one under another (F-201); as the
+/// panel KEEPS a view, in its paper's pixels (F-294, [paperViewShowing]). A
+/// test that maps a page's own coordinates to the screen one for one seeds
+/// its view with this.
 CanvasViewport onConteBody(
   EditorSessionManager session,
   CanvasViewport view,
 ) {
+  final metrics = ConteSheetMetrics(
+    cameraAspect: session.camera.cameraFrameAspect,
+  );
   final pages = layoutConteBook(
     buildConteSheetSource(session.repository.requireProject()),
-    metrics: ConteSheetMetrics(cameraAspect: session.camera.cameraFrameAspect),
+    metrics: metrics,
   );
   final stack = PageStack([
     for (final page in pages)
@@ -37,7 +43,10 @@ CanvasViewport onConteBody(
     pages.indexWhere((page) => page.kind == ContePageKind.body),
   );
   final at = stack.pageRect(body).topLeft;
-  return view.translated(dx: -at.dx * view.zoom, dy: -at.dy * view.zoom);
+  return paperViewShowing(
+    view.translated(dx: -at.dx * view.zoom, dy: -at.dy * view.zoom),
+    metrics.paperScale,
+  );
 }
 
 /// The printed form of the first body page on screen — the page
@@ -85,8 +94,8 @@ BrushStrokeCommitData conteBandDabs(
       for (final (index, at) in paper.indexed)
         BrushDab(
           center: CanvasPoint(
-            x: (at.dx - band.left) * conteInkScale,
-            y: (at.dy - band.top) * conteInkScale,
+            x: (at.dx - band.left) * metrics.paperScale,
+            y: (at.dy - band.top) * metrics.paperScale,
           ),
           color: color,
           size: size,

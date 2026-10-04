@@ -75,10 +75,12 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
   final InkPlaneSlot _page;
 
   /// One band of frame rows ([timesheetInkBandFrames]) × every column's
-  /// writing ([timesheetInkStripWidth]), at [timesheetInkScale].
+  /// writing ([timesheetInkStripWidth]), at the paper's grade
+  /// ([TimesheetDocumentLayout.paperScale]).
   CanvasSize? get stripBandSurfaceSize => _strip.size;
 
-  /// The whole PAGED paper, at [timesheetInkScale].
+  /// The whole PAGED paper, pixel for pixel
+  /// ([TimesheetDocumentLayout.paperPixelSize]).
   CanvasSize? get pageSurfaceSize => _page.size;
 
   /// Adopts the sheet geometry from the PAGED layout (both view modes
@@ -89,21 +91,17 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
   /// Never notifies: callers run this during build.
   void syncGeometry(TimesheetDocumentLayout pagedLayout) {
     final document = pagedLayout.document;
+    final scale = pagedLayout.paperScale;
     _strip.syncTo(
       CanvasSize(
-        width: (timesheetInkStripWidth(document) * timesheetInkScale).ceil(),
+        width: (timesheetInkStripWidth(document) * scale).ceil(),
         height:
             (timesheetInkBandFrames(document) *
-                    TimesheetDocumentLayout.rowHeight)
-                .ceil() *
-            timesheetInkScale,
+                    TimesheetDocumentLayout.rowHeight *
+                    scale)
+                .ceil(),
       ),
     );
-    _page.syncTo(
-      CanvasSize(
-        width: (pagedLayout.paperWidth * timesheetInkScale).ceil(),
-        height: (pagedLayout.paperHeight * timesheetInkScale).ceil(),
-      ),
-    );
+    _page.syncTo(pagedLayout.paperPixelSize);
   }
 }

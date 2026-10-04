@@ -90,7 +90,7 @@ void main() {
           0,
           document.halfFrameCount *
               TimesheetDocumentLayout.rowHeight *
-              timesheetInkScale,
+              layout.paperScale,
         ),
         reason: 'the right half windows the band below row 72',
       );
@@ -183,19 +183,15 @@ void main() {
       final panel = CanvasViewport(zoom: 2, panX: 7, panY: 9);
 
       // The page-0 right-half strip window: ink pixel (x, inkOffset.y + d)
-      // must land where the document paints doc point (rect.left + x/2,
-      // rect.top + d/2).
+      // must land where the document paints doc point (rect.left + x/s,
+      // rect.top + d/s) — s the paper's pixels a sheet unit takes.
       final window = windows[3];
       final ink = window.inkViewport(panel);
       const inkPoint = Offset(10, 40);
       final screenX = ink.panX + ink.zoom * (window.inkOffset.dx + inkPoint.dx);
       final screenY = ink.panY + ink.zoom * (window.inkOffset.dy + inkPoint.dy);
-      final docX =
-          window.documentRect.left +
-          inkPoint.dx / timesheetInkScale;
-      final docY =
-          window.documentRect.top +
-          inkPoint.dy / timesheetInkScale;
+      final docX = window.documentRect.left + inkPoint.dx / layout.paperScale;
+      final docY = window.documentRect.top + inkPoint.dy / layout.paperScale;
       expect(screenX, closeTo(panel.panX + panel.zoom * docX, 1e-9));
       expect(screenY, closeTo(panel.panY + panel.zoom * docY, 1e-9));
 
@@ -212,9 +208,10 @@ void main() {
   });
 
   group('TimesheetInkController', () {
-    test('syncGeometry sizes the band and page surfaces at inkScale — a '
-        'band holds the 6-second strip and, right of it, the eight columns '
-        'only the 3-second sheet prints', () {
+    test('syncGeometry sizes the band and page surfaces at the paper\'s '
+        'grade — a band holds the 6-second strip and, right of it, the '
+        'eight columns only the 3-second sheet prints; a page is the paper, '
+        'pixel for pixel', () {
       final document = _document();
       final layout = TimesheetDocumentLayout(document: document);
       final controller = TimesheetInkController();
@@ -225,20 +222,19 @@ void main() {
         CanvasSize(
           width:
               ((layout.halfWidth + 8 * TimesheetDocumentLayout.celColumnWidth) *
-                      timesheetInkScale)
+                      layout.paperScale)
                   .ceil(),
           height:
-              document.pageFrameCount *
-              TimesheetDocumentLayout.rowHeight.toInt() *
-              timesheetInkScale,
+              (document.pageFrameCount *
+                      TimesheetDocumentLayout.rowHeight *
+                      layout.paperScale)
+                  .ceil(),
         ),
       );
+      // F-294 (유저 2026-10-05): 「1754x2480을 기본으로 할것」.
       expect(
         controller.pageSurfaceSize,
-        CanvasSize(
-          width: (layout.paperWidth * timesheetInkScale).ceil(),
-          height: (layout.paperHeight * timesheetInkScale).ceil(),
-        ),
+        const CanvasSize(width: 1754, height: 2480),
       );
 
       final state = controller.sessionStateFor(

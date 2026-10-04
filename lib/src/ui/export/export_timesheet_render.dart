@@ -12,7 +12,7 @@ import '../../models/timesheet_words.dart';
 import '../timesheet/timesheet_document_painter.dart';
 import 'offscreen_raster.dart';
 
-/// One sheet PAGE exporting as an image (EX6): the same B4 paper the
+/// One sheet PAGE exporting as an image (EX6): the same paper the
 /// timesheet panel draws, offscreen. A single-page cut names plainly;
 /// page splits carry `_p<n>` (the panel's page discipline).
 class ExportTimesheetPageTask {

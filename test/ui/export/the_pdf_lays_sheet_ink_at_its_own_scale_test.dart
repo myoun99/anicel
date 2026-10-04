@@ -43,7 +43,7 @@ void main() {
     );
     final page = layoutConteSheet(source).single;
     final m = page.metrics;
-    const scale = conteInkScale;
+    final scale = m.paperScale;
     // The row plane's surface: the body, at the ink's scale.
     final width = (m.bodyWidth * scale).ceil();
     final height = (m.bodyHeight * scale).ceil();

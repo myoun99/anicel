@@ -8,12 +8,14 @@ import '../../core/page_stack.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/camera_instruction.dart';
+import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
 import '../../models/frame.dart' show InbetweenMark;
 import '../../models/se_line_type.dart' show SeLineType;
 import '../../models/sheet_marks.dart';
 import '../../models/sheet_paint_layer.dart';
+import '../../models/sheet_paper.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/timesheet_sheet_kind.dart';
@@ -48,12 +50,22 @@ part 'document_painter/timesheet_cells_pass.dart';
 part 'document_painter/timesheet_books_pass.dart';
 
 /// Geometry of the rendered sheet document in canvas (document) space,
-/// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
+/// modeled on the Japanese paper form (A-1/IG style): a portrait page
 /// whose body splits into two side-by-side halves of
 /// [TimesheetDocument.halfFrameCount] rows; each half reads
 /// frame-number gutter | ACTION block (animation layers) | S1·S2 |
 /// CELL block | CAM. The gutter is bare numbers on paper (user direction —
 /// no boxed rail, no grid), printed left of each half.
+///
+/// 🚨THE FORM IS LAID ON A SHEET OF PAPER (F-294, 유저 2026-10-05:
+/// 「타임시트 용지패널 용지크기 너무 작음 … 1754x2480을 기본으로 할것」). The
+/// form above is measured in units of its own (a frame row is 18); its paper
+/// is `SheetPaper.timesheet`, a size in pixels, and the form lies on it as
+/// large as fits, centred ([_onPaper]) — [paperScale] pixels a unit. Every
+/// measure here stays in the form's units: [paperWidth] and [paperHeight]
+/// are the SHEET as those units measure it, [formRect] is the form on it.
+/// ↩️The form WAS the paper — B4's shape, 1096×1574 of its own units on a
+/// 24fps sheet, shown a unit a pixel.
 ///
 /// The continuous mode keeps the SAME paper width and header band as the
 /// paged form (the paper size never changes with the view toggle — user
@@ -87,13 +99,13 @@ class TimesheetDocumentLayout {
   static const double celColumnWidth = 24;
   static const double cameraColumnWidth = 36;
 
-  /// The CAM group's FIXED total width — the B4 paper must never widen
+  /// The CAM group's FIXED total width — the paper must never widen
   /// when a cut carries more instruction rows (user rule): extra CAM
   /// columns split this allotment into narrower cells instead.
   static const double cameraGroupWidth = cameraColumnWidth * 2;
 
   /// R27 #32: the SE group's FIXED total width, the CAM rule applied to
-  /// the sound columns — adding SE tracks must not lengthen the B4 paper
+  /// the sound columns — adding SE tracks must not lengthen the paper
   /// either. Past the base two slots the extra columns split this
   /// allotment into narrower cells.
   static const double seGroupWidth = seColumnWidth * 2;
@@ -212,12 +224,54 @@ class TimesheetDocumentLayout {
     return width;
   }
 
-  /// One fixed paper width in BOTH modes — the view toggle never resizes
-  /// the paper (or the header band that spans it).
-  double get paperWidth =>
+  /// The printed form's width: its strips, the gap between them and the
+  /// padding round them — one in BOTH modes.
+  double get formWidth =>
       pagePadding * 2 +
       (frameNumberGutterWidth + halfWidth) * _strips +
       halfGap * (_strips - 1);
+
+  /// What the form prints over its rows, and the padding round it all: the
+  /// header band, the memo band and the gap under them.
+  static const double _formHeadHeight =
+      pagePadding * 2 + headerBandHeight + memoBandHeight + headerGap;
+
+  /// The PAGED form's height — what the paper is fitted round in both
+  /// modes, so the view toggle moves nothing on it.
+  double get _pagedFormHeight => _formHeadHeight + _pagedBodyHeight;
+
+  /// The printed form's height: a page's in page view, the one strip's with
+  /// every row in continuous view.
+  double get formHeight => continuous
+      ? _formHeadHeight + columnsHeaderHeight + document.rowCount * rowHeight
+      : _pagedFormHeight;
+
+  /// The paged form on the timesheet's paper (`SheetPaper.timesheet`): as
+  /// large as fits, centred.
+  late final SheetPaperFit _onPaper = SheetPaper.timesheet.around(
+    Size(formWidth, _pagedFormHeight),
+  );
+
+  /// THE PAPER'S PIXELS A SHEET UNIT TAKES (F-294) — what the panel shows
+  /// the sheet at (`SheetCanvasPanel.paperScale`) and the grade its
+  /// handwriting is kept at: a pixel of the ink is a pixel of the paper, so
+  /// a brush of a size at 100% draws on the sheet as wide as on the canvas.
+  ///
+  /// ↩️It was `timesheetInkScale`, a number of the ink's own: ONE, the
+  /// canvas's grade — the conte's reason (유저 2026-09-26,
+  /// one-paper-brush-width-Q2: 「해상도를 캔버스처럼 낮추기」), and 4 before
+  /// that. One pixel a unit kept the brush as wide as on the canvas only
+  /// because the paper itself was a unit a pixel; the paper has a resolution
+  /// of its own now, and the ink is kept at that.
+  double get paperScale => _onPaper.scale;
+
+  /// The paper of one page, in pixels — what a page's handwriting is kept
+  /// on, pixel for pixel.
+  CanvasSize get paperPixelSize => SheetPaper.timesheet.pixelSize;
+
+  /// One fixed paper width in BOTH modes — the view toggle never resizes
+  /// the paper (or the header band that spans its form).
+  double get paperWidth => _onPaper.sheet.width;
 
   /// Rows in the given half of a page (the second half takes the odd
   /// remainder).
@@ -241,20 +295,19 @@ class TimesheetDocumentLayout {
 
   double get _pagedBodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
 
+  /// The paper's height: the sheet's in page view; in continuous view the
+  /// one strip's form and, over and under it, the margin the paged form has
+  /// — the form starts where it starts on a page.
   double get paperHeight => continuous
-      ? pagePadding * 2 +
-            headerBandHeight +
-            memoBandHeight +
-            headerGap +
-            columnsHeaderHeight +
-            document.rowCount * rowHeight
-      : pagePadding * 2 +
-            headerBandHeight +
-            memoBandHeight +
-            headerGap +
-            _pagedBodyHeight;
+      ? formHeight + 2 * _onPaper.inset.dy
+      : _onPaper.sheet.height;
 
   double get paperLeft => documentMargin;
+
+  /// The form on the paper of a page (the strip's in continuous view).
+  Rect formRect(int pageIndex) =>
+      (pageRect(pageIndex).topLeft + _onPaper.inset) &
+      Size(formWidth, formHeight);
 
   /// Top of a page's paper — the strip's in continuous view.
   double pageTop(int pageIndex) =>
@@ -275,18 +328,18 @@ class TimesheetDocumentLayout {
 
   /// Left edge of a half's column area (past its number gutter).
   double halfLeft(int pageIndex, int half) {
+    final first =
+        paperLeft + _onPaper.inset.dx + pagePadding + frameNumberGutterWidth;
     if (continuous) {
-      return paperLeft + pagePadding + frameNumberGutterWidth;
+      return first;
     }
-    return paperLeft +
-        pagePadding +
-        frameNumberGutterWidth +
-        half * (frameNumberGutterWidth + halfWidth + halfGap);
+    return first + half * (frameNumberGutterWidth + halfWidth + halfGap);
   }
 
   /// Top of a half's first row.
   double halfRowsTop(int pageIndex) =>
       pageTop(pageIndex) +
+      _onPaper.inset.dy +
       pagePadding +
       headerBandHeight +
       memoBandHeight +
@@ -347,12 +400,12 @@ class TimesheetDocumentLayout {
   /// ACTION block; the number gutter stays outside both — user fix), its
   /// right edge on half 1's right bold line.
   Rect headerBandRect(int pageIndex) {
-    final page = pageRect(pageIndex);
-    final left = page.left + pagePadding + frameNumberGutterWidth;
+    final form = formRect(pageIndex);
+    final left = form.left + pagePadding + frameNumberGutterWidth;
     return Rect.fromLTWH(
       left,
-      page.top + pagePadding,
-      page.right - pagePadding - left,
+      form.top + pagePadding,
+      form.right - pagePadding - left,
       headerBandHeight,
     );
   }

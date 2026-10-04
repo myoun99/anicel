@@ -553,14 +553,17 @@ void main() {
     /// Handwriting over the top of a band surface of [size]: a hairline in
     /// every seventh column and every fifth row, across its first three
     /// tile rows — a pattern a sub-pixel shift or a softer filter changes
-    /// everywhere.
+    /// everywhere. A hairline is a POINT of the page wide: the surface is
+    /// kept at the paper's pixels (F-294), [nib] of them to the point.
     BitmapSurface hatched(CanvasSize size) {
       const tile = defaultCelTileSize;
+      final nib = const ConteSheetMetrics().paperScale.ceil();
       BitmapTile hatchedAt(int tileX, int tileY) {
         final pixels = Uint8List(tile * tile * 4);
         for (var y = 0; y < tile; y += 1) {
           for (var x = 0; x < tile; x += 1) {
-            if ((tileX * tile + x) % 7 == 0 || (tileY * tile + y) % 5 == 0) {
+            if (((tileX * tile + x) ~/ nib) % 7 == 0 ||
+                ((tileY * tile + y) ~/ nib) % 5 == 0) {
               final i = (y * tile + x) * 4;
               pixels[i] = 0x10;
               pixels[i + 1] = 0x10;
@@ -626,8 +629,8 @@ void main() {
           conteInkRowKey(cutId, 'band'),
           band(
             CanvasSize(
-              width: (metrics.bodyWidth * conteInkScale).ceil(),
-              height: (metrics.bodyHeight * conteInkScale).ceil(),
+              width: (metrics.bodyWidth * metrics.paperScale).ceil(),
+              height: (metrics.bodyHeight * metrics.paperScale).ceil(),
             ),
           ),
         );

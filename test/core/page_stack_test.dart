@@ -85,6 +85,57 @@ void main() {
     expect(stack.length, 2, reason: 'asking past the end adds no page');
   });
 
+  test('a stack scaled is the same stack in other units — every page, the '
+      'gap, the margin and each page\'s place times the factor, never laid '
+      'again from the scaled sizes (F-294)', () {
+    const conte = Size(595.28, 841.89);
+    const factor = 2480 / 595.28;
+    final stack = PageStack([for (var page = 0; page < 10; page += 1) conte]);
+
+    final scaled = stack.scaledBy(factor);
+
+    expect(scaled.length, 10);
+    expect(scaled.gap, gap * factor);
+    expect(scaled.margin, margin * factor);
+    // Every page, and two past the end.
+    for (var index = 0; index < 12; index += 1) {
+      final own = stack.pageRect(index);
+      final seen = scaled.pageRect(index);
+      expect(seen.left, closeTo(own.left * factor, 1e-9), reason: '$index');
+      expect(seen.top, closeTo(own.top * factor, 1e-9), reason: '$index');
+      expect(seen.width, closeTo(own.width * factor, 1e-9));
+      expect(seen.height, closeTo(own.height * factor, 1e-9));
+    }
+    expect(scaled.size.width, closeTo(stack.size.width * factor, 1e-9));
+    expect(scaled.size.height, closeTo(stack.size.height * factor, 1e-9));
+    expect(scaled.paper.bottom, closeTo(stack.paper.bottom * factor, 1e-9));
+    expect(scaled.pageAt(stack.pageRect(7).top * factor + 1), 7);
+    expect(
+      scaled.pagesMeeting(
+        Rect.fromLTWH(0, stack.pageRect(4).top * factor + 10, 100, 20),
+      ),
+      [4],
+    );
+
+    // Laid again from the scaled sizes, each page would start on a whole
+    // unit of the LARGER stack — and the tenth page lie over a unit away.
+    final relaid = PageStack(
+      [for (var page = 0; page < 10; page += 1) conte * factor],
+      gap: gap * factor,
+      margin: margin * factor,
+    );
+    expect(
+      (relaid.pageRect(9).top - scaled.pageRect(9).top).abs(),
+      greaterThan(1),
+      reason: 'fixture: the two ways disagree',
+    );
+  });
+
+  test('a stack scaled by one is itself', () {
+    final stack = PageStack([a4, a4]);
+    expect(identical(stack.scaledBy(1), stack), isTrue);
+  });
+
   test('an empty stack is its margins and nothing more', () {
     final stack = PageStack(const []);
     expect(stack.length, 0);

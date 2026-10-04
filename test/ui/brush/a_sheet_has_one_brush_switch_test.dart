@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderRepaintBoundary;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -34,7 +33,7 @@ void main() {
     SheetStrokeHold? hold,
   }) => SheetCanvasPanel(
     cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-    canvasSize: const CanvasSize(width: 600, height: 800),
+    sheetSize: const Size(600, 800),
     viewLimit: null,
     viewport: CanvasViewport(),
     bottomBarHostToken: hostToken,
@@ -91,7 +90,7 @@ void main() {
         tester,
         SheetCanvasPanel(
           cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-          canvasSize: const CanvasSize(width: 600, height: 800),
+          sheetSize: const Size(600, 800),
           viewLimit: null,
           viewport: CanvasViewport(),
           brushSwitch: (allowed: false, onChanged: (_) {}, keyPrefix: 'probe'),

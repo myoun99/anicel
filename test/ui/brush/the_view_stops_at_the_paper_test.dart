@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/core/page_stack.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -417,14 +418,22 @@ void main() {
           onContinuousChanged: (_) {},
         ),
       );
-      expectPaper(tester, margin: 24);
+      // The desk round the paper is the stack's margin, in the paper's
+      // pixels as the paper is (F-294).
+      final margin = panel(tester).book!.pages.margin;
+      expect(margin, greaterThan(PageStack.defaultMargin));
+      expectPaper(tester, margin: margin);
     });
 
     testWidgets('the conte: its book\'s paper, inside the margin round it', (
       tester,
     ) async {
       await pumpIn(tester, ConteTabHost(session: session, thumbnails: null));
-      expectPaper(tester, margin: 24);
+      // The stack's margin of 24 points, at the 2480 pixels an A4 page's
+      // 595.28 points take (F-294).
+      final margin = panel(tester).book!.pages.margin;
+      expect(margin, closeTo(24 * 2480 / 595.28, 1e-9));
+      expectPaper(tester, margin: margin);
     });
 
     testWidgets('the cut envelope: its paper', (tester) async {
@@ -508,7 +517,7 @@ Widget sheetIn(
       size: box,
       child: SheetCanvasPanel(
         cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-        canvasSize: const CanvasSize(width: 648, height: 848),
+        sheetSize: const Size(648, 848),
         viewport: null,
         viewportController: controller,
         viewLimit: limit,

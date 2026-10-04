@@ -40,18 +40,15 @@ void main() {
   testWidgets('a stroke on the band\'s 81st row prints on the RIGHT half\'s '
       '9th row, and nowhere on the left', (tester) async {
     expect(document.halfFrameCount, 72, reason: 'fixture: two halves of 72');
-    // The band's surface down to frame 81, a stroke across frame 80's row.
+    // The band's surface down to frame 81, a stroke across frame 80's row —
+    // in the ink's pixels, the paper's ([TimesheetDocumentLayout.paperScale]).
     const width = 40;
-    const height = (81 * row * timesheetInkScale) ~/ 1;
+    final scale = layout.paperScale;
+    final height = (81 * row * scale).ceil();
     final ink = (await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       ui.Canvas(recorder).drawRect(
-        const Rect.fromLTWH(
-          0,
-          80 * row * timesheetInkScale,
-          width * 1.0,
-          row * timesheetInkScale,
-        ),
+        Rect.fromLTWH(0, 80 * row * scale, width * 1.0, row * scale),
         Paint()..color = const Color(0xFFFF0000),
       );
       final picture = recorder.endRecording();
