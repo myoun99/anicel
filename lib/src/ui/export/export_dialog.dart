@@ -653,7 +653,7 @@ class ExportDialogState extends State<ExportDialog> {
     var index = 0;
     for (final bundle in plan.bundles) {
       rows.add((
-        cut: bundle.sheets.first.cut,
+        cut: bundle.sheets.first.listedCut,
         layer: bundle.axis,
         mark: bundle.axis.mark,
         first: index,
@@ -1393,9 +1393,11 @@ class ExportDialogState extends State<ExportDialog> {
     _ => '',
   };
 
-  /// The cut [entry] is a cel of.
+  /// The cut [entry] is LISTED in — the one the window stands on, which
+  /// for a 겸용 group's cel is not always the cut it is composited in
+  /// ([ExportCelGroupTask.listedCut], F-300).
   Cut _celEntryCut(Object entry) => switch (entry) {
-    ExportCelGroupTask(:final cut) => cut,
+    ExportCelGroupTask(:final listedCut) => listedCut,
     ExportInstructionTask(:final cut) => cut,
     _ => _activeCut,
   };
@@ -1405,7 +1407,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// an instruction row's events together, so adjacency IS the bundle.
   (int, List<Object>) _celBundleSpan(List<Object> entries, int position) {
     String keyOf(Object entry) => switch (entry) {
-      ExportCelGroupTask(:final baseLayer) => 'cel:${baseLayer.id.value}',
+      ExportCelGroupTask(:final bundleAxis) => 'cel:${bundleAxis.id.value}',
       ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
       _ => '',
     };
@@ -1853,7 +1855,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _celsHeadline() {
     final plan = _celGroupPlan();
-    final labels = {for (final task in plan.cels) task.baseLayer.id}.length;
+    final labels = {for (final task in plan.cels) task.bundleAxis.id}.length;
     final strings = AppText.strings;
     return strings.exCelsHeadline(
       labels: strings.exLabelCount(labels),

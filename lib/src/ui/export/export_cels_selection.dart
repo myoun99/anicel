@@ -97,13 +97,19 @@ ExportCelsSelection resolveExportCelsSelection({
   return ExportCelsSelection(
     celLayers: celLayers,
     instructionLayers: instructionLayers,
-    paperLayers: [
-      if (spec.applyPaper)
-        for (final layer in layers)
-          if (isExportPaperRow(layer)) layer,
-    ],
+    paperLayers: exportPaperRowsOf(cut, spec),
   );
 }
+
+/// The 용지 rows [spec] applies to [cut]'s cels: every paper row of the cut
+/// while 용지 적용 is on, none while it is off. Asked of the cut a cel is
+/// COMPOSITED in — the one that shows it, which in a 겸용 group is not
+/// always the cut the selection was resolved for (F-300).
+List<Layer> exportPaperRowsOf(Cut cut, CelsExportSpec spec) => [
+  if (spec.applyPaper)
+    for (final layer in cut.layers)
+      if (isExportPaperRow(layer)) layer,
+];
 
 /// A 용지 row: applied to every cel, never a cel and never the user's to
 /// tick in the list — the dialog and the resolver ask this one predicate.

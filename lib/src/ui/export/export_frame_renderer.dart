@@ -15,7 +15,6 @@ import '../../models/layer.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/movie_cel.dart';
-import '../../models/timeline_coverage.dart';
 import '../../models/transition_geometry.dart'
     show TransitionVeil, cutTransitionVeilsAt;
 import '../../services/brush_frame_store.dart' show CelRead;
@@ -809,14 +808,9 @@ class ExportFrameRenderer {
   }) async {
     _startFrame();
     // A cel has no time of its own, so the group's FX sample at the base
-    // cel's FIRST exposure — the same honest frame the camera pose uses.
-    var firstExposure = 0;
-    for (final block in drawingBlocks(task.baseLayer.timeline)) {
-      if (block.frameId == task.baseFrame.id) {
-        firstExposure = block.startIndex;
-        break;
-      }
-    }
+    // cel's FIRST exposure — the same honest frame the camera pose uses,
+    // in the cut that shows the cel ([ExportCelGroupTask.cut], F-300).
+    final firstExposure = celGroupFirstExposure(task);
     final layers = <CutFrameCompositeLayer>[];
     for (var i = 0; i < task.members.length; i += 1) {
       final frame = task.memberFrames[i];

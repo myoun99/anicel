@@ -664,6 +664,226 @@ void main() {
     expect(files(fromSibling), ['C1-C2_A1.png']);
   });
 
+  group('🚨F-300 (유저 2026-10-05): a 겸용 group\'s cel is composited where it '
+      'is SHOWN — 「현재 컷에 BG1이면 용지 적용되고 현재컷이아닌 BG2쪽은 용지가 '
+      '빠짐 … 렌더에 현재컷 관련 로직 있는건 이상하니 근본/구조적으로 해결」 · '
+      '「애니메이션레이어도 현재컷이 아니면 용지가 빠짐」', () {
+    // Two 겸용 cuts sharing three rows. Each row's BANK is the link
+    // group's — both cuts hold every cel — and each cut's own timeline
+    // shows one of them: C1 shows BG 1 and A 1, C2 shows BG 2 and A 2. The
+    // paper lies under the whole of either cut.
+    Layer rowOf(String cut, String row) => switch (row) {
+      'paper' => Layer(
+        id: LayerId('$cut-paper'),
+        name: 'Paper',
+        frames: [frame('p1')],
+        mark: paper,
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('p1'), length: 4),
+        },
+      ),
+      'bg' => Layer(
+        id: LayerId('$cut-bg'),
+        name: 'BG',
+        kind: LayerKind.image,
+        frames: [frame('bg1'), frame('bg2')],
+        mark: art,
+        timeline: {
+          0: TimelineExposure.drawing(
+            FrameId(cut == 'c1' ? 'bg1' : 'bg2'),
+            length: 1,
+          ),
+        },
+      ),
+      _ => Layer(
+        id: LayerId('$cut-a'),
+        name: 'A',
+        frames: [frame('a1'), frame('a2')],
+        mark: key,
+        // On C2 the cel first shows on the cut's THIRD frame.
+        timeline: cut == 'c1'
+            ? {0: const TimelineExposure.drawing(FrameId('a1'), length: 4)}
+            : {2: const TimelineExposure.drawing(FrameId('a2'), length: 2)},
+      ),
+    };
+
+    final linked = Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'Track',
+          cuts: [
+            for (final cut in ['c1', 'c2'])
+              Cut(
+                id: CutId(cut),
+                name: cut.toUpperCase(),
+                duration: 4,
+                canvasSize: const CanvasSize(width: 8, height: 8),
+                layers: [
+                  rowOf(cut, 'paper'),
+                  rowOf(cut, 'bg'),
+                  rowOf(cut, 'a'),
+                  createCameraLayer(cutId: CutId(cut)),
+                ],
+              ),
+          ],
+        ),
+      ],
+      linkRegistry: LayerLinkRegistry(
+        groups: [
+          for (final row in ['paper', 'bg', 'a'])
+            LayerLinkGroup(
+              id: 'group-$row',
+              members: [
+                for (final cut in ['c1', 'c2'])
+                  LayerLinkMember(
+                    trackId: const TrackId('track'),
+                    cutId: CutId(cut),
+                    layerId: LayerId('$cut-$row'),
+                  ),
+              ],
+            ),
+        ],
+      ),
+      createdAt: DateTime.utc(2026),
+    );
+
+    ExportCelGroupPlan planFrom(
+      String activeCut, {
+      ExportScopeKind scope = ExportScopeKind.cut,
+    }) => buildExportCelGroupPlan(
+      project: linked,
+      activeCutId: CutId(activeCut),
+      spec: CelsExportSpec(addArt: true, scope: scope),
+    );
+
+    /// Each cel as `file: the cut it is composited in / the paper under it`.
+    Map<String, String> stacks(ExportCelGroupPlan plan) => {
+      for (final task in plan.cels)
+        task.fileName:
+            '${task.cut.id.value} / '
+            '${[
+              for (var i = 0; i < task.members.length; i += 1)
+                if (task.members[i].name == 'Paper')
+                  task.memberFrames[i]?.id.value ?? 'NO PAPER',
+            ].join()}',
+    };
+
+    const everyCel = {
+      'BG1.png': 'c1 / p1',
+      'BG2.png': 'c2 / p1',
+      'A1.png': 'c1 / p1',
+      'A2.png': 'c2 / p1',
+    };
+
+    test('every cel of the group wears the paper of the cut that shows it '
+        '— whichever sibling the export window stands on', () {
+      expect(stacks(planFrom('c1')), everyCel);
+      expect(stacks(planFrom('c2')), everyCel);
+    });
+
+    test('…and under the project scope, where the group is walked once from '
+        'its owner', () {
+      expect(stacks(planFrom('c2', scope: ExportScopeKind.project)), everyCel);
+    });
+
+    test('a cel is its showing cut\'s stack: that cut\'s rows, and the '
+        'frame it first shows on there', () {
+      final a2 = planFrom(
+        'c1',
+      ).cels.singleWhere((task) => task.fileName == 'A2.png');
+
+      expect(a2.cut.id.value, 'c2');
+      expect(a2.baseLayer.id.value, 'c2-a');
+      expect([for (final member in a2.members) member.id.value], [
+        'c2-paper',
+        'c2-a',
+      ]);
+      expect(a2.baseFrame.id.value, 'a2');
+      expect(celGroupFirstExposure(a2), 2);
+    });
+
+    test('the list still shows ONE bundle a row — the cels of both cuts '
+        'under the row of the cut the window stands on', () {
+      final built = planFrom('c2');
+
+      expect(
+        [for (final bundle in built.bundles) bundle.axis.id.value],
+        ['c2-bg', 'c2-a'],
+      );
+      // Every cel is listed in the cut the window stands on, whichever cut
+      // it is composited in.
+      expect({for (final task in built.cels) task.listedCut.id.value}, {'c2'});
+      expect({for (final task in built.cels) task.cut.id.value}, {'c1', 'c2'});
+      expect(
+        [
+          for (final bundle in built.bundles)
+            [for (final sheet in bundle.sheets) sheet.fileName],
+        ],
+        [
+          ['BG1.png', 'BG2.png'],
+          ['A1.png', 'A2.png'],
+        ],
+      );
+    });
+
+    test('unticking the bundle on the window\'s cut skips its cels from '
+        'both cuts', () {
+      final built = buildExportCelGroupPlan(
+        project: linked,
+        activeCutId: const CutId('c2'),
+        spec: const CelsExportSpec(addArt: true),
+        overrides: ExportProjectOverrides().withCelsDelta(
+          const CutId('c2'),
+          ExportCelsCutDelta().withBaseSkipped(const LayerId('c2-a'), true),
+        ),
+      );
+
+      expect(
+        {for (final task in built.cels) task.fileName: task.skipped},
+        {
+          'BG1.png': false,
+          'BG2.png': false,
+          'A1.png': true,
+          'A2.png': true,
+        },
+      );
+    });
+
+    test('a cel no cut of the group shows is its window cut\'s, as a cut '
+        'alone has it: no paper is known for it', () {
+      // The same rows with A 2 shown nowhere.
+      final unshown = linked.copyWith(
+        tracks: [
+          linked.tracks.single.copyWith(
+            cuts: [
+              for (final cut in linked.tracks.single.cuts)
+                cut.copyWith(
+                  layers: [
+                    for (final layer in cut.layers)
+                      if (layer.name == 'A' && cut.id.value == 'c2')
+                        layer.copyWith(timeline: const {})
+                      else
+                        layer,
+                  ],
+                ),
+            ],
+          ),
+        ],
+      );
+      final built = buildExportCelGroupPlan(
+        project: unshown,
+        activeCutId: const CutId('c2'),
+        spec: const CelsExportSpec(addArt: true),
+      );
+
+      expect(stacks(built)['A2.png'], 'c2 / NO PAPER');
+      expect(stacks(built)['A1.png'], 'c1 / p1');
+    });
+  });
+
   /// 🚨A FILE NAME THAT REPEATS IS A FILE THAT DISAPPEARS.
   ///
   /// Two bundles can each hold a cel called `1`, and a naming that leaves

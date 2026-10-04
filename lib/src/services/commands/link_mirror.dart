@@ -147,6 +147,25 @@ List<CutId> linkedCutSiblings(Project project, {required CutId cutId}) {
   ];
 }
 
+/// [cutId]'s 겸용 group as CUTS, in TRACK order: the cut itself and its
+/// [linkedCutSiblings] — the cut alone when it is linked to none. The FIRST
+/// is the group's owner.
+///
+/// Track order, never 「the open cut first」: a group is one thing to
+/// whatever reads it — the envelope's CUT lines and its ink's owner, the
+/// export's joined cut name, the cut a cel is composited in (F-300) — and
+/// what it reads must not depend on which sibling happens to be open.
+///
+/// ↩️Each of those walked the tracks for itself.
+List<Cut> linkedCutGroupInTrackOrder(Project project, {required CutId cutId}) {
+  final group = <CutId>{cutId, ...linkedCutSiblings(project, cutId: cutId)};
+  return [
+    for (final track in project.tracks)
+      for (final cut in track.cuts)
+        if (group.contains(cut.id)) cut,
+  ];
+}
+
 /// [layerId]'s counterpart inside [targetCutId] — the member of its link
 /// group that lives there, or null when the row does not reach that cut.
 ///
