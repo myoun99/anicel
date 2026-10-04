@@ -220,17 +220,21 @@ void main() {
           inkImageFor: (key) => key == rowKey ? ink : null,
         );
         try {
+          // At 1x the page is its paper's pixels (F-294): a point of the
+          // page is `paperScale` of them.
+          expect((rendered.width, rendered.height), (2480, 3508));
+          final scale = metrics.paperScale;
           final inside = await pixelAt(
             rendered,
-            band.center.dx.round(),
-            band.center.dy.round(),
+            (band.center.dx * scale).round(),
+            (band.center.dy * scale).round(),
           );
           expect(inside.$1, greaterThan(200), reason: 'band center is inked');
           expect(inside.$2, lessThan(60));
           final above = await pixelAt(
             rendered,
-            band.center.dx.round(),
-            (metrics.topBandTop + 4).round(),
+            (band.center.dx * scale).round(),
+            ((metrics.topBandTop + 4) * scale).round(),
           );
           expect(
             above,
@@ -242,6 +246,44 @@ void main() {
         }
       } finally {
         ink.dispose();
+      }
+    });
+  });
+
+  testWidgets('a page image is paper from its first row to its last — the '
+      'page is A4 in points and the image A4 in pixels, a hair apart in '
+      'shape, and the page lies centred in it (F-294)', (tester) async {
+    await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final page = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      ).first;
+      final rendered = await renderContePageImage(
+        page: page,
+        source: source,
+        words: conteWordsIn(AppLanguage.ja),
+      );
+      try {
+        expect((rendered.width, rendered.height), (2480, 3508));
+        // The page at the paper's pixels a point takes is short of the
+        // image's height.
+        expect(
+          page.metrics.pageHeight * page.metrics.paperScale,
+          lessThan(3507.5),
+          reason: 'fixture: laid from the corner, the last row is no paper',
+        );
+        for (final y in [0, 3507]) {
+          for (final x in [0, 1240, 2479]) {
+            expect(
+              await pixelAt(rendered, x, y),
+              (255, 255, 255),
+              reason: 'paper at ($x, $y)',
+            );
+          }
+        }
+      } finally {
+        rendered.dispose();
       }
     });
   });
@@ -546,6 +588,10 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
+    // At 1× a page is its paper's pixels (F-294) — a point of the page is
+    // `paperScale` of them. Where each picture sits is what the pages'
+    // marks say.
+    final scale = const ConteSheetMetrics().paperScale;
     Future<(int, int, int)> pageAt(String name, double x, double y) async {
       final image = (await tester.runAsync(
         () => decodeImageFromList(
@@ -553,11 +599,11 @@ void main() {
         ),
       ))!;
       addTearDown(image.dispose);
-      return (await tester.runAsync(() => pixelAt(image, x.round(), y.round())))!;
+      return (await tester.runAsync(
+        () => pixelAt(image, (x * scale).round(), (y * scale).round()),
+      ))!;
     }
 
-    // At 1× a point is a pixel. Where each picture sits is what the pages'
-    // marks say.
     final source = buildConteSheetSource(session.repository.requireProject());
     final book = layoutConteBook(
       source,
@@ -626,23 +672,22 @@ void main() {
       return ByteData.sublistView(bytes).getUint32(16);
     }
 
-    // The spec's default is 2×, so the baseline is picked, not assumed.
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
-    await tester.pump();
+    // 1× is where an export starts: the page's paper, its own pixels
+    // (F-294, 유저 2026-10-05: 「1x하더라도 100%크기인채로 출력해야」).
     expect(state.debugSpecs.conte.sheetScale, 1);
     await tester.runAsync(state.export);
     await tester.pump();
-    final atOne = pngWidth('conte_p3.png');
+    expect(pngWidth('conte_p3.png'), 2480);
 
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-3')));
+    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-2')));
     await tester.pump();
-    expect(state.debugSpecs.conte.sheetScale, 3);
+    expect(state.debugSpecs.conte.sheetScale, 2);
     await tester.runAsync(state.export);
     await tester.pump();
     expect(
       pngWidth('conte_p3.png'),
-      inInclusiveRange(atOne * 3 - 1, atOne * 3 + 1),
-      reason: 'the run rasters at sheetScale × the page\'s point size',
+      4960,
+      reason: 'the run rasters at sheetScale × the paper\'s pixels',
     );
   });
 
@@ -705,7 +750,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    // The page image, at 1×: a point is a pixel.
+    // The page image, at 1×: the paper's pixels, `paperScale` to a point.
     await tester.tap(
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
@@ -722,9 +767,14 @@ void main() {
       ),
     ))!;
     addTearDown(image.dispose);
+    final scale = page.metrics.paperScale;
     Future<bool> redAt(Offset point) async {
       final (r, g, _) = (await tester.runAsync(
-        () => pixelAt(image, point.dx.round(), point.dy.round()),
+        () => pixelAt(
+          image,
+          (point.dx * scale).round(),
+          (point.dy * scale).round(),
+        ),
       ))!;
       return r > 200 && g < 60;
     }

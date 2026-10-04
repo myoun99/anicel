@@ -40,11 +40,19 @@ class ExportTimesheetPageTask {
   final String fileName;
 }
 
-/// Renders one page of [document] at [scale]× the panel's logical paper
-/// size. The painter's strata are exactly what the panel shows — the
-/// export IS the panel's picture, no second sheet layout to disagree with
-/// it — the saved [ink] included: the windows it shows through (the
-/// panel's own walk) and each window's baked raster.
+/// Renders one page of [document] at [scale]× its PAPER'S PIXELS — at 1 the
+/// page is the paper at its own resolution, the panel's 100%
+/// (`TimesheetDocumentLayout.paperPixelSize`). The painter's strata are
+/// exactly what the panel shows — the export IS the panel's picture, no
+/// second sheet layout to disagree with it — the saved [ink] included: the
+/// windows it shows through (the panel's own walk) and each window's baked
+/// raster.
+///
+/// ↩️[scale] multiplied the page's size in the FORM'S UNITS, which was the
+/// paper while a unit was a pixel of it. F-294 gave the paper pixels of its
+/// own and left this behind: a sheet exported at 1x came out 1113×1574 (유저
+/// 2026-10-05: 「최신빌드로 시트 출력하면 1113x1574인데? … 1x하더라도
+/// 100%크기인채로 출력해야되니 아까 말한대로 출력되야하는거아닌가」).
 Future<ui.Image> renderTimesheetPageImage({
   required TimesheetDocument document,
   required TimesheetDocumentLayout layout,
@@ -57,9 +65,10 @@ Future<ui.Image> renderTimesheetPageImage({
   ink,
 }) {
   final page = layout.pageRect(pageIndex);
+  final paper = layout.paperPixelSize;
   final (:width, :height) = offscreenRasterSize(
-    naturalWidth: page.width,
-    naturalHeight: page.height,
+    naturalWidth: paper.width.toDouble(),
+    naturalHeight: paper.height.toDouble(),
     scale: scale,
     outputSize: outputSize,
   );

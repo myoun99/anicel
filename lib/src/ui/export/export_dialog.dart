@@ -1018,8 +1018,7 @@ class ExportDialogState extends State<ExportDialog> {
       final paper = cutEnvelopePaperSize(
         mode: spec.paperMode,
         cut: owner,
-        formAspectRatio: form.aspectRatio,
-        sheetWidth: spec.sheetWidth,
+        sheetScale: spec.sheetScale,
       );
       tasks.add(
         ExportEnvelopeTask(
@@ -1682,7 +1681,7 @@ class ExportDialogState extends State<ExportDialog> {
       // cached render.
       key:
           'envelope:${task.owner.id.value}:${task.layout.form.id}:'
-          '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
+          '${spec.paperMode.toJson()}:${spec.sheetScale}:'
           '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}'
           ':${face.fontFamily}',
       caption: 'CUT${task.owner.name}',
@@ -1896,7 +1895,9 @@ class ExportDialogState extends State<ExportDialog> {
       files: strings.exPngCount(files),
       paper: spec.paperMode == CutEnvelopePaperMode.cut
           ? strings.exEnvelopePaperCut
-          : strings.exEnvelopePaperSheet(spec.sheetWidth),
+          : strings.exEnvelopePaperSheet(
+              envelopeSheetPaperSize(spec.sheetScale).width,
+            ),
       layered: spec.separateLayerFiles
           ? strings.exEnvelopeLayered(spec.orderedLayers.length)
           : '',
@@ -4273,7 +4274,9 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// ⛔ONE SCALE ROW. The timesheet and the conte each wrote it out — the
   /// same four scales, the same label, the same reserved gap — so a fifth
-  /// scale, or a changed step, reached one export and not the other.
+  /// scale, or a changed step, reached one export and not the other. The
+  /// envelope's real sheet takes it too (F-294; ↩️it had a row of widths in
+  /// pixels): the steps are [SheetImageScale]'s, whole papers.
   List<Widget> _sheetScaleRow({
     required bool shown,
     required String keyPrefix,
@@ -4288,7 +4291,7 @@ class ExportDialogState extends State<ExportDialog> {
           alignment: Alignment.centerLeft,
           child: PillStrip(
             items: [
-              for (final step in const [1, 2, 3, 4])
+              for (final step in SheetImageScale.steps)
                 _pill(
                   keyValue: '$keyPrefix-$step',
                   label: '${step}x',
@@ -4436,7 +4439,9 @@ class ExportDialogState extends State<ExportDialog> {
         title: AppText.strings.exPaperLabel,
         summary: cutPaper
             ? AppText.strings.exCutSize
-            : AppText.strings.exSheetWidth(spec.sheetWidth),
+            : AppText.strings.exSheetWidth(
+                envelopeSheetPaperSize(spec.sheetScale).width,
+              ),
         expansion: _expansion('envelope-paper', open: true),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -4461,27 +4466,13 @@ class ExportDialogState extends State<ExportDialog> {
                 ),
               ],
             ),
-            if (!cutPaper) ...[
-              const SizedBox(height: 6),
-              ExportModuleRow(
-                label: AppText.strings.exWidth,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: PillStrip(
-                    items: [
-                      for (final width in const [1240, 2480, 3508])
-                        _pill(
-                          keyValue: 'export-envelope-width-$width',
-                          label: '${width}px',
-                          selected: spec.sheetWidth == width,
-                          onPick: () =>
-                              _updateSpec(spec.copyWith(sheetWidth: width)),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+            // The real envelope is its paper, at the sheets' one scale.
+            ..._sheetScaleRow(
+              shown: !cutPaper,
+              keyPrefix: 'export-envelopescale',
+              scale: spec.sheetScale,
+              onPick: (step) => _updateSpec(spec.copyWith(sheetScale: step)),
+            ),
           ],
         ),
       ),

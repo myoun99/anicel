@@ -1153,7 +1153,6 @@ enum AppStrings {
   String get exForm => _s('exForm');
   String get exCutSize => _s('exCutSize');
   String get exRealSheet => _s('exRealSheet');
-  String get exWidth => _s('exWidth');
   String get exSheetLayers => _s('exSheetLayers');
   String get exContent => _s('exContent');
   String get exInk => _s('exInk');
@@ -2355,7 +2354,6 @@ enum AppStrings {
     'exForm': 'Form',
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
-    'exWidth': 'Width',
     'exSheetLayers': 'Layers',
     'exContent': 'Content',
     'exInk': 'Ink',
@@ -3591,7 +3589,6 @@ enum AppStrings {
     'exForm': '書式',
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
-    'exWidth': '幅',
     'exSheetLayers': 'レイヤー',
     'exContent': '内容',
     'exInk': '線画',
@@ -4949,7 +4946,6 @@ enum AppStrings {
     'exForm': '서식',
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
-    'exWidth': '너비',
     'exSheetLayers': '레이어',
     'exContent': '내용',
     'exInk': '선화',
@@ -6350,7 +6346,6 @@ enum AppStrings {
     'exForm': 'Formulaire',
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
-    'exWidth': 'Largeur',
     'exSheetLayers': 'Calques',
     'exContent': 'Contenu',
     'exInk': 'Encre',
@@ -7694,7 +7689,6 @@ enum AppStrings {
     'exForm': '表单',
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
-    'exWidth': '宽度',
     'exSheetLayers': '图层',
     'exContent': '内容',
     'exInk': '线稿',

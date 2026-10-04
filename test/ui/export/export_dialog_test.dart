@@ -812,8 +812,11 @@ void main() {
       final data = (await tester.runAsync(
         () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
       ))!;
-      // The page ink's surface pixel (0, 0) sits on the page's corner: the
-      // 16px stroke is 4 sheet units, 8 pixels at the export's 2×.
+      // F-294 (유저 2026-10-05: 「1x하더라도 100%크기인채로 출력해야」): the
+      // export starts at 1x, and at 1x a sheet is its paper's own pixels.
+      expect((image.width, image.height), (1754, 2480));
+      // The page ink's surface pixel (0, 0) sits on the page's corner, and a
+      // pixel of the ink is a pixel of the paper.
       expect(data.getUint8(0), greaterThan(200), reason: 'red, from the store');
       expect(data.getUint8(1), lessThan(80));
     });

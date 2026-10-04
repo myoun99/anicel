@@ -508,17 +508,43 @@ class CelsExportSpec extends ExportTabSpec {
   );
 }
 
+/// A SHEET IMAGE'S SCALE over its PAPER — one law for the three sheets'
+/// exports, the timesheet's, the conte's and the cut envelope's (F-294, 유저
+/// 2026-10-05: 「1x하더라도 100%크기인채로 출력해야되니 아까 말한대로
+/// 출력되야하는거아닌가」 · 「컷봉투도 확인한거맞아? 법 통일되있겠지?」). At 1 a
+/// page is its paper's own pixels (`SheetPaper`) — what its panel shows at
+/// 100% — and the steps go on in whole papers.
+///
+/// ↩️The timesheet and the conte multiplied the form's own UNITS (1113×1574
+/// and 595×842 at 1x) and started at 2 to make up for it; the envelope named
+/// a width in pixels (1240 · 2480 · 3508) for a paper its panel never
+/// showed. With 1 the paper itself, 1 is where an export starts.
+abstract final class SheetImageScale {
+  /// The paper as it is.
+  static const int paper = 1;
+
+  /// The steps an export offers.
+  static const List<int> steps = [1, 2, 3, 4];
+
+  /// [scale] held to the steps' range.
+  static int clamped(int scale) => scale.clamp(steps.first, steps.last);
+
+  /// The scale a saved spec names — the paper itself where it names none.
+  static int fromJson(Object? json) =>
+      clamped((json as num?)?.round() ?? paper);
+}
+
 class TimesheetExportSpec extends ExportTabSpec {
   const TimesheetExportSpec({
     this.format = ExportTimesheetFormat.sheetImage,
     this.scope = ExportScopeKind.cut,
-    this.sheetScale = 2,
+    this.sheetScale = SheetImageScale.paper,
   });
 
   final ExportTimesheetFormat format;
   final ExportScopeKind scope;
 
-  /// Sheet-image raster scale over the document's logical size (1..4).
+  /// The sheet image's scale over its paper ([SheetImageScale]).
   final int sheetScale;
 
   @override
@@ -531,21 +557,21 @@ class TimesheetExportSpec extends ExportTabSpec {
   }) => TimesheetExportSpec(
     format: format ?? this.format,
     scope: scope ?? this.scope,
-    sheetScale: (sheetScale ?? this.sheetScale).clamp(1, 4),
+    sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
   );
 
   @override
   Map<String, dynamic> toJson() => {
     if (format != ExportTimesheetFormat.sheetImage) 'format': format.jsonValue,
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
-    if (sheetScale != 2) 'sheetScale': sheetScale,
+    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
   };
 
   static TimesheetExportSpec fromJson(Map<String, dynamic> json) =>
       TimesheetExportSpec(
         format: ExportTimesheetFormat.fromJson(json['format']),
         scope: ExportScopeKind.fromJson(json['scope']),
-        sheetScale: ((json['sheetScale'] as num?)?.round() ?? 2).clamp(1, 4),
+        sheetScale: SheetImageScale.fromJson(json['sheetScale']),
       );
 
   @override
@@ -563,13 +589,13 @@ class TimesheetExportSpec extends ExportTabSpec {
 class ConteExportSpec extends ExportTabSpec {
   const ConteExportSpec({
     this.format = ExportConteFormat.pdf,
-    this.sheetScale = 2,
+    this.sheetScale = SheetImageScale.paper,
   });
 
   final ExportConteFormat format;
 
-  /// Page-image raster scale over the page's logical size (1..4);
-  /// PDF output is vector and ignores it.
+  /// The page image's scale over its paper ([SheetImageScale]); PDF output
+  /// is vector and ignores it.
   final int sheetScale;
 
   @override
@@ -578,18 +604,18 @@ class ConteExportSpec extends ExportTabSpec {
   ConteExportSpec copyWith({ExportConteFormat? format, int? sheetScale}) =>
       ConteExportSpec(
         format: format ?? this.format,
-        sheetScale: (sheetScale ?? this.sheetScale).clamp(1, 4),
+        sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
       );
 
   @override
   Map<String, dynamic> toJson() => {
     if (format != ExportConteFormat.pdf) 'format': format.jsonValue,
-    if (sheetScale != 2) 'sheetScale': sheetScale,
+    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
   };
 
   static ConteExportSpec fromJson(Map<String, dynamic> json) => ConteExportSpec(
     format: ExportConteFormat.fromJson(json['format']),
-    sheetScale: ((json['sheetScale'] as num?)?.round() ?? 2).clamp(1, 4),
+    sheetScale: SheetImageScale.fromJson(json['sheetScale']),
   );
 
   @override
@@ -618,7 +644,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
   const EnvelopeExportSpec({
     this.paperMode = CutEnvelopePaperMode.cut,
     this.scope = ExportScopeKind.cut,
-    this.sheetWidth = 2480,
+    this.sheetScale = SheetImageScale.paper,
     this.layers = defaultLayers,
     this.separateLayerFiles = false,
   });
@@ -638,9 +664,10 @@ class EnvelopeExportSpec extends ExportTabSpec {
   final CutEnvelopePaperMode paperMode;
   final ExportScopeKind scope;
 
-  /// The real-envelope mode's pixel width (A4 at 300dpi by default); the
-  /// cut mode takes the canvas verbatim and ignores this.
-  final int sheetWidth;
+  /// The real-envelope mode's scale over the envelope's paper
+  /// ([SheetImageScale]); the cut mode takes the canvas verbatim and
+  /// ignores this.
+  final int sheetScale;
 
   /// Which strata print. Turning one off is how a printed sheet ships
   /// without its handwriting, or how the form alone becomes a template.
@@ -664,13 +691,13 @@ class EnvelopeExportSpec extends ExportTabSpec {
   EnvelopeExportSpec copyWith({
     CutEnvelopePaperMode? paperMode,
     ExportScopeKind? scope,
-    int? sheetWidth,
+    int? sheetScale,
     Set<SheetPaintLayer>? layers,
     bool? separateLayerFiles,
   }) => EnvelopeExportSpec(
     paperMode: paperMode ?? this.paperMode,
     scope: scope ?? this.scope,
-    sheetWidth: (sheetWidth ?? this.sheetWidth).clamp(64, 20000),
+    sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
     layers: layers ?? this.layers,
     separateLayerFiles: separateLayerFiles ?? this.separateLayerFiles,
   );
@@ -690,7 +717,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
   Map<String, dynamic> toJson() => {
     if (paperMode != CutEnvelopePaperMode.cut) 'paperMode': paperMode.toJson(),
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
-    if (sheetWidth != 2480) 'sheetWidth': sheetWidth,
+    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
     if (!setEquals(layers, defaultLayers))
       'layers': [for (final layer in orderedLayers) layer.jsonValue],
     if (separateLayerFiles) 'separateLayerFiles': true,
@@ -707,10 +734,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
           ? CutEnvelopePaperMode.cut
           : CutEnvelopePaperMode.fromJson(json['paperMode']),
       scope: ExportScopeKind.fromJson(json['scope']),
-      sheetWidth: ((json['sheetWidth'] as num?)?.round() ?? 2480).clamp(
-        64,
-        20000,
-      ),
+      sheetScale: SheetImageScale.fromJson(json['sheetScale']),
       // An empty list would leave nothing to draw; a file that says so is
       // saying "default", not "blank page".
       layers: layers.isEmpty ? defaultLayers : layers,
@@ -723,7 +747,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
       other is EnvelopeExportSpec &&
       other.paperMode == paperMode &&
       other.scope == scope &&
-      other.sheetWidth == sheetWidth &&
+      other.sheetScale == sheetScale &&
       setEquals(other.layers, layers) &&
       other.separateLayerFiles == separateLayerFiles;
 
@@ -731,7 +755,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(
     paperMode,
     scope,
-    sheetWidth,
+    sheetScale,
     Object.hashAllUnordered(layers),
     separateLayerFiles,
   );

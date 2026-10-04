@@ -12,6 +12,7 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect, Size;
 
+import '../canvas_size.dart';
 import '../sheet_paper.dart';
 import 'conte_sheet_source.dart';
 
@@ -65,6 +66,9 @@ class ConteSheetMetrics {
   /// its own pixels, as the timesheet's and the envelope's do.
   double get paperScale =>
       SheetPaper.conte.around(Size(pageWidth, pageHeight)).scale;
+
+  /// The paper of one page, in pixels — what a page image is at 1x.
+  CanvasSize get paperPixelSize => SheetPaper.conte.pixelSize;
 
   /// Left and right: the cut box starts here, the table ends here.
   double get marginX => 30;

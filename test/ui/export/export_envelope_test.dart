@@ -115,7 +115,7 @@ void main() {
       const spec = EnvelopeExportSpec(
         paperMode: CutEnvelopePaperMode.sheet,
         scope: ExportScopeKind.project,
-        sheetWidth: 3508,
+        sheetScale: 3,
         layers: {SheetPaintLayer.form, SheetPaintLayer.ink},
         separateLayerFiles: true,
       );
@@ -159,8 +159,8 @@ void main() {
       );
       expect(specs.specFor(ExportTab.envelope), specs.envelope);
       expect(
-        specs.withSpec(const EnvelopeExportSpec(sheetWidth: 1240)).envelope,
-        const EnvelopeExportSpec(sheetWidth: 1240),
+        specs.withSpec(const EnvelopeExportSpec(sheetScale: 2)).envelope,
+        const EnvelopeExportSpec(sheetScale: 2),
       );
     });
   });
@@ -171,21 +171,9 @@ void main() {
       final paper = cutEnvelopePaperSize(
         mode: CutEnvelopePaperMode.cut,
         cut: cut('39'),
-        formAspectRatio: CutEnvelopePresets.analog.aspectRatio,
       );
 
       expect(paper, (width: 320, height: 240));
-    });
-
-    test('the sheet mode is the form\'s own shape at the chosen width', () {
-      final paper = cutEnvelopePaperSize(
-        mode: CutEnvelopePaperMode.sheet,
-        cut: cut('39'),
-        formAspectRatio: 2,
-        sheetWidth: 1000,
-      );
-
-      expect(paper, (width: 1000, height: 500));
     });
   });
 
@@ -474,10 +462,12 @@ void main() {
           findsNothing,
         );
       }
-      // The real-sheet mode is the form's own shape, so the page height
-      // says which form printed: the two bundled forms differ in aspect.
+      // The real sheet is the envelope's own paper whichever form prints
+      // (F-294 — A4 on its side at 300dpi, the panel's), so the PAPER'S
+      // COLOUR says which did: the two bundled forms print on different
+      // papers.
       await tapSetting(tester, 'export-envelope-paper-sheet');
-      await tapSetting(tester, 'export-envelope-width-1240');
+      expect(state.debugSpecs.envelope.sheetScale, 1);
 
       await tester.runAsync(state.export);
       await tester.pump();
@@ -489,10 +479,40 @@ void main() {
         () => decodeImageFromList(file.readAsBytesSync()),
       ))!;
       addTearDown(image.dispose);
-      final digital = (1240 / CutEnvelopePresets.digital.aspectRatio).round();
-      final analog = (1240 / CutEnvelopePresets.analog.aspectRatio).round();
-      expect(digital, isNot(analog));
-      expect((image.width, image.height), (1240, digital));
+      expect(
+        (image.width, image.height),
+        (3508, 2480),
+        reason: 'at 1x the real sheet is its paper\'s own pixels',
+      );
+      (int, int, int) rgbOf(int argb) =>
+          ((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
+      final digital = rgbOf(CutEnvelopePresets.digital.paperArgb);
+      expect(digital, isNot(rgbOf(CutEnvelopePresets.analog.paperArgb)));
+      // The paper's corner, in the margin the form leaves.
+      final corner = (await tester.runAsync(() => pixelAt(image, 2, 2)))!;
+      expect((corner.$1, corner.$2, corner.$3), digital);
+    });
+
+    testWidgets('the real sheet takes the sheets\' one scale — its row '
+        'stands in the paper module, and 2x is two papers across', (
+      tester,
+    ) async {
+      final session = EditorSessionManager(initialProject: project());
+      addTearDown(session.dispose);
+      final state = await pumpDialog(tester, session);
+      await tapSetting(tester, 'export-envelope-paper-sheet');
+      await tapSetting(tester, 'export-envelopescale-2');
+      expect(state.debugSpecs.envelope.sheetScale, 2);
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final bytes = File(
+        '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+      ).readAsBytesSync();
+      // A PNG's size from its IHDR — the first chunk, big-endian at 16.
+      final header = ByteData.sublistView(bytes);
+      expect((header.getUint32(16), header.getUint32(20)), (7016, 4960));
     });
   });
 }

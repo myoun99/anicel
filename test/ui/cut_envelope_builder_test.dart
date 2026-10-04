@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_builder.dart';
 
@@ -107,25 +106,31 @@ void main() {
       final paper = cutEnvelopePaperSize(
         mode: CutEnvelopePaperMode.cut,
         cut: cut,
-        formAspectRatio: CutEnvelopePresets.analog.aspectRatio,
+        // The scale is the real sheet's alone.
+        sheetScale: 3,
       );
 
       expect(paper.width, cut.canvasSize.width);
       expect(paper.height, cut.canvasSize.height);
     });
 
-    test('sheet mode takes the form\'s own shape', () {
-      final form = CutEnvelopePresets.analog;
+    test('sheet mode is the envelope\'s own paper — A4 on its side at '
+        '300dpi, whatever the cut — and a scale is that many papers '
+        '(F-294)', () {
+      final cut = session.requireActiveCut;
 
-      final paper = cutEnvelopePaperSize(
-        mode: CutEnvelopePaperMode.sheet,
-        cut: session.requireActiveCut,
-        formAspectRatio: form.aspectRatio,
-        sheetWidth: 1320,
+      expect(
+        cutEnvelopePaperSize(mode: CutEnvelopePaperMode.sheet, cut: cut),
+        (width: 3508, height: 2480),
       );
-
-      expect(paper.width, 1320);
-      expect(paper.height, (1320 / form.aspectRatio).round());
+      expect(
+        cutEnvelopePaperSize(
+          mode: CutEnvelopePaperMode.sheet,
+          cut: cut,
+          sheetScale: 2,
+        ),
+        (width: 7016, height: 4960),
+      );
     });
 
     test('the mode round-trips through JSON', () {

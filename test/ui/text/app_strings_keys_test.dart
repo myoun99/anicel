@@ -553,7 +553,6 @@ void main() {
     'exForm': (s) => s.exForm,
     'exCutSize': (s) => s.exCutSize,
     'exRealSheet': (s) => s.exRealSheet,
-    'exWidth': (s) => s.exWidth,
     'exSheetLayers': (s) => s.exSheetLayers,
     'exContent': (s) => s.exContent,
     'exInk': (s) => s.exInk,

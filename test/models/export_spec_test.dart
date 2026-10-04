@@ -148,6 +148,49 @@ void main() {
     });
   });
 
+  group('🚨F-294: a sheet image\'s scale is over its PAPER, one law for the '
+      'timesheet, the conte and the envelope', () {
+    test('an export starts at 1x — the paper as it is — and a spec that '
+        'names no scale reads as that', () {
+      expect(SheetImageScale.paper, 1);
+      expect(const TimesheetExportSpec().sheetScale, 1);
+      expect(const ConteExportSpec().sheetScale, 1);
+      expect(const EnvelopeExportSpec().sheetScale, 1);
+      expect(TimesheetExportSpec.fromJson(const {}).sheetScale, 1);
+      expect(ConteExportSpec.fromJson(const {}).sheetScale, 1);
+      expect(EnvelopeExportSpec.fromJson(const {}).sheetScale, 1);
+      for (final spec in const <ExportTabSpec>[
+        TimesheetExportSpec(),
+        ConteExportSpec(),
+        EnvelopeExportSpec(),
+      ]) {
+        expect(spec.toJson(), isEmpty, reason: '${spec.tab}');
+      }
+    });
+
+    test('every sheet holds its scale to the steps, and keeps a step it is '
+        'given through JSON', () {
+      expect(SheetImageScale.steps, [1, 2, 3, 4]);
+      expect(const TimesheetExportSpec().copyWith(sheetScale: 0).sheetScale, 1);
+      expect(const ConteExportSpec().copyWith(sheetScale: 9).sheetScale, 4);
+      expect(const EnvelopeExportSpec().copyWith(sheetScale: 9).sheetScale, 4);
+      expect(
+        EnvelopeExportSpec.fromJson(const {'sheetScale': 99}).sheetScale,
+        4,
+      );
+      expect(ConteExportSpec.fromJson(const {'sheetScale': 0}).sheetScale, 1);
+
+      const timesheet = TimesheetExportSpec(sheetScale: 3);
+      const conte = ConteExportSpec(sheetScale: 2);
+      const envelope = EnvelopeExportSpec(sheetScale: 4);
+      expect(timesheet.toJson()['sheetScale'], 3);
+      expect(TimesheetExportSpec.fromJson(timesheet.toJson()), timesheet);
+      expect(ConteExportSpec.fromJson(conte.toJson()), conte);
+      expect(EnvelopeExportSpec.fromJson(envelope.toJson()), envelope);
+      expect(envelope, isNot(const EnvelopeExportSpec(sheetScale: 3)));
+    });
+  });
+
   group('ExportTabSpecs', () {
     test('round-trips per-tab and withSpec routes by type', () {
       const specs = ExportTabSpecs();

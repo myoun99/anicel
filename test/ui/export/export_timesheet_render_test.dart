@@ -61,10 +61,13 @@ void main() {
         scale: 1,
       );
 
+      // F-294 (유저 2026-10-05: 「최신빌드로 시트 출력하면 1113x1574인데? …
+      // 1x하더라도 100%크기인채로 출력해야」): at 1x a page is its paper's
+      // own pixels — the panel's 100% — not the form's units.
       final first = await page(0);
-      final rect = layout.pageRect(0);
-      expect(first.width, rect.width.round());
-      expect(first.height, rect.height.round());
+      expect(layout.pageRect(0).width.round(), 1113, reason: 'fixture');
+      expect(first.width, 1754);
+      expect(first.height, 2480);
 
       final second = await page(1);
       final firstBytes = (await first.toByteData(
@@ -93,7 +96,8 @@ void main() {
         words: timesheetWordsIn(AppLanguage.en),
         scale: 2,
       );
-      expect(scaled.width, rect.width.round() * 2);
+      expect(scaled.width, 3508, reason: '2x is two papers across');
+      expect(scaled.height, 4960);
 
       // An explicit output size WINS over the scale — the sheet and the
       // conte page answer this the same way, and the preview relies on it

@@ -121,7 +121,7 @@ void paintSheetPaper(Canvas canvas, Rect rect, Color color) {
 ///
 /// With no viewport it is the EXPORT/PREVIEW path: the export renders at
 /// paper size (scale 1) and a preview at a fraction of it, both from these
-/// same paper units.
+/// same paper units ([_paperFittedInto]).
 void enterSheetPaperSpace(
   Canvas canvas,
   Size size,
@@ -137,12 +137,25 @@ void enterSheetPaperSpace(
     );
     return;
   }
-  final scale = math.min(
-    size.width / sheet.paper.width,
-    size.height / sheet.paper.height,
-  );
+  final (:scale, :origin) = _paperFittedInto(size, sheet.paper);
+  canvas.translate(origin.dx, origin.dy);
   canvas.scale(scale, scale);
 }
+
+/// Where a sheet's [paper] lies in a box of [size] with no view to lay it
+/// by — an export's image, a preview: as large as fits, its shape kept,
+/// CENTRED ([containRect], the one contain).
+///
+/// ↩️It was laid from the box's corner — the smaller of the two ratios and
+/// nothing to centre it, written out twice here (the painter's way in and
+/// the grid's). A paper a hair off its box's shape left the whole of the
+/// hair on one side: the conte's page is A4 in points and its image A4 in
+/// pixels (F-294), 841.89pt come to 3507.4 of the 3508, and the fill cut on
+/// the grid stopped a row short of the image's foot.
+({double scale, Offset origin}) _paperFittedInto(Size size, Size paper) => (
+  scale: containFit(paper, size).scale,
+  origin: containRect(paper, Offset.zero & size).topLeft,
+);
 
 /// Where a sheet's paper units land on the device: the panel's snapped
 /// viewport, or the export's fit.
@@ -166,13 +179,11 @@ class SheetDeviceGrid {
     if (viewport != null) {
       return SheetDeviceGrid.through(viewport, sheet.devicePixelRatio);
     }
+    final (:scale, :origin) = _paperFittedInto(size, sheet.paper);
     return SheetDeviceGrid._(
-      scale: math.min(
-        size.width / sheet.paper.width,
-        size.height / sheet.paper.height,
-      ),
-      dx: 0,
-      dy: 0,
+      scale: scale,
+      dx: origin.dx,
+      dy: origin.dy,
       devicePixelRatio: 1,
     );
   }
