@@ -707,47 +707,53 @@ void main() {
       ),
     };
 
-    final linked = Project(
-      id: const ProjectId('project'),
-      name: 'Project',
-      tracks: [
-        Track(
-          id: const TrackId('track'),
-          name: 'Track',
-          cuts: [
-            for (final cut in ['c1', 'c2'])
-              Cut(
-                id: CutId(cut),
-                name: cut.toUpperCase(),
-                duration: 4,
-                canvasSize: const CanvasSize(width: 8, height: 8),
-                layers: [
-                  rowOf(cut, 'paper'),
-                  rowOf(cut, 'bg'),
-                  rowOf(cut, 'a'),
-                  createCameraLayer(cutId: CutId(cut)),
-                ],
-              ),
-          ],
-        ),
-      ],
-      linkRegistry: LayerLinkRegistry(
-        groups: [
-          for (final row in ['paper', 'bg', 'a'])
-            LayerLinkGroup(
-              id: 'group-$row',
-              members: [
+    /// C1 and C2 as a 겸용 pair: each holds [rowsOf] its own id, and the
+    /// rows named `<cut>-<row>` for each of [rows] are linked across them.
+    Project pairOf(List<Layer> Function(String cut) rowsOf, List<String> rows) =>
+        Project(
+          id: const ProjectId('project'),
+          name: 'Project',
+          tracks: [
+            Track(
+              id: const TrackId('track'),
+              name: 'Track',
+              cuts: [
                 for (final cut in ['c1', 'c2'])
-                  LayerLinkMember(
-                    trackId: const TrackId('track'),
-                    cutId: CutId(cut),
-                    layerId: LayerId('$cut-$row'),
+                  Cut(
+                    id: CutId(cut),
+                    name: cut.toUpperCase(),
+                    duration: 4,
+                    canvasSize: const CanvasSize(width: 8, height: 8),
+                    layers: [
+                      ...rowsOf(cut),
+                      createCameraLayer(cutId: CutId(cut)),
+                    ],
                   ),
               ],
             ),
-        ],
-      ),
-      createdAt: DateTime.utc(2026),
+          ],
+          linkRegistry: LayerLinkRegistry(
+            groups: [
+              for (final row in rows)
+                LayerLinkGroup(
+                  id: 'group-$row',
+                  members: [
+                    for (final cut in ['c1', 'c2'])
+                      LayerLinkMember(
+                        trackId: const TrackId('track'),
+                        cutId: CutId(cut),
+                        layerId: LayerId('$cut-$row'),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+          createdAt: DateTime.utc(2026),
+        );
+
+    final linked = pairOf(
+      (cut) => [rowOf(cut, 'paper'), rowOf(cut, 'bg'), rowOf(cut, 'a')],
+      ['paper', 'bg', 'a'],
     );
 
     ExportCelGroupPlan planFrom(
@@ -853,6 +859,75 @@ void main() {
         expect(
           stacks(built)['BG1.png'],
           'c1 / p1',
+          reason: 'standing on $standingOn',
+        );
+      }
+    });
+
+    test('the rows riding a cel ride it in the cut that shows it: a SYNCED '
+        'row by its cell link, a FREE row by what that cut exposes there', () {
+      // A holds cels 1 and 2 — C1 shows 1, C2 shows 2 — with a synced row
+      // and a free row riding it. The free row's bank is the group's too,
+      // and each cut shows its own cel of it.
+      List<Layer> rowsOf(String cut) {
+        final shown = cut == 'c1' ? '1' : '2';
+        return [
+          Layer(
+            id: LayerId('$cut-a'),
+            name: 'A',
+            frames: [frame('a1'), frame('a2')],
+            mark: key,
+            timeline: {
+              0: TimelineExposure.drawing(FrameId('a$shown'), length: 4),
+            },
+          ),
+          Layer(
+            id: LayerId('$cut-color'),
+            name: 'A색',
+            frames: [frame('s1'), frame('s2')],
+            mark: key,
+            attachedToLayerId: LayerId('$cut-a'),
+            attachedMode: AttachedMode.synced,
+            baseFrameLinks: {
+              const FrameId('a1'): const FrameId('s1'),
+              const FrameId('a2'): const FrameId('s2'),
+            },
+          ),
+          Layer(
+            id: LayerId('$cut-shadow'),
+            name: 'Ashadow',
+            frames: [frame('h1'), frame('h2')],
+            mark: key,
+            attachedToLayerId: LayerId('$cut-a'),
+            attachedMode: AttachedMode.free,
+            timeline: {
+              0: TimelineExposure.drawing(FrameId('h$shown'), length: 4),
+            },
+          ),
+        ];
+      }
+
+      final riders = pairOf(rowsOf, ['a', 'color', 'shadow']);
+
+      for (final standingOn in ['c1', 'c2']) {
+        final built = buildExportCelGroupPlan(
+          project: riders,
+          activeCutId: CutId(standingOn),
+          spec: const CelsExportSpec(),
+        );
+        expect(
+          {
+            for (final task in built.cels)
+              task.fileName: [
+                for (var i = 0; i < task.members.length; i += 1)
+                  '${task.members[i].id.value}='
+                      '${task.memberFrames[i]?.id.value}',
+              ],
+          },
+          {
+            'A1.png': ['c1-a=a1', 'c1-color=s1', 'c1-shadow=h1'],
+            'A2.png': ['c2-a=a2', 'c2-color=s2', 'c2-shadow=h2'],
+          },
           reason: 'standing on $standingOn',
         );
       }
