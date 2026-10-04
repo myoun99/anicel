@@ -84,10 +84,10 @@ class ExportSequenceNaming {
   int get hashCode => Object.hash(baseName, digits);
 }
 
-/// What the Timesheet tab writes: rendered B4 sheet pages as images, or a
-/// digital sheet file. (TDTS and the Auto Sheet JSON join this enum once
-/// their sample files arrive — the seam is this enum plus the tab's format
-/// module allow-list.)
+/// What the Timesheet tab writes: the sheet's pages rendered on the
+/// panel's paper as images, or a digital sheet file. (TDTS and the Auto
+/// Sheet JSON join this enum once their sample files arrive — the seam is
+/// this enum plus the tab's format module allow-list.)
 enum ExportTimesheetFormat {
   sheetImage,
   xdts;

@@ -1279,8 +1279,12 @@ enum AppStrings {
       .replaceAll('{format}', format);
   String get exTransparent => _s('exTransparent');
   String get exOpaque => _s('exOpaque');
-  String exSheetImageHeadline(String pages) =>
-      _s('exSheetImageHeadlineTemplate').replaceAll('{pages}', pages);
+  String exSheetImageHeadline({
+    required String pages,
+    required String paper,
+  }) => _s('exSheetImageHeadlineTemplate')
+      .replaceAll('{pages}', pages)
+      .replaceAll('{paper}', paper);
   String exXdtsHeadline(String sheets) =>
       _s('exXdtsHeadlineTemplate').replaceAll('{sheets}', sheets);
   String exContePdfHeadline(String pages) =>
@@ -2420,7 +2424,7 @@ enum AppStrings {
     'exTransparent': 'transparent',
     'exOpaque': 'opaque',
     'exSheetImageHeadlineTemplate':
-        '{pages} as B4 PNG — the panel\'s own paper, offscreen.',
+        '{pages} as {paper} PNG — the panel\'s own paper, offscreen.',
     'exXdtsHeadlineTemplate': '{sheets} (cels + serifu + camerawork columns).',
     'exContePdfHeadlineTemplate':
         '{pages} as ONE vector PDF — rules and text as vectors, pictures embedded.',
@@ -3681,7 +3685,8 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+アタッチを合成）。',
     'exTransparent': '透過',
     'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate': '{pages}をB4 PNGで — パネルの用紙のまま、画面外で描画。',
+    'exSheetImageHeadlineTemplate':
+        '{pages}を{paper} PNGで — パネルの用紙のまま、画面外で描画。',
     'exXdtsHeadlineTemplate': '{sheets}（セル + セリフ + カメラワーク列）。',
     'exContePdfHeadlineTemplate': '{pages}を1つのベクターPDFに — 罫線と文字はベクター、絵は埋め込み。',
     'exContePngHeadlineTemplate': '{pages}をA4 PNGで — パネルの用紙のまま、画面外で描画。',
@@ -5038,7 +5043,8 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+어태치 합성).',
     'exTransparent': '투명',
     'exOpaque': '불투명',
-    'exSheetImageHeadlineTemplate': '{pages}를 B4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
+    'exSheetImageHeadlineTemplate':
+        '{pages}를 {paper} PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
     'exXdtsHeadlineTemplate': '{sheets}(셀 + 대사 + 카메라워크 열).',
     'exContePdfHeadlineTemplate': '{pages}를 벡터 PDF 하나로 — 선과 글자는 벡터, 그림은 포함.',
     'exContePngHeadlineTemplate': '{pages}를 A4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
@@ -6471,7 +6477,8 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {files} en {format} {background} (base + attaches composées par cellulo).',
     'exTransparent': 'transparent',
     'exOpaque': 'opaque',
-    'exSheetImageHeadlineTemplate': '{pages} en PNG B4 — le papier du panneau, rendu hors écran.',
+    'exSheetImageHeadlineTemplate':
+        '{pages} en PNG {paper} — le papier du panneau, rendu hors écran.',
     'exXdtsHeadlineTemplate': '{sheets} (colonnes cellulos + dialogues + caméra).',
     'exContePdfHeadlineTemplate': '{pages} en UN seul PDF vectoriel — traits et texte vectoriels, images intégrées.',
     'exContePngHeadlineTemplate': '{pages} en PNG A4 — le papier du panneau, rendu hors écran.',
@@ -7781,7 +7788,7 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · 以{background} {format} 输出{files}（每张赛璐珞合成基准+附属）。',
     'exTransparent': '透明',
     'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate': '{pages}，B4 PNG——使用面板自身的纸张，离屏渲染。',
+    'exSheetImageHeadlineTemplate': '{pages}，{paper} PNG——使用面板自身的纸张，离屏渲染。',
     'exXdtsHeadlineTemplate': '{sheets}（赛璐珞 + 台词 + 摄影栏）。',
     'exContePdfHeadlineTemplate': '{pages}合成一个矢量 PDF——线条与文字为矢量，图片嵌入。',
     'exContePngHeadlineTemplate': '{pages}，A4 PNG——使用面板自身的纸张，离屏渲染。',

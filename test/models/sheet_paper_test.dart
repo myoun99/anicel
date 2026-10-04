@@ -8,6 +8,13 @@ import 'package:anicel/src/models/sheet_paper.dart';
 /// and so a size in pixels — 「이런 패널들은 사이즈 생각할때 dpi를 기준으로
 /// 생각할거야. 즉 용지 크기 바꾼다면 dpi사이즈 바꾸는느낌으로」.
 void main() {
+  test('a format is called by its name: A4, A3', () {
+    expect([for (final format in SheetPaperFormat.values) format.label], [
+      'A4',
+      'A3',
+    ]);
+  });
+
   test('the three sheets stand on the papers the user named, to the pixel',
       () {
     // 「타임시트 용지패널 용지크기 너무 작음 … 1754x2480을 기본으로 할것.

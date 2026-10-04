@@ -747,6 +747,17 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
+      // The headline names the paper the panel stands on (F-294) — it said
+      // 「B4」 by hand until the paper became A3 at 150dpi and it still did.
+      expect(
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('export-plan-headline')),
+            )
+            .data,
+        '1 sheet page as A3 PNG — the panel\'s own paper, offscreen.',
+      );
+
       // The sheet is filed under the cut's NAME — its number, whatever the
       // user called it — not its position in the track.
       expect(filesIn(temp), ['CUTCut.png']);

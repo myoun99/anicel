@@ -12,6 +12,9 @@ enum SheetPaperFormat {
 
   final double widthMm;
   final double heightMm;
+
+  /// What the format is called where a sheet says its paper: `A4`.
+  String get label => name.toUpperCase();
 }
 
 /// A sheet panel's PAPER: a format at a resolution — and so a size in

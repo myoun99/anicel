@@ -13,6 +13,7 @@ import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
+import '../../models/sheet_paper.dart';
 import '../../native/qa_image_encoder.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
@@ -1870,7 +1871,11 @@ class ExportDialogState extends State<ExportDialog> {
   String _timesheetHeadline() {
     if (_specs.timesheet.format == ExportTimesheetFormat.sheetImage) {
       return AppText.strings.exSheetImageHeadline(
-        AppText.strings.exSheetPageCount(_timesheetPagePlan().length),
+        pages: AppText.strings.exSheetPageCount(_timesheetPagePlan().length),
+        // The paper the panel stands on, read off the table — ↩️it said
+        // 「B4」 by hand, and went on saying it after the paper became
+        // another (F-294).
+        paper: SheetPaper.timesheet.format.label,
       );
     }
     return AppText.strings.exXdtsHeadline(
