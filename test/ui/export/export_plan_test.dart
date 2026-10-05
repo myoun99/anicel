@@ -3,6 +3,8 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_overrides.dart';
+import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -46,6 +48,42 @@ void main() {
     tracks: tracks,
     createdAt: DateTime.utc(2026),
   );
+
+  /// 🗣️유저 2026-10-05: 「같은 겸용컷에서 타임시트랑 컷봉투 출력하려니 컷
+  /// 없다고 뜨는데 이거뭐지?」 — the cut was unticked in the scope grid,
+  /// which only the project scope shows.
+  group('exportCutsInScope', () {
+    final film = project([
+      Track(
+        id: const TrackId('track'),
+        name: 'Track',
+        cuts: [cut('a'), cut('b'), cut('c')],
+      ),
+    ]);
+    final bUnticked = ExportProjectOverrides(
+      excludedCutIds: {const CutId('b')},
+    );
+
+    List<String> ids(ExportScopeKind scope, {ExportProjectOverrides? ticks}) => [
+      for (final cut in exportCutsInScope(
+        project: film,
+        activeCutId: const CutId('b'),
+        scope: scope,
+        overrides: ticks,
+      ))
+        cut.id.value,
+    ];
+
+    test('🎯the cut scope is the cut stood on — whatever its tick says', () {
+      expect(ids(ExportScopeKind.cut, ticks: bUnticked), ['b']);
+      expect(ids(ExportScopeKind.cut), ['b']);
+    });
+
+    test('the project scope is the TICKED cuts, in play order', () {
+      expect(ids(ExportScopeKind.project, ticks: bUnticked), ['a', 'c']);
+      expect(ids(ExportScopeKind.project), ['a', 'b', 'c']);
+    });
+  });
 
   group('buildExportFramePlan', () {
     test('active cut covers exactly its frames', () {

@@ -621,14 +621,13 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   final projectScope = spec.scope == ExportScopeKind.project;
   final cels = <ExportCelGroupTask>[];
   final instructions = <ExportInstructionTask>[];
-  for (final cut in resolveExportCuts(
+  for (final cut in exportCutsInScope(
     project: project,
     activeCutId: activeCutId,
-    range: projectScope ? ExportRange.allCuts : ExportRange.activeCut,
+    scope: spec.scope,
+    overrides: overrides,
   )) {
-    if (projectScope &&
-        (cutEnvelopeInkOwner(project, cut.id) != cut.id ||
-            (overrides != null && !overrides.cutIncluded(cut.id)))) {
+    if (projectScope && cutEnvelopeInkOwner(project, cut.id) != cut.id) {
       continue;
     }
     final delta = overrides?.deltaFor(cut.id);

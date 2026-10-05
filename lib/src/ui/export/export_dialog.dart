@@ -774,9 +774,6 @@ class ExportDialogState extends State<ExportDialog> {
 
   Cut get _activeCut => _anchorCut!;
 
-  bool _cutInScope(Cut cut) =>
-      _session.repository.requireProject().exportOverrides.cutIncluded(cut.id);
-
   /// The 0-based in/out marks on the SEQUENCE AXIS (cut-local frames
   /// under the cut scope, whole-track positions under the project scope);
   /// `null` = the fields don't form a valid range right now.
@@ -863,19 +860,12 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  List<Cut> _timesheetCuts() {
-    final cuts = resolveExportCuts(
-      project: _session.repository.requireProject(),
-      activeCutId: _activeCut.id,
-      range: _specs.timesheet.scope == ExportScopeKind.project
-          ? ExportRange.allCuts
-          : ExportRange.activeCut,
-    );
-    return [
-      for (final cut in cuts)
-        if (_cutInScope(cut)) cut,
-    ];
-  }
+  List<Cut> _timesheetCuts() => exportCutsInScope(
+    project: _session.repository.requireProject(),
+    activeCutId: _activeCut.id,
+    scope: _specs.timesheet.scope,
+    overrides: _overrides,
+  );
 
   AppLanguage get _notationLanguage =>
       _session.languageSettings.value.notationLanguage;
@@ -996,19 +986,15 @@ class ExportDialogState extends State<ExportDialog> {
     // The work's form, the one the panel shows (유저 답
     // envelope-form-in-export: the export follows it).
     final form = CutEnvelopePresets.byId(project.timesheetInfo.envelopeFormId);
-    final cuts = resolveExportCuts(
+    final cuts = exportCutsInScope(
       project: project,
       activeCutId: _activeCut.id,
-      range: spec.scope == ExportScopeKind.project
-          ? ExportRange.allCuts
-          : ExportRange.activeCut,
+      scope: spec.scope,
+      overrides: project.exportOverrides,
     );
     final tasks = <ExportEnvelopeTask>[];
     final seen = <CutId>{};
     for (final cut in cuts) {
-      if (!_cutInScope(cut)) {
-        continue;
-      }
       final ownerId = cutEnvelopeInkOwner(project, cut.id);
       if (!seen.add(ownerId)) {
         continue;
@@ -4553,6 +4539,12 @@ class ExportDialogState extends State<ExportDialog> {
         // Open by default: "this cut or the whole film" is the first thing
         // anyone asks of a per-cut document.
         fold: (key: 'envelope-scope', open: true),
+        // The cut checks this tab's project scope obeys, shown where they
+        // are obeyed — the same grid part the Cels and Timesheet scopes
+        // use. ↩️The tab obeyed them from its first day (2026-08-06) with
+        // no grid of its own: a cut unticked in another tab simply went
+        // missing here (envelope-export-cut-grid-Q1).
+        child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
       ),
     ];
   }

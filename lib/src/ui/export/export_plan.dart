@@ -4,6 +4,8 @@ import '../../models/kept_span.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_cel_naming.dart';
+import '../../models/export_overrides.dart';
+import '../../models/export_spec.dart' show ExportScopeKind;
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/se_audio_spans.dart';
@@ -71,6 +73,45 @@ List<Cut> resolveExportCuts({
     return activeTrack.cuts;
   }
   return location == null ? const [] : [location.cut];
+}
+
+/// The cuts a per-cut document tab — Cels, Timesheet, Envelope — writes
+/// under [scope]: the cut the window stands on, or the project's TICKED
+/// cuts in play order.
+///
+/// ★The cut checks ([ExportProjectOverrides.cutIncluded]) belong to the
+/// PROJECT scope. The grid that ticks them is shown under that scope alone,
+/// so under the cut scope a tick is a switch nobody can see — and the cut
+/// stood on is written whatever its tick says.
+///
+/// 🗣️유저 2026-10-05: 「출력은 정상적으로 됬는데 같은 겸용컷에서 타임시트랑
+/// 컷봉투 출력하려니 컷 없다고 뜨는데 이거뭐지?」 — measured across every
+/// tab, cut and scope: the cut was unticked in the grid, and three places
+/// each decided for themselves what that meant. The Cels plan had asked the
+/// tick under the project scope only since 2026-09-09; the Timesheet
+/// (2026-07-21) and the Envelope (2026-08-06) still asked it always and
+/// wrote nothing for the cut the window stood on.
+List<Cut> exportCutsInScope({
+  required Project project,
+  required CutId activeCutId,
+  required ExportScopeKind scope,
+  required ExportProjectOverrides? overrides,
+}) {
+  if (scope == ExportScopeKind.cut) {
+    return resolveExportCuts(
+      project: project,
+      activeCutId: activeCutId,
+      range: ExportRange.activeCut,
+    );
+  }
+  return [
+    for (final cut in resolveExportCuts(
+      project: project,
+      activeCutId: activeCutId,
+      range: ExportRange.allCuts,
+    ))
+      if (overrides == null || overrides.cutIncluded(cut.id)) cut,
+  ];
 }
 
 /// Ordered composite frames for the chosen range. Every cut plays at least

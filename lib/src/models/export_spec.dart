@@ -35,8 +35,10 @@ enum ExportTab {
 }
 
 /// The Scope module: the active cut, or the whole project. Sequence's
-/// project scope has NO cut list (in/out alone trims it); Cels/Timesheet
-/// scope excludes cuts through the project-side overrides' cut checks.
+/// project scope has NO cut list (in/out alone trims it); the Cels,
+/// Timesheet and Envelope PROJECT scope excludes cuts through the
+/// project-side overrides' cut checks — the cut scope never asks them
+/// (`exportCutsInScope`).
 enum ExportScopeKind {
   cut,
   project;
