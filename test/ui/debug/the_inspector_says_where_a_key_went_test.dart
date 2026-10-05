@@ -110,6 +110,16 @@ void main() {
       InputInspector.notes['gate'],
       'gate undo refused → a contact is down',
     );
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      InputInspector.notes['gate'],
+      'gate redo refused → a contact is down',
+    );
 
     await held.up();
     await tester.pump();
