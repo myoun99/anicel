@@ -640,6 +640,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _noteUserActivity(PointerEvent event) {
     _contacts.note(event);
     _autosaveClock.noteActivity(strokeInFlight: _contacts.anyDown);
+    // What the undo door will be told is down, where a screenshot can read
+    // it (F-232). ⛔Built only while the inspector is shown: this runs on
+    // every pointer event, a stroke's moves included.
+    if (InputInspector.visible.value) {
+      InputInspector.pin('census', 'census ${_contacts.held}');
+    }
   }
 
   /// The window lost the OS's focus — a notification took it, another app

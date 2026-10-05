@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../debug/key_trace.dart';
 import '../editor_session_manager.dart';
 import 'canvas_selection_commands.dart';
 
@@ -62,6 +63,7 @@ class HistoryVerbs {
 
   void undo() {
     if (contactIsDown()) {
+      KeyTrace.refusedUnderAContact('undo');
       return;
     }
     _undo()?.call();
@@ -69,6 +71,7 @@ class HistoryVerbs {
 
   void redo() {
     if (contactIsDown()) {
+      KeyTrace.refusedUnderAContact('redo');
       return;
     }
     _redo()?.call();

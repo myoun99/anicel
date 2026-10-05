@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,5 +86,33 @@ void main() {
       isNot(contains(stampOf(eat, 'Key E'))),
       reason: 'a stop is the whole of that press — no action answers it',
     );
+
+    // 🗣️F-232 (유저 2026-10-02): 「언두 안먹는다는거 … 가능하면 근본/구조적
+    // 으로 해결해줘」. An undo that does nothing says so, and the census says
+    // which contact it was refused for — the press that never lifts.
+    expect(InputInspector.pinned['census'], 'census none');
+    final held = await tester.startGesture(
+      const Offset(700, 400),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(
+      InputInspector.pinned['census'],
+      matches(r'^census mouse#\d+ \+\d+\.\ds$'),
+    );
+    expect(InputInspector.notes['gate'], isNull);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      InputInspector.notes['gate'],
+      'gate undo refused → a contact is down',
+    );
+
+    await held.up();
+    await tester.pump();
+    expect(InputInspector.pinned['census'], 'census none');
   });
 }

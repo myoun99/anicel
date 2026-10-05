@@ -34,19 +34,43 @@ class ContactCensus {
   final void Function(int pointer) _cancel;
 
   /// Every pointer down, with its kind — the kind because a pen or a mouse
-  /// that hovers says its own hand is not down.
-  final Map<int, PointerDeviceKind> _down = {};
+  /// that hovers says its own hand is not down — and the time it went down.
+  final Map<int, ({PointerDeviceKind kind, Duration since})> _down = {};
+
+  /// The time of the last event heard, on the events' own clock.
+  Duration _lastHeard = Duration.zero;
 
   /// Whether any contact is down — a finger, a pen, a mouse button.
   bool get anyDown => _down.isNotEmpty;
 
+  /// WHAT is down, for the input inspector: each contact's kind and
+  /// pointer, and how long before the last event heard it went down.
+  ///
+  /// 🗣️F-232 (유저 2026-10-03): 「같은 상황에서 마우스로 캔버스 클릭하면
+  /// 해결하는걸론 바꼈는데 펜으로는 아무리 클릭해도 해결안되」 — the press
+  /// that lost its lift is of SOME kind, and which one was never measured
+  /// (the law below lets a hand go only by its own hand). The press that
+  /// stays is the one whose age only grows; a screenshot of this line at
+  /// the moment undo does nothing says its kind.
+  String get held => _down.isEmpty
+      ? 'none'
+      : [
+          for (final down in _down.entries)
+            '${down.value.kind.name}#${down.key} '
+                '+${_secondsSince(down.value.since)}s',
+        ].join(' · ');
+
+  String _secondsSince(Duration since) =>
+      ((_lastHeard - since).inMilliseconds / 1000).toStringAsFixed(1);
+
   /// One event off the global pointer route.
   void note(PointerEvent event) {
+    _lastHeard = event.timeStamp;
     if (event is PointerHoverEvent || event is PointerDownEvent) {
       _letGoOfLostLifts(event);
     }
     if (event is PointerDownEvent) {
-      _down[event.pointer] = event.kind;
+      _down[event.pointer] = (kind: event.kind, since: event.timeStamp);
     } else if (event is PointerUpEvent || event is PointerCancelEvent) {
       _down.remove(event.pointer);
     }
@@ -69,7 +93,7 @@ class ContactCensus {
     _down.entries
         .where(
           (down) =>
-              _oneContactHand(down.value) == hand &&
+              _oneContactHand(down.value.kind) == hand &&
               (hovering || down.key != event.pointer),
         )
         .map((down) => down.key)
