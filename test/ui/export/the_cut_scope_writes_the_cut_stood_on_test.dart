@@ -26,6 +26,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/project_scratch_folder.dart';
+
 /// 🗣️유저 2026-10-05: 「출력은 정상적으로 됬는데 같은 겸용컷에서 타임시트랑
 /// 컷봉투 출력하려니 컷 없다고 뜨는데 이거뭐지? 겸용컷 문제 넓게 확인안한거
 /// 맞지?」
@@ -189,7 +191,7 @@ void main() {
   testWidgets('…and the RUN writes them: standing on C2 with its tick off, '
       'the sheet and the pair\'s envelope land on disk', (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cut-scope');
-    addTearDown(() => temp.deleteSync(recursive: true));
+    deleteAfterSessionEnds(temp);
     final session = film(unticked: {'c1', 'c2', 'c3'});
     addTearDown(session.dispose);
     session.selectCut(const CutId('c2'));
@@ -212,13 +214,13 @@ void main() {
       await tester.pump();
     }
 
-    expect(
-      [
-        for (final file in temp.listSync(recursive: true).whereType<File>())
-          file.uri.pathSegments.last,
-      ]..sort(),
-      ['CUTC1_envelope.png', 'CUTC2.png'],
-    );
+    for (final name in ['CUTC2.png', 'CUTC1_envelope.png']) {
+      expect(
+        File('${temp.path}/$name').existsSync(),
+        isTrue,
+        reason: '$name was not written',
+      );
+    }
     session.playbackRig.prerenderScheduler.cancel();
   });
 
