@@ -112,12 +112,13 @@ void main() {
     WidgetTester tester,
     EditorSessionManager session, {
     required ExportScopeKind scope,
+    ExportScopeKind? timesheetScope,
     ExportDirectoryPicker? picker,
   }) async {
     AppExport.settings.value = AppExportSettings(
       lastSpecs: ExportTabSpecs(
         cels: CelsExportSpec(scope: scope),
-        timesheet: TimesheetExportSpec(scope: scope),
+        timesheet: TimesheetExportSpec(scope: timesheetScope ?? scope),
         envelope: EnvelopeExportSpec(scope: scope),
       ),
     );
@@ -244,6 +245,21 @@ void main() {
       await written(tester, 'envelope'),
       ('1 envelope', 'CUTC3 · 1 / 1 · 1 file'),
     );
+  });
+
+  testWidgets('each tab reads its OWN scope switch', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpExport(
+      tester,
+      session,
+      scope: ExportScopeKind.project,
+      timesheetScope: ExportScopeKind.cut,
+    );
+
+    expect((await written(tester, 'cels')).$1, '2 labels · 4 files');
+    expect((await written(tester, 'timesheet')).$1, '1 sheet page');
+    expect((await written(tester, 'envelope')).$1, '2 envelopes');
   });
 
   group('the envelope tab shows the cut checks its project scope obeys '
