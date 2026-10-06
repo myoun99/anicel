@@ -614,7 +614,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
       keyPrefix: keyPrefix,
       onMarkSelected: onLayerMarkSelected,
       axis: axis,
-      isVisible: eye.on && !eye.hiddenAbove,
+      isVisible: eye.shown,
     ),
   );
 
@@ -702,8 +702,18 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// READ, so the letters stand up and the column begins at the top — the
   /// rail's left-aligned name, transposed (user, 2026-08-08). It used to lie
   /// down AND float in the middle of its own column.
-  Widget _nameText(BuildContext context) =>
-      readableText(axis, layer.name, style: layerRowNameStyle(context));
+  ///
+  /// It dims with the eye, as the colour label beside it does (I-62) — so it
+  /// reads the eye the way that label does ([_markChip]), and a flip
+  /// rebuilds the name and not the row.
+  Widget _nameText(BuildContext context) => RailEyeBuilder(
+    layer: layer,
+    builder: (context, eye) => readableText(
+      axis,
+      layer.name,
+      style: layerRowNameStyleFor(layerRowNameStyle(context), shown: eye.shown),
+    ),
+  );
 
   /// 🗣️I-25 (유저 2026-09-14): 「레이어도 똑같이 버튼누르면 링크 대상 리스트
   /// 표시」 — the badge is the entrance to the link window, a rail button

@@ -543,6 +543,24 @@ bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
 TextStyle layerRowNameStyle(BuildContext context) =>
     DefaultTextStyle.of(context).style;
 
+/// A row's name as the row's EYE leaves it: [style] itself while the row is
+/// [shown], and on a row that is not, its ink at the rail's one 「off」
+/// ([AppColors.offAlpha]) — the alpha the eye and the colour label beside it
+/// already wear, so a hidden row reads as off in one language.
+///
+/// 🗣️I-62 (유저 2026-10-03): 「레이어 비지블off시 색라벨 비활성화색?으로
+/// 하는데, 추가로 레이어 이름도 비활성화색? 반투명? 어둡게」.
+///
+/// The colour stays the caller's ([layerRowNameStyle]: what a name is
+/// coloured by is what the row IS); this only says how that colour reads on
+/// a row that is off.
+TextStyle layerRowNameStyleFor(TextStyle style, {required bool shown}) {
+  final ink = style.color;
+  return shown || ink == null
+      ? style
+      : style.copyWith(color: ink.withValues(alpha: AppColors.offAlpha));
+}
+
 /// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
 /// bypassed. Defined ONCE (R28 follow-up).
 ///

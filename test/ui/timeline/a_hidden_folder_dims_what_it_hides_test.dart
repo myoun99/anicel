@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/collapsed_row_overlay.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
@@ -22,6 +23,12 @@ import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 /// 사라지는게 직관적이지 않으니, on인채로 두되, 색만 비활성화색으로. 반대도
 /// 마찬가지. 폴더니까 어태치폴더든 뭐든 법 통일해서 적용」 + 「색라벨도 동일하게
 /// 비활성화색 하는거 잊지말고」.
+///
+/// 🗣️I-62 (유저 2026-10-03): 「레이어 비지블off시 색라벨 비활성화색?으로 하는데,
+/// 추가로 레이어 이름도 비활성화색? 반투명? 어둡게」 — the NAME wears what the
+/// label wears, by the same answer ([RailEyeShown.shown]): a folder above, or
+/// the row's own eye. The conte's half is
+/// `storyboard/a_hidden_row_dims_its_name_in_the_conte_test`.
 void main() {
   Layer drawing(
     String id, {
@@ -178,6 +185,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       const folder = LayerId('folder');
       var folderOn = true;
+      var outsideOn = true;
       final cursor = ValueNotifier<int>(0);
       addTearDown(cursor.dispose);
       await tester.pumpWidget(
@@ -191,7 +199,7 @@ void main() {
                     id: folder,
                     name: 'F',
                   ).copyWith(isVisible: folderOn),
-                  drawing('outside'),
+                  drawing('outside', visible: outsideOn),
                 ],
                 activeLayerId: const LayerId('outside'),
                 frameCursor: cursor,
@@ -204,6 +212,9 @@ void main() {
                 onToggleLayerVisibility: (id) {
                   if (id == folder) {
                     setState(() => folderOn = !folderOn);
+                  }
+                  if (id == const LayerId('outside')) {
+                    setState(() => outsideOn = !outsideOn);
                   }
                 },
                 onLayerOpacityChanged: (_, _) {},
@@ -233,8 +244,29 @@ void main() {
           )
           .isVisible;
 
+      // I-62: the NAME wears what the label wears.
+      Color? nameInk(String id) {
+        final name = find.byKey(ValueKey<String>('$prefix-layer-name-$id'));
+        Finder as(Type type) =>
+            find.descendant(of: name, matching: find.byType(type));
+        return orientation == TimelineOrientation.vertical
+            ? tester
+                  .widget<VerticalWritingText>(as(VerticalWritingText))
+                  .style
+                  ?.color
+            : tester.widget<Text>(as(Text)).style?.color;
+      }
+
+      final lit = (member: nameInk('member'), outside: nameInk('outside'));
+      final off = (
+        member: lit.member?.withValues(alpha: AppColors.offAlpha),
+        outside: lit.outside?.withValues(alpha: AppColors.offAlpha),
+      );
+
       expect(eyeOf('member').color, isNull, reason: 'CONTROL: lit at rest');
       expect(labelLit('member'), isTrue);
+      expect(lit.member, isNotNull, reason: 'CONTROL: there is an ink to dim');
+      expect(lit.member, isNot(off.member), reason: 'CONTROL: lit at rest');
 
       await tester.tap(
         find.byKey(ValueKey<String>('$prefix-layer-visibility-folder')),
@@ -244,11 +276,13 @@ void main() {
       expect(eyeOf('member').icon, Icons.visibility, reason: 'still on');
       expect(eyeOf('member').color?.a, closeTo(AppColors.offAlpha, 0.001));
       expect(labelLit('member'), isFalse, reason: '「색라벨도 동일하게」');
+      expect(nameInk('member'), off.member, reason: 'I-62: its name too');
       expect(
         eyeOf('outside').color,
         isNull,
         reason: 'a row the folder does not hold is left alone',
       );
+      expect(nameInk('outside'), lit.outside);
 
       await tester.tap(
         find.byKey(ValueKey<String>('$prefix-layer-visibility-folder')),
@@ -257,6 +291,18 @@ void main() {
 
       expect(eyeOf('member').color, isNull, reason: '「반대도 마찬가지」');
       expect(labelLit('member'), isTrue);
+      expect(nameInk('member'), lit.member);
+
+      // ...and a row turned off by its OWN eye: the label and the name.
+      await tester.tap(
+        find.byKey(ValueKey<String>('$prefix-layer-visibility-outside')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(eyeOf('outside').icon, Icons.visibility_off, reason: 'CONTROL');
+      expect(labelLit('outside'), isFalse);
+      expect(nameInk('outside'), off.outside, reason: 'I-62');
+      expect(nameInk('member'), lit.member, reason: 'each by its own eye');
     });
   }
 }

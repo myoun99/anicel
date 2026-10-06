@@ -2764,17 +2764,24 @@ class StoryboardPlayheadTint extends StatelessWidget {
 /// 폰트 통일」), the colour this row's own. Selection reads by COLOR only
 /// (user rule). The SE and transition rows each hand-typed a `fontSize:
 /// 11` here until the round-8 audit (2026-09-06).
+///
+/// [shown] is the row's eye: a row that is off wears its name at the rail's
+/// one 「off」, as its colour label does ([layerRowNameStyleFor], I-62).
 Widget _storyboardRowName(
   BuildContext context,
   String name, {
   required bool active,
+  required bool shown,
 }) {
   final colorScheme = Theme.of(context).colorScheme;
   return Text(
     name,
     overflow: TextOverflow.ellipsis,
-    style: layerRowNameStyle(context).copyWith(
-      color: active ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+    style: layerRowNameStyleFor(
+      layerRowNameStyle(context).copyWith(
+        color: active ? colorScheme.onSurface : colorScheme.onSurfaceVariant,
+      ),
+      shown: shown,
     ),
   );
 }
@@ -2947,6 +2954,8 @@ class _StoryboardSeLabel extends StatelessWidget {
                     // timeline row shows (W3 ordering unification).
                     trackLayer?.name ?? 'S${slot + 1}',
                     active: active,
+                    // The layer the eye beside it shows.
+                    shown: layer?.isVisible ?? true,
                   ),
                 ),
               ),
@@ -3108,6 +3117,7 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                     context,
                     layer.name,
                     active: active,
+                    shown: layer.isVisible,
                   ),
                 ),
               ),
