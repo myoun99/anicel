@@ -144,11 +144,22 @@ class MediaStagingStore {
   /// then deleted when the reader let go, taking the only copy with it
   /// (audit 2026-09-24). A carry again under the same path is a different
   /// carry now, under a different name ([MediaAsset.carriedAs]).
-  StagedMedia? find(MediaCarry carry) {
-    if (_retiring(carry)) {
+  StagedMedia? find(MediaCarry carry) => findNamed(mediaCarryName(carry));
+
+  /// The copy the room keeps under [name], or null when there is none —
+  /// [find], for whoever knows the bytes by the name alone.
+  ///
+  /// 🚨THE ROOM KEEPS BYTES BY NAME, and a carry's name is one such
+  /// ([mediaCarryName]). A font a project carries is kept under a name
+  /// minted the same way and for the same reason (`ProjectFontFile.carriedAs`
+  /// — one name, one set of bytes for good), so what a save takes out of
+  /// the file of it waits HERE as a carry's does ([keepLeftBehind]) and is
+  /// found by that name; the two never meet, a name being minted once.
+  StagedMedia? findNamed(String name) {
+    if (_retireWhenLetGo.contains(name)) {
       return null;
     }
-    for (final candidate in _copiesNamed(mediaCarryName(carry))) {
+    for (final candidate in _copiesNamed(name)) {
       final file = File(candidate);
       if (file.existsSync()) {
         return StagedMedia(
@@ -524,13 +535,15 @@ class MediaStagingStore {
   /// BOTH spellings, because which one is on disk depends on whether the
   /// bytes shrank, and a save must not leave half of an absorbed import
   /// behind (유저 08-27: 「사본 남으면 진짜 용서안할게」).
-  void retire(MediaCarry carry) {
-    final key = mediaCarryName(carry);
-    if (_held.containsKey(key)) {
-      _retireWhenLetGo.add(key);
+  void retire(MediaCarry carry) => retireNamed(mediaCarryName(carry));
+
+  /// [retire], for the copy kept under [name] ([findNamed]).
+  void retireNamed(String name) {
+    if (_held.containsKey(name)) {
+      _retireWhenLetGo.add(name);
       return;
     }
-    _deleteCopies(key);
+    _deleteCopies(name);
   }
 
   /// Both spellings of the copy named [key] ([mediaCarryName]), gone —

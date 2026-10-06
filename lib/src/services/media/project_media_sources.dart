@@ -101,19 +101,44 @@ List<MediaLeftBehind> mediaLeftBehind({
   required Set<String> mediaInFile,
   required Map<MediaCarry, MediaByteSource> mediaToStore,
 }) {
-  final left = mediaInFile.difference({
-    for (final carry in mediaToStore.keys) ...anicelMediaEntryNames(carry),
-  });
+  return entriesLeftBehind(
+    projectFilePath,
+    mediaInFile.difference({
+      for (final carry in mediaToStore.keys) ...anicelMediaEntryNames(carry),
+    }),
+    under: anicelMediaEntryPrefix,
+  );
+}
+
+/// Where each of [left] — entries of the project file at [projectFilePath],
+/// named WITH their folder, [under] — lies in that file now, under the name
+/// it wears without it. One the file does not hold is left out; so is every
+/// one, when there is nothing to read.
+///
+/// ⛔A name that is not [under] the folder is not one of these entries, and
+/// is left out rather than cut at a length it may not have (the ⚠️ on
+/// [mediaLeftBehind]): the folder is asked for and stripped in this one
+/// place, so no kind of entry can be walked without saying which it is.
+///
+/// ↩️This was the body of [mediaLeftBehind]. The fonts a project carries
+/// leave their file by the same law (`fontsLeftBehind`, 2026-10-06), and
+/// what differs between the two is WHICH entries those are — said by each
+/// — not how one is found.
+List<MediaLeftBehind> entriesLeftBehind(
+  String? projectFilePath,
+  Set<String> left, {
+  required String under,
+}) {
   final layout = left.isEmpty ? null : readableAnicelLayout(projectFilePath);
   if (layout == null) {
     return const [];
   }
   return [
     for (final name in left)
-      if (name.startsWith(anicelMediaEntryPrefix))
+      if (name.startsWith(under))
         if (layout.entryNamed(name) case final entry?)
           (
-            name: name.substring(anicelMediaEntryPrefix.length),
+            name: name.substring(under.length),
             offset: entry.dataOffset,
             length: entry.length,
           ),
