@@ -227,26 +227,56 @@ List<CelText> _textsMoved(
   for (final text in surface.texts)
     CelText(
       id: text.id,
-      content: dx == 0 && dy == 0
-          ? text.content
-          : text.content.copyWith(
-              anchor: CanvasPoint(
-                x: text.content.anchor.x + dx,
-                y: text.content.anchor.y + dy,
-              ),
-            ),
+      content: celTextContentMoved(text.content, dx: dx, dy: dy),
       plate: translateBitmapSurface(
-        BitmapSurface(
-          canvasSize: surface.canvasSize,
-          tileSize: surface.tileSize,
-          tiles: text.plate,
-        ),
+        _plateOn(surface, text.plate),
         dx: dx,
         dy: dy,
         canvasSize: canvasSize,
       ).tiles,
     ),
 ];
+
+/// A text's [plate] as a surface of its own, on the grid of the picture it
+/// is laid over ([over]) — what lets its pixels take the drawing's pass.
+BitmapSurface _plateOn(BitmapSurface over, Map<TileCoord, BitmapTile> plate) =>
+    BitmapSurface(
+      canvasSize: over.canvasSize,
+      tileSize: over.tileSize,
+      tiles: plate,
+    );
+
+/// [content] standing ([dx], [dy]) whole pixels from where it stood — the
+/// number its plate's pixels were set from, moved as they are
+/// ([celTextPlateMoved]).
+CelTextContent celTextContentMoved(
+  CelTextContent content, {
+  required int dx,
+  required int dy,
+}) => dx == 0 && dy == 0
+    ? content
+    : content.copyWith(
+        anchor: CanvasPoint(x: content.anchor.x + dx, y: content.anchor.y + dy),
+      );
+
+/// A text's [plate] moved by ([dx], [dy]) whole pixels over [over], the
+/// picture it is laid on: the very pass a drawing's tiles take
+/// ([translateBitmapSurface]), run on the plate as a surface of its own,
+/// and cut at the same pasteboard wall.
+///
+/// The text tool moves a text by this (R9-rest) — a text dragged a whole
+/// number of pixels is its pixels dragged, with nothing set again.
+Map<TileCoord, BitmapTile> celTextPlateMoved(
+  Map<TileCoord, BitmapTile> plate,
+  BitmapSurface over, {
+  required int dx,
+  required int dy,
+}) => translateBitmapSurface(
+  _plateOn(over, plate),
+  dx: dx,
+  dy: dy,
+  canvasSize: over.canvasSize,
+).tiles;
 
 /// Translates the surface's pixels by integer ([dx], [dy]) and adopts
 /// [canvasSize] — the anchored-resize blit. Whole-tile shifts rebase
