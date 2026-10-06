@@ -159,19 +159,23 @@ class _StoryboardStanding {
   /// a lane's cell. The V row's cut wears it on its bands instead, never
   /// over its pictures ([standingCutOn]; 10-01 「썸네일 제외한 띠 부분」) —
   /// so no unit here.
-  ({int startIndex, int endIndexExclusive})? _standingUnit(
+  StandingUnit? _standingUnit(
     Track track,
     TimelineRowAddress row,
     int frame,
   ) => switch (row) {
     TrackRowAddress() => null,
-    LaneRowAddress() => (startIndex: frame, endIndexExclusive: frame + 1),
+    LaneRowAddress() => (
+      startIndex: frame,
+      endIndexExclusive: frame + 1,
+      block: false,
+    ),
     LayerRowAddress(:final layerId) => _unitOn(track, layerId, frame),
   };
 
   /// The standing wash over [unit], in the row's [band].
   Widget _washOver(
-    ({int startIndex, int endIndexExclusive}) unit,
+    StandingUnit unit,
     ({double top, double height}) band,
     TimelineScale scale,
   ) {
@@ -185,6 +189,7 @@ class _StoryboardStanding {
         decoration: timelineStandingWashDecorationAt(
           cellExtent: scale.pixelsPerFrame,
           crossExtent: band.height,
+          block: unit.block,
         ),
       ),
     );
@@ -194,7 +199,7 @@ class _StoryboardStanding {
   /// ([trackRowMaterialBlocks] — its sound or its span, else the one cell),
   /// read off the row as it is shown: through a drag, previewed (H12); while
   /// a take rolls, the take.
-  ({int startIndex, int endIndexExclusive}) _unitOn(
+  StandingUnit _unitOn(
     Track track,
     LayerId layerId,
     int frame,
@@ -212,12 +217,10 @@ class _StoryboardStanding {
         shown = _state._seDisplayAt(track, slot);
       }
     }
-    final unit = snapSpanToBlocks(
+    return standingUnitAt(
       lanes: [if (shown != null) trackRowMaterialBlocks(shown, spans: spans)],
-      anchorIndex: frame,
-      headIndex: frame,
+      index: frame,
     );
-    return unit ?? (startIndex: frame, endIndexExclusive: frame + 1);
   }
 
   /// The cross-axis band [row] occupies inside this track's group, or null

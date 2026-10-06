@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/layer_id.dart';
+import '../../models/range_snap.dart' show StandingUnit;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track_frame_range.dart' show frameRangesOverlap;
@@ -359,31 +360,17 @@ class TimelineCursorLayer extends StatelessWidget {
   }
 
   /// The unit the playhead stands on, on [row] — what a click on that cell
-  /// selects ([snapFrameRangeToBlocks]): its block, or the one cell when it
-  /// has none (F-175: 「빈 공간 한칸은 블럭으로서 한칸으로 쳐서」). A lane's
-  /// keys are points, not blocks, so on a lane it is the cell.
+  /// selects ([standingUnitOnRow]): its block, or the one cell when it has
+  /// none (F-175: 「빈 공간 한칸은 블럭으로서 한칸으로 쳐서」). A lane's keys
+  /// are points, not blocks, so on a lane it is the cell.
   ///
   /// The row as the rows below show it: through a drag, previewed.
-  ({int startIndex, int endIndexExclusive}) _standingUnit(
-    TimelineDisplayRow row,
-    int frame,
-  ) {
-    final cell = (startIndex: frame, endIndexExclusive: frame + 1);
-    if (row.isLane) return cell;
-    final shown =
-        timelineRowPreviewLayer(dragPreview?.value, row.layer) ?? row.layer;
-    final unit = snapFrameRangeToBlocks(
-      layer: shown,
-      anchorIndex: frame,
-      headIndex: frame,
-    );
-    return unit == null
-        ? cell
-        : (
-            startIndex: unit.startIndex,
-            endIndexExclusive: unit.endIndexExclusive,
-          );
-  }
+  StandingUnit _standingUnit(TimelineDisplayRow row, int frame) => row.isLane
+      ? (startIndex: frame, endIndexExclusive: frame + 1, block: false)
+      : standingUnitOnRow(
+          timelineRowPreviewLayer(dragPreview?.value, row.layer) ?? row.layer,
+          frame,
+        );
 
   /// 🗣️F-248 (유저 2026-09-30 「외곽라인말고 블럭을 바탕색으로서 강조색
   /// 표시. 전처럼 연하게」, 10-01 「재생헤드가 선 블록」): the unit you stand on
@@ -416,6 +403,7 @@ class TimelineCursorLayer extends StatelessWidget {
         decoration: timelineStandingWashDecorationAt(
           cellExtent: metrics.frameCellWidth,
           crossExtent: metrics.layerRowHeight,
+          block: unit.block,
         ),
       ),
     );

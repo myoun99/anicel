@@ -25,6 +25,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
     show effectGroupLaneId, effectLaneId;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt;
 
 import '../storyboard_cut_block_probe.dart';
 
@@ -35,6 +37,10 @@ import '../storyboard_cut_block_probe.dart';
 /// (`storyboard_cut_block_bands_test`), never over its pictures. One
 /// standing place: on an S row, the S row's block alone (유저 10-01 「s행에서면
 /// s행블록만 칠해지도록」).
+///
+/// 🗣️F-268 (유저 2026-10-03): 「블록에선 블록이 꼭짓점 둥그니까 괜찮은데 빈칸은
+/// 각진 사각형이기때문에 그에맞춰 사각형으로 칠하도록」 — and it wears the SHAPE
+/// of what it stands on: a sound's or a span's corner, a cell's square.
 ///
 /// The timeline's half is `the_block_you_stand_on_wears_the_wash_test`.
 void main() {
@@ -147,6 +153,17 @@ void main() {
     );
   }
 
+  /// The corner the wash wears, and the one a BLOCK of its own cells wears.
+  BorderRadiusGeometry? corner(WidgetTester tester) =>
+      (tester.widget<DecoratedBox>(wash).decoration as BoxDecoration)
+          .borderRadius;
+  BorderRadius blockCorner(WidgetTester tester) => BorderRadius.all(
+    timelineBlockCornerRadiusAt(
+      cellExtent: playhead(tester).width,
+      crossExtent: tester.getRect(wash).height,
+    ),
+  );
+
   Rect rowOf(WidgetTester tester, String key) {
     final row = tester.getRect(find.byKey(ValueKey<String>(key)));
     return Rect.fromLTRB(0, row.top, 0, row.bottom);
@@ -168,11 +185,14 @@ void main() {
       isFalse,
       reason: 'one standing place — the V row\'s cut wears none',
     );
+    expect(corner(tester), blockCorner(tester), reason: 'a sound is round');
+    expect(blockCorner(tester), isNot(BorderRadius.zero), reason: '⛔전제');
 
     session.selectGlobalFrame(5);
     await tester.pumpAndSettle();
     expect(washed(tester, 5).start, 5);
     expect(washed(tester, 5).end, 6);
+    expect(corner(tester), BorderRadius.zero, reason: 'F-268: 빈칸은 각지게');
   });
 
   testWidgets('a stand on another row repaints the V row at once — its '
@@ -196,6 +216,12 @@ void main() {
       end: 7,
       row: rowOf(tester, 'storyboard-transition-row-sb-track'),
     ));
+    expect(corner(tester), blockCorner(tester));
+
+    session.selectGlobalFrame(2);
+    await tester.pumpAndSettle();
+    expect(washed(tester, 2).end - washed(tester, 2).start, 1);
+    expect(corner(tester), BorderRadius.zero, reason: 'F-268: beside it');
   });
 
   testWidgets('on the V row, nothing over its pictures — the cut under the '
@@ -237,6 +263,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(washed(tester, 0), (start: 0, end: 1, row: rowOf(tester, laneKey)));
+    expect(corner(tester), BorderRadius.zero, reason: 'F-268: a lane\'s cell');
   });
 
   testWidgets('through a comma drag on the sound, the sound as it is '

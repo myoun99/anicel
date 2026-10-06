@@ -93,3 +93,32 @@ RangeSpan? snapSpanToBlocks({
 
   return (startIndex: start, endIndexExclusive: endExclusive);
 }
+
+/// The unit ONE cell stands for: the block covering it, or the cell itself —
+/// and whether it IS a block.
+typedef StandingUnit = ({int startIndex, int endIndexExclusive, bool block});
+
+/// The unit the cell [index] stands for across [lanes] — what a click there
+/// selects ([snapSpanToBlocks] of that one cell: its block, or the one cell,
+/// F-175) — and whether it is a BLOCK the row draws as one.
+///
+/// 🗣️F-268 (유저 2026-10-03): 「재생헤드에 서있는곳을 바탕색으로 칠하는거,
+/// 블록에선 블록이 꼭짓점 둥그니까 괜찮은데 빈칸은 각진 사각형이기때문에
+/// 그에맞춰 사각형으로 칠하도록」. What the wash wears follows what it stands
+/// on, so the unit says which it is. A GHOST's cell is a cell: ghosts are
+/// text-only and read as empty to the snap ([RangeBlock.extendsSelection]).
+StandingUnit standingUnitAt({
+  required List<RangeBlockAt> lanes,
+  required int index,
+}) {
+  final span = snapSpanToBlocks(
+    lanes: lanes,
+    anchorIndex: index,
+    headIndex: index,
+  );
+  return (
+    startIndex: span?.startIndex ?? index,
+    endIndexExclusive: span?.endIndexExclusive ?? index + 1,
+    block: lanes.any((blockAt) => blockAt(index)?.extendsSelection ?? false),
+  );
+}

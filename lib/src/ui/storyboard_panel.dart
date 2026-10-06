@@ -16,7 +16,7 @@ import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
-import '../models/range_snap.dart' show snapSpanToBlocks;
+import '../models/range_snap.dart' show StandingUnit, standingUnitAt;
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart'
     show
