@@ -173,7 +173,7 @@ class _CanvasPanelLift {
     _MoveSession session,
     BrushDab stampDab,
     Command landOn,
-    SelectionAffine? affine,
+    StampCarry? carry,
   ) {
     final ladder = _state.widget.transformTargetKeys?.call();
     final coordinator = _state.widget._editableCoordinator;
@@ -205,6 +205,13 @@ class _CanvasPanelLift {
     // ⛔The pivot is the BOX's — 유저: 「확대/축소의 기준점은 **항상 상자의
     // 중심**」, and with a range live that is the one box on screen, so the
     // same affine describes every cel's landing.
+    //
+    // ↩️And the affine was not all of it either. Under 퍼스 and 메쉬 it is
+    // the identity while the box's corners or grid carry the warp, so a
+    // warp confirmed over a range bent the cel you stood on and left the
+    // others untouched (measured 2026-10-06). What comes down here now is
+    // the box's mapping of the canvas, whichever of the three it was
+    // ([StampCarry]) — the one the float itself went through.
     // 🚨A POSED ROW'S CELS CROSS THE WAY THE STANDING ONE DID
     // (a-marquee-on-a-posed-row): the user's outline is taken back into the
     // cel's artwork, and the cel's own stamp goes out onto the canvas, takes
@@ -259,15 +266,15 @@ class _CanvasPanelLift {
         preLiftSurface: coordinator.currentSurfaceOf(key),
         landingDabs: _landingDabs(
           lift.eraseDab,
-          // ⚠️The SAME resample the standing cel's float went through, on
-          // this cel's own pixels. A pure translation still costs nothing:
-          // `transformStampDab` carries it by moving the centre.
-          affine == null
+          // ⚠️The SAME mapping the standing cel's float went through, on
+          // this cel's own pixels — affine, quad or mesh, whichever the box
+          // was doing ([StampCarry]). A pure translation still costs
+          // nothing: the carry moves the centre.
+          carry == null
               ? lift.stampDab
               : stampInArtwork(
-                  transformStampDab(
+                  carry.through(
                     stampOnCanvas(lift.stampDab, placement, canvasSize),
-                    affine,
                   ),
                   placement,
                   canvasSize,
@@ -285,7 +292,7 @@ class _CanvasPanelLift {
   void handleLiftConfirmed(
     int liftToken,
     BrushDab stampDab,
-    SelectionAffine? affine,
+    StampCarry? carry,
   ) {
     final coordinator = _state.widget._editableCoordinator;
     final session = _closeSession(liftToken);
@@ -338,7 +345,7 @@ class _CanvasPanelLift {
       );
       historyManager.executeAsOneStep(
         landOn.description,
-        _landingsPerCel(session, stampDab, landOn, affine).values.toList(),
+        _landingsPerCel(session, stampDab, landOn, carry).values.toList(),
       );
     }
 

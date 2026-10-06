@@ -24,9 +24,12 @@ import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show solveHomography;
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/services/stamp_carry.dart' show applyHomography;
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPoseSample;
 import 'package:anicel/src/models/transform_track.dart' show TransformPose;
@@ -1987,6 +1990,207 @@ void main() {
       inkAt(env.coordinator, 55, 50),
       isNonZero,
       reason: 'and its ink inside that box moved too',
+    );
+  });
+
+  /// 🚨★★★**A WARP OVER A RANGE BENDS EVERY CEL IN IT**
+  /// (`a-warp-over-a-frame-range-lands-on-one-cel`, measured 2026-10-06).
+  ///
+  /// The two cases above are the 일반 transform's. Under 퍼스 and 메쉬 the
+  /// box's AFFINE is the identity while its corners or its grid carry the
+  /// warp — and the affine was all the confirm handed the range's other
+  /// cels, so a warp bent the cel you stood on and left the rest untouched.
+  /// What comes down now is the box's mapping of the canvas (`StampCarry`),
+  /// the one the float itself went through.
+  for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
+    testWidgets('🚨a WARP confirmed over a frame range bends every cel in '
+        'it — the same warp, each on its own pixels, as ONE undo ($mode)', (
+      tester,
+    ) async {
+      final keys = BrushCanvasFixture.createFrameKeys();
+      final env = await pumpSelectionPanel(
+        tester,
+        transformMode: mode,
+        transformTargetKeys: () => [keys[0], keys[1]],
+      );
+      // The SAME ink inside the outline on both frames — the fixture's, at
+      // (30,30) · (45,45) · (60,60) — and a witness of its own outside it on
+      // each: only pixels the warp does not touch can say whose cel a
+      // landing was derived against.
+      env.coordinator.commitSourceStroke(sourceDabs: [dab(100, 100)]);
+      env.coordinator.selectFrame(keys[1]);
+      env.coordinator.commitSourceStroke(
+        sourceDabs: [dab(30, 30), dab(45, 45), dab(60, 60), dab(90, 20)],
+      );
+      env.coordinator.selectFrame(keys.first);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      final before = env.coordinator.currentSurfaceOf(keys.first);
+      final entriesBefore = env.history.undoCount;
+
+      // A quad corner, or an interior grid point (pitch 17 from (20,20)).
+      final grab = mode == TransformMode.perspective
+          ? const Offset(20, 20)
+          : const Offset(37, 37);
+      await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
+      env.commands.applyTransform();
+      await tester.pump();
+
+      expect(env.history.undoCount, entriesBefore + 1, reason: 'one confirm');
+      final one = env.coordinator.currentSurfaceOf(keys.first);
+      final two = env.coordinator.currentSurfaceOf(keys[1]);
+      var changed = 0;
+      for (var y = 5; y < 85; y += 1) {
+        for (var x = 5; x < 85; x += 1) {
+          final onOne = surfacePixelRgba(one, x, y);
+          if (onOne != surfacePixelRgba(before, x, y)) {
+            changed += 1;
+          }
+          if (onOne != surfacePixelRgba(two, x, y)) {
+            fail('the other cel was not bent as the standing one was — at '
+                '($x, $y): ${surfacePixelRgba(two, x, y)}, not $onOne');
+          }
+        }
+      }
+      expect(changed, greaterThan(0), reason: '⛔premise: the warp bent it');
+      expect(surfacePixelRgba(one, 100, 100), isNonZero);
+      expect(
+        surfacePixelRgba(two, 90, 20),
+        isNonZero,
+        reason: 'outside the outline the other cel kept its own ink — it '
+            'was landed on itself',
+      );
+      expect(surfacePixelRgba(two, 100, 100), 0);
+      expect(surfacePixelRgba(one, 90, 20), 0);
+
+      env.history.undo();
+      await tester.pump();
+      expect(
+        surfacePixelRgba(env.coordinator.currentSurfaceOf(keys[1]), 30, 30),
+        isNonZero,
+        reason: '⛔ONE undo takes BOTH cels back',
+      );
+    });
+  }
+
+  testWidgets('🚨with NOTHING selected a quad carries every cel\'s whole '
+      'picture by the same perspective — past the box it stood on too', (
+    tester,
+  ) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformMode: TransformMode.perspective,
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+    // Frame two: ink inside frame one's picture (the fixture draws 28..62)
+    // and ink well past its bottom-right corner.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(45, 45), dab(90, 90)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region, isNull, reason: '⛔전제: 아무것도 선택 안 함');
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // The box frames frame one's ink; its bottom-right corner, pulled out.
+    await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
+    env.commands.applyTransform();
+    await tester.pump();
+
+    // Where the SAME homography sends frame two's far ink — the corners as
+    // the confirm recorded them.
+    final offsets = env.commands
+        .recallFor(TransformMode.perspective)!
+        .cornerOffsets;
+    final base = [
+      CanvasPoint(x: 28, y: 28),
+      CanvasPoint(x: 62, y: 28),
+      CanvasPoint(x: 62, y: 62),
+      CanvasPoint(x: 28, y: 62),
+    ];
+    final h = solveHomography(base, [
+      for (var i = 0; i < 4; i += 1)
+        CanvasPoint(x: base[i].x + offsets[i].x, y: base[i].y + offsets[i].y),
+    ])!;
+    final sent = applyHomography(h, CanvasPoint(x: 90, y: 90));
+    expect(
+      sent.distanceTo(CanvasPoint(x: 90, y: 90)),
+      greaterThan(8),
+      reason: '⛔premise: the perspective moves that place',
+    );
+
+    env.coordinator.selectFrame(keys[1]);
+    expect(
+      inkAt(env.coordinator, sent.x.round(), sent.y.round()),
+      isNonZero,
+      reason: '「각자 그림 전체적용」 — frame two\'s ink past frame one\'s '
+          'picture went where the quad sends that place',
+    );
+    expect(
+      inkAt(env.coordinator, 90, 90),
+      0,
+      reason: '⛔left behind here is the defect',
+    );
+  });
+
+  testWidgets('🚨with NOTHING selected a mesh carries the part of another '
+      'cel\'s picture past the box ON, the way its edge was going', (
+    tester,
+  ) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformMode: TransformMode.mesh,
+      transformTargetKeys: () => [keys[0], keys[1]],
+    );
+    // Frame two: ink just past the corner that will be pulled, and ink past
+    // the opposite corner, which nothing moves.
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(45, 45), dab(68, 68), dab(14, 14)],
+    );
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    // The grid's bottom-right node, pulled out by (12, 10).
+    await dragOnLayer(tester, const Offset(62, 62), const Offset(74, 72));
+    env.commands.applyTransform();
+    await tester.pump();
+
+    env.coordinator.selectFrame(keys[1]);
+    bool inkWithin(int left, int top, int right, int bottom) {
+      for (var y = top; y < bottom; y += 1) {
+        for (var x = left; x < right; x += 1) {
+          if (inkAt(env.coordinator, x, y) != 0) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    expect(
+      inkWithin(64, 64, 73, 73),
+      isFalse,
+      reason: '⛔left where it was is a tear along the box\'s edge',
+    );
+    expect(
+      inkWithin(80, 78, 112, 106),
+      isTrue,
+      reason: 'past the pulled corner the ink went FURTHER than the corner '
+          'did — the edge cell\'s step, carried on',
+    );
+    expect(
+      inkWithin(12, 12, 17, 17),
+      isTrue,
+      reason: 'and past the corner nothing moved, nothing moved',
     );
   });
 

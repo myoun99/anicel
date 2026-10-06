@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
@@ -29,6 +28,7 @@ import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/guide_geometry.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/stamp_carry.dart';
 import '../../services/transform_box_law.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
@@ -219,15 +219,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// CONFIRM of a move session (R16-①): the host lands [stampDab] and
   /// adopts the whole session (raw lift + landed stamp) as ONE history
   /// entry (BrushLiftMoveHistoryCommand).
-  /// ⚠️The AFFINE travels with the stamp: the cels a range confirm reaches
-  /// never floated anything, so they need the whole transform to apply to
-  /// their own pixels — a displacement read off the stamp loses the scale
-  /// and the rotation entirely (유저 2026-09-22, 실기).
-  final void Function(
-    int liftToken,
-    BrushDab stampDab,
-    SelectionAffine? affine,
-  )?
+  /// ⚠️The TRANSFORM travels with the stamp ([StampCarry]): the cels a
+  /// range confirm reaches never floated anything, so they need the whole
+  /// of it to apply to their own pixels — a displacement read off the stamp
+  /// loses the scale and the rotation entirely (유저 2026-09-22, 실기), and
+  /// the affine alone loses a quad's or a mesh's warp.
+  final void Function(int liftToken, BrushDab stampDab, StampCarry? carry)?
   onLiftConfirmed;
 
   /// REVERT (R17-①): the host restores the pre-lift picture byte-exactly;
@@ -311,10 +308,10 @@ class _MoveSession {
   /// session that holds none lands nothing
   /// ([_CanvasSelectionLayerState._endLanded]).
   ///
-  /// ⛔Asked of the float itself. [landedAffine] is written by the same
-  /// fold and would read the same today, but it answers another question —
-  /// what the range's other cels are to be put through — and one flag
-  /// answering two is how a third writer breaks one of them.
+  /// ⛔Asked of the float itself. [landed] is written by the same fold and
+  /// would read the same today, but it answers another question — what the
+  /// range's other cels are to be put through — and one flag answering two
+  /// is how a third writer breaks one of them.
   bool get holdsAChange => !identical(stamp, _lifted);
 
   /// The region as the session found it — the revert restores it, and the
@@ -324,8 +321,8 @@ class _MoveSession {
   /// True once the session actually MOVED.
   bool moved = false;
 
-  /// The affine the confirm landed with, for the cels the confirm reaches
-  /// that this session never floated.
+  /// What the confirm landed with, as a mapping of the canvas — for the
+  /// cels the confirm reaches that this session never floated.
   ///
   /// 🚨★★★**THE OTHER CELS NEED THE WHOLE TRANSFORM, NOT ITS SHADOW.**
   /// 유저 2026-09-22, from a hands-on run: 「이동+확대하고 둘다 동시적용
@@ -334,11 +331,18 @@ class _MoveSession {
   /// scale and the rotation live in the affine and never travelled — so a
   /// pure ×2 moved the other cels by nothing at all.
   ///
+  /// ↩️It was the box's AFFINE until 2026-10-06 — the whole of an 일반
+  /// transform and the shadow of the other two: under 퍼스 and 메쉬 the
+  /// affine is the identity while the corners or the grid carry the warp,
+  /// so a warp confirmed over a range bent the cel you stood on and left
+  /// the rest as they were (`a-warp-over-a-frame-range-lands-on-one-cel`).
+  /// A [StampCarry] is whichever of the three the box was doing.
+  ///
   /// ⚠️Recorded at the confirm because the box is cleared before the host
   /// hears about it, and the pivot has to be the box's — 유저: 「확대/축소의
   /// 기준점은 **항상 상자의 중심**」, and with a range live that is the one
   /// box on screen.
-  SelectionAffine? landedAffine;
+  StampCarry? landed;
 }
 
 /// 🚨★★★**WHAT AN INTERRUPTION DOES TO AN OPEN EDIT. THERE ARE TWO.**
@@ -533,7 +537,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         case _SessionEnd.confirm:
           final confirm = widget.onLiftConfirmed;
           if (confirm != null) {
-            confirm(session.token, session.stamp, session.landedAffine);
+            confirm(session.token, session.stamp, session.landed);
           } else {
             // Headless hosts (focused tests): land without history.
             widget.onLiftLanded?.call(session.token, session.stamp);
@@ -1747,14 +1751,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (identical(warped, pending)) {
       return false;
     }
-    // ⚠️Read BEFORE the stamp is replaced: the quad and the mesh stand on
-    // the stamp's own rect.
+    // ⚠️Both read BEFORE the stamp is replaced: the quad and the mesh stand
+    // on the stamp's own rect.
     final region = _region;
     final landedRegion = region == null ? null : _regionThroughOpenBox(region);
+    final carry = floatWarp.carry;
     _recordTransformRecall(box);
     session
       ..stamp = warped
-      ..landedAffine = box.affine;
+      ..landed = carry;
     if (landedRegion != null) {
       _moveRegion(landedRegion);
     }
@@ -1781,7 +1786,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final h = base == null ? null : solveHomography(base, warpCorners);
       return h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
-          : region.mapped((point) => _applyHomography(h, point));
+          : region.mapped((point) => applyHomography(h, point));
     }
     return region.mapped(_box!.affine.apply);
   }
@@ -2968,17 +2973,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasShapeKind.polygon => true,
   };
 
-  static CanvasPoint _applyHomography(Float64List h, CanvasPoint point) {
-    final w = h[6] * point.x + h[7] * point.y + h[8];
-    if (w.abs() < 1e-12) {
-      return point;
-    }
-    return CanvasPoint(
-      x: (h[0] * point.x + h[1] * point.y + h[2]) / w,
-      y: (h[3] * point.x + h[4] * point.y + h[5]) / w,
-    );
-  }
-
   /// The region's axis-aligned bounds (box geometry for the transform
   /// chrome — R17-U always-on handles use it without opening a session).
   ///
@@ -3418,7 +3412,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       final h = base == null ? null : solveHomography(base, warpCorners);
       displayShape = h == null
           ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
-          : region.mapped((point) => _applyHomography(h, point));
+          : region.mapped((point) => applyHomography(h, point));
     }
     final meshPoints = floatWarp.meshPoints;
     if (meshPoints != null) {

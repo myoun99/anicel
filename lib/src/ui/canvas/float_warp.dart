@@ -10,6 +10,7 @@ import '../../models/canvas_point.dart';
 import '../../models/dirty_region.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/stamp_carry.dart';
 import '../../services/straight_rgba_image.dart'
     show decodeStraightRgbaImage, decodedImageStillWanted;
 import '../brush/transform_tool_options.dart';
@@ -75,18 +76,7 @@ class FloatWarp {
   /// exactly identity for [transformStampDabQuad].
   List<CanvasPoint>? stampRectCorners() {
     final pending = float;
-    final stamp = pending?.stamp;
-    if (pending == null || stamp == null) {
-      return null;
-    }
-    final left = pending.center.x - stamp.width / 2;
-    final top = pending.center.y - stamp.height / 2;
-    return [
-      CanvasPoint(x: left, y: top),
-      CanvasPoint(x: left + stamp.width, y: top),
-      CanvasPoint(x: left + stamp.width, y: top + stamp.height),
-      CanvasPoint(x: left, y: top + stamp.height),
-    ];
+    return pending == null ? null : stampCornersOf(pending);
   }
 
   /// The mesh grid's BASE points over the pending stamp's rect, row-major
@@ -241,9 +231,14 @@ class FloatWarp {
     return _ResampleKey(options.resampleMode, stamp.rgba, shape.toString());
   }
 
-  /// The float through whatever warp is open — the ONE place the three
-  /// warp functions are called from during a session.
-  BrushDab? _resample({SelectionVisibleRect? visible}) {
+  /// What the open warp does, as a mapping any stamp on the canvas can be
+  /// carried through ([StampCarry]): the float itself, and the picture of
+  /// every other cel a confirm over a frame range reaches. Null when there
+  /// is nothing to resample — the identity, or no box at all.
+  ///
+  /// ⚠️Read while the float is still the PENDING stamp: the quad and the
+  /// mesh stand on its rect.
+  StampCarry? get carry {
     final pending = float;
     if (pending == null) {
       return null;
@@ -255,37 +250,46 @@ class FloatWarp {
     // uploaded and decoded pixels the commit then threw away — 1.9× of a
     // pasteboard-wide lift was a 13338×9428 buffer, 503MB, and every
     // larger scale a larger one. A preview's window is cut to it as well.
-    final window = _withinPasteboard(visible);
+    final wall = _withinPasteboard(null);
+    final mode = options.resampleMode;
     final mesh = meshPoints;
     if (mesh != null) {
-      return transformStampDabMesh(
-        pending,
-        columns: box!.warp.meshColumns,
-        rows: box!.warp.meshRows,
-        points: mesh,
-        mode: options.resampleMode,
-        visible: window,
+      return MeshCarry(
+        (
+          base: stampRectOf(pending)!,
+          columns: box!.warp.meshColumns,
+          rows: box!.warp.meshRows,
+          points: mesh,
+        ),
+        mode: mode,
+        within: wall,
       );
     }
     final quad = warpCorners;
     if (quad != null) {
-      return transformStampDabQuad(
-        pending,
-        quad,
-        mode: options.resampleMode,
-        visible: window,
+      return QuadCarry(
+        base: stampCornersOf(pending)!,
+        corners: quad,
+        mode: mode,
+        within: wall,
       );
     }
     final affine = _affine;
     if (affine != null && !affine.isIdentity) {
-      return transformStampDab(
-        pending,
-        affine,
-        mode: options.resampleMode,
-        visible: window,
-      );
+      return AffineCarry(affine, mode: mode, within: wall);
     }
     return null;
+  }
+
+  /// The float through whatever warp is open — through [carry], the one
+  /// place the three warp functions are called from, for the float and for
+  /// every other stamp alike.
+  BrushDab? _resample({SelectionVisibleRect? visible}) {
+    final pending = float;
+    if (pending == null) {
+      return null;
+    }
+    return carry?.through(pending, visible: _withinPasteboard(visible));
   }
 
   /// [visible] cut down to the pasteboard, or the whole pasteboard when

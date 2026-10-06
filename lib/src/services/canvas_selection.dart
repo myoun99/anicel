@@ -55,6 +55,40 @@ typedef SelectionVisibleRect = ({
   double bottom,
 });
 
+/// Where a stamp's picture stands on the canvas.
+typedef StampRect = ({double left, double top, double width, double height});
+
+/// [stampDab]'s picture's rect — null when it carries none.
+StampRect? stampRectOf(BrushDab stampDab) {
+  final stamp = stampDab.stamp;
+  if (stamp == null) {
+    return null;
+  }
+  return (
+    left: stampDab.center.x - stamp.width / 2,
+    top: stampDab.center.y - stamp.height / 2,
+    width: stamp.width.toDouble(),
+    height: stamp.height.toDouble(),
+  );
+}
+
+/// That rect's corners, TL · TR · BR · BL — a quad's BASE: corners left
+/// where these are make the quad transform exactly the identity.
+List<CanvasPoint>? stampCornersOf(BrushDab stampDab) {
+  final rect = stampRectOf(stampDab);
+  if (rect == null) {
+    return null;
+  }
+  final right = rect.left + rect.width;
+  final bottom = rect.top + rect.height;
+  return [
+    CanvasPoint(x: rect.left, y: rect.top),
+    CanvasPoint(x: right, y: rect.top),
+    CanvasPoint(x: right, y: bottom),
+    CanvasPoint(x: rect.left, y: bottom),
+  ];
+}
+
 /// Which part of [out] a preview actually has to compute, in
 /// output-pixel coordinates relative to `out.left`/`out.top` — or null
 /// when the answer is "all of it".
@@ -420,11 +454,17 @@ BrushDab transformStampDabQuad(
 /// pixel of the rectangle it is given, so a single whole-output call would
 /// erase each triangle with the next one and lose fold-over resolution
 /// entirely.
+///
+/// [base] is the rect the grid stands on — the stamp's own unless another
+/// is given: a stamp carried through a box that stands on a different one
+/// (`MeshCarry`, the other cels of a range). The picture is read where it
+/// is either way; a node whose source lies off the stamp reads nothing.
 BrushDab transformStampDabMesh(
   BrushDab stampDab, {
   required int columns,
   required int rows,
   required List<CanvasPoint> points,
+  StampRect? base,
   ResampleMode mode = ResampleMode.blend,
   SelectionVisibleRect? visible,
 }) {
@@ -435,11 +475,13 @@ BrushDab transformStampDabMesh(
   assert(points.length == (columns + 1) * (rows + 1));
   final srcLeft = stampDab.center.x - stamp.width / 2;
   final srcTop = stampDab.center.y - stamp.height / 2;
-  final cellWidth = stamp.width / columns;
-  final cellHeight = stamp.height / rows;
+  final gridLeft = base?.left ?? srcLeft;
+  final gridTop = base?.top ?? srcTop;
+  final cellWidth = (base?.width ?? stamp.width) / columns;
+  final cellHeight = (base?.height ?? stamp.height) / rows;
   CanvasPoint baseAt(int column, int row) => CanvasPoint(
-    x: srcLeft + column * cellWidth,
-    y: srcTop + row * cellHeight,
+    x: gridLeft + column * cellWidth,
+    y: gridTop + row * cellHeight,
   );
 
   final baseGrid = [
@@ -456,8 +498,24 @@ BrushDab transformStampDabMesh(
   final outTop = out.top;
   final outWidth = out.width;
   final outHeight = out.height;
-  final bytes = Uint8List(outWidth * outHeight * 4);
-  final covered = Uint8List(outWidth * outHeight);
+  // 🚨THE BUFFER IS THE WINDOW'S, not the whole output rect's — the law the
+  // affine and the quad already keep ([_resampleIntoWindow]): nothing is
+  // BUILT past what was asked for (C-ipad-crash, 2026-09-11).
+  //
+  // ↩️The mesh kept the whole rect and filled only the visible part
+  // (2026-10-06). That cost little while a grid stood on its own float; a
+  // grid carried on past its box (`MeshCarry`, a range's other cels) can
+  // reach a long way past the wall, and a rect is allocated whether or not
+  // a pixel of it is written. ⛔The per-triangle ORIGINS below are still
+  // measured from the whole rect — moving those is the regrouping ABI 26
+  // exists to avoid.
+  final window = selectionPreviewWindow(out: out, visible: visible);
+  final bufLeft = outLeft + (window?.x ?? 0);
+  final bufTop = outTop + (window?.y ?? 0);
+  final bufWidth = window?.width ?? outWidth;
+  final bufHeight = window?.height ?? outHeight;
+  final bytes = Uint8List(bufWidth * bufHeight * 4);
+  final covered = Uint8List(bufWidth * bufHeight);
   // One scratch grown across the triangles of THIS call — not a
   // module-level buffer. The Catmull-Rom this replaced kept its weights in
   // top-level mutable state shared by all three warp paths, which is
@@ -499,22 +557,26 @@ BrushDab transformStampDabMesh(
       outTop + outHeight,
       math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
     );
-    // What is on screen of it. The mesh clips per TRIANGLE rather than by
-    // windowing the shared buffer: each triangle already resamples only
-    // its own box, so narrowing that box skips the off-screen work
-    // without disturbing the `bytes`/`covered` indexing.
-    final left = visible == null
-        ? rawLeft
-        : math.max(rawLeft, visible.left.floor());
-    final top = visible == null
-        ? rawTop
-        : math.max(rawTop, visible.top.floor());
-    final right = visible == null
-        ? rawRight
-        : math.min(rawRight, visible.right.ceil());
-    final bottom = visible == null
-        ? rawBottom
-        : math.min(rawBottom, visible.bottom.ceil());
+    // What is on screen of it. The mesh clips per TRIANGLE: each triangle
+    // already resamples only its own box, so narrowing that box skips the
+    // off-screen work — and the buffer it writes into is the window's, so
+    // the box is held inside that too.
+    final left = math.max(
+      bufLeft,
+      visible == null ? rawLeft : math.max(rawLeft, visible.left.floor()),
+    );
+    final top = math.max(
+      bufTop,
+      visible == null ? rawTop : math.max(rawTop, visible.top.floor()),
+    );
+    final right = math.min(
+      bufLeft + bufWidth,
+      visible == null ? rawRight : math.min(rawRight, visible.right.ceil()),
+    );
+    final bottom = math.min(
+      bufTop + bufHeight,
+      visible == null ? rawBottom : math.min(rawBottom, visible.bottom.ceil()),
+    );
     final tileWidth = right - left;
     final tileHeight = bottom - top;
     if (tileWidth <= 0 || tileHeight <= 0) {
@@ -556,7 +618,7 @@ BrushDab transformStampDabMesh(
     for (var y = top; y < bottom; y += 1) {
       final qy = y + 0.5;
       for (var x = left; x < right; x += 1) {
-        final index = (y - outTop) * outWidth + (x - outLeft);
+        final index = (y - bufTop) * bufWidth + (x - bufLeft);
         if (covered[index] != 0) {
           continue;
         }
@@ -612,12 +674,12 @@ BrushDab transformStampDabMesh(
   }
 
   return stampDab.copyWith(
-    center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
-    size: math.max(outWidth, outHeight).toDouble(),
+    center: CanvasPoint(x: bufLeft + bufWidth / 2, y: bufTop + bufHeight / 2),
+    size: math.max(bufWidth, bufHeight).toDouble(),
     stamp: BrushStampImage(
       id: '${stamp.id}-m${DateTime.now().microsecondsSinceEpoch}',
-      width: outWidth,
-      height: outHeight,
+      width: bufWidth,
+      height: bufHeight,
       rgba: bytes,
     ),
   );
