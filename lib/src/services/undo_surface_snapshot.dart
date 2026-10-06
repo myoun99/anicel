@@ -26,7 +26,7 @@ import 'persistence/volatile_scratch_files.dart';
 /// charging for [after].
 class UndoSurfacePair {
   UndoSurfacePair({
-    required BrushFrameKey key,
+    required this.key,
     required BitmapSurface before,
     required BitmapSurface after,
   }) : before = UndoSurfaceSnapshot(
@@ -39,6 +39,9 @@ class UndoSurfacePair {
          snapshot: after,
          sharedWith: before,
        );
+
+  /// The cel both pictures are of.
+  final BrushFrameKey key;
 
   final UndoSurfaceSnapshot before;
   final UndoSurfaceSnapshot after;

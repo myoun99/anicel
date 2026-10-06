@@ -1,11 +1,9 @@
-import '../../models/brush_frame_key.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../brush_stroke_commit_data.dart';
 import '../cache_invalidation_executor.dart';
-import '../cels_ahead.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
-import 'cel_snapshot_restore.dart';
+import 'cel_snapshot_step.dart';
 
 /// Bridges a brush source stroke into the app-level [HistoryManager]
 /// (R19 P3b surface-snapshot undo).
@@ -17,19 +15,16 @@ import 'cel_snapshot_restore.dart';
 /// byte-exactly and independent of any session/replay state (the entry
 /// is self-contained: it survives session eviction and outlives every
 /// cache).
-class BrushStrokeHistoryCommand
-    implements
-        Command,
-        RetainedBytesCommand,
-        ParkableCommand,
-        PictureRestoringCommand {
+class BrushStrokeHistoryCommand with CelSnapshotStep implements Command {
   BrushStrokeHistoryCommand({
     required this.coordinator,
     required BrushStrokeCommitData strokeData,
     this.cacheInvalidationSink,
   }) : _strokeData = strokeData;
 
+  @override
   final BrushFrameEditingCoordinator coordinator;
+  @override
   final CacheInvalidationSink? cacheInvalidationSink;
 
   /// The one-shot commit payload; nulled after the first execute. The
@@ -39,51 +34,22 @@ class BrushStrokeHistoryCommand
   /// hundreds of MB (GC pressure = the progressive brush lag).
   BrushStrokeCommitData? _strokeData;
   bool _hasCommitted = false;
-  bool _committedChanges = false;
 
-  late BrushFrameKey _frameKey;
   UndoSurfacePair? _surfaces;
 
   /// Diagnostic for the accumulation regression guard.
   bool get retainsCommitPayload => _strokeData != null;
 
+  /// Null for a stroke that changed nothing: it has nothing to move, reads
+  /// nothing ahead and puts nothing back ([CelSnapshotStep]).
+  ///
   /// ONE image of the changed tiles is ours; the other end of every link
   /// is somebody else's. There is no "worst case" where both ends are
   /// unshared: an entry with nothing after it is the newest one, and its
   /// post is what the canvas is showing. See [UndoSurfacePair] for why
   /// the bill and the park name different things.
   @override
-  int estimatedRetainedBytes({required bool undone}) =>
-      _surfaces?.residentBytes(undone: undone) ?? 0;
-
-  /// A stroke that changed nothing has nothing to move.
-  @override
-  Future<bool> parkPayload() => _surfaces?.park() ?? Future.value(true);
-
-  @override
-  void dropPayload() => _surfaces?.drop();
-
-  /// What an undo (or a redo) would put back — see
-  /// [PictureRestoringCommand]. A stroke that changed nothing puts nothing
-  /// back.
-  @override
-  void readAhead(CelsAhead cels, {required bool undo}) {
-    if (!_committedChanges) {
-      return;
-    }
-    cels.readSnapshot(
-      _frameKey,
-      undo ? _surfaces?.before : _surfaces?.after,
-      () => coordinator.currentSurfaceOf(_frameKey),
-    );
-  }
-
-  @override
-  void dropReadAhead() => _surfaces?.dropReadAhead();
-
-  @override
-  void visitHeldTiles(HeldTileVisitor visit, {required bool undone}) =>
-      _surfaces?.visitHeldTiles(visit, undone: undone);
+  UndoSurfacePair? get surfaces => _surfaces;
 
   /// What history calls a stroke — this command, and the one step a
   /// stroke's landings on several surfaces fold into (a sheet's windows).
@@ -95,9 +61,7 @@ class BrushStrokeHistoryCommand
   @override
   void execute() {
     if (_hasCommitted) {
-      if (_committedChanges) {
-        _restore(_surfaces?.after);
-      }
+      restoreAfter();
       return;
     }
     // A stroke that changes no pixels retains nothing and stays inert so
@@ -116,9 +80,7 @@ class BrushStrokeHistoryCommand
     );
     _hasCommitted = true;
     _strokeData = null;
-    _committedChanges = outcome != null;
     if (outcome != null) {
-      _frameKey = frameKey;
       _surfaces = UndoSurfacePair(
         key: frameKey,
         before: outcome.preSurface,
@@ -128,17 +90,5 @@ class BrushStrokeHistoryCommand
   }
 
   @override
-  void undo() {
-    if (!_committedChanges) {
-      return;
-    }
-    _restore(_surfaces?.before);
-  }
-
-  void _restore(UndoSurfaceSnapshot? snapshot) => restoreCelSnapshot(
-    coordinator: coordinator,
-    frameKey: _frameKey,
-    snapshot: snapshot,
-    cacheInvalidationSink: cacheInvalidationSink,
-  );
+  void undo() => restoreBefore();
 }
