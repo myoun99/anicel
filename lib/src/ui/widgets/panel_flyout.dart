@@ -7,6 +7,7 @@ import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../input/control_press_claim.dart';
+import 'app_icon_button.dart';
 import 'boolean_dot.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -73,6 +74,38 @@ class PanelFlyoutRow extends PanelFlyoutEntry {
   final double height;
 }
 
+/// The ONE small command a row can carry at its end, beside what choosing
+/// the row does — the delete of one item in a list of items.
+///
+/// 🗣️유저 2026-10-06, of the text tool's 「선택된 텍스트」 list: 「거기서 다른
+/// 텍스트 선택할수있게 리스트 고르는. 팝오버로 리스트 고를수있게하고 …
+/// 그리고 옆에 삭제버튼 있고」 — and of the layout drawn from it, with a
+/// delete on every row of the list: 「1 ok」. The list is this app's one
+/// picker (F-230), so the button is the picker's to draw.
+///
+/// It closes the list, as choosing a row does, and runs after — and it is
+/// pressed INSTEAD of the row: a press on it chooses nothing.
+class PanelFlyoutRowAction {
+  const PanelFlyoutRowAction({
+    required this.keyValue,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+    this.deletes = false,
+  });
+
+  final String keyValue;
+  final IconData icon;
+  final String tooltip;
+
+  /// Runs AFTER the flyout closes.
+  final VoidCallback onPressed;
+
+  /// Whether this takes the row's item away: the glyph is then the app's
+  /// delete red (`AppColors.deleteGlyph`), as a delete is everywhere.
+  final bool deletes;
+}
+
 /// A selectable command.
 class PanelFlyoutItem extends PanelFlyoutEntry {
   const PanelFlyoutItem({
@@ -88,10 +121,15 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.onSelected,
     this.submenuBuilder,
     this.shortcuts = const [],
+    this.action,
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
        );
+
+  /// The small command at the row's end, if it carries one
+  /// ([PanelFlyoutRowAction]). Top-level rows only: a submenu draws none.
+  final PanelFlyoutRowAction? action;
 
   /// Widget key string — menu items that replaced toolbar buttons reuse the
   /// retired button's key string so tests only gain a menu-open tap.
@@ -250,6 +288,12 @@ Future<void> showPanelFlyout(
   required List<PanelFlyoutEntry> entries,
   Rect? anchorRect,
 }) async {
+  // A list with nothing in it does not open. A caller's list is built when
+  // its button is pressed, and can be empty on the day the thing it lists
+  // is — Material's menu asserts on one.
+  if (entries.isEmpty) {
+    return;
+  }
   final button = anchorContext.findRenderObject()! as RenderBox;
   // 🚨A flyout is a ROUTE, so its rows are not under the editor's
   // shortcut scope: the bindings are read where the menu was opened and
@@ -310,6 +354,9 @@ Future<void> showPanelFlyout(
   final open = ValueNotifier<List<_OpenSubmenu>>(const []);
   final overlayState = Navigator.of(anchorContext).overlay!;
   PanelFlyoutItem? pickedInSubmenu;
+  // The command at a row's end that was pressed, if one was: it closed the
+  // list with no row chosen, and runs in the chosen row's place.
+  PanelFlyoutRowAction? pressedAction;
   final submenuEntry = OverlayEntry(
     builder: (context) => ValueListenableBuilder<List<_OpenSubmenu>>(
       valueListenable: open,
@@ -429,6 +476,10 @@ Future<void> showPanelFlyout(
                   entry,
                   bindings: bindings,
                   hasSubmenu: entry.submenuBuilder != null,
+                  onAction: (action) {
+                    pressedAction = action;
+                    unawaited(Navigator.of(anchorContext).maybePop());
+                  },
                 ),
               ),
             ),
@@ -453,6 +504,11 @@ Future<void> showPanelFlyout(
     submenuEntry.remove();
   }
   open.dispose();
+  final action = pressedAction;
+  if (action != null) {
+    action.onPressed();
+    return;
+  }
   // The child's pick wins: it is the more specific answer, and reaching it
   // popped the parent route with no value of its own.
   (pickedInSubmenu ?? selected)?.onSelected?.call();
@@ -693,6 +749,14 @@ class _SubmenuLayer extends StatelessWidget {
       !request.entries.any((entry) => entry is PanelFlyoutRow),
       'a submenu cannot draw a PanelFlyoutRow — put it on the top level',
     );
+    // ⛔Nor a row's own command: it closes the ROUTE the top list is, and a
+    // level down there is none of its own to close. No caller passes one.
+    assert(
+      !request.entries.any(
+        (entry) => entry is PanelFlyoutItem && entry.action != null,
+      ),
+      'a submenu row carries no command of its own — put it on the top level',
+    );
     final height =
         request.entries.fold(16.0, (sum, entry) => sum + _entryHeight(entry));
     // 🚨A DRAWER TALLER THAN THE WINDOW SCROLLS, the way the parent list
@@ -806,34 +870,22 @@ Widget _itemBody(
   PanelFlyoutItem entry, {
   required EditorShortcutBindings? bindings,
   bool hasSubmenu = false,
+  ValueChanged<PanelFlyoutRowAction>? onAction,
 }) => Row(
   children: [
-                if (entry.swatch case final swatch?) ...[
-                  // 14 rather than the glyph's 16: the same circle the rail
-                  // draws for the same mark, so the list and the row it was
-                  // opened from show one size of dot.
-                  Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: swatch,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                ] else if (entry.icon != null) ...[
-                  Transform.flip(
-                    flipY: entry.iconFlipY,
-                    child: Icon(entry.icon, size: 16, color: _inkFor(entry)),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Expanded(
-                  child: Text(
-                    entry.label,
-                    style: TextStyle(fontSize: 12, color: _inkFor(entry)),
-                  ),
-                ),
+    ..._leadingMark(entry),
+    Expanded(
+      child: Text(
+        entry.label,
+        // ONE line, ending in an ellipsis: a row is one line tall, and a
+        // label can be a caller's own words — a text's letters (R9-rest:
+        // 「이름은 그냥 텍스트 글자대로」) — as long as they like.
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(fontSize: 12, color: _inkFor(entry)),
+      ),
+    ),
     // The key at the right end, dim — no dot leaders (I-19-menu-keys).
     ShortcutKeysText(
       actionIds: entry.shortcuts,
@@ -848,6 +900,20 @@ Widget _itemBody(
       const SizedBox(width: 8),
       BooleanDot(value: on, enabled: entry.enabled, size: 14),
     ],
+    // The row's own command, at its end: pressed INSTEAD of the row.
+    if (entry.action case final action? when onAction != null) ...[
+      const SizedBox(width: 8),
+      AppIconButton(
+        keyValue: action.keyValue,
+        tooltip: action.tooltip,
+        size: AppIconButtonSize.dense,
+        icon: Icon(
+          action.icon,
+          color: action.deletes ? AppColors.deleteGlyph(enabled: true) : null,
+        ),
+        onPressed: () => onAction(action),
+      ),
+    ],
     // The one glyph a submenu row wears: it says there is another level,
     // which the row cannot say with colour the way «selected» does.
     if (hasSubmenu) ...[
@@ -856,6 +922,28 @@ Widget _itemBody(
     ],
   ],
 );
+
+/// What a row wears before its label: its swatch, or else its glyph, and
+/// the gap after either — nothing at all for a row with neither.
+List<Widget> _leadingMark(PanelFlyoutItem entry) => [
+  if (entry.swatch case final swatch?) ...[
+    // 14 rather than the glyph's 16: the same circle the rail draws for
+    // the same mark, so the list and the row it was opened from show one
+    // size of dot.
+    Container(
+      width: 14,
+      height: 14,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: swatch),
+    ),
+    const SizedBox(width: 8),
+  ] else if (entry.icon != null) ...[
+    Transform.flip(
+      flipY: entry.iconFlipY,
+      child: Icon(entry.icon, size: 16, color: _inkFor(entry)),
+    ),
+    const SizedBox(width: 8),
+  ],
+];
 
 /// One row's ink. Disabled dims, destructive reddens, CURRENT accents —
 /// and the last of those is the whole way a flyout says "this one", because
