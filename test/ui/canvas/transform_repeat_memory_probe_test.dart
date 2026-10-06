@@ -303,11 +303,14 @@ void main() {
       final steps = history.revision;
       commands.beginTransform();
       await tester.pump();
-      commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: factor,
+      commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: factor,
+          sy: factor,
+        ),
       );
       await tester.pump();
       expect(commands.transformActive, isTrue, reason: 'the box opened');

@@ -1,4 +1,5 @@
 import '../../models/canvas_point.dart';
+import '../../models/transform_values.dart';
 import '../../services/resample/resample_kernel.dart';
 
 /// How much freedom the transform box hands the pointer.
@@ -23,9 +24,13 @@ import '../../services/resample/resample_kernel.dart';
 /// TVPaint's tool has 일반변형 and 퍼스펙티브 변형 with 일반 as the default
 /// (유저 08-13), and the mesh is our third rung.
 enum TransformMode {
-  /// 일반변형: scale (aspect locked), rotate, move. Corner handles only —
-  /// no edge handles, because a mid-edge handle can only ever mean the
-  /// non-uniform scale this mode does not do.
+  /// 일반변형: move, rotate, scale. A corner scales both axes by one factor
+  /// (the proportions are locked); an edge middle scales its own axis.
+  ///
+  /// ⚠️This used to say 「Corner handles only — no edge handles, because a
+  /// mid-edge handle can only ever mean the non-uniform scale this mode
+  /// does not do」. 유저 gave 일반 its edge middles on 2026-09-22
+  /// (`BoxOnScreen.scaleHandles`), so it does: one axis at a time.
   normal,
 
   /// 퍼스변형: the four corners move freely, no modifier needed.
@@ -81,7 +86,7 @@ class TransformToolOptions {
   final int meshRows;
 
   /// True when the mode pins every offset at zero — the box is a pure
-  /// affine and the aspect ratio is locked.
+  /// affine, and a corner keeps the proportions it has.
   bool get isUniform => mode == TransformMode.normal;
 
   TransformToolOptions copyWith({
@@ -138,20 +143,24 @@ class TransformToolOptions {
 /// that forgets itself the moment you pick the brush is not a recall.
 class TransformRecall {
   const TransformRecall({
-    required this.tx,
-    required this.ty,
-    required this.rotationDegrees,
-    required this.scale,
+    required this.values,
     this.cornerOffsets = const [],
     this.meshOffsets = const [],
     this.meshColumns = 0,
     this.meshRows = 0,
   });
 
-  final double tx;
-  final double ty;
-  final double rotationDegrees;
-  final double scale;
+  /// Everything the box's affine did: the move, each axis's scale with its
+  /// sign, the rotation, and where the cross stood.
+  ///
+  /// ↩️It was four doubles — `tx`, `ty`, `rotationDegrees` and ONE `scale`
+  /// read off the horizontal axis. 유저 2026-10-03 (F-265): 「변형으로
+  /// 좌우반전하고, 다음프레임에서 기록된 내역대로 하려고 엔터누르니
+  /// 좌우반전이아니라 좌우/상하반전이 됨」 — the one number came back on both
+  /// axes, a 상하반전 alone left nothing to replay, and a turn about a moved
+  /// cross came back about the centre. The box's own values, whole
+  /// ([TransformValues]).
+  final TransformValues values;
 
   /// Four base-local displacements (TL/TR/BR/BL), empty when the recorded
   /// transform had no perspective.
@@ -179,10 +188,7 @@ class TransformRecall {
   /// worth recording (it is a real state the tool passed through) but not
   /// worth offering.
   bool get isIdentity =>
-      tx == 0 &&
-      ty == 0 &&
-      rotationDegrees == 0 &&
-      scale == 1 &&
+      values.isIdentity &&
       !cornerOffsets.any((offset) => offset.x != 0 || offset.y != 0) &&
       !meshOffsets.any((offset) => offset.x != 0 || offset.y != 0);
 }

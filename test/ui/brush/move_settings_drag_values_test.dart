@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/boolean_dot_probe.dart';
+import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -14,23 +15,48 @@ import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 /// label drag writes through the selection channel, and the fields no
 /// longer demand a selection first (R26 #13: none = whole picture).
 
-/// What `setTransformValues` was called with.
+/// What the box held after each write, in order.
 ///
-/// ⚠️FOUR, and it used to borrow `SelectionTransformValues` for the shape.
-/// They parted on 2026-09-22: the anchor is READ with the other digits and
-/// WRITTEN by its own verb, so the record the layer publishes is six wide
-/// and the setter's arguments are still four.
-typedef AppliedTransform = ({
-  double tx,
-  double ty,
-  double rotationDegrees,
-  double scale,
-});
+/// ↩️It was four doubles — what `setTransformValues` was called with — and
+/// a second list for the anchor's own verb. A write is a CHANGE to the
+/// box's values now (F-265 · F-256), so the stand-in holds a box and each
+/// entry is everything that box then held: a channel that restated a value
+/// it did not mean shows up as that value moving.
+typedef AppliedTransform = TransformValues;
 
 void main() {
+  /// A channel bound to a box that stands at [start] and keeps whatever a
+  /// write leaves in it, recording each state in [applied].
+  void bindBox(
+    CanvasSelectionCommands commands, {
+    required List<AppliedTransform> applied,
+    TransformValues start = TransformValues.identity,
+    bool canEdit = true,
+    bool canApply = false,
+    VoidCallback? beginTransformStep,
+  }) {
+    var held = start;
+    commands.bind(
+      Object(),
+      hasSelection: () => false,
+      canEditTransform: () => canEdit,
+      canApplyTransform: () => canApply,
+      deselect: () {},
+      transformValues: () => held,
+      editTransformValues: (change) {
+        held = change(held);
+        applied.add(held);
+        // As the layer does after every edit: the digits read this.
+        commands.publishTransformValues(held);
+      },
+      beginTransformStep: beginTransformStep,
+    );
+  }
+
   Future<CanvasSelectionCommands> pumpMoveSettings(
     WidgetTester tester, {
     required List<AppliedTransform> applied,
+    TransformValues start = TransformValues.identity,
     ResampleMode resampleMode = ResampleMode.blend,
     ValueChanged<ResampleMode>? onResampleModeChanged,
     bool canEdit = true,
@@ -41,27 +67,12 @@ void main() {
     // only cares about the AA half, so it unwraps that one field back out.
     final resampleHandler = onResampleModeChanged;
     final commands = CanvasSelectionCommands();
-    commands.bind(
-      Object(),
-      hasSelection: () => false,
-      canEditTransform: () => canEdit,
-      canApplyTransform: () => canApply,
-      deselect: () {},
-      transformValues: () => null,
-      setTransformValues:
-          ({
-            required double tx,
-            required double ty,
-            required double rotationDegrees,
-            required double scale,
-          }) {
-            applied.add((
-              tx: tx,
-              ty: ty,
-              rotationDegrees: rotationDegrees,
-              scale: scale,
-            ));
-          },
+    bindBox(
+      commands,
+      applied: applied,
+      start: start,
+      canEdit: canEdit,
+      canApply: canApply,
     );
     await tester.pumpWidget(
       MaterialApp(
@@ -91,6 +102,16 @@ void main() {
     return commands;
   }
 
+  /// Types [text] into the readout [key]: a press that moved nothing opens
+  /// its editor, and Enter commits.
+  Future<void> typeInto(WidgetTester tester, String key, String text) async {
+    await tester.tap(find.byKey(ValueKey<String>(key)));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(ValueKey<String>('$key-input')), text);
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('an X-label drag accumulates units and writes them through '
       'the channel — no selection required', (tester) async {
     final applied = <AppliedTransform>[];
@@ -108,78 +129,123 @@ void main() {
 
     expect(applied, isNotEmpty, reason: 'the drag writes live');
     expect(applied.last.tx, greaterThan(20));
-    expect(applied.last.ty, 0);
-    expect(applied.last.scale, 1);
+    expect(
+      applied.last,
+      TransformValues(tx: applied.last.tx),
+      reason: 'and it wrote X alone',
+    );
   });
 
-  /// 🚨★★★**④THE ANCHOR HAS A PLACE IN THE TOOL SETTINGS** — 유저
-  /// 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」.
+  /// 🚨★★★**A CHANNEL WRITES THE ONE VALUE IT NAMES** (F-265 · F-256).
   ///
-  /// ⛔And it writes through ITS OWN verb, which is the pin's second half:
-  /// `setTransformValues` must not hear about it, or typing an X would put
-  /// the cross back in the middle.
-  testWidgets('④the anchor channels write through setTransformAnchor, and '
-      'the four-value setter never hears about them', (tester) async {
+  /// 🗣️유저 2026-10-03: 「변형으로 좌우반전하고 … 좌우반전이아니라
+  /// 좌우/상하반전이 됨 … 반전을 숫자로서 표현못하는게 원인인거같으니
+  /// 구조적으로 해결」 · 10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
+  /// 가로세로 통합으로서 … 기록됨」.
+  ///
+  /// ↩️Every scrub restated all four of this panel's own copies, and its
+  /// copy of the scale was ONE number. 🧪Measured 2026-10-06 on the box
+  /// below: a scrub on X put a 상하반전 back upright, and clamped a
+  /// 좌우반전's −100% to 1%.
+  ///
+  /// ⛔Every value differs from every other here, and from the identity —
+  /// a row that restated a neighbour's, or a default, moves something.
+  const stretched = TransformValues(
+    sx: -1.5,
+    sy: 0.75,
+    rotationDegrees: 20,
+    tx: 6,
+    ty: -9,
+    anchorX: 4,
+    anchorY: -3,
+  );
+
+  /// Each row, as the one value it names: how it reads off the box and
+  /// how the box looks with that value replaced.
+  final rows =
+      <
+        String,
+        ({
+          double Function(TransformValues values) read,
+          TransformValues Function(TransformValues values, double to) write,
+        })
+      >{
+        'move-x-field': (
+          read: (values) => values.tx,
+          write: (values, to) => values.copyWith(tx: to),
+        ),
+        'move-y-field': (
+          read: (values) => values.ty,
+          write: (values, to) => values.copyWith(ty: to),
+        ),
+        'move-angle-field': (
+          read: (values) => values.rotationDegrees,
+          write: (values, to) => values.copyWith(rotationDegrees: to),
+        ),
+        'move-scale-x-field': (
+          read: (values) => values.sx,
+          write: (values, to) => values.copyWith(sx: to),
+        ),
+        'move-scale-y-field': (
+          read: (values) => values.sy,
+          write: (values, to) => values.copyWith(sy: to),
+        ),
+        'move-anchor-x-field': (
+          read: (values) => values.anchorX,
+          write: (values, to) => values.copyWith(anchorX: to),
+        ),
+        'move-anchor-y-field': (
+          read: (values) => values.anchorY,
+          write: (values, to) => values.copyWith(anchorY: to),
+        ),
+      };
+
+  testWidgets('🚨a scrub on a row moves that row\'s value and no other — a '
+      'mirror, a one-axis stretch and the cross stay as they are', (
+    tester,
+  ) async {
+    final commands = await pumpMoveSettings(tester, applied: []);
+    for (final row in rows.entries) {
+      final applied = <AppliedTransform>[];
+      bindBox(commands, applied: applied, start: stretched);
+      await tester.pump();
+
+      // ⚠️Horizontal, like every other channel: the shared readout reads a
+      // unit per pixel ALONG THE LABEL, whatever value it carries.
+      await tester.drag(
+        find.byKey(ValueKey<String>(row.key)),
+        const Offset(60, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(applied, isNotEmpty, reason: '${row.key}: the drag writes live');
+      final after = applied.last;
+      expect(
+        row.value.read(after),
+        isNot(row.value.read(stretched)),
+        reason: '${row.key} moved its own value',
+      );
+      expect(
+        after,
+        row.value.write(stretched, row.value.read(after)),
+        reason: '⛔${row.key} moved more than its own value',
+      );
+    }
+  });
+
+  testWidgets('each scale row reads its own axis with its sign, and a typed '
+      'minus is the mirror', (tester) async {
     final applied = <AppliedTransform>[];
-    final anchors = <({double x, double y})>[];
-    final commands = await pumpMoveSettings(tester, applied: applied);
-    commands.bind(
-      Object(),
-      hasSelection: () => false,
-      canEditTransform: () => true,
-      deselect: () {},
-      transformValues: () => null,
-      setTransformValues:
-          ({
-            required double tx,
-            required double ty,
-            required double rotationDegrees,
-            required double scale,
-          }) {
-            applied.add((
-              tx: tx,
-              ty: ty,
-              rotationDegrees: rotationDegrees,
-              scale: scale,
-            ));
-          },
-      setTransformAnchor: ({required double x, required double y}) =>
-          anchors.add((x: x, y: y)),
-    );
-    await tester.pump();
+    await pumpMoveSettings(tester, applied: applied, start: stretched);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('move-anchor-x-field')),
-      const Offset(80, 0),
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('-150%'), findsOneWidget, reason: '가로: 반전 + 150%');
+    expect(find.text('75%'), findsOneWidget, reason: '세로: 75%');
 
-    expect(anchors, isNotEmpty, reason: 'the drag writes live');
-    expect(anchors.last.x, greaterThan(20));
-    expect(anchors.last.y, 0);
-    expect(
-      applied,
-      isEmpty,
-      reason:
-          '⛔the four-value setter was never called — the cross is not one '
-          'of the edit values',
-    );
+    await typeInto(tester, 'move-scale-y-field', '-100');
 
-    // ⚠️Horizontal, like every other channel: the shared readout reads a
-    // unit per pixel ALONG THE LABEL, whatever value it carries.
-    await tester.drag(
-      find.byKey(const ValueKey<String>('move-anchor-y-field')),
-      const Offset(40, 0),
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump(const Duration(milliseconds: 500));
-    expect(
-      anchors.last.x,
-      greaterThan(20),
-      reason: '⛔and moving Y kept X — one channel each',
-    );
-    expect(anchors.last.y, isNot(0));
+    expect(applied.last, stretched.copyWith(sy: -1));
+    expect(find.text('-100%'), findsOneWidget);
   });
 
   /// 🚨★★★**⑤ONE SCRUB IS ONE STEP BACK, not forty.**
@@ -192,26 +258,9 @@ void main() {
     final applied = <AppliedTransform>[];
     var steps = 0;
     final commands = await pumpMoveSettings(tester, applied: applied);
-    commands.bind(
-      Object(),
-      hasSelection: () => false,
-      canEditTransform: () => true,
-      deselect: () {},
-      transformValues: () => null,
-      setTransformValues:
-          ({
-            required double tx,
-            required double ty,
-            required double rotationDegrees,
-            required double scale,
-          }) {
-            applied.add((
-              tx: tx,
-              ty: ty,
-              rotationDegrees: rotationDegrees,
-              scale: scale,
-            ));
-          },
+    bindBox(
+      commands,
+      applied: applied,
       beginTransformStep: () => steps += 1,
     );
     await tester.pump();
@@ -244,20 +293,25 @@ void main() {
     expect(steps, 1, reason: '⛔a tap is not an operation');
   });
 
-  testWidgets('a scale-label drag clamps at the floor instead of going '
-      'non-positive', (tester) async {
+  testWidgets('a scale never rests on zero, and never past the ceiling — '
+      'either way round', (tester) async {
+    // The floor is the box law's, with its sign (`TransformBoxLaw
+    // .clampScale`): a number taken through zero mirrors, as a handle taken
+    // through the centre does. ↩️It stopped at +1% — there was one scale,
+    // and a minus was not a thing a number could say.
     final applied = <AppliedTransform>[];
-    await pumpMoveSettings(tester, applied: applied);
+    final commands = await pumpMoveSettings(tester, applied: applied);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('move-scale-field')),
-      const Offset(-300, 0),
-      kind: PointerDeviceKind.mouse,
-    );
-    await tester.pump(const Duration(milliseconds: 500));
-
-    expect(applied, isNotEmpty);
-    expect(applied.last.scale, closeTo(0.01, 1e-9));
+    await typeInto(tester, 'move-scale-x-field', '0');
+    expect(applied.last.sx, 0.01);
+    await typeInto(tester, 'move-scale-x-field', '-0.2');
+    expect(applied.last.sx, -0.01);
+    await typeInto(tester, 'move-scale-x-field', '99999');
+    expect(applied.last.sx, 32);
+    await typeInto(tester, 'move-scale-y-field', '-99999');
+    expect(applied.last.sy, -32);
+    expect(applied.last.sx, 32, reason: 'and the other axis kept its own');
+    expect(commands.transformValues, applied.last);
   });
 
   testWidgets('the AA switch reaches the resampler, and reads back from it', (
@@ -429,14 +483,7 @@ void main() {
     expect(find.text('0'), findsWidgets, reason: '⛔fixture premise: identity');
 
     // What the LAYER publishes while a handle is being dragged.
-    commands.publishTransformValues((
-      tx: 12,
-      ty: -4,
-      rotationDegrees: 0,
-      scale: 1,
-      anchorX: 0,
-      anchorY: 0,
-    ));
+    commands.publishTransformValues(const TransformValues(tx: 12, ty: -4));
     await tester.pump();
 
     expect(
@@ -467,7 +514,7 @@ void main() {
     expect(
       find.ancestor(
         of: label,
-        matching: find.byType(ValueListenableBuilder<SelectionTransformValues?>),
+        matching: find.byType(ValueListenableBuilder<TransformValues?>),
       ),
       findsOneWidget,
       reason: 'the digits read the live values themselves',
@@ -477,7 +524,7 @@ void main() {
     // assertion above.
     expect(
       find.descendant(
-        of: find.byType(ValueListenableBuilder<SelectionTransformValues?>),
+        of: find.byType(ValueListenableBuilder<TransformValues?>),
         matching: find.byType(ToolSettingsPanel),
       ),
       findsNothing,

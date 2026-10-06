@@ -18,6 +18,7 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/transform_values.dart';
 import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
@@ -999,8 +1000,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       confirmPendingMove: _confirmSession,
       revertPendingMove: _revertMoveSession,
       transformValues: _transformValuesNow,
-      setTransformValues: _setTransformValues,
-      setTransformAnchor: _setTransformAnchor,
+      editTransformValues: _editTransformValues,
       undoTransformStep: _undoTransformStep,
       canUndoTransformStep: () => _box?.steps.isNotEmpty ?? false,
       beginTransformStep: _pushTransformStep,
@@ -1138,13 +1138,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           recall.hasMeshFor(columns: warp.meshColumns, rows: warp.meshRows)) {
         warp.mesh = List.of(recall.meshOffsets);
       }
-      return affine.copyWith(
-        sx: recall.scale,
-        sy: recall.scale,
-        rotationDegrees: recall.rotationDegrees,
-        tx: recall.tx,
-        ty: recall.ty,
-      );
+      return affine.withValues(recall.values);
     });
   }
 
@@ -1177,13 +1171,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // commit must not become what 일반 replays: the two modes hold different
     // things (a quad versus an affine), and 유저 asked for them separately.
     channel.transformRecalls[_mode] = TransformRecall(
-      tx: affine.tx,
-      ty: affine.ty,
-      rotationDegrees: affine.rotationDegrees,
-      // The ratio, not a size: a recall is replayed onto ANOTHER piece of
-      // artwork, and 유저 확정 08-13 is "어떤 크기의 소재든 같은 값을
-      // 변형주도록" — the same 120%, not the same number of pixels.
-      scale: affine.sx,
+      // The values, not a result: a recall is replayed onto ANOTHER piece
+      // of artwork, and 유저 확정 08-13 is "어떤 크기의 소재든 같은 값을
+      // 변형주도록" — the same 120%, not the same number of pixels. ⛔Whole
+      // ([TransformValues]): the box's own, with no pivot in it.
+      values: affine.values,
       cornerOffsets: warp.corners == null ? const [] : List.of(warp.corners!),
       meshOffsets: warp.mesh == null ? const [] : List.of(warp.mesh!),
       meshColumns: warp.meshColumns,
@@ -1222,22 +1214,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// Numeric transform input (R17-U tool settings): opens the session if
-  /// none is up (Ctrl+T semantics — lift + box), then sets the affine
-  /// outright. Enter/Escape keep their commit/revert meanings.
-  void _setTransformValues({
-    required double tx,
-    required double ty,
-    required double rotationDegrees,
-    required double scale,
-  }) => _editTransform(
-    (affine) => affine.copyWith(
-      tx: tx,
-      ty: ty,
-      rotationDegrees: rotationDegrees,
-      sx: scale,
-      sy: scale,
-    ),
-  );
+  /// none is up (Ctrl+T semantics — lift + box), then hands [change] the
+  /// box's values and keeps what it answers. Enter/Escape keep their
+  /// commit/revert meanings.
+  void _editTransformValues(
+    TransformValues Function(TransformValues now) change,
+  ) => _editTransform((affine) => affine.withValues(change(affine.values)));
 
   /// 🚨★★★**THE ONE DOOR AN INTERRUPTION GOES THROUGH.**
   ///
@@ -1303,15 +1285,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
     return true;
   }
-
-  /// The anchor's numeric input — the cross's own channel.
-  ///
-  /// ⛔It goes through [_editTransform] like every other numeric write, so
-  /// typing into it opens a session exactly as typing an angle does. ⚠️And
-  /// it touches NOTHING else: see [CanvasSelectionCommands.
-  /// setTransformAnchor] for why it is not one of the four.
-  void _setTransformAnchor({required double x, required double y}) =>
-      _editTransform((affine) => affine.copyWith(anchorX: x, anchorY: y));
 
   /// Ends every gesture and lands everything that floats — and, unless
   /// [keepRegion], forgets the region too.
@@ -1683,13 +1656,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     SelectionAffine? keeping,
   }) {
     final bounds = _regionBounds(region);
-    final affine = SelectionAffine(
-      pivot: bounds.center,
-      sx: keeping?.sx ?? 1,
-      sy: keeping?.sy ?? 1,
-      rotationDegrees: keeping?.rotationDegrees ?? 0,
-      tx: keeping?.tx ?? 0,
-      ty: keeping?.ty ?? 0,
+    // ⛔WHOLE. It named the scales, the rotation and the move one by one,
+    // and the cross — an edit value like the rest (유저 09-20: 「편집값은
+    // 절대값이야」) — went back to the middle on every walk.
+    final affine = SelectionAffine.of(
+      bounds.center,
+      keeping?.values ?? TransformValues.identity,
     );
     final box = _box;
     if (box == null) {
@@ -1874,20 +1846,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// transformValues]) and the live push ([_publishTransformValues]). A
   /// second spelling is how the panel and the box would come to disagree
   /// about the number they are both showing.
-  SelectionTransformValues? _transformValuesNow() {
-    final transform = _transform;
-    if (transform == null) {
-      return null;
-    }
-    return (
-      tx: transform.tx,
-      ty: transform.ty,
-      rotationDegrees: transform.rotationDegrees,
-      scale: transform.sx,
-      anchorX: transform.anchorX,
-      anchorY: transform.anchorY,
-    );
-  }
+  TransformValues? _transformValuesNow() => _transform?.values;
 
   void _syncAnts() {
     final animate = _hasSelection || _drag is MarqueeDrag;

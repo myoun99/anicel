@@ -121,6 +121,99 @@ void main() {
       expect(fit, allOf(greaterThan(1), lessThan(3)));
     });
 
+    // 🗣️F-256 (유저 2026-10-01): 「변형도구 일반변형, 가로에 대한 단독배율변경
+    // 같은게 저장안됨. 가로세로 통합으로서 … 기록됨」. 일반 has had edge
+    // middles since 09-22, so a corner can meet a box whose two scales
+    // differ — and it wrote ONE scale to both. 🧪2026-10-06: a 75×50 box
+    // snapped to 64.5×64.5 on the first pixel of a corner drag.
+    test('🚨uniform is one FACTOR for both axes — a corner keeps the '
+        'proportions an edge middle gave the box', () {
+      // Stretched to 150×50 by an edge: the corner stands at (275, 125).
+      final stretched = SelectionAffine(
+        pivot: CanvasPoint(x: 200, y: 100),
+        sx: 1.5,
+      );
+      final still = TransformBoxLaw.scaled(
+        stretched,
+        bottomRight,
+        CanvasPoint(x: 275, y: 125),
+        aboutCentre: true,
+        uniform: true,
+      );
+      expect(still.sx, closeTo(1.5, 1e-9), reason: 'a press moves nothing');
+      expect(still.sy, closeTo(1, 1e-9));
+
+      // Pulled twice as far from the centre along the box's own diagonal.
+      final grown = TransformBoxLaw.scaled(
+        stretched,
+        bottomRight,
+        CanvasPoint(x: 350, y: 150),
+        aboutCentre: true,
+        uniform: true,
+      );
+      expect(grown.sx, closeTo(3, 1e-9));
+      expect(grown.sy, closeTo(2, 1e-9));
+
+      // The same pull against the opposite corner, which stays at (125, 75).
+      final anchored = TransformBoxLaw.scaled(
+        stretched,
+        bottomRight,
+        CanvasPoint(x: 425, y: 175),
+        aboutCentre: false,
+        uniform: true,
+      );
+      expect(anchored.sx, closeTo(3, 1e-9));
+      expect(anchored.sy, closeTo(2, 1e-9));
+      final topLeft = anchored.apply(CanvasPoint(x: 150, y: 75));
+      expect(topLeft.x, closeTo(125, 1e-9));
+      expect(topLeft.y, closeTo(75, 1e-9));
+    });
+
+    // 🗣️F-265 (유저 2026-10-03): 「반전을 숫자로서 표현못하는게 원인인거
+    // 같으니 구조적으로 해결」. A mirror is a minus on one scale, and the fit
+    // projected the mirrored handle onto the UNmirrored diagonal: on a
+    // square box that is zero. 🧪2026-10-06: one pixel of corner drag after
+    // 좌우반전 left the picture at 1%.
+    test('🚨…and a mirror: a corner of a flipped box neither un-flips it nor '
+        'collapses it', () {
+      final mirrored = SelectionAffine(
+        pivot: CanvasPoint(x: 200, y: 100),
+        sx: -1,
+      );
+      // The bottom-right handle is drawn at the bottom LEFT: (150, 125).
+      final still = TransformBoxLaw.scaled(
+        mirrored,
+        bottomRight,
+        CanvasPoint(x: 150, y: 125),
+        aboutCentre: true,
+        uniform: true,
+      );
+      expect(still.sx, closeTo(-1, 1e-9));
+      expect(still.sy, closeTo(1, 1e-9));
+
+      final grown = TransformBoxLaw.scaled(
+        mirrored,
+        bottomRight,
+        CanvasPoint(x: 100, y: 150),
+        aboutCentre: true,
+        uniform: true,
+      );
+      expect(grown.sx, closeTo(-2, 1e-9));
+      expect(grown.sy, closeTo(2, 1e-9));
+
+      // Through the centre and out the other side: both axes change sign —
+      // the mirror a drag past the anchor has always been.
+      final through = TransformBoxLaw.scaled(
+        mirrored,
+        bottomRight,
+        CanvasPoint(x: 250, y: 75),
+        aboutCentre: true,
+        uniform: true,
+      );
+      expect(through.sx, closeTo(1, 1e-9));
+      expect(through.sy, closeTo(-1, 1e-9));
+    });
+
     test('not uniform: each axis takes its own scale', () {
       final result = TransformBoxLaw.scaled(
         start,

@@ -1607,6 +1607,8 @@ enum AppStrings {
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
+  String get trScaleX => _s('trScaleX');
+  String get trScaleY => _s('trScaleY');
   String get trAnchorPointX => _s('trAnchorPointX');
   String get trAnchorPointY => _s('trAnchorPointY');
   String get trMeshColumns => _s('trMeshColumns');
@@ -2655,6 +2657,8 @@ enum AppStrings {
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
+    'trScaleX': 'Scale X',
+    'trScaleY': 'Scale Y',
     'trAnchorPointX': 'Anchor X',
     'trAnchorPointY': 'Anchor Y',
     'trMeshColumns': 'Columns',
@@ -3984,6 +3988,8 @@ enum AppStrings {
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
+    'trScaleX': '拡大率 X',
+    'trScaleY': '拡大率 Y',
     'trAnchorPointX': '基準点 X',
     'trAnchorPointY': '基準点 Y',
     'trMeshColumns': '横のマス',
@@ -5337,6 +5343,8 @@ enum AppStrings {
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
+    'trScaleX': '배율 X',
+    'trScaleY': '배율 Y',
     'trAnchorPointX': '기준점 X',
     'trAnchorPointY': '기준점 Y',
     'trMeshColumns': '가로 칸',
@@ -6686,6 +6694,8 @@ enum AppStrings {
         'intermédiaires',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
+    'trScaleX': 'Échelle X',
+    'trScaleY': 'Échelle Y',
     'trAnchorPointX': 'Ancre X',
     'trAnchorPointY': 'Ancre Y',
     'trMeshColumns': 'Colonnes',
@@ -8078,6 +8088,8 @@ enum AppStrings {
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
+    'trScaleX': '缩放 X',
+    'trScaleY': '缩放 Y',
     'trAnchorPointX': '基准点 X',
     'trAnchorPointY': '基准点 Y',
     'trMeshColumns': '列数',

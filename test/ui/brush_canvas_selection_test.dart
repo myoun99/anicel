@@ -21,6 +21,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/transform_values.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -588,11 +589,14 @@ void main() {
     await tester.pump();
     // A rotation, so the resampler actually runs (a pure translation
     // short-circuits and never reaches it).
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 24,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
 
@@ -737,7 +741,15 @@ void main() {
     // A ROTATION: a pure translation short-circuits and never reaches the
     // resampler at all, which is what the preview-parity test above says.
     refuseResample = true;
-    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 24, scale: 1);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
+    );
     await tester.pump();
     await tester.pump();
     final afterRefusal = resamples;
@@ -745,7 +757,15 @@ void main() {
     // A second, DIFFERENT transform. With the gate stuck closed this asks
     // for nothing at all — the bug, seen from outside the widget.
     refuseResample = false;
-    env.commands.setTransformValues(tx: 0, ty: 0, rotationDegrees: 31, scale: 1);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 31,
+        sx: 1,
+        sy: 1,
+      ),
+    );
     await tester.pump();
     await tester.pump();
 
@@ -801,11 +821,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 24,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 24,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -1182,11 +1205,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 5,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -1467,11 +1493,14 @@ void main() {
     // is the only one both ends agree about.
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 15,
-      ty: 15,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 15,
+        ty: 15,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     expect(env.commands.transformActive, isTrue, reason: 'the box is open');
@@ -1547,11 +1576,14 @@ void main() {
       }
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 15,
-        ty: 15,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 15,
+          ty: 15,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.coordinator.selectFrame(keys[1]);
@@ -1586,6 +1618,43 @@ void main() {
   /// the pins above, which all move the box by a pure translation, deleting
   /// the re-aim outright changed NOTHING — a translation is the same about
   /// any pivot. Only a scale (or a rotation) asks where the centre is.
+  // 🗣️유저 2026-09-19: 「중요한건 배율 회전 이동의 편집값이 그대로 전달
+  // 되는거야」, and of the cross on 09-20: 「편집값은 절대값이야. 그냥
+  // 고정이야」. ↩️The walk named the scales, the rotation and the move one by
+  // one — the list predates the cross — so the cross went back to the middle
+  // on every step, and a turn about it landed somewhere else on the next cel.
+  testWidgets('🚨every value walks to the next cel — the cross with the '
+      'rest, and each axis\'s own scale', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(sourceDabs: [dab(120, 120)]);
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+
+    const held = TransformValues(
+      sx: -1.5,
+      sy: 0.75,
+      rotationDegrees: 30,
+      tx: 3,
+      ty: -2,
+      anchorX: 9,
+      anchorY: -4,
+    );
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues((_) => held);
+    await tester.pump();
+    expect(env.commands.transformValues, held, reason: '⛔전제');
+
+    env.coordinator.selectFrame(keys[1]);
+    await env.setTool(CanvasTool.move);
+    await tester.pump();
+
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 따라왔다');
+    expect(env.commands.transformValues, held);
+  });
+
   testWidgets('⛔×2 on the cel walked to grows ITS drawing where it stands, '
       'not about the pivot of the cel left behind', (tester) async {
     final keys = BrushCanvasFixture.createFrameKeys();
@@ -1601,11 +1670,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
 
@@ -1691,11 +1763,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 50,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 50,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
 
@@ -1784,11 +1859,14 @@ void main() {
     // 「이동+확대하고 둘다 동시적용 해봤는데 **한쪽 값의 확대가 사라졌어.
     // 이동은 남아있는데**」. ⛔A pin that sets one of them measures half the
     // law, and that is exactly why this one let the defect through.
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -1880,11 +1958,14 @@ void main() {
 
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -2299,11 +2380,14 @@ void main() {
     // and fall back to a whole canvas holding nothing.
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 5,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -2452,7 +2536,12 @@ void main() {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformAnchor(x: 30, y: 0);
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        anchorX: 30,
+        anchorY: 0,
+      ),
+    );
     await tester.pump();
     expect(env.commands.transformValues!.anchorX, 30, reason: 'the premise');
 
@@ -2616,7 +2705,7 @@ void main() {
 
     // Three operations: scale, move, and the anchor.
     await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
-    final scaled = env.commands.transformValues!.scale;
+    final scaled = env.commands.transformValues!.sx;
     expect(scaled, isNot(1));
     await moveBoxBy(tester, const Offset(10, 5));
     expect(env.commands.transformValues!.tx, isNot(0));
@@ -2632,11 +2721,11 @@ void main() {
     expect(env.commands.undoTransformStep(), isTrue);
     await tester.pump();
     expect(env.commands.transformValues!.tx, 0, reason: '이동이 돌아왔다');
-    expect(env.commands.transformValues!.scale, scaled, reason: '배율은 남았다');
+    expect(env.commands.transformValues!.sx, scaled, reason: '배율은 남았다');
 
     expect(env.commands.undoTransformStep(), isTrue);
     await tester.pump();
-    expect(env.commands.transformValues!.scale, 1, reason: '배율도 돌아왔다');
+    expect(env.commands.transformValues!.sx, 1, reason: '배율도 돌아왔다');
 
     expect(
       env.commands.undoTransformStep(),
@@ -3474,11 +3563,14 @@ void main() {
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
 
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 10,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 10,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     expect(env.commands.transformActive, isFalse);
@@ -3514,13 +3606,16 @@ void main() {
       isTrue,
       reason: 'with no box open, a flip opens one — like the numeric fields',
     );
-    expect(env.commands.transformValues?.scale, -1);
+    expect(env.commands.transformValues?.sx, -1);
 
-    env.commands.setTransformValues(
-      tx: 12,
-      ty: 0,
-      rotationDegrees: 30,
-      scale: 2,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 12,
+        ty: 0,
+        rotationDegrees: 30,
+        sx: 2,
+        sy: 2,
+      ),
     );
     await tester.pump();
     env.commands.resetTransform();
@@ -3528,7 +3623,7 @@ void main() {
     final values = env.commands.transformValues;
     expect(values?.tx, 0);
     expect(values?.rotationDegrees, 0);
-    expect(values?.scale, 1);
+    expect(values?.sx, 1);
   });
 
   testWidgets('리셋 flattens the WARP in 퍼스 and 메쉬 alike, and keeps nothing '
@@ -3595,11 +3690,14 @@ void main() {
     final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
 
     // Commit something worth remembering.
-    env.commands.setTransformValues(
-      tx: 10,
-      ty: 4,
-      rotationDegrees: 0,
-      scale: 1,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 4,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
     );
     await tester.pump();
     env.commands.applyTransform();
@@ -3626,6 +3724,160 @@ void main() {
     expect(env.history.undoCount, entriesAfterFirst + 1);
   });
 
+  /// 🚨★★★**재현 REPLAYS THE TRANSFORM THAT LANDED — ALL OF IT** (F-265 ·
+  /// F-256).
+  ///
+  /// 🗣️유저 2026-10-03: 「변형으로 좌우반전하고, 다음프레임에서 기록된
+  /// 내역대로 하려고 엔터누르니 좌우반전이아니라 좌우/상하반전이 됨」 —
+  /// 「구조적으로 반전이 제대로 기록안되는? 반전을 숫자로서 표현못하는게
+  /// 원인인거같으니 구조적으로 해결. 심플한 데이터로서 해결하도록」. And
+  /// 10-01: 「변형도구 일반변형, 가로에 대한 단독배율변경같은게 저장안됨.
+  /// 가로세로 통합으로서 저장? 기록됨」.
+  ///
+  /// ↩️The record was four numbers with ONE scale read off the horizontal
+  /// axis. 🧪Measured 2026-10-06, before the fix, on this fixture: a 좌우
+  /// 반전 replayed as both mirrors, a 상하반전 and a top-edge stretch left
+  /// 「nothing to replay」, and a right-edge stretch replayed on both axes.
+  ///
+  /// ⛔Each case goes in through the door a hand uses — the flip buttons'
+  /// verb, a drag on an edge middle — because a record that is right only
+  /// for values typed into it is the bug.
+  group('재현 replays the transform that landed, whole', () {
+    final cases =
+        <
+          String,
+          ({
+            Future<void> Function(
+              WidgetTester tester,
+              CanvasSelectionCommands commands,
+            )
+            perform,
+            TransformValues landed,
+          })
+        >{
+          '좌우반전 — the horizontal mirror alone': (
+            perform: (tester, commands) async {
+              commands.flipTransform(horizontal: true);
+              await tester.pump();
+            },
+            landed: const TransformValues(sx: -1),
+          ),
+          '상하반전 — the vertical mirror alone': (
+            perform: (tester, commands) async {
+              commands.flipTransform(horizontal: false);
+              await tester.pump();
+            },
+            landed: const TransformValues(sy: -1),
+          ),
+          'a right-edge stretch — the horizontal scale alone': (
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(70, 45),
+              const Offset(82.5, 45),
+            ),
+            landed: const TransformValues(sx: 1.5),
+          ),
+          'a top-edge stretch — the vertical scale alone': (
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(45, 20),
+              const Offset(45, 7.5),
+            ),
+            landed: const TransformValues(sy: 1.5),
+          ),
+          'a turn about a cross that was moved': (
+            perform: (tester, commands) async {
+              commands.editTransformValues(
+                (now) => now.copyWith(
+                  anchorX: 9,
+                  anchorY: -4,
+                  rotationDegrees: 30,
+                ),
+              );
+              await tester.pump();
+            },
+            landed: const TransformValues(
+              rotationDegrees: 30,
+              anchorX: 9,
+              anchorY: -4,
+            ),
+          ),
+        };
+
+    for (final entry in cases.entries) {
+      testWidgets(entry.key, (tester) async {
+        final env = await pumpSelectionPanel(tester);
+        await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+        await env.setTool(CanvasTool.move);
+        env.commands.beginTransform();
+        await tester.pump();
+
+        await entry.value.perform(tester, env.commands);
+        expect(
+          env.commands.transformValues,
+          entry.value.landed,
+          reason: '⛔전제: the box holds what the hand did',
+        );
+        env.commands.applyTransform();
+        await tester.pump();
+        expect(env.commands.transformActive, isFalse, reason: '⛔전제: 확정');
+
+        // The next piece: an untouched box, and 적용 with nothing to confirm.
+        env.commands.beginTransform();
+        await tester.pump();
+        expect(
+          env.commands.canApplyTransform,
+          isTrue,
+          reason: 'there is a transform to replay',
+        );
+        env.commands.applyTransform();
+        await tester.pump();
+
+        expect(env.commands.transformValues, entry.value.landed);
+      });
+    }
+
+    testWidgets('🚨a corner of a mirrored box grows the mirror — one drag '
+        'after 좌우반전 neither stands it back up nor collapses it', (
+      tester,
+    ) async {
+      // 🧪2026-10-06, before the fix: one pixel of this drag left the
+      // picture at 1% ([TransformBoxLaw.scaled] has the arithmetic).
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.flipTransform(horizontal: true);
+      await tester.pump();
+
+      // Whichever handle stands at the bottom right now, pulled outward
+      // along the diagonal: 25 → 30 from the centre.
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(75, 75));
+
+      final values = env.commands.transformValues!;
+      expect(values.sx, closeTo(-1.2, 1e-9));
+      expect(values.sy, closeTo(1.2, 1e-9));
+    });
+
+    testWidgets('🚨a corner keeps the proportions an edge middle gave the box',
+        (tester) async {
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+      await dragOnLayer(tester, const Offset(70, 45), const Offset(82.5, 45));
+      expect(env.commands.transformValues, const TransformValues(sx: 1.5));
+
+      // The bottom-right corner stands at (82.5, 70) — 37.5 by 25 from the
+      // centre — and is pulled a fifth further along that diagonal.
+      await dragOnLayer(tester, const Offset(82.5, 70), const Offset(90, 75));
+
+      final values = env.commands.transformValues!;
+      expect(values.sx, closeTo(1.8, 1e-9));
+      expect(values.sy, closeTo(1.2, 1e-9));
+    });
+  });
+
   for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
     testWidgets('적용 over a box changed only by its WARP commits it — a '
         'point pulled is a change though every number is at rest ($mode)', (
@@ -3645,7 +3897,7 @@ void main() {
       await dragOnLayer(tester, grab, grab + const Offset(-8, 6));
       final values = env.commands.transformValues!;
       expect(values.tx, 0, reason: '⛔전제: 숫자는 그대로다');
-      expect(values.scale, 1);
+      expect(values.sx, 1);
 
       env.commands.applyTransform();
       await tester.pump();
@@ -3790,7 +4042,7 @@ void main() {
     await pen.moveTo(origin + const Offset(85, 85));
     await tester.pump();
     expect(env.commands.transformActive, isTrue);
-    expect(env.commands.transformValues?.scale, closeTo(1.6, 1e-9));
+    expect(env.commands.transformValues?.sx, closeTo(1.6, 1e-9));
 
     // ...then rest a palm on the glass. This used to cancel the drag and
     // hand the gesture to the viewport (유저: "변형 도중 터치 들어오면
@@ -3816,7 +4068,7 @@ void main() {
     // that carries BOTH halves of the law: the centre-pivot 2.0 says the
     // finger did nothing, and 1.2 says the drag restarted at the palm.
     expect(
-      env.commands.transformValues?.scale,
+      env.commands.transformValues?.sx,
       closeTo(1.8, 1e-9),
       reason: '⛔초기화 없이 — the 1.6 is still inside the 1.8',
     );
@@ -3834,15 +4086,15 @@ void main() {
     await dragOnLayer(tester, const Offset(20, 20), const Offset(10, 10));
     final scaled = env.commands.transformValues;
     expect(scaled, isNotNull);
-    expect(scaled!.scale, isNot(1.0));
+    expect(scaled!.sx, isNot(1.0));
 
     env.transformOptions.value = env.transformOptions.value.copyWith(
       mode: TransformMode.mesh,
     );
     await tester.pump();
     expect(
-      env.commands.transformValues?.scale,
-      scaled.scale,
+      env.commands.transformValues?.sx,
+      scaled.sx,
       reason: 'switching modes must not silently undo the scale',
     );
   });
@@ -4240,11 +4492,14 @@ void main() {
       await tester.pump();
       final generationOne = floatPainter().surface;
       await settle();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 0.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 0.4,
+          sy: 0.4,
+        ),
       );
       await tester.pump();
       await settle();
@@ -4474,11 +4729,14 @@ void main() {
       // 2026-09-24: 「변형도구=변형중이지 않으면 마지막 변형 재실행,
       // 변형중이면 확정」) and this button is one of its doors.
       final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 4,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 4,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -4758,11 +5016,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       // The resample decodes asynchronously; the preview being up is what
       // says the image the confirm will keep actually exists yet.
@@ -4822,11 +5083,14 @@ void main() {
       );
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5043,11 +5307,14 @@ void main() {
       );
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 20,
-        ty: 12,
-        rotationDegrees: 0,
-        scale: 1.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 20,
+          ty: 12,
+          rotationDegrees: 0,
+          sx: 1.5,
+          sy: 1.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5263,11 +5530,14 @@ void main() {
       await settle(tester);
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 0.5,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 0.5,
+          sy: 0.5,
+        ),
       );
       await settle(tester);
       env.commands.applyTransform();
@@ -5434,11 +5704,14 @@ void main() {
       env.commands.beginTransform();
       await tester.pump();
 
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 1.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 1.4,
+          sy: 1.4,
+        ),
       );
       await settle(tester);
       expect(
@@ -5449,11 +5722,14 @@ void main() {
 
       // Change the warp and confirm WITHOUT letting the new decode land:
       // the image on hand is now the 1.4 picture, the landing is 2.4.
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 2.4,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 2.4,
+          sy: 2.4,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -5533,11 +5809,14 @@ void main() {
       // (35,35) and turn a quarter.
       await dragOnLayer(tester, const Offset(45, 45), const Offset(35, 35));
       expect(env.commands.transformValues?.anchorX, closeTo(-10, 1e-9));
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 90,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 90,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();
@@ -5577,7 +5856,7 @@ void main() {
       expect(env.commands.transformValues?.anchorX, closeTo(50, 1e-9));
       expect(env.commands.transformValues?.anchorY, closeTo(50, 1e-9));
       expect(
-        env.commands.transformValues?.scale,
+        env.commands.transformValues?.sx,
         1,
         reason: '⛔and it is not a scale — grabbing the cross moves nothing '
             'but the cross',
@@ -5597,11 +5876,14 @@ void main() {
       await dragOnLayer(tester, const Offset(45, 45), const Offset(65, 55));
       expect(env.commands.transformValues?.anchorX, closeTo(20, 1e-9));
 
-      env.commands.setTransformValues(
-        tx: 5,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 5,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       expect(env.commands.transformValues?.tx, 5);
@@ -5805,11 +6087,14 @@ void main() {
       await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
       await env.setTool(CanvasTool.move);
 
-      env.commands.setTransformValues(
-        tx: 10,
-        ty: 5,
-        rotationDegrees: 0,
-        scale: 1,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 10,
+          ty: 5,
+          rotationDegrees: 0,
+          sx: 1,
+          sy: 1,
+        ),
       );
       await tester.pump();
       expect(env.commands.transformActive, isTrue);
@@ -6364,11 +6649,14 @@ void main() {
     debugLastResampledFloat = null;
     env.commands.beginTransform();
     await tester.pump();
-    env.commands.setTransformValues(
-      tx: 0,
-      ty: 0,
-      rotationDegrees: 0,
-      scale: 5,
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        sx: 5,
+        sy: 5,
+      ),
     );
     await tester.pump();
 
@@ -6737,11 +7025,14 @@ void main() {
 
       env.commands.beginTransform();
       await tester.pump();
-      env.commands.setTransformValues(
-        tx: 0,
-        ty: 0,
-        rotationDegrees: 0,
-        scale: 2,
+      env.commands.editTransformValues(
+        (now) => now.copyWith(
+          tx: 0,
+          ty: 0,
+          rotationDegrees: 0,
+          sx: 2,
+          sy: 2,
+        ),
       );
       await tester.pump();
       env.commands.applyTransform();

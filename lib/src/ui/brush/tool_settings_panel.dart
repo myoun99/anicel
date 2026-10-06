@@ -8,11 +8,13 @@ import '../../models/brush_tip_entry.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
+import '../../models/transform_values.dart';
 import '../../services/canvas_read_source.dart';
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
+import '../../services/transform_box_law.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/settings_rows.dart';
@@ -685,10 +687,38 @@ class _SelectionModeRow extends StatelessWidget {
   }
 }
 
+/// One of the transform box's values as the tool settings show it: how it
+/// is read off the values, how another is put in its place, and what the
+/// readout calls it.
+class _BoxValue {
+  const _BoxValue({
+    required this.read,
+    required this.write,
+    this.unit = '',
+    this.perUnit = 1,
+  });
+
+  final double Function(TransformValues values) read;
+
+  /// [now] with this value replaced — and nothing else restated.
+  final TransformValues Function(TransformValues now, double value) write;
+
+  final String unit;
+
+  /// What one unit of the readout is worth in the value: a scale is held
+  /// as a ratio and read as a percentage.
+  final double perUnit;
+
+  String shown(TransformValues values) =>
+      '${formatTrimmedDecimal(read(values) / perUnit, fractionDigits: 2)}'
+      '$unit';
+}
+
 /// The Move/Transform tool's numeric inputs (R17-U 유저 채택 설계:
-/// 좌표/각도 수치 입력): X/Y offset, angle and scale of the LIVE
-/// transform box, applied on submit through the selection channel. The
-/// channel notifies on session changes so the fields track handle drags.
+/// 좌표/각도 수치 입력): the LIVE transform box's move, angle, scales and
+/// anchor, each written through the selection channel as it is scrubbed or
+/// typed. The channel notifies on session changes so the fields track
+/// handle drags.
 class _MoveSettings extends StatefulWidget {
   const _MoveSettings({
     required this.selectionCommands,
@@ -709,15 +739,18 @@ class _MoveSettings extends StatefulWidget {
 }
 
 class _MoveSettingsState extends State<_MoveSettings> {
-  // The live channel values, synced from the session at rest and owned
-  // locally during a label drag (R26 #14: the deferred session ping must
-  // not eat drag steps).
-  double _tx = 0;
-  double _ty = 0;
-  double _angleDeg = 0;
-  double _scalePct = 100;
-  double _anchorX = 0;
-  double _anchorY = 0;
+  /// What the box holds, as the session last said — the digits at rest.
+  ///
+  /// ↩️It was six doubles of this panel's own, one per channel, that a
+  /// scrub added to and then wrote back ALL of (R26 #14, so that the
+  /// deferred session ping could not eat drag steps). Its copy of the scale
+  /// was one number, so a scrub on X restated a scale the box did not have
+  /// (F-265 · F-256). A channel adds to what the box holds NOW instead
+  /// ([_write]), which has no step for a late ping to eat.
+  TransformValues _values = TransformValues.identity;
+
+  /// The most a typed or scrubbed scale reaches, as a ratio (3200%).
+  static const double _scaleCeiling = 32;
 
   @override
   void initState() {
@@ -748,33 +781,48 @@ class _MoveSettingsState extends State<_MoveSettings> {
     if (!mounted) {
       return;
     }
-    final values = widget.selectionCommands?.transformValues;
     setState(() {
-      _tx = values?.tx ?? 0;
-      _ty = values?.ty ?? 0;
-      _angleDeg = values?.rotationDegrees ?? 0;
-      _scalePct = (values?.scale ?? 1) * 100;
-      _anchorX = values?.anchorX ?? 0;
-      _anchorY = values?.anchorY ?? 0;
+      _values =
+          widget.selectionCommands?.transformValues ??
+          TransformValues.identity;
     });
   }
 
-  /// Writes the four channels through the selection channel — with no
-  /// session open this OPENS one (Ctrl+T semantics; R26 #13: with no
-  /// selection the box opens on the whole picture).
-  void _apply() {
-    widget.selectionCommands?.setTransformValues(
-      tx: _tx,
-      ty: _ty,
-      rotationDegrees: _angleDeg,
-      scale: _scalePct.clamp(1.0, 3200.0) / 100,
-    );
+  /// One channel's write through the selection channel: [change] is handed
+  /// what the box holds NOW and names the one value it means
+  /// ([CanvasSelectionCommands.editTransformValues]). With no session open
+  /// this OPENS one (Ctrl+T semantics; R26 #13: with no selection the box
+  /// opens on the whole picture).
+  void _write(TransformValues Function(TransformValues now) change) =>
+      widget.selectionCommands?.editTransformValues(change);
+
+  /// A typed or scrubbed scale as the box keeps one: off zero WITH ITS
+  /// SIGN — the law a dragged handle keeps ([TransformBoxLaw.clampScale]),
+  /// so a number taken through zero mirrors as a handle taken through the
+  /// centre does — and under this panel's ceiling.
+  static double _scaleWithin(double ratio) {
+    final kept = TransformBoxLaw.clampScale(ratio);
+    return kept.abs() > _scaleCeiling ? _scaleCeiling * kept.sign : kept;
   }
 
-  /// The anchor's own write — see [CanvasSelectionCommands.
-  /// setTransformAnchor] for why it is not folded into [_apply].
-  void _applyAnchor() {
-    widget.selectionCommands?.setTransformAnchor(x: _anchorX, y: _anchorY);
+  /// One of the box's values as a channel: a scrub adds to what the box
+  /// holds now, a typed number replaces it, and neither names another value.
+  Widget _valueChannel({
+    required String keyValue,
+    required String label,
+    required _BoxValue value,
+  }) {
+    return _channel(
+      keyValue: keyValue,
+      label: label,
+      text: value.shown(_values),
+      live: (values) => value.shown(values ?? _values),
+      onDrag: (units) => _write(
+        (now) => value.write(now, value.read(now) + units * value.perUnit),
+      ),
+      onSubmit: (typed) =>
+          _write((now) => value.write(now, typed * value.perUnit)),
+    );
   }
 
   /// One transform channel as the shared DRAG VALUE READOUT (R26 #14 —
@@ -800,7 +848,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
     /// `setState` on the channel's ping — rebuilds every row of every
     /// section on every pointer sample, which is the one thing the user
     /// ruled out in the same sentence they asked for the numbers.
-    String Function(SelectionTransformValues? values)? live,
+    String Function(TransformValues? values)? live,
   }) {
     final theme = Theme.of(context);
     final notifier = widget.selectionCommands?.liveTransformValues;
@@ -840,7 +888,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         if (live == null || notifier == null)
           readout(text)
         else
-          ValueListenableBuilder<SelectionTransformValues?>(
+          ValueListenableBuilder<TransformValues?>(
             valueListenable: notifier,
             builder: (context, values, _) => readout(live(values)),
           ),
@@ -885,106 +933,87 @@ class _MoveSettingsState extends State<_MoveSettings> {
       title: AppText.strings.toolTransform,
       children: [
         const SizedBox(height: 8),
-        _channel(
+        _valueChannel(
           keyValue: 'move-x-field',
           label: 'X',
-          text: formatTrimmedDecimal(_tx, fractionDigits: 2),
-          live: (v) => formatTrimmedDecimal(v?.tx ?? _tx, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _tx += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _tx = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.tx,
+            write: (now, tx) => now.copyWith(tx: tx),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-y-field',
           label: 'Y',
-          text: formatTrimmedDecimal(_ty, fractionDigits: 2),
-          live: (v) => formatTrimmedDecimal(v?.ty ?? _ty, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _ty += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _ty = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.ty,
+            write: (now, ty) => now.copyWith(ty: ty),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-angle-field',
           label: AppText.strings.brAngle,
-          text: '${formatTrimmedDecimal(_angleDeg, fractionDigits: 2)}°',
-          live: (v) =>
-              '${formatTrimmedDecimal(v?.rotationDegrees ?? _angleDeg, fractionDigits: 2)}°',
-          onDrag: (units) {
-            setState(() => _angleDeg += units);
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _angleDeg = value);
-            _apply();
-          },
+          value: _BoxValue(
+            read: (values) => values.rotationDegrees,
+            write: (now, degrees) => now.copyWith(rotationDegrees: degrees),
+            unit: '°',
+          ),
+        ),
+        // 🚨★★★**A SCALE PER AXIS, EACH WITH ITS SIGN** (F-256 · F-265).
+        // 🗣️유저 2026-10-01: 「가로에 대한 단독배율변경같은게 저장안됨.
+        // 가로세로 통합으로서 … 기록됨」 — and 10-03: 「반전을 숫자로서
+        // 표현못하는게 원인인거같으니 구조적으로 해결」. The box has always
+        // held two; this row showed the horizontal one as 「배율」 and wrote
+        // it to both. An edge middle's stretch reads on its own row now, and
+        // a mirror reads as the minus it is.
+        const SizedBox(height: 4),
+        _valueChannel(
+          keyValue: 'move-scale-x-field',
+          label: AppText.strings.trScaleX,
+          value: _BoxValue(
+            read: (values) => values.sx,
+            write: (now, sx) => now.copyWith(sx: _scaleWithin(sx)),
+            unit: '%',
+            perUnit: 0.01,
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
-          keyValue: 'move-scale-field',
-          label: AppText.strings.brScale,
-          text: '${formatTrimmedDecimal(_scalePct, fractionDigits: 2)}%',
-          live: (v) =>
-              '${formatTrimmedDecimal((v?.scale ?? _scalePct / 100) * 100, fractionDigits: 2)}%',
-          onDrag: (units) {
-            setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
-            _apply();
-          },
-          onSubmit: (value) {
-            setState(() => _scalePct = value.clamp(1.0, 3200.0));
-            _apply();
-          },
+        _valueChannel(
+          keyValue: 'move-scale-y-field',
+          label: AppText.strings.trScaleY,
+          value: _BoxValue(
+            read: (values) => values.sy,
+            write: (now, sy) => now.copyWith(sy: _scaleWithin(sy)),
+            unit: '%',
+            perUnit: 0.01,
+          ),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
-        // beside the other digits, because it is one of them to read even
-        // though it is not one of them to write ([_applyAnchor]).
+        // beside the other digits, and written the way they are: each row
+        // names its own value and restates none ([_write]).
         //
         // ⚠️Always here, never mode-gated: the rotation the anchor serves
         // works in every mode (outside the box is the rotation), so a row
         // that appeared and vanished would be inventing a rule the
         // rotation does not have — and 「없다가 생기는 UI 금지」 besides.
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-anchor-x-field',
           label: AppText.strings.trAnchorPointX,
-          text: formatTrimmedDecimal(_anchorX, fractionDigits: 2),
-          live: (v) =>
-              formatTrimmedDecimal(v?.anchorX ?? _anchorX, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _anchorX += units);
-            _applyAnchor();
-          },
-          onSubmit: (value) {
-            setState(() => _anchorX = value);
-            _applyAnchor();
-          },
+          value: _BoxValue(
+            read: (values) => values.anchorX,
+            write: (now, anchorX) => now.copyWith(anchorX: anchorX),
+          ),
         ),
         const SizedBox(height: 4),
-        _channel(
+        _valueChannel(
           keyValue: 'move-anchor-y-field',
           label: AppText.strings.trAnchorPointY,
-          text: formatTrimmedDecimal(_anchorY, fractionDigits: 2),
-          live: (v) =>
-              formatTrimmedDecimal(v?.anchorY ?? _anchorY, fractionDigits: 2),
-          onDrag: (units) {
-            setState(() => _anchorY += units);
-            _applyAnchor();
-          },
-          onSubmit: (value) {
-            setState(() => _anchorY = value);
-            _applyAnchor();
-          },
+          value: _BoxValue(
+            read: (values) => values.anchorY,
+            write: (now, anchorY) => now.copyWith(anchorY: anchorY),
+          ),
         ),
         // The mesh's density, shown as numbers because that is what it is
         // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). Only in 메쉬

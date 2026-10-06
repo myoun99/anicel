@@ -187,8 +187,8 @@ void main() {
     );
     final v = commands.transformValues!;
     expect(
-      v.scale != 1 || v.tx != 0 || v.rotationDegrees != 0,
-      isTrue,
+      v.isIdentity,
+      isFalse,
       reason: '⛔전제: and the drag really transformed it — $v',
     );
   }
