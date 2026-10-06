@@ -889,6 +889,42 @@ void main() {
       expect(selected(), [cut2.id]);
     });
 
+    test('F-264 — a shove the selection did not aim leaves it where it is',
+        () {
+      // The cut row's shove, aimed by the cut stood on while an S row's
+      // sounds are what is selected…
+      final seSelected = sessionFor();
+      seSelected.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+      final sounds = seSelected.trackFrameRangeSelection.value;
+      seSelected.cutShift.pushCuts(2);
+      expect(seSelected.trackFrameRangeSelection.value, sounds);
+
+      // …and the frame shove, aimed by the S row stood on while a CUT is
+      // what is selected.
+      final cutSelected = sessionFor();
+      cutSelected.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+      final cuts = cutSelected.trackFrameRangeSelection.value;
+      cutSelected.selectGlobalFrame(1);
+      cutSelected.blockShift.pushFrames(
+        2,
+        currentRow: const LayerRowAddress(_seLayerId),
+      );
+      expect(
+        seLayerOf(cutSelected).timeline.keys,
+        [4, 11],
+        reason: '⛔전제: the sounds were shoved from the playhead',
+      );
+      expect(cutSelected.trackFrameRangeSelection.value, cuts);
+    });
+
     test('an S-ROW selection shoves sounds instead', () {
       final session = sessionFor();
       session.updateTrackRowRangeSelectionByFrame(

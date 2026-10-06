@@ -90,6 +90,40 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The clause itself, where a press is not needed to ask it: seated on a
+  // row the selection covers it is kept, on any other it is let go.
+  test('a selection is let go by a row it does not cover — and kept by '
+      'one it does', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    LayerId added() {
+      s.layerStack.addLayerOfKind(LayerKind.animation);
+      return s.activeLayer!.id;
+    }
+
+    final lower = s.activeLayer!.id;
+    final upper = added();
+    final outside = added();
+    s.updateFrameRangeSelectionDrag(
+      layerId: lower,
+      anchorIndex: 3,
+      headIndex: 4,
+      headLayerId: upper,
+    );
+    final swept = s.frameRangeSelection.value;
+    expect(
+      swept?.spanLayerIds,
+      unorderedEquals([lower, upper]),
+      reason: '⛔전제',
+    );
+
+    s.selectLayer(upper);
+    expect(s.frameRangeSelection.value, swept);
+
+    s.selectLayer(outside);
+    expect(s.frameRangeSelection.value, isNull);
+  });
+
   for (final sweptFromTheUpperRow in [false, true]) {
     testWidgets('two rows swept from the '
         '${sweptFromTheUpperRow ? 'upper' : 'lower'} one are carried a row '
