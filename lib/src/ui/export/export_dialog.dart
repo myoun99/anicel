@@ -69,7 +69,6 @@ import '../widgets/settings_rows.dart';
 import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
-import 'export_instruction_render.dart';
 import 'export_job.dart';
 import 'export_nav_bar.dart';
 import 'export_plan.dart';
@@ -98,18 +97,14 @@ import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/pill_strip.dart';
 
 /// One row of the output-cel list: the cut it belongs to, the bundle's
-/// axis layer, its plate (none for an instruction row), where its sheets
-/// start in the nav's flat entry list, how many there are, whether its
-/// tick is off, and whether it has a tick at all (instruction rows always
-/// write).
+/// axis layer, where its sheets start in the nav's flat entry list, how
+/// many there are, and whether its tick is off.
 typedef _CelBundleRow = ({
   Cut cut,
   Layer layer,
-  LayerMark? mark,
   int first,
   int count,
   bool skipped,
-  bool tickable,
 });
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
@@ -201,6 +196,11 @@ class ExportDialogState extends State<ExportDialog> {
   late final TextEditingController _outController = TextEditingController();
   late final TextEditingController _namingBaseController;
   late final TextEditingController _celSuffixController;
+
+  /// The naming module's prefix fields, one a kind.
+  late final Map<ExportCelKind, TextEditingController> _celPrefixControllers = {
+    for (final kind in ExportCelKind.values) kind: TextEditingController(),
+  };
 
   bool _isExporting = false;
   bool _cancelRequested = false;
@@ -344,6 +344,9 @@ class ExportDialogState extends State<ExportDialog> {
     _outController.dispose();
     _namingBaseController.dispose();
     _celSuffixController.dispose();
+    for (final controller in _celPrefixControllers.values) {
+      controller.dispose();
+    }
     _queue.dispose();
     _preview.dispose();
     _availability.removeListener(_onAvailabilityChanged);
@@ -400,12 +403,23 @@ class ExportDialogState extends State<ExportDialog> {
   void _syncControllersFromSpecs() {
     _namingBaseController.text = _specs.sequence.naming.baseName;
     _celSuffixController.text = _specs.cels.naming.suffix;
+    _syncCelPrefixFields();
     _inController.text = _specs.sequence.inFrame == null
         ? ''
         : '${_specs.sequence.inFrame! + 1}';
     _outController.text = _specs.sequence.outFrame == null
         ? ''
         : '${_specs.sequence.outFrame! + 1}';
+  }
+
+  /// The prefix fields read what the spec says — a restore, a preset, a
+  /// reset. ⛔Not on every spec write: the field being typed in would have
+  /// its caret thrown to the end.
+  void _syncCelPrefixFields() {
+    for (final MapEntry(key: kind, value: controller)
+        in _celPrefixControllers.entries) {
+      controller.text = _specs.cels.naming.prefixOf(kind);
+    }
   }
 
   bool _expandedFor(String id, {bool fallback = false}) =>
@@ -515,13 +529,13 @@ class ExportDialogState extends State<ExportDialog> {
   /// picker above them ([_celCutPicker]).
   Widget _celBundleList(ThemeData theme) {
     final plan = _celGroupPlan();
-    final entries = _celEntries(plan);
+    final entries = plan.cels;
     final currentIndex = entries.isEmpty
         ? -1
         : _celPosition.clamp(0, entries.length - 1);
     final cut = currentIndex < 0
         ? _activeCut
-        : _celEntryCut(entries[currentIndex]);
+        : entries[currentIndex].listedCut;
     final rows = _celBundleRows(plan, cut);
     return DecoratedBox(
       decoration: ShapeDecoration(
@@ -608,7 +622,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// The cuts [plan] writes cels for, in the order the export walks them.
   List<Cut> _celListCuts(ExportCelGroupPlan plan) {
     final planned = {
-      for (final entry in _celEntries(plan)) _celEntryCut(entry).id,
+      for (final entry in plan.cels) entry.listedCut.id,
     };
     return [
       for (final cut in resolveExportCuts(
@@ -633,9 +647,8 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// [cut]'s rows of the list, ordered the way the TIMELINE draws the
   /// stack. They are built over the plan's flat entry order — one per
-  /// bundle, then one per instruction row (its events are adjacent in the
-  /// plan, so a run of the same layer is one row) — and the other cuts'
-  /// rows are dropped (F-177, see [_celCutPicker]).
+  /// bundle — and the other cuts' rows are dropped (F-177, see
+  /// [_celCutPicker]).
   ///
   /// 🗣️유저 2026-09-16 (F-144): 「셀 출력의 왼쪽 출력될 셀 리스트, 타임라인은
   /// 아래서부터 미술,A,B,C인데 셀 리스트는 C,B,A,미술임. 제대로 타임라인 방향
@@ -656,31 +669,11 @@ class ExportDialogState extends State<ExportDialog> {
       rows.add((
         cut: bundle.sheets.first.listedCut,
         layer: bundle.axis,
-        mark: bundle.axis.mark,
         first: index,
         count: bundle.sheets.length,
         skipped: bundle.sheets.first.skipped,
-        tickable: true,
       ));
       index += bundle.sheets.length;
-    }
-    final instructions = plan.instructions;
-    for (var i = 0; i < instructions.length;) {
-      final layer = instructions[i].layer;
-      var end = i;
-      while (end < instructions.length && instructions[end].layer.id == layer.id) {
-        end += 1;
-      }
-      rows.add((
-        cut: instructions[i].cut,
-        layer: layer,
-        mark: null,
-        first: plan.cels.length + i,
-        count: end - i,
-        skipped: false,
-        tickable: false,
-      ));
-      i = end;
     }
     final drawn = horizontalLayerDisplayOrder(cut.layers);
     final drawnAt = <String, int>{
@@ -735,14 +728,14 @@ class ExportDialogState extends State<ExportDialog> {
               ExportIncludeDot(
                 key: ValueKey<String>('export-cels-bundle-dot-$idValue'),
                 value: !row.skipped,
-                onTap: row.tickable && !_isExporting
-                    ? () => _toggleCelBundle(row.cut, row.layer, !row.skipped)
-                    : null,
+                onTap: _isExporting
+                    ? null
+                    : () => _toggleCelBundle(row.cut, row.layer, !row.skipped),
               ),
               SizedBox(
                 width: layerMarkSlotWidth,
                 height: 20,
-                child: row.mark == null ? null : LayerMarkPlate(mark: row.mark!),
+                child: LayerMarkPlate(mark: row.layer.mark),
               ),
               const SizedBox(width: 6),
               Expanded(
@@ -1356,55 +1349,29 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- preview (EX3) --------------------------------------------------------
 
-  /// One flat position axis over the group plan: cels first, then the
-  /// instruction events (the Instructions pseudo-label at the end).
-  List<Object> _celEntries(ExportCelGroupPlan plan) => [
-    ...plan.cels,
-    ...plan.instructions,
-  ];
-
-  /// The nav's tick caption within one bundle: the cel number (the frame
-  /// name) — the bundle itself is named by the list on the left.
-  String _celEntryCaption(Object entry) => switch (entry) {
-    ExportCelGroupTask(:final celName) => celName,
-    ExportInstructionTask(:final label) => label,
-    _ => '',
-  };
-
-  /// What the preview writes under the picture: the file exactly as the
-  /// naming rule will write it, extension included (유저 2026-09-09:
-  /// 「이름 규칙같은거에서 적용된걸 그대로 … A0001.png 이런식으로 확장자까지」).
-  String _celEntryFileName(Object entry) => switch (entry) {
-    ExportCelGroupTask(:final fileName) => fileName,
-    ExportInstructionTask(:final fileName) => fileName,
-    _ => '',
-  };
-
-  /// The cut [entry] is LISTED in — the one the window stands on, which
-  /// for a 겸용 group's cel is not always the cut it is composited in
-  /// ([ExportCelGroupTask.listedCut], F-300).
-  Cut _celEntryCut(Object entry) => switch (entry) {
-    ExportCelGroupTask(:final listedCut) => listedCut,
-    ExportInstructionTask(:final cut) => cut,
-    _ => _activeCut,
-  };
-
-  /// The contiguous run of [entries] that shares [position]'s bundle —
-  /// (start, its tasks). The planner emits a bundle's cels together and
-  /// an instruction row's events together, so adjacency IS the bundle.
-  (int, List<Object>) _celBundleSpan(List<Object> entries, int position) {
-    String keyOf(Object entry) => switch (entry) {
-      ExportCelGroupTask(:final bundleAxis) => 'cel:${bundleAxis.id.value}',
-      ExportInstructionTask(:final layer) => 'inst:${layer.id.value}',
-      _ => '',
-    };
-    final key = keyOf(entries[position]);
+  /// The contiguous run of [entries] — the plan's cels, the ONE flat
+  /// position axis the cels tab walks — that shares [position]'s bundle:
+  /// (start, its cels). The planner emits a bundle's cels together, so
+  /// adjacency IS the bundle.
+  ///
+  /// What the preview writes under the picture is each one's
+  /// [ExportCelGroupTask.fileName], exactly as the naming rule will write
+  /// it, extension included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸
+  /// 그대로 … A0001.png 이런식으로 확장자까지」); the cut it is LISTED in is
+  /// its [ExportCelGroupTask.listedCut] — the one the window stands on,
+  /// which for a 겸용 group's cel is not always the cut it is composited in
+  /// (F-300).
+  (int, List<ExportCelGroupTask>) _celBundleSpan(
+    List<ExportCelGroupTask> entries,
+    int position,
+  ) {
+    final axis = entries[position].bundleAxis.id;
     var start = position;
-    while (start > 0 && keyOf(entries[start - 1]) == key) {
+    while (start > 0 && entries[start - 1].bundleAxis.id == axis) {
       start -= 1;
     }
     var end = position + 1;
-    while (end < entries.length && keyOf(entries[end]) == key) {
+    while (end < entries.length && entries[end].bundleAxis.id == axis) {
       end += 1;
     }
     return (start, entries.sublist(start, end));
@@ -1426,7 +1393,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// length is that bundle's sheet count (유저 2026-09-09: 「해당 셀의 장수만
   /// 표현하도록」).
   ExportNavAxis _celsAxis(ExportCelGroupPlan plan) {
-    final entries = _celEntries(plan);
+    final entries = plan.cels;
     if (entries.isEmpty) {
       return const ExportNavAxis(length: 0);
     }
@@ -1437,7 +1404,7 @@ class ExportDialogState extends State<ExportDialog> {
     return ExportNavAxis(
       length: sheets.length,
       captionOf: (position) =>
-          _celEntryCaption(sheets[position.clamp(0, sheets.length - 1)]),
+          sheets[position.clamp(0, sheets.length - 1)].celName,
     );
   }
 
@@ -1552,7 +1519,7 @@ class ExportDialogState extends State<ExportDialog> {
   void _refreshCelsPreview() {
     final spec = _specs.cels;
     final entry = _parkedPreviewEntry(
-      _celEntries(_celGroupPlan()),
+      _celGroupPlan().cels,
       _celPosition,
       (index) => _celPosition = index,
     );
@@ -1565,35 +1532,16 @@ class ExportDialogState extends State<ExportDialog> {
       applyLayerFx: spec.applyLayerFx,
       format: format,
     );
-    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
-    switch (entry) {
-      case ExportCelGroupTask():
-        _preview.request(
-          key: celGroupPreviewKey(
-            entry,
-            sizeMode: spec.sizeMode.jsonValue,
-            backgroundKey: bgKey,
-            applyLayerFx: spec.applyLayerFx,
-          ),
-          caption: _celEntryCaption(entry),
-          render: () => renderer.renderCelGroup(entry, spec.sizeMode),
-        );
-      case ExportInstructionTask():
-        final size = spec.sizeMode == ExportSizeMode.camera
-            ? _session.camera.cameraFrameSize
-            : entry.cut.canvasSize;
-        _preview.request(
-          key: 'celinst:${entry.fileName}:${size.width}x${size.height}:$bgKey',
-          caption: _celEntryCaption(entry),
-          render: () => renderInstructionCelImage(
-            task: entry,
-            size: size,
-            background: format.wantsAlpha
-                ? null
-                : ui.Color(format.backgroundArgb),
-          ),
-        );
-    }
+    _preview.request(
+      key: celGroupPreviewKey(
+        entry,
+        sizeMode: spec.sizeMode.jsonValue,
+        backgroundKey: format.wantsAlpha ? -1 : format.backgroundArgb,
+        applyLayerFx: spec.applyLayerFx,
+      ),
+      caption: entry.celName,
+      render: () => renderer.renderCelGroup(entry, spec.sizeMode),
+    );
   }
 
   void _refreshTimesheetPreview() {
@@ -1756,13 +1704,13 @@ class ExportDialogState extends State<ExportDialog> {
         return 'F${_currentImageFrame() + 1} / '
             '${math.max(1, _activeCut.duration)} · ${_activeCut.name}';
       case ExportTab.cels:
-        final entries = _celEntries(_celGroupPlan());
+        final entries = _celGroupPlan().cels;
         if (entries.isEmpty) {
           return null;
         }
         final position = _celPosition.clamp(0, entries.length - 1);
         final (start, sheets) = _celBundleSpan(entries, position);
-        return '${_celEntryFileName(entries[position])} · '
+        return '${entries[position].fileName} · '
             '${position - start + 1} / ${sheets.length}';
       case ExportTab.timesheet:
         final plan = _timesheetPagePlan();
@@ -1945,12 +1893,11 @@ class ExportDialogState extends State<ExportDialog> {
         );
       case ExportTab.cels:
         final plan = _celGroupPlan();
-        final first = plan.cels.isNotEmpty
-            ? plan.cels.first.fileName
-            : plan.instructions.isNotEmpty
-            ? plan.instructions.first.fileName
-            : null;
-        return (name: first, more: plan.length > 1);
+        final written = plan.writtenCels;
+        return (
+          name: written.isEmpty ? null : written.first.fileName,
+          more: written.length > 1,
+        );
       case ExportTab.timesheet:
         return _firstTimesheetFile();
       case ExportTab.conte:
@@ -2758,8 +2705,11 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportCels() {
     final spec = _specs.cels;
-    final plan = _celGroupPlan();
-    final entries = _celEntries(plan);
+    // 🚨THE TICKED CELS, not every planned one. ↩️The run walked the list
+    // the window PREVIEWS (`cels`, unticked bundles included), so a bundle
+    // whose dot was off was counted out of the headline and written all the
+    // same (found reading the run for F-289, 2026-10-06).
+    final entries = _celGroupPlan().writtenCels;
     // Cels stay raw artwork (no FX) — the renderer carries the paper
     // color for the RGB channel choice; the group render composites the
     // label's members at their static opacities.
@@ -2774,27 +2724,9 @@ class ExportDialogState extends State<ExportDialog> {
     );
     return _runImageExport(
       count: entries.length,
-      renderImage: (index) {
-        final entry = entries[index];
-        return switch (entry) {
-          ExportCelGroupTask() => renderer.renderCelGroup(entry, spec.sizeMode),
-          ExportInstructionTask() => renderInstructionCelImage(
-            task: entry,
-            size: spec.sizeMode == ExportSizeMode.camera
-                ? _session.camera.cameraFrameSize
-                : entry.cut.canvasSize,
-            background: spec.format.wantsAlpha
-                ? null
-                : ui.Color(spec.format.backgroundArgb),
-          ),
-          _ => Future<ui.Image?>.value(),
-        };
-      },
-      fileNameFor: (index) => switch (entries[index]) {
-        ExportCelGroupTask(:final fileName) => fileName,
-        ExportInstructionTask(:final fileName) => fileName,
-        _ => 'cel_$index.png',
-      },
+      renderImage: (index) =>
+          renderer.renderCelGroup(entries[index], spec.sizeMode),
+      fileNameFor: (index) => entries[index].fileName,
       encode: _stillEncodeFor(spec.format),
       says: _Tally.cels,
     );
@@ -3377,7 +3309,7 @@ class ExportDialogState extends State<ExportDialog> {
         );
       case ExportTab.cels:
         final plan = _celGroupPlan();
-        final entries = _celEntries(plan);
+        final entries = plan.cels;
         final start = entries.isEmpty
             ? 0
             : _celBundleSpan(
@@ -3753,14 +3685,15 @@ class ExportDialogState extends State<ExportDialog> {
     _refreshPreview();
   }
 
-  /// Whether the active cut's rows deviate from the preset — what the
-  /// 「커스텀」 pill shows. A state of the delta, not a fifth preset.
+  /// Whether the active cut's rows deviate from the rule — what the label
+  /// button says as 「커스텀」. A state of the delta, not a label of its own.
   bool get _celSelectionIsCustom =>
       _overrides.deltaFor(_activeCut.id)?.layerOverrides.isNotEmpty ?? false;
 
-  /// A filter press drops the row exceptions (the cel ticks stay) — the
-  /// rule changed, so the hand answers to the old rule go — and stores the
-  /// filters in the spec, where presets are saved.
+  /// A filter press — the label, its take, 기준 · 어태치 · 시트만 — drops the
+  /// row exceptions (the cel ticks stay): the rule changed, so the hand's
+  /// answers to the old rule go. It stores the filters in the spec, where
+  /// presets are saved.
   void _applyCelFilter(CelsExportSpec next) {
     final cutId = _activeCut.id;
     _session.repository.updateExportOverrides((overrides) {
@@ -3772,19 +3705,22 @@ class ExportDialogState extends State<ExportDialog> {
     _updateSpec(next);
   }
 
-  /// The layer list's rows: the cut's stack in the TIMELINE's display
-  /// order, so the list reads exactly as the rail does.
-  List<Layer> _celListRows() => horizontalLayerDisplayOrder(_activeCut.layers);
-
-  /// The rows a folder row stands for: its subtree's tickable leaves.
-  List<Layer> _celFolderLeaves(Layer folder) => [
-    for (final layer in _activeCut.layers.subtreeMembersOf(folder.id))
-      if (!layer.kind.groupsLayers && _celRowIsTickable(layer)) layer,
+  /// The layer list's rows: the rows of a kind the export writes
+  /// ([exportCelsListsRow]) and the folders holding one, in the TIMELINE's
+  /// display order, so the list reads as the rail does.
+  List<Layer> _celListRows() => [
+    for (final layer in horizontalLayerDisplayOrder(_activeCut.layers))
+      if (_celRowIsListed(layer)) layer,
   ];
 
-  /// Paper is APPLIED, not ticked; rows that hold no cel are not ticked.
-  bool _celRowIsTickable(Layer layer) =>
-      layer.kind.exportsCels && !isExportPaperRow(layer);
+  /// The rows a folder row stands for: the rows listed under it.
+  List<Layer> _celFolderLeaves(Layer folder) => [
+    for (final layer in _activeCut.layers.subtreeMembersOf(folder.id))
+      if (!layer.kind.groupsLayers && _celRowIsListed(layer)) layer,
+  ];
+
+  bool _celRowIsListed(Layer layer) =>
+      exportCelsListsRow(layer, _activeCut.layers, _specs.cels);
 
   /// Scope-grid entries: one per cut, and ONE per 겸용 group — the siblings
   /// share a cell labelled with their joined name and toggle together
@@ -3860,9 +3796,12 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  /// The Cels module's body (v3, 2026-09-09): the label and take pickers,
-  /// 적용/추가, the two 선택 groups, then the cut's stack as the timeline
-  /// draws it — each row led by the dot that ticks it.
+  /// The Cels module's body: what the export writes, top to bottom in the
+  /// order it is asked (F-289, 유저 2026-10-06: 「내보내기 타입/색라벨/기준
+  /// 등/적용 용지 이렇게 위에서부터 순차적인 순서로 되도록」) — the kinds, the
+  /// label and its take, the layer filters, the applied paper — then the
+  /// rows those leave, as the timeline draws them, each led by the dot that
+  /// ticks it.
   Widget _celsAccordionBody() {
     final theme = Theme.of(context);
     final spec = _specs.cels;
@@ -3871,6 +3810,18 @@ class ExportDialogState extends State<ExportDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // A kind that is off takes its rows out of the list below, and what
+        // the hand did to them stays for when it is back on — so these
+        // write the spec alone ([_updateSpec]).
+        _celSwitchRow(strings.exKinds, [
+          for (final kind in ExportCelKind.values)
+            _specSwitch(
+              'export-cels-kind-${kind.jsonValue}',
+              exportCelKindLabel(kind),
+              spec.kinds.contains(kind),
+              () => spec.withKind(kind, !spec.kinds.contains(kind)),
+            ),
+        ]),
         ExportModuleRow(
           label: strings.exLabel,
           // Both pickers give width up (their text ellipsising) before the
@@ -3883,6 +3834,7 @@ class ExportDialogState extends State<ExportDialog> {
             ],
           ),
         ),
+        _celSelectionRow(spec),
         _celSwitchRow(strings.exApply, [
           _specSwitch(
             'export-cels-apply-paper',
@@ -3891,30 +3843,13 @@ class ExportDialogState extends State<ExportDialog> {
             () => spec.copyWith(applyPaper: !spec.applyPaper),
           ),
         ]),
-        // 추가 = 미술 · 디렉션: rows added on top of the filters' pick (유저
-        // 2026-09-09: 「디렉션은 선택항목말고 추가항목에 묶는게 나을듯」).
-        _celSwitchRow(strings.exAdd, [
-          _specSwitch(
-            'export-cels-add-art',
-            strings.exArtLabel,
-            spec.addArt,
-            () => spec.copyWith(addArt: !spec.addArt),
-          ),
-          _specSwitch(
-            'export-cels-add-direction',
-            strings.exSelDirection,
-            spec.addDirection,
-            () => spec.copyWith(addDirection: !spec.addDirection),
-          ),
-        ]),
-        _celSelectionRow(spec),
         Divider(height: 8, color: theme.dividerColor),
         for (final layer in _celListRows()) _celListRow(layer, selection),
       ],
     );
   }
 
-  /// 적용 · 추가: a strip of switches — the same control the grouped
+  /// 내보낼 종류 · 적용: a strip of switches — the same control the grouped
   /// choices wear, each pill holding one yes/no of its own.
   Widget _celSwitchRow(String label, List<PillItem> items) =>
       ExportModuleRow(
@@ -3939,49 +3874,60 @@ class ExportDialogState extends State<ExportDialog> {
     onTap: _isExporting ? null : () => _updateSpec(write()),
   );
 
-  /// 선택: the three FILTERS in one strip — each its own switch, stacking
-  /// (유저 2026-09-09: 「단일선택이 아니라 중첩가능이야」) — and 「커스텀」 in
-  /// its own: two strips, not one, because the filters and 커스텀 are
-  /// different kinds of thing (유저: 「그룹 다르니 두개 그룹 나눠서」). 커스텀
-  /// is a state the delta puts the cut in, so it lights and takes no tap.
+  /// 레이어: the three FILTERS in one strip — each its own switch, stacking
+  /// (유저 2026-09-09: 「단일선택이 아니라 중첩가능이야」).
+  ///
+  /// 🪦A 「커스텀」 pill stood beside them in a strip of its own, lit while the
+  /// cut's rows left the rule. The LABEL says it now ([_celLabelPicker]) —
+  /// 유저 2026-10-06: 「색라벨 필터 LO일때에서 작감용지 레이어 추가하면
+  /// 색라벨필터 LO인채인데, 그게아니라 커스텀인상태로 필터 바꾸고싶어」.
   Widget _celSelectionRow(CelsExportSpec spec) {
     final strings = AppText.strings;
-    PillItem filter(String key, String label, bool on, CelsExportSpec Function() flip) =>
-        PillItem(
-          keyValue: 'export-cels-select-$key',
-          label: label,
-          selected: on,
-          onTap: _isExporting ? null : () => _applyCelFilter(flip()),
-        );
+    PillItem filter(
+      String key,
+      String label,
+      bool on,
+      CelsExportSpec Function() flip,
+    ) => PillItem(
+      keyValue: 'export-cels-select-$key',
+      label: label,
+      selected: on,
+      onTap: _isExporting ? null : () => _applyCelFilter(flip()),
+    );
     return ExportModuleRow(
-      label: strings.exSelect,
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 4,
-        children: [
-          PillStrip(
-            items: [
-              filter('base', strings.exSelBase, spec.base, () => spec.copyWith(base: !spec.base)),
-              filter('attach', strings.exSelAttach, spec.attach, () => spec.copyWith(attach: !spec.attach)),
-              filter('sheet', strings.exSelSheet, spec.sheetOnly, () => spec.copyWith(sheetOnly: !spec.sheetOnly)),
-            ],
-          ),
-          PillStrip(
-            items: [
-              PillItem(
-                keyValue: 'export-cels-select-custom',
-                label: strings.exSelCustom,
-                selected: _celSelectionIsCustom,
-              ),
-            ],
-          ),
-        ],
+      label: strings.exLayerFilter,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: PillStrip(
+          items: [
+            filter(
+              'base',
+              strings.exSelBase,
+              spec.base,
+              () => spec.copyWith(base: !spec.base),
+            ),
+            filter(
+              'attach',
+              strings.exSelAttach,
+              spec.attach,
+              () => spec.copyWith(attach: !spec.attach),
+            ),
+            filter(
+              'sheet',
+              strings.exSelSheet,
+              spec.sheetOnly,
+              () => spec.copyWith(sheetOnly: !spec.sheetOnly),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  /// One list row — a folder ticks its leaves together and reads half when
-  /// they disagree; paper and cel-less rows keep a dot nobody can tick.
+  /// One list row — a folder ticks the rows listed under it together and
+  /// reads half when they disagree. Every row here is one the hand can
+  /// tick: the paper and the rows that hold no cel are not listed
+  /// ([_celListRows]).
   Widget _celListRow(Layer layer, ExportCelsSelection selection) {
     final layers = _activeCut.layers;
     final key = ValueKey<String>('export-cels-row-${layer.id.value}');
@@ -4007,19 +3953,28 @@ class ExportDialogState extends State<ExportDialog> {
       layer: layer,
       layers: layers,
       included: included,
-      onToggle: _celRowIsTickable(layer) && !_isExporting
-          ? () => _toggleCelRows([layer], !included)
-          : null,
+      onToggle: _isExporting
+          ? null
+          : () => _toggleCelRows([layer], !included),
     );
   }
 
   /// 「원화 작감 ▾」 — the timeline's own label flyout behind a button that
   /// wears the picked label's colour (유저: 「그냥 원화작감이라고 심플하게
   /// 텍스트 두고, 버튼 색만 색라벨 색 그대로」).
+  ///
+  /// While the cut's rows have left the label's rule the button reads
+  /// 「커스텀」, on no label's colour — and picking a label, the one it left
+  /// included, puts the rows back on that label's rule ([_applyCelFilter]).
+  /// 🗣️F-298 (유저 2026-10-05): 「색 라벨 선택하면 사실상 초기화나
+  /// 마찬가지인데 커스텀 설정한게 안풀림」.
   Widget _celLabelPicker(CelsExportSpec spec) {
     final theme = Theme.of(context);
-    final fill = layerMarkColor(spec.label);
-    final ink = timelineTextOnColor(fill);
+    final custom = _celSelectionIsCustom;
+    final fill = custom ? null : layerMarkColor(spec.label);
+    final ink = fill == null
+        ? theme.colorScheme.onSurface
+        : timelineTextOnColor(fill);
     return AbsorbPointer(
       absorbing: _isExporting,
       child: PanelFlyoutTrigger(
@@ -4027,7 +3982,7 @@ class ExportDialogState extends State<ExportDialog> {
         tooltip: AppText.strings.tlLayerMark,
         padding: EdgeInsets.zero,
         entriesBuilder: () => layerMarkFlyoutEntries(
-          onSelected: (mark) => _updateSpec(
+          onSelected: (mark) => _applyCelFilter(
             spec.copyWith(label: mark.withTake(LayerMark.firstTake)),
           ),
         ),
@@ -4035,14 +3990,21 @@ class ExportDialogState extends State<ExportDialog> {
           padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
           decoration: ShapeDecoration(
             color: fill,
-            shape: AppShapes.container(AppShapes.wellRadius),
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: fill == null
+                  ? BorderSide(color: theme.dividerColor)
+                  : BorderSide.none,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Flexible(
                 child: Text(
-                  exportCelLabelText(spec.label),
+                  custom
+                      ? AppText.strings.exSelCustom
+                      : exportCelLabelText(spec.label),
                   key: const ValueKey<String>('export-cels-label-text'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -4071,7 +4033,8 @@ class ExportDialogState extends State<ExportDialog> {
         entriesBuilder: () => layerTakeFlyoutEntries(
           selectedTake: take,
           offerLatest: true,
-          onSelected: (next) => _updateSpec(spec.copyWith(take: next)),
+          // The take is the label's other half: a pick is a rule again.
+          onSelected: (next) => _applyCelFilter(spec.copyWith(take: next)),
         ),
         child: Container(
           padding: const EdgeInsets.fromLTRB(7, 2, 3, 2),
@@ -4131,23 +4094,7 @@ class ExportDialogState extends State<ExportDialog> {
         open: false,
         onChanged: (mode) => _updateSpec(spec.copyWith(sizeMode: mode)),
       ),
-      _namingAccordion(
-        // The collapsed summary IS the first file's name — the one example
-        // the user can read (유저: 「미리보기 이름이니까 … 삭제」 of the
-        // editable-looking example line).
-        summary: _patternPreview(),
-        isDefault: spec.naming == const ExportCelNaming(),
-        onReset: () {
-          _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
-          _celSuffixController.text = '';
-        },
-        child: ExportCelNamingModule(
-          naming: spec.naming,
-          enabled: !_isExporting,
-          suffixController: _celSuffixController,
-          onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
-        ),
-      ),
+      _celNamingAccordion(spec),
       _scopeAccordion(
         scope: spec.scope,
         onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
@@ -4167,6 +4114,28 @@ class ExportDialogState extends State<ExportDialog> {
       ),
     ];
   }
+
+  /// The Cels tab's naming module. Its reset puts the spec's naming AND the
+  /// fields that show it back — the suffix's and every kind's prefix.
+  ExportAccordion _celNamingAccordion(CelsExportSpec spec) => _namingAccordion(
+    // The collapsed summary IS the first file's name — the one example
+    // the user can read (유저: 「미리보기 이름이니까 … 삭제」 of the
+    // editable-looking example line).
+    summary: _patternPreview(),
+    isDefault: spec.naming == const ExportCelNaming(),
+    onReset: () {
+      _updateSpec(spec.copyWith(naming: const ExportCelNaming()));
+      _celSuffixController.text = '';
+      _syncCelPrefixFields();
+    },
+    child: ExportCelNamingModule(
+      naming: spec.naming,
+      enabled: !_isExporting,
+      suffixController: _celSuffixController,
+      prefixControllers: _celPrefixControllers,
+      onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
+    ),
+  );
 
   List<Widget> _timesheetModules() {
     final spec = _specs.timesheet;

@@ -161,7 +161,15 @@ void main() {
     );
   }
 
-  for (final (standingOn, owner) in [('c1', 'C1'), ('c2', 'C1'), ('c3', 'C3')]) {
+  // The 겸용 pair places both of A's cels between its two cuts; C3 places
+  // the first alone, and a cel a cut never places is no cel of its export
+  // (F-289 ⑥, 유저 2026-10-06: 「애초에 타임라인에 안놓은 셀은 출력에
+  // 포함하지않음」).
+  for (final (standingOn, owner, cels) in [
+    ('c1', 'C1', ('1 label · 2 files', 'A1.png · 1 / 2')),
+    ('c2', 'C1', ('1 label · 2 files', 'A1.png · 1 / 2')),
+    ('c3', 'C3', ('1 label · 1 file', 'A1.png · 1 / 1')),
+  ]) {
     testWidgets('🎯the cut scope, standing on ${standingOn.toUpperCase()} '
         'with its tick OFF: the cels, the sheet and the envelope are that '
         'cut\'s all the same', (tester) async {
@@ -171,7 +179,7 @@ void main() {
 
       await pumpExport(tester, session, scope: ExportScopeKind.cut);
 
-      expect(await written(tester, 'cels'), ('1 label · 2 files', 'A1.png · 1 / 2'));
+      expect(await written(tester, 'cels'), cels);
       expect(
         await written(tester, 'timesheet'),
         ('1 sheet page', 'CUT${standingOn.toUpperCase()} · p1/1 · 1 page'),
@@ -230,7 +238,7 @@ void main() {
     addTearDown(all.dispose);
     await pumpExport(tester, all, scope: ExportScopeKind.project);
 
-    expect((await written(tester, 'cels')).$1, '2 labels · 4 files');
+    expect((await written(tester, 'cels')).$1, '2 labels · 3 files');
     expect((await written(tester, 'timesheet')).$1, '3 sheet pages');
     expect((await written(tester, 'envelope')).$1, '2 envelopes');
 
@@ -238,7 +246,7 @@ void main() {
     addTearDown(pairOut.dispose);
     await pumpExport(tester, pairOut, scope: ExportScopeKind.project);
 
-    expect((await written(tester, 'cels')).$1, '1 label · 2 files');
+    expect((await written(tester, 'cels')).$1, '1 label · 1 file');
     expect(
       await written(tester, 'timesheet'),
       ('1 sheet page', 'CUTC3 · p1/1 · 1 page'),
@@ -259,7 +267,7 @@ void main() {
       timesheetScope: ExportScopeKind.cut,
     );
 
-    expect((await written(tester, 'cels')).$1, '2 labels · 4 files');
+    expect((await written(tester, 'cels')).$1, '2 labels · 3 files');
     expect((await written(tester, 'timesheet')).$1, '1 sheet page');
     expect((await written(tester, 'envelope')).$1, '2 envelopes');
   });

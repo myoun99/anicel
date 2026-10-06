@@ -60,15 +60,16 @@ void main() {
   });
 
   group('CelsExportSpec', () {
-    test('defaults: canvas size, 원화 label, 「최신」 take, paper applied, no '
-        'art, 기준 preset — and the JSON carries none of them', () {
+    test('defaults: canvas size, the 셀 and 미술 kinds, 원화 label, 「최신」 '
+        'take, paper applied, 기준 preset — and the JSON carries none of them',
+        () {
       const spec = CelsExportSpec();
       expect(spec.sizeMode, ExportSizeMode.canvas);
+      // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
+      expect(spec.kinds, {ExportCelKind.cel, ExportCelKind.art});
       expect(spec.label, const LayerMark(process: LayerProcess.key));
       expect(spec.take, isNull);
       expect(spec.applyPaper, isTrue);
-      expect(spec.addArt, isFalse);
-      expect(spec.addDirection, isFalse);
       expect(spec.base, isTrue);
       expect(spec.attach, isTrue);
       expect(spec.sheetOnly, isFalse);
@@ -84,7 +85,7 @@ void main() {
       final sheet = read('sheet');
       expect((sheet.base, sheet.attach, sheet.sheetOnly), (true, true, true));
       final direction = read('direction');
-      expect((direction.base, direction.attach, direction.addDirection), (false, false, true));
+      expect((direction.base, direction.attach), (false, false));
       expect(read('base'), const CelsExportSpec());
     });
 
@@ -100,16 +101,16 @@ void main() {
           process: LayerProcess.layout,
           revise: LayerRevise.animationDirector,
         ),
+        kinds: const {ExportCelKind.conte, ExportCelKind.direction},
         take: 3,
         applyPaper: false,
-        addArt: true,
-        addDirection: true,
         base: false,
         sheetOnly: true,
         scope: ExportScopeKind.project,
       );
       final restored = CelsExportSpec.fromJson(spec.toJson());
       expect(restored, spec);
+      expect(restored.kinds, {ExportCelKind.conte, ExportCelKind.direction});
       expect(restored.take, 3);
       expect(restored.base, isFalse);
       expect(restored.attach, isTrue);
@@ -132,7 +133,75 @@ void main() {
       const spec = CelsExportSpec(take: 2);
       expect(spec.copyWith(take: null).take, isNull);
       expect(spec.copyWith().take, 2);
-      expect(spec.copyWith(addArt: true).take, 2);
+      expect(spec.copyWith(applyPaper: false).take, 2);
+    });
+
+    test('a kind is turned on or off one at a time, and a kind the JSON '
+        'names that nobody knows is dropped', () {
+      const spec = CelsExportSpec();
+      expect(spec.withKind(ExportCelKind.art, false).kinds, {
+        ExportCelKind.cel,
+      });
+      expect(spec.withKind(ExportCelKind.direction, true).kinds, {
+        ExportCelKind.cel,
+        ExportCelKind.art,
+        ExportCelKind.direction,
+      });
+      expect(spec.withKind(ExportCelKind.cel, true), spec);
+      expect(
+        const CelsExportSpec(kinds: {}),
+        isNot(spec),
+        reason: 'no kind at all is a spec of its own, not the default',
+      );
+      expect(
+        CelsExportSpec.fromJson(const CelsExportSpec(kinds: {}).toJson()).kinds,
+        isEmpty,
+      );
+      expect(
+        CelsExportSpec.fromJson({
+          'kinds': ['conte', 'hologram'],
+        }).kinds,
+        {ExportCelKind.conte},
+      );
+    });
+
+    test('🗣️a kind\'s prefix is its own until the naming says otherwise, '
+        'and is kept only where it differs — the default has one spelling',
+        () {
+      // 유저 2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_」 · 「콘티레이어는
+      // 다만 기본값 없음으로」.
+      const naming = ExportCelNaming();
+      expect(
+        {for (final kind in ExportCelKind.values) kind: naming.prefixOf(kind)},
+        {
+          ExportCelKind.cel: '',
+          ExportCelKind.conte: '',
+          ExportCelKind.art: '_',
+          ExportCelKind.direction: '_',
+        },
+      );
+      final typed = naming
+          .withPrefix(ExportCelKind.cel, 'k')
+          .withPrefix(ExportCelKind.art, '');
+      expect(typed.prefixOf(ExportCelKind.cel), 'k');
+      expect(typed.prefixOf(ExportCelKind.art), '');
+      expect(typed.prefixOf(ExportCelKind.direction), '_');
+      expect(typed, isNot(naming));
+      expect(ExportCelNaming.fromJson(typed.toJson()), typed);
+      expect(
+        typed
+            .withPrefix(ExportCelKind.cel, '')
+            .withPrefix(ExportCelKind.art, '_'),
+        naming,
+        reason: 'typing a kind\'s own prefix back is the default again',
+      );
+      expect(
+        ExportCelNaming.fromJson({
+          'prefixes': {'art': '_', 'cel': 'k', 'hologram': 'x'},
+        }).prefixes,
+        {ExportCelKind.cel: 'k'},
+        reason: 'a default spelled out, and a kind nobody knows, are dropped',
+      );
     });
   });
 
@@ -224,11 +293,11 @@ void main() {
       const preset = ExportPreset(
         id: ExportPresetId('preset-2'),
         name: '납품 셀',
-        spec: CelsExportSpec(addArt: true),
+        spec: CelsExportSpec(kinds: {ExportCelKind.conte}),
       );
       final restored = ExportPreset.fromJson(preset.toJson());
       expect(restored.spec, isA<CelsExportSpec>());
-      expect((restored.spec as CelsExportSpec).addArt, isTrue);
+      expect((restored.spec as CelsExportSpec).kinds, {ExportCelKind.conte});
     });
   });
 }

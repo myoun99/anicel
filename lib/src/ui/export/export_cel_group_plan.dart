@@ -2,6 +2,7 @@ import 'package:collection/collection.dart'
     show IterableExtension, compareAsciiLowerCaseNatural;
 
 import '../../models/attached_layer_resolve.dart';
+import '../../models/camera_instruction.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/export_overrides.dart';
@@ -99,29 +100,11 @@ class ExportCelGroupTask {
   /// The printed cel number — [Frame.celNumber] of [baseFrame]. An axis
   /// frame without one is the in-between mark and never becomes a task —
   /// but on a row whose unnamed cel is the layer's own picture it is one,
-  /// and this is empty ([_fileCelName]).
+  /// and this is empty ([_fileCelName]). A direction row's drawing is not
+  /// numbered: this is what its block SAYS ([directionCelName]).
   final String celName;
 
   /// Relative to the export directory; may contain `/` subfolders.
-  final String fileName;
-}
-
-/// One instruction-layer event exporting as an image cel (지시 출력).
-class ExportInstructionTask {
-  const ExportInstructionTask({
-    required this.cut,
-    required this.layer,
-    required this.startFrame,
-    required this.length,
-    required this.label,
-    required this.fileName,
-  });
-
-  final Cut cut;
-  final Layer layer;
-  final int startFrame;
-  final int length;
-  final String label;
   final String fileName;
 }
 
@@ -154,11 +137,10 @@ String celGroupPreviewKey(
 }
 
 class ExportCelGroupPlan {
-  const ExportCelGroupPlan({required this.cels, required this.instructions});
+  const ExportCelGroupPlan({required this.cels});
 
   /// Every planned cel, ticked or not — what the dialog lists and previews.
   final List<ExportCelGroupTask> cels;
-  final List<ExportInstructionTask> instructions;
 
   /// The cels that will be written: the ticked ones.
   List<ExportCelGroupTask> get writtenCels => [
@@ -167,7 +149,7 @@ class ExportCelGroupPlan {
   ];
 
   /// How many files the export writes.
-  int get length => writtenCels.length + instructions.length;
+  int get length => writtenCels.length;
 
   /// [cels] grouped by axis layer, in first-appearance (stack) order.
   List<ExportCelBundle> get bundles {
@@ -237,7 +219,8 @@ int? firstExposureOf(Layer axis, FrameId frameId) {
 }
 
 /// The frame of [task]'s cut its cel is sampled at: where the cel first
-/// shows there — the cut's first frame for a cel no cut shows.
+/// shows there. A planned cel is always shown by its cut ([_bundleTasks]),
+/// so the fallback is for a task built by hand.
 int celGroupFirstExposure(ExportCelGroupTask task) =>
     firstExposureOf(task.baseLayer, task.baseFrame.id) ?? 0;
 
@@ -374,12 +357,10 @@ _BundleIn? _shownIn(List<_BundleIn> group, FrameId frameId) => group
     );
 
 /// Whether a row can be the base a bundle hangs from: an attach row rides
-/// someone else's bundle, an instruction row exports its own events, and a
-/// row that holds no cel holds no bundle either.
+/// someone else's bundle, and a row that holds no cel holds no bundle
+/// either.
 bool _canOwnABundle(Layer layer) =>
-    !isAttachedLayer(layer) &&
-    layer.kind.exportsCels &&
-    layer.kind != LayerKind.instruction;
+    !isAttachedLayer(layer) && layer.kind.exportsCels;
 
 /// [base]'s own stack, filtered to what the selection keeps: the base
 /// itself and the rows attached to it, in cut order.
@@ -407,24 +388,93 @@ Layer _bundleAxis(List<Layer> pictures, Layer base) {
   return isAttachedLayer(lone) && !isSyncedAttachedLayer(lone) ? lone : base;
 }
 
-/// One task per numbered cel of [bundle] — the axis frames that carry a
-/// cel number AND a picture. [unnamedFiled] holds the labels whose unnamed
-/// cel the cut has already filed.
+/// The drawings of [axis] that are cels, each with what it is called on its
+/// file, in the order they are listed and written.
+///
+/// A DIRECTION row's are its blocks' drawings, in the order the timeline
+/// shows them, each called by what its block says ([directionCelName]) —
+/// 🗣️F-289 (유저 2026-10-05): 「디렉션레이어 출력시, 그림이 디렉션레이어의
+/// 지시인데, 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
+/// A drawing two blocks show is one cel, called by the first.
+///
+/// Every other row's are its NUMBERED frames ([_fileCelName]), by number
+/// ([_inCelOrder]).
+Iterable<({Frame frame, String celName})> _celsOf(
+  Layer axis,
+  Project project,
+) sync* {
+  if (axis.kind != LayerKind.instruction) {
+    for (final frame in _inCelOrder(axis.frames)) {
+      if (_fileCelName(axis, frame) case final celName?) {
+        yield (frame: frame, celName: celName);
+      }
+    }
+    return;
+  }
+  final listed = <FrameId>{};
+  for (final block in drawingBlocks(axis.timeline)) {
+    // A ghost shows again what its own block already listed, and says
+    // nothing of its own.
+    if (block.entry.ghost) {
+      continue;
+    }
+    final frame = axis.frameById(block.frameId);
+    if (frame == null || !listed.add(frame.id)) {
+      continue;
+    }
+    yield (
+      frame: frame,
+      celName: directionCelName(
+        axis.instructions[block.startIndex],
+        project.cameraInstructions,
+      ),
+    );
+  }
+}
+
+/// What a direction row's drawing is called: what its block says and the
+/// two ends it runs between — `T.U_A-B` — or nothing for a block that says
+/// nothing, whose file wears the row's name alone.
+///
+/// 🗣️유저 2026-10-06: 「디렉션 프레임 이름은 지시명으로 … 첫이름이 A고
+/// 끝이름이 B고 지시이름이 T.U면, T.U_A-B」. An end that is not written is
+/// left out, the dash with it when only one is.
+String directionCelName(InstructionEvent? says, CameraInstructionSet terms) {
+  if (says == null) {
+    return '';
+  }
+  final ends = [
+    for (final end in [says.valueA, says.valueB])
+      if (end != null && end.trim().isNotEmpty) end.trim(),
+  ].join('-');
+  final name = says.displayLabel(terms.defById(says.instructionId));
+  return ends.isEmpty ? name : '${name}_$ends';
+}
+
+/// One task per cel of [bundle] — the axis drawings that are cels
+/// ([_celsOf]) AND hold a picture. [unnamedFiled] holds the labels whose
+/// unnamed cel the cut has already filed.
 Iterable<ExportCelGroupTask> _bundleTasks(
   _CelBundle bundle,
   _CutRun cut, {
   required Set<String> unnamedFiled,
 }) sync* {
   final group = _bundleAcrossTheGroup(cut, bundle);
-  for (final axisFrame in _inCelOrder(bundle.axis.frames)) {
-    final celName = _fileCelName(bundle.axis, axisFrame);
-    if (celName == null) {
+  for (final (frame: axisFrame, :celName) in _celsOf(
+    bundle.axis,
+    cut.run.project,
+  )) {
+    // 🚨F-300: the cel is composited in the cut that SHOWS it.
+    //
+    // 🗣️F-289 ⑥ (유저 2026-10-06): 「애초에 타임라인에 안놓은 셀은 출력에
+    // 포함하지않음」 — a cel no cut of the group shows is no cel of this
+    // export. ↩️It went out from the window's cut with nothing under it:
+    // an unshown cel has no place on the timeline for the paper or a free
+    // rider to answer at ([celGroupMemberFrame]).
+    final shown = _shownIn(group, axisFrame.id);
+    if (shown == null) {
       continue;
     }
-    // 🚨F-300: the cel is composited in the cut that SHOWS it — a cel no
-    // cut shows stays the window's cut's, as a cut alone has it.
-    final shown =
-        _shownIn(group, axisFrame.id) ?? (cut: cut.cut, bundle: bundle);
     final baseFrame = shown.bundle.axis.frameById(axisFrame.id) ?? axisFrame;
     final frames = [
       for (final member in shown.bundle.members)
@@ -434,15 +484,8 @@ Iterable<ExportCelGroupTask> _bundleTasks(
           baseFrame: baseFrame,
         ),
     ];
-    if (!_holdsAPicture(shown.bundle, frames)) {
-      continue;
-    }
-    // 🗣️유저 2026-09-25: 「같은 이름 레이어가 존재하고 똑같이 이름없는게
-    // 존재하면 거기서 순서상 첫 블록만. 하나만 출력되면되」. BOOK rows stack
-    // under one name, so their unnamed cels are all `BOOK`: the first the
-    // walk meets is the file, and the rest are no cel of this export — not
-    // `BOOK_2`, a name nobody gave.
-    if (celName.isEmpty && !unnamedFiled.add(bundle.axis.name)) {
+    if (!_holdsAPicture(shown.bundle, frames) ||
+        _unnamedIsFiledAlready(bundle.axis, celName, unnamedFiled)) {
       continue;
     }
     yield ExportCelGroupTask(
@@ -456,6 +499,9 @@ Iterable<ExportCelGroupTask> _bundleTasks(
       baseFrame: baseFrame,
       celName: celName,
       fileName: cut.run.fileNameFor(
+        // A bundle is listed — so it has a kind: its axis's
+        // ([exportCelKindOf]; a lone attach row answers with its base's).
+        kind: exportCelKindOf(bundle.axis, cut.cut.layers)!,
         cutName: cut.cutName,
         labelName: bundle.axis.name,
         celName: celName,
@@ -464,6 +510,24 @@ Iterable<ExportCelGroupTask> _bundleTasks(
     );
   }
 }
+
+/// Whether [axis]'s unnamed cel — one called [celName], empty — is one the
+/// cut has filed before; [filed] holds the labels that have, and takes this
+/// one the first time it is asked.
+///
+/// 🗣️유저 2026-09-25: 「같은 이름 레이어가 존재하고 똑같이 이름없는게 존재하면
+/// 거기서 순서상 첫 블록만. 하나만 출력되면되」. BOOK rows stack under one
+/// name, so their unnamed cels are all `BOOK`: the first the walk meets is
+/// the file, and the rest are no cel of this export — not `BOOK_2`, a name
+/// nobody gave.
+///
+/// ⛔Not a direction row's: each of its drawings that says nothing is a cel
+/// of its own, and the namer tells them apart (`Direction` ·
+/// `Direction_2`).
+bool _unnamedIsFiledAlready(Layer axis, String celName, Set<String> filed) =>
+    axis.kind != LayerKind.instruction &&
+    celName.isEmpty &&
+    !filed.add(axis.name);
 
 /// What [frame] of [axis] is called on its file, or null when it writes no
 /// file at all.
@@ -537,6 +601,7 @@ typedef _NamingRun = ({
 
 extension _NamingRunFiles on _NamingRun {
   String fileNameFor({
+    required ExportCelKind kind,
     required String cutName,
     required String labelName,
     required String celName,
@@ -545,6 +610,7 @@ extension _NamingRunFiles on _NamingRun {
     cutName: cutName,
     layerName: labelName,
     base: celGroupFileBase(
+      kind: kind,
       projectName: project.name,
       cutName: cutName,
       labelName: labelName,
@@ -552,37 +618,6 @@ extension _NamingRunFiles on _NamingRun {
       naming: spec.naming,
     ),
   );
-}
-
-/// One task per EVENT on every instruction row in [selection]. The cel
-/// name is the event's position in its row, counted from one.
-Iterable<ExportInstructionTask> _instructionTasksFor(
-  Cut cut, {
-  required ExportCelsSelection selection,
-  required _NamingRun run,
-  required String cutName,
-}) sync* {
-  for (final layer in selection.instructionLayers) {
-    var eventIndex = 0;
-    for (final entry in layer.instructions.entries) {
-      eventIndex += 1;
-      final def = run.project.cameraInstructions.defById(
-        entry.value.instructionId,
-      );
-      yield ExportInstructionTask(
-        cut: cut,
-        layer: layer,
-        startFrame: entry.key,
-        length: entry.value.length,
-        label: entry.value.displayLabel(def),
-        fileName: run.fileNameFor(
-          cutName: cutName,
-          labelName: layer.name,
-          celName: '$eventIndex',
-        ),
-      );
-    }
-  }
 }
 
 /// The cut's name on files and folders.
@@ -600,9 +635,8 @@ String celGroupCutName(Project project, Cut cut) {
 
 /// Builds the bundle cel plan for the Cels tab: rules → delta per cut (the
 /// resolver), one bundle per base whose stack holds a selected picture, one
-/// task per numbered axis cel that has a picture. Instruction layers become
-/// per-event tasks. Under the project scope a 겸용 group is walked once,
-/// from its owner cut.
+/// task per axis cel that has a picture ([_celsOf]). Under the project
+/// scope a 겸용 group is walked once, from its owner cut.
 ExportCelGroupPlan buildExportCelGroupPlan({
   required Project project,
   required CutId activeCutId,
@@ -620,7 +654,6 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   );
   final projectScope = spec.scope == ExportScopeKind.project;
   final cels = <ExportCelGroupTask>[];
-  final instructions = <ExportInstructionTask>[];
   for (final cut in exportCutsInScope(
     project: project,
     activeCutId: activeCutId,
@@ -645,29 +678,29 @@ ExportCelGroupPlan buildExportCelGroupPlan({
         skipped: delta?.skippedBases ?? const {},
       ), selection),
     );
-    instructions.addAll(
-      _instructionTasksFor(
-        cut,
-        selection: selection,
-        run: run,
-        cutName: cutName,
-      ),
-    );
   }
-  return ExportCelGroupPlan(cels: cels, instructions: instructions);
+  return ExportCelGroupPlan(cels: cels);
 }
 
-/// `[proj_][cut_]<label><cel>[suffix]` — the bundle reading of the CSP
-/// naming options ([ExportCelNaming.includeLayerName] switches the LABEL
-/// text, the number always prints; a cel with no number keeps its label).
+/// `[prefix][proj_][cut_]<label><cel>[suffix]` — the bundle reading of the
+/// CSP naming options ([ExportCelNaming.includeLayerName] switches the LABEL
+/// text, the number always prints; a cel with no number keeps its label),
+/// led by what [kind]'s files start with ([ExportCelNaming.prefixOf] —
+/// `_BG1`).
+///
+/// A DIRECTION drawing is named, not numbered ([directionCelName]): the
+/// name stands off the label by an underscore and is never padded —
+/// `Direction_T.U_A-B` (유저 2026-10-06: 「디렉션레이어는 프레임이름이랑
+/// 레이어이름사이에 _ 넣고, 지시랑 첫/끝이름 사이에 _ 넣는거지」).
 String celGroupFileBase({
+  required ExportCelKind kind,
   required String projectName,
   required String cutName,
   required String labelName,
   required String celName,
   required ExportCelNaming naming,
 }) {
-  final joined = StringBuffer();
+  final joined = StringBuffer(naming.prefixOf(kind));
   if (naming.includeProjectName) {
     joined.write('${sanitizeExportFileComponent(projectName)}_');
   }
@@ -677,10 +710,17 @@ String celGroupFileBase({
   // An unnamed image cel has no number to print: the layer's name is its
   // whole name (유저 2026-09-25: 「이름없이 BOOK 그대로 출력」), so it prints
   // with the label switched off too — else the file would have no name.
-  if (naming.includeLayerName || celName.isEmpty) {
+  final labelled = naming.includeLayerName || celName.isEmpty;
+  if (labelled) {
     joined.write(sanitizeExportFileComponent(labelName));
   }
-  joined.write(padFrameNumber(celName, naming.frameDigits));
+  if (kind != ExportCelKind.direction) {
+    joined.write(padFrameNumber(celName, naming.frameDigits));
+  } else if (celName.isNotEmpty) {
+    joined
+      ..write(labelled ? '_' : '')
+      ..write(sanitizeExportFileComponent(celName));
+  }
   if (naming.suffix.isNotEmpty) {
     joined.write(naming.suffix);
   }

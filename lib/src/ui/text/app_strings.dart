@@ -1113,14 +1113,15 @@ enum AppStrings {
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
   String get exBaseName => _s('exBaseName');
   String get exSuffix => _s('exSuffix');
+  String get exPrefix => _s('exPrefix');
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exApplyLayerFxHelp => _s('exApplyLayerFxHelp');
   String get exMuxSeMix => _s('exMuxSeMix');
   String get exLabel => _s('exLabel');
   String get exApply => _s('exApply');
-  String get exAdd => _s('exAdd');
-  String get exSelect => _s('exSelect');
+  String get exKinds => _s('exKinds');
+  String get exLayerFilter => _s('exLayerFilter');
   String get exSelBase => _s('exSelBase');
   String get exSelAttach => _s('exSelAttach');
   String get exSelSheet => _s('exSelSheet');
@@ -2329,17 +2330,18 @@ enum AppStrings {
     'exPresetNameEmpty': 'Preset name cannot be empty.',
     'exBaseName': 'Base name',
     'exSuffix': 'Suffix',
+    'exPrefix': 'Prefix',
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Apply layer FX',
     'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exLabel': 'Label',
     'exApply': 'Apply',
-    'exAdd': 'Add',
-    'exSelect': 'Select',
+    'exKinds': 'Kinds to export',
+    'exLayerFilter': 'Layers',
     'exSelBase': 'Base',
     'exSelAttach': 'Attach',
-    'exSelSheet': 'Sheet',
+    'exSelSheet': 'Sheet only',
     'exSelDirection': 'Direction',
     'exSelCustom': 'Custom',
     'exPaperLabel': 'Paper',
@@ -3569,17 +3571,18 @@ enum AppStrings {
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
     'exBaseName': 'ベース名',
     'exSuffix': '接尾辞',
+    'exPrefix': '接頭辞',
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFXを適用',
     'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exLabel': 'ラベル',
     'exApply': '適用',
-    'exAdd': '追加',
-    'exSelect': '選択',
+    'exKinds': '書き出す種類',
+    'exLayerFilter': 'レイヤー',
     'exSelBase': '基準',
     'exSelAttach': 'アタッチ',
-    'exSelSheet': 'シート',
+    'exSelSheet': 'シートのみ',
     'exSelDirection': 'ディレクション',
     'exSelCustom': 'カスタム',
     'exPaperLabel': '用紙',
@@ -4932,17 +4935,18 @@ enum AppStrings {
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'exBaseName': '기본 이름',
     'exSuffix': '접미사',
+    'exPrefix': '접두사',
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX 적용',
     'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exLabel': '라벨',
     'exApply': '적용',
-    'exAdd': '추가',
-    'exSelect': '선택',
+    'exKinds': '내보낼 종류',
+    'exLayerFilter': '레이어',
     'exSelBase': '기준',
     'exSelAttach': '어태치',
-    'exSelSheet': '시트',
+    'exSelSheet': '시트만',
     'exSelDirection': '디렉션',
     'exSelCustom': '커스텀',
     'exPaperLabel': '용지',
@@ -6337,6 +6341,7 @@ enum AppStrings {
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'exBaseName': 'Nom de base',
     'exSuffix': 'Suffixe',
+    'exPrefix': 'Préfixe',
     'exDigits': 'Chiffres',
     'exApplyLayerFx': 'Appliquer les FX de calque',
     'exApplyLayerFxHelp':
@@ -6344,11 +6349,11 @@ enum AppStrings {
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exLabel': 'Étiquette',
     'exApply': 'Appliquer',
-    'exAdd': 'Ajouter',
-    'exSelect': 'Sélection',
+    'exKinds': 'Types à exporter',
+    'exLayerFilter': 'Calques',
     'exSelBase': 'Base',
     'exSelAttach': 'Attaches',
-    'exSelSheet': 'Feuille',
+    'exSelSheet': 'Feuille seule',
     'exSelDirection': 'Direction',
     'exSelCustom': 'Personnalisé',
     'exPaperLabel': 'Papier',
@@ -7687,17 +7692,18 @@ enum AppStrings {
     'exPresetNameEmpty': '预设名称不能为空。',
     'exBaseName': '基础名称',
     'exSuffix': '后缀',
+    'exPrefix': '前缀',
     'exDigits': '位数',
     'exApplyLayerFx': '应用图层 FX',
     'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',
     'exMuxSeMix': '将 SE 混音封装进视频',
     'exLabel': '标签',
     'exApply': '应用',
-    'exAdd': '添加',
-    'exSelect': '选择',
+    'exKinds': '导出种类',
+    'exLayerFilter': '图层',
     'exSelBase': '基准',
     'exSelAttach': '附属',
-    'exSelSheet': '律表',
+    'exSelSheet': '仅律表',
     'exSelDirection': '指示',
     'exSelCustom': '自定义',
     'exPaperLabel': '用纸',

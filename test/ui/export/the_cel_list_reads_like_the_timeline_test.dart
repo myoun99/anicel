@@ -115,9 +115,12 @@ void main() {
 
     await pumpCels(tester, session);
 
+    // 미술 is a kind that is on from the start (F-289, 유저 2026-10-06:
+    // 「기본값은 셀/미술/시트 체크」), so its row is listed too — at the
+    // bottom, where the timeline draws it.
     expect(
       listedIds(tester),
-      const ['c', 'b', 'a'],
+      const ['c', 'b', 'a', 'art'],
       reason: 'top of the timeline first — it listed a · b · c before F-144',
     );
   });

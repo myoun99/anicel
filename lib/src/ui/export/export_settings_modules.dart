@@ -776,6 +776,15 @@ class _DigitsFieldState extends State<_DigitsField> {
   }
 }
 
+/// What a kind is called wherever the window names it — its pill in
+/// 「내보낼 종류」 and its prefix field in the naming module.
+String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
+  ExportCelKind.cel => AppText.strings.exCels,
+  ExportCelKind.conte => AppText.strings.panelConte,
+  ExportCelKind.art => AppText.strings.exArtLabel,
+  ExportCelKind.direction => AppText.strings.exSelDirection,
+};
+
 /// Cel-file naming: the CSP-style options ported into the module grammar.
 class ExportCelNamingModule extends StatelessWidget {
   const ExportCelNamingModule({
@@ -784,12 +793,57 @@ class ExportCelNamingModule extends StatelessWidget {
     required this.enabled,
     required this.onChanged,
     required this.suffixController,
+    required this.prefixControllers,
   });
 
   final ExportCelNaming naming;
   final bool enabled;
   final ValueChanged<ExportCelNaming> onChanged;
   final TextEditingController suffixController;
+
+  /// One field a kind ([ExportCelNaming.prefixOf]) — the window's, as the
+  /// suffix's is, so a preset or a reset can write them.
+  final Map<ExportCelKind, TextEditingController> prefixControllers;
+
+  /// How many prefix fields share a line of the settings column.
+  static const int _prefixesPerLine = 3;
+
+  /// 접두사: a field for every kind, empty for none. ⚠️Not trimmed: a
+  /// prefix is whatever was typed, and what leads a file's name is usually
+  /// one character.
+  Widget _prefixFields() {
+    Widget field(ExportCelKind kind) => Expanded(
+      child: AppWindowField(
+        label: exportCelKindLabel(kind),
+        child: TextField(
+          key: ValueKey<String>('export-cel-prefix-${kind.jsonValue}'),
+          controller: prefixControllers[kind],
+          enabled: enabled,
+          onChanged: (value) => onChanged(naming.withPrefix(kind, value)),
+        ),
+      ),
+    );
+    const kinds = ExportCelKind.values;
+    return Column(
+      children: [
+        for (var first = 0; first < kinds.length; first += _prefixesPerLine)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (var at = first; at < first + _prefixesPerLine; at += 1) ...[
+                if (at > first) const SizedBox(width: 8),
+                // A short last line keeps the fields' width: an empty seat
+                // where a kind would be.
+                if (at < kinds.length)
+                  field(kinds[at])
+                else
+                  const Expanded(child: SizedBox.shrink()),
+              ],
+            ],
+          ),
+      ],
+    );
+  }
 
   /// Three names the file can carry and the same three the folders can, as
   /// two multi-select strips.
@@ -821,8 +875,8 @@ class ExportCelNamingModule extends StatelessWidget {
   Widget build(BuildContext context) {
     final strings = AppText.strings;
     // Top to bottom the way the file is built: the folder it lands in, the
-    // name it gets, then the digits and suffix (유저 2026-09-09: 「젤 위에
-    // 폴더 생성, 이름 지정, 자릿수/접미사」).
+    // name it gets, what each kind's name starts with, then the digits and
+    // suffix (유저 2026-09-09: 「젤 위에 폴더 생성, 이름 지정, 자릿수/접미사」).
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -864,6 +918,10 @@ class ExportCelNamingModule extends StatelessWidget {
               },
             ),
           ),
+        ),
+        ExportModuleRow(
+          label: strings.exPrefix,
+          child: _prefixFields(),
         ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,

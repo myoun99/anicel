@@ -7,6 +7,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/models/exposure_instruction.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
@@ -19,6 +20,7 @@ import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
@@ -28,11 +30,16 @@ void main() {
   const layout = LayerMark(process: LayerProcess.layout);
   const paper = LayerMark(process: LayerProcess.paper);
   const art = LayerMark(process: LayerProcess.art);
-  // 디렉션 alone: the drawing filters off, the direction rows added.
+  const withDirection = {
+    ExportCelKind.cel,
+    ExportCelKind.art,
+    ExportCelKind.direction,
+  };
+  // 디렉션 alone: the drawing filters off, the direction kind written.
   const direction = CelsExportSpec(
     base: false,
     attach: false,
-    addDirection: true,
+    kinds: withDirection,
   );
   // 부속 alone: the base filter off — the base still numbers the cels.
   const attach = CelsExportSpec(base: false);
@@ -54,18 +61,21 @@ void main() {
       i: TimelineExposure.drawing(frames[i].id, length: 1),
   };
 
+  /// A base row whose [frames] are each shown once, in order — or, with
+  /// [shown] false, a row that shows none of them (a cel no cut shows is no
+  /// cel of an export: F-289 ⑥).
   Layer base(
     String id,
     String name,
     List<Frame> frames, {
     LayerMark mark = key,
-    bool timeline = false,
+    bool shown = true,
   }) => Layer(
     id: LayerId(id),
     name: name,
     frames: frames,
     mark: mark,
-    timeline: timeline ? exposed(frames) : const {},
+    timeline: shown ? exposed(frames) : const {},
   );
 
   /// An IMAGE row holding [cel] — a picture row wears 미술, as Add Layer
@@ -124,14 +134,22 @@ void main() {
     for (final task in plan.cels) task.fileName,
   ];
 
-  Layer instructionRow({String id = 'inst', String name = 'Camera'}) => Layer(
+  /// A direction row with ONE block, saying [says] — its span laid down as
+  /// the block it is, with a drawing of its own under it.
+  Layer instructionRow({
+    String id = 'inst',
+    String name = 'Camera',
+    InstructionEvent says = const InstructionEvent(
+      instructionId: 'pan',
+      length: 12,
+      text: 'PAN',
+    ),
+  }) => Layer(
     id: LayerId(id),
     name: name,
     frames: const [],
     kind: LayerKind.instruction,
-    instructions: {
-      0: const InstructionEvent(instructionId: 'pan', length: 12, text: 'PAN'),
-    },
+    instructions: {0: says},
   );
 
   test('a bundle composites its synced riders through the cell links', () {
@@ -242,7 +260,7 @@ void main() {
       'name', () {
     // 유저 2026-09-09: 「여러개 선택되면 기준레이어 따라가고 프리부속 단독이면
     // 단독 기준」.
-    final baseA = base('a', 'A', [frame('f1'), frame('f2')], timeline: true);
+    final baseA = base('a', 'A', [frame('f1'), frame('f2')]);
     final free = Layer(
       id: const LayerId('shadow'),
       name: 'Ashadow',
@@ -311,7 +329,7 @@ void main() {
       frame('f1'),
       frame('f2'),
       frame('f3'),
-    ], timeline: true);
+    ]);
     final sync = Layer(
       id: const LayerId('a-color'),
       name: 'A색',
@@ -387,10 +405,10 @@ void main() {
       image('bg', 'BG', frame('b1', unnamed: true)),
       image('book', 'BOOK', frame('k1', name: 'BOOK1')),
     ];
-    final built = plan(layers, spec: const CelsExportSpec(addArt: true));
+    final built = plan(layers, spec: const CelsExportSpec());
     expect(
       files(built),
-      ['BG.png', 'BOOKBOOK1.png'],
+      ['_BG.png', '_BOOKBOOK1.png'],
       reason: 'a named image cel is layer + frame name, as every cel is',
     );
     expect(built.cels.first.celName, isEmpty);
@@ -399,12 +417,11 @@ void main() {
         plan(
           layers,
           spec: const CelsExportSpec(
-            addArt: true,
             naming: ExportCelNaming(includeLayerName: false),
           ),
         ),
       ),
-      ['BG.png', 'BOOK1.png'],
+      ['_BG.png', '_BOOK1.png'],
       reason:
           'with the label switched off, the layer\'s name is still the '
           'unnamed cel\'s only name — a file must have one',
@@ -419,8 +436,8 @@ void main() {
       image('k1', 'BOOK', frame('p1', unnamed: true)),
       image('k2', 'BOOK', frame('p2', unnamed: true)),
       image('k3', 'BOOK', frame('p3', name: '2')),
-    ], spec: const CelsExportSpec(addArt: true));
-    expect(files(built), ['BOOK.png', 'BOOK2.png']);
+    ], spec: const CelsExportSpec());
+    expect(files(built), ['_BOOK.png', '_BOOK2.png']);
     expect(built.cels.first.baseLayer.id.value, 'k1');
   });
 
@@ -453,12 +470,11 @@ void main() {
       project: project,
       activeCutId: const CutId('c1'),
       spec: const CelsExportSpec(
-        addArt: true,
         scope: ExportScopeKind.project,
         naming: ExportCelNaming(includeCutName: true),
       ),
     );
-    expect(files(built), ['C1_BG.png', 'C2_BG.png']);
+    expect(files(built), ['_C1_BG.png', '_C2_BG.png']);
   });
 
   test('⛔the unnamed cel that IS the layer is the one the row SHOWS — a 겸용 '
@@ -477,9 +493,40 @@ void main() {
         mark: art,
         timeline: exposed([mine]),
       ),
-    ], spec: const CelsExportSpec(addArt: true));
-    expect(files(built), ['BG.png']);
+    ], spec: const CelsExportSpec());
+    expect(files(built), ['_BG.png']);
     expect(built.cels.single.baseFrame.id.value, 'mine');
+  });
+
+  test('🗣️a kind\'s files start with its prefix — 미술 with `_` until the '
+      'naming says otherwise, a cel with none; a folder never wears it', () {
+    // 유저 2026-10-06: 「접두사는 각각 _로하거나 커스텀으로 텍스트 지정가능 …
+    // 기본값은 셀:없음, 미술:_, 디렉션:_, 시트:_, 컷봉투:_」.
+    final layers = [
+      base('a', 'A', [frame('f1')]),
+      image('bg', 'BG', frame('b1')),
+    ];
+    List<String> filesWith(ExportCelNaming naming) =>
+        files(plan(layers, spec: CelsExportSpec(naming: naming)));
+
+    expect(filesWith(const ExportCelNaming()), ['A1.png', '_BG1.png']);
+    expect(
+      filesWith(const ExportCelNaming().withPrefix(ExportCelKind.art, '')),
+      ['A1.png', 'BG1.png'],
+    );
+    expect(
+      filesWith(
+        const ExportCelNaming()
+            .withPrefix(ExportCelKind.cel, 'x-')
+            .withPrefix(ExportCelKind.art, 'bg_'),
+      ),
+      ['x-A1.png', 'bg_BG1.png'],
+    );
+    expect(
+      filesWith(const ExportCelNaming(includeCutName: true, layerFolder: true)),
+      ['A/CUT1_A1.png', 'BG/_CUT1_BG1.png'],
+      reason: 'the prefix leads the FILE\'s name; the folder is the row\'s',
+    );
   });
 
   test('the sheet and the export agree on which drawing is a cel', () {
@@ -491,22 +538,146 @@ void main() {
     expect(frame('f1', name: '\t').celNumber, isNull);
   });
 
-  test('디렉션 추가: instruction rows export per event with the row text; '
-      'without it they stay out; it takes nothing away from the drawings', () {
-    final layers = [base('a', 'A', [frame('f1')]), instructionRow()];
+  group('디렉션: a direction row\'s DRAWINGS are cels (F-289)', () {
+    // 유저 2026-10-05: 「디렉션레이어 출력시, 그림이 디렉션레이어의 지시인데,
+    // 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
+    test('each block\'s drawing is a cel of the row\'s own bundle — the '
+        'picture that was drawn, composited as every cel is; off, the kind '
+        'writes nothing, and on it takes nothing from the drawings', () {
+      final row = instructionRow();
+      final layers = [base('a', 'A', [frame('f1')]), row];
 
-    final built = plan(layers, spec: direction);
-    expect(built.cels, isEmpty, reason: 'the drawing filters are off');
-    expect(built.instructions, hasLength(1));
-    expect(built.instructions.single.label, 'PAN');
-    expect(built.instructions.single.length, 12);
-    expect(built.instructions.single.fileName, 'Camera1.png');
-    expect(built.length, 1);
+      final built = plan(layers, spec: direction);
+      expect(built.cels, hasLength(1), reason: 'the drawing filters are off');
+      final cel = built.cels.single;
+      expect(cel.baseLayer.id.value, 'inst');
+      expect(
+        cel.baseFrame.id,
+        row.frames.single.id,
+        reason: 'the drawing under the block — not a picture of its writing',
+      );
+      expect(names(cel.members), ['Camera']);
+      expect(cel.memberFrames, [cel.baseFrame]);
+      expect(built.length, 1);
 
-    expect(plan(layers).instructions, isEmpty);
-    final added = plan(layers, spec: const CelsExportSpec(addDirection: true));
-    expect(added.cels, hasLength(1));
-    expect(added.instructions, hasLength(1));
+      expect(files(plan(layers)), ['A1.png'], reason: 'the kind is off');
+      expect(
+        files(plan(layers, spec: const CelsExportSpec(kinds: withDirection))),
+        ['A1.png', '_Camera_PAN.png'],
+      );
+    });
+
+    test('the file is the row\'s name, what the block says, and the ends it '
+        'runs between — `Camera_T.U_A-B` — behind the kind\'s prefix', () {
+      // 유저 2026-10-06: 「첫이름이 A고 끝이름이 B고 지시이름이 T.U면,
+      // T.U_A-B … 디렉션레이어는 프레임이름이랑 레이어이름사이에 _ 넣고,
+      // 지시랑 첫/끝이름 사이에 _ 넣는거지. 거기서 유저가 추가로 접두사 _」.
+      String fileOf(InstructionEvent says, {ExportCelNaming? naming}) => files(
+        plan(
+          [instructionRow(says: says)],
+          spec: CelsExportSpec(
+            kinds: withDirection,
+            naming: naming ?? const ExportCelNaming(),
+          ),
+        ),
+      ).single;
+      const tu = InstructionEvent(
+        instructionId: 'tu',
+        length: 12,
+        text: 'T.U',
+        valueA: 'A',
+        valueB: 'B',
+      );
+      expect(fileOf(tu), '_Camera_T.U_A-B.png');
+      expect(
+        fileOf(tu, naming: const ExportCelNaming().withPrefix(
+          ExportCelKind.direction,
+          '',
+        )),
+        'Camera_T.U_A-B.png',
+      );
+      expect(
+        fileOf(tu.copyWith(valueB: () => null)),
+        '_Camera_T.U_A.png',
+        reason: 'an end that is not written is left out',
+      );
+      expect(
+        fileOf(tu.copyWith(valueA: () => ' ', valueB: () => 'B')),
+        '_Camera_T.U_B.png',
+      );
+      expect(
+        fileOf(tu.copyWith(valueA: () => null, valueB: () => null)),
+        '_Camera_T.U.png',
+      );
+      expect(
+        fileOf(tu, naming: const ExportCelNaming(includeLayerName: false)),
+        '_T.U_A-B.png',
+        reason: 'with the row\'s name off the name stands alone',
+      );
+      expect(
+        fileOf(tu, naming: const ExportCelNaming(frameDigits: 4)),
+        '_Camera_T.U_A-B.png',
+        reason: 'a name is not a number: nothing in it is padded',
+      );
+    });
+
+    test('a block that says nothing is the row\'s name alone, and two of '
+        'them are two files', () {
+      final a = frame('d1', unnamed: true);
+      final b = frame('d2', unnamed: true);
+      final row = Layer(
+        id: const LayerId('inst'),
+        name: 'Camera',
+        kind: LayerKind.instruction,
+        frames: [a, b],
+        timeline: {
+          0: TimelineExposure.drawing(a.id, length: 2),
+          2: TimelineExposure.drawing(b.id, length: 2),
+          4: TimelineExposure.drawing(a.id, length: 2),
+        },
+      );
+      expect(
+        files(plan([row], spec: const CelsExportSpec(kinds: withDirection))),
+        ['_Camera.png', '_Camera_2.png'],
+        reason: 'one cel a DRAWING — the block that shows the first again '
+            'adds none',
+      );
+    });
+
+    test('a block\'s ghost is not the block: the drawing is called by what '
+        'ITS block says, though the ghost stands before it', () {
+      final drawn = frame('d1', unnamed: true);
+      final row = Layer(
+        id: const LayerId('inst'),
+        name: 'Camera',
+        kind: LayerKind.instruction,
+        frames: [drawn],
+        timeline: {
+          0: TimelineExposure.drawing(
+            drawn.id,
+            length: 2,
+            ghostOf: const TimelineRunEdgeGhost(
+              side: TimelineRunEdgeSide.start,
+              mode: TimelineRunEdgeMode.hold,
+            ),
+          ),
+          2: TimelineExposure.drawing(
+            drawn.id,
+            length: 2,
+            instruction: const ExposureInstruction(
+              instructionId: 'tu',
+              text: 'T.U',
+            ),
+          ),
+        },
+      );
+      expect(
+        files(plan([row], spec: const CelsExportSpec(kinds: withDirection))),
+        ['_Camera_T.U.png'],
+        reason: 'the ghost says nothing — walked first, it named the file '
+            '`_Camera`',
+      );
+    });
   });
 
   test('🚨the preview key is the picture, not the file name — two labels '
@@ -553,11 +724,13 @@ void main() {
       base('a', 'A', [frame('f1')]),
       base('bg', 'BG', [frame('b1')], mark: art),
     ];
-    expect(files(plan(layers)), ['A1.png']);
-    expect(files(plan(layers, spec: const CelsExportSpec(addArt: true))), [
-      'A1.png',
-      'BG1.png',
-    ]);
+    expect(files(plan(layers)), ['A1.png', '_BG1.png']);
+    expect(
+      files(
+        plan(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.cel})),
+      ),
+      ['A1.png'],
+    );
   });
 
   test('project scope honors the cut checks', () {
@@ -762,7 +935,7 @@ void main() {
     }) => buildExportCelGroupPlan(
       project: linked,
       activeCutId: CutId(activeCut),
-      spec: CelsExportSpec(addArt: true, scope: scope),
+      spec: CelsExportSpec(scope: scope),
     );
 
     /// Each cel as `file: the cut it is composited in / the paper under it`.
@@ -778,8 +951,8 @@ void main() {
     };
 
     const everyCel = {
-      'BG1.png': 'c1 / p1',
-      'BG2.png': 'c2 / p1',
+      '_BG1.png': 'c1 / p1',
+      '_BG2.png': 'c2 / p1',
       'A1.png': 'c1 / p1',
       'A2.png': 'c2 / p1',
     };
@@ -854,10 +1027,10 @@ void main() {
         final built = buildExportCelGroupPlan(
           project: both,
           activeCutId: CutId(standingOn),
-          spec: const CelsExportSpec(addArt: true),
+          spec: const CelsExportSpec(),
         );
         expect(
-          stacks(built)['BG1.png'],
+          stacks(built)['_BG1.png'],
           'c1 / p1',
           reason: 'standing on $standingOn',
         );
@@ -938,12 +1111,12 @@ void main() {
       final bare = buildExportCelGroupPlan(
         project: linked,
         activeCutId: const CutId('c1'),
-        spec: const CelsExportSpec(addArt: true, applyPaper: false),
+        spec: const CelsExportSpec(applyPaper: false),
       );
 
       expect(stacks(bare), {
-        'BG1.png': 'c1 / ',
-        'BG2.png': 'c2 / ',
+        '_BG1.png': 'c1 / ',
+        '_BG2.png': 'c2 / ',
         'A1.png': 'c1 / ',
         'A2.png': 'c2 / ',
       });
@@ -967,7 +1140,7 @@ void main() {
             [for (final sheet in bundle.sheets) sheet.fileName],
         ],
         [
-          ['BG1.png', 'BG2.png'],
+          ['_BG1.png', '_BG2.png'],
           ['A1.png', 'A2.png'],
         ],
       );
@@ -978,7 +1151,7 @@ void main() {
       final built = buildExportCelGroupPlan(
         project: linked,
         activeCutId: const CutId('c2'),
-        spec: const CelsExportSpec(addArt: true),
+        spec: const CelsExportSpec(),
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('c2'),
           ExportCelsCutDelta().withBaseSkipped(const LayerId('c2-a'), true),
@@ -988,16 +1161,17 @@ void main() {
       expect(
         {for (final task in built.cels) task.fileName: task.skipped},
         {
-          'BG1.png': false,
-          'BG2.png': false,
+          '_BG1.png': false,
+          '_BG2.png': false,
           'A1.png': true,
           'A2.png': true,
         },
       );
     });
 
-    test('a cel no cut of the group shows is its window cut\'s, as a cut '
-        'alone has it: no paper is known for it', () {
+    test('🗣️a cel no cut of the group shows is no cel of the export (F-289 '
+        '⑥, 유저 2026-10-06: 「애초에 타임라인에 안놓은 셀은 출력에 '
+        '포함하지않음」)', () {
       // The same rows with A 2 shown nowhere.
       final unshown = linked.copyWith(
         tracks: [
@@ -1020,19 +1194,33 @@ void main() {
       final built = buildExportCelGroupPlan(
         project: unshown,
         activeCutId: const CutId('c2'),
-        spec: const CelsExportSpec(addArt: true),
+        spec: const CelsExportSpec(),
       );
 
-      expect(stacks(built)['A2.png'], 'c2 / NO PAPER');
-      expect(stacks(built)['A1.png'], 'c1 / p1');
       expect(
-        celGroupFirstExposure(
-          built.cels.singleWhere((task) => task.fileName == 'A2.png'),
-        ),
-        0,
-        reason: 'a cel with no frame of its own is sampled at the cut\'s first',
+        stacks(built).keys,
+        isNot(contains('A2.png')),
+        reason: '↩️it went out from the window\'s cut, with no paper under it',
       );
+      expect(stacks(built)['A1.png'], 'c1 / p1');
     });
+  });
+
+  test('a cel its row never shows is not planned; the ones it shows are', () {
+    final one = frame('f1');
+    final two = frame('f2');
+    final a = Layer(
+      id: const LayerId('a'),
+      name: 'A',
+      frames: [one, two],
+      mark: key,
+      timeline: exposed([two]),
+    );
+    expect(files(plan([a])), ['A2.png']);
+    expect(
+      files(plan([base('b', 'B', [frame('g1')], shown: false)])),
+      isEmpty,
+    );
   });
 
   /// 🚨A FILE NAME THAT REPEATS IS A FILE THAT DISAPPEARS.
@@ -1091,15 +1279,12 @@ void main() {
     final built = plan(
       [base('a', 'A', [frame('f1')]), instructionRow(id: 'i', name: 'A')],
       spec: const CelsExportSpec(
-        addDirection: true,
+        kinds: withDirection,
         naming: ExportCelNaming(includeLayerName: false),
       ),
     );
 
-    final written = [
-      ...files(built),
-      ...built.instructions.map((task) => task.fileName),
-    ];
+    final written = files(built);
     expect(written, hasLength(2));
     expect(written.toSet(), hasLength(written.length), reason: '$written');
   });

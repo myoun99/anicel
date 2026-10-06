@@ -13,10 +13,17 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
 
-/// The Cels tab's row set (v3, 2026-09-09): ONE colour label, a take (or
-/// 「최신」), the four presets, paper applied rather than exported, 미술
-/// added by a switch — and the cut's hand delta last.
+/// The Cels tab's row set: the KINDS first (F-289, 2026-10-06) — a row of a
+/// kind the export does not write is neither written nor listed — then the
+/// filters of 2026-09-09: ONE colour label over the cel rows, a take (or
+/// 「최신」), 기준 · 어태치 · 시트만, paper applied rather than exported — and
+/// the cut's hand delta last.
 void main() {
+  const withDirection = {
+    ExportCelKind.cel,
+    ExportCelKind.art,
+    ExportCelKind.direction,
+  };
   const key = LayerMark(process: LayerProcess.key);
   const keyAd = LayerMark(
     process: LayerProcess.key,
@@ -88,7 +95,6 @@ void main() {
 
     // 원화(上がり) is the default label.
     expect(cels(layers), ['a', 'bg']);
-    expect(resolve(layers).instructionLayers, isEmpty);
     // 「원화 작감」 is ONE item — not 원화 plus a revise filter.
     expect(cels(layers, spec: const CelsExportSpec(label: keyAd)), ['ad']);
     // 「라벨 없음」 exports the unlabelled rows.
@@ -124,10 +130,10 @@ void main() {
   });
 
   test('the filters STACK: 기준 keeps the bases, 부속 keeps the attach rows, '
-      '시트 keeps, of those, the ones on the sheet — and 디렉션 is an addition',
-      () {
+      '시트 keeps, of those, the ones on the sheet — and a direction row is '
+      'neither a base nor an attach', () {
     // 유저 2026-09-09: 「단일선택이 아니라 중첩가능이야 … 진짜 여러 항목이
-    // 필터로 작동하는거지 … 디렉션은 선택항목말고 추가항목에」.
+    // 필터로 작동하는거지」.
     final layers = [
       layer('a'),
       layer('ac', attachedTo: 'a'),
@@ -154,21 +160,30 @@ void main() {
       isEmpty,
     );
 
-    expect(resolve(layers).instructionLayers, isEmpty);
-    final added = resolve(layers, spec: const CelsExportSpec(addDirection: true));
     expect(
-      ids(added.celLayers),
-      ['a', 'ac', 'b', 'bf'],
-      reason: 'an addition takes nothing away',
+      cels(layers, spec: const CelsExportSpec(kinds: withDirection)),
+      ['a', 'ac', 'b', 'bf', 'inst'],
+      reason: 'a kind turned on takes nothing away',
     );
-    expect(ids(added.instructionLayers), ['inst']);
     expect(
-      resolve(
+      cels(
         layers,
-        spec: const CelsExportSpec(addDirection: true, sheetOnly: true),
-      ).instructionLayers.map((layer) => layer.id.value),
-      ['inst'],
+        spec: const CelsExportSpec(kinds: withDirection, sheetOnly: true),
+      ),
+      ['a', 'ac', 'inst'],
       reason: 'the direction row is on the sheet by default',
+    );
+    expect(
+      cels(
+        layers,
+        spec: const CelsExportSpec(
+          kinds: withDirection,
+          base: false,
+          attach: false,
+        ),
+      ),
+      ['inst'],
+      reason: '기준 and 어태치 are not asked of a direction row',
     );
   });
 
@@ -195,10 +210,160 @@ void main() {
     );
   });
 
-  test('미술 추가: art rows join under any label; without it they stay out', () {
-    final layers = [layer('a'), layer('bg', mark: art)];
-    expect(cels(layers), ['a']);
-    expect(cels(layers, spec: const CelsExportSpec(addArt: true)), ['a', 'bg']);
+  group('the kinds come first', () {
+    const conte = LayerMark(process: LayerProcess.conte);
+
+    test('which kind a row is: a direction row, the conte row, a row '
+        'labelled 미술, and every other drawing row a cel — an attach row of '
+        'its BASE\'s kind, and the rows that export nothing of none', () {
+      final layers = [
+        layer('a'),
+        layer('still', kind: LayerKind.image),
+        layer('bg', mark: art),
+        layer('bgc', attachedTo: 'bg', mark: keyAd),
+        layer('ac', attachedTo: 'a', mark: art),
+        layer('s', kind: LayerKind.storyboard, mark: conte),
+        layer('inst', kind: LayerKind.instruction),
+        layer('p', mark: paper),
+        layer('se', kind: LayerKind.se),
+        layer('cam', kind: LayerKind.camera),
+        createFolderLayer(id: const LayerId('f'), name: 'F'),
+      ];
+      expect(
+        {
+          for (final each in layers)
+            each.id.value: exportCelKindOf(each, layers),
+        },
+        {
+          'a': ExportCelKind.cel,
+          'still': ExportCelKind.cel,
+          'bg': ExportCelKind.art,
+          'bgc': ExportCelKind.art,
+          'ac': ExportCelKind.cel,
+          's': ExportCelKind.conte,
+          'inst': ExportCelKind.direction,
+          'p': null,
+          'se': null,
+          'cam': null,
+          'f': null,
+        },
+      );
+    });
+
+    test('미술: art rows are written whatever the label, and what rides them '
+        'with them — and not at all while the kind is off', () {
+      // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크」 — art is on from the
+      // start, where it used to be a switch that added it.
+      final layers = [
+        layer('a'),
+        layer('bg', mark: art),
+        layer('bgc', attachedTo: 'bg', mark: layout),
+      ];
+      expect(cels(layers), ['a', 'bg', 'bgc']);
+      expect(
+        cels(layers, spec: const CelsExportSpec(label: keyAd)),
+        ['bg', 'bgc'],
+        reason: 'the label is the cel rows\' filter — art does not wear it',
+      );
+      expect(
+        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.cel})),
+        ['a'],
+      );
+      expect(
+        cels(layers, spec: const CelsExportSpec(attach: false)),
+        ['a', 'bg'],
+        reason: '어태치 is asked of every row that rides one',
+      );
+    });
+
+    test('셀: with the kind off no cel row goes out, whatever it wears', () {
+      final layers = [layer('a'), layer('ad', mark: keyAd), layer('bg', mark: art)];
+      expect(
+        cels(layers, spec: const CelsExportSpec(kinds: {ExportCelKind.art})),
+        ['bg'],
+      );
+      expect(
+        cels(
+          layers,
+          spec: const CelsExportSpec(kinds: {ExportCelKind.art}, label: keyAd),
+        ),
+        ['bg'],
+      );
+    });
+
+    test('콘티: the conte row is off from the start, and on it goes out '
+        'whatever the label — a cel like any other', () {
+      // 유저 2026-10-06: 「진짜 그냥 셀 출력하듯이 … 일반 셀이랑 똑같이」.
+      final layers = [layer('a'), layer('s', kind: LayerKind.storyboard, mark: conte)];
+      expect(cels(layers), ['a']);
+      expect(
+        cels(
+          layers,
+          spec: const CelsExportSpec(
+            kinds: {ExportCelKind.cel, ExportCelKind.conte},
+          ),
+        ),
+        ['a', 's'],
+      );
+      expect(
+        cels(layers, spec: const CelsExportSpec(label: conte)),
+        isEmpty,
+        reason: '↩️the conte label used to be the way to reach it',
+      );
+    });
+
+    test('the hand cannot bring back a row whose kind is off — and its '
+        'answer is still there when the kind comes back', () {
+      final layers = [layer('a'), layer('ad', mark: keyAd), layer('bg', mark: art)];
+      final delta = ExportCelsCutDelta()
+          .withLayerOverride(const LayerId('ad'), true)
+          .withLayerOverride(const LayerId('bg'), true);
+      expect(
+        cels(
+          layers,
+          spec: const CelsExportSpec(kinds: {ExportCelKind.art}),
+          delta: delta,
+        ),
+        ['bg'],
+      );
+      expect(cels(layers, delta: delta), ['a', 'ad', 'bg']);
+    });
+
+    test('the list: a row of a kind that is written, and a folder holding '
+        'one — never the paper, the camera or an SE row', () {
+      final layers = [
+        layer('a', folder: 'f'),
+        createFolderLayer(id: const LayerId('f'), name: 'F'),
+        layer('bg', mark: art, folder: 'g'),
+        createFolderLayer(id: const LayerId('g'), name: 'G'),
+        layer('ac', attachedTo: 'a', mark: keyAd),
+        layer('inst', kind: LayerKind.instruction),
+        layer('p', mark: paper),
+        layer('se', kind: LayerKind.se),
+        layer('cam', kind: LayerKind.camera),
+        createFolderLayer(id: const LayerId('empty'), name: 'E'),
+      ];
+      List<String> listed(CelsExportSpec spec) => [
+        for (final each in layers)
+          if (exportCelsListsRow(each, layers, spec)) each.id.value,
+      ];
+      expect(listed(const CelsExportSpec()), ['a', 'f', 'bg', 'g', 'ac']);
+      expect(
+        listed(const CelsExportSpec(kinds: {ExportCelKind.art})),
+        ['bg', 'g'],
+        reason: 'a kind that is off takes its rows — and the folder that '
+            'held only those — out of the list',
+      );
+      expect(
+        listed(const CelsExportSpec(kinds: withDirection)),
+        ['a', 'f', 'bg', 'g', 'ac', 'inst'],
+      );
+      expect(
+        listed(const CelsExportSpec(label: keyAd, base: false)),
+        ['a', 'f', 'bg', 'g', 'ac'],
+        reason: 'a FILTER turns a row off where it stands — it stays listed',
+      );
+    });
   });
 
   test('the timeline\'s eye does NOT count — a hidden row, or a row inside a '
@@ -237,10 +402,13 @@ void main() {
     final layers = [layer('a'), layer('inst', kind: LayerKind.instruction)];
     final selection = resolve(
       layers,
-      spec: const CelsExportSpec(base: false, attach: false, addDirection: true),
+      spec: const CelsExportSpec(
+        kinds: withDirection,
+        base: false,
+        attach: false,
+      ),
       delta: ExportCelsCutDelta().withLayerOverride(const LayerId('a'), true),
     );
-    expect(ids(selection.celLayers), ['a']);
-    expect(ids(selection.instructionLayers), ['inst']);
+    expect(ids(selection.celLayers), ['a', 'inst']);
   });
 }

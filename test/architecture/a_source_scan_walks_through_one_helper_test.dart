@@ -80,6 +80,8 @@ const _walksThatAreNotSourceScans = <String, String>{
   'test/ui/export/finished_outputs_are_handed_over_test.dart':
       'walks the outputs a run wrote into its outbox and the folder they '
       'were handed over to — images, not Dart',
+  'test/ui/export/the_cels_run_writes_the_ticked_drawings_test.dart':
+      'walks the EXPORT output folder a run wrote — images, not Dart',
   'test/ui/playback/a_take_is_staged_like_any_carry_test.dart':
       'walks the run\'s STAGING room a take was written into — each open '
       'project\'s store has a folder there (I-7) — media, not Dart',

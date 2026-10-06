@@ -2,11 +2,14 @@ import 'package:flutter/foundation.dart' show setEquals;
 
 import 'sheet_paint_layer.dart';
 import 'envelope/cut_envelope_paper.dart';
+import 'export_cel_kind.dart';
 import 'export_cel_naming.dart';
 import 'export_format_selection.dart';
 import 'export_size_mode.dart';
 import 'layer_mark.dart';
 import 'layer_process.dart';
+
+export 'export_cel_kind.dart';
 
 /// Per-tab export specs (출력 UI v10): everything a tab's settings column
 /// holds, as one serializable value. A preset stores exactly one of these
@@ -306,26 +309,32 @@ class ImageExportSpec extends ExportTabSpec {
 /// `resolveExportCelsSelection`; the delta itself is project data.
 ///
 /// v3 (유저 2026-09-09): one colour LABEL, one TAKE, one selection PRESET,
-/// paper APPLIED, art ADDED. The attach/instruction/sheet/folder toggles
-/// and the two dead mark slots this used to carry are gone — the label
-/// picker is what the slots reserved a seat for, and the presets answer
-/// the row questions in one place.
+/// paper APPLIED. The attach/instruction/sheet/folder toggles and the two
+/// dead mark slots this used to carry are gone — the label picker is what
+/// the slots reserved a seat for, and the presets answer the row questions
+/// in one place. v4 (F-289, 2026-10-06): the KINDS come first
+/// ([ExportCelKind]), the filters after them.
 class CelsExportSpec extends ExportTabSpec {
   const CelsExportSpec({
     this.format = const ExportFormatSelection(kind: ExportMediaKind.still),
     this.sizeMode = ExportSizeMode.canvas,
     this.applyLayerFx = true,
     this.naming = const ExportCelNaming(),
+    this.kinds = defaultKinds,
     this.label = defaultLabel,
     this.take,
     this.applyPaper = true,
-    this.addArt = false,
-    this.addDirection = false,
     this.base = true,
     this.attach = true,
     this.sheetOnly = false,
     this.scope = ExportScopeKind.cut,
   });
+
+  /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
+  static const Set<ExportCelKind> defaultKinds = {
+    ExportCelKind.cel,
+    ExportCelKind.art,
+  };
 
   /// 원화(上がり). A fresh preset exports the key cels; 「라벨 없음」 as the
   /// default would export nothing from a labelled cut.
@@ -334,10 +343,17 @@ class CelsExportSpec extends ExportTabSpec {
   final ExportFormatSelection format;
   final ExportSizeMode sizeMode;
 
+  /// The kinds this export writes ([ExportCelKind]) — a row of a kind that
+  /// is not here is neither written nor listed.
+  final Set<ExportCelKind> kinds;
+
   /// The ONE colour label an export is about — process × revise picked as a
   /// single item (「원화 작감」, 「LO 上がり」…; 유저: 「색라벨은 하나야. 공정이랑
-  /// 수정 나누지않고」). A row exports only when its own mark wears this
+  /// 수정 나누지않고」). A CEL row exports only when its own mark wears this
   /// label; the take component of this value is not consulted — [take] is.
+  ///
+  /// The other kinds do not answer to it: an art row is art whatever the
+  /// label, and a conte or a direction row is its kind by being that row.
   final LayerMark label;
 
   /// The take a row must wear, or null for 「최신」: among rows sharing a
@@ -350,15 +366,6 @@ class CelsExportSpec extends ExportTabSpec {
   /// output cel. Paper is never a cel of its own (유저: 「모든 출력 셀에 용지
   /// 라벨의 그림을 적용시키는거지」).
   final bool applyPaper;
-
-  /// 미술 추가: rows whose process is 미술 export as cels of their own,
-  /// whatever the label (유저: 「같은 공정의 미술레이어를 추가할지」).
-  final bool addArt;
-
-  /// 디렉션 추가: the instruction rows export as image cels, one per event.
-  /// An ADDITION beside 미술, not a way of selecting (유저 2026-09-09:
-  /// 「디렉션은 선택항목말고 추가항목에 묶는게 나을듯」).
-  final bool addDirection;
 
   /// 선택 = FILTERS THAT STACK, not presets (유저 2026-09-09: 「단일선택이
   /// 아니라 중첩가능이야 … 진짜 여러 항목이 필터로 작동하는거지」):
@@ -400,11 +407,10 @@ class CelsExportSpec extends ExportTabSpec {
     ExportSizeMode? sizeMode,
     bool? applyLayerFx,
     ExportCelNaming? naming,
+    Set<ExportCelKind>? kinds,
     LayerMark? label,
     Object? take = _unset,
     bool? applyPaper,
-    bool? addArt,
-    bool? addDirection,
     bool? base,
     bool? attach,
     bool? sheetOnly,
@@ -414,15 +420,22 @@ class CelsExportSpec extends ExportTabSpec {
     sizeMode: sizeMode ?? this.sizeMode,
     applyLayerFx: applyLayerFx ?? this.applyLayerFx,
     naming: naming ?? this.naming,
+    kinds: kinds ?? this.kinds,
     label: label ?? this.label,
     take: identical(take, _unset) ? this.take : take as int?,
     applyPaper: applyPaper ?? this.applyPaper,
-    addArt: addArt ?? this.addArt,
-    addDirection: addDirection ?? this.addDirection,
     base: base ?? this.base,
     attach: attach ?? this.attach,
     sheetOnly: sheetOnly ?? this.sheetOnly,
     scope: scope ?? this.scope,
+  );
+
+  /// This spec with [kind] written or not.
+  CelsExportSpec withKind(ExportCelKind kind, bool written) => copyWith(
+    kinds: {
+      for (final each in ExportCelKind.values)
+        if (each == kind ? written : kinds.contains(each)) each,
+    },
   );
 
   @override
@@ -431,11 +444,14 @@ class CelsExportSpec extends ExportTabSpec {
     if (sizeMode != ExportSizeMode.canvas) 'sizeMode': sizeMode.jsonValue,
     if (!applyLayerFx) 'applyLayerFx': false,
     'naming': naming.toJson(),
+    if (!setEquals(kinds, defaultKinds))
+      'kinds': [
+        for (final kind in ExportCelKind.values)
+          if (kinds.contains(kind)) kind.jsonValue,
+      ],
     if (label != defaultLabel) 'label': label.toJson(),
     if (take != null) 'take': take,
     if (!applyPaper) 'applyPaper': false,
-    if (addArt) 'addArt': true,
-    if (addDirection) 'addDirection': true,
     if (!base) 'base': false,
     if (!attach) 'attach': false,
     if (sheetOnly) 'sheetOnly': true,
@@ -455,16 +471,19 @@ class CelsExportSpec extends ExportTabSpec {
     naming: json['naming'] == null
         ? const ExportCelNaming()
         : ExportCelNaming.fromJson(json['naming'] as Map<String, dynamic>),
+    kinds: switch (json['kinds']) {
+      final List<dynamic> named => {
+        for (final name in named) ?ExportCelKind.fromJson(name),
+      },
+      _ => defaultKinds,
+    },
     label: json.containsKey('label')
         ? LayerMark.fromJson(json['label']).withTake(LayerMark.firstTake)
         : defaultLabel,
     take: json['take'] is int ? json['take'] as int : null,
     applyPaper: json['applyPaper'] as bool? ?? true,
-    addArt: json['addArt'] as bool? ?? false,
     // 'selection' is the one-day-old preset spelling (base / attach /
     // sheet / direction); read it as the filters it meant.
-    addDirection:
-        json['addDirection'] as bool? ?? json['selection'] == 'direction',
     base: json['base'] as bool? ?? !_presetJsonWas(json, {'attach', 'direction'}),
     attach: json['attach'] as bool? ?? json['selection'] != 'direction',
     sheetOnly: json['sheetOnly'] as bool? ?? json['selection'] == 'sheet',
@@ -482,11 +501,10 @@ class CelsExportSpec extends ExportTabSpec {
           other.sizeMode == sizeMode &&
           other.applyLayerFx == applyLayerFx &&
           other.naming == naming &&
+          setEquals(other.kinds, kinds) &&
           other.label == label &&
           other.take == take &&
           other.applyPaper == applyPaper &&
-          other.addArt == addArt &&
-          other.addDirection == addDirection &&
           other.base == base &&
           other.attach == attach &&
           other.sheetOnly == sheetOnly &&
@@ -498,11 +516,10 @@ class CelsExportSpec extends ExportTabSpec {
     sizeMode,
     applyLayerFx,
     naming,
+    Object.hashAllUnordered(kinds),
     label,
     take,
     applyPaper,
-    addArt,
-    addDirection,
     base,
     attach,
     sheetOnly,
