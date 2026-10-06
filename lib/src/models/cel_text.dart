@@ -51,7 +51,31 @@ class CelTextContent {
     this.align = TextCelAlign.left,
     this.lineHeight = defaultLineHeight,
     this.backgroundColor,
-  }) : spans = List.unmodifiable(_settled(spans));
+  }) : spans = List.unmodifiable(_settled(spans)) {
+    // ⚠️Refused HERE, where a content is made, and not where one is set:
+    // the engine lays a box of no width out as one letter a line and a
+    // pitch of nothing as no lines at all, and a plate baked from either
+    // is a picture nobody asked for that the cel then keeps.
+    _requireLength(wrapWidth, 'wrapWidth');
+    _requireLength(lineHeight, 'lineHeight');
+    if (!rotationDegrees.isFinite) {
+      throw ArgumentError.value(
+        rotationDegrees,
+        'rotationDegrees',
+        'A text turns by a finite angle.',
+      );
+    }
+  }
+
+  static void _requireLength(double? value, String name) {
+    if (value != null && !(value > 0 && value.isFinite)) {
+      throw ArgumentError.value(
+        value,
+        name,
+        'A text\'s $name is a length: finite and above zero.',
+      );
+    }
+  }
 
   /// A line's pitch as a multiple of its letters' size — the leading the
   /// canvas text has always been set at (`layoutTextCel`).

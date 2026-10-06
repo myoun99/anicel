@@ -109,6 +109,35 @@ void main() {
       expect(boxed.copyWith(backgroundColor: null).backgroundColor, isNull);
       expect(boxed.copyWith(backgroundColor: null).wrapWidth, 200);
     });
+
+    test('🚨a box of no width, a pitch of nothing and a turn that is not a '
+        'number are refused where the content is MADE — not set, baked and '
+        'kept', () {
+      for (final width in [0.0, -1.0, double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(wrapWidth: width),
+          throwsArgumentError,
+          reason: 'a box $width wide',
+        );
+      }
+      for (final pitch in [0.0, -1.25, double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(lineHeight: pitch),
+          throwsArgumentError,
+          reason: 'lines $pitch apart',
+        );
+      }
+      for (final turn in [double.infinity, double.nan]) {
+        expect(
+          () => base.copyWith(rotationDegrees: turn),
+          throwsArgumentError,
+          reason: 'turned by $turn',
+        );
+      }
+      expect(base.copyWith(wrapWidth: 0.5).wrapWidth, 0.5);
+      expect(base.copyWith(lineHeight: 0.5).lineHeight, 0.5);
+      expect(base.copyWith(rotationDegrees: -725).rotationDegrees, -725);
+    });
   });
 
   group('a letter style', () {
