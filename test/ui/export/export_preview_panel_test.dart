@@ -294,6 +294,35 @@ void main() {
       );
       expect(painter(tester).viewport.zoom, closeTo(before / 10, before / 100));
     });
+
+    testWidgets('🚨and a view a hand HAS framed is not kept for a page of '
+        'another size: that page is fitted too', (tester) async {
+      await pump(tester, document());
+      final fitted = painter(tester).viewport.zoom;
+      // A scrub on the pill's zoom readout.
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+        ),
+      );
+      for (var step = 0; step < 6; step += 1) {
+        await gesture.moveBy(const Offset(10, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+      expect(
+        painter(tester).viewport.zoom,
+        isNot(closeTo(fitted, fitted / 100)),
+        reason: 'LIVENESS: the hand framed it',
+      );
+
+      await pump(
+        tester,
+        document(size: const CanvasSize(width: 640, height: 360)),
+      );
+      expect(painter(tester).viewport.zoom, closeTo(fitted / 10, fitted / 100));
+    });
   });
 
   group('the picture that is up', () {
