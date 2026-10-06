@@ -2787,6 +2787,28 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  /// [handle], for as long as this layer is in the tree.
+  ///
+  /// 🚨A POINTER GOES ON REPORTING TO THE LAYER ITS DOWN WAS HIT-TESTED ON,
+  /// MOUNTED OR NOT. A change of tool takes this layer away, and one can
+  /// come while a button is still down on it: a mapped button held for the
+  /// eyedropper (F-299 — the press itself is what changes the tool), or a
+  /// tool key pressed in the middle of a drag. The rest of that pointer's
+  /// moves and its lift still arrive here, at a layer that has landed what
+  /// it held and let go of everything ([dispose]); it reads nothing of
+  /// them. ↩️It wrote the cursor's notifier after it was disposed, and
+  /// would have rebuilt a defunct element for a drag still in hand.
+  ///
+  /// ⚠️Moves, lifts and cancels only: a DOWN and a hover are hit-tested
+  /// afresh, so neither can reach a layer that is gone.
+  void Function(E event) _whileMounted<E extends PointerEvent>(
+    void Function(E event) handle,
+  ) => (event) {
+    if (mounted) {
+      handle(event);
+    }
+  };
+
   /// Ends the live drag — dropping the object IS the end ([SelectionDrag]),
   /// so nothing here clears per-mode fields.
   ///
@@ -3146,12 +3168,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // TS6: hover feeds the rubber band. It is the ONLY thing hover does
       // here, and it writes a notifier rather than state — see [_cursor].
       onPointerHover: (event) => _cursor.value = event.localPosition,
-      onPointerMove: (event) {
+      onPointerMove: _whileMounted((event) {
         _cursor.value = event.localPosition;
         _handlePointerMove(event);
-      },
-      onPointerUp: _handlePointerUp,
-      onPointerCancel: _handlePointerCancel,
+      }),
+      onPointerUp: _whileMounted(_handlePointerUp),
+      onPointerCancel: _whileMounted(_handlePointerCancel),
       child: Stack(
         children: [
           // 🚨TS1: the float's PIXELS are not in this Stack any more. They
