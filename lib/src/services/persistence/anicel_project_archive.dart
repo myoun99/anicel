@@ -73,12 +73,15 @@ String projectDisplayName(String path) {
 /// naming nothing a person could act on, so the bump refuses the file up
 /// front instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
 ///
-/// ⛔An older file whose tracks key a scale is NOT read here (🗣️유저
-/// 2026-10-06: 「옛파일 읽는코드는 필요없다고 확신했어」 — the save law). One
-/// that has to open is carried over by hand when it is asked for, and this
+/// ⛔The one number is NOT read here (🗣️유저 2026-10-06: 「옛파일 읽는코드는
+/// 필요없다고 확신했어」 — the save law), and with it goes every file older
+/// than this one ([anicelOldestReadFormatVersion]). One that has to open
+/// is carried over by hand when it is asked for, and for this version this
 /// is what to carry: each scale key's number `n` becomes `{x: n, y: n}`.
 /// ↩️The round's first commit read the one number as both axes; that reader
 /// went the same day, with the pin beside it.
+/// ↩️So where a paragraph below says an older file 「opens here」, it did
+/// until that floor.
 ///
 /// v5 (2026-10-06, the text tool — R9-rest): a cel's entry carries the
 /// TEXTS set on its picture after its tiles (cel stream v3,
@@ -111,6 +114,24 @@ String projectDisplayName(String path) {
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
 const int anicelFormatVersion = 6;
+
+/// The oldest format this build reads. A file below it is turned away at
+/// the door, by its number ([decodeAnicelProjectDocument]).
+///
+/// 🗣️유저 2026-10-06 (the save law — board `law-저장`): 「옛파일 읽는코드는
+/// 필요없다고 확신했어」, then, of what an older file shows when it is
+/// opened, 「아까 답변 범위 ok 옛파일 열었을때 보이는거 ok.」 — an older
+/// shape is not read, and the file that holds one is refused in a sentence
+/// that says which format it is, so that it can be asked to be carried
+/// over.
+///
+/// ⛔A change that takes the reading of an older shape out raises this
+/// WITH it. Left behind, the older file dies on a cast that names nothing a
+/// person could act on — or, worse, opens with the value it could not say
+/// filled in by a default, and the next save makes the default the truth.
+///
+/// 6: a scale's one number is no longer read (v6 above).
+const int anicelOldestReadFormatVersion = 6;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,
@@ -644,13 +665,24 @@ class AnicelProjectDocument {
 /// saved by a NEWER Anicel and silently drop everything it did not
 /// understand — which is a project the user then saves back, shortened.
 ///
+/// The other side is checked here as well: nothing reads the shapes of a
+/// file older than [anicelOldestReadFormatVersion], so it is refused by
+/// its number rather than left to fail wherever its first old value is.
+///
 /// The raw map does not leave: the two readers were still reading the
 /// fields around the project field by field, each its own way, which is
 /// the same split one layer down.
 AnicelProjectDocument decodeAnicelProjectDocument(List<int> projectBytes) {
   final decoded = jsonDecode(utf8.decode(projectBytes)) as Map<String, dynamic>;
-  if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
+  final saved = decoded['formatVersion'] as int? ?? 0;
+  if (saved > anicelFormatVersion) {
     throw const FormatException('This project was saved by a newer Anicel.');
+  }
+  if (saved < anicelOldestReadFormatVersion) {
+    throw FormatException(
+      'This project is in format $saved, older than this Anicel reads '
+      '($anicelOldestReadFormatVersion).',
+    );
   }
   return AnicelProjectDocument(
     project: Project.fromJson(decoded['project'] as Map<String, dynamic>),
@@ -705,8 +737,9 @@ List<Map<String, Object?>> anicelGrantsField(Object? json) => [
       if (entry is Map) anicelObjectMapField(entry),
 ];
 
-/// Parses .anicel bytes; throws [FormatException] on a newer format or a
-/// missing project entry.
+/// Parses .anicel bytes; throws [FormatException] on a format this build
+/// does not read — a newer one, or one older than
+/// [anicelOldestReadFormatVersion] — or a missing project entry.
 AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   final archive = ZipDecoder().decodeBytes(bytes);
 

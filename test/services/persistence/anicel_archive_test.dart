@@ -122,25 +122,57 @@ void main() {
     expect(reopened.tiles.containsKey(TileCoord(x: 3, y: 0)), isTrue);
   });
 
-  test('legacy v1 entries (drawings/tips) are IGNORED without error — the '
-      'v1 reader is deleted (R20-E3, no production v1 file exists)', () {
+  /// A document that says it is [formatVersion] — or says nothing, for
+  /// null — around a project this build wrote.
+  List<int> documentSaying(int? formatVersion) => utf8.encode(
+    jsonEncode({
+      'formatVersion': ?formatVersion,
+      'project': createDefaultProject().toJson(),
+    }),
+  );
+
+  Matcher refusesNaming(String said) => throwsA(
+    isA<FormatException>().having(
+      (error) => error.message,
+      'message',
+      contains(said),
+    ),
+  );
+
+  // 🗣️유저 2026-10-06 (the save law): 「옛파일 읽는코드는 필요없다고
+  // 확신했어」 → 「아까 답변 범위 ok 옛파일 열었을때 보이는거 ok.」
+  // ↩️This was 「legacy v1 entries (drawings/tips) are IGNORED without
+  // error」: a v1 file opened with its drawings left out and nothing said —
+  // the open the law takes away.
+  test('🚨a file older than this build reads is refused by ITS number — a '
+      'v1 archive, drawings and all, does not open with them left out', () {
     final archive = Archive()
-      ..add(
-        ArchiveFile.string(
-          'project.json',
-          jsonEncode({
-            'formatVersion': 1,
-            'project': createDefaultProject().toJson(),
-          }),
-        ),
-      )
+      ..add(ArchiveFile.bytes('project.json', documentSaying(1)))
       ..add(ArchiveFile.bytes('tips.bin', Uint8List.fromList([1, 0, 0])))
       ..add(ArchiveFile.bytes('drawings/0.bin', Uint8List.fromList([2, 0, 0])));
     final v1Bytes = ZipEncoder().encodeBytes(archive);
 
-    final contents = parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes));
-    expect(contents.project, isNotNull);
-    expect(contents.cels, isEmpty);
+    expect(
+      () => parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes)),
+      refusesNaming('format 1,'),
+    );
+  });
+
+  test('the floor is the first format that opens: the one below it is '
+      'refused by its number, and so is a file that says no format', () {
+    const floor = anicelOldestReadFormatVersion;
+    expect(
+      decodeAnicelProjectDocument(documentSaying(floor)).project,
+      isNotNull,
+    );
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(floor - 1)),
+      refusesNaming('format ${floor - 1},'),
+    );
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(null)),
+      refusesNaming('format 0,'),
+    );
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {
