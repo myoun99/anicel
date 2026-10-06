@@ -176,8 +176,8 @@ void main() {
     );
   });
 
-  test('🚨a build that reads version 3 refuses what this one writes — a '
-      'carry\'s name is the whole name now', () {
+  /// The format version a project written by this build says it is.
+  Object? writtenFormatVersion() {
     final archive = ZipDecoder().decodeBytes(
       buildAnicelArchiveBytes(project: createDefaultProject(), cels: const []),
     );
@@ -189,14 +189,30 @@ void main() {
               ),
             )
             as Map<String, dynamic>;
+    return written['formatVersion'];
+  }
 
+  test('🚨a build that reads version 3 refuses what this one writes — a '
+      'carry\'s name is the whole name now', () {
     expect(
-      written['formatVersion'],
+      writtenFormatVersion(),
       greaterThan(3),
       reason:
           'a v3 build reads `carriedAs` as a bare token and finds none of '
           'the carried bytes — it must refuse the file, not open it without '
           'them and save it back that way (audit 09-25)',
+    );
+  });
+
+  test('🚨a build that reads version 4 refuses what this one writes — a '
+      'cel\'s entry carries the texts set on its picture now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(4),
+      reason:
+          'a v4 build stops at such a cel with 「Unsupported cel entry '
+          'version」 the first time it shows it, one cel at a time, deep in '
+          'a session — it must refuse the file up front (R9-rest, 10-06)',
     );
   });
 }
