@@ -76,6 +76,31 @@ String _carryName(String poolPath, String token) {
   );
 }
 
+/// Whether [name] is ONE NAME bytes can be stored under: of the shape every
+/// such name is minted in ([mintMediaCarry], and the names carries had
+/// before it — [mediaCarryName]) — a word, a dash, and more, in the letters
+/// [mediaNameParts] leaves a name — with nothing of a path in it.
+///
+/// 🚨★★★**ASKED WHERE A NAME BECOMES A PATH.** A stored name is minted
+/// here, written into a project file, and read back — and a project file
+/// comes from anywhere. Read back, it is made a FILE'S name in this run's
+/// room (`MediaStagingStore`). A name saying `../..` was looked for,
+/// written and DELETED outside the room, by opening that file and saving it
+/// (read off the code 2026-10-06 by the brush and the save sessions; card
+/// `a-name-read-from-a-file-becomes-a-path`; 유저 그날: 「그건만
+/// 지금고치자」). So whoever makes a path of a name asks this first, and a
+/// name that is not one is a name nothing is kept under.
+///
+/// The dash is in the rule and not only in the habit: a name with one
+/// before its first dot is never one the system reads as a device (`nul`,
+/// `con.z`).
+///
+/// ⚠️No longest name: a carry's ends in the file's own, which is as long as
+/// a file's name can be.
+bool isOneStoredName(String name) => _oneStoredName.hasMatch(name);
+
+final RegExp _oneStoredName = RegExp(r'^[A-Za-z0-9_]+-[A-Za-z0-9._-]*$');
+
 /// What a media pool entry holds.
 enum MediaAssetKind {
   audio('audio'),

@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart' show immutable, visibleForTesting;
 
 import '../../core/path_names.dart';
 import '../../models/media_asset.dart'
-    show MediaCarry, mediaCarryName, mediaNameParts;
+    show MediaCarry, isOneStoredName, mediaCarryName, mediaNameParts;
 import '../media/media_byte_source.dart'
     show MediaByteSource, MediaWindowReader;
 import 'media_blob_codec.dart';
@@ -126,9 +126,11 @@ class MediaStagingStore {
   /// Where [carry]'s staged bytes live, before the framed suffix — which
   /// carries the same meaning it does inside the archive
   /// ([mediaFramedEntrySuffix]), so a staged file can be streamed into the
-  /// .anicel without being decoded and re-encoded on the way.
-  String _basePathFor(MediaCarry carry) =>
-      '$directoryPath/${mediaCarryName(carry)}';
+  /// .anicel without being decoded and re-encoded on the way. Null for a
+  /// carry whose name is not one ([_pathInTheRoom]): nothing is kept under
+  /// it.
+  String? _basePathFor(MediaCarry carry) =>
+      _pathInTheRoom(directoryPath, mediaCarryName(carry));
 
   /// The staged copy of [carry], or null when there is none.
   ///
@@ -146,7 +148,7 @@ class MediaStagingStore {
     if (_retiring(carry)) {
       return null;
     }
-    for (final candidate in mediaFramedOrPlainPaths(_basePathFor(carry))) {
+    for (final candidate in _copiesNamed(mediaCarryName(carry))) {
       final file = File(candidate);
       if (file.existsSync()) {
         return StagedMedia(
@@ -320,10 +322,11 @@ class MediaStagingStore {
     final todo = <(MediaCarry, MediaByteSource, String)>[];
     for (final MapEntry(key: carry, value: source) in sources.entries) {
       final already = find(carry);
+      final basePath = _basePathFor(carry);
       if (already != null) {
         done.add((carry: carry, staged: already));
-      } else if (!_retiring(carry)) {
-        todo.add((carry, source, _basePathFor(carry)));
+      } else if (basePath != null && !_retiring(carry)) {
+        todo.add((carry, source, basePath));
       }
     }
     if (todo.isEmpty) {
@@ -374,12 +377,13 @@ class MediaStagingStore {
     Uint8List bytes,
   ) async {
     final already = find(carry);
-    if (already != null || _retiring(carry)) {
+    final basePath = _basePathFor(carry);
+    if (already != null || basePath == null || _retiring(carry)) {
       return already;
     }
     Directory(directoryPath).createSync(recursive: true);
     final written = writeMediaBlob(
-      basePath: _basePathFor(carry),
+      basePath: basePath,
       length: bytes.length,
       readInto: (buffer, position, size) {
         buffer.setRange(0, size, bytes, position);
@@ -410,6 +414,10 @@ class MediaStagingStore {
   /// while a reader held it is still here, retiring ([hold]) — it IS these
   /// bytes, so it stays instead.
   ///
+  /// ⛔An entry whose name is not one name is not kept ([_pathInTheRoom]):
+  /// its path would be outside the room. The names come from what the
+  /// document SAYS the file holds.
+  ///
   /// ⚠️An entry that will not copy is skipped ([ScratchFile.writeStreamed]
   /// answers null), as [stageCarriedBytes] skips a file that will not open:
   /// the save goes on, and that carry's undo reads its original, as before
@@ -423,13 +431,15 @@ class MediaStagingStore {
   }) async {
     final todo = [
       for (final entry in left)
-        if (!_keepIfHere(_keyOf(entry.name))) entry,
+        if (_pathInTheRoom(directoryPath, entry.name) case final path?
+            when !_keepIfHere(_keyOf(entry.name)))
+          (entry: entry, path: path),
     ];
-    final total = todo.fold(0, (sum, entry) => sum + entry.length);
+    final total = todo.fold(0, (sum, one) => sum + one.entry.length);
     var copied = 0;
-    for (final entry in todo) {
+    for (final (:entry, :path) in todo) {
       await ScratchFile.writeStreamed(
-        '$directoryPath/${entry.name}',
+        path,
         File(archivePath)
             .openRead(entry.offset, entry.offset + entry.length)
             .map((block) {
@@ -448,9 +458,16 @@ class MediaStagingStore {
   /// whether it was.
   bool _keepIfHere(String key) =>
       _retireWhenLetGo.remove(key) ||
-      mediaFramedOrPlainPaths(
-        '$directoryPath/$key',
-      ).any((path) => File(path).existsSync());
+      _copiesNamed(key).any((path) => File(path).existsSync());
+
+  /// Both spellings the copy named [key] can be on disk under
+  /// ([mediaFramedOrPlainPaths]) — none, for a key that is not one name
+  /// ([_pathInTheRoom]).
+  List<String> _copiesNamed(String key) =>
+      switch (_pathInTheRoom(directoryPath, key)) {
+        final basePath? => mediaFramedOrPlainPaths(basePath),
+        null => const [],
+      };
 
   /// The carry name a room file called [name] is kept under — its name less
   /// the framed suffix.
@@ -517,9 +534,11 @@ class MediaStagingStore {
   }
 
   /// Both spellings of the copy named [key] ([mediaCarryName]), gone —
-  /// whichever is on disk depends on whether the bytes shrank.
+  /// whichever is on disk depends on whether the bytes shrank. Nothing, for
+  /// a key that is not one name: no copy is kept under it, and what a path
+  /// made of it would reach is not the room's to delete ([_pathInTheRoom]).
   void _deleteCopies(String key) {
-    for (final candidate in mediaFramedOrPlainPaths('$directoryPath/$key')) {
+    for (final candidate in _copiesNamed(key)) {
       final file = File(candidate);
       if (file.existsSync()) {
         file.deleteSync();
@@ -608,6 +627,28 @@ class StagedMedia {
 /// ([MediaStagingStore.keepLeftBehind]).
 typedef MediaLeftBehind = ({String name, int offset, int length});
 
+/// The path the room at [directoryPath] keeps the bytes called [name] at —
+/// or null when [name] is not ONE NAME ([isOneStoredName]): nothing is
+/// kept under it, so nothing is found, written or removed under it.
+///
+/// 🚨★★★**THE ONE PLACE A NAME BECOMES A PATH IN THE ROOM.** The names come
+/// out of project files — a carry's from its asset's `carriedAs`, a
+/// left-behind entry's from what the document says the file holds — and a
+/// project file comes from anywhere. Five places each wrote
+/// `'$directoryPath/$name'` for themselves, and a name saying `../..` was a
+/// file OUTSIDE the room at every one of them: found as the room's copy,
+/// written by the save that left an entry behind, and DELETED by the save
+/// that let a carry go — by nothing more than opening that file and saving
+/// it (card `a-name-read-from-a-file-becomes-a-path`, 유저 2026-10-06:
+/// 「그건만 지금고치자」).
+///
+/// ⛔So no other line here joins the folder and a name:
+/// `a_name_read_from_a_file_stays_in_the_room_test` reads this file for
+/// one. A top-level function because the staging work asks from its
+/// isolate ([_stageBytes]).
+String? _pathInTheRoom(String directoryPath, String name) =>
+    isOneStoredName(name) ? '$directoryPath/$name' : null;
+
 /// [MediaStagingStore.stageCarriedBytes]'s work, as a top-level function so
 /// the isolate closure captures the carries — records of two strings — and
 /// the folder, and nothing else.
@@ -664,6 +705,10 @@ List<({String path, bool framed, int storedLength})> _stageBytes(
 ) {
   final out = <({String path, bool framed, int storedLength})>[];
   for (final carry in carries) {
+    final basePath = _pathInTheRoom(directoryPath, mediaCarryName(carry));
+    if (basePath == null) {
+      continue;
+    }
     final RandomAccessFile handle;
     try {
       handle = File(carry.poolPath).openSync();
@@ -672,7 +717,7 @@ List<({String path, bool framed, int storedLength})> _stageBytes(
     }
     try {
       final written = writeMediaBlob(
-        basePath: '$directoryPath/${mediaCarryName(carry)}',
+        basePath: basePath,
         length: handle.lengthSync(),
         readInto: (buffer, position, size) {
           handle.setPositionSync(position);
