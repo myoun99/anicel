@@ -299,18 +299,20 @@ class FrameClipboard implements BringsMedia {
     if (run == null) {
       return;
     }
-    // ⛔NOT copyFrameAtCurrentFrame: standing, a copy banks ONE comma now
-    // (F-152) while this lifts the whole block — banking less than it lifts
-    // would make it a delete (결정 14 ②ⓐ). A cut banks exactly what it lifts.
-    _bank(
-      layer: layer,
-      frame: frame,
-      clip: _controllers.timelineController.copyRunForLayer(
-        layerId: layer.id,
-        index: run.index,
-        count: run.count,
-      ),
-    );
+    // ↩️F-277 (유저 2026-10-04): 「프레임 복사 붙여넣기시, 선택하지 않은채로
+    // 그냥 블록에 선 채로 복사하면 붙여넣을때 1코마로 붙여넣는거처럼, 잘라내기도
+    // 선택안하고 동일한 상황에서 잘라내면 1코마로 붙여넣도록」 — the cut banks
+    // the clip a copy banks from the same press ([_clipToBank]): a
+    // selection's run, or standing, ONE comma of the drawing.
+    //
+    // It read: 「⛔NOT copyFrameAtCurrentFrame: standing, a copy banks ONE
+    // comma now (F-152) while this lifts the whole block — banking less than
+    // it lifts would make it a delete (결정 14 ②ⓐ). A cut banks exactly what
+    // it lifts.」 What 결정 14 ②ⓐ guards still stands where it was decided:
+    // every ROW lifted is banked (below), and the DRAWING a standing cut
+    // lifts is on the board, to come back. What stays behind is the block's
+    // commas — as they do when the same block is copied.
+    _bank(layer: layer, frame: frame, clip: _clipToBank(layer, frame));
     // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
     // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
     // band: the two must not be able to disagree about which rows were
@@ -362,57 +364,59 @@ class FrameClipboard implements BringsMedia {
     if (layer == null || frame == null || !canCopyFrameAtCurrentFrame) {
       return;
     }
+    _bank(layer: layer, frame: frame, clip: _clipToBank(layer, frame));
+  }
 
-    // 🚨★★WHAT A COPY BANKS DEPENDS ON WHETHER SOMETHING IS SELECTED
-    // (F-152, 유저 2026-09-16): 「프레임 복붙할때 그냥 그곳에 서있을떄
-    // 복사한거면 … 붙혀넣을때 1콤마로서 붙혀넣게. 해당 블록을 선택해서
-    // 복사하면 콤마 유지되도록」.
-    //
-    // • SELECTED — the selection's run, commas and gaps and all. That is
-    //   T3's rule (「프레임만 복붙이 아니라 코마까지 포함해서 블록 자체를
-    //   복붙한다는 느낌」), and selecting the block is how it is asked for.
-    // • STANDING — ONE cell of the drawing the cell SHOWS.
-    //
-    // ⚠️That second line is also F-140 (유저 2026-09-16: 「복사버튼이
-    // 작동하는건 좋은데 지금 붙여넣기해도 아무일 안일어나니까」). Standing on a
-    // hold's GHOST, the run was the ghost's span read off the GHOST-FREE row
-    // (F-134) — every cell of it empty — so the copy banked nothing while
-    // its button, lit by the drawing on screen, promised that drawing.
-    // [_oneCellOf] banks what is shown, a real cell, wherever it came from.
-    //
-    // ⚠️One comma of the DRAWING, not of the block: the memo, the dots and
-    // the edge properties are the BLOCK's ([TimelineExposure.memo] — 「re-
-    // exposing the same drawing gets its own」), and a hold edge riding
-    // along would ghost the paste past the one comma it was asked to be.
-    //
-    // ⛔The gate leaves no third case: a selection that misses this row
-    // stood the press down ([canCopyFrameAtCurrentFrame]).
+  /// The clip a copy — or a 잘라내기 (F-277) — of [frame] on [layer] banks.
+  ///
+  /// 🚨★★WHAT A COPY BANKS DEPENDS ON WHETHER SOMETHING IS SELECTED
+  /// (F-152, 유저 2026-09-16): 「프레임 복붙할때 그냥 그곳에 서있을떄
+  /// 복사한거면 … 붙혀넣을때 1콤마로서 붙혀넣게. 해당 블록을 선택해서
+  /// 복사하면 콤마 유지되도록」.
+  ///
+  /// • SELECTED — the selection's run, commas and gaps and all. That is
+  ///   T3's rule (「프레임만 복붙이 아니라 코마까지 포함해서 블록 자체를
+  ///   복붙한다는 느낌」), and selecting the block is how it is asked for.
+  /// • STANDING — ONE cell of the drawing the cell SHOWS.
+  ///
+  /// ⚠️That second line is also F-140 (유저 2026-09-16: 「복사버튼이
+  /// 작동하는건 좋은데 지금 붙여넣기해도 아무일 안일어나니까」). Standing on a
+  /// hold's GHOST, the run was the ghost's span read off the GHOST-FREE row
+  /// (F-134) — every cell of it empty — so the copy banked nothing while
+  /// its button, lit by the drawing on screen, promised that drawing.
+  /// [_oneCellOf] banks what is shown, a real cell, wherever it came from.
+  ///
+  /// ⚠️One comma of the DRAWING, not of the block: the memo, the dots and
+  /// the edge properties are the BLOCK's ([TimelineExposure.memo] — 「re-
+  /// exposing the same drawing gets its own」), and a hold edge riding
+  /// along would ghost the paste past the one comma it was asked to be.
+  ///
+  /// ⛔The gate leaves no third case: a selection that misses this row
+  /// stood the press down ([canCopyFrameAtCurrentFrame]).
+  TimelineClipRow _clipToBank(Layer layer, Frame frame) {
     final run = _selection.frameRangeSelection.value == null
         ? null
         : spliceRunOnActiveRow();
-    _bank(
-      layer: layer,
-      frame: frame,
-      clip: run == null
-          ? _oneCellOf(frame.id)
-          : _controllers.timelineController.copyRunForLayer(
-              layerId: layer.id,
-              index: run.index,
-              count: run.count,
-            ),
-    );
+    return run == null
+        ? _oneCellOf(frame.id)
+        : _controllers.timelineController.copyRunForLayer(
+            layerId: layer.id,
+            index: run.index,
+            count: run.count,
+          );
   }
 
-  /// One comma of [frameId] — the whole clip a copy with nothing selected
-  /// banks.
+  /// One comma of [frameId] — the whole clip a copy or a cut with nothing
+  /// selected banks.
   static TimelineClipRow _oneCellOf(FrameId frameId) =>
       TimelineClipRow.untimed(TimelineExposure.drawing(frameId, length: 1));
 
   /// Puts [clip] on the board as the copy of [frame] on [layer] — the
-  /// half a copy and a 잘라내기 share. What differs between them is only
-  /// the CLIP: a cut must bank the whole run it lifts (결정 14 ②ⓐ —
-  /// 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가 아니다」),
-  /// while a copy banks what [copyFrameAtCurrentFrame] decides.
+  /// half a copy and a 잘라내기 share, clip and all ([_clipToBank]).
+  /// ↩️The clip used to differ: a cut banked the whole run it lifts (결정 14
+  /// ②ⓐ — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
+  /// 아니다」) where a standing copy banked one comma. F-277 made the two one
+  /// ([cutRunAtCurrentFrame]).
   void _bank({
     required Layer layer,
     required Frame frame,
@@ -760,8 +764,10 @@ class FrameClipboard implements BringsMedia {
   /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
   /// their N: a live selection says its own range, and with none the verb
   /// means the block under the playhead. Copy, cut and paste all ask this,
-  /// so they cannot disagree about what "the run" is — except that a COPY
-  /// with nothing selected no longer asks: it banks one comma (F-152).
+  /// so they cannot disagree about what "the run" is — except that with
+  /// nothing selected the BANK no longer asks: it holds one comma, a copy's
+  /// (F-152) and a cut's (F-277) alike. The cut still asks it for what it
+  /// LIFTS.
   ///
   /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
   /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source

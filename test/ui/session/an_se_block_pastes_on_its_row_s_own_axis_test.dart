@@ -221,27 +221,26 @@ void main() {
       entry(s1, 22, speaker: 'A', length: 4);
       final cut2 = openCut2();
 
-      // ⚠️Read through 잘라내기: a COPY with nothing selected banks one comma
-      // (F-152), so the block under the playhead is the one the lift takes
-      // — and a lift banks what it takes.
+      // ⚠️Read through 잘라내기's LIFT: with nothing selected the block under
+      // the playhead is the one it takes out. ↩️It was read off the paste
+      // too — 「a lift banks what it takes」, four frames — until F-277 (유저
+      // 2026-10-04: 「잘라내기도 선택안하고 동일한 상황에서 잘라내면 1코마로
+      // 붙여넣도록」) made the standing cut bank one comma, as the copy does.
       stand(s1, 1);
       clipboardOf(session).cutRunAtCurrentFrame();
       expect(
-        blockAt(s1, 22),
-        isNull,
-        reason: 'the lift took the block where cut 1 started it',
+        row(s1).timeline,
+        isEmpty,
+        reason: 'the lift took the WHOLE block where cut 1 started it — the '
+            'four frames it runs on its row, two of them in cut 1, the block '
+            '`deleteCellForLayer` removes from the same press',
       );
       stand(s1, 10);
       session.pasteIndependentFrameAtCurrentFrame();
 
       final pasted = blockAt(s1, cut2 + 10);
       expect(pasted?.frame.seName, 'A');
-      expect(
-        pasted?.length,
-        4,
-        reason: 'the block runs four frames on its row, two of them in cut 1 '
-            '— the block `deleteCellForLayer` removes from the same press',
-      );
+      expect(pasted?.length, 1, reason: 'F-277: one comma of what it lifted');
     });
 
     test('a band across both S rows pastes on each row at the same cells', () {
