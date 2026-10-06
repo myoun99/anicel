@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/composite_tree.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/attached_mode.dart';
@@ -192,6 +193,47 @@ void main() {
         reason: 'R28 #13: a bypassed folder contributes no FX — and it now '
             'sits in the ONE bypass set, keyed by its own layer id',
       );
+    });
+
+    // The tree is the route every painter takes; the flat plan beside it is
+    // the byte walkers'. Both resolve their surfaces off the one visit, and
+    // each hands the leaf its placement with its own hand.
+    test('the TREE hands a leaf the placement the flat plan hands it — a '
+        'member under a posed folder, with a pose of its own', () {
+      final posed = cut([
+        memberLayer().copyWith(
+          transformTrack: TransformTrack(
+            keyframes: {
+              0: TransformPose(center: CanvasPoint(x: 1, y: 2), scaleX: 3),
+            },
+          ),
+        ),
+        folderRow(
+          'f',
+          transformTrack: TransformTrack(
+            keyframes: {
+              0: TransformPose.uniform(
+                center: CanvasPoint(x: 3, y: 2),
+                zoom: 2,
+              ),
+            },
+          ),
+        ),
+      ]);
+      final flat = planCutFrameComposite(
+        cut: posed,
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      ).single.placement;
+      final tree = planCutFrameCompositeTree(
+        cut: posed,
+        frameIndex: 0,
+        surfaceResolver: resolver,
+      );
+
+      expect(flat, isNotNull);
+      final leaf = tree.single as CompositeLeaf<CutFrameCompositeLayer>;
+      expect(leaf.payload.placement, flat);
     });
   });
 

@@ -18,8 +18,10 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -39,7 +41,7 @@ void main() {
         frameId: frameId,
       );
 
-  Cut cut({double opacity = 1}) => Cut(
+  Cut cut({double opacity = 1, TransformTrack? transformTrack}) => Cut(
     id: const CutId('cut'),
     name: 'Cut',
     duration: 24,
@@ -55,6 +57,7 @@ void main() {
           0: const TimelineExposure.drawing(FrameId('frame-a'), length: 24),
         },
         opacity: opacity,
+        transformTrack: transformTrack,
       ),
     ],
   );
@@ -514,6 +517,50 @@ void main() {
         ),
         isNull,
       );
+      cache.dispose();
+    });
+  });
+
+  // Where a row lies is laid on at composite time, and until this nothing
+  // in the file moved one: every picture above is the same with the
+  // placement left out, or laid on at the wrong tier's scale.
+  testWidgets('a MOVED row is composited where it lies, at the scale of the '
+      'tier it is rastered at', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      // The stroke inks artwork 0..2 both ways. The row lies half the canvas
+      // right and down, so it shows over canvas 4..6.
+      final moved = cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            0,
+            CanvasPoint(x: 8, y: 8),
+          ),
+        ),
+      );
+      Future<int> alphaAt(PlaybackQuality quality, CanvasPoint canvas) async {
+        final image = await cache.prepareComposite(
+          cut: moved,
+          frameIndex: 0,
+          quality: quality,
+        );
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        final perCanvasPixel = image.width / canvasSize.width;
+        final x = (canvas.x * perCanvasPixel).floor();
+        final y = (canvas.y * perCanvasPixel).floor();
+        return data!.getUint8((y * image.width + x) * 4 + 3);
+      }
+
+      final shows = CanvasPoint(x: 4.5, y: 4.5);
+      final drawn = CanvasPoint(x: 0.5, y: 0.5);
+      for (final quality in [PlaybackQuality.full, PlaybackQuality.half]) {
+        final tier = '$quality';
+        expect(await alphaAt(quality, shows), greaterThan(0), reason: tier);
+        expect(await alphaAt(quality, drawn), 0, reason: tier);
+      }
       cache.dispose();
     });
   });

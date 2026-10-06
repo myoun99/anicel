@@ -5,6 +5,8 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -13,6 +15,8 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
+
+import '../../helpers/placement_reading.dart';
 
 void main() {
   Frame frame(String id) =>
@@ -259,5 +263,43 @@ void main() {
     expect(bypassed.layers.single.placement, isNull);
     expect(bypassed.layers.single.opacity, closeTo(0.8, 1e-9));
     expect(applied.layers.single.opacity, closeTo(0.4, 1e-9));
+  });
+
+  // ⚠️The frame signature parts two pictures by their HASH before it walks
+  // a single leaf, so every comparison above holds with a leaf that compares
+  // nothing at all. The leaf's own comparison is what answers when two
+  // hashes meet — and a cache keyed by content shows the wrong picture when
+  // it answers yes.
+  test('a leaf parts on each of its inputs by itself', () {
+    final blur = ResolvedLayerEffect(kind: EffectKind.blur, values: [1]);
+    CompositeLayerSignature leaf({
+      String layer = 'layer-1',
+      String frame = 'frame-1',
+      double opacity = 1,
+      int revision = 7,
+      LayerBlendMode blendMode = LayerBlendMode.normal,
+      double liesAtX = 10,
+      List<ResolvedLayerEffect> effects = const [],
+    }) => CompositeLayerSignature(
+      layerId: LayerId(layer),
+      frameId: FrameId(frame),
+      opacity: opacity,
+      sourceRevision: revision,
+      blendMode: blendMode,
+      placement: placedBy(
+        TransformPose(center: CanvasPoint(x: liesAtX, y: 0)),
+        const CanvasSize(width: 100, height: 50),
+      ),
+      effects: effects,
+    );
+
+    expect(leaf(), leaf());
+    expect(leaf(layer: 'layer-2'), isNot(leaf()));
+    expect(leaf(frame: 'frame-2'), isNot(leaf()));
+    expect(leaf(opacity: 0.5), isNot(leaf()));
+    expect(leaf(revision: 8), isNot(leaf()));
+    expect(leaf(blendMode: LayerBlendMode.multiply), isNot(leaf()));
+    expect(leaf(liesAtX: 20), isNot(leaf()), reason: 'where the row lies');
+    expect(leaf(effects: [blur]), isNot(leaf()));
   });
 }

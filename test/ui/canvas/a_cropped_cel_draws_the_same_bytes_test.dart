@@ -504,6 +504,64 @@ void main() {
     });
   }
 
+  // A folder's buffer is bounded by what its rows draw, and a placed row
+  // draws where its placement lays it — which can be past every tile the row
+  // holds. [rightBottom]'s tiles end at x 160; moved 14 right, its last dab
+  // shows about (163, 84).
+  for (final walk in [false, true]) {
+    final route = walk ? 'the direct walk' : 'the display buffer';
+    testWidgets('a folder shows a row placed PAST the row\'s own tiles — '
+        '$route', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Future<Uint8List> seen(List<CompositeNode<CanvasStackRow>> nodes) async {
+        final shown = await screen(
+          tester,
+          whole: true,
+          nodes: nodes,
+          // Unpanned at 100%: a canvas pixel is the screen pixel of its
+          // number.
+          viewport: CanvasViewport(),
+          walk: walk,
+        );
+        addTearDown(shown.images.dispose);
+        return shown.bytes;
+      }
+
+      final bare = await seen(const []);
+      final folder = await seen([
+        CompositeGroup<CanvasStackRow>(
+          children: [
+            row(
+              'rightBottom',
+              pose: TransformPose(
+                center: CanvasPoint(x: center.x + 14, y: center.y),
+              ),
+            ),
+          ],
+          opacity: 0.7,
+          blendMode: LayerBlendMode.normal,
+        ),
+      ]);
+      bool inked(int x, int y) {
+        final at = (y * view.width.toInt() + x) * 4;
+        for (var channel = 0; channel < 4; channel += 1) {
+          if (folder[at + channel] != bare[at + channel]) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      expect(inked(145, 100), isTrue, reason: 'fixture: the row is drawn');
+      expect(
+        inked(164, 84),
+        isTrue,
+        reason: 'cut at x 160, where the row\'s tiles end before the move',
+      );
+    });
+  }
+
   testWidgets('both arms ran: the buffer draws ink rows from their ink, the '
       'walk lays them back whole, and the advanced blends and poses keep '
       'their images whole', (tester) async {

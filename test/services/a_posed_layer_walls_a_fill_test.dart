@@ -160,6 +160,46 @@ void main() {
     expect(width, lessThanOrEqualTo(28));
     expect(height, greaterThan(20));
   });
+
+  test('🚨a layer is read through the SEED\'s placement first and its own '
+      'second: a line layer moved sideways walls a half-sized paint layer\'s '
+      'fill where it is drawn', () {
+    // The box, artwork 9..15 across and 13..19 down, moved 4 right: drawn
+    // over canvas 13..19 both ways, its inside canvas 14..18. The paint
+    // layer shows at half size about the centre (16, 16), so that inside is
+    // its own pixels 12..21 both ways — 10 wide, its middle at 17.
+    // ⚠️Read the other way round, the move is halved along with the paint
+    // layer: the box walls 2 canvas pixels left of where it is drawn, and
+    // the middle of what fills comes out at 13 across.
+    final cut = cutOf([
+      cel('line', position: CanvasPoint(x: 20, y: 16)),
+      cel('paint', scale: 0.5),
+    ]);
+    final line = box(left: 9, top: 13, side: 6);
+    final dab = buildFillDab(
+      cut: cut,
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
+      // Artwork (16, 16) IS canvas (16, 16) under a pose about the centre.
+      point: CanvasPoint(x: 16, y: 16),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      activeLayerId: const LayerId('paint'),
+      space: placementOf((
+        pose: TransformPose.uniform(
+          center: CanvasPoint(x: 16, y: 16),
+          zoom: 0.5,
+        ),
+        anchorPoint: null,
+      ), cut.canvasSize),
+    )!;
+
+    expect(dab.stamp!.width, inInclusiveRange(8, 12));
+    expect(dab.stamp!.height, inInclusiveRange(8, 12));
+    expect(dab.center.x, closeTo(17, 1.5));
+    expect(dab.center.y, closeTo(17, 1.5));
+  });
+
   test('a line layer moved sideways walls the fill where it is drawn — a '
       'compose tile reads the layer across from where it lies, not down', () {
     // A 512 canvas is two compose tiles a side. The box, artwork x 20..40
