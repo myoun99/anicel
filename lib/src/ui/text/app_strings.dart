@@ -1398,6 +1398,30 @@ enum AppStrings {
   String get toolEyedropper => _s('toolEyedropper');
   String get toolFill => _s('toolFill');
   String get toolText => _s('toolText');
+
+  // The text tool's settings (R9-rest) — the rows of the layout 유저 took
+  // on 2026-10-06.
+  String get textToolSelectedText => _s('textToolSelectedText');
+  String get textToolDeleteText => _s('textToolDeleteText');
+  String get textToolLetters => _s('textToolLetters');
+  String get textToolBox => _s('textToolBox');
+  String get textToolFont => _s('textToolFont');
+  String get textToolSize => _s('textToolSize');
+  String get textToolTracking => _s('textToolTracking');
+  String get textToolBold => _s('textToolBold');
+  String get textToolColor => _s('textToolColor');
+  String get textToolOutline => _s('textToolOutline');
+  String get textToolOutlineWidth => _s('textToolOutlineWidth');
+  String get textToolAlign => _s('textToolAlign');
+  String get textToolAlignLeft => _s('textToolAlignLeft');
+  String get textToolAlignCenter => _s('textToolAlignCenter');
+  String get textToolAlignRight => _s('textToolAlignRight');
+  String get textToolBoxWidth => _s('textToolBoxWidth');
+  String get textToolWidthAuto => _s('textToolWidthAuto');
+  String get textToolWidthFixed => _s('textToolWidthFixed');
+  String get textToolLineHeight => _s('textToolLineHeight');
+  String get textToolBackground => _s('textToolBackground');
+
   String get toolSelect => _s('toolSelect');
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
@@ -2434,6 +2458,26 @@ enum AppStrings {
     'toolEyedropper': 'Eyedropper',
     'toolFill': 'Fill',
     'toolText': 'Text',
+    'textToolSelectedText': 'Selected text',
+    'textToolDeleteText': 'Delete text',
+    'textToolLetters': 'Letters',
+    'textToolBox': 'Box',
+    'textToolFont': 'Font',
+    'textToolSize': 'Size',
+    'textToolTracking': 'Tracking',
+    'textToolBold': 'Bold',
+    'textToolColor': 'Color',
+    'textToolOutline': 'Outline',
+    'textToolOutlineWidth': 'Outline width',
+    'textToolAlign': 'Align',
+    'textToolAlignLeft': 'Left',
+    'textToolAlignCenter': 'Center',
+    'textToolAlignRight': 'Right',
+    'textToolBoxWidth': 'Box width',
+    'textToolWidthAuto': 'Auto',
+    'textToolWidthFixed': 'Fixed',
+    'textToolLineHeight': 'Line spacing',
+    'textToolBackground': 'Background',
     'toolSelect': 'Select',
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
@@ -3664,6 +3708,26 @@ enum AppStrings {
     'toolEyedropper': 'スポイト',
     'toolFill': '塗りつぶし',
     'toolText': 'テキスト',
+    'textToolSelectedText': '選択中のテキスト',
+    'textToolDeleteText': 'テキストを削除',
+    'textToolLetters': '文字',
+    'textToolBox': 'ボックス',
+    'textToolFont': 'フォント',
+    'textToolSize': 'サイズ',
+    'textToolTracking': '字間',
+    'textToolBold': '太字',
+    'textToolColor': '色',
+    'textToolOutline': 'フチ',
+    'textToolOutlineWidth': 'フチの太さ',
+    'textToolAlign': '揃え',
+    'textToolAlignLeft': '左',
+    'textToolAlignCenter': '中央',
+    'textToolAlignRight': '右',
+    'textToolBoxWidth': 'ボックス幅',
+    'textToolWidthAuto': '自動',
+    'textToolWidthFixed': '固定',
+    'textToolLineHeight': '行間',
+    'textToolBackground': '背景',
     'toolSelect': '選択',
     'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
@@ -4991,6 +5055,26 @@ enum AppStrings {
     'toolEyedropper': '스포이트',
     'toolFill': '채우기',
     'toolText': '텍스트',
+    'textToolSelectedText': '선택된 텍스트',
+    'textToolDeleteText': '텍스트 삭제',
+    'textToolLetters': '글자',
+    'textToolBox': '상자',
+    'textToolFont': '글꼴',
+    'textToolSize': '크기',
+    'textToolTracking': '자간',
+    'textToolBold': '굵게',
+    'textToolColor': '색',
+    'textToolOutline': '윤곽선',
+    'textToolOutlineWidth': '윤곽선 굵기',
+    'textToolAlign': '정렬',
+    'textToolAlignLeft': '왼쪽',
+    'textToolAlignCenter': '가운데',
+    'textToolAlignRight': '오른쪽',
+    'textToolBoxWidth': '상자 폭',
+    'textToolWidthAuto': '자동',
+    'textToolWidthFixed': '고정',
+    'textToolLineHeight': '줄 간격',
+    'textToolBackground': '배경',
     'toolSelect': '선택',
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
@@ -6410,6 +6494,26 @@ enum AppStrings {
     'toolEyedropper': 'Pipette',
     'toolFill': 'Remplissage',
     'toolText': 'Texte',
+    'textToolSelectedText': 'Texte sélectionné',
+    'textToolDeleteText': 'Supprimer le texte',
+    'textToolLetters': 'Lettres',
+    'textToolBox': 'Boîte',
+    'textToolFont': 'Police',
+    'textToolSize': 'Taille',
+    'textToolTracking': 'Interlettrage',
+    'textToolBold': 'Gras',
+    'textToolColor': 'Couleur',
+    'textToolOutline': 'Contour',
+    'textToolOutlineWidth': 'Épaisseur du contour',
+    'textToolAlign': 'Alignement',
+    'textToolAlignLeft': 'Gauche',
+    'textToolAlignCenter': 'Centre',
+    'textToolAlignRight': 'Droite',
+    'textToolBoxWidth': 'Largeur de boîte',
+    'textToolWidthAuto': 'Auto',
+    'textToolWidthFixed': 'Fixe',
+    'textToolLineHeight': 'Interligne',
+    'textToolBackground': 'Fond',
     'toolSelect': 'Sélection',
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
@@ -7682,6 +7786,26 @@ enum AppStrings {
     'toolEyedropper': '吸管',
     'toolFill': '填充',
     'toolText': '文字',
+    'textToolSelectedText': '所选文字',
+    'textToolDeleteText': '删除文字',
+    'textToolLetters': '文字',
+    'textToolBox': '文本框',
+    'textToolFont': '字体',
+    'textToolSize': '大小',
+    'textToolTracking': '字距',
+    'textToolBold': '加粗',
+    'textToolColor': '颜色',
+    'textToolOutline': '描边',
+    'textToolOutlineWidth': '描边粗细',
+    'textToolAlign': '对齐',
+    'textToolAlignLeft': '左',
+    'textToolAlignCenter': '居中',
+    'textToolAlignRight': '右',
+    'textToolBoxWidth': '框宽',
+    'textToolWidthAuto': '自动',
+    'textToolWidthFixed': '固定',
+    'textToolLineHeight': '行距',
+    'textToolBackground': '背景',
     'toolSelect': '选择',
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',

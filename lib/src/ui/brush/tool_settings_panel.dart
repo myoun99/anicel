@@ -276,6 +276,8 @@ class ToolSettingsPanel extends StatelessWidget {
         CanvasTool.text => TextToolSettings(
           options: textOptions,
           commands: textCommands,
+          // The brush's colour, for the colour window's 「현재 색 반영」.
+          currentColorOf: () => state.color,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.

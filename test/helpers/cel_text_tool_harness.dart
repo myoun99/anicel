@@ -150,15 +150,17 @@ Future<Map<TileCoord, BitmapTile>> boxFillingBake(
 }
 
 /// The real app on [project], with the engine stood in for — or, with
-/// [engine], left to set the text itself ([settleWithTheEngine]).
+/// [engine], left to set the text itself ([settleWithTheEngine]) — in a
+/// window of [size].
 Future<void> pumpTextToolApp(
   WidgetTester tester, {
   Project? project,
   bool engine = false,
+  Size size = const Size(1600, 900),
 }) async {
   debugCelTextBaker = engine ? null : boxFillingBake;
   addTearDown(() => debugCelTextBaker = null);
-  await tester.binding.setSurfaceSize(const Size(1600, 900));
+  await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(home: HomePage(initialProject: project ?? textToolProject())),

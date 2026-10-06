@@ -323,14 +323,12 @@ class CelTextTool extends ChangeNotifier {
       return;
     }
     final content = _contentInHand(session);
-    final selection = _letters?.selection;
-    final range = celTextLettersSpokenFor(
-      content,
-      selectionStart: selection?.start ?? 0,
-      selectionEnd: selection?.end ?? 0,
-    );
     showEdit(
-      celTextRestyled(content, range: range, change: change),
+      celTextRestyled(
+        content,
+        range: _lettersSpokenFor(content),
+        change: change,
+      ),
       // A text with no letters has only the letter about to be typed to
       // set.
       nextLetterStyle: content.isEmpty
@@ -340,6 +338,41 @@ class CelTextTool extends ChangeNotifier {
     if (settled) {
       landEdit();
     }
+  }
+
+  /// The letters of [content] a LETTER setting speaks for: the selected
+  /// ones, or with none selected every letter ([celTextLettersSpokenFor],
+  /// 유저 2026-10-02 · 10-06). What the settings SHOW
+  /// ([letterStylesSpokenFor]) and what a change of one is MADE ON
+  /// ([changeLetters]) are this one range.
+  CelTextRange _lettersSpokenFor(CelTextContent content) {
+    final selection = _letters?.selection;
+    return celTextLettersSpokenFor(
+      content,
+      selectionStart: selection?.start ?? 0,
+      selectionEnd: selection?.end ?? 0,
+    );
+  }
+
+  /// How the letters a letter setting speaks for are set now — one style a
+  /// run, in reading order, so a setting they do not agree on shows as
+  /// mixed. For a text with no letters, what the first one typed will wear.
+  /// Null with nothing in hand.
+  List<TextLetterStyle>? get letterStylesSpokenFor {
+    final session = _held?.session;
+    if (session == null) {
+      return null;
+    }
+    final content = _contentInHand(session);
+    return content.isEmpty
+        ? [session.nextLetterStyle]
+        : celTextStylesOf(content, _lettersSpokenFor(content));
+  }
+
+  /// The text in hand as a setting finds it — null with none.
+  CelTextContent? get contentInHand {
+    final session = _held?.session;
+    return session == null ? null : _contentInHand(session);
   }
 
   /// The text a setting is made on: what the FIELD holds while the letters
