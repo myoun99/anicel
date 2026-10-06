@@ -20,6 +20,8 @@ import '../../text/cel_text_layout.dart' show CelTextBox, celTextBoxOf;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
+part 'cel_text_tool_list.dart';
+
 /// A cel a text can be set on: its key, what holds its picture, the canvas
 /// it is cut for, and who is told when it changes.
 typedef CelTextCel = ({
@@ -38,6 +40,11 @@ enum CelTextHold { box, letters }
 abstract interface class CelTextToolHost {
   /// What the next text starts as (the tool settings).
   TextToolOptions get options;
+
+  /// The cel under the tool — the one a press sets a text on or takes one
+  /// from. Null where none is under the playhead, or its row takes no
+  /// marks.
+  CelTextCel? get cel;
 
   /// Runs [command] as one step of history.
   ///
@@ -150,6 +157,22 @@ class CelTextTool extends ChangeNotifier {
         // A text with no letters is not there, shown or landed.
         if (!session.shown.content.isEmpty) session.shown.layout.onCanvas,
     ];
+  }
+
+  // ── the texts of the cel under the hand ─────────────────────────────
+
+  /// The texts of the cel under the tool as the settings list them — named,
+  /// picked and deleted from outside the canvas ([CelTextList]).
+  late final CelTextList list = CelTextList._(this);
+
+  /// The texts of the cel under the tool are others than they were — a
+  /// step of history taken, another frame under the playhead: whoever lists
+  /// them reads them again. (The canvas is not told: it drew the change
+  /// that brought this.)
+  void celTextsChanged() {
+    if (!_disposed) {
+      notifyListeners();
+    }
   }
 
   // ── taking hold ─────────────────────────────────────────────────────

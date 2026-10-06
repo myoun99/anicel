@@ -49,6 +49,7 @@ TextHand textHand({
     canvasSize: celTextTestCanvas,
     cacheInvalidationSink: null,
   );
+  host.cel = cel;
   if (text != null) {
     tool.takeText(cel, pictureUnder(cel).texts.single);
   }
@@ -86,6 +87,10 @@ class TextHandHost implements CelTextToolHost {
 
   @override
   TextToolOptions get options => _next();
+
+  /// The cel under the tool.
+  @override
+  CelTextCel? cel;
 
   @override
   HistoryMark? get historyMark => history.gestures.mark;

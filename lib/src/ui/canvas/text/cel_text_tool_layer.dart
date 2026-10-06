@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/app_input_settings.dart';
 import '../../../models/canvas_point.dart';
+import '../../../models/cel_text.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../theme/app_theme.dart';
@@ -82,6 +84,11 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// Whether the caret is in the lit half of its blink.
   final ValueNotifier<bool> _caretLit = ValueNotifier<bool>(true);
   Timer? _caretBlink;
+
+  /// The texts the cel under the tool carried when this was last built —
+  /// what a build is measured against, to say when they are others
+  /// ([_tellOfTextsChanged]).
+  List<CelText> _textsSeen = const [];
 
   CelTextTool get _tool => widget.tool;
 
@@ -286,11 +293,30 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
 
   // ── the tree ────────────────────────────────────────────────────────
 
+  /// The cel under the tool carries other texts than at the last build — a
+  /// step of history, another frame: the tool tells whoever lists them
+  /// ([CelTextTool.celTextsChanged]). After the frame — this is a build.
+  ///
+  /// ⚠️A cel's picture reaches the canvas by the panel being built again,
+  /// and tells nobody else; this build is where that is seen.
+  void _tellOfTextsChanged(List<CelText> texts) {
+    if (listEquals(texts, _textsSeen)) {
+      return;
+    }
+    _textsSeen = texts;
+    final tool = _tool;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => tool.celTextsChanged(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = _tool.session;
     final letters = _tool.letters;
     final cel = widget.cel;
+    final picture = cel?.coordinator.currentSurfaceOf(cel.key);
+    _tellOfTextsChanged(picture?.texts ?? const []);
     return Stack(
       children: [
         Positioned.fill(
@@ -311,12 +337,9 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
                 painter: CelTextChromePainter(
                   tool: _tool,
                   stage: widget.stage,
-                  restingBoxes: cel == null
+                  restingBoxes: cel == null || picture == null
                       ? const []
-                      : _tool.restingBoxesOn(
-                          cel.key,
-                          cel.coordinator.currentSurfaceOf(cel.key),
-                        ),
+                      : _tool.restingBoxesOn(cel.key, picture),
                   tracedBox: _tracedBox,
                   caretLit: _caretLit,
                   color: AppColors.accent,

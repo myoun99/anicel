@@ -558,6 +558,10 @@ class _Host implements CelTextToolHost {
     letters: TextLetterStyle(fontSize: 8),
   );
 
+  /// A press is handed its cel; none is named for the settings' list.
+  @override
+  CelTextCel? get cel => null;
+
   @override
   HistoryMark? get historyMark => history.gestures.mark;
 

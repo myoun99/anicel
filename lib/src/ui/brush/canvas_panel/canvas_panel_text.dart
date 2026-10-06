@@ -110,6 +110,7 @@ class _CanvasPanelText implements CelTextToolHost {
 
   /// The cel a press sets a text on or takes one from — null where none
   /// is under the playhead, or its row takes no marks.
+  @override
   CelTextCel? get cel {
     final coordinator = _state.widget._editableCoordinator;
     if (coordinator == null) {

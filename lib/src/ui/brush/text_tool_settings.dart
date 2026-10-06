@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
+import '../canvas/text/cel_text_tool.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
@@ -78,28 +79,36 @@ const String _mixed = '—';
 /// The gap between two bars, as every section of the panel keeps it.
 const SizedBox _gap = SizedBox(height: 8);
 
-/// The text in hand, by its own letters — 유저 2026-10-06: 「도구설정에
-/// 선택된 텍스트라는 항목이 있었으면 좋겠음 … 텍스트의 이름은 그냥 텍스트
-/// 글자대로. 그리고 옆에 삭제버튼 있고」.
+/// The text in hand, by its own letters — and the list of the cel's texts
+/// it is picked from. 유저 2026-10-06: 「도구설정에 선택된 텍스트라는 항목이
+/// 있었으면 좋겠음. 거기서 다른 텍스트 선택할수있게 리스트 고르는. 팝오버로
+/// 리스트 고를수있게하고. 텍스트의 이름은 그냥 텍스트 글자대로. 그리고 옆에
+/// 삭제버튼 있고」 — a delete beside the field, and one on every row of the
+/// list (the drawing taken with it: 「1 ok」).
 class _TextInHandRow extends StatelessWidget {
   const _TextInHandRow({required this.commands});
 
   final CelTextCommands? commands;
 
+  /// A text's name is its own letters on ONE line: its breaks are not its
+  /// name's.
+  static String _nameOf(String text) => text.replaceAll('\n', ' ');
+
   @override
   Widget build(BuildContext context) {
-    final inHand = commands?.tool?.contentInHand;
+    final tool = commands?.tool;
+    final inHand = tool?.contentInHand;
     return Row(
       children: [
         Expanded(
           child: PanelFlyoutButton(
             key: const ValueKey<String>('text-tool-selected-text'),
-            // One line, as a name is: a text's breaks are not its name's.
-            label: inHand?.text.replaceAll('\n', ' ') ?? '',
+            label: inHand == null ? '' : _nameOf(inHand.text),
             tooltip: AppText.strings.textToolSelectedText,
             expand: true,
-            enabled: false,
-            entriesBuilder: () => const [],
+            // With no text on the cel there is none to pick.
+            enabled: tool != null && tool.list.texts.isNotEmpty,
+            entriesBuilder: () => _listOf(tool),
           ),
         ),
         const SizedBox(width: 4),
@@ -115,6 +124,27 @@ class _TextInHandRow extends StatelessWidget {
       ],
     );
   }
+
+  /// The cel's texts from the top of the stack down, as they are when the
+  /// list OPENS — the one in hand marked, each with its own delete.
+  static List<PanelFlyoutEntry> _listOf(CelTextTool? tool) => [
+    for (final (index, text)
+        in (tool?.list.texts ?? const <CelTextListed>[]).indexed)
+      PanelFlyoutItem(
+        // By its place from the top: two texts can say the same.
+        keyValue: 'text-tool-text-$index',
+        label: _nameOf(text.text),
+        selected: text.inHand,
+        onSelected: () => tool?.list.take(text.id),
+        action: PanelFlyoutRowAction(
+          keyValue: 'text-tool-text-$index-delete',
+          icon: Icons.delete_outline,
+          tooltip: AppText.strings.textToolDeleteText,
+          deletes: true,
+          onPressed: () => tool?.list.delete(text.id),
+        ),
+      ),
+  ];
 }
 
 /// A number of the letters that a bar sets.
@@ -336,24 +366,20 @@ class _BoxRows extends StatelessWidget {
 
   Widget _alignment() {
     final strings = AppText.strings;
-    return _SettingRow(
+    return _ChoiceRow<TextCelAlign>(
+      name: 'align',
       label: strings.textToolAlign,
-      child: PillStrip(
-        key: const ValueKey<String>('text-tool-align'),
-        items: [
-          for (final (align, label) in [
-            (TextCelAlign.left, strings.textToolAlignLeft),
-            (TextCelAlign.center, strings.textToolAlignCenter),
-            (TextCelAlign.right, strings.textToolAlignRight),
-          ])
-            PillItem(
-              keyValue: 'text-tool-align-${align.name}',
-              label: label,
-              selected: values.align == align,
-              onTap: values.writable ? () => values.setAlign(align) : null,
-            ),
-        ],
-      ),
+      current: values.align,
+      answers: [
+        for (final (align, label) in [
+          (TextCelAlign.left, strings.textToolAlignLeft),
+          (TextCelAlign.center, strings.textToolAlignCenter),
+          (TextCelAlign.right, strings.textToolAlignRight),
+        ])
+          (value: align, key: align.name, label: label),
+      ],
+      onPick: (align) =>
+          values.writable ? () => values.setAlign(align) : null,
     );
   }
 
@@ -361,26 +387,17 @@ class _BoxRows extends StatelessWidget {
   /// text in hand: with none, neither is lit and neither is taken.
   Widget _boxWidth() {
     final strings = AppText.strings;
-    final wraps = values.wraps;
-    return _SettingRow(
+    return _ChoiceRow<bool>(
+      name: 'box-width',
       label: strings.textToolBoxWidth,
-      child: PillStrip(
-        key: const ValueKey<String>('text-tool-box-width'),
-        items: [
-          for (final (boxed, name, label) in [
-            (false, 'auto', strings.textToolWidthAuto),
-            (true, 'fixed', strings.textToolWidthFixed),
-          ])
-            PillItem(
-              keyValue: 'text-tool-box-width-$name',
-              label: label,
-              selected: wraps == boxed,
-              onTap: values.canSetWraps(wraps: boxed)
-                  ? () => values.setWraps(boxed)
-                  : null,
-            ),
-        ],
-      ),
+      current: values.wraps,
+      answers: [
+        (value: false, key: 'auto', label: strings.textToolWidthAuto),
+        (value: true, key: 'fixed', label: strings.textToolWidthFixed),
+      ],
+      onPick: (boxed) => values.canSetWraps(wraps: boxed)
+          ? () => values.setWraps(boxed)
+          : null,
     );
   }
 
@@ -409,6 +426,50 @@ class _BoxRows extends StatelessWidget {
       onChanged: (argb) => values.setBackgroundColor(argb, settled: false),
       onNone: () => values.setBackgroundColor(null, settled: false),
       onSettled: values.settle,
+    ),
+  );
+}
+
+/// A setting that is ONE OF A FEW ANSWERS, as the app's one grouped choice
+/// ([PillStrip]) at the end of its line: the answer it is at lit, each
+/// answer taking a press or refusing it as [onPick] says of that answer.
+class _ChoiceRow<T> extends StatelessWidget {
+  const _ChoiceRow({
+    required this.name,
+    required this.label,
+    required this.answers,
+    required this.current,
+    required this.onPick,
+  });
+
+  /// What the strip and its pills are keyed by: `text-tool-<name>`, and
+  /// `text-tool-<name>-<key>` for each answer.
+  final String name;
+  final String label;
+  final List<({T value, String key, String label})> answers;
+
+  /// The answer the setting is at — null where it is at none of them, and
+  /// no pill is lit.
+  final T? current;
+
+  /// What a press on [answer] does; null where that answer is refused —
+  /// the pill keeps its place and loses its tap.
+  final VoidCallback? Function(T answer) onPick;
+
+  @override
+  Widget build(BuildContext context) => _SettingRow(
+    label: label,
+    child: PillStrip(
+      key: ValueKey<String>('text-tool-$name'),
+      items: [
+        for (final answer in answers)
+          PillItem(
+            keyValue: 'text-tool-$name-${answer.key}',
+            label: answer.label,
+            selected: answer.value == current,
+            onTap: onPick(answer.value),
+          ),
+      ],
     ),
   );
 }

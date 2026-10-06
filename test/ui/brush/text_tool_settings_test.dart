@@ -1,10 +1,15 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/cel_text_box_edits.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings.dart';
+import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -91,6 +96,19 @@ void main() {
         ),
       );
 
+  /// The delete beside the text's name, as the button it is.
+  AppIconButton deleteButton(WidgetTester tester) =>
+      tester.widget<AppIconButton>(
+        find.ancestor(
+          of: row('delete-text'),
+          matching: find.byType(AppIconButton),
+        ),
+      );
+
+  BooleanDot boldRing(WidgetTester tester) => tester.widget<BooleanDot>(
+    find.descendant(of: row('bold'), matching: find.byType(BooleanDot)),
+  );
+
   testWidgets('🚨every row has its seat, in the order of the layout — with '
       'a text in hand or with none', (tester) async {
     const rows = [
@@ -174,18 +192,21 @@ void main() {
       }
     });
 
-    testWidgets('the text\'s name is empty and its delete is dead', (
-      tester,
-    ) async {
+    testWidgets('the text\'s name is empty, its delete is dead — and with '
+        'no text on the cel its list is shut', (tester) async {
       await pumpSettings(tester);
 
+      final field = tester.widget<PanelFlyoutButton>(row('selected-text'));
+      expect(field.label, isEmpty);
+      expect(field.enabled, isFalse);
+      // Its seat is kept, and it is out: no press, and the glyph dark with
+      // the button (the delete red's own rule).
+      final delete = deleteButton(tester);
+      expect(delete.onPressed, isNull);
       expect(
-        tester.widget<PanelFlyoutButton>(row('selected-text')).label,
-        isEmpty,
+        (delete.icon as Icon).color,
+        AppColors.deleteGlyph(enabled: false),
       );
-      await tester.tap(row('delete-text'));
-      await tester.pump();
-      expect(tester.takeException(), isNull);
     });
 
     testWidgets('a row pressed sets the NEXT text', (tester) async {
@@ -262,6 +283,21 @@ void main() {
       expect(swatch(tester, 'outline').mixed, isFalse);
     });
 
+    testWidgets('letters bold FIRST and plain after are mixed too: the ring '
+        'is not on', (tester) async {
+      await pumpSettings(
+        tester,
+        text: said([
+          run('ab', const TextLetterStyle(fontSize: 16, bold: true)),
+          run('cd'),
+        ]),
+      );
+
+      expect(boldRing(tester).mixed, isTrue);
+      expect(boldRing(tester).value, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('🚨a bar DRAGGED shows as it goes and lands once, where the '
         'hand lets go', (tester) async {
       final hand = await pumpSettings(tester, text: said([run('ab')]));
@@ -286,6 +322,52 @@ void main() {
       expect(hand.host.ran, hasLength(1));
       expect(landedOn(hand.cel).spans.single.style.fontSize, shown);
       expect(hand.options.value.letters.fontSize, shown);
+    });
+
+    testWidgets('🚨each bar reads and sets its OWN number of the letters: '
+        'the tracking theirs, the outline\'s width its', (tester) async {
+      const outlined = TextLetterStyle(
+        fontSize: 16,
+        outlineColor: 0xFF000000,
+        outlineWidth: 3,
+      );
+      final hand = await pumpSettings(
+        tester,
+        text: said([run('ab', outlined)]),
+      );
+      expect(written('outline-width', '3 px'), findsOneWidget);
+      expect(written('tracking', '0'), findsOneWidget);
+
+      Future<void> slide(String name) async {
+        final drag = await tester.startGesture(
+          tester.getRect(row(name)).center,
+        );
+        await tester.pump();
+        await drag.moveBy(const Offset(30, 0));
+        await tester.pump();
+        await drag.up();
+        await tester.pump();
+      }
+
+      await slide('tracking');
+      final tracked = landedOn(hand.cel).spans.single.style;
+      expect(tracked.letterSpacing, greaterThan(0));
+      expect(tracked.copyWith(letterSpacing: 0), outlined);
+
+      await slide('outline-width');
+      final widened = landedOn(hand.cel).spans.single.style;
+      expect(widened.outlineWidth, isNot(3));
+      expect(widened.copyWith(outlineWidth: 3), tracked);
+      // The next text is told each number too — and nothing it was not: it
+      // has no outline to be the width of.
+      expect(
+        hand.options.value.letters,
+        plain.copyWith(
+          letterSpacing: tracked.letterSpacing,
+          outlineWidth: widened.outlineWidth,
+        ),
+      );
+      expect(hand.host.ran, hasLength(2));
     });
 
     testWidgets('a mixed ring pressed turns every letter on', (tester) async {
@@ -318,9 +400,12 @@ void main() {
 
       await tester.tap(row('font'));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('text-tool-font-Nanum Gothic')),
-      );
+      PanelFlyoutItem face(String name) => tester
+          .widget<PopupMenuItem<PanelFlyoutItem>>(row('font-$name'))
+          .value!;
+      expect(face(AppTypography.bundledFamily).selected, isTrue);
+      expect(face('Nanum Gothic').selected, isFalse);
+      await tester.tap(row('font-Nanum Gothic'));
       await tester.pumpAndSettle();
 
       expect(
@@ -389,6 +474,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(landedOn(hand.cel).spans.single.style.color, 0xFFAABBCC);
+    });
+
+    testWidgets('the box behind the letters is picked as a colour is — it '
+        'lands when its window closes — and taken off with 「없음」', (
+      tester,
+    ) async {
+      final hand = await pumpSettings(tester, text: said([run('ab')]));
+
+      await tester.tap(row('background'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('color-picker-use-current')),
+      );
+      await tester.pump();
+      expect(hand.host.ran, isEmpty, reason: 'the window is still open');
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+
+      expect(landedOn(hand.cel).backgroundColor, 0xFFAABBCC);
+      expect(hand.options.value.backgroundColor, 0xFFAABBCC);
+      expect(hand.host.ran, hasLength(1));
+
+      await tester.tap(row('background'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('color-picker-none')),
+      );
+      await tester.pump();
+      await tester.tapAt(const Offset(4, 4));
+      await tester.pumpAndSettle();
+
+      expect(landedOn(hand.cel).backgroundColor, isNull);
+      expect(hand.options.value.backgroundColor, isNull);
+      expect(hand.host.ran, hasLength(2));
     });
 
     testWidgets('the outline is taken off with 「없음」', (tester) async {
@@ -464,6 +583,10 @@ void main() {
       tester,
     ) async {
       final hand = await pumpSettings(tester, text: said([run('ab')]));
+      expect(
+        (deleteButton(tester).icon as Icon).color,
+        AppColors.deleteGlyph(enabled: true),
+      );
 
       await tester.tap(row('delete-text'));
       await tester.pump();
@@ -476,6 +599,238 @@ void main() {
         isEmpty,
       );
     });
+  });
+
+  group('🚨the list of the cel\'s texts — 유저: 「거기서 다른 텍스트 '
+      '선택할수있게 리스트 고르는 … 텍스트의 이름은 그냥 텍스트 글자대로. '
+      '그리고 옆에 삭제버튼 있고」', () {
+    /// The settings over a cel that carries 「under」 beneath 「over\ntop」,
+    /// the one on top in hand.
+    Future<TextHand> pumpTwo(WidgetTester tester) async {
+      final hand = await pumpSettings(tester, text: said([run('under')]));
+      hand.tool.confirm();
+      hand.tool.beginText(hand.cel, CanvasPoint(x: 40, y: 40));
+      hand.tool.letters!.value = const TextEditingValue(
+        text: 'over\ntop',
+        selection: TextSelection.collapsed(offset: 8),
+      );
+      hand.tool.stopTyping();
+      await tester.pump();
+      expect(pictureUnder(hand.cel).texts, hasLength(2), reason: '⛔fixture');
+      expect(hand.tool.session!.textId, 2, reason: '⛔fixture');
+      return hand;
+    }
+
+    Future<void> openList(WidgetTester tester) async {
+      await tester.tap(row('selected-text'));
+      await tester.pumpAndSettle();
+    }
+
+    PanelFlyoutItem listed(WidgetTester tester, int place) => tester
+        .widget<PopupMenuItem<PanelFlyoutItem>>(row('text-$place'))
+        .value!;
+
+    testWidgets('opens on every text of the cel, the top of the stack '
+        'first, each by its letters on one line — the one in hand marked', (
+      tester,
+    ) async {
+      await pumpTwo(tester);
+
+      await openList(tester);
+
+      expect(listed(tester, 0).label, 'over top');
+      expect(listed(tester, 0).selected, isTrue);
+      expect(listed(tester, 1).label, 'under');
+      expect(listed(tester, 1).selected, isFalse);
+      expect(row('text-2'), findsNothing);
+      // Each with a delete of its own, in the delete red.
+      for (final place in [0, 1]) {
+        expect(
+          tester
+              .widget<Icon>(
+                find.descendant(
+                  of: row('text-$place-delete'),
+                  matching: find.byIcon(Icons.delete_outline),
+                ),
+              )
+              .color,
+          AppColors.deleteGlyph(enabled: true),
+          reason: 'row $place',
+        );
+      }
+    });
+
+    testWidgets('a text PICKED is the one in hand, by its box', (tester) async {
+      final hand = await pumpTwo(tester);
+      final steps = hand.host.ran.length;
+
+      await openList(tester);
+      // Where its name is, clear of the delete at the row's end.
+      await tester.tapAt(tester.getTopLeft(row('text-1')) + const Offset(24, 16));
+      await tester.pumpAndSettle();
+
+      expect(hand.tool.session!.textId, 1);
+      expect(hand.tool.letters, isNull);
+      expect(hand.host.ran, hasLength(steps), reason: 'nothing to land');
+      expect(
+        tester.widget<PanelFlyoutButton>(row('selected-text')).label,
+        'under',
+      );
+    });
+
+    testWidgets('🚨a row\'s DELETE takes that text off its cel — one step — '
+        'and the one in hand stays in hand', (tester) async {
+      final hand = await pumpTwo(tester);
+      final steps = hand.host.ran.length;
+
+      await openList(tester);
+      await tester.tap(row('text-1-delete'));
+      await tester.pumpAndSettle();
+
+      expect(
+        [for (final text in pictureUnder(hand.cel).texts) text.content.text],
+        ['over\ntop'],
+      );
+      expect(hand.host.ran, hasLength(steps + 1));
+      expect(hand.tool.session!.textId, 2);
+    });
+
+    testWidgets('the delete of the one in hand lets go of it', (tester) async {
+      final hand = await pumpTwo(tester);
+
+      await openList(tester);
+      await tester.tap(row('text-0-delete'));
+      await tester.pumpAndSettle();
+
+      expect(
+        [for (final text in pictureUnder(hand.cel).texts) text.content.text],
+        ['under'],
+      );
+      expect(hand.tool.session, isNull);
+      // The cel still carries a text: the list stays open to it.
+      expect(
+        tester.widget<PanelFlyoutButton>(row('selected-text')).enabled,
+        isTrue,
+      );
+    });
+
+    testWidgets('with nothing in hand the list still opens on the cel\'s '
+        'texts, none marked', (tester) async {
+      final hand = await pumpTwo(tester);
+      hand.tool.confirm();
+      await tester.pump();
+
+      await openList(tester);
+
+      expect(listed(tester, 0).label, 'over top');
+      expect(listed(tester, 0).selected, isFalse);
+      expect(listed(tester, 1).selected, isFalse);
+    });
+
+    testWidgets('🚨the list shuts when the cel\'s last text is gone, and '
+        'opens again when one is back — told by the tool', (tester) async {
+      final hand = await pumpSettings(tester, text: said([run('only')]));
+      hand.tool.confirm();
+      await tester.pump();
+      expect(
+        tester.widget<PanelFlyoutButton>(row('selected-text')).enabled,
+        isTrue,
+        reason: '⛔fixture',
+      );
+
+      // A step of history takes the text off its cel behind the tool's
+      // back; the canvas, which draws that, tells the tool.
+      hand.cel.coordinator.restoreSurfaceSnapshot(
+        hand.cel.key,
+        pictureUnder(hand.cel).withTexts(const []),
+      );
+      hand.tool.celTextsChanged();
+      await tester.pump();
+
+      expect(
+        tester.widget<PanelFlyoutButton>(row('selected-text')).enabled,
+        isFalse,
+      );
+    });
+  });
+
+  testWidgets('the bars run over what can be set from here: sizes multiply '
+      'up from the smallest a scale stops at, tracking runs either side of '
+      'none, an outline from none, a line pitch in steps of a twentieth', (
+    tester,
+  ) async {
+    await pumpSettings(tester);
+
+    final size = bar(tester, 'size');
+    expect(
+      (size.min, size.max, size.scale, size.divisions, size.unit),
+      (celTextMinFontSize, 2000.0, FieldSliderScale.exponential, null, ' px'),
+    );
+    final tracking = bar(tester, 'tracking');
+    expect(
+      (
+        tracking.min,
+        tracking.max,
+        tracking.scale,
+        tracking.divisions,
+        tracking.unit,
+      ),
+      (-100.0, 100.0, FieldSliderScale.linear, 200, ''),
+    );
+    final outline = bar(tester, 'outline-width');
+    expect(
+      (
+        outline.min,
+        outline.max,
+        outline.scale,
+        outline.divisions,
+        outline.unit,
+      ),
+      (0.0, 64.0, FieldSliderScale.linear, 64, ' px'),
+    );
+    final line = bar(tester, 'line-height');
+    expect(
+      (line.min, line.max, line.divisions, line.displayScale, line.unit),
+      (0.5, 3.0, 50, 100.0, '%'),
+    );
+  });
+
+  testWidgets('🚨in the tool settings PANEL the colour window\'s 「현재 색 '
+      '반영」 is the BRUSH\'s colour', (tester) async {
+    final options = ValueNotifier(const TextToolOptions(letters: plain));
+    addTearDown(options.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 260,
+              height: 640,
+              child: ToolSettingsPanel(
+                state: BrushToolState.defaults.copyWith(
+                  tool: CanvasTool.text,
+                  color: 0xFF336699,
+                ),
+                onChanged: (_) {},
+                fillOptions: const FloodFillOptions(),
+                onFillOptionsChanged: (_) {},
+                textOptions: options,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(row('color'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('color-picker-use-current')),
+    );
+    await tester.pump();
+
+    expect(options.value.letters.color, 0xFF336699);
   });
 
   testWidgets('a host that owns no settings and holds no text shows the '

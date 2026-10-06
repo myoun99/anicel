@@ -2,6 +2,7 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -191,6 +192,100 @@ void main() {
     await pumpFrames(tester);
 
     expect(celOf(tester).texts.single.content.text, 'hi');
+  });
+
+  group('the list of the cel\'s texts', () {
+    /// 「hi」 on the cel, and 「yo」 under it on the canvas — set after, so on
+    /// top of the stack — with nothing in hand.
+    Future<Offset> twoTexts(WidgetTester tester) async {
+      final c = await hiInHand(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      await clickAt(tester, c.dx, c.dy + 120);
+      await typeText(tester, 'yo');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      expect(celOf(tester).texts, hasLength(2), reason: '⛔fixture');
+      expect(textToolOf(tester).session, isNull, reason: '⛔fixture');
+      return c;
+    }
+
+    Future<void> openList(WidgetTester tester) async {
+      await tester.ensureVisible(row('selected-text'));
+      await pumpFrames(tester);
+      await tester.tap(row('selected-text'));
+      await pumpFrames(tester);
+    }
+
+    testWidgets('🚨a text picked in the list is the one in hand ON THE '
+        'CANVAS — its box wears the handles', (tester) async {
+      await twoTexts(tester);
+
+      await openList(tester);
+      // 「hi」 is under 「yo」: second from the top.
+      await tester.tapAt(
+        tester.getTopLeft(row('text-1')) + const Offset(24, 16),
+      );
+      await pumpFrames(tester);
+
+      final session = textToolOf(tester).session;
+      expect(session, isNotNull);
+      expect(session!.content.text, 'hi');
+      expect(textToolOf(tester).hold, CelTextHold.box);
+      // 「yo」 dashed — two paths — and 「hi」's box; a handle a corner.
+      final chrome = tester.renderObject(textChrome());
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2 + 1));
+      expect(chrome, paintsExactlyCountTimes(#drawRect, 4 * 2));
+    });
+
+    testWidgets('🚨a row\'s delete takes that text off its cel — one step, '
+        'and one undo puts it back', (tester) async {
+      await twoTexts(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+
+      await openList(tester);
+      await tester.tap(row('text-0-delete'));
+      await pumpFrames(tester);
+
+      expect(
+        [for (final text in celOf(tester).texts) text.content.text],
+        ['hi'],
+      );
+      expect(history.undoCount, steps + 1);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(
+        [for (final text in celOf(tester).texts) text.content.text],
+        ['hi', 'yo'],
+      );
+    });
+
+    testWidgets('🚨a step of history that takes the cel\'s only text away '
+        'shuts the list, and the step back opens it', (tester) async {
+      await hiInHand(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      PanelFlyoutButton field() =>
+          tester.widget<PanelFlyoutButton>(row('selected-text'));
+      expect(field().enabled, isTrue, reason: '⛔fixture');
+      final history = sessionOf(tester).historyManager;
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts, isEmpty, reason: '⛔fixture');
+      expect(field().enabled, isFalse);
+
+      history.redo();
+      await pumpFrames(tester);
+
+      expect(field().enabled, isTrue);
+    });
   });
 
   testWidgets('🚨the box width swaps the text in hand and no pixel of it '

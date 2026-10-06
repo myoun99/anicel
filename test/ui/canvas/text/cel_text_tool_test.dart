@@ -57,18 +57,21 @@ void main() {
   }) {
     final host = _Host();
     final baker = HeldBaker();
+    final CelTextCel cel = (
+      key: celTextTestKey,
+      coordinator: editingStackOn(
+        drawingOf({drawn: ink}).withTexts(texts),
+      ),
+      canvasSize: celTextTestCanvas,
+      cacheInvalidationSink: null,
+    );
+    // The cel under the tool, until a test says another is.
+    host.cel = cel;
     return (
       tool: CelTextTool(host: host, bake: baker.call),
       host: host,
       baker: baker,
-      cel: (
-        key: celTextTestKey,
-        coordinator: editingStackOn(
-          drawingOf({drawn: ink}).withTexts(texts),
-        ),
-        canvasSize: celTextTestCanvas,
-        cacheInvalidationSink: null,
-      ),
+      cel: cel,
     );
   }
 
@@ -811,6 +814,27 @@ void main() {
       expect(resting(tool, cel), [boxOf(said([run('abcd')]))]);
     });
 
+    test('a text let go of on ANOTHER cel rests on none of this one\'s, and '
+        'speaks for none of its texts', () async {
+      final (:tool, host: _, :baker, :cel) = hand(texts: [carried(1, first)]);
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      await baker.pending.answer();
+      typeInto(tool, 'abcd');
+      tool.confirm();
+      expect(tool.holdsAnything, isTrue, reason: '⛔fixture: a landing owed');
+
+      // Another cel's picture, carrying a text of the very id.
+      final other = drawingOf(const {}).withTexts([carried(1, second)]);
+
+      expect(
+        [for (final box in tool.restingBoxesOn(elsewhere, other)) box.corners],
+        [boxOf(second)],
+      );
+    });
+
     test('a NEW text let go of before anything of it was made rests '
         'nowhere, until it is', () async {
       final (:tool, host: _, :baker, :cel) = hand();
@@ -840,6 +864,293 @@ void main() {
 
       expect(textsOn(cel), isEmpty, reason: '⛔fixture: not landed yet');
       expect(resting(tool, cel), [boxOf(shown)]);
+    });
+  });
+
+  group('the texts of the cel under the hand, as the settings list them', () {
+    final first = said([run('ab')]);
+    final second = said([run('cde')], x: 40, y: 24);
+
+    test('🚨from the TOP of the stack down, each by its own letters', () {
+      final (:tool, host: _, baker: _, cel: _) = hand(
+        texts: [carried(1, first), carried(2, second)],
+      );
+
+      expect(tool.list.texts, [
+        (id: 2, text: 'cde', inHand: false),
+        (id: 1, text: 'ab', inHand: false),
+      ]);
+    });
+
+    test('🚨the one in hand is marked, and named by what is TYPED into it — '
+        'landed or not', () async {
+      final (:tool, :host, :baker, :cel) = hand(
+        texts: [carried(1, first), carried(2, second)],
+      );
+      tool
+        ..takeText(cel, pictureOf(cel).texts.first)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abz');
+
+      expect(host.ran, isEmpty, reason: '⛔fixture: nothing landed');
+      expect(tool.list.texts, [
+        (id: 2, text: 'cde', inHand: false),
+        (id: 1, text: 'abz', inHand: true),
+      ]);
+    });
+
+    test('a NEW text in hand is the topmost — it will be, once it is on '
+        'its cel — and one with no letters is not listed', () {
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [carried(1, first)],
+      );
+      tool.beginText(cel, at);
+
+      expect(tool.list.texts, [(id: 1, text: 'ab', inHand: false)]);
+
+      typeInto(tool, 'new');
+
+      expect(tool.list.texts, [
+        (id: null, text: 'new', inHand: true),
+        (id: 1, text: 'ab', inHand: false),
+      ]);
+    });
+
+    test('with no cel under the tool there is none — and a text held on '
+        'ANOTHER cel marks none of this one\'s', () {
+      final (:tool, :host, baker: _, :cel) = hand(
+        texts: [carried(1, first)],
+      );
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      host.cel = null;
+      expect(tool.list.texts, isEmpty);
+
+      // Another cel of the stack, carrying a text of the same id.
+      host.cel = (
+        key: elsewhere,
+        coordinator: cel.coordinator,
+        canvasSize: cel.canvasSize,
+        cacheInvalidationSink: null,
+      );
+      cel.coordinator.restoreSurfaceSnapshot(
+        elsewhere,
+        drawingOf(const {}).withTexts([carried(1, second)]),
+      );
+
+      expect(tool.list.texts, [(id: 1, text: 'cde', inHand: false)]);
+    });
+
+    group('picked', () {
+      test('🚨it is taken in hand by its BOX, and what was in hand lands '
+          'first', () async {
+        final (:tool, :host, :baker, :cel) = hand(
+          texts: [carried(1, first), carried(2, second)],
+        );
+        tool
+          ..takeText(cel, pictureOf(cel).texts.first)
+          ..typeAt(const TextSelection.collapsed(offset: 2));
+        typeInto(tool, 'abz');
+        await baker.pending.answer();
+
+        tool.list.take(2);
+
+        expect(tool.session!.textId, 2);
+        expect(tool.hold, CelTextHold.box);
+        expect(tool.letters, isNull);
+        expect(host.ran, hasLength(1));
+        expect(textsOn(cel), [(1, 'abz'), (2, 'cde')]);
+      });
+
+      test('the one already in hand stays in hand: its letters are let go '
+          'of, and what was typed lands', () async {
+        final (:tool, :host, :baker, :cel) = hand(texts: [carried(1, first)]);
+        tool
+          ..takeText(cel, pictureOf(cel).texts.single)
+          ..typeAt(const TextSelection.collapsed(offset: 2));
+        typeInto(tool, 'abz');
+        await baker.pending.answer();
+
+        tool.list.take(1);
+
+        expect(tool.session!.textId, 1);
+        expect(tool.letters, isNull);
+        expect(textsOn(cel), [(1, 'abz')]);
+        expect(host.ran, hasLength(1));
+      });
+
+      test('a new text in hand, picked, lands and stays in hand', () async {
+        final (:tool, :host, :baker, :cel) = hand();
+        tool.beginText(cel, at);
+        typeInto(tool, 'new');
+        await baker.pending.answer();
+
+        tool.list.take(null);
+
+        expect(tool.session, isNotNull);
+        expect(tool.letters, isNull);
+        expect(textsOn(cel), [(1, 'new')]);
+        expect(host.ran, hasLength(1));
+      });
+
+      test('a text of the same id held on ANOTHER cel is not this one\'s: '
+          'this cel\'s is taken', () {
+        final (:tool, :host, baker: _, :cel) = hand(texts: [carried(1, first)]);
+        tool.takeText(cel, pictureOf(cel).texts.single);
+        final CelTextCel other = (
+          key: elsewhere,
+          coordinator: cel.coordinator,
+          canvasSize: cel.canvasSize,
+          cacheInvalidationSink: null,
+        );
+        cel.coordinator.restoreSurfaceSnapshot(
+          elsewhere,
+          drawingOf(const {}).withTexts([carried(1, second)]),
+        );
+        host.cel = other;
+
+        tool.list.take(1);
+
+        expect(tool.session!.key, elsewhere);
+        expect(tool.session!.textId, 1);
+      });
+
+      test('one that is not on the cel is nothing to take', () {
+        final (:tool, :host, baker: _, :cel) = hand(texts: [carried(1, first)]);
+
+        tool.list.take(7);
+
+        expect(tool.session, isNull);
+        expect(host.ran, isEmpty);
+      });
+    });
+
+    group('deleted', () {
+      test('🚨ANOTHER text is taken off its cel — one step — and the one in '
+          'hand stays in hand, what was typed into it still its own', () async {
+        final (:tool, :host, :baker, :cel) = hand(
+          texts: [carried(1, first), carried(2, second)],
+        );
+        tool
+          ..takeText(cel, pictureOf(cel).texts.first)
+          ..typeAt(const TextSelection.collapsed(offset: 2));
+        typeInto(tool, 'abz');
+        await baker.pending.answer();
+        var told = 0;
+        tool.addListener(() => told += 1);
+        final redrawn = host.redrawn;
+
+        tool.list.delete(2);
+
+        expect(told, 1, reason: 'whoever lists the texts is told');
+        expect(host.redrawn, redrawn + 1, reason: 'and the canvas');
+        expect(host.ran, hasLength(1));
+        expect(textsOn(cel), [(1, 'ab')], reason: 'the typing has not landed');
+        expect(tool.session!.textId, 1);
+        expect(tool.letters, isNotNull, reason: 'still typed into');
+        expect(tool.list.texts, [(id: 1, text: 'abz', inHand: true)]);
+
+        tool.confirm();
+
+        expect(textsOn(cel), [(1, 'abz')]);
+        expect(host.ran, hasLength(2));
+
+        host.history.undo();
+        host.history.undo();
+
+        expect(textsOn(cel), [(1, 'ab'), (2, 'cde')]);
+      });
+
+      test('the one IN HAND is taken off and let go of', () {
+        final (:tool, :host, baker: _, :cel) = hand(
+          texts: [carried(1, first), carried(2, second)],
+        );
+        tool.takeText(cel, pictureOf(cel).texts.last);
+
+        tool.list.delete(2);
+
+        expect(tool.session, isNull);
+        expect(textsOn(cel), [(1, 'ab')]);
+        expect(host.ran, hasLength(1));
+      });
+
+      test('a new text in hand that never landed is simply gone', () {
+        final (:tool, :host, baker: _, :cel) = hand();
+        tool.beginText(cel, at);
+        typeInto(tool, 'new');
+
+        tool.list.delete(null);
+
+        expect(tool.session, isNull);
+        expect(textsOn(cel), isEmpty);
+        expect(host.ran, isEmpty);
+      });
+
+      test('🚨one let go of that still OWED its landing does not come back '
+          'with it', () async {
+        final (:tool, :host, :baker, :cel) = hand(texts: [carried(1, first)]);
+        tool
+          ..takeText(cel, pictureOf(cel).texts.single)
+          ..typeAt(const TextSelection.collapsed(offset: 2));
+        typeInto(tool, 'abz');
+        tool.confirm();
+        expect(tool.holdsAnything, isTrue, reason: '⛔fixture: a landing owed');
+
+        tool.list.delete(1);
+
+        expect(textsOn(cel), isEmpty);
+        expect(tool.holdsAnything, isFalse);
+
+        await baker.pending.answer();
+
+        expect(textsOn(cel), isEmpty, reason: 'what it owed went with it');
+        expect(host.ran, hasLength(1));
+      });
+
+      test('a text of the same id held on ANOTHER cel is not the one taken '
+          'off: this cel\'s is, and the hand keeps its own', () {
+        final (:tool, :host, baker: _, :cel) = hand(texts: [carried(1, first)]);
+        tool.takeText(cel, pictureOf(cel).texts.single);
+        final CelTextCel other = (
+          key: elsewhere,
+          coordinator: cel.coordinator,
+          canvasSize: cel.canvasSize,
+          cacheInvalidationSink: null,
+        );
+        cel.coordinator.restoreSurfaceSnapshot(
+          elsewhere,
+          drawingOf(const {}).withTexts([carried(1, second)]),
+        );
+        host.cel = other;
+
+        tool.list.delete(1);
+
+        expect(textsOn(other), isEmpty);
+        expect(textsOn(cel), [(1, 'ab')]);
+        expect(tool.session!.key, cel.key);
+      });
+
+      test('with none in hand to name and no id, nothing is taken off', () {
+        final (:tool, :host, baker: _, :cel) = hand(texts: [carried(1, first)]);
+
+        tool.list.delete(null);
+
+        expect(textsOn(cel), [(1, 'ab')]);
+        expect(host.ran, isEmpty);
+      });
+    });
+
+    test('told that the cel\'s texts are others, the tool tells whoever '
+        'lists them — and not the canvas, which drew the change', () {
+      final (:tool, :host, baker: _, cel: _) = hand();
+      var told = 0;
+      tool.addListener(() => told += 1);
+      final redrawn = host.redrawn;
+
+      tool.celTextsChanged();
+
+      expect(told, 1);
+      expect(host.redrawn, redrawn);
     });
   });
 
@@ -988,6 +1299,9 @@ class _Host implements CelTextToolHost {
 
   /// How many times the canvas was told to draw again.
   int redrawn = 0;
+
+  @override
+  CelTextCel? cel;
 
   @override
   HistoryMark? get historyMark => history.gestures.mark;
