@@ -278,9 +278,10 @@ enum _SessionEnd {
   /// The user took it back — the picture returns to what it was.
   revert,
 
-  /// The float is dropped without landing, because its pixels belong to a
-  /// cel the panel is no longer standing on (유저 확정 2026-09-17: a frame
-  /// walk 「착지안하고 편집중 그대로 유지」).
+  /// The float is dropped without landing: its pixels belong to a cel the
+  /// panel is no longer standing on (유저 확정 2026-09-17: a frame walk
+  /// 「착지안하고 편집중 그대로 유지」), or nothing was done to them and they
+  /// are the cel as it stands ([_CanvasSelectionLayerState._endLanded]).
   letGo,
 }
 
@@ -613,7 +614,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // folded and closed the box itself; the fold is one function now and
     // leaves what it landed with on the session ([_foldOpenBox]).
     _foldOpenBox();
-    if (_endSession(_SessionEnd.confirm) == null) {
+    if (_endLanded() == null) {
       return;
     }
     void settle() {
@@ -641,6 +642,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     _syncAnts();
   }
+
+  /// Ends the session as LANDED: one undo entry when something was folded
+  /// into it, and simply let go when nothing was.
+  ///
+  /// A float that was lifted and never changed is the picture as it stood —
+  /// a session writes nothing to the cel until it lands — so there is
+  /// nothing to land and nothing for an undo to step back to. ↩️Every
+  /// landing confirmed, changed or not: opening a box and changing tool
+  /// without touching it left an undo step that stepped back to the same
+  /// picture, and a confirm taken just before an undo (the history's own
+  /// hook) handed that undo an entry of nothing to consume (measured
+  /// 2026-10-06, an untouched box under each ending).
+  ///
+  /// ⚠️[_MoveSession.landedAffine] is what says so: only the fold writes
+  /// it, and only when it replaced the stamp.
+  _MoveSession? _endLanded() => _endSession(
+    _session?.landedAffine == null ? _SessionEnd.letGo : _SessionEnd.confirm,
+  );
 
   /// The drag running right now, or null — the ONE field that says which
   /// mode owns the pointer and what that mode is holding. See
@@ -865,7 +884,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the session — the box stays open, the numbers it holds stay set,
       // and the next drag lifts them out of whatever cel is under it.
       //
-      // ↩️This called the reset until then, which LANDED a pending float.
+      // ↩️This called the reset of the day, which LANDED a pending float.
       // ⚠️The paragraph that stood here said the landing was unreachable
       // 「because R15-⑤ refuses the seek while a selection interaction is
       // held」 — measured 2026-09-17, with a box open next-frame left the
@@ -1150,14 +1169,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// question the ants, the transform box and the confirm button all draw
   /// (see `AppColors.selectionSession`).
   ///
-  /// Two terms because a session has two ways to hold a change and the four
-  /// places that set [_moveSessionDirty] are all COMMIT points: closing a
-  /// box, a drag. While a box is still OPEN nothing has been
-  /// committed yet, so that flag is false however far the user has dragged a
-  /// handle — 유저 2026-08-27: 「**변형중일땐**. 그니까 변경사항이 있으면 …
-  /// 빨간색」. [_boxIsTransformed] is the answer for exactly that window and
-  /// already existed; ⛔a second dirty flag would have been a second place to
-  /// forget to clear.
+  /// Two terms because a session has two ways to hold a change.
+  /// [_moveSessionDirty] is set by a drag that carried the box, and by
+  /// nothing else — ↩️it was also set where a box was closed onto the
+  /// session, and those closings end the session on their next line now
+  /// ([_foldOpenBox]). While a box is OPEN that flag is false however far
+  /// the user has dragged a handle — 유저 2026-08-27: 「**변형중일땐**.
+  /// 그니까 변경사항이 있으면 … 빨간색」. [_boxIsTransformed] is the answer
+  /// for exactly that window and already existed; ⛔a second dirty flag
+  /// would have been a second place to forget to clear.
   bool get _sessionHasChanges => _moveSessionDirty || _boxIsTransformed;
 
   /// Records what a commit just applied, for the next 재현.
@@ -1267,7 +1287,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // has nothing to paint on, and `setState` on a defunct element is an
       // assertion, not a no-op. The fold above already made the session
       // hold what the box showed, which is the whole of the landing.
-      _endSession(_SessionEnd.confirm);
+      _endLanded();
       return;
     }
     _confirmSession();
@@ -1396,29 +1416,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       _preview.schedule();
       _syncAnts();
     });
-  }
-
-  /// Ctrl+D's own half, once the session has landed ([_deselect]): ends
-  /// the gesture in flight, forgets the region and closes what is left of
-  /// the box.
-  ///
-  /// ↩️It also folded and landed the float — raw, with no history — and
-  /// took a `keepRegion` for F-86's frame, row and cut moves and a
-  /// `deferDragNotify` for a reset run from a build. Those moves CARRY the
-  /// session now (2026-09-17) and never come here, and the landing is
-  /// 확정's.
-  void _resetAll() {
-    final wasDragging = _drag != null;
-    setState(() {
-      _endDrag(cancelled: true, notify: wasDragging);
-      // ⚠️Clearing it through [_setRegion] is what also tells the CHANNEL
-      // it is gone; the line that used to sit under this one only told the
-      // layer.
-      _setRegion(null);
-      _clearTransform();
-      _shapeNeedsLift = false;
-    });
-    _syncAnts();
   }
 
   // --- Freedom above the affine: perspective and mesh ------------------
@@ -1742,7 +1739,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _recordTransformRecall(box);
     session
       ..stamp = warped
-      ..moved = true
       ..landedAffine = box.affine;
     if (landedRegion != null) {
       _moveRegion(landedRegion);
@@ -1872,6 +1868,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // picture no undo could bring back: one step back restored the outline
     // and the pixels stayed where they had landed (measured 2026-10-06). A
     // quad or a mesh with every number at rest landed unwarped besides.
+    //
+    // ↩️That was `_resetAll`, which also took a `keepRegion` for F-86's
+    // frame, row and cut moves and a `deferDragNotify` for a reset run from
+    // a build. Those moves CARRY the session (2026-09-17) and never came
+    // here any more; what is left of the reset is the lines below.
     _confirmSession();
     // The outline as the landing left it — what the deselect's own entry
     // has to put back.
@@ -1879,7 +1880,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R26 #13: the implicit whole-picture shape was never a user
     // selection — dropping it records no history.
     final wasImplicit = _shapeIsImplicitWholePicture;
-    _resetAll();
+    final wasDragging = _drag != null;
+    setState(() {
+      _endDrag(cancelled: true, notify: wasDragging);
+      // ⚠️Clearing it through [_setRegion] is what also tells the CHANNEL
+      // it is gone; the line that used to sit under this one only told the
+      // layer.
+      _setRegion(null);
+      _shapeNeedsLift = false;
+    });
+    _syncAnts();
     // Deselecting a real region is undoable, symmetric with selecting.
     if (before != null && !wasImplicit) {
       final commit = widget.onShapeCommitted;

@@ -3978,6 +3978,7 @@ void main() {
           ({
             List<int> pixels,
             TransformRecall? recall,
+            String outline,
             int entries,
             List<int> undone,
           })
@@ -4018,6 +4019,7 @@ void main() {
           await tester.pump();
           await settle(tester);
           final pixels = read();
+          final outline = '${env.commands.region?.selectedBounds}';
           final entries = env.history.undoCount - before;
           for (var i = 0; i < entries; i += 1) {
             env.history.undo();
@@ -4027,6 +4029,7 @@ void main() {
           final landed = (
             pixels: pixels,
             recall: env.commands.recallFor(gesture.value.mode),
+            outline: outline,
             entries: entries,
             undone: read(),
           );
@@ -4069,11 +4072,17 @@ void main() {
             confirmed.recall!.meshOffsets,
             reason: ending,
           );
-          // Ctrl+D is the landing and then the deselect — two steps back.
+          // Ctrl+D is the landing and then the deselect — two steps back,
+          // and no outline left; a tool change leaves it where 확정 does.
           expect(
             ended.entries,
             ending == 'Ctrl+D' ? 2 : 1,
             reason: '$ending: the landing is ONE undo entry of its own',
+          );
+          expect(
+            ended.outline,
+            ending == 'Ctrl+D' ? 'null' : confirmed.outline,
+            reason: '$ending: the outline went where the picture went',
           );
           expect(
             ended.undone,
@@ -4082,6 +4091,65 @@ void main() {
           );
         }
       });
+    }
+  });
+
+  // 🧪Measured 2026-10-06: a box opened and never touched left an undo
+  // step under a tool change — one that stepped back to the same picture.
+  // A float lifted and put back is the cel as it stands; it lands nothing.
+  testWidgets('🚨a box nobody touched leaves no undo step, whatever ends it',
+      (tester) async {
+    for (final marquee in const [true, false]) {
+      for (final ending in const [
+        'a painting tool',
+        'another selection tool',
+        'Ctrl+D',
+        '취소',
+      ]) {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: marquee ? CanvasTool.select : CanvasTool.move,
+        );
+        if (marquee) {
+          await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+          await env.setTool(CanvasTool.move);
+        }
+        final before = env.history.undoCount;
+        final picture = currentSurface(env.coordinator);
+        env.commands.beginTransform();
+        await tester.pump();
+        expect(env.commands.movePending, isTrue, reason: '⛔전제: 들어 올렸다');
+        switch (ending) {
+          case 'a painting tool':
+            await env.setTool(CanvasTool.brush);
+          case 'another selection tool':
+            await env.setTool(CanvasTool.select);
+          case 'Ctrl+D':
+            env.commands.deselect();
+          case '취소':
+            env.commands.cancelTransform();
+        }
+        await tester.pump();
+        await tester.pump();
+        await settle(tester);
+
+        final what = '$ending, ${marquee ? 'a marquee' : 'no selection'}';
+        expect(env.commands.movePending, isFalse, reason: what);
+        expect(env.commands.transformActive, isFalse, reason: what);
+        expect(
+          env.history.undoCount - before,
+          // Dropping a marquee the user drew is a step of its own.
+          ending == 'Ctrl+D' && marquee ? 1 : 0,
+          reason: '$what: nothing landed, so nothing to step back to',
+        );
+        expect(
+          currentSurface(env.coordinator),
+          same(picture),
+          reason: '$what: the cel was never written',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      }
     }
   });
 
