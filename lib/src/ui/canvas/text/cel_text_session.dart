@@ -161,12 +161,16 @@ class CelTextSession extends ChangeNotifier {
   /// setting the text again there.
   ///
   /// 🚨A TEXT DRAGGED A WHOLE NUMBER OF PIXELS IS ITS PIXELS DRAGGED: the
-  /// engine sets the same letters the same way at every whole-pixel place,
-  /// so the plate moved is the plate that a bake there would make — and it
-  /// follows the hand in the frame the hand moved in. ⚠️Except at the
-  /// pasteboard wall, which cuts what crosses it: a plate that was cut, or
-  /// would be, is set again instead ([set]), so nothing that was cut away
-  /// stays missing when the text comes back in.
+  /// plate is moved, not set again, so the letters keep the very pixels
+  /// they were baked to and follow the hand in the frame the hand moved
+  /// in. What lands is that plate — what was on screen (유저 절대규칙
+  /// 2026-09-17). ⚠️Whether the engine would set the same letters to the
+  /// same pixels at the new place is not asked, and not promised: a plate
+  /// is what its text baked to WHERE IT WAS BAKED (`CelText.plate`).
+  ///
+  /// ⚠️Except at the pasteboard wall, which cuts what crosses it: a plate
+  /// that was cut, or would be, is set again instead ([set]), so nothing
+  /// that was cut away stays missing when the text comes back in.
   ///
   /// [over] is the cel's picture as it stands: the grid the plate is cut
   /// on.

@@ -213,9 +213,6 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
     if (artwork == null) {
       return;
     }
-    // A press begins anew: what an earlier one was still owed is gone.
-    _textAwaitingCel = null;
-    _celMadeSince = null;
     final cel = widget.cel;
     if (cel == null) {
       // Nothing to set a text on: ask for a cel, as a stroke's press does
