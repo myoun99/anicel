@@ -93,17 +93,26 @@ CanvasShapeKind? armedCutShape(BrushToolState state) =>
 bool canvasToolPaints(CanvasTool tool) =>
     tool == CanvasTool.brush || tool == CanvasTool.eraser;
 
-/// Whether the DRAWING VIEW takes [tool]'s presses — the brush, the eraser
-/// and the bucket (R22-A runs the fill through the view's own pipeline);
-/// every other tool mounts a layer of its own above it.
+/// Whether Alt, held, is [tool]'s OWN modifier: the selection's outline
+/// subtracts with it (Shift+Alt intersects — R26 #16), and the transform's
+/// box scales about the far corner with it (유저 2026-09-22 「수정자로서
+/// 클튜방식의 현재꼭짓점만 늘리는 로직 두도록」).
 ///
-/// It is where a held pen or mouse button stands in for another tool — the
-/// view is what reads the mapping (PEN-7a) — and so where a held key does
-/// too (I-15): one law, applied in one place. Elsewhere the key keeps its
-/// own meaning: the selection's Alt subtracts, the transform's scales about
-/// the centre.
-bool canvasToolTakesDrawingPress(CanvasTool tool) =>
-    canvasToolPaints(tool) || tool == CanvasTool.fill;
+/// Under every other tool Alt held is the eyedropper (I-15).
+///
+/// 🗣️F-299 (유저 2026-10-05): 「채우기 도구인상태에서 스포이드 단축키로 도구
+/// 안바뀜. **어떤 도구 들고있던 규칙 만들지말고 법 통일해서 작동하도록**」.
+/// ↩️The hold asked whether the DRAWING VIEW takes the tool's presses — the
+/// brush, the eraser and the bucket — because that view was where the
+/// eyedropper's Alt had lived before it became a hold. Nobody had asked for
+/// the shape fill, the cut, the stamp or the guides to be left out; they
+/// were, by the shape of the question.
+///
+/// ⚠️Which of the two meanings a tool that reads Alt keeps is asked on the
+/// board (F-299-Q1); this is its recommended answer, in force until another
+/// is given.
+bool canvasToolReadsAlt(CanvasTool tool) =>
+    tool == CanvasTool.select || canvasToolTransforms(tool);
 
 /// Whether [tool] puts marks on the CEL — the strokes and the fill.
 ///

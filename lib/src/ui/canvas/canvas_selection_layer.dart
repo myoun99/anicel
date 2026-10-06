@@ -2823,9 +2823,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// the PS/CSP modifier chord overrides it for this one drag — Shift
   /// adds, Alt subtracts, Shift+Alt intersects. The modifiers are read at
   /// RELEASE, matching how both apps behave when you change your mind
-  /// mid-drag. (Neither key means anything else on a marquee: Alt's
-  /// temporary eyedropper is gated to painting tools, and Shift/Alt only
-  /// steer an OPEN transform box, never a marquee.)
+  /// mid-drag. (Neither key means anything else on a marquee: Alt's held
+  /// eyedropper stands down for the tools whose drag reads Alt
+  /// (`canvasToolReadsAlt` — this one and the transform), and Shift/Alt
+  /// only steer an OPEN transform box, never a marquee.)
   SelectionCombineMode _marqueeMode() {
     final keyboard = HardwareKeyboard.instance;
     final shift = keyboard.isShiftPressed;
