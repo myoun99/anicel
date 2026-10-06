@@ -415,6 +415,13 @@ void main() {
       final rail = StoryboardToolbarPanelContext(s);
       s.selectGlobalFrame(9);
       rail.copyFrame();
+      s.selectGlobalFrame(0);
+      expect(
+        rail.canPasteIndependentFrame,
+        isTrue,
+        reason: 'the film\'s first frame is a frame like any other — the '
+            'place refuses a NEGATIVE frame, not frame 0',
+      );
 
       s.selectGlobalFrame(14); // cut-2 covers [12,18): its frame 2.
       expect(s.activeCutOrNull?.id, const CutId('cut-2'), reason: 'fixture');
