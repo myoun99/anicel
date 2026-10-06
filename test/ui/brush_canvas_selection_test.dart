@@ -3932,6 +3932,10 @@ void main() {
               CanvasSelectionCommands commands,
             )
             perform,
+
+            /// Where the gesture left the outline's top-left corner, when it
+            /// carried that corner somewhere a reader can name.
+            Offset? topLeft,
           })
         >{
           '일반 — an edge middle stretched': (
@@ -3941,11 +3945,14 @@ void main() {
               const Offset(70, 45),
               const Offset(82.5, 45),
             ),
+            // The left edge went out as far as the right one: 25 → 37.5.
+            topLeft: const Offset(7.5, 20),
           ),
           '자유 — a corner pulled, every number at rest': (
             mode: TransformMode.perspective,
             perform: (tester, commands) =>
                 dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14)),
+            topLeft: const Offset(8, 14),
           ),
           '자유 — a corner pulled, then turned and moved': (
             mode: TransformMode.perspective,
@@ -3960,6 +3967,7 @@ void main() {
               );
               await tester.pump();
             },
+            topLeft: null,
           ),
           '메쉬 — a grid point pulled, every number at rest': (
             mode: TransformMode.mesh,
@@ -3968,6 +3976,16 @@ void main() {
               const Offset(37, 37),
               const Offset(31, 42),
             ),
+            topLeft: null,
+          ),
+          '메쉬 — the corner of the grid pulled': (
+            mode: TransformMode.mesh,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(20, 20),
+              const Offset(10, 12),
+            ),
+            topLeft: const Offset(10, 12),
           ),
         };
 
@@ -3981,6 +3999,7 @@ void main() {
             List<int> pixels,
             TransformRecall? recall,
             String outline,
+            Offset? outlineTopLeft,
             int entries,
             List<int> undone,
           })
@@ -4033,7 +4052,8 @@ void main() {
           await tester.pump();
           await settle(tester);
           final pixels = read();
-          final outline = '${env.commands.region?.selectedBounds}';
+          final box = env.commands.region?.selectedBounds;
+          final outline = '$box';
           final entries = env.history.undoCount - before;
           for (var i = 0; i < entries; i += 1) {
             env.history.undo();
@@ -4044,6 +4064,7 @@ void main() {
             pixels: pixels,
             recall: env.commands.recallFor(gesture.value.mode),
             outline: outline,
+            outlineTopLeft: box == null ? null : Offset(box.left, box.top),
             entries: entries,
             undone: read(),
           );
@@ -4061,6 +4082,19 @@ void main() {
         expect(confirmed.recall, isNotNull, reason: '⛔전제: 확정이 기록을 남겼다');
         expect(confirmed.entries, 1, reason: '⛔전제');
         expect(confirmed.undone, original, reason: '⛔전제: 언두 하나로 돌아온다');
+        // 확정's own outline is where the box put the picture — the corner
+        // the hand carried is the outline's corner afterwards. (Every other
+        // ending is held to 확정's below, so this is the one place the
+        // outline is read against the gesture itself.)
+        final carried = gesture.value.topLeft;
+        if (carried != null) {
+          expect(
+            (confirmed.outlineTopLeft! - carried).distance,
+            lessThan(0.5),
+            reason: 'the outline went with the corner: '
+                '${confirmed.outlineTopLeft} for $carried',
+          );
+        }
 
         for (final ending in const [
           'a painting tool',
@@ -4136,6 +4170,11 @@ void main() {
         }
         final before = env.history.undoCount;
         final picture = currentSurface(env.coordinator);
+        // What the last real transform left for 재현.
+        const remembered = TransformRecall(
+          values: TransformValues(sx: 2, sy: 2),
+        );
+        env.commands.transformRecalls[TransformMode.normal] = remembered;
         env.commands.beginTransform();
         await tester.pump();
         expect(env.commands.movePending, isTrue, reason: '⛔전제: 들어 올렸다');
@@ -4166,6 +4205,12 @@ void main() {
           currentSurface(env.coordinator),
           same(picture),
           reason: '$what: the cel was never written',
+        );
+        expect(
+          env.commands.recallFor(TransformMode.normal),
+          same(remembered),
+          reason: '$what: a box that did nothing is not the transform 재현 '
+              'replays — the last real one still is',
         );
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();
