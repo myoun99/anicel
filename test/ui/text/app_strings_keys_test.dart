@@ -566,8 +566,6 @@ void main() {
     'exRealSheet': (s) => s.exRealSheet,
     'exCancelled': (s) => s.exCancelled,
     'exNothingInFrame': (s) => s.exNothingInFrame,
-    'exExporting': (s) => s.exExporting,
-    'exRenderingQueue': (s) => s.exRenderingQueue,
     'exFileLabel': (s) => s.exFileLabel,
     'exOrderAsksFirst': (s) => s.exOrderAsksFirst,
     'exOrderAsksAfter': (s) => s.exOrderAsksAfter,

@@ -1218,13 +1218,8 @@ enum AppStrings {
   String exDoneContePdf(String count) =>
       _s('exDoneContePdfTemplate').replaceAll('{count}', count);
   String get exNothingInFrame => _s('exNothingInFrame');
-  String get exExporting => _s('exExporting');
-  String exExportingProgress(int done, int total) => _s(
-    'exExportingProgressTemplate',
-  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
   String exFailed(Object error) =>
       _s('exFailedTemplate').replaceAll('{error}', '$error');
-  String get exRenderingQueue => _s('exRenderingQueue');
   String exQueueRest(String count, {required int failed, required bool kept}) =>
       _s('exQueueRestTemplate')
           .replaceAll(
@@ -2331,10 +2326,7 @@ enum AppStrings {
     'exDoneVideoTemplate': 'Exported video ({count}).',
     'exDoneContePdfTemplate': 'Exported conte.pdf ({count}).',
     'exNothingInFrame': 'Nothing to export (empty frame).',
-    'exExporting': 'Exporting…',
-    'exExportingProgressTemplate': 'Exporting… {done}/{total}',
     'exFailedTemplate': 'Export failed: {error}',
-    'exRenderingQueue': 'Rendering the queue…',
     'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} failed',
     'exQueueRestKept': ', rest kept',
@@ -3564,10 +3556,7 @@ enum AppStrings {
     'exDoneVideoTemplate': '動画を書き出しました（{count}）。',
     'exDoneContePdfTemplate': 'conte.pdfを書き出しました（{count}）。',
     'exNothingInFrame': '書き出すものがありません（空のフレーム）。',
-    'exExporting': '書き出し中…',
-    'exExportingProgressTemplate': '書き出し中… {done}/{total}',
     'exFailedTemplate': '書き出しに失敗しました: {error}',
-    'exRenderingQueue': 'キューを書き出し中…',
     'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
     'exQueueFailedTemplate': '、{n}件失敗',
     'exQueueRestKept': '、残りは保持',
@@ -4896,10 +4885,7 @@ enum AppStrings {
     'exDoneVideoTemplate': '영상을 내보냈습니다({count}).',
     'exDoneContePdfTemplate': 'conte.pdf를 내보냈습니다({count}).',
     'exNothingInFrame': '내보낼 것이 없습니다(빈 프레임).',
-    'exExporting': '내보내는 중…',
-    'exExportingProgressTemplate': '내보내는 중… {done}/{total}',
     'exFailedTemplate': '내보내기 실패: {error}',
-    'exRenderingQueue': '대기열을 렌더링하는 중…',
     'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
     'exQueueFailedTemplate': ', {n}개 실패',
     'exQueueRestKept': ', 나머지는 남겨 둠',
@@ -6307,10 +6293,7 @@ enum AppStrings {
     'exDoneVideoTemplate': 'Vidéo exportée ({count}).',
     'exDoneContePdfTemplate': 'conte.pdf exporté ({count}).',
     'exNothingInFrame': 'Rien à exporter (image vide).',
-    'exExporting': 'Export en cours…',
-    'exExportingProgressTemplate': 'Export en cours… {done}/{total}',
     'exFailedTemplate': 'Échec de l\'export : {error}',
-    'exRenderingQueue': 'Rendu de la file en cours…',
     'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} en échec',
     'exQueueRestKept': ', le reste est conservé',
@@ -7590,10 +7573,7 @@ enum AppStrings {
     'exDoneVideoTemplate': '已导出视频（{count}）。',
     'exDoneContePdfTemplate': '已导出 conte.pdf（{count}）。',
     'exNothingInFrame': '没有可导出的内容（空帧）。',
-    'exExporting': '正在导出…',
-    'exExportingProgressTemplate': '正在导出… {done}/{total}',
     'exFailedTemplate': '导出失败：{error}',
-    'exRenderingQueue': '正在渲染队列…',
     'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',
     'exQueueFailedTemplate': '，{n}个失败',
     'exQueueRestKept': '，其余保留',

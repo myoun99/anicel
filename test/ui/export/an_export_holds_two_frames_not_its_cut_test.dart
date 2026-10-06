@@ -7,8 +7,11 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -287,6 +290,185 @@ void main() {
         reason: 'each cut\'s drawing, once — not once a frame',
       );
       expect(renderer.debugHeldSurfaceCount, 2, reason: 'LIVENESS: both');
+    });
+  });
+
+  group('🚨a video frame that is made of what the frame before it was made '
+      'of is THAT FRAME\'S PICTURE, handed again (F-289)', () {
+    const cutId = CutId('cut');
+
+    /// A: one drawing for the whole cut. B: b1 for frames 0–1, b2 for 2–3.
+    Cut cut({CutCamera? camera}) => Cut(
+      id: cutId,
+      name: 'Cut',
+      duration: 4,
+      canvasSize: canvasSize,
+      camera: camera,
+      layers: [
+        Layer(
+          id: const LayerId('a'),
+          name: 'A',
+          frames: [frame('a1')],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('a1'), length: 4),
+          },
+        ),
+        Layer(
+          id: const LayerId('b'),
+          name: 'B',
+          frames: [frame('b1'), frame('b2')],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('b1'), length: 2),
+            2: TimelineExposure.drawing(FrameId('b2'), length: 2),
+          },
+        ),
+        createCameraLayer(cutId: cutId),
+      ],
+    );
+
+    /// How many handles are open on [image]'s picture — its own, and the
+    /// renderer's while the renderer holds it.
+    int handlesOn(ui.Image image) =>
+        image.debugGetOpenHandleStackTraces()!.length;
+
+    const doors = {
+      'a canvas-size video frame': ExportSizeMode.canvas,
+      'a camera video frame (the track stack)': ExportSizeMode.camera,
+    };
+
+    for (final MapEntry(key: door, value: mode) in doors.entries) {
+      /// A renderer over [cut], and the door through it.
+      ({
+        ExportFrameRenderer renderer,
+        Future<ui.Image> Function(int index) frameAt,
+      })
+      over(EditorSessionManager s) {
+        final renderer = ExportFrameRenderer(session: s);
+        addTearDown(renderer.dispose);
+        return (
+          renderer: renderer,
+          frameAt: (index) => renderer.renderCompositeForVideo(
+            ExportFrameTask(cut: s.requireActiveCut, frameIndex: index),
+            mode,
+          ),
+        );
+      }
+
+      testWidgets('$door: frames 0 and 1 are ONE picture and nothing is made '
+          'for the second; frame 2 is another', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+
+          final first = await frameAt(0);
+          final made = renderer.debugPicturesMade;
+          expect(made, greaterThan(0), reason: 'LIVENESS: frame 0 was made');
+
+          final again = await frameAt(1);
+          expect(again.isCloneOf(first), isTrue);
+          expect(renderer.debugPicturesMade, made, reason: 'nothing made');
+
+          final next = await frameAt(2);
+          expect(next.isCloneOf(first), isFalse, reason: 'b2 is on');
+          expect(renderer.debugPicturesMade, greaterThan(made));
+          for (final image in [first, again, next]) {
+            image.dispose();
+          }
+        });
+      });
+
+      testWidgets('$door: the row that holds while another changes is read '
+          'ONCE — a held picture keeps the cels it is made of', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+
+          for (final index in [0, 1, 2, 3]) {
+            (await frameAt(index)).dispose();
+          }
+          expect(
+            renderer.debugCelReads,
+            3,
+            reason: 'a1 once, b1, b2 — a1 is not read again at frame 2, where '
+                'only B changes after a frame that read nothing',
+          );
+        });
+      });
+
+      testWidgets('$door: a picture is let go the frame after the last one '
+          'made of it stops being the frame before, and every one when the '
+          'run ends', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+
+          final first = await frameAt(0);
+          expect(handlesOn(first), 2, reason: 'LIVENESS: the renderer\'s too');
+          final third = await frameAt(2);
+          expect(handlesOn(first), 2, reason: 'still the frame before');
+          (await frameAt(3)).dispose();
+          expect(handlesOn(first), 1, reason: 'two frames on: let go');
+
+          expect(handlesOn(third), 2, reason: 'frame 3 is frame 2\'s picture');
+          renderer.dispose();
+          expect(handlesOn(third), 1, reason: 'the run is over');
+          first.dispose();
+          third.dispose();
+        });
+      });
+    }
+
+    testWidgets('the camera moving over a held drawing: every frame is its '
+        'own picture, and the cut\'s picture under them is made ONCE', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final s = sessionOf([
+          cut(
+            camera: CutCamera(
+              keyframes: {
+                0: CameraPose(center: CanvasPoint(x: 3, y: 4)),
+                1: CameraPose(center: CanvasPoint(x: 5, y: 4)),
+              },
+            ),
+          ),
+        ]);
+        addTearDown(s.dispose);
+        parkEvery(s);
+        final renderer = ExportFrameRenderer(session: s);
+        addTearDown(renderer.dispose);
+        Future<ui.Image> frameAt(int index) =>
+            renderer.renderCompositeForVideo(
+              ExportFrameTask(cut: s.requireActiveCut, frameIndex: index),
+              ExportSizeMode.camera,
+            );
+
+        final first = await frameAt(0);
+        final made = renderer.debugPicturesMade;
+        expect(made, 2, reason: 'LIVENESS: the cut\'s picture and the frame');
+        final moved = await frameAt(1);
+        expect(moved.isCloneOf(first), isFalse, reason: 'the camera moved');
+        expect(
+          renderer.debugPicturesMade,
+          made + 1,
+          reason: 'the frame alone — the cut\'s picture is the one it was',
+        );
+        final [before, after] = [
+          for (final image in [first, moved])
+            (await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            ))!.buffer.asUint8List(),
+        ];
+        expect(after, isNot(before), reason: 'and it shows another part');
+        first.dispose();
+        moved.dispose();
+      });
     });
   });
 }

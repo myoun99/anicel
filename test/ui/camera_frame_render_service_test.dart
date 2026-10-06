@@ -15,6 +15,9 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
+
+import '../helpers/awaited_uploads.dart';
 
 import '../helpers/placement_reading.dart';
 
@@ -405,6 +408,26 @@ void main() {
       expect(image.height, 4);
       // Canvas pixel (2..3) maps to output (1..1.5): probe (1,1).
       expect(await pixelAt(image, 1, 1), isNot(const Color(0xFFFFFFFF)));
+      image.dispose();
+    });
+  });
+
+  testWidgets('🚨a render through the camera waits no decode round for a '
+      'tile — somebody is waiting for the render itself', (tester) async {
+    await tester.runAsync(() async {
+      final awaited = countAwaitedUploads();
+      final surface = surfaceWithRedPixelAt(1, 2);
+
+      (await composePositionedSurfaceImage(surface))!.image.dispose();
+      expect(awaited(), 1, reason: 'LIVENESS: the warm road awaits this tile');
+
+      final image = await service.renderThroughCamera(
+        layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+      expect(awaited(), 1, reason: 'not one more');
+      expect(await pixelAt(image, 1, 2), const Color(0xFFFF0000));
       image.dispose();
     });
   });

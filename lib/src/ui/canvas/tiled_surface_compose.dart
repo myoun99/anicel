@@ -87,6 +87,30 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
   );
 }
 
+/// How an asynchronous compose comes by the picture of a tile that has
+/// none. Either way the picture is the compose's own and is let go right
+/// after it.
+enum MissingTilePictures {
+  /// Decoded by the engine off the UI thread and awaited, a tile at a time:
+  /// the loop gives way between tiles, which is what lets an opportunistic
+  /// compose be stood down within about one of them ([shouldAbort]). The
+  /// warm path's road.
+  decodedInTurn,
+
+  /// Made at once through the one door
+  /// ([BitmapTileImageCache.pictureOfTile]) — for a render somebody is
+  /// WAITING for: an export's frame, a panel's picture.
+  ///
+  /// ↩️Those renders took the warm path's road, and it was nine tenths of a
+  /// video export (F-289, measured 2026-10-07 on the Windows app, profile
+  /// build, a cut of two rows at 2340×1654): 395 tiles a frame, each
+  /// waiting a decode round of 1.3–2.9 ms on a busy machine, in a frame of
+  /// 1.15 s — where the door makes a picture in a few hundredths of a
+  /// millisecond. Giving way between tiles buys such a render nothing: no
+  /// one can stand it down, and the one waiting for it waits longer.
+  madeAtOnce,
+}
+
 /// Composes a tiled [BitmapSurface] into one full-resolution [ui.Image] by
 /// drawing per-tile GPU images — the editing canvas's display route, reused
 /// for playback/preview rendering.
@@ -94,10 +118,10 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 /// Tiles already decoded in [reuse] (typically [BitmapTileImageCache.instance],
 /// which the editing canvas keeps warm for the frame on screen) are drawn
 /// as-is, so rebuilding the ACTIVE frame after a stroke uploads nothing:
-/// cost scales with the changed tiles, not the canvas. Missing tiles decode
-/// transiently and are disposed right after the compose — cold frames pay
-/// one upload per stored tile without pinning GPU copies of every frame's
-/// artwork.
+/// cost scales with the changed tiles, not the canvas. Missing tiles are
+/// pictured transiently ([missing] says how) and disposed right after the
+/// compose — cold frames pay one upload per stored tile without pinning GPU
+/// copies of every frame's artwork.
 ///
 /// Byte-parity with the CPU assembly path ([bitmapSurfaceToImage]): tile
 /// bytes premultiply through the SAME mul-div-255 rounding
@@ -117,10 +141,12 @@ Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+  MissingTilePictures missing = MissingTilePictures.decodedInTurn,
 }) => _composeAsync(
   surface,
   reuse: reuse,
   shouldAbort: shouldAbort,
+  missing: missing,
   over: surface.canvasSize.canvasRect,
 );
 
@@ -136,6 +162,7 @@ Future<ui.Image?> _composeAsync(
   BitmapSurface surface, {
   required BitmapTileImageCache? reuse,
   required bool Function()? shouldAbort,
+  required MissingTilePictures missing,
   required ui.Rect over,
 }) async {
   final recorder = ui.PictureRecorder();
@@ -155,7 +182,12 @@ Future<ui.Image?> _composeAsync(
           recorderClosed = true;
           return null;
         }
-        image = await _decodeTile(tile);
+        image = switch (missing) {
+          MissingTilePictures.decodedInTurn => await _decodeTile(tile),
+          MissingTilePictures.madeAtOnce => BitmapTileImageCache.pictureOfTile(
+            tile,
+          ),
+        };
         transient.add(image);
       }
       canvas.drawImage(
@@ -285,6 +317,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
+  MissingTilePictures missing = MissingTilePictures.decodedInTurn,
   ui.Rect? over,
 }) async {
   final worldRect = _composedOver(surface, over);
@@ -292,6 +325,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     surface,
     reuse: reuse,
     shouldAbort: shouldAbort,
+    missing: missing,
     over: worldRect,
   );
   return image == null

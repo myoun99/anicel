@@ -204,10 +204,15 @@ void main() {
     draw(session);
     await pumpWindow(tester, session);
     await tester.settleExportPreview();
-    expect(tester.exportPreviewImage, isNotNull);
+    final sequence = tester.exportPreviewImage;
+    expect(sequence, isNotNull);
+    final subject = tester.exportPreviewDocument!.subject;
 
     await openTab(tester, 'image');
-    expect(tester.exportPreviewImage, isNull);
+    expect(tester.exportPreviewDocument!.subject, isNot(subject));
+    // Whatever is up by now — nothing yet, or the image tab's own picture,
+    // which lands when the raster says — it is not the sequence's.
+    expect(identical(tester.exportPreviewImage, sequence), isFalse);
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
     session.playbackRig.prerenderScheduler.cancel();
@@ -222,6 +227,7 @@ void main() {
     await tester.settleExportPreview();
     final before = tester.exportPreviewImage;
     expect(before, isNotNull);
+    final shown = tester.exportPreviewDocument!;
 
     // The options module is folded: its head opens it.
     final options = find.textContaining(AppText.strings.exOptions);
@@ -230,7 +236,12 @@ void main() {
     await tester.tap(options);
     await tester.pump();
     await press(tester, 'export-apply-fx-toggle');
-    expect(identical(tester.exportPreviewImage, before), isTrue);
+    // The same thing looked at, in another look — which is what keeps the
+    // picture up while the new one is on its way (the panel's own pin: a
+    // landing is the raster's to time, not this test's).
+    final asked = tester.exportPreviewDocument!;
+    expect(asked.subject, shown.subject);
+    expect(asked.look, isNot(shown.look));
     await tester.settleExportPreview();
     expect(tester.exportPreviewImage, isNotNull);
     expect(identical(tester.exportPreviewImage, before), isFalse);

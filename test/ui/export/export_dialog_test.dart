@@ -33,6 +33,7 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -255,24 +256,6 @@ void main() {
     return status.data ?? '';
   }
 
-  int pngSignatureCount(Uint8List bytes) {
-    const signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    var count = 0;
-    for (var i = 0; i + signature.length <= bytes.length; i += 1) {
-      var match = true;
-      for (var j = 0; j < signature.length; j += 1) {
-        if (bytes[i + j] != signature[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
   group('shell', () {
     testWidgets('R27 #31: the window OPENS while the playhead is parked in a '
         'gap — no active cut is a position, not a crash', (tester) async {
@@ -456,7 +439,10 @@ void main() {
   group('sequence video', () {
     testWidgets('MP4 pipes every planned frame to the encoder',
         (tester) async {
-      final fake = FakeFfmpegProcess();
+      var heldInTheRun = 0;
+      final fake = FakeFfmpegProcess(
+        onFrame: (_) => heldInTheRun = ExportFrameRenderer.debugPicturesHeld,
+      );
       late List<String> capturedArgs;
       final state = await pumpDialog(
         tester,
@@ -472,11 +458,15 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(
-        pngSignatureCount(Uint8List.fromList(fake.collectedStdin.toBytes())),
-        2,
-      );
+      // Raw, at the camera frame's own pixels: 32×18 of RGBA a frame.
+      expect(fake.receivedFrameCount, 2);
+      expect(fake.collectedStdin.length, 2 * 32 * 18 * 4);
+      expect(capturedArgs, containsAllInOrder(['-video_size', '32x18']));
       expect(capturedArgs, contains('24'));
+      // The pictures a run holds from one frame to the next are its own to
+      // let go of.
+      expect(heldInTheRun, greaterThan(0), reason: 'LIVENESS: it held some');
+      expect(ExportFrameRenderer.debugPicturesHeld, 0);
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Project.mp4'),

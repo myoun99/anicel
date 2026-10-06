@@ -196,9 +196,14 @@ class CameraFrameRenderService {
             layerImages[layer] =
                 // Non-null without shouldAbort (on-demand render, never
                 // abandoned).
+                //
+                // Somebody waits for every render made here — an export's
+                // frame, a panel's picture — so a tile with no picture gets
+                // one at once ([MissingTilePictures.madeAtOnce]).
                 (await composePositionedSurfaceImage(
                   layer.surface,
                   reuse: BitmapTileImageCache.instance,
+                  missing: MissingTilePictures.madeAtOnce,
                 ))!;
           case CompositeGroup(:final children):
             await composeImages(children);

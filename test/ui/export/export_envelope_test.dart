@@ -33,6 +33,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_envelope_render.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/awaited_uploads.dart';
 import '../../helpers/export_scope_pick.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -319,8 +320,12 @@ void main() {
       final state = await pumpDialog(tester, session);
       await tapSetting(tester, 'export-envelope-paper-sheet');
 
+      final awaited = countAwaitedUploads();
       await tester.runAsync(state.export);
       await tester.pump();
+      // The run waits for the ink's picture, so its tile is pictured at
+      // once — not after a decode round of its own.
+      expect(awaited(), 0);
 
       final image = (await tester.runAsync(
         () => decodeImageFromList(

@@ -61,13 +61,6 @@ QaVideoEncoder? _defaultEncoderResolver() =>
     ? null
     : QaVideoEncoder.instance;
 
-/// Internal: the OS encoder refused the JOB (no encoder MFT, bad open) —
-/// distinct from failing midway, because refusing up front means the
-/// ffmpeg fallback can still carry the run.
-class _OsEncoderRefused implements Exception {
-  const _OsEncoderRefused();
-}
-
 /// A video export failure with a user-presentable [message] (missing ffmpeg,
 /// non-zero exit); the dialog shows it verbatim.
 class VideoExportException implements Exception {
@@ -90,6 +83,11 @@ class VideoExportException implements Exception {
 /// OS whose encoder refuses the job. It must be installed and on PATH (or
 /// injected via [executable]). Either path finalizes a playable partial
 /// on cancel instead of leaving a corrupt file.
+///
+/// ONE loop walks the frames whichever of the two takes them
+/// ([exportVideo]): the first frame that renders says how large the movie
+/// is, the first sink that takes a job that size is opened with it
+/// ([_openSink]), and every frame after goes into that sink.
 class VideoExportService {
   const VideoExportService({
     this.executable = 'ffmpeg',
@@ -100,6 +98,11 @@ class VideoExportService {
   final String executable;
   final VideoProcessStarter processStarter;
   final VideoEncoderResolver encoderResolver;
+
+  /// How many frames have been read back off the GPU (test hook) — a frame
+  /// that is the picture before it is not ([_FramePixels]).
+  @visibleForTesting
+  static int debugReadbacks = 0;
 
   /// Builds the full ffmpeg argument list for the codec matrix (EX4):
   /// MP4 = libx264/libx265 (the confirmed software H.265), MOV = libx264
@@ -117,10 +120,20 @@ class VideoExportService {
   ///
   /// The container is [outputFilePath]'s: ffmpeg muxes by the extension,
   /// which the export dialog names from the container it was given.
+  ///
+  /// The frames arrive RAW — [width]×[height] of RGBA, a frame after a
+  /// frame with nothing between them, so the size is said here because the
+  /// stream cannot say it. ↩️They arrived as PNGs (`image2pipe`): every
+  /// frame was deflated here and inflated there for a picture that lives
+  /// only as long as the pipe — a cost the OS encoder's road never paid
+  /// (F-289, 유저 2026-10-05: 「비디오 출력하는데 너무 느린데? mp4도 느리고
+  /// mov의 첫번째 코덱도 느렸음」).
   @visibleForTesting
   static List<String> buildFfmpegArguments({
     required ProjectFrameRate frameRate,
     required String outputFilePath,
+    required int width,
+    required int height,
     String? audioMixPath,
     ExportVideoCodec codec = ExportVideoCodec.h264,
     bool alpha = false,
@@ -142,7 +155,11 @@ class VideoExportService {
     final args = <String>[
       '-y',
       '-f',
-      'image2pipe',
+      'rawvideo',
+      '-pixel_format',
+      'rgba',
+      '-video_size',
+      '${width}x$height',
       '-framerate',
       frameRate.ffmpegRateArgument,
       '-i',
@@ -202,6 +219,18 @@ class VideoExportService {
     ],
   ];
 
+  /// Walks the [count] frames into the movie at [outputFilePath].
+  ///
+  /// The movie is the size of the first frame that renders
+  /// ([_firstRenderedFrame]), and every frame after it is held to that: a
+  /// raw frame of another size would be read at this one by whichever sink
+  /// has the run — its pixels sliding across every frame behind it, or
+  /// bytes read past its end.
+  ///
+  /// ↩️Each sink walked the frames for itself, and the OS encoder's walk
+  /// rendered the first frame to learn whether the OS would take the job —
+  /// so a job it refused (every MOV on Windows) rendered that frame again
+  /// for ffmpeg.
   Future<ExportWriteSummary> exportVideo({
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
@@ -215,41 +244,81 @@ class VideoExportService {
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    final encoder = encoderResolver();
-    if (encoder != null && encoder.isSupported) {
-      try {
-        return await _exportViaOsEncoder(
-          encoder: encoder,
-          count: count,
-          renderImage: renderImage,
-          outputFilePath: outputFilePath,
-          frameRate: frameRate,
-          audioMixPath: audioMixPath,
-          container: container,
-          codec: codec,
-          alpha: alpha,
-          bitrateBps: bitrateBps,
-          onProgress: onProgress,
-          isCancelled: isCancelled,
-        );
-      } on _OsEncoderRefused {
-        // The OS could not take the job (an N-edition Windows with no
-        // codec pack, MOV/ProRes on Windows, a refused format) — the
-        // ffmpeg path below still can.
-      }
+    if (count <= 0) {
+      return (written: 0, processed: 0);
     }
-    return _exportViaFfmpeg(
+    final probe = await _firstRenderedFrame(
       count: count,
       renderImage: renderImage,
-      outputFilePath: outputFilePath,
-      frameRate: frameRate,
-      audioMixPath: audioMixPath,
-      codec: codec,
-      alpha: alpha,
-      bitrateBps: bitrateBps,
       onProgress: onProgress,
       isCancelled: isCancelled,
     );
+    var processed = probe.processed;
+    var index = probe.nextIndex;
+    if (probe.cancelled) {
+      return (written: 0, processed: processed);
+    }
+    final first = probe.image;
+    if (first == null) {
+      // Nothing rendered at all: no frame says how large the movie is, so
+      // there is no encoder to open.
+      throw const VideoExportException('video export: nothing rendered');
+    }
+    final width = first.width;
+    final height = first.height;
+    final _FrameSink sink;
+    try {
+      sink = await _openSink(
+        width: width,
+        height: height,
+        outputFilePath: outputFilePath,
+        frameRate: frameRate,
+        audioMixPath: audioMixPath,
+        container: container,
+        codec: codec,
+        alpha: alpha,
+        bitrateBps: bitrateBps,
+      );
+    } on Object {
+      first.dispose();
+      rethrow;
+    }
+
+    /// Ends a run that cannot go on: [why], or what the sink says of it.
+    Future<Never> giveUp([String? why]) async {
+      final said = await sink.abandon();
+      throw VideoExportException(why ?? said);
+    }
+
+    if (!await sink.take(first)) {
+      await giveUp();
+    }
+    var cancelled = false;
+    while (index < count) {
+      if (isCancelled?.call() ?? false) {
+        cancelled = true;
+        break;
+      }
+      final image = await renderImage(index);
+      index += 1;
+      if (image != null) {
+        if (image.width != width || image.height != height) {
+          final size = '${image.width}x${image.height}';
+          image.dispose();
+          await giveUp(
+            'video export: frame $index is $size in a movie of '
+            '${width}x$height',
+          );
+        }
+        if (!await sink.take(image)) {
+          await giveUp();
+        }
+      }
+      processed += 1;
+      onProgress?.call(processed, count);
+    }
+    await sink.finish(cancelled: cancelled);
+    return (written: sink.written, processed: processed);
   }
 
   /// The FIRST frame that renders, and how far the run got finding it.
@@ -297,133 +366,50 @@ class VideoExportService {
     );
   }
 
-  /// The OS-encoder run: raw RGBA frames straight into the system H.264
-  /// encoder, the mixed WAV read back in per-frame chunks and fed to the
-  /// system AAC encoder — interleaved, so neither side buffers the track.
-  Future<ExportWriteSummary> _exportViaOsEncoder({
-    required QaVideoEncoder encoder,
-    required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
+  /// The first sink that takes a movie of [width]×[height]: the OS encoder
+  /// when this machine has one and it accepts the job, the ffmpeg pipe
+  /// otherwise.
+  Future<_FrameSink> _openSink({
+    required int width,
+    required int height,
     required String outputFilePath,
     required ProjectFrameRate frameRate,
-    String? audioMixPath,
+    required String? audioMixPath,
     required ExportVideoContainer container,
     required ExportVideoCodec codec,
     required bool alpha,
     required int bitrateBps,
-    void Function(int completed, int total)? onProgress,
-    bool Function()? isCancelled,
   }) async {
-    if (count <= 0) {
-      return (written: 0, processed: 0);
-    }
-    final probe = await _firstRenderedFrame(
-      count: count,
-      renderImage: renderImage,
-      onProgress: onProgress,
-      isCancelled: isCancelled,
-    );
-    var processed = probe.processed;
-    var index = probe.nextIndex;
-    if (probe.cancelled) {
-      return (written: 0, processed: processed);
-    }
-    final first = probe.image;
-    if (first == null) {
-      // Nothing rendered at all — same outcome the pipe path reports.
-      throw const VideoExportException('video export: nothing rendered');
-    }
-
-    // The mix is the WAV the dialog wrote ([ConformPcmStreamReader.overWav16]).
-    final audio = audioMixPath == null
-        ? null
-        : ConformPcmStreamReader.overWav16(MediaFileBytes(audioMixPath));
-    if (!encoder.open(
-      path: outputFilePath,
-      width: first.width,
-      height: first.height,
-      fpsNumerator: frameRate.numerator,
-      fpsDenominator: frameRate.denominator,
-      sampleRate: audio?.sampleRate ?? 0,
-      channels: audio?.channels ?? 0,
-      container: container.abiValue,
-      codec: codec.abiValue,
-      alpha: alpha,
-      bitrateBps: bitrateBps,
-    )) {
-      first.dispose();
-
-      throw const _OsEncoderRefused();
-    }
-
-    final feed = _OsEncoderFeed(
-      encoder: encoder,
-      audio: audio,
-      frameRate: frameRate,
-    );
-    var failed = false;
-    var cancelled = false;
-
-    if (!await feed.feed(first)) {
-      failed = true;
-    }
-    while (!failed && index < count) {
-      if (isCancelled?.call() ?? false) {
-        cancelled = true;
-        break;
+    final encoder = encoderResolver();
+    if (encoder != null && encoder.isSupported) {
+      // The mix is the WAV the dialog wrote
+      // ([ConformPcmStreamReader.overWav16]).
+      final audio = audioMixPath == null
+          ? null
+          : ConformPcmStreamReader.overWav16(MediaFileBytes(audioMixPath));
+      if (encoder.open(
+        path: outputFilePath,
+        width: width,
+        height: height,
+        fpsNumerator: frameRate.numerator,
+        fpsDenominator: frameRate.denominator,
+        sampleRate: audio?.sampleRate ?? 0,
+        channels: audio?.channels ?? 0,
+        container: container.abiValue,
+        codec: codec.abiValue,
+        alpha: alpha,
+        bitrateBps: bitrateBps,
+      )) {
+        return _OsEncoderFeed(
+          encoder: encoder,
+          audio: audio,
+          frameRate: frameRate,
+        );
       }
-      final image = await renderImage(index);
-      index += 1;
-      if (image != null && !await feed.feed(image)) {
-        failed = true;
-        break;
-      }
-      processed += 1;
-      onProgress?.call(processed, count);
+      // The OS could not take the job (an N-edition Windows with no codec
+      // pack, MOV/ProRes on Windows, a refused format) — the ffmpeg pipe
+      // below still can.
     }
-
-    _closeOsEncoder(encoder, failed: failed, cancelled: cancelled);
-    return (written: feed.written, processed: processed);
-  }
-
-  /// Ends the OS-encoder run: a failed feed aborts the file, anything else
-  /// finalizes it.
-  ///
-  /// A CANCELLED run finalizes a playable partial — the pipe path's
-  /// behavior, kept. ⚠️Untested (2026-09-05): nothing cancels the OS path
-  /// mid-run yet, so `&& !cancelled` mutates away green.
-  static void _closeOsEncoder(
-    QaVideoEncoder encoder, {
-    required bool failed,
-    required bool cancelled,
-  }) {
-    if (failed) {
-      final detail = encoder.lastError;
-      encoder.abort();
-      throw VideoExportException(
-        detail.isEmpty ? 'video export: the OS encoder failed' : detail,
-      );
-    }
-    if (!encoder.finish() && !cancelled) {
-      final detail = encoder.lastError;
-      throw VideoExportException(
-        detail.isEmpty ? 'video export: the MP4 failed to finalize' : detail,
-      );
-    }
-  }
-
-  Future<ExportWriteSummary> _exportViaFfmpeg({
-    required int count,
-    required Future<ui.Image?> Function(int index) renderImage,
-    required String outputFilePath,
-    required ProjectFrameRate frameRate,
-    String? audioMixPath,
-    ExportVideoCodec codec = ExportVideoCodec.h264,
-    bool alpha = false,
-    int bitrateBps = 0,
-    void Function(int completed, int total)? onProgress,
-    bool Function()? isCancelled,
-  }) async {
     final Process process;
     try {
       process = await processStarter(
@@ -431,6 +417,8 @@ class VideoExportService {
         buildFfmpegArguments(
           frameRate: frameRate,
           outputFilePath: outputFilePath,
+          width: width,
+          height: height,
           audioMixPath: audioMixPath,
           codec: codec,
           alpha: alpha,
@@ -442,66 +430,7 @@ class VideoExportService {
         'ffmpeg not found — install FFmpeg and make sure it is on PATH.',
       );
     }
-
-    final stderrTail = StringBuffer();
-    final stderrDone = _drainStderrTail(process, into: stderrTail);
-    final stdoutDone = process.stdout.drain<void>().catchError((Object _) {});
-
-    var written = 0;
-    var processed = 0;
-    var pipeBroken = false;
-    var cancelled = false;
-    for (var index = 0; index < count; index += 1) {
-      if (isCancelled?.call() ?? false) {
-        cancelled = true;
-        break;
-      }
-      final image = await renderImage(index);
-      if (image != null) {
-        try {
-          final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-          process.stdin.add(bytes!.buffer.asUint8List());
-          await process.stdin.flush();
-          written += 1;
-        } on Object {
-          // ffmpeg died mid-stream (broken pipe); its stderr explains why.
-          pipeBroken = true;
-          break;
-        } finally {
-          image.dispose();
-        }
-      }
-      processed += 1;
-      onProgress?.call(processed, count);
-    }
-
-    if (cancelled && written == 0) {
-      // Nothing was fed; an empty pipe makes ffmpeg exit with an error and
-      // there is no partial video to finalize.
-      process.kill();
-      await process.exitCode;
-      await stderrDone;
-      await stdoutDone;
-      return (written: written, processed: processed);
-    }
-
-    try {
-      await process.stdin.close();
-    } on Object {
-      pipeBroken = true;
-    }
-    final exitCode = await process.exitCode;
-    await stderrDone;
-    await stdoutDone;
-
-    // A cancelled run keeps whatever partial video ffmpeg finalized; only a
-    // completed run that failed to encode is an error.
-    if (!cancelled && (exitCode != 0 || pipeBroken)) {
-      throw VideoExportException(
-        'ffmpeg failed (exit $exitCode): ${_lastLinesOf(stderrTail)}',
-      );
-    }
-    return (written: written, processed: processed);
+    return _FfmpegPipe(process);
   }
 
   /// Reads the process's stderr into [into], keeping only the TAIL: ffmpeg
@@ -540,13 +469,79 @@ class VideoExportService {
   }
 }
 
+/// The pixels of the frame a sink took last, read off the GPU in [format].
+///
+/// 🚨A FRAME THAT IS THE PICTURE BEFORE IT IS NOT READ BACK. The renderer
+/// hands such a frame as the SAME image (`ExportFrameRenderer`'s held
+/// frames; `ui.Image.isCloneOf`), and one image is one set of bytes — so
+/// they go in again as they were read. Nothing here decides that two
+/// pictures look alike.
+///
+/// ↩️Every frame was read back (F-289, measured 2026-10-07: 27 ms a frame
+/// of 960×540 beside 5.5 ms for the OS encoder to take it — on a film
+/// where four frames in five are the frame before them).
+class _FramePixels {
+  _FramePixels(this.format);
+
+  final ui.ImageByteFormat format;
+
+  ui.Image? _image;
+  Uint8List? _bytes;
+
+  /// [image]'s pixels — and [image] is this's from here on: kept to know
+  /// the next frame by, or let go at once when it is the one already kept.
+  /// Null when the engine handed nothing back.
+  Future<Uint8List?> of(ui.Image image) async {
+    final kept = _image;
+    if (kept != null && image.isCloneOf(kept)) {
+      image.dispose();
+      return _bytes;
+    }
+    kept?.dispose();
+    _image = image;
+    _bytes = null;
+    VideoExportService.debugReadbacks += 1;
+    final data = await image.toByteData(format: format);
+    return _bytes = data?.buffer.asUint8List();
+  }
+
+  void dispose() {
+    _image?.dispose();
+    _image = null;
+    _bytes = null;
+  }
+}
+
+/// Where one run's frames go, once it is known how large they are: the OS
+/// encoder ([_OsEncoderFeed]) or the ffmpeg pipe ([_FfmpegPipe]).
+///
+/// A run ends ONE of two ways — [finish] or [abandon] — so nothing can ask
+/// a sink to end a run that both failed and was cancelled.
+abstract interface class _FrameSink {
+  /// How many frames have gone in.
+  int get written;
+
+  /// Takes [image]'s pixels and lets go of it. False means the sink can
+  /// take no more; the run is [abandon]ed.
+  Future<bool> take(ui.Image image);
+
+  /// Ends a run that reached its end or was [cancelled]: the file is
+  /// finalized, and a cancelled run keeps the playable partial it got to.
+  /// Throws when the file did not come out and nobody cancelled.
+  Future<void> finish({required bool cancelled});
+
+  /// Ends a run that cannot go on, and answers what the sink has to say
+  /// about it.
+  Future<String> abandon();
+}
+
 /// The A/V feed of one OS-encoder run: how many video frames have gone
 /// in, and how much audio the timeline owes for them.
 ///
 /// 🚨THE TWO CURSORS MOVE TOGETHER. The audio target is read from the
 /// written frame count through the SAME `frameToSample` pairing the clock
 /// uses, so A and V cannot come to disagree about where a frame sits.
-class _OsEncoderFeed {
+class _OsEncoderFeed implements _FrameSink {
   _OsEncoderFeed({
     required this.encoder,
     required this.audio,
@@ -557,22 +552,50 @@ class _OsEncoderFeed {
   final ConformPcmStreamReader? audio;
   final ProjectFrameRate frameRate;
 
+  @override
   int written = 0;
   int _audioCursor = 0;
 
+  /// Exactly what the encoder takes: the renderer's own premultiplied
+  /// rows.
+  final _FramePixels _pixels = _FramePixels(ui.ImageByteFormat.rawRgba);
+
   /// Writes [image] and the audio that now owes for it. False means the
   /// encoder refused something and the run is over.
-  Future<bool> feed(ui.Image image) async {
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    if (data == null) {
+  @override
+  Future<bool> take(ui.Image image) async {
+    final rgba = await _pixels.of(image);
+    if (rgba == null) {
       return false;
     }
-    if (!encoder.writeFrame(data.buffer.asUint8List())) {
+    if (!encoder.writeFrame(rgba)) {
       return false;
     }
     written += 1;
     return _feedAudioUpTo(written);
+  }
+
+  /// A CANCELLED run finalizes a playable partial — the pipe path's
+  /// behavior, kept. ⚠️Untested (2026-09-05): nothing cancels the OS path
+  /// mid-run yet, so `&& !cancelled` mutates away green.
+  @override
+  Future<void> finish({required bool cancelled}) async {
+    _pixels.dispose();
+    if (!encoder.finish() && !cancelled) {
+      final detail = encoder.lastError;
+      throw VideoExportException(
+        detail.isEmpty ? 'video export: the MP4 failed to finalize' : detail,
+      );
+    }
+  }
+
+  /// A failed feed aborts the file.
+  @override
+  Future<String> abandon() async {
+    _pixels.dispose();
+    final detail = encoder.lastError;
+    encoder.abort();
+    return detail.isEmpty ? 'video export: the OS encoder failed' : detail;
   }
 
   bool _feedAudioUpTo(int frames) {
@@ -613,4 +636,77 @@ class _OsEncoderFeed {
     _audioCursor = target;
     return true;
   }
+}
+
+/// One ffmpeg run fed through its stdin: raw frames in, the movie out when
+/// the pipe closes.
+class _FfmpegPipe implements _FrameSink {
+  _FfmpegPipe(this._process) {
+    _stderrDone = VideoExportService._drainStderrTail(
+      _process,
+      into: _stderrTail,
+    );
+    _stdoutDone = _process.stdout.drain<void>().catchError((Object _) {});
+  }
+
+  final Process _process;
+  final StringBuffer _stderrTail = StringBuffer();
+  late final Future<void> _stderrDone;
+  late final Future<void> _stdoutDone;
+
+  @override
+  int written = 0;
+
+  /// STRAIGHT alpha, as `rgba` means to ffmpeg — and as the PNGs this pipe
+  /// used to carry held it, so a pixel the picture leaves part clear goes
+  /// in with the colour it went in with before.
+  final _FramePixels _pixels = _FramePixels(
+    ui.ImageByteFormat.rawStraightRgba,
+  );
+
+  @override
+  Future<bool> take(ui.Image image) async {
+    try {
+      _process.stdin.add((await _pixels.of(image))!);
+      await _process.stdin.flush();
+      written += 1;
+      return true;
+    } on Object {
+      // ffmpeg died mid-stream (broken pipe); its stderr explains why.
+      return false;
+    }
+  }
+
+  @override
+  Future<void> finish({required bool cancelled}) async {
+    final ended = await _waitOut();
+    // A cancelled run keeps whatever partial video ffmpeg finalized; only a
+    // completed run that failed to encode is an error.
+    if (!cancelled && (ended.exitCode != 0 || ended.pipeBroken)) {
+      throw VideoExportException(_complaintAt(ended.exitCode));
+    }
+  }
+
+  @override
+  Future<String> abandon() async => _complaintAt((await _waitOut()).exitCode);
+
+  /// Closes the pipe and waits ffmpeg out: how it exited, and whether the
+  /// pipe was already gone when it was closed.
+  Future<({int exitCode, bool pipeBroken})> _waitOut() async {
+    _pixels.dispose();
+    var pipeBroken = false;
+    try {
+      await _process.stdin.close();
+    } on Object {
+      pipeBroken = true;
+    }
+    final exitCode = await _process.exitCode;
+    await _stderrDone;
+    await _stdoutDone;
+    return (exitCode: exitCode, pipeBroken: pipeBroken);
+  }
+
+  String _complaintAt(int exitCode) =>
+      'ffmpeg failed (exit $exitCode): '
+      '${VideoExportService._lastLinesOf(_stderrTail)}';
 }

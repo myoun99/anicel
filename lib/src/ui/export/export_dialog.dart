@@ -192,7 +192,16 @@ class ExportDialogState extends State<ExportDialog> {
   bool _isExporting = false;
   bool _cancelRequested = false;
   String? _statusMessage;
-  (int completed, int total)? _progress;
+
+  /// How far the run under way has got — null when none is. The footer's
+  /// bar is all that hears it ([_footerBetween]).
+  ///
+  /// ↩️It was the window's own state, and every frame of a run rebuilt the
+  /// whole window to move the bar — and wrote a sentence counting the
+  /// frames into the status line, which a run keeps out of sight.
+  final ValueNotifier<(int completed, int total)?> _progress = ValueNotifier(
+    null,
+  );
 
   // The preview's renderers key on (FX, ground): both change what a frame
   // looks like (EX4).
@@ -290,6 +299,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   @override
   void dispose() {
+    _progress.dispose();
     _sequenceFileController.dispose();
     _imageFileController.dispose();
     _conteFileController.dispose();
@@ -889,6 +899,8 @@ class ExportDialogState extends State<ExportDialog> {
       final image = await composeTiledSurfaceImage(
         surface,
         reuse: BitmapTileImageCache.instance,
+        // An export's own render: the run waits for it.
+        missing: MissingTilePictures.madeAtOnce,
       );
       if (image != null) {
         images[key] = image;
@@ -1671,10 +1683,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   void _reportProgress(int completed, int total) {
     if (mounted) {
-      setState(() {
-        _progress = (completed, total);
-        _statusMessage = AppText.strings.exExportingProgress(completed, total);
-      });
+      _progress.value = (completed, total);
     }
     final jobId = _activeJobId;
     if (jobId != null) {
@@ -1689,7 +1698,6 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
-      _statusMessage = AppText.strings.exExporting;
     });
     try {
       final message = await run();
@@ -1702,10 +1710,8 @@ class ExportDialogState extends State<ExportDialog> {
       }
     } finally {
       if (mounted) {
-        setState(() {
-          _isExporting = false;
-          _progress = null;
-        });
+        _progress.value = null;
+        setState(() => _isExporting = false);
       }
     }
   }
@@ -1950,7 +1956,6 @@ class ExportDialogState extends State<ExportDialog> {
     setState(() {
       _isExporting = true;
       _cancelRequested = false;
-      _statusMessage = AppText.strings.exRenderingQueue;
     });
     var succeeded = 0;
     var failed = 0;
@@ -1978,9 +1983,9 @@ class ExportDialogState extends State<ExportDialog> {
     } finally {
       _activeJobId = null;
       if (mounted) {
+        _progress.value = null;
         setState(() {
           _isExporting = false;
-          _progress = null;
           _tab = snapshotTab;
           _specs = snapshotSpecs;
           _destination = snapshotDestination;
@@ -2256,6 +2261,8 @@ class ExportDialogState extends State<ExportDialog> {
         AppText.strings.exFrameCount(summary.written),
       );
     } finally {
+      // The pictures the run held from one frame to the next.
+      renderer.dispose();
       if (audioMixPath != null) {
         try {
           File(audioMixPath).deleteSync();
@@ -2724,7 +2731,6 @@ class ExportDialogState extends State<ExportDialog> {
   /// a control.
   Widget _footerBetween(ThemeData theme) {
     final strings = AppText.strings;
-    final progress = _progress;
     final order = _asksWhereFirst
         ? strings.exOrderAsksFirst
         : strings.exOrderAsksAfter;
@@ -2733,12 +2739,15 @@ class ExportDialogState extends State<ExportDialog> {
         children: [
           Expanded(
             child: _isExporting
-                ? LinearProgressIndicator(
-                    key: const ValueKey<String>('export-progress'),
-                    value: progress != null && progress.$2 > 0
-                        ? progress.$1 / progress.$2
-                        : null,
-                    minHeight: 4,
+                ? ValueListenableBuilder<(int, int)?>(
+                    valueListenable: _progress,
+                    builder: (context, progress, _) => LinearProgressIndicator(
+                      key: const ValueKey<String>('export-progress'),
+                      value: progress != null && progress.$2 > 0
+                          ? progress.$1 / progress.$2
+                          : null,
+                      minHeight: 4,
+                    ),
                   )
                 : _statusNote(theme),
           ),

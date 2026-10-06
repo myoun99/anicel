@@ -10,6 +10,8 @@ import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
+import '../../helpers/awaited_uploads.dart';
+
 /// The per-tile GPU compose must be byte-identical to the CPU assembly
 /// path ([bitmapSurfaceToImage]) — with and without cache reuse — and turn
 /// the post-stroke rebuild into cache-hit draws.
@@ -311,4 +313,48 @@ void main() {
       );
     });
   }, tags: 'benchmark');
+
+  testWidgets('🚨a compose somebody WAITS for makes a missing picture at '
+      'once — the same picture, no decode round awaited, nothing kept', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final surface = patternedSurface(
+        const CanvasSize(width: 300, height: 200),
+      );
+      final awaited = countAwaitedUploads();
+
+      // The warm road: a decode round a tile.
+      final inTurn = await bytesOf((await composeTiledSurfaceImage(surface))!);
+      expect(
+        awaited(),
+        surface.tiles.length,
+        reason: 'LIVENESS: the road in turn awaits every tile',
+      );
+
+      final cache = BitmapTileImageCache();
+      final atOnce = await bytesOf(
+        (await composeTiledSurfaceImage(
+          surface,
+          reuse: cache,
+          missing: MissingTilePictures.madeAtOnce,
+        ))!,
+      );
+      expect(awaited(), surface.tiles.length, reason: 'not one more');
+      expect(atOnce, inTurn);
+      expect(
+        surface.tiles.values.every((tile) => cache.imageFor(tile) == null),
+        isTrue,
+        reason: 'the pictures were the compose\'s own, and went with it',
+      );
+
+      // The positioned road answers to the same word.
+      final positioned = (await composePositionedSurfaceImage(
+        surface,
+        missing: MissingTilePictures.madeAtOnce,
+      ))!;
+      positioned.image.dispose();
+      expect(awaited(), surface.tiles.length);
+    });
+  });
 }

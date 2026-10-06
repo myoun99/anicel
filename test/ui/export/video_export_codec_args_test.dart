@@ -14,6 +14,8 @@ void main() {
   }) => VideoExportService.buildFfmpegArguments(
     frameRate: ProjectFrameRate.fps24,
     outputFilePath: output,
+    width: 1920,
+    height: 1080,
     audioMixPath: audioMixPath,
     codec: codec,
     alpha: alpha,
