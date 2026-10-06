@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/mapped_or_same.dart';
@@ -12,18 +10,6 @@ import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
 import 'picked_file.dart';
 import '../text/app_strings.dart';
-
-Future<PickedFile?> _openTipImageDialog() async {
-  final file = await openFile(
-    // 🚨Every file (유저 2026-08-29); a non-image is refused by the decode
-    // below, which already reports failure.
-    acceptedTypeGroups: const [],
-  );
-  if (file == null) {
-    return null;
-  }
-  return (name: file.name, bytes: await File(file.path).readAsBytes());
-}
 
 /// The shared brush tip library: every sampled tip the app can put on a
 /// brush, whether it was generated, imported with a brush pack, or added by
@@ -36,7 +22,9 @@ Future<PickedFile?> _openTipImageDialog() async {
 class BrushTipLibrary extends ChangeNotifier {
   BrushTipLibrary({BrushTipLibraryService? service, FilePicker? picker})
     : _service = service ?? BrushTipLibraryService(),
-      _picker = picker ?? _openTipImageDialog;
+      // Every file is offered ([pickAnyFile]); one that is not an image is
+      // refused by the decode in [registerImageBytes], which says so.
+      _picker = picker ?? pickAnyFile;
 
   final BrushTipLibraryService _service;
   final FilePicker _picker;

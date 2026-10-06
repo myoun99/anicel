@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../core/mapped_or_same.dart';
@@ -23,21 +22,6 @@ import 'picked_file.dart';
 import '../../models/brush_hand_settings.dart';
 import '../../services/brush_pack_file.dart';
 import '../text/app_strings.dart';
-
-/// Production picker: the platform open-file dialog, showing EVERY file.
-///
-/// 🚨유저 2026-08-29: 「픽커는 어떤플랫폼이든 어떤 확장자던 선택할수
-/// 있게하고, 대응만 지원안되는 확장자면 그 때 해당 파일 지원안된다고 안내창
-/// 띄우게」. [BrushPresetLibrary.importFromFile] is the "그 때" — it already
-/// returns a user-facing message, so the refusal has somewhere to go.
-Future<PickedFile?> _openBrushFileDialog() async {
-  final file = await openFile(acceptedTypeGroups: const []);
-  if (file == null) {
-    return null;
-  }
-  final bytes = await File(file.path).readAsBytes();
-  return (name: file.name, bytes: bytes);
-}
 
 /// The brush preset library: the groups, the preset list and every
 /// mutation on them — save/rename/reorder/
@@ -112,7 +96,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     BrushTipLibrary? tipLibrary,
     this.handSettingsPort,
   }) : _fileService = fileService ?? BrushPresetFileService(),
-       _filePicker = filePicker ?? _openBrushFileDialog,
+       _filePicker = filePicker ?? pickAnyFile,
        _tipLibrary = tipLibrary;
 
   final BrushPresetFileService _fileService;
