@@ -20,7 +20,8 @@ import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
-import 'layer_label_controls.dart' show layerKindIcon;
+import 'layer_label_controls.dart'
+    show layerKindDisplayName, layerKindIcon;
 import 'rasterize_reference_rows.dart';
 import 'timeline_section_policy.dart';
 import 'toolbar_panel_context.dart';
@@ -292,19 +293,6 @@ class TimelineActionToolbar extends StatelessWidget {
     LayerKind.transition => 'transition',
   };
 
-  static String _addLayerLabel(LayerKind kind) => switch (kind) {
-    LayerKind.animation => AppText.strings.tlKindAnimation,
-    LayerKind.storyboard => AppText.strings.tlKindStoryboard,
-    LayerKind.image => AppText.strings.tlKindImage,
-    LayerKind.se => AppText.strings.tlKindSe,
-    LayerKind.instruction => AppText.strings.tlKindInstruction,
-    LayerKind.adjustment => AppText.strings.tlKindAdjustment,
-    LayerKind.folder => AppText.strings.tlKindFolder,
-    // Neither is offered by the Add menu — a cut owns exactly one camera and
-    // the transition row belongs to the track.
-    LayerKind.camera || LayerKind.transition => '',
-  };
-
   List<PanelFlyoutEntry> _addLayerEntries() {
     return [
       PanelFlyoutHeader(AppText.strings.tlAddLayerHeader),
@@ -334,10 +322,15 @@ class TimelineActionToolbar extends StatelessWidget {
         // dropping rows on it — the file-manager shape, replacing "group the
         // active layer into a folder".
         LayerKind.folder,
+        // Neither the camera nor the transition is offered — a cut owns
+        // exactly one camera and the transition row belongs to the track.
       ])
         PanelFlyoutItem(
           keyValue: 'add-layer-kind-${_addLayerKeySuffix(kind)}',
-          label: _addLayerLabel(kind),
+          // The kind's ONE name ([layerKindDisplayName]) — the rail's and
+          // the kind flyout's. ↩️This menu kept a switch of its own over the
+          // same table, which answered the same until a kind was added.
+          label: layerKindDisplayName(kind),
           icon: layerKindIcon(kind),
           // R9 #7: one storyboard row per cut — the entry greys out once the
           // cut has it, instead of accepting the tap and doing nothing.
