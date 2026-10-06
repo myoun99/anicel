@@ -69,6 +69,16 @@ enum CanvasTool {
   /// needed and both work on a tablet with no keyboard. TVPaint solves the
   /// same problem with two separate tools (Cutting tool / Custom Brush).
   cutStamp,
+
+  /// Sets TEXT on the cel (R9-rest). 🗣️유저 2026-10-02: 「클튜나 포토샵이랑
+  /// 동일하게 텍스트툴로 캔버스에 클릭하면 텍스트 박스가 생김. 거기서 입력 …
+  /// 텍스트 레이어가 존재하지않음 … 기존 그림 레이어에 텍스트툴로 텍스트
+  /// 들어가고, 복수 텍스트 들어갈수있음」. A click starts a text, a drag a box
+  /// that wide, and a press on a text takes hold of it; what it sets lives
+  /// in the cel's own picture (`BitmapSurface.texts`).
+  ///
+  /// ⚠️Its NAME is a file token (`tool_choice.dart` writes a tool by name).
+  text,
 }
 
 /// Whether [tool] lifts a piece into the cut slot.
@@ -127,7 +137,10 @@ bool canvasToolMarksCel(CanvasTool tool) =>
     // The stamp drops pixels on the cel, so a press with it armed has to
     // count as drawing — the empty-cel guard this predicate feeds must not
     // let a stamp land on nothing.
-    canvasToolStamps(tool);
+    canvasToolStamps(tool) ||
+    // A text is set ON a cel (유저 2026-10-06: 「주인은 셀임」), so a press
+    // on a frame with none makes one first, as a stroke's does.
+    tool == CanvasTool.text;
 
 /// Whether [tool] mounts the selection interaction layer (the P9
 /// marquee/lasso tools and the move tool that drags their region).
@@ -190,6 +203,7 @@ CanvasTool canvasToolRailGroup(CanvasTool tool) => switch (tool) {
   // three modes are settings, not tiles (see [canvasToolTransforms]).
   CanvasTool.move => CanvasTool.move,
   CanvasTool.cut || CanvasTool.cutStamp => CanvasTool.cut,
+  CanvasTool.text => CanvasTool.text,
 };
 
 /// Editor-session state for the active brush tool options.
@@ -791,6 +805,8 @@ class BrushToolState {
   ///   the strip's slider on purpose (08-12: 크기 슬라이더와 공유 금지).
   /// - grab / select / move / guide / eyedropper: none. They put no pixels
   ///   down at all.
+  /// - text: none. Its letters have a size and a colour of their own, in the
+  ///   tool settings — the brush's are not read (유저 2026-10-06).
   bool supports(ToolParameter parameter) => switch (tool) {
     CanvasTool.brush || CanvasTool.eraser => true,
     CanvasTool.fill || CanvasTool.fillShape || CanvasTool.cutStamp =>

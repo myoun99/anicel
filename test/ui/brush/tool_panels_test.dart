@@ -299,6 +299,8 @@ void main() {
         CanvasTool.move: {},
         CanvasTool.guide: {},
         CanvasTool.eyedropper: {},
+        // The text's size and colour are its own, in the tool settings.
+        CanvasTool.text: {},
       };
       expect(
         table.keys.toSet(),
@@ -338,6 +340,7 @@ void main() {
         CanvasTool.guide: CanvasTool.guide,
         CanvasTool.select: CanvasTool.select,
         CanvasTool.move: CanvasTool.move,
+        CanvasTool.text: CanvasTool.text,
       };
       expect(
         groups.keys.toSet(),

@@ -358,6 +358,8 @@ class _InteractiveCanvasBuild {
       unframedFit: playbackFraming,
       viewCommands: _state.widget.canvasViewCommands,
       selectionCommands: _state.widget.canvasSelectionCommands,
+      textCommands: _state.widget.canvasTextCommands,
+      textToolOptions: _state.widget.textToolOptions,
       cutPieceSlot: _state.widget.cutPieceSlot,
       lastStroke: _state.widget.lastStroke,
       // R13-3: a live stroke holds the prerender warmer — composite

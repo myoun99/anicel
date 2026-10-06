@@ -83,7 +83,12 @@ import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
 import '../../core/dev_profile.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
+import 'text_tool_options.dart';
 import 'transform_tool_options.dart';
+import '../canvas/text/cel_text_stage.dart';
+import '../canvas/text/cel_text_tool.dart';
+import '../canvas/text/cel_text_tool_layer.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_book.dart';
 import 'canvas_view_commands.dart';
@@ -111,6 +116,7 @@ part 'canvas_panel/canvas_panel_tool_cursor.dart';
 part 'canvas_panel/canvas_panel_tap.dart';
 part 'canvas_panel/canvas_panel_lift.dart';
 part 'canvas_panel/canvas_panel_mapped_buttons.dart';
+part 'canvas_panel/canvas_panel_text.dart';
 part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
@@ -234,6 +240,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.transformOptions,
     this.viewCommands,
     this.selectionCommands,
+    this.textCommands,
+    this.textToolOptions,
     this.cutPieceSlot,
     this.lastStroke,
     this.onCutContent,
@@ -835,6 +843,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the selection layer while a selection tool is active.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// The app-level text channel (R9-rest): the panel binds the hand it
+  /// holds texts with, so the tool settings and the keys reach the text on
+  /// the canvas. Null in a host that is not the app's canvas.
+  final CelTextCommands? textCommands;
+
+  /// What the next text set with the text tool starts as. Null keeps the
+  /// defaults.
+  final ValueListenable<TextToolOptions>? textToolOptions;
+
   /// Where a finished cut lands. Null in hosts that do not offer the tool
   /// (the cut variants are then inert rather than crashing).
   final CutPieceSlot? cutPieceSlot;
@@ -971,6 +988,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// touch is locked out of the viewport as well.
   bool _transformDragActive = false;
 
+  /// True while the text tool follows a press — a text moved, sized or
+  /// turned, letters selected, a box traced: the viewport's gestures hold
+  /// as they do for a stroke.
+  bool _textDragActive = false;
+
   CanvasAutoFrameRequest? _pendingAutoFrame;
 
 
@@ -1082,12 +1104,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // timeline's thumbnail, the storyboard, playback, a neighbour's onion
     // skin — keeps showing the picture as it stands, which is what an
     // uncommitted edit should look like from outside the tool.
-    final holed = identity == null
+    //
+    // 🚨AND SO IS A TEXT THE TEXT TOOL HOLDS (R9-rest): the cel with that
+    // text laid in as it is shown — typed, dragged or set differently, and
+    // not on its cel until it lands (`CelTextSession`). The two never meet:
+    // each is its own tool's, and another tool in hand lands either.
+    final held = identity == null
         ? null
-        : _lift.holedSurfaceFor(identity.key);
-    final token = identity == null || holed == null
+        : _lift.holedSurfaceFor(identity.key) ??
+              _text.shownSurfaceFor(identity.key, identity.surface);
+    final token = identity == null || held == null
         ? identity
-        : (surface: holed, key: identity.key, fx: identity.fx);
+        : (surface: held, key: identity.key, fx: identity.fx);
     if (token == null) {
       _memoActiveSurfacePainter = null;
       _activeSurfacePainterToken = null;
@@ -1187,6 +1215,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       ..addListener(_viewportState.handleViewportMovedByOwner);
     _bookState.bind();
     widget.selectionCommands?.addListener(_selectionSeat.handleSelectionChannelChanged);
+    _text.bind();
     _builtFor = BrushCanvasPanel.structureOf(_brush);
     widget.brushToolState?.addListener(_handleBrushChanged);
     _selectionSeat.bindSelectionHistoryRecorder();
@@ -1327,6 +1356,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     CanvasPanHold.held.removeListener(_onPanHoldChanged);
     widget.selectionCommands?.removeListener(_selectionSeat.handleSelectionChannelChanged);
+    // What the text tool held lands on the way out, and its channel goes
+    // quiet.
+    _text.dispose();
     widget.brushToolState?.removeListener(_handleBrushChanged);
     _selectionSeat.unbindSelectionHistoryRecorder();
     // Leave no verb pointing at a dead State: the buttons must go dead
@@ -1583,6 +1615,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       widget.selectionCommands,
       _selectionSeat.handleSelectionChannelChanged,
     );
+    _text.bind();
     // A host can hand over another brush to hear (the viewer's cut tool per
     // shape); the build this update leads to is the rebuild.
     rebindListener(
@@ -2098,6 +2131,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   // The lift (Round 6): anchors, the pre-landing surface, and how a lift ends.
   late final _CanvasPanelLift _lift = _CanvasPanelLift(this);
+
+  // The text tool (R9-rest): the hand it holds a text with, and its layer.
+  late final _CanvasPanelText _text = _CanvasPanelText(this);
 
   /// R26 #13 follow-up: the active cel's tight ink bounds — the implicit
   /// whole-picture transform box frames exactly the picture, PS-style.

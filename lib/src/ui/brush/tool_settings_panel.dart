@@ -23,6 +23,9 @@ import 'brush_tool_state.dart';
 import 'tool_settings_section.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
+import 'text_tool_options.dart';
+import 'text_tool_settings.dart';
 import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
@@ -53,6 +56,8 @@ class ToolSettingsPanel extends StatelessWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.onTransformOptionsChanged,
     this.selectionCommands,
+    this.textOptions,
+    this.textCommands,
     this.canvasSize,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
@@ -116,6 +121,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// The text tool's own (R9-rest): the next text's values, and the channel
+  /// to the text the canvas holds. Null in a host that owns neither.
+  final ValueNotifier<TextToolOptions>? textOptions;
+  final CelTextCommands? textCommands;
 
   /// The canvas on screen, whose pasteboard wall the selection tool's
   /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
@@ -262,6 +272,10 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           options: transformOptions,
           onOptionsChanged: onTransformOptionsChanged,
+        ),
+        CanvasTool.text => TextToolSettings(
+          options: textOptions,
+          commands: textCommands,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.

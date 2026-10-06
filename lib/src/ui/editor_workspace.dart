@@ -48,6 +48,8 @@ import 'brush/brush_preset_view_options.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
+import 'brush/text_tool_options.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
 import 'brush/transform_tool_options.dart';
@@ -199,6 +201,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasViewCommands,
     this.canvasNavigationRegionKey,
     this.canvasSelectionCommands,
+    this.canvasTextCommands,
     this.lastStroke,
     this.toolHold,
     this.confirm,
@@ -241,6 +244,10 @@ class EditorWorkspace extends StatefulWidget {
 
   /// The shell-owned selection shortcut channel (P9, Ctrl+D + nudges).
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The shell-owned text channel (R9-rest): the canvas binds the text it
+  /// holds, and the tool settings show and change it.
+  final CelTextCommands? canvasTextCommands;
 
   /// The last drawing action (shell-owned — it outlives a project),
   /// forwarded to the canvas that records and lays it down.

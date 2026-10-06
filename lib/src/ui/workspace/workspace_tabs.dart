@@ -300,6 +300,8 @@ class _WorkspaceTabs {
                   canvasViewCommands: _state.widget.canvasViewCommands,
                   navigationRegionKey: _state.widget.canvasNavigationRegionKey,
                   canvasSelectionCommands: _state.widget.canvasSelectionCommands,
+                  canvasTextCommands: _state.widget.canvasTextCommands,
+                  textToolOptions: _state._views._textToolOptions,
                   cutPieceSlot: _state._cutPieceSlot,
                   lastStroke: _state.widget.lastStroke,
                   toolHold: _state.widget.toolHold,
@@ -624,6 +626,10 @@ class _WorkspaceTabs {
                                           selectionCommands: _state
                                               .widget
                                               .canvasSelectionCommands,
+                                          textOptions:
+                                              _state._views._textToolOptions,
+                                          textCommands:
+                                              _state.widget.canvasTextCommands,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
                                           canvasSize: _state

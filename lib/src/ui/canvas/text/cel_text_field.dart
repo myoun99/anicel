@@ -1,0 +1,136 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../text/canvas_letter_style.dart';
+import '../../text/cel_text_layout.dart';
+import 'cel_text_editing_controller.dart';
+import 'cel_text_stage.dart';
+
+/// THE FIELD THE KEYBOARD TYPES INTO while a text's letters are held
+/// (R9-rest) — there for the keyboard and never seen.
+///
+/// A real field, so that everything a keyboard does to a field is done to
+/// the text with nothing written again: an IME composes into it (on Windows
+/// the IME is on only while one has the keyboard — `KeyboardImeSwitch`),
+/// the app's shortcuts stand down for it (`focusedTextField`), and the
+/// arrows, the selection keys, the clipboard and the line break are the
+/// field's own.
+///
+/// 🚨IT IS OFFSTAGE: laid out and focused, never painted, never pressed.
+/// The letters on screen are the cel's — the text's plate laid into its
+/// cel, at the cel's own resolution and under whatever is above it — which
+/// is what the text will BE (유저 절대규칙 2026-09-17: 「보이는 중이랑 결과랑
+/// 절대로 다르면 안 되」). A field drawn over the canvas would be sharp
+/// letters on top of everything, and neither.
+///
+/// It is laid out ON THE ARTWORK, where the text is — the very spans, the
+/// very width, no strut and no text scaling (the sheet's in-place editor
+/// learned each of these, `SheetTextEditLayer`) — and stood under the
+/// panel's view of it, so the IME composes beside the caret and the arrow
+/// keys move along the lines the canvas shows.
+class CelTextField extends StatelessWidget {
+  const CelTextField({
+    super.key,
+    required this.letters,
+    required this.focusNode,
+    required this.stage,
+    required this.shown,
+    required this.onEscape,
+  });
+
+  final CelTextEditingController letters;
+  final FocusNode focusNode;
+  final CelTextStage stage;
+
+  /// The text as it is shown — where the field stands.
+  final CelTextLayout shown;
+
+  /// Esc lets go of the letters; what was typed stays.
+  final VoidCallback onEscape;
+
+  /// `RenderEditable`'s gap after the last letter, with a caret of no
+  /// width: a field takes it off the width it breaks its lines at.
+  static const double _caretGap = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = letters.content;
+    final wrapWidth = content.wrapWidth;
+    Widget field = EditableText(
+      key: const ValueKey<String>('cel-text-field'),
+      controller: letters,
+      focusNode: focusNode,
+      style: celTextFieldSpan(
+        content,
+        nextLetterStyle: letters.nextLetterStyle,
+      ).style!,
+      // ⛔No strut: a field's own forces every line to one height, and the
+      // canvas sets each line as tall as its letters.
+      strutStyle: StrutStyle.disabled,
+      cursorColor: const Color(0x00000000),
+      backgroundCursorColor: const Color(0x00000000),
+      showCursor: false,
+      cursorWidth: 0,
+      maxLines: null,
+      forceLine: false,
+      keyboardType: TextInputType.multiline,
+      textInputAction: TextInputAction.newline,
+      textAlign: canvasTextAlign(content.align),
+      textDirection: TextDirection.ltr,
+      rendererIgnoresPointer: true,
+      autocorrect: false,
+      enableSuggestions: false,
+      smartDashesType: SmartDashesType.disabled,
+      smartQuotesType: SmartQuotesType.disabled,
+      stylusHandwritingEnabled: false,
+    );
+    if (wrapWidth != null) {
+      field = SizedBox(width: wrapWidth + _caretGap, child: field);
+    }
+    return Transform(
+      transform: _frame,
+      child: Offstage(
+        child: MediaQuery.withNoTextScaling(
+          child: Focus(
+            canRequestFocus: false,
+            skipTraversal: true,
+            onKeyEvent: _key,
+            child: Actions(
+              // The field's own steps back hold letters alone; the text's
+              // hold how each was set ([CelTextEditingController]).
+              actions: <Type, Action<Intent>>{
+                UndoTextIntent: CallbackAction<UndoTextIntent>(
+                  onInvoke: (_) => letters.undo(),
+                ),
+                RedoTextIntent: CallbackAction<RedoTextIntent>(
+                  onInvoke: (_) => letters.redo(),
+                ),
+              },
+              child: field,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The text's own frame — its lines' block — on the panel.
+  Matrix4 get _frame {
+    final content = letters.content;
+    return stage.artworkOnPanel
+      ..translateByDouble(content.anchor.x, content.anchor.y, 0, 1)
+      ..rotateZ(content.rotationDegrees * math.pi / 180)
+      ..translateByDouble(shown.block.left, shown.block.top, 0, 1);
+  }
+
+  KeyEventResult _key(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.escape) {
+      onEscape();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+}

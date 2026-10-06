@@ -24,6 +24,12 @@ class _WorkspaceDocumentViews {
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
 
+  /// What the next text set with the text tool starts as (R9-rest) — the
+  /// tool settings write it, the canvas reads it when a text is begun.
+  final ValueNotifier<TextToolOptions> _textToolOptions = ValueNotifier(
+    TextToolOptions.defaults,
+  );
+
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
   /// user's default is "pick what you SEE".
   final ValueNotifier<CanvasReadSource> _eyedropperSource =
@@ -116,6 +122,7 @@ class _WorkspaceDocumentViews {
   void dispose() {
     _fillOptions.dispose();
     _selectionMaskOptions.dispose();
+    _textToolOptions.dispose();
     _eyedropperSource.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();

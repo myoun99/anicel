@@ -29,6 +29,8 @@ import '../core/collection_equality.dart' show listsMatch;
 import '../core/dev_profile.dart';
 import '../models/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
+import 'brush/text_tool_options.dart';
 import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
@@ -114,6 +116,8 @@ class EditorCanvasArea extends StatefulWidget {
     this.canvasViewCommands,
     this.navigationRegionKey,
     this.canvasSelectionCommands,
+    this.canvasTextCommands,
+    this.textToolOptions,
     this.cutPieceSlot,
     this.lastStroke,
     this.toolHold,
@@ -156,6 +160,11 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level selection shortcut channel (P9: Ctrl+D, nudges),
   /// forwarded the same way.
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// The app-level text channel and the next text's values (R9-rest),
+  /// forwarded to the canvas that holds texts.
+  final CelTextCommands? canvasTextCommands;
+  final ValueListenable<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — owned by the workspace so the piece
   /// outlives every project the canvas shows.

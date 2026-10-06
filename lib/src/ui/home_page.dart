@@ -48,6 +48,7 @@ import 'input/contact_census.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
+import 'brush/cel_text_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
@@ -273,6 +274,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final CanvasSelectionCommands _canvasSelectionCommands =
       CanvasSelectionCommands();
 
+  /// The text tool's channel (R9-rest): the keys, a step of history about
+  /// to be taken and a project going off screen reach the text the canvas
+  /// is holding through here. The WINDOW's, as the selection's is.
+  final CelTextCommands _canvasTextCommands = CelTextCommands();
+
   /// The last drawing action, which 확정 lays down again. Shell-owned
   /// because it outlives a project (유저: 「프로그램을 닫을 때까지」).
   final LastStrokeSlot _lastStroke = LastStrokeSlot();
@@ -280,6 +286,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   /// 확정 — Enter here, and the rail's ↵ and 적용 in the workspace.
   late final ConfirmVerb _confirm = ConfirmVerb(
     selection: _canvasSelectionCommands,
+    text: _canvasTextCommands,
     lastStroke: _lastStroke,
     tool: _brushTool,
     transformOptions: _transformOptions,
@@ -552,11 +559,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     if (_onScreen != null) {
       _canvasSelectionCommands.confirmPendingMove();
+      // R9-rest: and a text in hand lands on the project it was set in.
+      _canvasTextCommands.landNow();
     }
     _onScreen = session;
     _canvasSelectionCommands.document = session.canvasSelection;
     _history = HistoryVerbs(
       selection: _canvasSelectionCommands,
+      text: _canvasTextCommands,
       session: session,
       contactIsDown: () => _contacts.anyDown,
     );
@@ -1026,12 +1036,19 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       case EditorActionIds.editPasteIndependent:
         _workingPanel.pasteIndependentPress?.call();
       case EditorActionIds.editDelete:
-        _workingPanel
-            .deletePress(
-              onDeleteRowSelection: () =>
-                  unawaited(deleteRowSelectionWithDialog(context, _session)),
-            )
-            ?.call();
+        // R9-rest: the thing in hand first — Delete takes a text held by
+        // its box off its cel, and only with none in hand is it the
+        // panel's delete (the frames and rows selected there).
+        if (_canvasTextCommands.holdsText) {
+          _canvasTextCommands.deleteText();
+        } else {
+          _workingPanel
+              .deletePress(
+                onDeleteRowSelection: () =>
+                    unawaited(deleteRowSelectionWithDialog(context, _session)),
+              )
+              ?.call();
+        }
       case EditorActionIds.fileSave:
         unawaited(saveProject(context, _session));
       case EditorActionIds.fileSaveAs:
@@ -1075,6 +1092,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _abandonPolygonOrCancelTransform() {
     if (_canvasSelectionCommands.hasOpenPolygon) {
       _canvasSelectionCommands.abandonPolygon();
+      return;
+    }
+    // R9-rest: Esc lets go of a text held by its box — what a click away
+    // does (the press table 유저 took on 2026-10-06). Held by its letters
+    // the key is the field's, and lets go of those.
+    if (_canvasTextCommands.holdsText) {
+      _canvasTextCommands.confirm();
       return;
     }
     _canvasSelectionCommands.cancelTransform();
@@ -1272,6 +1296,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                         _canvasNavigationRegionKey,
                                     canvasSelectionCommands:
                                         _canvasSelectionCommands,
+                                    canvasTextCommands: _canvasTextCommands,
                                     lastStroke: _lastStroke,
                                     toolHold: _toolHold,
                                     confirm: _confirm,
@@ -1492,13 +1517,19 @@ final class _ProjectHooks {
     final history = session.historyManager;
     // R16-①: undo/redo over a PENDING move session adopts it into history
     // first — an undo never pops out from under the unadopted lift.
-    history.onBeforeUndoRedo =
-        shell._canvasSelectionCommands.confirmPendingMove;
+    //
+    // R9-rest: and a text in hand lands the same way — as it is shown, at
+    // once — so the step taken is the one the user is looking at.
+    history.onBeforeUndoRedo = () {
+      shell._canvasSelectionCommands.confirmPendingMove();
+      shell._canvasTextCommands.landNow();
+    };
     // ...and a step that WAITED for its pictures asks first whether there
     // is anything to adopt: work begun after the press is the user's.
     history.pendingBeforeUndoRedo = () =>
         shell._canvasSelectionCommands.movePending ||
-        shell._canvasSelectionCommands.transformActive;
+        shell._canvasSelectionCommands.transformActive ||
+        shell._canvasTextCommands.holdsAnything;
     history.addListener(shell._recordRecentColor);
     // REC1-B: takes the TRANSPORT finishes (stop pressed mid-take) report
     // through this channel — the toggle button was not the caller, so its

@@ -379,6 +379,7 @@ const _whereAltIsTheEyedropper = [
   CanvasTool.guide,
   CanvasTool.cut,
   CanvasTool.cutStamp,
+  CanvasTool.text,
 ];
 
 /// The tools whose own drag reads Alt: the selection (subtract; with Shift,

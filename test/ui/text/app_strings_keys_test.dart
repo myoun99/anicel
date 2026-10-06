@@ -653,6 +653,7 @@ void main() {
     'toolEraser': (s) => s.toolEraser,
     'toolEyedropper': (s) => s.toolEyedropper,
     'toolFill': (s) => s.toolFill,
+    'toolText': (s) => s.toolText,
     'toolSelect': (s) => s.toolSelect,
     'toolTransform': (s) => s.toolTransform,
     'toolShapeFill': (s) => s.toolShapeFill,

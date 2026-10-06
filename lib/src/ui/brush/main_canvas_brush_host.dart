@@ -31,6 +31,8 @@ import 'brush_canvas_panel.dart';
 import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
+import 'text_tool_options.dart';
 import 'transform_tool_options.dart';
 import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
@@ -98,6 +100,8 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.transformOptions,
     this.viewCommands,
     this.selectionCommands,
+    this.textCommands,
+    this.textToolOptions,
     this.cutPieceSlot,
     this.lastStroke,
     this.onStrokeInputActiveChanged,
@@ -294,6 +298,11 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// Forwarded to [BrushCanvasPanel] (R9-rest): the text tool's channel and
+  /// the next text's values.
+  final CelTextCommands? textCommands;
+  final ValueListenable<TextToolOptions>? textToolOptions;
 
   /// Where a finished cut lands — threaded down to the canvas panel.
   final CutPieceSlot? cutPieceSlot;
@@ -611,6 +620,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
+      textCommands: widget.textCommands,
+      textToolOptions: widget.textToolOptions,
       cutPieceSlot: widget.cutPieceSlot,
       lastStroke: widget.lastStroke,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,

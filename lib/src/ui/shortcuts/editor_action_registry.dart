@@ -247,6 +247,7 @@ abstract final class EditorActionIds {
   static const toolEyedropper = 'tool-eyedropper';
   static const toolFill = 'tool-fill';
   static const toolFillBucket = 'tool-fill-bucket';
+  static const toolText = 'tool-text';
   static const toolGuide = 'tool-guide';
   static const toolSelect = 'tool-select';
   static const toolTransform = 'tool-transform';
@@ -667,6 +668,15 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     toolPress: ToolTilePress(CanvasTool.fill),
   ),
   ..._shapeTileActions(CanvasTool.fillShape),
+  // R9-rest: no key of its own — a bare T solos the active layer (F-261),
+  // and a person binds what they want.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolText,
+    label: 'Text Tool',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.text),
+  ),
   // 「가이드 툴을 g로 지정」.
   const EditorActionDefinition(
     id: EditorActionIds.toolGuide,

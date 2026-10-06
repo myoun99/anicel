@@ -32,6 +32,7 @@ const Map<CanvasTool, String> _sectionKeys = <CanvasTool, String>{
   CanvasTool.guide: 'guide-settings-none',
   CanvasTool.cut: 'tool-settings-cut-grab',
   CanvasTool.cutStamp: 'tool-settings-cut-stamp',
+  CanvasTool.text: 'tool-settings-text',
 };
 
 void main() {

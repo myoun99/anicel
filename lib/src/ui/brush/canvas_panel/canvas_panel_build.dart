@@ -227,6 +227,10 @@ class _PanelBuild {
         // strokes cannot start below the layer.
         if (_selectionLayerActive)
           _state._selectionLayer(underlayBuilder),
+        // R9-rest: the text tool owns the pointer while it is in hand — a
+        // press sets a text or takes hold of one, and no stroke starts
+        // below.
+        if (_state._text.layerMounted) _state._text.layer(),
         // R28-S: the selection is a DOCUMENT
         // fact, so its ants stay on screen under
         // every other tool too — that is what
@@ -271,6 +275,7 @@ class _PanelBuild {
       strokeActive: () =>
           _state._strokeActive ||
           _state._selectionDragActive ||
+          _state._textDragActive ||
           (_contentStrokeActive?.value ?? false),
       touchLocked: () => _state._transformDragActive,
       // Nothing drawn in the viewport (canvas, playback

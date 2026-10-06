@@ -19,10 +19,19 @@ import '../helpers/dart_sources.dart';
 /// `maintainSize: false` removes the child from layout and lets its
 /// neighbours close up. That is the rule's failure, spelled as a widget.
 ///
-/// ⛔`Offstage` keeps its three sites and no more. They are TAB HOSTS: the
+/// ⛔`Offstage` keeps the sites it has and no more. Three are TAB HOSTS: the
 /// whole panel swaps, so nothing beside the hidden subtree moves, and
 /// keeping it mounted is what preserves its scroll position and its state
 /// (the same investment `location.reload()` was banned for throwing away).
+///
+/// ➕A fourth, of another kind (R9-rest, 2026-10-06): the text tool's
+/// KEYBOARD FIELD (`cel_text_field.dart`). It is not a widget that
+/// disappears — it is never seen at all. The letters on screen are the
+/// cel's own (the text's plate laid into its picture), and the field is
+/// there only so that a real keyboard, an IME most of all, has a real field
+/// to type into: laid out and focused, never painted, never pressed. It
+/// has no slot — it stands at a point of a `Stack` — so nothing beside it
+/// can move.
 void main() {
   Iterable<({String path, int line, String text})> sourceLines() sync* {
     for (final file in dartFilesUnder('lib/src/ui')) {
@@ -58,7 +67,7 @@ void main() {
     );
   });
 
-  test('⛔Offstage stays at the three tab hosts', () {
+  test('⛔Offstage stays at the three tab hosts and the keyboard\'s field', () {
     final sites = {
       for (final line in sourceLines())
         if (RegExp(r'(?<![A-Za-z_])Offstage\s*\(').hasMatch(line.text) &&
@@ -67,6 +76,7 @@ void main() {
     };
 
     expect(sites, {
+      'lib/src/ui/canvas/text/cel_text_field.dart',
       'lib/src/ui/panels/editor_panel_tabs.dart',
       'lib/src/ui/storyboard_tab_host.dart',
       'lib/src/ui/timeline/timeline_panel.dart',

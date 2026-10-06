@@ -64,7 +64,8 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
       CanvasTool.brush ||
       CanvasTool.eraser ||
       CanvasTool.eyedropper ||
-      CanvasTool.guide => const [],
+      CanvasTool.guide ||
+      CanvasTool.text => const [],
     };
 
 /// One shape tile per [CanvasShapeKind], in rail order, for [verb].
@@ -189,6 +190,11 @@ class ToolLibraryPanel extends StatelessWidget {
         );
       case CanvasTool.eyedropper:
         return const _ToolNote(keyValue: 'tool-library-eyedropper');
+      case CanvasTool.text:
+        // One verb and no tiles: what a text is set in is a setting, and the
+        // texts of the cel are listed there too (유저 2026-10-06: 「도구설정에
+        // 선택된 텍스트라는 항목」).
+        return const _ToolNote(keyValue: 'tool-library-text');
       case CanvasTool.guide:
         // The cut's own guides, grouped by kind — the same shape the brush
         // library has (group, then entries), with one difference worth

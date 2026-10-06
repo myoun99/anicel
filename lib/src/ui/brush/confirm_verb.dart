@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../services/last_stroke_slot.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
+import 'cel_text_commands.dart';
 import 'transform_tool_options.dart';
 
 /// 🚨★★★**확정 — ONE verb.** Enter, the rail's ↵ button and the move tool's
@@ -21,12 +22,16 @@ import 'transform_tool_options.dart';
 class ConfirmVerb {
   ConfirmVerb({
     required this.selection,
+    required this.text,
     required this.lastStroke,
     required this.tool,
     required this.transformOptions,
   });
 
   final CanvasSelectionCommands selection;
+
+  /// The text the canvas holds (R9-rest).
+  final CelTextCommands text;
   final LastStrokeSlot lastStroke;
   final ValueListenable<BrushToolState> tool;
 
@@ -37,7 +42,7 @@ class ConfirmVerb {
 
   /// Everything [canConfirm] depends on.
   Listenable get changes =>
-      Listenable.merge([selection, lastStroke, tool, transformOptions]);
+      Listenable.merge([selection, text, lastStroke, tool, transformOptions]);
 
   bool get canConfirm => _action() != null;
 
@@ -49,6 +54,14 @@ class ConfirmVerb {
     // 버튼으로).
     if (selection.hasOpenPolygon) {
       return selection.closePolygon;
+    }
+    // R9-rest: a text held by its box is what the user is in the middle
+    // of, and confirming it lets go of it — what a click away does. (Held
+    // by its LETTERS, Enter never gets here: it is a line break, the
+    // field's.) ⛔Without this arm the door fell through to 재입력 and laid
+    // the last stroke down under the text.
+    if (text.holdsText) {
+      return text.confirm;
     }
     // 변형도구 — or a transform still in play, whichever tool is up: a
     // session is the transform tool's work until it lands.

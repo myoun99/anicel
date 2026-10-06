@@ -1397,6 +1397,7 @@ enum AppStrings {
   String get toolEraser => _s('toolEraser');
   String get toolEyedropper => _s('toolEyedropper');
   String get toolFill => _s('toolFill');
+  String get toolText => _s('toolText');
   String get toolSelect => _s('toolSelect');
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
@@ -2432,6 +2433,7 @@ enum AppStrings {
     'toolEraser': 'Eraser',
     'toolEyedropper': 'Eyedropper',
     'toolFill': 'Fill',
+    'toolText': 'Text',
     'toolSelect': 'Select',
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
@@ -3231,6 +3233,7 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': 'スポイトツール',
     'shortcutAction.tool-fill': '塗りつぶしツール',
     'shortcutAction.tool-fill-bucket': '塗りつぶし',
+    'shortcutAction.tool-text': 'テキストツール',
     'shortcutAction.tool-guide': 'ガイドツール',
     'shortcutAction.tool-select': '選択ツール',
     'shortcutAction.tool-transform': '変形ツール',
@@ -3660,6 +3663,7 @@ enum AppStrings {
     'toolEraser': '消しゴム',
     'toolEyedropper': 'スポイト',
     'toolFill': '塗りつぶし',
+    'toolText': 'テキスト',
     'toolSelect': '選択',
     'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
@@ -4560,6 +4564,7 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': '스포이트 도구',
     'shortcutAction.tool-fill': '채우기 도구',
     'shortcutAction.tool-fill-bucket': '채우기',
+    'shortcutAction.tool-text': '텍스트 도구',
     'shortcutAction.tool-guide': '가이드 도구',
     'shortcutAction.tool-select': '선택 도구',
     'shortcutAction.tool-transform': '변형 도구',
@@ -4985,6 +4990,7 @@ enum AppStrings {
     'toolEraser': '지우개',
     'toolEyedropper': '스포이트',
     'toolFill': '채우기',
+    'toolText': '텍스트',
     'toolSelect': '선택',
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
@@ -5922,6 +5928,7 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': 'Outil pipette',
     'shortcutAction.tool-fill': 'Outil remplissage',
     'shortcutAction.tool-fill-bucket': 'Pot de peinture',
+    'shortcutAction.tool-text': 'Outil texte',
     'shortcutAction.tool-guide': 'Outil repère',
     'shortcutAction.tool-select': 'Outil sélection',
     'shortcutAction.tool-transform': 'Outil transformation',
@@ -6402,6 +6409,7 @@ enum AppStrings {
     'toolEraser': 'Gomme',
     'toolEyedropper': 'Pipette',
     'toolFill': 'Remplissage',
+    'toolText': 'Texte',
     'toolSelect': 'Sélection',
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
@@ -7253,6 +7261,7 @@ enum AppStrings {
     'shortcutAction.tool-eyedropper': '吸管工具',
     'shortcutAction.tool-fill': '填充工具',
     'shortcutAction.tool-fill-bucket': '油漆桶',
+    'shortcutAction.tool-text': '文字工具',
     'shortcutAction.tool-guide': '参考线工具',
     'shortcutAction.tool-select': '选择工具',
     'shortcutAction.tool-transform': '变换工具',
@@ -7672,6 +7681,7 @@ enum AppStrings {
     'toolEraser': '橡皮',
     'toolEyedropper': '吸管',
     'toolFill': '填充',
+    'toolText': '文字',
     'toolSelect': '选择',
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
