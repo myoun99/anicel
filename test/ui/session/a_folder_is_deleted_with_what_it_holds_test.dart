@@ -131,20 +131,23 @@ void main() {
     rowsOf(session).deleteActiveLayer();
     expect(session.activeLayerId, const LayerId('over'));
 
-    // The TOP row a folder: the row under it in the stack is its own.
+    // The TOP row a folder: the row under it in the stack is its own. Two
+    // rows stay, so a hand-off that names a row no longer there — and falls
+    // back to the bottom of the stack — cannot read as the right one.
     final topFolder = _session([
+      _row('bottom'),
       _row('under'),
       _row('a', inside: 'F'),
       _row('F', kind: LayerKind.folder),
     ]);
     topFolder.selectLayer(const LayerId('F'));
     rowsOf(topFolder).deleteActiveLayer();
-    expect(_stack(topFolder), ['under']);
+    expect(_stack(topFolder), ['bottom', 'under']);
     expect(
       topFolder.activeLayerId,
       const LayerId('under'),
       reason: 'the hand-off was made as if the folder row alone went, and '
-          'landed on the row it had just deleted',
+          'named the row it had just deleted',
     );
   });
 
