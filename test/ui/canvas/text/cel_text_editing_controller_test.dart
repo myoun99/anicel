@@ -226,6 +226,46 @@ void main() {
       expect(letters.text, 'ab');
     });
 
+    test('letters typed after a selection was typed over are a run of their '
+        'own', () {
+      final letters = on([run('abcd')]);
+      letters.selection = const TextSelection(baseOffset: 2, extentOffset: 4);
+
+      leave(letters, 'abZ');
+      type(letters, 'W');
+      letters.undo();
+
+      expect(letters.text, 'abZ');
+
+      letters.undo();
+
+      expect(letters.text, 'abcd');
+    });
+
+    test('a letter set somewhere else than after the last is a run of its '
+        'own, with or without a word from the caret first', () {
+      final letters = on(const []);
+      type(letters, 'ab');
+
+      leave(letters, 'Xab', caret: 1);
+      letters.undo();
+
+      expect(letters.text, 'ab');
+    });
+
+    test('a letter typed after a step back or forward is a run of its own', () {
+      final letters = on(const []);
+      type(letters, 'ab');
+      letters
+        ..undo()
+        ..redo();
+
+      type(letters, 'c');
+      letters.undo();
+
+      expect(letters.text, 'ab');
+    });
+
     test('a new edit forgets the steps forward', () {
       final letters = on(const []);
       type(letters, 'a');
@@ -332,6 +372,63 @@ void main() {
       letters.undo();
 
       expect(letters.text, '');
+    });
+
+    test('a letter put into the MIDDLE of what is being composed is the '
+        'same typing', () {
+      final letters = on(const []);
+      leave(letters, 'か', composing: const TextRange(start: 0, end: 1));
+      leave(letters, 'かん', composing: const TextRange(start: 0, end: 2));
+
+      leave(
+        letters,
+        'かたん',
+        caret: 2,
+        composing: const TextRange(start: 0, end: 3),
+      );
+      letters.undo();
+
+      expect(letters.text, '');
+    });
+
+    test('letters an IME sets several at a time are typing too', () {
+      final letters = on(const []);
+
+      leave(letters, 'かん', composing: const TextRange(start: 0, end: 2));
+      leave(letters, '漢', composing: const TextRange(start: 0, end: 1));
+      letters.undo();
+
+      expect(letters.text, '');
+    });
+
+    test('⛔an edit OUTSIDE what is being composed is not the IME setting '
+        'it again — before it, or reaching past its end: a step of its own', () {
+      final before = on([run('ab')]);
+      leave(before, 'ab한', composing: const TextRange(start: 2, end: 3));
+
+      leave(
+        before,
+        'Xb한',
+        caret: 1,
+        composing: const TextRange(start: 2, end: 3),
+      );
+      before.undo();
+
+      expect(before.text, 'ab한');
+
+      final past = on([run('cd')]);
+      caretTo(past, 0);
+      leave(
+        past,
+        '한cd',
+        caret: 1,
+        composing: const TextRange(start: 0, end: 1),
+      );
+
+      leave(past, 'Xd', caret: 1, composing: const TextRange(start: 0, end: 1));
+      past.undo();
+
+      expect(past.text, '한cd');
     });
 
     test('a step back leaves nothing composing', () {

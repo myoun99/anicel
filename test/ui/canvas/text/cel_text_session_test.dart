@@ -344,6 +344,38 @@ void main() {
       expect(session.landing(coordinator: editingStackOn(cel)), isNull);
     });
 
+    test('⛔the same letters baked to OTHER pixels are not the text the cel '
+        'carries: that lands', () async {
+      final standing = carried(4, says('ab'));
+      final cel = picture([standing]);
+      final (:session, :baker) = holding(standing);
+
+      session.set(says('abc'));
+      await baker.pending.answer();
+      session.set(says('ab'));
+      await baker.pending.answer({
+        tileOfAnchor(says('ab')): tileFilledWith([77, 0, 0, 255]),
+      });
+
+      expect(session.shownOver(cel), isNot(same(cel)));
+      expect(session.landing(coordinator: editingStackOn(cel)), isNotNull);
+    });
+
+    test('told the cel no longer carries it, it is a text that would be '
+        'new: laid on top, and what was drawn of it in its place forgotten', () async {
+      final standing = carried(4, says('ab'));
+      final cel = picture([standing]);
+      final (:session, :baker) = holding(standing);
+      session.set(says('abc'));
+      await baker.pending.answer();
+      expect(textsOf(session.shownOver(cel)), [(4, 'abc')], reason: '⛔fixture');
+
+      session.standOn(null);
+
+      expect(session.textId, isNull);
+      expect(textsOf(session.shownOver(cel)), [(4, 'ab'), (5, 'abc')]);
+    });
+
     test('🚨the step it lands holds what is SHOWN, never a want still being '
         'set — and the session then stands on what the cel carries', () async {
       final standing = carried(4, says('ab'));
@@ -456,6 +488,56 @@ void main() {
 
       expect(session.shown.content, says('ab', x: 16));
       expect(session.settled, isTrue);
+    });
+
+    test('each of the four walls is a wall — and up to it, it is still a '
+        'move', () {
+      // 「ab」 at (8, 8) can reach from (0, 0) to (32, 26); the walls stand
+      // at −32 and 64.
+      for (final (dx, dy) in [(40, 0), (-40, 0), (0, 40), (0, -40)]) {
+        final standing = carried(4, says('ab'));
+        final (:session, :baker) = holding(standing);
+
+        session.showMoved(
+          session.moveOrigin,
+          picture([standing]),
+          dx: dx,
+          dy: dy,
+        );
+
+        expect(baker.asked, hasLength(1), reason: 'past it by ($dx, $dy)');
+      }
+      for (final (dx, dy) in [(32, 0), (-32, 0), (0, 38), (0, -32)]) {
+        final standing = carried(4, says('ab'));
+        final (:session, :baker) = holding(standing);
+
+        session.showMoved(
+          session.moveOrigin,
+          picture([standing]),
+          dx: dx,
+          dy: dy,
+        );
+
+        expect(baker.asked, isEmpty, reason: 'up to it by ($dx, $dy)');
+        expect(session.settled, isTrue);
+      }
+    });
+
+    test('a hand that has not moved a whole pixel since the last move '
+        'changes nothing, and nobody is told', () {
+      final standing = carried(4, says('ab'));
+      final cel = picture([standing]);
+      final (:session, baker: _) = holding(standing);
+      final origin = session.moveOrigin;
+      session.showMoved(origin, cel, dx: 8, dy: 0);
+      final layout = session.shown.layout;
+      var told = 0;
+      session.addListener(() => told += 1);
+
+      session.showMoved(origin, cel, dx: 8, dy: 0);
+
+      expect(told, 0);
+      expect(session.shown.layout, same(layout));
     });
 
     test('a text that stands ACROSS the wall is set again wherever it goes: '

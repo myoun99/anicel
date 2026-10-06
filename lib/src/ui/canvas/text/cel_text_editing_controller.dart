@@ -90,11 +90,11 @@ class CelTextEditingController extends TextEditingController {
           ? caret.extentOffset
           : null,
     );
-    // The IME set letters it was composing AGAIN — a syllable growing, a
-    // clause converted: the same typing, however many letters it rewrote.
+    // The edit is INSIDE what the IME was composing — a syllable growing,
+    // a clause converted, a letter put into the middle of it: the same
+    // typing, however many letters it set again.
     final rewrites =
         old.composing.isValid &&
-        edit.range.start < edit.range.end &&
         edit.range.start >= old.composing.start &&
         edit.range.end <= old.composing.end;
     final typed = (
