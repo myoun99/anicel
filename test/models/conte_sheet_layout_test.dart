@@ -361,25 +361,36 @@ void main() {
       expect(cell.wordsTop, metrics.rowTop(0));
     });
 
-    test('past the ACTION column it reaches into the dialogue\'s and the '
-        'time\'s — and with no room left beside it, ACTION, dialogue and '
-        'length ALL move to the row under it (「초수칸까지도 확장가능하게해」 '
-        '· 「내려갈땐 다 같이 내려가도록하자」)', () {
+    // ↩️This case read: 「past the ACTION column it reaches into the
+    // dialogue's and the time's … (「초수칸까지도 확장가능하게해」)」, its
+    // picture passing `timeLeft` at a screen a window. F-310 (유저
+    // 2026-10-06) drew the line a column sooner: 「초수칸말고 se칸까지만
+    // 최대치로 잡도록」.
+    test('past the ACTION column it reaches through the dialogue\'s and '
+        'stops where the time column begins, laid smaller to stay there — '
+        'and with no room left beside it, ACTION, dialogue and length ALL '
+        'move to the row under it (「내려갈땐 다 같이 내려가도록하자」)', () {
       final cell = pageOf([
         _cell(0, 24, camera: conteCameraPan(across: 0.9)),
       ]).cells.single;
       expect(
         cell.pictureRect.right,
-        greaterThan(metrics.timeLeft),
-        reason: 'fixture: into the time column',
+        closeTo(metrics.timeLeft, 1e-9),
+        reason: '「초수칸말고 se칸까지만 최대치로」 — at a screen a window '
+            'this sweep would stand in the time column',
       );
       expect(
         conteCameraPlan(metrics, conteCameraPan(across: 0.9)).scale,
-        closeTo(metrics.windowHeight / 1080, 1e-12),
-        reason: 'fixture: at a screen a window, not laid smaller',
+        lessThan(metrics.windowHeight / 1080),
+        reason: 'so it is laid smaller than a screen a window',
       );
       expect(cell.rowSpan, 2, reason: 'its picture\'s row and the words\'');
-      expect(cell.pictureRect.bottom, closeTo(metrics.rowTop(1), 1e-9));
+      expect(
+        cell.pictureRect.bottom,
+        lessThan(metrics.rowTop(1)),
+        reason: 'laid smaller, its black is only as tall as the picture '
+            '(H48: 「검은칸은 필요한 만큼만」)',
+      );
       expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
       expect(cell.dialogueRect.top, cell.wordsTop);
       expect(
@@ -404,12 +415,17 @@ void main() {
       expect(cell.wordsTop, closeTo(metrics.rowTop(1), 1e-9));
     });
 
-    test('a sweep wider than the page is laid smaller: its picture stops at '
-        'the page\'s right edge', () {
+    test('a sweep wider than the page is laid smaller: its picture stops '
+        'where the time column begins (↩️it was the page\'s right edge)', () {
       final cell = pageOf([
         _cell(0, 24, camera: conteCameraPan(across: 3)),
       ]).cells.single;
-      expect(cell.pictureRect.right, closeTo(metrics.bodyRight, 1e-9));
+      expect(cell.pictureRect.right, closeTo(metrics.timeLeft, 1e-9));
+      expect(
+        cell.pictureRect.right,
+        lessThan(metrics.bodyRight - 1),
+        reason: 'fixture: the time column has a width to stay clear of',
+      );
     });
 
     test('a cell\'s words stop where a later picture stands in their column '

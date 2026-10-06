@@ -300,7 +300,7 @@ typedef ConteCameraPlan = ({
 
   /// The paper a pixel of the swept canvas takes: a screen to a row's
   /// window, less where the sweep would pass the picture's rows or the
-  /// page's right edge.
+  /// dialogue column's right edge.
   double scale,
 });
 
@@ -309,9 +309,14 @@ typedef ConteCameraPlan = ({
 /// The picture shows the canvas the camera sweeps at a screen a row: down
 /// over as many rows as it is screens tall, up to
 /// [conteCameraPictureRowsMax], and right as far as it is wide — into the
-/// ACTION column, then the dialogue's, then the time's (「필요한만큼 알아서
-/// 침범」 · 「se칸까지」 · 「초수칸까지도 확장가능하게해」). A sweep larger than
-/// that is laid smaller ([ConteCameraPlan.scale]).
+/// ACTION column, then the dialogue's, and no further (「필요한만큼 알아서
+/// 침범」 · 「se칸까지」). A sweep larger than that is laid smaller
+/// ([ConteCameraPlan.scale]).
+///
+/// ↩️It reached on through the time column to the page's edge (유저
+/// 2026-09-30: 「초수칸까지도 확장가능하게해」), until F-310 (유저
+/// 2026-10-06): 「카메라 움직임 있을때 지금 초수 칸 까지 침범하는데,
+/// 초수칸말고 se칸까지만 최대치로 잡도록」.
 ///
 /// Once the picture takes the whole ACTION column there is no room for the
 /// cell's words beside it, and they ALL move to the row under it — the
@@ -348,7 +353,7 @@ double _fieldScale(
   int pictureRows,
 ) {
   final tallest = pictureRows * m.rowHeight - 2 * m.silhouetteBorder;
-  final widest = m.bodyRight - m.pictureLeft - 2 * m.silhouetteBorder;
+  final widest = m.timeLeft - m.pictureLeft - 2 * m.silhouetteBorder;
   return [
     m.windowHeight / work.screen.height,
     tallest / work.field.height,

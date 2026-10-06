@@ -322,6 +322,59 @@ void main() {
     expect(pushIn.field, const Rect.fromLTRB(0, 0, 160, 90));
   });
 
+  // F-310 (유저 2026-10-06): 「카메라가 움직이지 않는데 콘티용지에 IN OUT이
+  // 찍혀있고, 사각실루엣이 카메라밖만큼 커져있음」. The keys' frames came
+  // off the track's pose facade, which fills what a key does not say with a
+  // placeholder centre at the canvas ORIGIN; the camera's own default is
+  // the canvas's centre.
+  test('a key that moves nothing is no camera work: a camera keyed on its '
+      'opacity alone holds still', () {
+    final empty = CutCamera().track;
+    final dimmed = CutCamera.fromTrack(
+      empty.copyWith(opacity: empty.opacity.withKey(0, 0.5)),
+    );
+    expect(dimmed.track.keyedFrames, [0], reason: 'fixture: one key');
+    expect(dimmed.track.position.isEmpty, isTrue, reason: 'on no pose lane');
+
+    expect(
+      cellOf(dimmed).camera,
+      isNull,
+      reason: 'it was drawn travelling to the canvas\'s corner and back — '
+          'IN, a key at the origin, OUT',
+    );
+  });
+
+  test('a camera keyed on its zoom alone pushes in about the canvas\'s '
+      'centre, where it stands — not about the corner', () {
+    final empty = CutCamera().track;
+    final pushIn = CutCamera.fromTrack(
+      empty.copyWith(
+        scale: empty.scale
+            .withKey(0, CanvasPoint(x: 1, y: 1))
+            .withKey(12, CanvasPoint(x: 2, y: 2)),
+      ),
+    );
+    expect(pushIn.track.position.isEmpty, isTrue, reason: 'fixture');
+
+    final work = cellOf(pushIn).camera!;
+
+    expect(work.keys.map((key) => key.label), ['IN', 'OUT']);
+    // The 160×90 camera over the 640×360 canvas, centred at (320, 180).
+    expectPoints(work.keys.first.corners, const [
+      Offset(240, 135),
+      Offset(400, 135),
+      Offset(400, 225),
+      Offset(240, 225),
+    ]);
+    expectPoints(work.keys.last.corners, const [
+      Offset(280, 157.5),
+      Offset(360, 157.5),
+      Offset(360, 202.5),
+      Offset(280, 202.5),
+    ]);
+    expect(work.field, const Rect.fromLTRB(240, 135, 400, 225));
+  });
+
   test('the canvas it sweeps is whole pixels, around every corner', () {
     final work = cellOf(
       CutCamera(keyframes: {0: at(80.4, 45.3), 12: at(240.6, 45.3)}),

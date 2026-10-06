@@ -76,25 +76,35 @@ List<({int frameIndex, List<Offset> corners})> cameraKeyFrames(
 /// An end the camera stands at a key for — a key on it, or the pose a key
 /// left the camera in, held — IS that key's frame, never a second frame
 /// over it (유저 확인 10-01).
+///
+/// The keys are read as playback shows them too. ↩️Their frames came off
+/// the track's pose FACADE ([CutCamera.keyframes]), which fills whatever a
+/// key does not say with a placeholder of its own — a centre at the canvas
+/// ORIGIN — where the camera's default is the canvas's centre. A camera
+/// keyed on its opacity alone, which moves nothing, was drawn travelling to
+/// the corner of the canvas and back (F-310, 유저 2026-10-06: 「카메라가
+/// 움직이지 않는데 콘티용지에 IN OUT이 찍혀있고, 사각실루엣이 카메라밖만큼
+/// 커져있음」).
 List<({int frameIndex, List<Offset> corners})> cameraFramesShown(
   Cut cut,
   CanvasSize cameraFrameSize, {
   required int first,
   required int last,
 }) {
+  CameraPose shown(int frameIndex) => resolveCameraPoseAt(
+    camera: cut.camera,
+    canvasSize: cut.canvasSize,
+    frameIndex: frameIndex,
+  );
   ({int frameIndex, List<Offset> corners}) shownAt(int frameIndex) => (
     frameIndex: frameIndex,
     corners: cameraFrameCornersInCanvas(
-      pose: resolveCameraPoseAt(
-        camera: cut.camera,
-        canvasSize: cut.canvasSize,
-        frameIndex: frameIndex,
-      ),
+      pose: shown(frameIndex),
       cameraFrameSize: cameraFrameSize,
     ),
   );
   final keys = cameraKeyFrames(
-    cut.camera.keyframes,
+    {for (final frame in cut.camera.track.keyedFrames) frame: shown(frame)},
     cameraFrameSize,
     from: first,
     toExclusive: last + 1,
