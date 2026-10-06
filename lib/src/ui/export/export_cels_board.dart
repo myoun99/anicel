@@ -518,23 +518,25 @@ class ExportCelBlock extends StatelessWidget {
   /// The block's paper: its row's label colour while its file is written —
   /// and none while it is not, the block's outline alone (the accent's on
   /// the one the preview shows).
-  ShapeDecoration _paper(bool written) => ShapeDecoration(
+  ///
+  /// The timeline's own block corner, in the timeline's own form — a box
+  /// rounded by the block law ([timelineBlockCornerRadiusAt]), as its
+  /// selection band and its standing wash are.
+  BoxDecoration _paper(bool written) => BoxDecoration(
     color: written ? layerMarkColor(sheet.row.mark) : null,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.all(
-        timelineBlockCornerRadiusAt(
-          cellExtent: ExportCelsBoard.blockWidth,
-          crossExtent: height,
-        ),
+    borderRadius: BorderRadius.all(
+      timelineBlockCornerRadiusAt(
+        cellExtent: ExportCelsBoard.blockWidth,
+        crossExtent: height,
       ),
-      side: written
-          ? BorderSide.none
-          : BorderSide(
-              color: shown
-                  ? AppColors.accent
-                  : timelineDrawingHeldColor.withValues(alpha: 0.28),
-            ),
     ),
+    border: written
+        ? null
+        : Border.all(
+            color: shown
+                ? AppColors.accent
+                : timelineDrawingHeldColor.withValues(alpha: 0.28),
+          ),
   );
 
   /// What the block reads ([ExportCelSheet.word]) in the frame block's own

@@ -202,7 +202,7 @@ void main() {
 
   Finder keyed(String value) => find.byKey(ValueKey<String>(value));
 
-  ShapeDecoration paperOf(WidgetTester tester, String rowId, String frameId) =>
+  BoxDecoration paperOf(WidgetTester tester, String rowId, String frameId) =>
       tester
               .widget<Container>(
                 find.descendant(
@@ -211,7 +211,7 @@ void main() {
                 ),
               )
               .decoration!
-          as ShapeDecoration;
+          as BoxDecoration;
 
   testWidgets('the rows are the cut\'s, top to bottom as the timeline draws '
       'them, each one rail row tall', (tester) async {
@@ -409,7 +409,7 @@ void main() {
     final paper = paperOf(tester, 'b', 'b-2');
     expect(paper.color, layerMarkColor(key));
     expect(
-      (paper.shape as RoundedRectangleBorder).borderRadius,
+      paper.borderRadius,
       BorderRadius.all(
         timelineBlockCornerRadiusAt(
           cellExtent: ExportCelsBoard.blockWidth,
@@ -448,7 +448,7 @@ void main() {
       final paper = paperOf(tester, rowId, frameId);
       expect(paper.color, isNull, reason: '$rowId $frameId');
       expect(
-        (paper.shape as RoundedRectangleBorder).side.color,
+        (paper.border! as Border).top.color,
         timelineDrawingHeldColor.withValues(alpha: 0.28),
       );
       final word = tester.widget<TimelineBlockText>(
