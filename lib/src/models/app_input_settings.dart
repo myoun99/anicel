@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerDownEvent, kPrimaryButton;
 
 /// Pointer-input policy (UI-R22 #6, default flipped in UI-R22F #1).
 ///
@@ -586,6 +587,27 @@ abstract final class AppInput {
     PointerDeviceKind kind, {
     CanvasTouchDragAction? oneFinger,
   }) => kind != PointerDeviceKind.touch || touchDrawsFor(oneFinger);
+
+  /// Whether [event] is a press a tool's own canvas layer ACTS on: from a
+  /// device that may drive a tool ([toolAcceptsPointer]), and its primary
+  /// contact — a middle or a secondary button is the pan or a mapped verb,
+  /// never the tool.
+  ///
+  /// ↩️The selection layer spelled the pair out, and the text tool's layer
+  /// would have again (R9-rest, 2026-10-06) — which is where the clone
+  /// ratchet stops a law being written a second time.
+  ///
+  /// ⚠️A layer that follows a press asks its own questions FIRST — is the
+  /// press a control's (`controlOwnsTap`), is it a second contact of a drag
+  /// already running — and they are not in here: what a second contact
+  /// means is each layer's own.
+  static bool toolAcceptsPress(
+    PointerDownEvent event, {
+    CanvasTouchDragAction? oneFinger,
+  }) =>
+      toolAcceptsPointer(event.kind, oneFinger: oneFinger) &&
+      (event.buttons == kPrimaryButton ||
+          event.kind == PointerDeviceKind.touch);
 
   /// Whether Flutter will tell us when this pointer LEAVES.
   ///
