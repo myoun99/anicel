@@ -153,6 +153,7 @@ enum AppStrings {
   /// R26 #35/#13 — the shared CURSOR NOTICES: every refused action says
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
+  String get noticeNothingToCut => _s('noticeNothingToCut');
 
   /// The conte's pen on a cut with no conte row to draw into, while
   /// 「프레임 자동 생성」 is off (유저 2026-09-30, H51: 「콘티레이어없으면
@@ -1735,6 +1736,7 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
+    'noticeNothingToCut': 'There is nothing to cut',
     'noticeNoConteLayer': 'This cut has no storyboard layer',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
     'noticeLayerHidden': 'This layer is hidden',
@@ -2859,6 +2861,7 @@ enum AppStrings {
     'pageLabel': 'ページ',
     'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
+    'noticeNothingToCut': '切り取る対象がありません',
     'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
     'noticeLayerHidden': 'このレイヤーは非表示です',
@@ -4219,6 +4222,7 @@ enum AppStrings {
     'pageLabel': '페이지',
     'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
+    'noticeNothingToCut': '잘라낼 대상이 존재하지 않습니다',
     'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
     'noticeLayerHidden': '숨김 상태인 레이어입니다',
@@ -5573,6 +5577,7 @@ enum AppStrings {
     'pageLabel': 'Page',
     'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
+    'noticeNothingToCut': 'Rien à couper',
     'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
     'noticeLayerHidden': 'Ce calque est masqué',
@@ -7001,6 +7006,7 @@ enum AppStrings {
     'pageLabel': '页',
     'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
+    'noticeNothingToCut': '没有可剪切的内容',
     'noticeNoConteLayer': '该镜头没有分镜图层',
     'noticeLayerNotDrawable': '该图层不可绘制',
     'noticeLayerHidden': '该图层已隐藏',

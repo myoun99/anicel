@@ -26,6 +26,8 @@ import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart' show buildCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
+import '../text/app_strings.dart';
+import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
 import 'pixel_board.dart';
 import 'pixel_editing.dart';
@@ -409,15 +411,22 @@ class PixelVerbs {
   /// ⛔The marquee is not read. The cut tool cuts through its own outline,
   /// never the selection's, and 「전체」 is that outline opened to the whole
   /// picture (I-28-Q1 「지금 서 있는 셀의 그림 전체」).
+  ///
+  /// 🗣️유저 2026-10-01 (F-254): 「전체 잘라내기, 지금 작동안하는 그림없는
+  /// 곳에선 아무메시지 안뜨는데 뜨도록. 내용은 잘라낼 대상이 존재하지
+  /// 않습니다.」 — a press that found no picture says so where the user is
+  /// looking. The hand keeps what it held either way.
   void cutWhole() {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
     final piece = standingPiece();
-    if (piece != null) {
-      hand(piece);
+    if (piece == null) {
+      cursorNotices.show(AppText.strings.noticeNothingToCut);
+      return;
     }
+    hand(piece);
   }
 
   /// Whether the 색 편집 list's clipboard row [verb] has anything to do —
