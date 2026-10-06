@@ -33,7 +33,7 @@ import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
-import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/held_pictures.dart';
 import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -441,7 +441,7 @@ void main() {
         (tester) async {
       var heldInTheRun = 0;
       final fake = FakeFfmpegProcess(
-        onFrame: (_) => heldInTheRun = ExportFrameRenderer.debugPicturesHeld,
+        onFrame: (_) => heldInTheRun = HeldPictures.debugHeld,
       );
       late List<String> capturedArgs;
       final state = await pumpDialog(
@@ -466,7 +466,7 @@ void main() {
       // The pictures a run holds from one frame to the next are its own to
       // let go of.
       expect(heldInTheRun, greaterThan(0), reason: 'LIVENESS: it held some');
-      expect(ExportFrameRenderer.debugPicturesHeld, 0);
+      expect(HeldPictures.debugHeld, 0);
       expect(
         capturedArgs.last.replaceAll('\\', '/'),
         endsWith('/Project.mp4'),

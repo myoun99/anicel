@@ -46,6 +46,7 @@ import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
+import 'held_pictures.dart';
 import 'offscreen_raster.dart';
 
 /// The ground a frame is rendered on unless a caller names another — what
@@ -92,10 +93,10 @@ class ExportFrameRenderer {
   var _frameBefore = <_CelAt, BitmapSurface?>{};
 
   /// The pictures the VIDEO frame being drawn is made of and the ones the
-  /// frame before it was made of, each under what it was made of ([_held]):
-  /// a cut's whole picture in its own canvas space, and the finished frame.
-  /// Held for one more frame like the cels above, and GPU pictures, so let
-  /// go by hand ([dispose]).
+  /// frame before it was made of, each under what it was made of: a cut's
+  /// whole picture in its own canvas space, and the finished frame. Held
+  /// for one more frame like the cels above ([HeldPictures]), and GPU
+  /// pictures, so let go by hand ([dispose]).
   ///
   /// 🚨A CUT'S PICTURE IS KEYED BY ITS SIGNATURE
   /// ([computeCutFrameCompositeSignature]) — the law the playback cache is
@@ -106,25 +107,12 @@ class ExportFrameRenderer {
   /// (F-289, measured 2026-10-07 on the user's own film: of its 1,857
   /// frames 1,687 show the composite the frame before them showed, and
   /// 1,483 are that frame's picture, camera and all).
-  var _picturesThisFrame = <Object, ui.Image>{};
-  var _picturesFrameBefore = <Object, ui.Image>{};
+  final HeldPictures _pictures = HeldPictures();
 
-  int _picturesMade = 0;
-
-  /// How many pictures every renderer is holding right now (test hook) — a
-  /// run that is over holds none.
+  /// How many pictures this renderer has had to make (test hook) — a frame
+  /// that is the picture before it makes none.
   @visibleForTesting
-  static int debugPicturesHeld = 0;
-
-  void _letGo(ui.Image picture) {
-    picture.dispose();
-    debugPicturesHeld -= 1;
-  }
-
-  /// How many pictures [_held] has had to make (test hook) — a frame that
-  /// is the picture before it makes none.
-  @visibleForTesting
-  int get debugPicturesMade => _picturesMade;
+  int get debugPicturesMade => _pictures.made;
 
   /// Starts the next frame: what the frame before the last one read is let
   /// go, and what the last one read is kept for one more.
@@ -134,19 +122,12 @@ class ExportFrameRenderer {
   void _startFrame() {
     _frameBefore = _thisFrame;
     _thisFrame = {};
-    _picturesFrameBefore.values.forEach(_letGo);
-    _picturesFrameBefore = _picturesThisFrame;
-    _picturesThisFrame = {};
+    _pictures.nextFrame();
   }
 
   /// Lets go of the pictures a video run held. The run's to call when its
   /// last frame is out.
-  void dispose() {
-    for (final held in [_picturesThisFrame, _picturesFrameBefore]) {
-      held.values.forEach(_letGo);
-      held.clear();
-    }
-  }
+  void dispose() => _pictures.dispose();
 
   /// Keeps the cels [signature]'s picture is made of for one more frame.
   ///
@@ -414,27 +395,6 @@ class ExportFrameRenderer {
     return ui.Color(project.backdropArgb);
   }
 
-  /// The picture held under [key] — the one this frame or the frame before
-  /// it was made of — or [render]'s, held from now on ([_picturesThisFrame]).
-  /// The renderer's own: nobody it is handed to disposes it.
-  Future<ui.Image> _held(
-    Object key,
-    Future<ui.Image> Function() render,
-  ) async {
-    final here = _picturesThisFrame[key];
-    if (here != null) {
-      return here;
-    }
-    final before = _picturesFrameBefore.remove(key);
-    if (before != null) {
-      return _picturesThisFrame[key] = before;
-    }
-    _picturesMade += 1;
-    final made = await render();
-    debugPicturesHeld += 1;
-    return _picturesThisFrame[key] = made;
-  }
-
   /// A video FRAME that is made of [made] and of nothing else: the one held
   /// under it, as a picture of the caller's own to dispose.
   ///
@@ -453,7 +413,7 @@ class ExportFrameRenderer {
     required int width,
     required int height,
     required void Function(ui.Canvas canvas, T made) paint,
-  }) async => (await _held(
+  }) async => (await _pictures.of(
     (T, made),
     () => rasterizeOffscreen(
       width: width,
@@ -479,8 +439,9 @@ class ExportFrameRenderer {
       );
 
   /// [cut]'s whole picture at [frameIndex] as [route] draws it, held
-  /// ([_held]) under the signature of what it is made of — and the cels it
-  /// is made of kept with it ([_carryCelsOf]).
+  /// ([_pictures]) under the signature of what it is made of — and the
+  /// cels it is made of kept with it ([_carryCelsOf]). The renderer's own:
+  /// nobody it is handed to disposes it.
   ///
   /// [route] is whatever of [render] the signature does not say: which of
   /// the two canvas-space renders it is, and what is drawn over it.
@@ -492,7 +453,7 @@ class ExportFrameRenderer {
   }) {
     final signature = _signatureOf(cut, frameIndex);
     _carryCelsOf(cut.id, signature);
-    return _held((route, signature), render);
+    return _pictures.of((route, signature), render);
   }
 
   /// [cut]'s picture at [frameIndex] over its whole canvas, on this
