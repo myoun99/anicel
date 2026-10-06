@@ -6,6 +6,27 @@ import '../../models/track_id.dart';
 import 'session_roles.dart';
 import 'storyboard_rows.dart';
 
+/// The TRACK-axis selection a shove was aimed by — an S row's sounds or the
+/// cut row's cuts — carried the way its blocks went, [delta] frames.
+///
+/// 🚨F-264 (유저 2026-10-02): 「타임라인 버튼 밀기/당기기 작동시 선택범위로
+/// 여러행선택한거라던가 블록 선택범위 풀리는데 안풀리도록」. A shove's scope
+/// is 「the selection's rows, anchored at its start」, so the selection is
+/// what the NEXT press is aimed by. Dropped — as the timeline's was, by a
+/// tidy-up the shove did not owe (`BlockShift`) — that press shoved from the
+/// playhead instead. Left on the frames it covered — as the storyboard's
+/// two were — a second pull found the blocks it had just moved standing
+/// BEFORE its anchor and passed them by, and a cut pushed out from under
+/// its band was no longer the cut selected. Carried, it names the same
+/// blocks for as many presses as it takes.
+///
+/// The cut's own selection is carried by the frame shove, beside its scope.
+void carryTrackSelectionWithTheShove(SelectionAccess selection, int delta) {
+  if (selection.trackFrameRangeSelection.value case final onTrack?) {
+    selection.trackFrameRangeSelection.value = onTrack.shiftedBy(delta);
+  }
+}
+
 /// THE CUT-AXIS SHOVE: push and pull on the storyboard's cut row.
 ///
 /// Design D — a cut is a block on the cut row exactly as an exposure is a
@@ -21,18 +42,24 @@ import 'storyboard_rows.dart';
 class CutShift {
   CutShift({
     required ProjectAccess project,
+    required SelectionAccess selection,
     required ChangeSink changes,
     required StoryboardRows storyboardRows,
   }) : _project = project,
+       _selection = selection,
        _changes = changes,
        _storyboardRows = storyboardRows;
 
   final ProjectAccess _project;
+  final SelectionAccess _selection;
   final ChangeSink _changes;
   final StoryboardRows _storyboardRows;
 
-  /// The cut-axis scope: which track, and the ordinal the shove starts at.
-  ({TrackId trackId, int anchorCutIndex})? _cutShiftScope() {
+  /// The cut-axis scope: which track, the ordinal the shove starts at, and
+  /// whether a SELECTION aimed it there — the cuts it covers — rather than
+  /// the cut stood on.
+  ({TrackId trackId, int anchorCutIndex, bool aimedBySelection})?
+  _cutShiftScope() {
     final project = _project.repository.requireProject();
     final selection = _storyboardRows.storyboardSelectedCutIds;
     for (final track in project.tracks) {
@@ -44,13 +71,21 @@ class CutShift {
           continue;
         }
         indexes.sort();
-        return (trackId: track.id, anchorCutIndex: indexes.first);
+        return (
+          trackId: track.id,
+          anchorCutIndex: indexes.first,
+          aimedBySelection: true,
+        );
       }
       final activeIndex = track.cuts.indexWhere(
         (c) => c.id == _project.activeCutId,
       );
       if (activeIndex >= 0) {
-        return (trackId: track.id, anchorCutIndex: activeIndex);
+        return (
+          trackId: track.id,
+          anchorCutIndex: activeIndex,
+          aimedBySelection: false,
+        );
       }
     }
     return null;
@@ -122,6 +157,12 @@ class CutShift {
       beforeGaps: {anchor.id: anchor.leadingGapFrames},
       afterGaps: {anchor.id: after},
     );
+    // The cuts ARE this selection's blocks, and it goes where they went
+    // (F-264) — before the tidy-up, which is a cut command's and leaves a
+    // track selection be.
+    if (scope.aimedBySelection) {
+      carryTrackSelectionWithTheShove(_selection, delta);
+    }
     _changes.refreshAfterCutCommand();
     _changes.notifyChanged();
   }

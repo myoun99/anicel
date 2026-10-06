@@ -252,6 +252,28 @@ void main() {
       expect(seLayerOf(session).timeline.keys, [2, 5]);
     });
 
+    // 🚨F-264 (유저 2026-10-02): 「밀기/당기기 작동시 … 선택범위 풀리는데
+    // 안풀리도록」 — the selection a shove was aimed by rides it
+    // (`carrySelectionWithTheShove`). Pulled twice is what tells: left on
+    // the frames it covered, the second pull finds the sound it had just
+    // moved standing BEFORE its anchor.
+    test('F-264 — the selection rides the shove: pulled twice, it is the '
+        'same sound both times', () {
+      final session = sessionFor();
+      session.updateTrackRowRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      session.blockShift.pullFrames(1);
+      session.blockShift.pullFrames(1);
+
+      expect(seLayerOf(session).timeline.keys, [2, 7]);
+      final selection = session.trackFrameRangeSelection.value!;
+      expect((selection.startFrame, selection.endFrameExclusive), (7, 10));
+    });
+
     test('with no storyboard selection the timeline scope is untouched', () {
       final session = sessionFor();
 
@@ -832,6 +854,39 @@ void main() {
         3,
       );
       expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
+    test('F-264 — a CUT selection rides the shove too: pushed and pulled, '
+        'it is the same cut', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+      final cut2 = session.repository.requireProject().tracks.single.cuts.last;
+      List<CutId> selected() => session.storyboardRows.storyboardSelectedCutIds;
+      expect(selected(), [cut2.id], reason: '⛔전제');
+
+      session.blockShift.pushBlocks(3);
+      expect(selected(), [cut2.id]);
+      final pushed = session.trackFrameRangeSelection.value!;
+      expect((pushed.startFrame, pushed.endFrameExclusive), (11, 17));
+
+      session.blockShift.pullBlocks(1);
+      session.blockShift.pullBlocks(1);
+      expect(
+        session.repository
+            .requireProject()
+            .tracks
+            .single
+            .cuts
+            .last
+            .leadingGapFrames,
+        1,
+        reason: 'the second pull found the cut it had just moved',
+      );
+      expect(selected(), [cut2.id]);
     });
 
     test('an S-ROW selection shoves sounds instead', () {

@@ -85,6 +85,17 @@ class TimelineFrameRangeSelection {
   bool contains(int frameIndex) =>
       frameIndex >= startIndex && frameIndex < endIndexExclusive;
 
+  /// This selection [delta] frames along — the same rows, the cells the
+  /// blocks it covered were shoved to (F-264). The axis starts at 0.
+  TimelineFrameRangeSelection shiftedBy(int delta) =>
+      TimelineFrameRangeSelection(
+        layerId: layerId,
+        layerIds: layerIds,
+        rows: rows,
+        startIndex: math.max(0, startIndex + delta),
+        endIndexExclusive: endIndexExclusive + delta,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
