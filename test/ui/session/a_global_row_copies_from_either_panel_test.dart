@@ -10,8 +10,10 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -249,6 +251,59 @@ void main() {
 
       expect(blocksOf(sound()).first, (cut2 + 3, 1, 'b'));
       expect(session.trackFrameRangeSelection.value, isNull);
+    });
+
+    test('the cut\'s own band, from the timeline: a cut is lit by the band '
+        'alone — the cursor on a hold\'s ghost, where no block stands — '
+        'lifts what the band covers, and lets the band go', () {
+      session.rangeMove.setRunEdgeBehavior(
+        layerId: cel,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+        mode: TimelineRunEdgeMode.hold,
+      );
+      session.selectLayer(cel);
+      session.selectFrameIndex(2);
+      final held = session.layerById(cel)!.timeline;
+      expect(
+        coveringDrawingBlockAt(held, 2)?.entry.ghost,
+        isTrue,
+        reason: 'fixture: the cursor stands on the hold\'s ghost',
+      );
+      expect(
+        timeline.canCutRun,
+        isFalse,
+        reason: 'premise (F-107): standing there with no band, a cut would '
+            'lift nothing',
+      );
+      session.updateFrameRangeSelectionDrag(
+        layerId: cel,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+
+      expect(timeline.canCutRun, isTrue, reason: 'the band is what it lifts');
+      timeline.cutRun();
+
+      expect(blocksOf(session.layerById(cel)!), isEmpty);
+      expect(session.frameRangeSelection.value, isNull);
+    });
+
+    test('…and a paste under it replaces what it covers and lets it go', () {
+      session.selectLayer(cel);
+      session.selectFrameIndex(0);
+      timeline.copyFrame();
+      session.updateFrameRangeSelectionDrag(
+        layerId: cel,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+      expect(session.frameRangeSelection.value, isNotNull, reason: 'fixture');
+
+      timeline.pasteIndependentFrame();
+
+      expect(blocksOf(session.layerById(cel)!), hasLength(1));
+      expect(session.frameRangeSelection.value, isNull);
     });
 
     test('a band over two S rows takes both, each on its own row', () {
