@@ -24,19 +24,35 @@ void main() {
     expect(start, greaterThan(-1), reason: 'setup: the function is there');
     expect(end, greaterThan(start), reason: 'setup: and the next one after');
 
+    // The route hands its tiles — the drawing's, and since the cel stream's
+    // v3 every text plate's — to ONE walk of the writer's, so the contract
+    // is the pair: the route goes through that walk and no other, and the
+    // walk reads in place.
     final body = source.substring(start, end);
     expect(
-      body.contains('readPixels'),
+      body.contains('writer.tilesOf('),
       isTrue,
       reason: 'setup: this is the function the contract is about',
     );
+    const copies =
+        'BitmapTile.pixels is a defensive 64KB copy per tile, and not '
+        'copying is the whole reason this route exists. The bytes are '
+        'identical either way, so no behavioural test can see it.';
+    expect(body.contains('.pixels'), isFalse, reason: copies);
     expect(
-      body.contains('.pixels'),
+      body.contains('tileRecords'),
       isFalse,
       reason:
-          'BitmapTile.pixels is a defensive 64KB copy per tile, and not '
-          'copying is the whole reason this route exists. The bytes are '
-          'identical either way, so no behavioural test can see it.',
+          'that walk writes the isolate-boundary records, whose bytes were '
+          'copied to make them',
     );
+
+    final walkStart = source.indexOf('void tilesOf(');
+    final walkEnd = source.indexOf('void tileRecords(');
+    expect(walkStart, greaterThan(-1), reason: 'setup: the walk is there');
+    expect(walkEnd, greaterThan(walkStart), reason: 'setup: and the next');
+    final walk = source.substring(walkStart, walkEnd);
+    expect(walk.contains('readPixels'), isTrue, reason: 'setup: it reads');
+    expect(walk.contains('.pixels'), isFalse, reason: copies);
   });
 }

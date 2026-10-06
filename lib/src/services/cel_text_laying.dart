@@ -28,7 +28,6 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
-import '../models/bitmap_tile_rewrite.dart';
 import '../models/tile_coord.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -140,36 +139,43 @@ bool _stamp(Uint8List pixels, BitmapTile plate, int tileSize) =>
       ).blendSpanInPlace(pixels, 0, 0, tileSize * tileSize),
     );
 
-/// [plate] laid over an empty coordinate: the plate's own pixels, with
-/// nothing where it holds no ink.
+/// [plate] laid over an empty coordinate — what the stamp makes there: it
+/// skips a pixel of alpha 0 and writes every other, as it is, over nothing.
 ///
-/// It is what the stamp makes there — a stamp skips a pixel of alpha 0 and
-/// writes every other as it is over nothing — without running it: a baked
-/// plate holds nothing behind alpha 0 already, so the answer is the plate
-/// ITSELF, and a text over bare paper costs no second copy of its pixels.
-BitmapTile _laidOverNothing(BitmapTile plate, int tileSize) {
-  final cached = _laidAlone[plate];
-  if (cached != null) {
-    return cached;
-  }
-  final pixelCount = tileSize * tileSize;
-  final cleared = rewriteTileLazily(plate, tileSize, (view) {
-    Uint8List? out;
-    for (var pixel = 0; pixel < pixelCount; pixel += 1) {
-      final offset = pixel * BitmapTile.bytesPerPixel;
-      if (view[offset + 3] != 0 ||
-          (view[offset] == 0 && view[offset + 1] == 0 && view[offset + 2] == 0)) {
-        continue;
-      }
-      out ??= Uint8List.fromList(view);
-      out[offset] = 0;
-      out[offset + 1] = 0;
-      out[offset + 2] = 0;
-    }
-    return out;
-  });
-  return _laidAlone[plate] = cleared ?? plate;
+/// A baked plate holds nothing behind alpha 0 (the engine hands its pixels
+/// back that way), and for such a plate the stamp's answer is the plate
+/// ITSELF: a text over bare paper costs no second copy of its pixels. Only
+/// a plate that does carry a colour where it has no ink is run through the
+/// stamp, onto a blank tile, to be rid of it.
+///
+/// ↩️It cleared those pixels in a walk of its own until the clone ratchet
+/// named that walk as the colour keys' (`_keyedTile`, 90 → 91, 2026-10-06).
+/// The stamp already says what lands over nothing.
+BitmapTile _laidOverNothing(BitmapTile plate, int tileSize) =>
+    _laidAlone[plate] ??= _holdsColourBehindNothing(plate)
+        ? _stampedOnBlank(plate, tileSize)
+        : plate;
+
+BitmapTile _stampedOnBlank(BitmapTile plate, int tileSize) {
+  final pixels = Uint8List(BitmapTile.bytesFor(tileSize));
+  _stamp(pixels, plate, tileSize);
+  return BitmapTile(size: tileSize, pixels: pixels);
 }
+
+/// Whether any pixel of [tile] with no alpha still carries a colour.
+bool _holdsColourBehindNothing(BitmapTile tile) => tile.readPixels((_, view) {
+  // RGBA little-endian: alpha is the word's top byte.
+  final words = view.buffer.asUint32List(
+    view.offsetInBytes,
+    view.length ~/ BitmapTile.bytesPerPixel,
+  );
+  for (var i = 0; i < words.length; i += 1) {
+    if (words[i] != 0 && (words[i] & 0xff000000) == 0) {
+      return true;
+    }
+  }
+  return false;
+});
 
 /// [plate] stamped over [under] at full strength.
 ///
