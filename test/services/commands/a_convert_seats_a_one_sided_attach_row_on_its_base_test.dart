@@ -7,6 +7,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -58,7 +59,10 @@ void main() {
   /// Two cuts holding [origin] and [target] (bottom row first), converted
   /// origin → target.
   ({ProjectRepository repository, ConvertToLinkedCutCommand convert})
-  converted({required List<Layer> origin, required List<Layer> target}) {
+  converted({
+    required List<Layer> origin,
+    required List<Layer> target,
+  }) {
     Cut cut(CutId id, String name, List<Layer> layers) => Cut(
       id: id,
       name: name,
@@ -75,7 +79,10 @@ void main() {
           Track(
             id: const TrackId('track'),
             name: 'T',
-            cuts: [cut(originId, '1', origin), cut(targetId, '2', target)],
+            cuts: [
+              cut(originId, '1', origin),
+              cut(targetId, '2', target),
+            ],
           ),
         ],
       ),
@@ -228,6 +235,30 @@ void main() {
     expect(copy.folderId, const LayerId('tf'));
     expect(names(target), ['A', 'A+1', 'Z', 'F']);
     expect(folderStructureProblem(target), isNull);
+  });
+
+  // The two halves of the union ran as one loop written twice until this
+  // round; these two say what each way round still does.
+  test('the side a row comes from is canonical for it — it holds the '
+      'pixels — whichever cut that is', () {
+    final (:repository, convert: _) = converted(
+      origin: [cel('a', 'A'), cel('o', 'OnlyHere')],
+      target: [cel('ta', 'A'), cel('t', 'OnlyThere')],
+    );
+    final registry = repository.requireProject().linkRegistry;
+
+    expect(
+      registry.groupOf(cutId: originId, layerId: const LayerId('o'))!.canonical,
+      isA<LayerLinkMember>()
+          .having((member) => member.cutId, 'cut', originId)
+          .having((member) => member.layerId, 'row', const LayerId('o')),
+    );
+    expect(
+      registry.groupOf(cutId: targetId, layerId: const LayerId('t'))!.canonical,
+      isA<LayerLinkMember>()
+          .having((member) => member.cutId, 'cut', targetId)
+          .having((member) => member.layerId, 'row', const LayerId('t')),
+    );
   });
 
   test('a row that rides nothing still lands on top, as it always did', () {
