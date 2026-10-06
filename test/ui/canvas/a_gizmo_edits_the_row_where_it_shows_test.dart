@@ -256,14 +256,14 @@ void main() {
       // …and the scale the box stands on is the row's own.
       // ↩️It stood on the folder's zoom times the row's, and the landing
       // divided the folder's back out (3 in, 1.5 out).
-      expect(box.pose.zoom, 1);
+      expect(box.pose.scale, uniformScale(1));
 
-      box.scale!.committed(1.5);
+      box.scale!.committed(CanvasPoint(x: 1.5, y: -0.75));
       await tester.pump();
       expect(
-        ownPose(session).zoom,
-        closeTo(1.5, 0.001),
-        reason: 'what the box hands back is the row\'s own scale',
+        ownPose(session).scale,
+        CanvasPoint(x: 1.5, y: -0.75),
+        reason: 'what the box hands back is the row\'s own two scales',
       );
     });
   });

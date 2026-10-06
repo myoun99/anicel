@@ -12,6 +12,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
@@ -1882,6 +1883,7 @@ onLayerMarkSelected: (_, _) {},
 expandedLaneLayerIds: {const LayerId('layer-a')},
 lanesForLayer: (layer) => transformPropertyLanes(
                 layer.transformTrack,
+                scaleForm: scaleLaneFormOf(layer),
               ).where((lane) => lane.laneId == 'position').toList(),),
 layers: [committed],
 metrics: const TimelineGridMetrics(

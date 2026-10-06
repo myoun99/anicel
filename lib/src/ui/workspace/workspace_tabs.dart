@@ -832,6 +832,7 @@ class _WorkspaceTabs {
             ]),
             host: (context) => TimelineTabHost(
               session: _state.widget.session,
+              transformOptions: _state._transformOptions,
               // A pool row dropped on a drawing layer: select what it
               // landed on, then open the place window with the file
               // already decided. The drop FILLS the answers and the
@@ -973,6 +974,7 @@ class _WorkspaceTabs {
             ]),
             host: (context) => StoryboardTabHost(
               session: _state.widget.session,
+              transformOptions: _state._transformOptions,
               // A pool row let go on a track's frames: the place window, with
               // the drop's answer — a NEW cut there — shown locked.
               onPlaceMediaAsset: (path, spot) => _state._openImportWindow(

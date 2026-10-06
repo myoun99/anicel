@@ -126,6 +126,7 @@ void main() {
       3,
       '-45°',
       frameIsGlobal: false,
+      scaleLinked: false,
       description: 'Set Rotation at frame 4',
     );
     final lane = rotationOnTheRow();

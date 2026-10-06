@@ -178,7 +178,18 @@ void main() {
   /// now, and the instruction rows' spans enter the shared walk by the keys
   /// they hold (`shiftKeysAt`). 🔬The lane's scan against master
   /// (`6cd83353a`, at 381) named that one gone and nothing added.
-  const wideSignatures = 380;
+  ///
+  /// ⚠️380 → 381 on 2026-10-07, one named as the rule above asks (F-256, a
+  /// layer's Scale lane holds two numbers).
+  /// `transformTrackWithLaneValueEdited` (six) took how the row's Scale
+  /// reads what was typed: its form — a camera's one zoom, a layer's two
+  /// scales — and whether the chain is on. The other four are the lane
+  /// cell and the text, as they were. The two are asked apart because the
+  /// lane list prints and scrubs by the form alone, while the chain is the
+  /// transform tool's one switch, read where a value lands. 🔬The lane's
+  /// scan against master (`bdb2136ad`, at 380) named that one added and
+  /// nothing gone.
+  const wideSignatures = 381;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

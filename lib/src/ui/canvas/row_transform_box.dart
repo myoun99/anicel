@@ -42,8 +42,12 @@ typedef RowBoxLanding<T> = ({
 ///
 /// The box turns and scales about [TransformPose.center] — where the pose
 /// puts its anchor, by construction — and a corner scales the whole box
-/// alike, because the value it drives is one number (F-222-box-Q2 「모서리만
-/// — 할 수 있는 것만 손잡이로」).
+/// alike: ONE factor for both of the row's scales, so the box keeps the
+/// proportions its Scale lane gave it (`TransformBoxLaw.scaled`'s law).
+/// ↩️「Because the value it drives is one number」, until a layer's scale
+/// became two (F-256-Q1). The corners are still the only handles
+/// (F-222-box-Q2 「모서리만 — 할 수 있는 것만 손잡이로」) — 🚧an edge's
+/// middle is a thing the value can take now, and is not on the box yet.
 ///
 /// ⚠️[claimsCanvas] says whose the empty canvas is. Standing on the row, the
 /// box takes every press under every tool but the two that draw an area on
@@ -92,9 +96,9 @@ class RowTransformBox extends StatefulWidget {
   /// The inside: the position the box moves to, in whole pixels (09-22 ⑭).
   final RowBoxLanding<CanvasPoint>? move;
 
-  /// A corner: the scale the box reaches, 1 being the size it is drawn at
-  /// [TransformPose.zoom] 1.
-  final RowBoxLanding<double>? scale;
+  /// A corner: the two scales the box reaches, across and down — 1 being
+  /// the size it is drawn at unscaled.
+  final RowBoxLanding<CanvasPoint>? scale;
 
   /// Outside, on stage: the rotation, in clockwise degrees.
   final RowBoxLanding<double>? turn;
@@ -243,12 +247,20 @@ class _RowTransformBoxState extends State<RowTransformBox> {
       case BoxPress.handle:
         // Distance from the pivot scales linearly with the box, so the
         // ratio IS the scale change — no need to unproject the corner.
+        //
+        // 🚨ONE FACTOR FOR BOTH AXES, NOT ONE SCALE (`TransformBoxLaw
+        // .scaled`): a corner keeps the proportions the row has — a flip
+        // and a stretch its Scale lane keyed included (F-256-Q1).
+        // ↩️It wrote `max(zoom · ratio, 0.001)` to both: one number, held
+        // above zero because a scale had to be. A scale may be zero now
+        // (`TransformPose.scaleX`) and the ratio is never zero or infinite
+        // ([_pressReach]), so the floor went with its reason.
         final pivot = widget.viewport.canvasToViewportOffset(start.center);
         final ratio = math.max((local - pivot).distance, 0.001) / _pressReach;
         _show(
           widget.scale!,
-          math.max(start.zoom * ratio, 0.001),
-          from: start.zoom,
+          CanvasPoint(x: start.scaleX * ratio, y: start.scaleY * ratio),
+          from: start.scale,
         );
       case BoxPress.turn:
         final step = TransformBoxLaw.turn(

@@ -134,21 +134,13 @@ class TransformValues {
   /// 300 × −150, and taken to −200 is −200 × −100).
   TransformValues withScaleX(double sx, {required bool linked}) => copyWith(
     sx: sx,
-    sy: linked ? _carried(sy, from: this.sx, to: sx) : null,
+    sy: linked ? scaleCarriedBy(sy, from: this.sx, to: sx) : null,
   );
 
   TransformValues withScaleY(double sy, {required bool linked}) => copyWith(
-    sx: linked ? _carried(sx, from: this.sy, to: sy) : null,
+    sx: linked ? scaleCarriedBy(sx, from: this.sy, to: sy) : null,
     sy: sy,
   );
-
-  /// [other] by the size of the step [from] → [to], its sign kept. A scale
-  /// standing on zero has no ratio to carry: [other] stays as it is.
-  static double _carried(
-    double other, {
-    required double from,
-    required double to,
-  }) => from == 0 ? other : other * (to / from).abs();
 
   @override
   bool operator ==(Object other) =>
@@ -171,3 +163,17 @@ class TransformValues {
       'TransformValues(sx: $sx, sy: $sy, rotationDegrees: $rotationDegrees, '
       'tx: $tx, ty: $ty, anchorX: $anchorX, anchorY: $anchorY)';
 }
+
+/// THE LINK'S ARITHMETIC — [other] by the size of the step [from] → [to],
+/// its own sign kept. A scale standing on zero has no ratio to carry:
+/// [other] stays as it is.
+///
+/// Every pair of scales that is linked carries by this: the transform
+/// tool's ([TransformValues.withScaleX]) and a layer's Scale lane
+/// (`TwoScales`). ↩️It was the tool's own, a private of [TransformValues],
+/// until the lane linked too (`transform-fx-scale-x-y-Q1`).
+double scaleCarriedBy(
+  double other, {
+  required double from,
+  required double to,
+}) => from == 0 ? other : other * (to / from).abs();

@@ -14,6 +14,7 @@ import 'timeline/layer_link_window.dart';
 import 'timeline/layer_reference_popover.dart';
 import 'timeline/movie_source_shortfall.dart';
 import 'timeline/se_layer_mixer.dart';
+import 'brush/transform_tool_options.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
@@ -79,6 +80,7 @@ class TimelineTabHost extends StatefulWidget {
     this.cameraViewEnabled,
     this.cameraDimOpacity,
     this.onRevealOnionSkinPanel,
+    this.transformOptions,
   });
 
   final EditorSessionManager session;
@@ -158,6 +160,11 @@ class TimelineTabHost extends StatefulWidget {
   /// The workspace's onion-panel reveal (UI-R17 #5): open when hidden,
   /// flash-in-place when already open. Null hides the legend entry.
   final VoidCallback? onRevealOnionSkinPanel;
+
+  /// The transform tool's options: a layer's Scale lane links by its
+  /// 「배율 연동」 ([sessionLaneEditCallbacks]). Null reads the tool's
+  /// defaults.
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   @override
   State<TimelineTabHost> createState() => _TimelineTabHostState();
@@ -318,8 +325,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   // ↩️The callbacks' body is [sessionLaneEditCallbacks] (F-101): the
   // storyboard's S rows take the same one, on their own axis.
-  PropertyLaneEditCallbacks get _laneEdit =>
-      sessionLaneEditCallbacks(_session, frameIsGlobal: false);
+  PropertyLaneEditCallbacks get _laneEdit => sessionLaneEditCallbacks(
+    _session,
+    frameIsGlobal: false,
+    transformOptions: widget.transformOptions,
+  );
 
   // ⛔The two LAYER dialogs left this host (2026-08-10): the layer pill is
   // mounted on the storyboard's bar too now, and nothing in either flow was

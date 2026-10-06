@@ -12,6 +12,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
@@ -68,6 +69,7 @@ void main() {
           labelsOf(
             transformPropertyLanes(
               TransformTrack.empty(),
+              scaleForm: const TwoScales(),
               includeAnchorAndOpacity: true,
             ),
           ),

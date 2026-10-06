@@ -68,7 +68,8 @@ import '../models/layer_kind.dart';
 import '../services/layer_pose_matrix.dart'
     show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
-import '../models/transform_track.dart' show TransformPose, TransformTrack;
+import '../models/transform_track.dart'
+    show TransformPose, TransformTrack, uniformScale;
 import '../models/transition_geometry.dart' show TransitionVeil;
 import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
@@ -988,14 +989,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             )
           : null,
       scale: box
-          ? _handleLandings<double>(
+          ? _handleLandings<CanvasPoint>(
               session,
               activeLayer.id,
-              (zoom) =>
+              (scale) =>
                   (track, frameIndex) => transformTrackWithScaleDragged(
                     track,
                     frameIndex: frameIndex,
-                    zoom: zoom,
+                    scale: scale,
                   ),
               description: 'Scale $name',
             )
@@ -1135,7 +1136,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           (track, frameIndex) => transformTrackWithScaleDragged(
             track,
             frameIndex: frameIndex,
-            zoom: zoom,
+            scale: uniformScale(zoom),
           ),
       description: 'Zoom camera $at',
     );

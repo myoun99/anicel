@@ -8,6 +8,7 @@ import '../../models/transform_track.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
+import 'scale_lane_form.dart';
 import 'se_audio_lane.dart' show seAudioLanesFor;
 import 'se_name_tag_lane_policy.dart'
     show seNameTagGroupLaneId, seNameTagPropertyLanes;
@@ -98,6 +99,7 @@ List<PropertyLaneRow> propertyLanesForRow({
     final centre = poseCentre;
     return transformPropertyLanes(
       layer.transformTrack,
+      scaleForm: scaleLaneFormOf(layer),
       includeAnchorAndOpacity: true,
       poseAt: centre == null
           ? null

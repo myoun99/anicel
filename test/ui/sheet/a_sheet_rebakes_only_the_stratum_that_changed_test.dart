@@ -356,6 +356,7 @@ void main() {
               0,
               value,
               frameIsGlobal: false,
+              scaleLinked: false,
             ),
           ),
           only(const {}),

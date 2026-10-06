@@ -19,6 +19,7 @@ import 'timeline/timeline_drag_preview.dart' show TimelineDragPreview;
 import 'timeline/toolbar_panel_context.dart';
 import 'timeline/timeline_grid_metrics.dart'
     show timelineLayerRowGrowthIn;
+import 'brush/transform_tool_options.dart';
 import 'editor_session_manager.dart';
 import 'session/session_legend_callbacks.dart';
 import 'session/session_row_button_presses.dart';
@@ -70,6 +71,7 @@ class StoryboardTabHost extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowsChannel,
+    this.transformOptions,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
@@ -85,6 +87,11 @@ class StoryboardTabHost extends StatefulWidget {
   /// Where the panel hands its stacked rows to the shell's walkers — see
   /// [StoryboardPanel.rowsChannel].
   final StoryboardRowsChannel? rowsChannel;
+
+  /// The transform tool's options — the timeline host's own
+  /// ([TimelineTabHost.transformOptions]): an S row's Scale lane links by
+  /// the same switch.
+  final ValueNotifier<TransformToolOptions>? transformOptions;
 
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See
@@ -292,8 +299,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// timeline's own list, Audio lane included, so both hosts take
   /// [sessionLaneEditCallbacks] and the typed offset goes where the
   /// timeline's does.
-  PropertyLaneEditCallbacks get _layerLaneEdit =>
-      sessionLaneEditCallbacks(_session, frameIsGlobal: true);
+  PropertyLaneEditCallbacks get _layerLaneEdit => sessionLaneEditCallbacks(
+    _session,
+    frameIsGlobal: true,
+    transformOptions: widget.transformOptions,
+  );
 
   /// THE cells' press (the timeline's cell contract): pick the row, then
   /// seek to the frame under the pointer. The seek is the ruler's own, so a

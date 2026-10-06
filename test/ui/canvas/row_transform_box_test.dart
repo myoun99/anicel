@@ -41,13 +41,19 @@ void main() {
   RowBoxLanding<T> into<T>(List<T> committed, {List<T>? shown}) =>
       (changed: (value) => shown?.add(value), committed: committed.add);
 
+  /// BOTH of a row's scales at [scale] — what a corner makes of a row whose
+  /// two are alike.
+  Matcher bothAt(double scale, double tolerance) => isA<CanvasPoint>()
+      .having((point) => point.x, 'across', closeTo(scale, tolerance))
+      .having((point) => point.y, 'down', closeTo(scale, tolerance));
+
   Widget box({
     TransformPose? pose,
     CanvasSize size = canvasSize,
     CanvasViewport? viewport,
     bool claimsCanvas = true,
     List<CanvasPoint>? moves,
-    List<double>? scales,
+    List<CanvasPoint>? scales,
     List<double>? turns,
     List<CanvasPoint>? anchors,
     VoidCallback? onCancelled,
@@ -74,7 +80,7 @@ void main() {
   testWidgets('a corner of the PICTURE scales — dragged away from the anchor '
       'it scales up, and commits scale ALONE', (tester) async {
     final moves = <CanvasPoint>[];
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     final turns = <double>[];
     await pumpBox(tester, box(moves: moves, scales: scales, turns: turns));
 
@@ -85,26 +91,75 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(scales, hasLength(1));
-    expect(scales.single, closeTo(2.0, 0.01));
+    expect(scales.single, bothAt(2.0, 0.01));
     expect(moves, isEmpty, reason: 'a corner is a statement about scale');
     expect(turns, isEmpty);
   });
 
   testWidgets('dragging a corner INTO the anchor scales down rather than '
       'flipping', (tester) async {
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     await pumpBox(tester, box(scales: scales));
     // Halfway in from (300, 250) toward the pivot at (200, 150).
     await tester.dragFrom(const Offset(300, 250), const Offset(-50, -50));
     await tester.pumpAndSettle();
-    expect(scales.single, closeTo(0.5, 0.01));
-    expect(scales.single, greaterThan(0), reason: 'zoom must stay positive');
+    expect(scales.single, bothAt(0.5, 0.01));
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」. A row's Scale lane keys two scales that may differ, and the box
+  // has corners alone.
+  testWidgets("a corner scales BOTH of the row's scales by one factor — a "
+      'flip and a stretch the lane keyed are kept', (tester) async {
+    final scales = <CanvasPoint>[];
+    await pumpBox(
+      tester,
+      box(
+        pose: TransformPose(center: anchor, scaleX: -1, scaleY: 0.5),
+        scales: scales,
+      ),
+    );
+    // (300, 250) → (400, 350): twice as far from the pivot.
+    await tester.dragFrom(const Offset(300, 250), const Offset(100, 100));
+    await tester.pumpAndSettle();
+
+    expect(scales, hasLength(1));
+    expect(scales.single.x, closeTo(-2, 0.02), reason: 'still flipped');
+    expect(scales.single.y, closeTo(1, 0.01), reason: 'still half as tall');
+  });
+
+  testWidgets('a corner dragged INTO the anchor keeps the row the way round '
+      'it is: the factor is a distance, never a minus', (tester) async {
+    final scales = <CanvasPoint>[];
+    await pumpBox(
+      tester,
+      box(pose: TransformPose(center: anchor, scaleX: -1), scales: scales),
+    );
+    await tester.dragFrom(const Offset(300, 250), const Offset(-50, -50));
+    await tester.pumpAndSettle();
+
+    expect(scales.single.x, closeTo(-0.5, 0.01));
+    expect(scales.single.y, closeTo(0.5, 0.01));
+  });
+
+  testWidgets('a row shown as NOTHING on one axis stays so under a corner: '
+      'zero has no size to scale', (tester) async {
+    final scales = <CanvasPoint>[];
+    await pumpBox(
+      tester,
+      box(pose: TransformPose(center: anchor, scaleX: 0), scales: scales),
+    );
+    await tester.dragFrom(const Offset(300, 250), const Offset(100, 100));
+    await tester.pumpAndSettle();
+
+    expect(scales.single.x, 0);
+    expect(scales.single.y, closeTo(2, 0.02));
   });
 
   testWidgets('the INSIDE moves the position in whole pixels, and commits '
       'position ALONE', (tester) async {
     final moves = <CanvasPoint>[];
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     await pumpBox(tester, box(moves: moves, scales: scales));
 
     await tester.dragFrom(const Offset(150, 100), const Offset(30.4, -20.6));
@@ -274,7 +329,7 @@ void main() {
       WidgetTester tester, {
       required bool claimsCanvas,
       required List<CanvasPoint> moves,
-      required List<double> scales,
+      required List<CanvasPoint> scales,
     }) async {
       final toolPresses = <Offset>[];
       await pumpBox(
@@ -303,7 +358,7 @@ void main() {
     testWidgets('claiming the canvas, every press is the box\'s — the tool '
         'beneath hears none, an empty one included', (tester) async {
       final moves = <CanvasPoint>[];
-      final scales = <double>[];
+      final scales = <CanvasPoint>[];
       final toolPresses = await pumpOverATool(
         tester,
         claimsCanvas: true,
@@ -322,7 +377,7 @@ void main() {
     testWidgets('not claiming it, the box keeps its corners and the cross — '
         'the inside falls to the tool', (tester) async {
       final moves = <CanvasPoint>[];
-      final scales = <double>[];
+      final scales = <CanvasPoint>[];
       final toolPresses = await pumpOverATool(
         tester,
         claimsCanvas: false,
@@ -350,7 +405,7 @@ void main() {
     AppInput.settings.value = AppInput.settings.value.copyWith(
       touchDragOneFinger: CanvasTouchDragAction.flip,
     );
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     await pumpBox(tester, box(scales: scales));
 
     await tester.dragFrom(
@@ -432,7 +487,7 @@ void main() {
       'it holds from the first movement, and so does the box', (
     tester,
   ) async {
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     // The canvas's claim, as `CanvasViewportGestureLayer` wears it around
     // everything on the canvas.
     await pumpBox(tester, SurfaceDragClaim(child: box(scales: scales)));
@@ -451,11 +506,11 @@ void main() {
     await tester.pump();
 
     expect(scales, hasLength(1), reason: 'the pen drove the box');
-    expect(scales.single, closeTo(2, 1e-6));
+    expect(scales.single, bothAt(2, 1e-6));
   });
 
   testWidgets('a drag that never moves commits nothing', (tester) async {
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     final turns = <double>[];
     await pumpBox(tester, box(scales: scales, turns: turns));
     await tester.dragFrom(const Offset(100, 50), Offset.zero);
@@ -478,9 +533,9 @@ void main() {
       final next = transformTrackWithScaleDragged(
         track,
         frameIndex: 2,
-        zoom: 2.5,
+        scale: CanvasPoint(x: 2.5, y: -0.5),
       );
-      expect(next.scale.keyAt(2)!.value, uniformScale(2.5));
+      expect(next.scale.keyAt(2)!.value, CanvasPoint(x: 2.5, y: -0.5));
       expect(
         next.scale.keyAt(2)!.interpolation,
         PropertyKeyInterpolation.hold,
@@ -526,7 +581,10 @@ void main() {
           claimsCanvas: true,
           onCancelled: () {},
           // The app's loop: the value in flight comes back as the pose.
-          scale: (changed: (next) => shown.value = next, committed: (_) {}),
+          scale: (
+            changed: (next) => shown.value = next.x,
+            committed: (_) {},
+          ),
         ),
       ),
     );
@@ -558,7 +616,7 @@ void main() {
 
   testWidgets('a grab that comes back to where it began writes nothing and '
       'drops what it showed', (tester) async {
-    final scales = <double>[];
+    final scales = <CanvasPoint>[];
     var cancels = 0;
     await pumpBox(
       tester,

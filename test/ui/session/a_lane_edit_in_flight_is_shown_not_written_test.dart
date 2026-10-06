@@ -85,6 +85,7 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       final preview = session.dragPreview.value;
@@ -110,6 +111,7 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
 
@@ -131,6 +133,7 @@ void main() {
         0,
         '40, 30',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
       session.laneVerbs.previewLaneValueAt(
         row.id,
@@ -138,6 +141,7 @@ void main() {
         0,
         'not a value',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       expect(session.dragPreview.value, isNull);
@@ -257,6 +261,7 @@ void main() {
         0,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
       );
 
       expect(
@@ -281,6 +286,7 @@ void main() {
         0,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
       expect(session.dragPreview.value, isNull);
@@ -302,6 +308,7 @@ void main() {
         4,
         '100, 80',
         frameIsGlobal: false,
+        scaleLinked: false,
         description: 'Set Position',
       );
       session.updateLaneRangeSelectionDrag(
@@ -344,6 +351,7 @@ void main() {
       0,
       '12',
       frameIsGlobal: true,
+      scaleLinked: false,
     );
 
     final shown = timelineDragPreviewTrackEffectsFor(
@@ -386,6 +394,7 @@ void main() {
       2,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
 
     final preview = session.dragPreview.value;
@@ -422,6 +431,7 @@ void main() {
       2,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
       description: 'Set Position',
     );
     expect(
@@ -444,6 +454,7 @@ void main() {
       0,
       '40, 30',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
     expect(
       session.dragPreview.value,
@@ -486,6 +497,7 @@ void main() {
       0,
       '40%',
       frameIsGlobal: false,
+      scaleLinked: false,
     );
 
     expect(seOpacity(), closeTo(0.4, 1e-9));

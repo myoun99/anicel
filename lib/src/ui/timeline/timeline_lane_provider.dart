@@ -6,6 +6,7 @@ import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart';
 import 'property_lanes_for_row.dart';
+import 'scale_lane_form.dart';
 import 'transform_lane_policy.dart'
     show transformPropertyLanes, transformUnionHeader;
 
@@ -32,7 +33,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
   required Set<String> expandedGroupKeys,
 }) {
   if (layer.kind == LayerKind.camera) {
-    return _cameraLanes(session);
+    return _cameraLanes(session, layer);
   }
   return propertyLanesForRow(
     layer: layer,
@@ -50,7 +51,7 @@ List<PropertyLaneRow> timelineLanesForLayer({
 }
 
 /// The CAMERA row's lanes: its cut's camera track, the member lanes alone.
-List<PropertyLaneRow> _cameraLanes(EditorSessionManager session) {
+List<PropertyLaneRow> _cameraLanes(EditorSessionManager session, Layer row) {
   // A camera row on screen implies an active cut.
   final cut = session.requireActiveCut;
   // ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
@@ -76,6 +77,7 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session) {
   final cameraTrack = session.camera.activeCutCameraTrack ?? cut.camera.track;
   return transformPropertyLanes(
     cameraTrack,
+    scaleForm: scaleLaneFormOf(row),
     poseAt: (frameIndex) => TransformPose.ofCamera(
       resolveCameraPoseAt(
         // The SAME track the lanes are built from, so the value column
