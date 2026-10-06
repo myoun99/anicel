@@ -4,9 +4,11 @@ import 'package:anicel/src/services/media/media_byte_source.dart';
 import 'package:anicel/src/services/media/project_font_sources.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// R9-rest (the text tool's faces): A FONT THAT READS WRONG OUT OF THE
-/// PROJECT FILE IS LOOKED FOR AGAIN — a save may pack the file under the
-/// very read, and the font is then somewhere else in it, and whole.
+/// R9-rest (the text tool's faces): A FONT THAT WILL NOT READ WHERE IT WAS
+/// FOUND IS LOOKED FOR AGAIN — a save can end between the look and the
+/// read: it may pack the file under the read, and the font is then
+/// somewhere else in it, and whole; or it puts the bytes of a copy in the
+/// room into the file and lets go of the copy.
 ///
 /// The policy alone, with the looking and the reading stood in for: what
 /// the read itself checks is measured on a real file
@@ -94,9 +96,24 @@ void main() {
     expect(once.looked, hasLength(1));
   });
 
-  test('⛔a copy that does not move — in the room, in the device\'s '
-      'library — is not looked for again: one that will not read is a '
-      'font nobody has', () async {
+  test('🚨a copy in the ROOM that is gone when it is opened is looked for '
+      'again — the save that put its bytes into the file let go of it — '
+      'and read from the file', () async {
+    final inTheFile = entryAt(4);
+    final r = reading([
+      const MediaAppFileBytes(path: 'Staged/ab12-cd34-P.ttf', framed: false),
+      inTheFile,
+    ], readable: (source) => identical(source, inTheFile));
+
+    expect(await r.read(), bytes);
+    expect(r.looked, hasLength(2));
+    expect(r.tried, hasLength(2));
+    expect(r.tried.last, same(inTheFile));
+  });
+
+  test('a copy that stays where it is and will not read — in the room, in '
+      'the device\'s library — is given up on as an entry is: after three '
+      'looks', () async {
     for (final copy in <MediaByteSource>[
       const MediaFileBytes('fonts/ab12-cd34-Probe.ttf'),
       const MediaAppFileBytes(path: 'Staged/ab12-cd34-P.ttf', framed: false),
@@ -104,7 +121,7 @@ void main() {
       final r = reading([copy], readable: (source) => false);
 
       expect(await r.read(), isNull);
-      expect(r.looked, hasLength(1), reason: '$copy');
+      expect(r.looked, hasLength(3), reason: '$copy');
     }
   });
 

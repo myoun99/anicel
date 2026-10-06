@@ -204,20 +204,24 @@ List<MediaLeftBehind> fontsLeftBehind({
   under: anicelFontEntryPrefix,
 );
 
-/// What [read] makes of where [find] says a font's bytes are — and, when an
-/// entry of the project file reads WRONG, of where [find] says they are
-/// then: looked for and read again, up to [attempts] times in all.
+/// What [read] makes of where [find] says a font's bytes are — and, when
+/// they will not read there, of where [find] says they are THEN: looked
+/// for and read again, up to [attempts] times in all.
 ///
-/// 🚨WHY AGAIN. A range into the project file is of one layout, and a save
-/// may pack the file under the very read ([readStoredFontBytes] checks the
-/// entry's CRC, and answers null for bytes that are not the entry's). The
-/// font is then somewhere else in the file, and whole — a save packs once,
-/// and the look after it finds the font where it came to rest.
+/// 🚨WHY AGAIN: WHERE A FONT'S BYTES ARE IS TRUE FOR A MOMENT, because a
+/// save can end between the look and the read.
+/// · A range into the project file is of one layout, and a save may pack
+///   the file under the very read ([readStoredFontBytes] checks the
+///   entry's CRC, and answers null for bytes that are not the entry's).
+///   The font is then somewhere else in the file, and whole.
+/// · A copy in the ROOM is let go of by the save that puts its bytes into
+///   the file (`ProjectFileDoor`, `MediaStagingStore.retireNamed`): found a
+///   moment before that save ended, it is gone when it is opened — and the
+///   font is in the file, where the next look finds it first
+///   ([storedFontBytesFor]).
 ///
-/// ⛔ONLY AN ENTRY OF THE FILE is looked for again. A copy in the room or
-/// in the device's library does not move: one that will not read is a font
-/// nobody has. And bytes that were never moved and still read wrong are a
-/// broken file — [attempts] is where this gives up on them.
+/// ⚠️Bytes that stay where they were said to be and still will not read
+/// are a font nobody has — [attempts] is where this gives up on them.
 Future<Uint8List?> readLookingAgain({
   required MediaByteSource? Function() find,
   required Future<Uint8List?> Function(MediaByteSource source) read,
@@ -229,7 +233,7 @@ Future<Uint8List?> readLookingAgain({
       return null;
     }
     final bytes = await read(source);
-    if (bytes != null || source is! MediaArchiveBytes) {
+    if (bytes != null) {
       return bytes;
     }
   }
