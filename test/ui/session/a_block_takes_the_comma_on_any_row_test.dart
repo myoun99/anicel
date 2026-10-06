@@ -6,8 +6,10 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/edge_drag.dart';
@@ -121,6 +123,29 @@ void main() {
       commaOf(session).setCommaForTimelineCursor(3);
 
       expect(blocksOf(session.layerById(cel)!), [(0, 3)]);
+    });
+
+    test('a hold\'s ghost is no block: dark, and the row stays as it '
+        'stands', () {
+      final cel = celAtZero();
+      session.rangeMove.setRunEdgeBehavior(
+        layerId: cel,
+        blockStartIndex: 0,
+        side: TimelineRunEdgeSide.end,
+        mode: TimelineRunEdgeMode.hold,
+      );
+      session.selectFrameIndex(2);
+      final before = session.layerById(cel)!.timeline;
+      expect(
+        coveringDrawingBlockAt(before, 2)?.entry.ghost,
+        isTrue,
+        reason: 'fixture: the hold drew a ghost of the cel under the cursor',
+      );
+
+      expect(cursorOf(session).canSetCommaForTimelineCursor, isFalse);
+      commaOf(session).setCommaForTimelineCursor(3);
+
+      expect(session.layerById(cel)!.timeline, before);
     });
 
     test('a band over the sound still holds it after the press — in the '
