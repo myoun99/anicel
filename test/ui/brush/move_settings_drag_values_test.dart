@@ -62,9 +62,13 @@ void main() {
     bool canEdit = true,
     bool canApply = false,
     TransformMode mode = TransformMode.normal,
+    // Whether the two scale rows move together (F-256-Q2) — on, as the
+    // tool begins.
+    bool scaleLinked = true,
+    ValueChanged<TransformToolOptions>? onOptionsChanged,
   }) async {
-    // The panel now takes the whole knob set as one object; this suite
-    // only cares about the AA half, so it unwraps that one field back out.
+    // The panel takes the whole knob set as one object; most of this suite
+    // cares about the AA half, so it unwraps that one field back out.
     final resampleHandler = onResampleModeChanged;
     final commands = CanvasSelectionCommands();
     bindBox(
@@ -89,10 +93,15 @@ void main() {
               transformOptions: TransformToolOptions(
                 mode: mode,
                 resampleMode: resampleMode,
+                scaleLinked: scaleLinked,
               ),
-              onTransformOptionsChanged: resampleHandler == null
+              onTransformOptionsChanged:
+                  resampleHandler == null && onOptionsChanged == null
                   ? null
-                  : (options) => resampleHandler(options.resampleMode),
+                  : (options) {
+                      resampleHandler?.call(options.resampleMode);
+                      onOptionsChanged?.call(options);
+                    },
             ),
           ),
         ),
@@ -200,11 +209,17 @@ void main() {
         ),
       };
 
+  /// ⚠️With the scales UNLINKED — the two scale rows are the only ones the
+  /// link reaches, and linked they carry each other by design (below).
   testWidgets('🚨a scrub on a row moves that row\'s value and no other — a '
       'mirror, a one-axis stretch and the cross stay as they are', (
     tester,
   ) async {
-    final commands = await pumpMoveSettings(tester, applied: []);
+    final commands = await pumpMoveSettings(
+      tester,
+      applied: [],
+      scaleLinked: false,
+    );
     for (final row in rows.entries) {
       final applied = <AppliedTransform>[];
       bindBox(commands, applied: applied, start: stretched);
@@ -237,7 +252,12 @@ void main() {
   testWidgets('each scale row reads its own axis with its sign, and a typed '
       'minus is the mirror', (tester) async {
     final applied = <AppliedTransform>[];
-    await pumpMoveSettings(tester, applied: applied, start: stretched);
+    await pumpMoveSettings(
+      tester,
+      applied: applied,
+      start: stretched,
+      scaleLinked: false,
+    );
 
     expect(find.text('-150%'), findsOneWidget, reason: '가로: 반전 + 150%');
     expect(find.text('75%'), findsOneWidget, reason: '세로: 75%');
@@ -309,7 +329,11 @@ void main() {
     // through the centre does. ↩️It stopped at +1% — there was one scale,
     // and a minus was not a thing a number could say.
     final applied = <AppliedTransform>[];
-    final commands = await pumpMoveSettings(tester, applied: applied);
+    final commands = await pumpMoveSettings(
+      tester,
+      applied: applied,
+      scaleLinked: false,
+    );
 
     await typeInto(tester, 'move-scale-x-field', '0');
     expect(applied.last.sx, 0.01);
@@ -321,6 +345,175 @@ void main() {
     expect(applied.last.sy, -32);
     expect(applied.last.sx, 32, reason: 'and the other axis kept its own');
     expect(commands.transformValues, applied.last);
+  });
+
+  /// 🚨★★★**THE CHAIN** — F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의
+  /// 사슬) — 켜면 한 칸을 바꿀 때 다른 칸도 같은 비율로」, of the option that
+  /// read 「지금의 가로 · 세로 비율과 반전은 지킨다」.
+  ///
+  /// The two rows became two so that each could say its own axis (F-256 ·
+  /// F-265). Linked, a row still names its axis — and carries the other by
+  /// the size of the step, leaving its sign alone.
+  group('with the scales linked — AE\'s chain', () {
+    // 200% across, a mirrored 100% down: a ratio and a sign to keep.
+    const wide = TransformValues(sx: 2, sy: -1, tx: 6, rotationDegrees: 20);
+
+    testWidgets('🚨a typed scale carries the other axis by the same ratio, '
+        'and each keeps its own sign', (tester) async {
+      final applied = <AppliedTransform>[];
+      await pumpMoveSettings(tester, applied: applied, start: wide);
+
+      await typeInto(tester, 'move-scale-x-field', '300');
+      expect(applied.last, wide.copyWith(sx: 3, sy: -1.5));
+
+      // Down the other row: 150% → 50% is a third, so 300% → 100%.
+      await typeInto(tester, 'move-scale-y-field', '-50');
+      expect(applied.last.sy, -0.5);
+      expect(applied.last.sx, closeTo(1, 1e-9));
+    });
+
+    testWidgets('🚨a typed MINUS mirrors that axis and no other', (
+      tester,
+    ) async {
+      final applied = <AppliedTransform>[];
+      await pumpMoveSettings(tester, applied: applied, start: wide);
+
+      await typeInto(tester, 'move-scale-x-field', '-200');
+
+      expect(
+        applied.last,
+        wide.copyWith(sx: -2),
+        reason: 'the same size, so the other axis is where it was — and '
+            'still the way up it was',
+      );
+    });
+
+    testWidgets('a scrub carries the other axis along, step by step', (
+      tester,
+    ) async {
+      final applied = <AppliedTransform>[];
+      await pumpMoveSettings(tester, applied: applied, start: wide);
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('move-scale-x-field')),
+        const Offset(60, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final after = applied.last;
+      expect(after.sx, isNot(wide.sx), reason: '⛔premise: the scrub wrote');
+      expect(after.sy / wide.sy, closeTo(after.sx / wide.sx, 1e-9));
+      expect(after.sy, isNegative, reason: 'still mirrored');
+      expect(
+        after,
+        wide.copyWith(sx: after.sx, sy: after.sy),
+        reason: '⛔and nothing but the two scales moved',
+      );
+    });
+
+    testWidgets('the axis carried along is held to the floor and the '
+        'ceiling a typed scale is', (tester) async {
+      final applied = <AppliedTransform>[];
+      await pumpMoveSettings(tester, applied: applied, start: wide);
+
+      // 200% → 6400% would be ×32; the row stops at 3200%, a ×16 step.
+      await typeInto(tester, 'move-scale-x-field', '99999');
+      expect(applied.last.sx, 32);
+      expect(applied.last.sy, -16);
+
+      // …and from there ×(1/3200): the mirrored axis stops at its floor,
+      // on its own side of zero.
+      await typeInto(tester, 'move-scale-x-field', '1');
+      expect(applied.last.sx, 0.01);
+      expect(applied.last.sy, -0.01);
+    });
+
+    testWidgets('the other rows are not the chain\'s: a move, a turn and '
+        'the cross write their one value', (tester) async {
+      final commands = await pumpMoveSettings(tester, applied: []);
+      for (final key in const [
+        'move-x-field',
+        'move-y-field',
+        'move-angle-field',
+        'move-anchor-x-field',
+        'move-anchor-y-field',
+      ]) {
+        final row = rows[key]!;
+        final applied = <AppliedTransform>[];
+        bindBox(commands, applied: applied, start: stretched);
+        await tester.pump();
+
+        await tester.drag(
+          find.byKey(ValueKey<String>(key)),
+          const Offset(60, 0),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final after = applied.last;
+        expect(after, row.write(stretched, row.read(after)), reason: key);
+      }
+    });
+  });
+
+  /// A handle can leave a scale past the most this panel types (3200%).
+  testWidgets('⛔unlinked, a number typed in one scale row does not restate '
+      'the other — not even to pull it back under the ceiling', (
+    tester,
+  ) async {
+    const past = TransformValues(sx: 40, sy: 1);
+    final applied = <AppliedTransform>[];
+    await pumpMoveSettings(
+      tester,
+      applied: applied,
+      start: past,
+      scaleLinked: false,
+    );
+
+    await typeInto(tester, 'move-scale-y-field', '200');
+
+    expect(applied.last, past.copyWith(sy: 2));
+  });
+
+  testWidgets('the link switch reaches the tool\'s options, and reads back '
+      'from them', (tester) async {
+    final chosen = <TransformToolOptions>[];
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      onOptionsChanged: chosen.add,
+    );
+    final link = find.byKey(const ValueKey<String>('move-scale-link-switch'));
+    expect(
+      tester.booleanDotIn(link).value,
+      isTrue,
+      reason: 'the chain is on as the tool begins — AE\'s',
+    );
+
+    await tester.tap(link);
+    await tester.pump();
+    expect(chosen.single.scaleLinked, isFalse);
+    expect(
+      chosen.single,
+      const TransformToolOptions(scaleLinked: false),
+      reason: '⛔and it changed nothing else of the tool\'s',
+    );
+
+    // The host holding it OFF: the panel torn down between, so what the
+    // switch reads can only have come from the host (as the AA switch's
+    // pin below explains).
+    await tester.pumpWidget(const SizedBox.shrink());
+    await pumpMoveSettings(
+      tester,
+      applied: [],
+      scaleLinked: false,
+      onOptionsChanged: chosen.add,
+    );
+    expect(tester.booleanDotIn(link).value, isFalse);
+    await tester.tap(link);
+    await tester.pump();
+    expect(chosen.last.scaleLinked, isTrue);
   });
 
   testWidgets('the AA switch reaches the resampler, and reads back from it', (
@@ -385,14 +578,16 @@ void main() {
       onResampleModeChanged: (_) {},
       canEdit: false,
     );
-    expect(
-      tester
-          .booleanDotIn(
-            find.byKey(const ValueKey<String>('move-antialias-switch')),
-          )
-          .enabled,
-      isFalse,
-    );
+    for (final key in const [
+      'move-antialias-switch',
+      'move-scale-link-switch',
+    ]) {
+      expect(
+        tester.booleanDotIn(find.byKey(ValueKey<String>(key))).enabled,
+        isFalse,
+        reason: '$key must be flat with nothing to transform',
+      );
+    }
     for (final key in const [
       'move-flip-horizontal-button',
       'move-flip-vertical-button',
