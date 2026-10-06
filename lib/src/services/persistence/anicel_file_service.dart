@@ -9,6 +9,7 @@ import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import '../media/media_byte_source.dart';
+import '../media/project_font_sources.dart';
 import '../media/project_media_sources.dart'
     show ProjectConforms, mediaEntryNamesFor;
 import 'brush_drawing_binary_codec.dart';
@@ -135,6 +136,28 @@ class _CelWork {
     }
   }
 }
+
+/// ONE KIND OF THING A PROJECT CARRIES BESIDE ITS CELS, as a save sees it:
+/// the media of its pool, the conforms of its sound, the fonts registered
+/// with it.
+///
+/// [prefix] is what its entries are named under; [held], every entry name
+/// the project may hold of this kind — what the sweep keeps
+/// (`AnicelFileService._namesToDrop`); [sources], where the bytes of the
+/// ones that can be read here are — what a save writes. For media and for
+/// conforms the two name the same entries; for fonts [held] can name more
+/// (`ProjectFontsToStore`).
+///
+/// [rewrittenAtAnotherLength]: whether an entry already in the file under
+/// a name is written again when the source has another length — true for
+/// what is DERIVED and can be rebuilt under the same name (a conform),
+/// false for what is written once and never edited (media, fonts).
+typedef _CarriedKind = ({
+  String prefix,
+  Set<String> held,
+  Map<String, MediaByteSource> sources,
+  bool rewrittenAtAnotherLength,
+});
 
 /// Counts a save's entries as they land, inside the writing isolate, and
 /// pushes the running fraction back out through [port].
@@ -372,6 +395,11 @@ class AnicelFileService {
     /// entry REMOVED — that is the settings-change sweep.
     ProjectConforms conforms = const ProjectConforms.none(),
 
+    /// The fonts the project carries: the entry names it may hold, and the
+    /// bytes of the ones that can be read here ([ProjectFontsToStore]). A
+    /// font entry under a name that is not held leaves with this save.
+    ProjectFontsToStore fonts = const ProjectFontsToStore.none(),
+
     /// What the document carries beside the project — the media grants and
     /// fingerprints, already reduced to JSON by the session. See
     /// [AnicelSessionFields].
@@ -452,6 +480,13 @@ class AnicelFileService {
     final dirtySets = [for (final store in stores) store.dirtyCelKeysSinceSave];
     final dirty = <BrushFrameKey>{for (final set in dirtySets) ...set};
     final saveDirectory = _parentDirectory(filePath);
+    // Made once, for both roads: what leaves the file and what is written
+    // into it are asked of the same list.
+    final carried = _carriedKinds(
+      mediaToStore: mediaToStore,
+      conforms: conforms,
+      fonts: fonts,
+    );
 
     void adoptEach(Map<BrushFrameKey, AnicelCelFileRef> adopted) {
       if (!adoptRefs) {
@@ -567,7 +602,7 @@ class AnicelFileService {
         filePath: filePath,
         saveDirectory: saveDirectory,
         mediaToStore: mediaToStore,
-        conforms: conforms,
+        carried: carried,
         sessionFields: sessionFields,
         onProgress: onProgress,
         heldEntries: heldEntries,
@@ -594,7 +629,7 @@ class AnicelFileService {
       filePath: filePath,
       saveDirectory: saveDirectory,
       mediaToStore: mediaToStore,
-      conforms: conforms,
+      carried: carried,
       sessionFields: sessionFields,
       onProgress: onProgress,
       onFullWriteLeftAt: onFullWriteLeftAt,
@@ -832,10 +867,11 @@ class AnicelFileService {
     required AnicelSessionFields sessionFields,
     Map<MediaCarry, MediaByteSource> mediaToStore = const {},
 
-    /// Pool path → the conform to carry alongside it, taken AS IT SITS
-    /// (framed stays framed). Whatever is absent here has its conform
-    /// entry REMOVED — that is the settings-change sweep.
-    ProjectConforms conforms = const ProjectConforms.none(),
+    /// Every kind of thing the project carries beside its cels
+    /// ([_carriedKinds]): an entry of a kind under a name that kind does
+    /// not hold is REMOVED — for the conforms, that is the settings-change
+    /// sweep.
+    List<_CarriedKind> carried = const [],
     void Function(double)? onProgress,
 
     /// Entries the push-down leaves where they are — see `save`'s.
@@ -887,11 +923,7 @@ class AnicelFileService {
             ...removedNames,
             // A held entry is not among them: what a reader holds is in
             // [mediaToStore] (`ProjectFileDoor._carryFor`).
-            ..._namesToDrop(
-              layout,
-              mediaToStore: mediaToStore,
-              conforms: conforms,
-            ),
+            ..._namesToDrop(layout, carried),
           },
         );
         if (sound == null) {
@@ -900,8 +932,7 @@ class AnicelFileService {
         final (:layout, :leaving, :compact) = sound;
         // Resolved BEFORE the cels so the progress count is complete: a
         // fraction needs its denominator before the first thing it divides.
-        final newMedia = _mediaToAppend(layout, mediaToStore);
-        final newConforms = _conformsToAppend(layout, conforms);
+        final streamed = _entriesToAppend(layout, carried);
         // ⚠️ Media counts once PER PASS, not once. This writer reads every
         // streamed entry twice (checksum, then copy), and counting it once
         // put `_done` at `_total` when the checksum pass ended — the window
@@ -913,7 +944,7 @@ class AnicelFileService {
           reportsProgress ? port : null,
           1 +
               works.length +
-              (newMedia.length + newConforms.length) * anicelAppendStreamPasses +
+              streamed.length * anicelAppendStreamPasses +
               (compact ? 1 : 0),
         );
         final projectEntry = buildAnicelProjectEntry(
@@ -932,8 +963,7 @@ class AnicelFileService {
           },
           removeNames: leaving,
           streamedEntries: [
-            for (final entry in newMedia) _progressed(entry, progress),
-            for (final entry in newConforms) _progressed(entry, progress),
+            for (final entry in streamed) _progressed(entry, progress),
           ],
         );
         // The push-down and the cut, here in the isolate that just appended.
@@ -1029,26 +1059,14 @@ class AnicelFileService {
   /// Named by the path, a file carried again after a removal found its old
   /// entry here and was never written — the save kept the old bytes (card
   /// `recarry-after-remove-reads-the-old`).
-  static List<AnicelStreamedEntry> _mediaToAppend(
-    AnicelZipLayout layout,
-    Map<MediaCarry, MediaByteSource> mediaToStore,
-  ) => [
-    for (final entry in mediaToStore.entries)
-      if (layout.entryNamed(
-            anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
-          ) ==
-          null)
-        AnicelStreamedEntry(
-          name: anicelMediaEntryName(
-            entry.key,
-            framed: entry.value.storedIsFramed,
-          ),
-          length: entry.value.lengthSync(),
-          readInto: entry.value.readIntoSync,
-        ),
-  ];
-
-  /// The conforms this append has to write.
+  ///
+  /// ↩️That was `_mediaToAppend`, and the conforms had a walk of their own
+  /// beside it (below). The fonts a project carries are the third kind
+  /// (R9-rest, 2026-10-06), so the walk is one — [_entriesToAppend] — and
+  /// what differs between the kinds is said by each kind
+  /// ([_CarriedKind.rewrittenAtAnotherLength]).
+  ///
+  /// THE CONFORMS this append has to write:
   ///
   /// A conform, unlike media, CAN be replaced under the same name: it is
   /// derived, and a rebuilt one lands at the same cache address. So
@@ -1061,18 +1079,62 @@ class AnicelFileService {
   /// bytes until the next differing save and can never play the wrong
   /// sound. Re-streaming every conform on every save instead would
   /// rewrite hundreds of megabytes to change one line of dialogue.
-  static List<AnicelStreamedEntry> _conformsToAppend(
+  ///
+  /// THE FONTS it has to write: as media — a font file is written once
+  /// under a name minted for it, and never edited.
+  static List<AnicelStreamedEntry> _entriesToAppend(
     AnicelZipLayout layout,
-    ProjectConforms conforms,
+    List<_CarriedKind> carried,
   ) => [
-    for (final entry in conforms.entries.entries)
-      if (_needsRestreaming(layout, entry.key, entry.value))
-        AnicelStreamedEntry(
-          name: entry.key,
-          length: entry.value.lengthSync(),
-          readInto: entry.value.readIntoSync,
-        ),
+    for (final kind in carried)
+      for (final MapEntry(key: name, value: source) in kind.sources.entries)
+        if (_needsStreaming(layout, name, source, kind))
+          _streamedEntryOf(name, source),
   ];
+
+  /// [source], as the entry called [name] a writer streams into the file.
+  static AnicelStreamedEntry _streamedEntryOf(
+    String name,
+    MediaByteSource source,
+  ) => AnicelStreamedEntry(
+    name: name,
+    length: source.lengthSync(),
+    readInto: source.readIntoSync,
+  );
+
+  /// Every kind of thing a project carries BESIDE ITS CELS, as a save sees
+  /// each: media, conforms, fonts — in the order they are written.
+  static List<_CarriedKind> _carriedKinds({
+    required Map<MediaCarry, MediaByteSource> mediaToStore,
+    required ProjectConforms conforms,
+    required ProjectFontsToStore fonts,
+  }) {
+    final media = {
+      for (final entry in mediaToStore.entries)
+        anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed):
+            entry.value,
+    };
+    return [
+      (
+        prefix: anicelMediaEntryPrefix,
+        held: media.keys.toSet(),
+        sources: media,
+        rewrittenAtAnotherLength: false,
+      ),
+      (
+        prefix: anicelConformEntryPrefix,
+        held: conforms.entries.keys.toSet(),
+        sources: conforms.entries,
+        rewrittenAtAnotherLength: true,
+      ),
+      (
+        prefix: anicelFontEntryPrefix,
+        held: fonts.held,
+        sources: fonts.entries,
+        rewrittenAtAnotherLength: false,
+      ),
+    ];
+  }
 
   /// The names this save takes OUT of the central directory.
   ///
@@ -1098,42 +1160,45 @@ class AnicelFileService {
   /// `liveNames` says what the project may legitimately HOLD at the
   /// current settings; a conform built under others is under a name
   /// outside it, and that is the whole test.
-  static Set<String> _namesToDrop(
-    AnicelZipLayout layout, {
-    required Map<MediaCarry, MediaByteSource> mediaToStore,
-    required ProjectConforms conforms,
-  }) {
-    final wantedMediaNames = {
-      for (final entry in mediaToStore.entries)
-        anicelMediaEntryName(entry.key, framed: entry.value.storedIsFramed),
-    };
-    return {
-      for (final entry in layout.entries)
-        if (entry.name.startsWith(anicelMediaEntryPrefix) &&
-            !wantedMediaNames.contains(entry.name))
-          entry.name,
-      // 🚨★★★THE SETTINGS-CHANGE SWEEP, against what the project may
-      // legitimately HOLD — see this method's doc for why that is not
-      // the same as what is being written.
-      for (final entry in layout.entries)
-        if (entry.name.startsWith(anicelConformEntryPrefix) &&
-            !conforms.entries.containsKey(entry.name))
-          entry.name,
-    };
-  }
-
-  /// Whether the entry called [name] has to be streamed again.
   ///
-  /// Absent, or present at a different length. Media never takes the
-  /// second branch — an asset is written once and never edited — but a
-  /// conform is derived and a rebuilt one lands under the same name.
-  static bool _needsRestreaming(
+  /// 🚨AND IT IS HOW A FONT LEAVES (R9-rest): a font entry stays for as long
+  /// as the project's own list names it (`Project.fonts` — 유저 2026-10-06:
+  /// 「뺄때까지 두는게 맞지않나」) and goes with the first save after a person
+  /// took it out. ⛔Against [ProjectFontsToStore.held], not against what has
+  /// bytes to write: a machine that was never brought the font writes
+  /// nothing and must take nothing away — the same journey, the same law.
+  ///
+  /// ↩️It was a loop a kind — media, then conforms — and the fonts would
+  /// have been the third (2026-10-06). One walk: an entry under a kind's
+  /// prefix that the kind does not hold.
+  static Set<String> _namesToDrop(
+    AnicelZipLayout layout,
+    List<_CarriedKind> carried,
+  ) => {
+    for (final kind in carried)
+      for (final entry in layout.entries)
+        if (entry.name.startsWith(kind.prefix) &&
+            !kind.held.contains(entry.name))
+          entry.name,
+  };
+
+  /// Whether the entry called [name] has to be streamed (again).
+  ///
+  /// Absent — or, for a kind that can be rebuilt under the same name
+  /// ([_CarriedKind.rewrittenAtAnotherLength]), present at a different
+  /// length. Media and fonts never take the second branch: each is written
+  /// once and never edited. A conform is derived, and a rebuilt one lands
+  /// under the same name.
+  static bool _needsStreaming(
     AnicelZipLayout layout,
     String name,
     MediaByteSource source,
+    _CarriedKind kind,
   ) {
     final existing = layout.entryNamed(name);
-    return existing == null || existing.length != source.lengthSync();
+    return existing == null ||
+        (kind.rewrittenAtAnotherLength &&
+            existing.length != source.lengthSync());
   }
 
   /// Full atomic rewrite (first save, save-as, compaction, recovery):
@@ -1155,10 +1220,11 @@ class AnicelFileService {
     required AnicelSessionFields sessionFields,
     Map<MediaCarry, MediaByteSource> mediaToStore = const {},
 
-    /// Pool path → the conform to carry alongside it, taken AS IT SITS
-    /// (framed stays framed). Whatever is absent here has its conform
-    /// entry REMOVED — that is the settings-change sweep.
-    ProjectConforms conforms = const ProjectConforms.none(),
+    /// Every kind of thing the project carries beside its cels
+    /// ([_carriedKinds]). A whole write has no survivors to inherit from,
+    /// so the sweep needs no list here: what no kind hands over is not
+    /// written.
+    List<_CarriedKind> carried = const [],
     void Function(double)? onProgress,
     void Function(String tempPath)? onFullWriteLeftAt,
     Future<void> Function()? beforeReplacing,
@@ -1228,7 +1294,7 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
         works: works,
         mediaToStore: mediaToStore,
-        conforms: conforms,
+        carried: carried,
         sessionFields: sessionFields,
         onProgress: onProgress,
       );
@@ -1336,7 +1402,7 @@ class AnicelFileService {
     required String saveDirectory,
     required List<_CelWork> works,
     required Map<MediaCarry, MediaByteSource> mediaToStore,
-    required ProjectConforms conforms,
+    required List<_CarriedKind> carried,
     // Plain maps inside, so the closure carries values the port can copy —
     // the picker's grant type could not cross this boundary at all.
     required AnicelSessionFields sessionFields,
@@ -1354,12 +1420,19 @@ class AnicelFileService {
         // parks it at 100% for the whole of the largest write. The append
         // path above has always counted them; this one was missed when
         // conforms started riding in the archive, and nothing failed.
+        //
+        // ↩️And they were counted a kind at a time — media plus conforms —
+        // which is how the fonts would have been the next kind missed. The
+        // list that is written below is the list that is counted.
+        final streamed = [
+          for (final kind in carried)
+            for (final MapEntry(key: name, value: source)
+                in kind.sources.entries)
+              _streamedEntryOf(name, source),
+        ];
         final progress = _SaveProgress(
           port,
-          1 +
-              works.length +
-              (mediaToStore.length + conforms.entries.length) *
-                  anicelArchiveStreamPasses,
+          1 + works.length + streamed.length * anicelArchiveStreamPasses,
         );
         // Scalars only. Holding the BLOB here to read its geometry later
         // would keep every cel resident and give back exactly the memory
@@ -1407,32 +1480,13 @@ class AnicelFileService {
           // save-as); either way the writer streams them across without
           // re-encoding, which is what makes save-as carry media without a
           // copy step of its own.
+          //
+          // Conforms and fonts the same way, each under its own prefix. A
+          // full rewrite has no survivors to inherit from, so the sweep
+          // here needs no removal list: an entry no kind hands over simply
+          // is not written.
           streamedEntries: [
-            for (final entry in mediaToStore.entries)
-              _progressed(
-                AnicelStreamedEntry(
-                  name: anicelMediaEntryName(
-                    entry.key,
-                    framed: entry.value.storedIsFramed,
-                  ),
-                  length: entry.value.lengthSync(),
-                  readInto: entry.value.readIntoSync,
-                ),
-                progress,
-              ),
-            // Conforms the same way, under their own prefix. A full
-            // rewrite has no survivors to inherit from, so the sweep here
-            // needs no removal list: an entry nothing hands over simply is
-            // not written.
-            for (final entry in conforms.entries.entries)
-              _progressed(
-                AnicelStreamedEntry(
-                  name: entry.key,
-                  length: entry.value.lengthSync(),
-                  readInto: entry.value.readIntoSync,
-                ),
-                progress,
-              ),
+            for (final entry in streamed) _progressed(entry, progress),
           ],
         );
         progress.finish();

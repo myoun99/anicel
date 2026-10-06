@@ -213,6 +213,44 @@ const String anicelMediaEntryPrefix = 'media/';
 /// settings-change sweep exists.
 const String anicelConformEntryPrefix = 'conform/';
 
+/// Where a font file the project carries lives (R9-rest, the text tool's
+/// faces).
+///
+/// A prefix of its own, as a conform's is, because it is another kind of
+/// thing with another rule for leaving: media leaves when the pool lets go
+/// of it, a conform when the audio settings move, and a font when a person
+/// takes it out of the project (`Project.fonts` — 유저 2026-10-06: 「뺄때까지
+/// 두는게 맞지않나 싶은데. 글꼴을 사실상 등록하는거잖아」).
+const String anicelFontEntryPrefix = 'fonts/';
+
+/// The archive entry the font file registered as [carriedAs] is stored
+/// under (`ProjectFontFile.carriedAs`).
+///
+/// The name was minted when the font was registered, as a carry's is
+/// ([anicelMediaEntryName]), so it means ONE set of bytes for good: a font
+/// is written once and never edited, and an entry already in the file is
+/// not written again.
+String anicelFontEntryName(String carriedAs) =>
+    '$anicelFontEntryPrefix$carriedAs';
+
+/// Every prefix under which a project carries something BESIDE its cels and
+/// its manifest — the kinds a save sweeps by name, and whose bulk a
+/// rewrite copies for nothing ([anicelNeedsCompaction]).
+///
+/// ↩️Two kinds were named at each place that asked — `media/ || conform/` —
+/// and fonts are the third (2026-10-06): one list, asked by
+/// [anicelEntryIsCarried].
+const List<String> anicelCarriedEntryPrefixes = [
+  anicelMediaEntryPrefix,
+  anicelConformEntryPrefix,
+  anicelFontEntryPrefix,
+];
+
+/// Whether the entry called [name] is something the project carries beside
+/// its cels ([anicelCarriedEntryPrefixes]).
+bool anicelEntryIsCarried(String name) =>
+    anicelCarriedEntryPrefixes.any(name.startsWith);
+
 /// What fraction of the media a rewrite must copy for nothing has to be
 /// reclaimed before that copying is worth doing.
 ///
@@ -248,6 +286,11 @@ const double anicelMediaRewriteRatio = 0.05;
 /// any other — it is only the denominator this changes — so a conform that
 /// really was replaced still asks for the compaction that reclaims it.
 ///
+/// 🚨**SO DO THE FONTS A PROJECT CARRIES**, for the same sentence: a CJK
+/// font is ten to thirty megabytes written once and never shadowed, and in
+/// the denominator one of them would hold compaction off until the cels
+/// had rotted by half its size ([anicelCarriedEntryPrefixes]).
+///
 /// A named function rather than four lines inside the save isolate,
 /// because it is a rule and rules need somewhere to be checked.
 bool anicelNeedsCompaction({
@@ -260,8 +303,7 @@ bool anicelNeedsCompaction({
   var activeMediaBytes = 0;
   for (final entry in entries) {
     activeBytes += entry.length;
-    if (entry.name.startsWith(anicelMediaEntryPrefix) ||
-        entry.name.startsWith(anicelConformEntryPrefix)) {
+    if (anicelEntryIsCarried(entry.name)) {
       activeMediaBytes += entry.length;
     }
   }
