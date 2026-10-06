@@ -375,6 +375,31 @@ HandOverRoad handOverRoadFor(
   _ => HandOverRoad.folderWindow,
 };
 
+/// Whether outputs can be asked their place BEFORE they are made on
+/// [operatingSystem] — [oneFile] when the run writes a single file.
+///
+/// The ORDER is the OS's (F-221, closed 2026-10-06 — 유저: 「최대한
+/// 멀티플랫폼 통일하고싶음」): a place is asked at the earliest moment the
+/// platform lets it be asked. The desktops ask before, whatever is written.
+/// Android asks before for a folder, and only afterwards for one file — its
+/// save window makes the file the moment a place is picked. iOS has no
+/// window that asks before: 「ios는 어차피 먼저 위치지정이 안된단거지」.
+///
+/// Pure over the OS name, as [handOverRoadFor] is, so every platform's
+/// answer is pinned from the workstation this is written on.
+bool outputsAskedTheirPlaceFirst(
+  String operatingSystem, {
+  required bool oneFile,
+}) => switch (operatingSystem) {
+  'ios' => false,
+  'android' => !oneFile,
+  _ => true,
+};
+
+/// [outputsAskedTheirPlaceFirst] on the machine the app runs on.
+bool outputsAskedTheirPlaceFirstHere({required bool oneFile}) =>
+    outputsAskedTheirPlaceFirst(_operatingSystem, oneFile: oneFile);
+
 /// Hands finished outputs — [paths], files or folders — to wherever the
 /// user picks, AFTER they were made (drive-folder-windows-Q1, 유저
 /// 2026-09-27: 「내보내기가 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」):

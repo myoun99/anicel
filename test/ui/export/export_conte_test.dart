@@ -356,11 +356,6 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -398,11 +393,6 @@ void main() {
     await tester.pump();
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
     await tester.pump();
 
     await tester.runAsync(state.export);
@@ -450,11 +440,6 @@ void main() {
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -495,11 +480,6 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
     await tester.pump();
 
     await tester.runAsync(state.export);
@@ -578,11 +558,6 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
 
     await tester.runAsync(state.export);
     await tester.pump();
@@ -658,11 +633,6 @@ void main() {
     await tester.tap(
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
     await tester.pump();
 
     /// A PNG's width from its IHDR — the first chunk, big-endian at 16.
@@ -752,11 +722,6 @@ void main() {
     await tester.pump();
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
     await tester.pump();
 
     // The page image, at 1×: the paper's pixels, `paperScale` to a point.

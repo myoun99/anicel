@@ -1112,8 +1112,6 @@ enum AppStrings {
   String get exBitrate => _s('exBitrate');
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
-  String get exBrowse => _s('exBrowse');
-  String get exHandOverWhenDone => _s('exHandOverWhenDone');
   String get exHandOverDeclined => _s('exHandOverDeclined');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
@@ -1240,9 +1238,13 @@ enum AppStrings {
 
   /// The file bar's words and the modules' one-line summaries.
   String get exFileLabel => _s('exFileLabel');
-  String get exPatternLabel => _s('exPatternLabel');
-  String get exLocationLabel => _s('exLocationLabel');
-  String get exChooseFolder => _s('exChooseFolder');
+  /// The order an export takes on this machine, said beside its button —
+  /// 🗣️F-221 (유저 2026-10-06): 「ios : 출력한 후 위치를 지정합니다 이런식으로
+  /// os별로 어떻게 동작하는지 적어두고싶어. 그럼 알기쉬우니까」 · 「윈도우 :
+  /// 위치를 지정하고 출력합니다 이런식으로 써주도록?」. ⚠️The one line of
+  /// explanation this window carries: the user asked for it by name.
+  String get exOrderAsksFirst => _s('exOrderAsksFirst');
+  String get exOrderAsksAfter => _s('exOrderAsksAfter');
   String exSeMuxed(String codec) =>
       _s('exSeMuxedTemplate').replaceAll('{codec}', codec);
   String get exVectorPdf => _s('exVectorPdf');
@@ -2249,8 +2251,6 @@ enum AppStrings {
     'exBitrate': 'Bitrate',
     'exChannels': 'Channels',
     'exAudio': 'Audio',
-    'exBrowse': 'Browse…',
-    'exHandOverWhenDone': 'Choose when done',
     'exHandOverDeclined': 'Not handed over — the outputs were let go.',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
@@ -2337,9 +2337,8 @@ enum AppStrings {
     'exQueueFailedTemplate': ', {n} failed',
     'exQueueRestKept': ', rest kept',
     'exFileLabel': 'File',
-    'exPatternLabel': 'Pattern',
-    'exLocationLabel': 'Location',
-    'exChooseFolder': 'Choose a folder…',
+    'exOrderAsksFirst': 'Asks where first, then exports',
+    'exOrderAsksAfter': 'Exports first, then asks where',
     'exSeMuxedTemplate': 'SE muxed · {codec}',
     'exVectorPdf': 'Vector PDF',
     'exFxOn': 'FX on',
@@ -3457,8 +3456,6 @@ enum AppStrings {
     'exBitrate': 'ビットレート',
     'exChannels': 'チャンネル',
     'exAudio': '音声',
-    'exBrowse': '参照…',
-    'exHandOverWhenDone': '終わったら選ぶ',
     'exHandOverDeclined': '渡さなかったため、書き出した結果は破棄しました。',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
@@ -3572,9 +3569,8 @@ enum AppStrings {
     'exQueueFailedTemplate': '、{n}件失敗',
     'exQueueRestKept': '、残りは保持',
     'exFileLabel': 'ファイル',
-    'exPatternLabel': 'パターン',
-    'exLocationLabel': '保存先',
-    'exChooseFolder': 'フォルダを選択…',
+    'exOrderAsksFirst': '場所を指定してから書き出します',
+    'exOrderAsksAfter': '書き出したあとに場所を指定します',
     'exSeMuxedTemplate': 'SE多重化 · {codec}',
     'exVectorPdf': 'ベクターPDF',
     'exFxOn': 'FXオン',
@@ -4791,8 +4787,6 @@ enum AppStrings {
     'exBitrate': '비트레이트',
     'exChannels': '채널',
     'exAudio': '오디오',
-    'exBrowse': '찾아보기…',
-    'exHandOverWhenDone': '끝나면 고르기',
     'exHandOverDeclined': '넘기지 않아 내보낸 결과물을 버렸습니다.',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
@@ -4906,9 +4900,8 @@ enum AppStrings {
     'exQueueFailedTemplate': ', {n}개 실패',
     'exQueueRestKept': ', 나머지는 남겨 둠',
     'exFileLabel': '파일',
-    'exPatternLabel': '패턴',
-    'exLocationLabel': '위치',
-    'exChooseFolder': '폴더 선택…',
+    'exOrderAsksFirst': '위치를 지정하고 출력합니다',
+    'exOrderAsksAfter': '출력한 후 위치를 지정합니다',
     'exSeMuxedTemplate': 'SE 먹싱 · {codec}',
     'exVectorPdf': '벡터 PDF',
     'exFxOn': 'FX 켬',
@@ -6168,8 +6161,6 @@ enum AppStrings {
     'exBitrate': 'Débit',
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
-    'exBrowse': 'Parcourir…',
-    'exHandOverWhenDone': 'Choisir à la fin',
     'exHandOverDeclined': 'Non transmis — les fichiers exportés ont été abandonnés.',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
@@ -6319,9 +6310,8 @@ enum AppStrings {
     'exQueueFailedTemplate': ', {n} en échec',
     'exQueueRestKept': ', le reste est conservé',
     'exFileLabel': 'Fichier',
-    'exPatternLabel': 'Modèle',
-    'exLocationLabel': 'Emplacement',
-    'exChooseFolder': 'Choisir un dossier…',
+    'exOrderAsksFirst': 'Choisit l’emplacement, puis exporte',
+    'exOrderAsksAfter': 'Exporte, puis choisit l’emplacement',
     'exSeMuxedTemplate': 'SE intégré · {codec}',
     'exVectorPdf': 'PDF vectoriel',
     'exFxOn': 'FX activés',
@@ -7489,8 +7479,6 @@ enum AppStrings {
     'exBitrate': '码率',
     'exChannels': '声道',
     'exAudio': '音频',
-    'exBrowse': '浏览…',
-    'exHandOverWhenDone': '完成后选择',
     'exHandOverDeclined': '未交出，导出的结果已丢弃。',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
@@ -7604,9 +7592,8 @@ enum AppStrings {
     'exQueueFailedTemplate': '，{n}个失败',
     'exQueueRestKept': '，其余保留',
     'exFileLabel': '文件',
-    'exPatternLabel': '命名模式',
-    'exLocationLabel': '位置',
-    'exChooseFolder': '选择文件夹…',
+    'exOrderAsksFirst': '先指定位置，再导出',
+    'exOrderAsksAfter': '导出后再指定位置',
     'exSeMuxedTemplate': 'SE 已封装 · {codec}',
     'exVectorPdf': '矢量 PDF',
     'exFxOn': 'FX 开',

@@ -195,11 +195,6 @@ void main() {
       final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
       await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-browse-button')),
-      );
-      await tester.pump();
-      await tester.pump();
       return state;
     }
 

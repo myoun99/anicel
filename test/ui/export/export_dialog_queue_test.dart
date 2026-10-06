@@ -72,7 +72,7 @@ void main() {
   Future<ExportDialogState> pumpDialog(
     WidgetTester tester,
     EditorSessionManager manager, {
-    String? location,
+    String? Function()? askedWhere,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1280, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -82,7 +82,10 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: manager,
-            exportDirectoryPicker: () async => location ?? temp.path,
+            // Where a job goes is asked as it is queued, and a run as it
+            // is pressed: the folder this answers then.
+            exportDirectoryPicker: () async =>
+                askedWhere == null ? temp.path : askedWhere(),
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
@@ -90,11 +93,6 @@ void main() {
     );
     await tester.pump();
     final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
-    await tester.pump();
-    await tester.pump();
     return state;
   }
 
@@ -164,25 +162,24 @@ void main() {
 
   testWidgets('a failing job marks itself and the rest still run',
       (tester) async {
-    final state = await pumpDialog(tester, session());
-    await pickPng(tester);
-
     // Job 1 aims INSIDE A FILE — the write must fail.
     final blocker = File('${temp.path}/blocker')..createSync();
-    final broken = '${blocker.path}/nested';
-    state.debugSetLocationForTests(broken);
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
+    final asked = ['${blocker.path}/nested', temp.path];
+    final state = await pumpDialog(
+      tester,
+      session(),
+      askedWhere: () => asked.removeAt(0),
     );
-    await tester.pump();
+    await pickPng(tester);
 
-    state.debugSetLocationForTests(temp.path);
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
-    );
-    await tester.pump();
+    for (var job = 0; job < 2; job += 1) {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-queue-add-button')),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+    expect(asked, isEmpty, reason: 'each job was asked its folder');
 
     await tester.runAsync(state.runQueue);
     await tester.pump();

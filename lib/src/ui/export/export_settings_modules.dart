@@ -782,6 +782,59 @@ class ExportSizeModule extends StatelessWidget {
   }
 }
 
+/// A lone file's name: typed alone, with the extension its format gives it
+/// standing beside the field, fixed.
+///
+/// 🗣️F-221 (유저 2026-10-06): 「이름칸은 확장자랑 텍스트가 같이있는데 확장자는
+/// 따로 나눠서 편집불가하게 그냥 띄우기만하고, 이름만 딱 있도록. 그렇게
+/// 설정한대로 내보낼때 이름 지정되는 방식이지」.
+class ExportFileNameModule extends StatelessWidget {
+  const ExportFileNameModule({
+    super.key,
+    required this.controller,
+    required this.extension,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+
+  /// The format's own, without its dot.
+  final String extension;
+  final bool enabled;
+
+  /// The name was typed on: what shows it elsewhere reads it again.
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AppWindowField(
+      label: AppText.strings.exFileLabel,
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              key: const ValueKey<String>('export-file-name-field'),
+              controller: controller,
+              enabled: enabled,
+              onChanged: (_) => onChanged(),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '.$extension',
+            key: const ValueKey<String>('export-file-extension'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Sequence numbering: `<base>_0001.<ext>`.
 class ExportSequenceNamingModule extends StatelessWidget {
   const ExportSequenceNamingModule({

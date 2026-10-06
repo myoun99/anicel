@@ -1027,14 +1027,12 @@ void guideShots(AppLanguage language) {
       await settleReal(tester);
       await shot(tester, 'conte-paper', rect: sheetPanel, ratio: 2);
 
-      // Export — choosing the folder when done, so the window shows no
-      // path from the machine that made the picture.
+      // Export — the window holds no path: where it goes is asked when
+      // Export is pressed.
       await tester.tap(byKey('top-strip-project-button'));
       await settleReal(tester, 4);
       await tester.tap(byKey('menu-file-export'));
       await settleReal(tester, 10);
-      await tester.tap(byKey('export-hand-over-button'));
-      await settleReal(tester, 4);
       await shot(
         tester,
         'export',

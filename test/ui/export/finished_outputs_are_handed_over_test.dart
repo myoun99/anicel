@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -18,8 +17,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/move_into_folder.dart';
 import 'package:anicel/src/services/persistence/session_scratch.dart';
@@ -35,12 +32,18 @@ import 'fake_ffmpeg_process.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 
-/// 「끝나면 고르기」 (drive-folder-windows-Q1, 유저 2026-09-27: 「내보내기가 끝나면
-/// 드라이브로 넘긴다 — 파일 창을 거쳐」): the outputs are made first, in the
-/// run's room, and handed to the user's pick once the run is done — the one
-/// way an export reaches a place no folder window opens, Google Drive above
-/// all. Every OS's road is driven from the Windows workstation through the
-/// OS seam.
+/// WHERE AN EXPORT GOES IS ASKED WHEN IT IS PRESSED (F-221, 유저 2026-10-06:
+/// 「어차피 내보내기누르면 OS창 뜨게하는 최종통일안으로 통일할거니
+/// 문제없어보임」) — and the OS says in what order: a platform that can be
+/// asked before the files exist is asked first, and one that cannot makes
+/// them in the run's room and hands them over once the run is done
+/// (drive-folder-windows-Q1, 유저 2026-09-27: 「내보내기가 끝나면 드라이브로
+/// 넘긴다 — 파일 창을 거쳐」 — the one way an export reaches Google Drive on
+/// iOS).
+///
+/// The window's side of it: when it asks, what it does with the answer, and
+/// the line that says which order this export takes. Every OS's road is
+/// driven from the Windows workstation through the OS seam.
 void main() {
   late Directory temp;
   late Directory placed;
@@ -64,7 +67,6 @@ void main() {
     FolderPicker.debugFileExporter = null;
     FolderPicker.debugFilesExporter = null;
     FolderPicker.debugFileSharer = null;
-    FolderPicker.debugBookmarkResolver = null;
     clearOutbox();
     deleteTempQuietly(temp);
   });
@@ -103,44 +105,36 @@ void main() {
     ),
   );
 
-  Widget dialog({
-    VideoExportService video = const VideoExportService(),
-    ExportDirectoryPicker? pickFolder,
-  }) => MaterialApp(
-    home: Scaffold(
-      body: ExportDialog(
-        session: session(),
-        videoExportService: video,
-        exportDirectoryPicker: pickFolder,
-        formatAvailability: ExportFormatAvailability.permissive(),
-      ),
-    ),
-  );
-
   Future<void> tapKey(WidgetTester tester, String key) async {
     await tester.tap(find.byKey(ValueKey<String>(key)));
     await tester.pump();
     await tester.pump();
   }
 
-  /// Opens the window and chooses 「끝나면 고르기」 for where the outputs go.
-  Future<ExportDialogState> openHandingOver(
-    WidgetTester tester, {
+  /// Opens the window as [operatingSystem] shows it.
+  Future<ExportDialogState> open(
+    WidgetTester tester,
+    String operatingSystem, {
     VideoExportService video = const VideoExportService(),
-    ExportDirectoryPicker? pickFolder,
   }) async {
+    debugOperatingSystemOverride = operatingSystem;
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
-    await tester.pumpWidget(dialog(video: video, pickFolder: pickFolder));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session(),
+            videoExportService: video,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
     await tester.pump();
-    await tapKey(tester, 'export-hand-over-button');
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
-
-  String? locationLabel(WidgetTester tester) => tester
-      .widget<Text>(find.byKey(const ValueKey<String>('export-location-label')))
-      .data;
 
   Future<void> pickPngSequence(WidgetTester tester) async {
     await tester.tap(
@@ -162,67 +156,21 @@ void main() {
       .widget<Text>(find.byKey(const ValueKey<String>('export-status')))
       .data;
 
-  testWidgets('🎯the outputs are made first and handed to the folder picked '
-      'once the run is done — and the room keeps none of them', (
-    tester,
-  ) async {
-    debugOperatingSystemOverride = 'windows';
-    List<String>? madeWhenAsked;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      madeWhenAsked = namesOf(filesWrittenUnder(outbox()));
-      return FolderGrant.granted(path: placed.path);
-    };
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-    expect(madeWhenAsked, isNull, reason: 'choosing it asks for no folder');
+  String orderLine(WidgetTester tester) => tester
+      .widget<Text>(find.byKey(const ValueKey<String>('export-order-line')))
+      .data!;
 
-    await tester.runAsync(state.export);
-    await tester.pump();
+  bool exportLive(WidgetTester tester) =>
+      tester
+          .widget<FilledButton>(
+            find.byKey(const ValueKey<String>('export-run-button')),
+          )
+          .onPressed !=
+      null;
 
-    expect(madeWhenAsked, ['frame_0001.png', 'frame_0002.png']);
-    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-    expect(leftIn(outbox()), isEmpty);
-    expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
-  });
-
-  testWidgets('a hand-over the user backs out of lets the outputs go, and '
-      'says so', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        const FolderGrant.cancelled();
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(status(tester), AppText.strings.exHandOverDeclined);
-    expect(leftIn(outbox()), isEmpty);
-    expect(filesWrittenUnder(placed), isEmpty);
-  });
-
-  testWidgets('outputs that fail on their way say the failure, and are let '
-      'go all the same', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    Directory('${placed.path}/frame_0002.png').createSync();
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        FolderGrant.granted(path: placed.path);
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(
-      status(tester),
-      startsWith(AppText.strings.exFailed('').trim()),
-    );
-    expect(leftIn(outbox()), isEmpty);
-  });
-
-  testWidgets('iOS hands every output to ONE export picker — the mode that '
-      'reaches Google Drive — and it moves them', (tester) async {
-    debugOperatingSystemOverride = 'ios';
+  /// The iOS export picker: moves whatever it is handed into [placed],
+  /// writing down what it was handed.
+  List<List<String>> iosPickerPlaces() {
     final handed = <List<String>>[];
     FolderPicker.debugFilesExporter = (sourcePaths) async {
       handed.add(namesOf(sourcePaths));
@@ -231,331 +179,337 @@ void main() {
       }
       return FolderGrant.granted(path: placed.path);
     };
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
+    return handed;
+  }
 
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(handed, [
-      ['frame_0001.png', 'frame_0002.png'],
-    ]);
-    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-    expect(leftIn(outbox()), isEmpty);
-  });
-
-  testWidgets('Android places ONE output through the save window', (
-    tester,
-  ) async {
-    debugOperatingSystemOverride = 'android';
-    AppStorage.debugAllFilesAccessOverride = true;
-    final saved = <String>[];
-    var shared = 0;
-    FolderPicker.debugFileExporter = ({
-      required String sourcePath,
-      String? suggestedName,
-    }) async {
-      saved.add(fileNameOfPath(sourcePath));
-      moveIntoFolder(sourcePath, placed.path);
-      return FolderGrant.granted(path: placed.path, kind: GrantKind.file);
-    };
-    FolderPicker.debugFileSharer = (paths) async {
-      shared += 1;
-      return true;
-    };
-    final state = await openHandingOver(tester);
-    await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
-    await tester.pump();
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(saved, hasLength(1));
-    expect(shared, 0);
-    expect(filesWrittenUnder(placed), saved);
-    expect(leftIn(outbox()), isEmpty);
-  });
-
-  testWidgets('Android offers SEVERAL through the share sheet, and they stay '
-      'for the app that took them to read', (tester) async {
-    debugOperatingSystemOverride = 'android';
-    List<String>? offered;
-    FolderPicker.debugFileSharer = (paths) async {
-      offered = paths;
-      return true;
-    };
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-
-    await tester.runAsync(state.export);
-    await tester.pump();
-
-    expect(namesOf(offered!), ['frame_0001.png', 'frame_0002.png']);
-    expect(offered!.every((path) => File(path).existsSync()), isTrue);
-    expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
-  });
-
-  testWidgets('a queue hands every job\'s outputs over in ONE window once the '
-      'last job is done', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    var asked = 0;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      asked += 1;
-      return FolderGrant.granted(path: placed.path);
-    };
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
-    );
-    await tester.pump();
-    await tester.ensureVisible(find.textContaining('Naming'));
-    await tester.tap(find.textContaining('Naming'));
-    await tester.pump();
-    await tester.ensureVisible(
-      find.byKey(const ValueKey<String>('export-naming-base-field')),
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('export-naming-base-field')),
-      'shot',
-    );
-    await tester.pump();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-queue-add-button')),
-    );
-    await tester.pump();
-
-    await tester.runAsync(state.runQueue);
-    await tester.pump();
-
-    expect(asked, 1);
-    expect(filesWrittenUnder(placed), [
-      'frame_0001.png',
-      'frame_0002.png',
-      'shot_0001.png',
-      'shot_0002.png',
-    ]);
-    expect(leftIn(outbox()), isEmpty);
-  });
-
-  testWidgets('a run that is stopped hands nothing over and keeps nothing', (
-    tester,
-  ) async {
-    debugOperatingSystemOverride = 'windows';
-    var asked = 0;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      asked += 1;
-      return FolderGrant.granted(path: placed.path);
-    };
-    late ExportDialogState state;
-    final fake = FakeFfmpegProcess(
-      onFrame: (framesSoFar) {
-        if (framesSoFar >= 1) {
-          state.cancelExport();
-        }
-      },
-    );
-    state = await openHandingOver(
+  group('asked FIRST, where the platform can be asked before the files '
+      'exist', () {
+    testWidgets('🚨a desktop: Export opens the folder window before a file is '
+        'made, and the run writes straight into the folder it answers', (
       tester,
-      video: VideoExportService(
-        processStarter: (executable, arguments) async => fake,
-      ),
-    );
+    ) async {
+      List<String>? madeWhenAsked;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        madeWhenAsked = [
+          ...filesWrittenUnder(placed),
+          ...leftIn(outbox()),
+        ];
+        return FolderGrant.granted(path: placed.path);
+      };
+      final state = await open(tester, 'windows');
+      await pickPngSequence(tester);
+      expect(exportLive(tester), isTrue, reason: 'no place is chosen ahead');
+      expect(madeWhenAsked, isNull, reason: 'nothing is asked until Export');
 
-    await tester.runAsync(state.export);
-    await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    expect(asked, 0);
-    expect(leftIn(outbox()), isEmpty);
-  });
+      expect(madeWhenAsked, isEmpty, reason: 'asked before anything was made');
+      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(leftIn(outbox()), isEmpty, reason: 'it wrote straight there');
+    });
 
-  testWidgets('the choice is remembered in place of the folder — the next '
-      'window opens on it', (tester) async {
-    await openHandingOver(tester, pickFolder: () async => temp.path);
-    await tapKey(tester, 'export-browse-button');
-    expect(
-      AppExport.settings.value.lastDestination,
-      ExportIntoFolder(GrantedDirectory(path: temp.path)),
-      reason: 'premise: a folder was the destination',
-    );
+    testWidgets('backing out of the folder window runs nothing — and says '
+        'nothing', (tester) async {
+      var asked = 0;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        asked += 1;
+        return const FolderGrant.cancelled();
+      };
+      final state = await open(tester, 'windows');
+      await pickPngSequence(tester);
 
-    await tapKey(tester, 'export-hand-over-button');
-    expect(AppExport.settings.value.lastDestination, const ExportHandOver());
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pumpWidget(dialog());
-    await tester.pump();
+      expect(asked, 1);
+      expect(filesWrittenUnder(placed), isEmpty);
+      expect(leftIn(outbox()), isEmpty);
+      expect(status(tester), '');
+      expect(exportLive(tester), isTrue);
+    });
 
-    expect(locationLabel(tester), AppText.strings.exHandOverWhenDone);
-  });
-
-  testWidgets('a folder chosen after a hand-over takes the next run itself, '
-      'with no window', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    var asked = 0;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      asked += 1;
-      return FolderGrant.granted(path: placed.path);
-    };
-    final direct = Directory('${temp.path}/direct')..createSync();
-    final state = await openHandingOver(
+    testWidgets('the folder window opens where the last export went', (
       tester,
-      pickFolder: () async => direct.path,
-    );
-    await pickPngSequence(tester);
-    await tester.runAsync(state.export);
-    await tester.pump();
-    expect(asked, 1, reason: 'premise: the first run was handed over');
+    ) async {
+      final asked = <String?>[];
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        asked.add(initialDirectory);
+        return FolderGrant.granted(path: placed.path);
+      };
+      final state = await open(tester, 'windows');
+      await pickPngSequence(tester);
 
-    await tapKey(tester, 'export-browse-button');
-    expect(locationLabel(tester), direct.path);
-    await tester.runAsync(state.export);
-    await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    expect(asked, 1);
-    expect(filesWrittenUnder(direct), ['frame_0001.png', 'frame_0002.png']);
-  });
+      expect(asked, [null, placed.path]);
+    });
 
-  testWidgets('a run that fails hands nothing over and keeps nothing', (
-    tester,
-  ) async {
-    debugOperatingSystemOverride = 'windows';
-    var asked = 0;
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      asked += 1;
-      return FolderGrant.granted(path: placed.path);
-    };
-    final state = await openHandingOver(
+    testWidgets('Android asks a FOLDER first for several files — and nothing '
+        'is offered through the share sheet', (tester) async {
+      AppStorage.debugAllFilesAccessOverride = true;
+      var shared = 0;
+      List<String>? madeWhenAsked;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        madeWhenAsked = leftIn(outbox());
+        return FolderGrant.granted(path: placed.path);
+      };
+      FolderPicker.debugFileSharer = (paths) async {
+        shared += 1;
+        return true;
+      };
+      final state = await open(tester, 'android');
+      await pickPngSequence(tester);
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(madeWhenAsked, isEmpty);
+      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(shared, 0);
+    });
+
+    testWidgets('a queue asks each job its folder when it is QUEUED, and '
+        'every job writes into its own', (tester) async {
+      final second = Directory('${temp.path}/second')..createSync();
+      final folders = [placed.path, second.path];
+      var asked = 0;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
+          FolderGrant.granted(path: folders[asked++]);
+      final state = await open(tester, 'windows');
+      await pickPngSequence(tester);
+
+      await tapKey(tester, 'export-queue-add-button');
+      expect(asked, 1, reason: 'asked as the job is queued');
+      await tapKey(tester, 'export-queue-add-button');
+      expect(asked, 2);
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(asked, 2, reason: 'the run asks nothing more');
+      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(second), ['frame_0001.png', 'frame_0002.png']);
+    });
+
+    testWidgets('a job whose folder window is backed out of is not queued', (
       tester,
-      video: VideoExportService(
-        processStarter: (executable, arguments) async =>
-            FakeFfmpegProcess(exitCodeValue: 1),
-      ),
-    );
+    ) async {
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
+          const FolderGrant.cancelled();
+      await open(tester, 'windows');
+      await pickPngSequence(tester);
 
-    await tester.runAsync(state.export);
-    await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
 
-    expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
-    expect(asked, 0);
-    expect(leftIn(outbox()), isEmpty);
+      expect(
+        find.byKey(const ValueKey<String>('export-queue-job-1')),
+        findsNothing,
+      );
+    });
   });
 
-  testWidgets('a queue whose hand-over is backed out of says so, and the '
-      'window stays on 「끝나면 고르기」', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        const FolderGrant.cancelled();
-    final state = await openHandingOver(tester);
-    await pickPngSequence(tester);
-    await tapKey(tester, 'export-queue-add-button');
+  group('asked AFTERWARDS, where a place can only be asked of what is '
+      'made', () {
+    testWidgets('🎯iOS: the outputs are made first and handed to ONE export '
+        'picker — the mode that reaches Google Drive — and the room keeps '
+        'none of them', (tester) async {
+      final handed = iosPickerPlaces();
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
 
-    await tester.runAsync(state.runQueue);
-    await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    expect(status(tester), AppText.strings.exHandOverDeclined);
-    expect(locationLabel(tester), AppText.strings.exHandOverWhenDone);
-    expect(leftIn(outbox()), isEmpty);
-  });
+      expect(handed, [
+        ['frame_0001.png', 'frame_0002.png'],
+      ]);
+      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(leftIn(outbox()), isEmpty);
+      expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
+    });
 
-  testWidgets('a queued job keeps its own destination, and the window goes '
-      'back to the one it stood on before the run', (tester) async {
-    debugOperatingSystemOverride = 'windows';
-    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        FolderGrant.granted(path: placed.path);
-    final direct = Directory('${temp.path}/direct')..createSync();
-    final state = await openHandingOver(
+    testWidgets('a hand-over the user backs out of lets the outputs go, and '
+        'says so', (tester) async {
+      FolderPicker.debugFilesExporter = (sourcePaths) async =>
+          const FolderGrant.cancelled();
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(status(tester), AppText.strings.exHandOverDeclined);
+      expect(leftIn(outbox()), isEmpty);
+      expect(filesWrittenUnder(placed), isEmpty);
+    });
+
+    testWidgets('outputs that fail on their way say the failure, and are let '
+        'go all the same', (tester) async {
+      FolderPicker.debugFilesExporter = (sourcePaths) async =>
+          throw const FileSystemException('the picker lost them');
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('Android places ONE output through the save window, once it '
+        'is made', (tester) async {
+      AppStorage.debugAllFilesAccessOverride = true;
+      final saved = <String>[];
+      var askedFolder = 0;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        askedFolder += 1;
+        return FolderGrant.granted(path: placed.path);
+      };
+      FolderPicker.debugFileExporter = ({
+        required String sourcePath,
+        String? suggestedName,
+      }) async {
+        saved.add(fileNameOfPath(sourcePath));
+        moveIntoFolder(sourcePath, placed.path);
+        return FolderGrant.granted(path: placed.path, kind: GrantKind.file);
+      };
+      final state = await open(tester, 'android');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(askedFolder, 0, reason: 'one file is not asked a folder');
+      expect(saved, ['Project.png']);
+      expect(filesWrittenUnder(placed), saved);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('a queue hands every job\'s outputs over in ONE window once '
+        'the last job is done', (tester) async {
+      final handed = iosPickerPlaces();
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+      await tapKey(tester, 'export-queue-add-button');
+      expect(handed, isEmpty, reason: 'queued without being asked');
+      await tester.ensureVisible(find.textContaining('Naming'));
+      await tester.tap(find.textContaining('Naming'));
+      await tester.pump();
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('export-naming-base-field')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-naming-base-field')),
+        'shot',
+      );
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(handed, [
+        ['frame_0001.png', 'frame_0002.png', 'shot_0001.png', 'shot_0002.png'],
+      ]);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('a queue whose hand-over is backed out of says so', (
       tester,
-      pickFolder: () async => direct.path,
-    );
-    await pickPngSequence(tester);
-    await tapKey(tester, 'export-queue-add-button');
-    await tapKey(tester, 'export-browse-button');
+    ) async {
+      FolderPicker.debugFilesExporter = (sourcePaths) async =>
+          const FolderGrant.cancelled();
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+      await tapKey(tester, 'export-queue-add-button');
 
-    await tester.runAsync(state.runQueue);
-    await tester.pump();
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
 
-    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-    expect(filesWrittenUnder(direct), isEmpty);
-    expect(locationLabel(tester), direct.path);
-  });
+      expect(status(tester), AppText.strings.exHandOverDeclined);
+      expect(leftIn(outbox()), isEmpty);
+    });
 
-  testWidgets('a folder\'s token that resolves after 「끝나면 고르기」 was '
-      'chosen leaves the choice alone', (tester) async {
-    final store = AppExportSettingsStore(
-      filePath: '${temp.path.replaceAll('\\', '/')}/export_settings.json',
-    );
-    await tester.runAsync(
-      () => store.save(
-        AppExportSettings(
-          lastDestination: const ExportIntoFolder(
-            GrantedDirectory(path: '/old/deliver', bookmark: 'TOK=='),
-          ),
+    testWidgets('a run that is stopped hands nothing over and keeps nothing', (
+      tester,
+    ) async {
+      final handed = iosPickerPlaces();
+      late ExportDialogState state;
+      final fake = FakeFfmpegProcess(
+        onFrame: (framesSoFar) {
+          if (framesSoFar >= 1) {
+            state.cancelExport();
+          }
+        },
+      );
+      state = await open(
+        tester,
+        'ios',
+        video: VideoExportService(
+          processStarter: (executable, arguments) async => fake,
         ),
-      ),
-    );
-    final resolving = Completer<FolderGrant>();
-    FolderPicker.debugBookmarkResolver = (base64, kind) => resolving.future;
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ExportDialog(
-            session: session(),
-            settingsStore: store,
-            formatAvailability: ExportFormatAvailability.permissive(),
-          ),
+      );
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(handed, isEmpty);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('a run that fails hands nothing over and keeps nothing', (
+      tester,
+    ) async {
+      final handed = iosPickerPlaces();
+      final state = await open(
+        tester,
+        'ios',
+        video: VideoExportService(
+          processStarter: (executable, arguments) async =>
+              FakeFfmpegProcess(exitCodeValue: 1),
         ),
-      ),
-    );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
-    expect(locationLabel(tester), '/old/deliver', reason: 'premise');
+      );
 
-    await tapKey(tester, 'export-hand-over-button');
-    resolving.complete(
-      const FolderGrant.granted(path: '/mounted/deliver', bookmark: 'NEW=='),
-    );
-    await tester.pump();
-    await tester.pump();
+      await tester.runAsync(state.export);
+      await tester.pump();
 
-    expect(locationLabel(tester), AppText.strings.exHandOverWhenDone);
-    expect(AppExport.settings.value.lastDestination, const ExportHandOver());
-    await tester.pumpWidget(const SizedBox.shrink());
+      expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
+      expect(handed, isEmpty);
+      expect(leftIn(outbox()), isEmpty);
+    });
   });
 
-  testWidgets('the destination a saved settings file holds opens as '
-      '「끝나면 고르기」 too', (tester) async {
-    final store = AppExportSettingsStore(
-      filePath: '${temp.path.replaceAll('\\', '/')}/export_settings.json',
-    );
-    await tester.runAsync(
-      () => store.save(
-        AppExportSettings(lastDestination: const ExportHandOver()),
-      ),
-    );
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: ExportDialog(
-            session: session(),
-            settingsStore: store,
-            formatAvailability: ExportFormatAvailability.permissive(),
-          ),
-        ),
-      ),
-    );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
+  group('the order line beside Export says which this export takes', () {
+    testWidgets('a desktop asks first; iOS asks afterwards', (tester) async {
+      await open(tester, 'windows');
+      expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
+      await tester.pumpWidget(const SizedBox.shrink());
 
-    expect(locationLabel(tester), AppText.strings.exHandOverWhenDone);
-    await tester.pumpWidget(const SizedBox.shrink());
+      await open(tester, 'ios');
+      expect(orderLine(tester), AppText.strings.exOrderAsksAfter);
+    });
+
+    testWidgets('Android: a folder is asked first, one file afterwards — the '
+        'line follows what the tab writes', (tester) async {
+      await open(tester, 'android');
+      expect(
+        orderLine(tester),
+        AppText.strings.exOrderAsksAfter,
+        reason: 'the tab opens on a video — one file',
+      );
+
+      await pickPngSequence(tester);
+      expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
+
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      expect(orderLine(tester), AppText.strings.exOrderAsksAfter);
+    });
   });
 }

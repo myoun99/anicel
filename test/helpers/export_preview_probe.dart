@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/export/export_preview_document.dart';
 import 'package:anicel/src/ui/export/export_preview_panel.dart';
+import 'package:anicel/src/ui/export/export_settings_modules.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 /// The export window's preview, read as it is DRAWN — the picture that is
@@ -54,6 +56,20 @@ extension ExportPreviewProbe on WidgetTester {
   Size get exportPreviewPageSize {
     final size = _exportPreviewCanvas.canvasSize;
     return Size(size.width.toDouble(), size.height.toDouble());
+  }
+
+  /// What the head of the tab's name module says: the first file its run
+  /// writes — the module titled 이름 for a file a hand names, 이름 규칙
+  /// for files a rule names.
+  String get exportFirstFileName {
+    final strings = AppText.strings;
+    return widgetList<ExportAccordion>(find.byType(ExportAccordion))
+        .singleWhere(
+          (module) =>
+              module.title == strings.commonNameField ||
+              module.title == strings.exNaming,
+        )
+        .summary;
   }
 
   Finder get exportTransportBar =>

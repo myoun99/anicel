@@ -21,7 +21,6 @@ import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../../services/persistence/app_save_settings.dart'
     show GrantedDirectory;
-import '../../services/persistence/folder_grant.dart' show FolderPicker;
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
@@ -141,11 +140,12 @@ class ExportDialogState extends State<ExportDialog> {
   ExportTab _tab = ExportTab.sequence;
   late ExportTabSpecs _specs;
 
-  /// Where the outputs go; null until the user picks. A folder carries the
-  /// security-scoped token the OS issued for it (macOS/iOS), which is what
-  /// lets the replayed location be WRITTEN to after a relaunch, not just
-  /// displayed (Q-scoped-folder-settings, 유저 08-26). 「끝나면 고르기」
-  /// (drive-folder-windows-Q1) writes into an outbox of the run's own
+  /// Where the outputs of the run under way go — asked when Export is
+  /// pressed ([_askWhere]), and of a queued job when it was queued; null
+  /// until then. A folder carries the security-scoped token the OS issued
+  /// for it (macOS/iOS), which is what lets it be WRITTEN to
+  /// (Q-scoped-folder-settings, 유저 08-26). A run asked its place
+  /// afterwards (drive-folder-windows-Q1) writes into an outbox of its own
   /// ([_runOutbox]) and [handOverFilesForUser] takes it from there.
   ///
   /// ⚠️ONE value on purpose. The path and its token were two fields kept
@@ -155,8 +155,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// destination behind.
   ExportDestination? _destination;
 
-  /// The chosen folder's path; null while the outputs are handed over or
-  /// nothing is chosen.
+  /// The folder the run under way writes into; null while its outputs are
+  /// handed over afterwards.
   String? get _location => switch (_destination) {
     ExportIntoFolder(:final folder) => folder.path,
     _ => null,
@@ -178,6 +178,8 @@ class ExportDialogState extends State<ExportDialog> {
 
   late final TextEditingController _sequenceFileController;
   late final TextEditingController _imageFileController;
+  late final TextEditingController _conteFileController =
+      TextEditingController(text: 'conte');
   late final TextEditingController _namingBaseController;
   late final TextEditingController _celSuffixController;
 
@@ -235,14 +237,13 @@ class ExportDialogState extends State<ExportDialog> {
     _anchorCut = _session.activeCutSpan.exportAnchorCutOrNull;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
-    _destination = restored.lastDestination;
     _presetsOpen = restored.presetsDrawerOpen;
     _queueOpen = restored.queueDrawerOpen;
     final projectName = sanitizeExportFileComponent(
       _session.repository.requireProject().name,
     );
-    _sequenceFileController = TextEditingController(text: '$projectName.mp4');
-    _imageFileController = TextEditingController(text: '$projectName.png');
+    _sequenceFileController = TextEditingController(text: projectName);
+    _imageFileController = TextEditingController(text: projectName);
     _namingBaseController = TextEditingController(
       text: _specs.sequence.naming.baseName,
     );
@@ -280,52 +281,17 @@ class ExportDialogState extends State<ExportDialog> {
     AppExport.settings.value = loaded;
     setState(() {
       _specs = loaded.lastSpecs;
-      _destination = loaded.lastDestination ?? _destination;
       _presetsOpen = loaded.presetsDrawerOpen;
       _queueOpen = loaded.queueDrawerOpen;
       _syncControllersFromSpecs();
     });
-    unawaited(_resolveLocationGrant());
-  }
-
-  /// Reopens the replayed location's scope for this run — on macOS a
-  /// stored path without its resolved bookmark is refused at the first
-  /// write, silently. Follows a folder the user renamed, and persists
-  /// only when something actually moved. A token that will not resolve
-  /// leaves the folder untouched (unavailable is not deleted), and so does
-  /// a destination the user changed while the token was resolving.
-  Future<void> _resolveLocationGrant() async {
-    final replayed = _destination;
-    if (replayed is! ExportIntoFolder) {
-      return;
-    }
-    final token = replayed.folder.bookmark;
-    if (token == null) {
-      return;
-    }
-    final grant = await FolderPicker.resolveBookmark(token);
-    final path = grant.path;
-    if (!mounted ||
-        !grant.isGranted ||
-        path == null ||
-        !identical(_destination, replayed)) {
-      return;
-    }
-    final moved = path != replayed.folder.path;
-    setState(
-      () => _destination = ExportIntoFolder(
-        GrantedDirectory(path: path, bookmark: grant.bookmark ?? token),
-      ),
-    );
-    if (moved) {
-      _persist();
-    }
   }
 
   @override
   void dispose() {
     _sequenceFileController.dispose();
     _imageFileController.dispose();
+    _conteFileController.dispose();
     _namingBaseController.dispose();
     _celSuffixController.dispose();
     for (final controller in _celPrefixControllers.values) {
@@ -867,9 +833,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   String _contePageFileName(int index, int pageCount) {
     final extension = _specs.conte.image.stillFormat.fileExtension;
+    final name = _typedName(_conteFileController);
     return pageCount == 1
-        ? 'conte.$extension'
-        : 'conte_p${index + 1}.$extension';
+        ? '$name.$extension'
+        : '${name}_p${index + 1}.$extension';
   }
 
   /// The cut envelope [sheet] is, laid out on the paper the tab's format
@@ -1157,14 +1124,6 @@ class ExportDialogState extends State<ExportDialog> {
   @visibleForTesting
   CanvasSize? get debugContePictureSize => _contePictureSize;
   CanvasSize? _contePictureSize;
-
-  /// Test seam: sets the destination without the platform picker.
-  @visibleForTesting
-  void debugSetLocationForTests(String location) {
-    setState(
-      () => _destination = ExportIntoFolder(GrantedDirectory(path: location)),
-    );
-  }
 
   String _sequenceFileNameFor(int index) {
     final naming = _specs.sequence.naming;
@@ -1552,42 +1511,26 @@ class ExportDialogState extends State<ExportDialog> {
   /// ⛔The SHAPING stays with each caller — the arrow, the ellipsis, the
   /// empty word. Only the question 「which file」 is answered here.
   ({String? name, bool more}) _firstOutputFile() {
+    if (_tab == ExportTab.conte && _conteSheet().$2.isEmpty) {
+      return (name: null, more: false);
+    }
+    final lone = _loneFile();
+    if (lone != null) {
+      return (
+        name: _singleFileName(lone.controller, lone.extension),
+        more: false,
+      );
+    }
     switch (_tab) {
-      case ExportTab.sequence:
-        final spec = _specs.sequence;
-        if (spec.format.isVideo) {
-          return (
-            name: _singleFileName(
-              _sequenceFileController,
-              spec.format.container.fileExtension,
-            ),
-            more: false,
-          );
-        }
-        return (name: _sequenceFileNameFor(0), more: true);
-      case ExportTab.image:
-        return (
-          name: _singleFileName(
-            _imageFileController,
-            _specs.image.format.stillFormat.fileExtension,
-          ),
-          more: false,
-        );
       case ExportTab.cels:
         final written = _celGroupPlan().writtenFileNames;
         return (name: written.firstOrNull, more: written.length > 1);
       case ExportTab.conte:
-        final (_, pages) = _conteSheet();
-        if (pages.isEmpty) {
-          return (name: null, more: false);
-        }
-        if (_specs.conte.format == ExportConteFormat.pdf) {
-          return (name: 'conte.pdf', more: false);
-        }
-        return (
-          name: _contePageFileName(0, pages.length),
-          more: pages.length > 1,
-        );
+        final pages = _conteSheet().$2.length;
+        return (name: _contePageFileName(0, pages), more: pages > 1);
+      case ExportTab.sequence || ExportTab.image:
+        // What is left once the lone files are answered: numbered stills.
+        return (name: _sequenceFileNameFor(0), more: true);
     }
   }
 
@@ -1603,27 +1546,38 @@ class ExportDialogState extends State<ExportDialog> {
     '.png',
     '.jpg',
     '.psd',
+    '.pdf',
   ];
 
-  /// The single-file name with the CURRENT format's extension — a stale
-  /// lineup extension in the field swaps instead of stacking
-  /// (`name.mp4` + MOV → `name.mov`, never `name.mp4.mov`).
-  String _singleFileName(TextEditingController controller, String extension) {
-    var name = controller.text.trim();
-    if (name.isEmpty) {
-      name = sanitizeExportFileComponent(
-        _session.repository.requireProject().name,
-      );
-    }
+  /// [name] less a format's extension written after it.
+  static String _withoutKnownExtension(String name) {
     final lower = name.toLowerCase();
     for (final known in _knownExtensions) {
       if (lower.endsWith(known)) {
-        name = name.substring(0, name.length - known.length);
-        break;
+        return name.substring(0, name.length - known.length);
       }
     }
-    return '$name.$extension';
+    return name;
   }
+
+  /// The name typed for a lone file — the project's while the field is
+  /// empty. An extension typed after it is not part of it: the format names
+  /// the extension, so a stale one swaps instead of stacking (`name.mp4` +
+  /// MOV → `name.mov`, never `name.mp4.mov`).
+  String _typedName(TextEditingController controller) {
+    final typed = controller.text.trim();
+    return _withoutKnownExtension(
+      typed.isEmpty
+          ? sanitizeExportFileComponent(
+              _session.repository.requireProject().name,
+            )
+          : typed,
+    );
+  }
+
+  /// A lone file's name with the CURRENT format's extension.
+  String _singleFileName(TextEditingController controller, String extension) =>
+      '${_typedName(controller)}.$extension';
 
   /// Flattens un-premultiplied RGBA over the format's background and
   /// hands RGB24 to the native stb encoder. Null = no encoder (an older
@@ -1691,14 +1645,8 @@ class ExportDialogState extends State<ExportDialog> {
         : const ui.Color(0xFFFFFFFF),
   );
 
-  bool get _hasDestination => switch (_destination) {
-    ExportIntoFolder(:final folder) => folder.path.isNotEmpty,
-    ExportHandOver() => true,
-    null => false,
-  };
-
   bool get _canExport {
-    if (_isExporting || !_hasDestination) {
+    if (_isExporting) {
       return false;
     }
     switch (_tab) {
@@ -1858,10 +1806,20 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// Public for tests; the Export button is the production entry point.
+  ///
+  /// 🗣️F-221 (유저 2026-10-06): the place is asked when the button is
+  /// pressed — 「어차피 내보내기누르면 OS창 뜨게하는 최종통일안으로 통일할거니
+  /// 문제없어보임」 — before the files are made where the platform can ask
+  /// then, and once they are made where it cannot ([_askWhere]).
   Future<void> export() async {
     if (!_canExport) {
       return;
     }
+    final destination = await _askWhere();
+    if (destination == null || !mounted) {
+      return;
+    }
+    _takeDestination(destination);
     await _runGuarded(() async {
       final ran = await _runIntoDestination(_runCurrentTabExport);
       final outbox = ran.outbox;
@@ -1877,37 +1835,63 @@ class ExportDialogState extends State<ExportDialog> {
   TextEditingController? _fileControllerFor(ExportTab tab) => switch (tab) {
     ExportTab.sequence => _sequenceFileController,
     ExportTab.image => _imageFileController,
-    _ => null,
+    ExportTab.conte => _conteFileController,
+    ExportTab.cels => null,
   };
 
+  /// The LONE FILE this tab writes under a name typed for it — its field,
+  /// and the extension its format gives it — or null for a tab that writes
+  /// files a rule names.
+  ///
+  /// ONE answer to "is this a single named file": the first file's name,
+  /// the name a queued job carries and whether a place is asked with one
+  /// file in mind each worked it out for themselves.
+  ({TextEditingController controller, String extension})? _loneFile() =>
+      switch (_tab) {
+        ExportTab.image => (
+          controller: _imageFileController,
+          extension: _specs.image.format.stillFormat.fileExtension,
+        ),
+        ExportTab.sequence when _specs.sequence.format.isVideo => (
+          controller: _sequenceFileController,
+          extension: _specs.sequence.format.container.fileExtension,
+        ),
+        ExportTab.conte when _specs.conte.format == ExportConteFormat.pdf => (
+          controller: _conteFileController,
+          extension: 'pdf',
+        ),
+        _ => null,
+      };
+
   String? _singleFileNameForCurrentTab() {
-    if (_tab == ExportTab.image) {
-      return _singleFileName(
-        _imageFileController,
-        _specs.image.format.stillFormat.fileExtension,
-      );
-    }
-    if (_tab == ExportTab.sequence && _specs.sequence.format.isVideo) {
-      return _singleFileName(
-        _sequenceFileController,
-        _specs.sequence.format.container.fileExtension,
-      );
-    }
-    return null;
+    final lone = _loneFile();
+    return lone == null
+        ? null
+        : _singleFileName(lone.controller, lone.extension);
   }
 
-  /// Add to Queue: the current tab's spec + destination, frozen as a job.
-  /// The picture renders at RUN time — the spec is the restorable part.
-  void addToQueue() {
+  /// Add to Queue: the current tab's spec and where it goes, frozen as a
+  /// job. The picture renders at RUN time — the spec is the restorable part.
+  ///
+  /// The place is asked HERE, as Export asks it ([_askWhere]): a job that
+  /// can be asked before its files are made is asked when it is queued, and
+  /// one that cannot hands its outputs over once the queue has run
+  /// ([runQueue]) — 🗣️유저 2026-10-06: 「ios처럼 퍼센테이지 이후에
+  /// 위치저장하는 플랫폼만 큐가 끝날때 한번 위치 묻는건 어떻지?」.
+  Future<void> addToQueue() async {
     if (!_canExport) {
+      return;
+    }
+    final destination = await _askWhere();
+    if (destination == null || !mounted) {
       return;
     }
     _queue.enqueue(
       spec: _specs.specFor(_tab),
-      destination: _destination!,
+      destination: destination,
       fileName: _singleFileNameForCurrentTab(),
     );
-    setState(() {});
+    _takeDestination(destination);
   }
 
   /// Puts [job]'s setup into the live form, so the window honestly shows
@@ -1925,7 +1909,7 @@ class ExportDialogState extends State<ExportDialog> {
       final controller = _fileControllerFor(job.tab);
       final fileName = job.fileName;
       if (controller != null && fileName != null) {
-        controller.text = fileName;
+        controller.text = _withoutKnownExtension(fileName);
       }
       _syncControllersFromSpecs();
     });
@@ -2215,7 +2199,9 @@ class ExportDialogState extends State<ExportDialog> {
       picturesOverInkOf: (page) => contePicturesOverInkIn(_session, page),
       words: words,
     );
-    final file = File(_joinLocation('conte.pdf'));
+    final file = File(
+      _joinLocation(_singleFileName(_conteFileController, 'pdf')),
+    );
     await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: true);
     _reportProgress(pages.length + 1, pages.length + 1);
@@ -2490,48 +2476,68 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- build ----------------------------------------------------------------
 
-  Future<void> _browseLocation() async {
-    // PICK-2: the export location is PERSISTED as `lastLocation` and replayed
-    // on the next launch, so it has to be a durable real path. `getDirectoryPath`
-    // gave a SAF tree URI on Android and threw on iOS — either way the stored
-    // value would come back a dead location one session later.
-    if (widget.exportDirectoryPicker != null) {
-      final directory = await widget.exportDirectoryPicker!();
-      if (directory == null || !mounted) {
-        return;
-      }
-      setState(
-        () =>
-            _destination = ExportIntoFolder(GrantedDirectory(path: directory)),
-      );
-      _persist();
-      return;
+  /// THE DOOR — where this tab's outputs go, asked at the earliest moment
+  /// the platform lets it be asked ([outputsAskedTheirPlaceFirstHere]):
+  /// before they are made, through the folder window; or afterwards, when
+  /// the run hands them over ([ExportHandOver]). Null = the user backed out
+  /// of the window that asks first, and nothing runs.
+  ///
+  /// ⚠️What opens behind this door is F-221's to change (a save window for
+  /// one file, the roads that go). The window calls it here and nowhere
+  /// else, so that change lands behind it.
+  Future<ExportDestination?> _askWhere() async {
+    if (!_asksWhereFirst) {
+      return const ExportHandOver();
     }
-    // The GRANT flavour: `lastLocation` is replayed at the next launch,
-    // and on macOS a stored path without its token is refused at the
-    // first write there (Q-scoped-folder-settings, 유저 08-26).
-    final grant = await pickFolderGrantForUser(context);
-    final path = grant?.path;
-    if (path == null || !mounted) {
-      return;
+    final folder = await _pickFolder();
+    return folder == null ? null : ExportIntoFolder(folder);
+  }
+
+  /// Whether this tab's run is asked its place before it makes its files.
+  bool get _asksWhereFirst =>
+      outputsAskedTheirPlaceFirstHere(oneFile: _writesOneFile);
+
+  /// Whether this tab's run writes ONE file — with the platform, what
+  /// decides when its place is asked. The count that is actually written
+  /// decides, not the format (F-221-Q3): a sheet of one page is one file.
+  bool get _writesOneFile =>
+      _loneFile() != null ||
+      switch (_tab) {
+        ExportTab.sequence => _sequencePlanForRun(video: false).length == 1,
+        ExportTab.cels => _celGroupPlan().length == 1,
+        ExportTab.conte => _conteSheet().$2.length == 1,
+        ExportTab.image => true,
+      };
+
+  /// The folder window, opening where the last export went.
+  ///
+  /// PICK-2: the folder has to be a durable real path — `getDirectoryPath`
+  /// gave a SAF tree URI on Android and threw on iOS. And the GRANT
+  /// flavour: on macOS a path without its token is refused at the first
+  /// write there (Q-scoped-folder-settings, 유저 08-26).
+  Future<GrantedDirectory?> _pickFolder() async {
+    final picker = widget.exportDirectoryPicker;
+    if (picker != null) {
+      final directory = await picker();
+      return directory == null ? null : GrantedDirectory(path: directory);
     }
-    setState(
-      () => _destination = ExportIntoFolder(
-        GrantedDirectory(path: path, bookmark: grant!.bookmark),
-      ),
+    final last = AppExport.settings.value.lastDestination;
+    final grant = await pickFolderGrantForUser(
+      context,
+      initialDirectory: last is ExportIntoFolder ? last.folder.path : null,
     );
-    _persist();
+    final path = grant?.path;
+    return path == null
+        ? null
+        : GrantedDirectory(path: path, bookmark: grant!.bookmark);
   }
 
-  /// 「끝나면 고르기」: the destination is chosen once the run is done.
-  void _chooseHandOver() {
-    setState(() => _destination = const ExportHandOver());
+  /// The run about to start, or the job just queued, goes to [destination]
+  /// — and it is remembered, as where the next folder window opens.
+  void _takeDestination(ExportDestination destination) {
+    setState(() => _destination = destination);
     _persist();
   }
-
-  bool get _singleFileTab =>
-      _tab == ExportTab.image ||
-      (_tab == ExportTab.sequence && _specs.sequence.format.isVideo);
 
   @override
   Widget build(BuildContext context) {
@@ -2564,7 +2570,14 @@ class ExportDialogState extends State<ExportDialog> {
               queueOpen: room.queueOpen,
             ),
           ),
-          footerNote: _statusNote(theme),
+          leadingActions: [
+            AppWindowAction(
+              label: AppText.strings.exAddToQueue,
+              actionKey: const ValueKey<String>('export-queue-add-button'),
+              onPressed: _canExport ? () => unawaited(addToQueue()) : null,
+            ),
+          ],
+          footerBetween: _footerBetween(theme),
           actions: _windowActions(context),
         );
       },
@@ -2668,36 +2681,69 @@ class ExportDialogState extends State<ExportDialog> {
   ];
 
   /// The window's four columns: presets · preview · settings · queue.
+  ///
+  /// ↩️A bar across their top named the file and where it went. The name is
+  /// at the head of the settings column now ([_nameAccordion]) and the place
+  /// is asked when Export is pressed ([_askWhere]) — 유저 2026-10-06:
+  /// 「이름줄 없는거 맘에들고」.
   Widget _zones(
     ThemeData theme, {
     required bool presetsOpen,
     required bool queueOpen,
   }) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _nameBar(theme),
+        SizedBox(
+          width: _drawerWidth(presetsOpen, _presetsDrawerWidth),
+          child: _presetsZone(open: presetsOpen),
+        ),
+        VerticalDivider(width: 1, color: theme.dividerColor),
+        Expanded(child: _previewZone(theme)),
+        VerticalDivider(width: 1, color: theme.dividerColor),
+        SizedBox(width: _settingsColumnWidth, child: _settingsZone()),
+        VerticalDivider(width: 1, color: theme.dividerColor),
+        SizedBox(
+          width: _drawerWidth(queueOpen, _queueDrawerWidth),
+          child: _queueZone(open: queueOpen),
+        ),
+      ],
+    );
+  }
+
+  /// What stands between the footer's two ends: the progress of the run
+  /// under way — there for the length of an export and at no other time
+  /// (유저 2026-10-06: 「진행표시 원래위치대로 넣자. 출력때만 보이게」) — or the
+  /// sentence the last run ended on; and, against the Export button, the
+  /// order this export takes on this machine.
+  ///
+  /// ⚠️The order line is the one explanation this window carries. It is
+  /// there because the user asked for it by name
+  /// ([AppStrings.exOrderAsksFirst]) — not a precedent for a caption under
+  /// a control.
+  Widget _footerBetween(ThemeData theme) {
+    final strings = AppText.strings;
+    final progress = _progress;
+    return Row(
+      children: [
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: _drawerWidth(presetsOpen, _presetsDrawerWidth),
-                child: _presetsZone(open: presetsOpen),
-              ),
-              VerticalDivider(width: 1, color: theme.dividerColor),
-              Expanded(child: _previewZone(theme)),
-              VerticalDivider(width: 1, color: theme.dividerColor),
-              SizedBox(
-                width: _settingsColumnWidth,
-                child: _settingsZone(),
-              ),
-              VerticalDivider(width: 1, color: theme.dividerColor),
-              SizedBox(
-                width: _drawerWidth(queueOpen, _queueDrawerWidth),
-                child: _queueZone(open: queueOpen),
-              ),
-            ],
+          child: _isExporting
+              ? LinearProgressIndicator(
+                  key: const ValueKey<String>('export-progress'),
+                  value: progress != null && progress.$2 > 0
+                      ? progress.$1 / progress.$2
+                      : null,
+                  minHeight: 4,
+                )
+              : _statusNote(theme),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          _asksWhereFirst ? strings.exOrderAsksFirst : strings.exOrderAsksAfter,
+          key: const ValueKey<String>('export-order-line'),
+          maxLines: 1,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
       ],
@@ -2714,6 +2760,8 @@ class ExportDialogState extends State<ExportDialog> {
     ),
   );
 
+  /// The footer's right end: Export — and, for the length of a run, Cancel
+  /// against its left.
   List<AppWindowAction> _windowActions(BuildContext context) => [
     if (_isExporting)
       AppWindowAction(
@@ -2722,11 +2770,6 @@ class ExportDialogState extends State<ExportDialog> {
         onPressed: cancelExport,
       ),
     AppWindowAction(
-      label: AppText.strings.exAddToQueue,
-      actionKey: const ValueKey<String>('export-queue-add-button'),
-      onPressed: _canExport ? addToQueue : null,
-    ),
-    AppWindowAction(
       label: AppText.strings.exExport,
       actionKey: const ValueKey<String>('export-run-button'),
       emphasis: AppWindowActionEmphasis.primary,
@@ -2734,143 +2777,25 @@ class ExportDialogState extends State<ExportDialog> {
     ),
   ];
 
-  Widget _nameBar(ThemeData theme) {
-    final singleFile = _singleFileTab;
-    final controller = _tab == ExportTab.image
-        ? _imageFileController
-        : _sequenceFileController;
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: theme.dividerColor)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      child: Row(
-        children: [
-          Text(
-            singleFile
-                ? AppText.strings.exFileLabel
-                : AppText.strings.exPatternLabel,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(width: 8),
-          // The name and the destination share what the buttons leave: the
-          // name takes its width while the destination keeps half the room,
-          // and gives way evenly below that — in a narrow window a name
-          // field of fixed width and the two destination buttons outgrow
-          // the bar.
-          Expanded(
-            child: LayoutBuilder(
-              builder: (context, room) => Row(
-                children: [
-                  if (singleFile)
-                    SizedBox(
-                      width: math.min(180, room.maxWidth / 2),
-                      child: TextField(
-                        key: const ValueKey<String>('export-file-name-field'),
-                        controller: controller,
-                        enabled: !_isExporting,
-                        style: theme.textTheme.bodySmall,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 7,
-                            vertical: 5,
-                          ),
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    )
-                  else
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: room.maxWidth / 2,
-                      ),
-                      child: Text(
-                        _patternPreview(),
-                        key: const ValueKey<String>('export-pattern-preview'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(width: 14),
-                  Text(
-                    AppText.strings.exLocationLabel,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      switch (_destination) {
-                        ExportIntoFolder(:final folder) => folder.path,
-                        ExportHandOver() => AppText.strings.exHandOverWhenDone,
-                        null => AppText.strings.exChooseFolder,
-                      },
-                      key: const ValueKey<String>('export-location-label'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                        fontSize: 11,
-                        color: _hasDestination
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          _destinationButton(
-            key: 'export-browse-button',
-            label: AppText.strings.exBrowse,
-            onPressed: _browseLocation,
-          ),
-          const SizedBox(width: 6),
-          _destinationButton(
-            key: 'export-hand-over-button',
-            label: AppText.strings.exHandOverWhenDone,
-            onPressed: _chooseHandOver,
-          ),
-        ],
-      ),
-    );
-  }
+  /// The name of a file a hand names, at the head of the settings column —
+  /// where every other name is set: the name typed alone, and beside it the
+  /// extension its format gives it ([ExportFileNameModule]).
+  ExportAccordion _nameAccordion({
+    required TextEditingController controller,
+    required String extension,
+  }) => ExportAccordion(
+    title: AppText.strings.commonNameField,
+    summary: _patternPreview(),
+    expansion: _expansion('name', open: true),
+    child: ExportFileNameModule(
+      controller: controller,
+      extension: extension,
+      enabled: !_isExporting,
+      onChanged: () => setState(() {}),
+    ),
+  );
 
-  /// A button that picks where the outputs go — dead while a run is under
-  /// way, whose destination is already decided.
-  Widget _destinationButton({
-    required String key,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    final pressed = _isExporting ? null : onPressed;
-    return ControlPressClaim(
-      onPressed: pressed,
-      child: OutlinedButton(
-        key: ValueKey<String>(key),
-        onPressed: silentPress(pressed),
-        style: OutlinedButton.styleFrom(
-          visualDensity: VisualDensity.compact,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-        ),
-        child: Text(label),
-      ),
-    );
-  }
-
-  /// The name alone — the naming summary and the file-bar preview show what
-  /// the first file is called, without the output line's arrow.
+  /// The first file's name alone — what a naming module says in its head.
   String _patternPreview() => _firstOutputFile().name ?? _nothingToWriteText();
 
   Widget _presetsZone({required bool open}) {
@@ -2932,7 +2857,6 @@ class ExportDialogState extends State<ExportDialog> {
   /// name is on the picture (유저 2026-10-06: 「파일이름 위치도 심플해서
   /// 좋아」).
   Widget _previewZone(ThemeData theme) {
-    final progress = _progress;
     final file = _previewFile();
     final well = AppShapes.container(AppShapes.wellRadius);
     return Padding(
@@ -2968,13 +2892,6 @@ class ExportDialogState extends State<ExportDialog> {
           if (_tab == ExportTab.cels) ...[
             const SizedBox(height: 6),
             _celsBoard(),
-          ],
-          if (progress != null) ...[
-            const SizedBox(height: 6),
-            LinearProgressIndicator(
-              value: progress.$2 > 0 ? progress.$1 / progress.$2 : null,
-              minHeight: 4,
-            ),
           ],
         ],
       ),
@@ -3039,6 +2956,31 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.sequence;
     final projectScope = spec.scope == ExportScopeKind.project;
     return [
+      // The name is always the first module: a video's one name, or the
+      // rule its numbered stills are named by.
+      if (spec.format.isVideo)
+        _nameAccordion(
+          controller: _sequenceFileController,
+          extension: spec.format.container.fileExtension,
+        )
+      else
+        _namingAccordion(
+          summary: ExportSequenceNamingModule.summarize(
+            spec.naming,
+            spec.format.stillFormat.fileExtension,
+          ),
+          isDefault: spec.naming == const ExportSequenceNaming(),
+          onReset: () {
+            _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
+            _namingBaseController.text = 'frame';
+          },
+          child: ExportSequenceNamingModule(
+            naming: spec.naming,
+            enabled: !_isExporting,
+            baseNameController: _namingBaseController,
+            onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
+          ),
+        ),
       _formatAccordion(
         format: spec.format,
         capabilities: ExportFormatCapabilities(
@@ -3105,24 +3047,6 @@ class ExportDialogState extends State<ExportDialog> {
             write: (value) => spec.copyWith(includeAudio: value),
           ),
         ),
-      if (spec.format.isStill)
-        _namingAccordion(
-          summary: ExportSequenceNamingModule.summarize(
-            spec.naming,
-            spec.format.stillFormat.fileExtension,
-          ),
-          isDefault: spec.naming == const ExportSequenceNaming(),
-          onReset: () {
-            _updateSpec(spec.copyWith(naming: const ExportSequenceNaming()));
-            _namingBaseController.text = 'frame';
-          },
-          child: ExportSequenceNamingModule(
-            naming: spec.naming,
-            enabled: !_isExporting,
-            baseNameController: _namingBaseController,
-            onChanged: (naming) => _updateSpec(spec.copyWith(naming: naming)),
-          ),
-        ),
       _fxAccordion(
         keyValue: 'export-apply-fx-toggle',
         label: AppText.strings.exApplyLayerFxHelp,
@@ -3135,6 +3059,10 @@ class ExportDialogState extends State<ExportDialog> {
   List<Widget> _imageModules() {
     final spec = _specs.image;
     return [
+      _nameAccordion(
+        controller: _imageFileController,
+        extension: spec.format.stillFormat.fileExtension,
+      ),
       _formatAccordion(
         format: spec.format,
         capabilities: _stillOnlyCapabilities,
@@ -3754,6 +3682,13 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.conte;
     final pictured = spec.format == ExportConteFormat.pageImage;
     return [
+      // One name for the book in either format: the PDF's, and the base of
+      // its pages' as pictures — the module keeps its place when the format
+      // changes.
+      _nameAccordion(
+        controller: _conteFileController,
+        extension: pictured ? spec.image.stillFormat.fileExtension : 'pdf',
+      ),
       ExportAccordion(
         title: AppText.strings.exFormat,
         summary: pictured

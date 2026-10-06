@@ -182,12 +182,6 @@ void main() {
     return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
 
-  Future<void> browseTo(WidgetTester tester) async {
-    await tester.tap(find.byKey(const ValueKey<String>('export-browse-button')));
-    await tester.pump();
-    await tester.pump();
-  }
-
   Future<void> pickStillPng(WidgetTester tester) async {
     await tester.tap(
       find.byKey(const ValueKey<String>('export-format-still-png')),
@@ -309,19 +303,30 @@ void main() {
       expect(state.debugSpecs.sequence.scope, ExportScopeKind.project);
     });
 
-    testWidgets('export stays disabled until a location is chosen',
-        (tester) async {
-      await pumpDialog(tester, exportSession());
-      expect(exportEnabled(tester), isFalse);
-      expect(find.text('Choose a folder…'), findsOneWidget);
-
-      await pumpDialog(
+    testWidgets('Export is live with no place chosen ahead: the window '
+        'holds no location field, and asks when it is pressed', (tester) async {
+      var asked = 0;
+      final state = await pumpDialog(
         tester,
         exportSession(),
-        exportDirectoryPicker: () async => temp.path,
+        exportDirectoryPicker: () async {
+          asked += 1;
+          return temp.path;
+        },
       );
-      await browseTo(tester);
       expect(exportEnabled(tester), isTrue);
+      expect(asked, 0);
+      for (final gone in [
+        'export-location-label',
+        'export-browse-button',
+        'export-hand-over-button',
+      ]) {
+        expect(find.byKey(ValueKey<String>(gone)), findsNothing, reason: gone);
+      }
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(asked, 1);
     });
 
     testWidgets('the preview covers the active cut by default: its frames '
@@ -361,7 +366,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       await tester.runAsync(state.export);
       await tester.pump();
@@ -376,7 +380,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       // The Naming accordion is collapsed by default — open, then edit.
       await tester.ensureVisible(find.textContaining('Naming'));
@@ -403,7 +406,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       await tester.typeExportRange(inFrame: '2');
       expect(state.debugSpecs.sequence.inFrame, 1);
@@ -436,7 +438,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       await tester.pickExportProjectScope();
       expect(
@@ -472,7 +473,6 @@ void main() {
           },
         ),
       );
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -517,7 +517,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'image');
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -561,16 +560,18 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      // The tab opens on video — one file, so the bar names a file; the
-      // still format numbers them, and the bar names the pattern instead.
+      // The tab opens on video — one file, so the first module names a
+      // file; the still format numbers them, and the same place holds the
+      // rule they are named by.
+      expect(find.text('이름 — Project.mp4'), findsNothing, reason: 'open');
+      expect(find.text('이름'), findsOneWidget);
       expect(find.text('파일'), findsOneWidget);
-      expect(find.text('위치'), findsOneWidget);
-      expect(find.text('폴더 선택…'), findsOneWidget);
       expect(find.text('프리셋 · 시퀀스'), findsOneWidget);
+      expect(find.text('위치를 지정하고 출력합니다'), findsOneWidget);
 
-      await browseTo(tester);
       await pickStillPng(tester);
-      expect(find.text('패턴'), findsOneWidget);
+      expect(find.text('이름'), findsNothing);
+      expect(find.textContaining('이름 규칙'), findsOneWidget);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(statusText(tester), '2프레임 내보냈습니다.');
@@ -591,7 +592,6 @@ void main() {
       expect(find.textContaining('캔버스 8×8'), findsOneWidget);
       expect(find.textContaining('카메라 32×18'), findsOneWidget);
 
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(statusText(tester), 'Project.png 내보냈습니다.');
@@ -606,7 +606,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(statusText(tester), '파일 1개 내보냈습니다.');
@@ -619,7 +618,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-tsformat-xdts')),
       );
@@ -644,7 +642,6 @@ void main() {
       );
       expect(find.textContaining('SE 먹싱 · AAC'), findsOneWidget);
 
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(statusText(tester), '영상을 내보냈습니다(2프레임).');
@@ -669,7 +666,6 @@ void main() {
       );
       // The project's five frames, so stopping after two leaves work undone.
       await tester.pickExportProjectScope();
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(
@@ -680,30 +676,28 @@ void main() {
 
     testWidgets('the render queue: its header, a job, the job states and the '
         'resting sentence', (tester) async {
+      // Job 1 aims inside a FILE, so its write fails; job 2 lands.
+      final blocker = File('${temp.path}/blocker')..createSync();
+      final asked = ['${blocker.path}/nested', temp.path];
       final state = await pumpDialog(
         tester,
         exportSession(),
-        exportDirectoryPicker: () async => temp.path,
+        exportDirectoryPicker: () async => asked.removeAt(0),
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       expect(find.text('렌더 대기열'), findsOneWidget);
       expect(find.text('모두 렌더'), findsOneWidget);
 
-      // Job 1 aims inside a FILE, so its write fails; job 2 lands.
-      final blocker = File('${temp.path}/blocker')..createSync();
-      state.debugSetLocationForTests('${blocker.path}/nested');
-      await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey<String>('export-queue-add-button')),
       );
+      await tester.pump();
       await tester.pump();
       expect(find.text('작업 1 · 시퀀스'), findsOneWidget);
-      state.debugSetLocationForTests(temp.path);
-      await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey<String>('export-queue-add-button')),
       );
+      await tester.pump();
       await tester.pump();
 
       await tester.runAsync(state.runQueue);
@@ -723,12 +717,8 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'cels');
-      final pattern = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-pattern-preview')),
-      );
-      expect(pattern.data, 'A1.png');
+      expect(tester.exportFirstFileName, 'A1.png');
 
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       // The fixture cels carry no strokes — renders resolve empty, files
@@ -746,7 +736,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -803,7 +792,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
 
@@ -833,7 +821,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-tsformat-xdts')),
       );
@@ -868,7 +855,6 @@ void main() {
       expect(tester.exportTransport.currentFrame, 1);
       expect(tester.exportPreviewName, 'Project.png');
 
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), ['Project.png']);
@@ -881,7 +867,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       await tester.pickExportProjectScope();
       await tester.typeExportRange(inFrame: '2', outFrame: '4');
@@ -981,7 +966,6 @@ void main() {
         exportDirectoryPicker: () async => temp.path,
       );
       await switchTab(tester, 'timesheet');
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-tsformat-xdts')),
       );
@@ -989,12 +973,7 @@ void main() {
 
       // The fixture's cut is named 'Cut', so the file is _TSCut.xdts — the
       // same name the run actually writes.
-      final pattern = tester
-          .widget<Text>(
-            find.byKey(const ValueKey<String>('export-pattern-preview')),
-          )
-          .data;
-      expect(pattern, '_TSCut.xdts');
+      expect(tester.exportFirstFileName, '_TSCut.xdts');
       expect(tester.exportPreviewName, '_TSCut.xdts');
     });
 
@@ -1023,7 +1002,6 @@ void main() {
           },
         ),
       );
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-format-codec-h265')),
       );
@@ -1052,7 +1030,6 @@ void main() {
           },
         ),
       );
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-format-container-mov')),
       );
@@ -1133,7 +1110,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-format-still-jpg')),
       );
@@ -1153,7 +1129,6 @@ void main() {
         exportSession(),
         exportDirectoryPicker: () async => temp.path,
       );
-      await browseTo(tester);
       await pickStillPng(tester);
       await tester.tap(
         find.byKey(const ValueKey<String>('export-preset-save-current')),
@@ -1310,7 +1285,6 @@ void main() {
         dialogKey: ValueKey<String>('files-$tab-$family'),
       );
       await switchTab(tester, tab);
-      await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
       return {

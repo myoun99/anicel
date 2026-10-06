@@ -799,15 +799,15 @@ void main() {
   testWidgets('the first file the window names is the first one WRITTEN — a '
       'drawing turned off is not it', (tester) async {
     await pumpCels(tester, celsSession());
-    expect(textOf(tester, 'export-pattern-preview'), 'A1.png');
+    expect(tester.exportFirstFileName, 'A1.png');
 
     await pressBlock(tester, 'a', 'f1');
-    expect(textOf(tester, 'export-pattern-preview'), 'A2.png');
+    expect(tester.exportFirstFileName, 'A2.png');
 
     await pressBlock(tester, 'a', 'f2');
     await pressBlock(tester, 'c', 'x1');
     await pressBlock(tester, 'd', 'y1');
-    expect(textOf(tester, 'export-pattern-preview'), AppText.strings.exNoCels);
+    expect(tester.exportFirstFileName, AppText.strings.exNoCels);
   });
 
   testWidgets('레이어: 기준 and 어태치 share a strip, and 시트만 stands in a '
