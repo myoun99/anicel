@@ -436,6 +436,24 @@ abstract final class AppTypography {
   static List<String>? fallbackFor(AppLanguage language) =>
       language == AppLanguage.zhHans ? null : _fallback;
 
+  /// [style] in the face the app speaks in now.
+  ///
+  /// 🚨★★★**A THEME SLOT THAT TAKES A WHOLE TEXT STYLE NEVER HEARS
+  /// `ThemeData.fontFamily`.** That one reaches the TEXT THEME. A button's
+  /// style and a tooltip's REPLACE the text theme's style rather than merge
+  /// into it, so a style written there with a size and no face printed in
+  /// the machine's own face: a window's 취소 · 확인, the timeline bar's
+  /// 1 · 2 · 3 · 4 · N and every tooltip (found 2026-10-01 — a test that
+  /// loads only the app's faces printed a Korean label as boxes; measured
+  /// slot by slot 2026-10-06).
+  ///
+  /// ⛔So every `textStyle:` in this file goes through here, and
+  /// `the_app_has_one_face_test` reads the file to hold that.
+  static TextStyle inTheAppFace(TextStyle style) => style.copyWith(
+    fontFamily: familyFor(AppText.language),
+    fontFamilyFallback: fallbackFor(AppText.language),
+  );
+
   /// ⚠️이름이 아니라 **순서가 각 문자를 어느 폰트로 보낼지 정한다** — Flutter 는
   /// 글리프가 없는 폰트를 건너뛰므로, 앞의 폰트에 없는 글자만 뒤로 내려간다.
   ///
@@ -546,6 +564,12 @@ ThemeData buildAppTheme() => _appTheme.resolve(
 
 final _appTheme = IdentityMemo<ThemeData>();
 
+/// What a window's action row prints in — cancel and confirm alike.
+const TextStyle _actionLabel = TextStyle(
+  fontSize: 12,
+  fontWeight: FontWeight.w500,
+);
+
 ThemeData _buildAppTheme() {
   final colorScheme = _buildColorScheme();
   return ThemeData(
@@ -630,7 +654,7 @@ ThemeData _buildAppTheme() {
         disabledForegroundColor: AppColors.textDim.withValues(alpha: 0.5),
         minimumSize: const Size(96, AppShapes.controlMedium),
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        textStyle: AppTypography.inTheAppFace(_actionLabel),
         shape: AppShapes.control(AppShapes.controlMedium),
       ),
     ),
@@ -638,7 +662,7 @@ ThemeData _buildAppTheme() {
       style: FilledButton.styleFrom(
         minimumSize: const Size(96, AppShapes.controlMedium),
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        textStyle: AppTypography.inTheAppFace(_actionLabel),
         shape: AppShapes.control(AppShapes.controlMedium),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
@@ -725,7 +749,10 @@ ThemeData _buildAppTheme() {
       shape: AppPopupSurface.shape,
       elevation: AppPopupSurface.elevation,
       surfaceTintColor: AppPopupSurface.surfaceTint,
-      textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
+      // ↩️A text style stood here — 12px in the text colour — that no row
+      // read: under Material 3 a menu row takes its LABEL style, which falls
+      // to the text theme's and so wears the app's face (measured
+      // 2026-10-06: the row printed in it while this style named none).
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
@@ -762,7 +789,9 @@ ThemeData _buildAppTheme() {
         color: AppPopupSurface.color,
         shape: AppShapes.container(AppShapes.wellRadius),
       ),
-      textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
+      textStyle: AppTypography.inTheAppFace(
+        const TextStyle(color: AppColors.text, fontSize: 12),
+      ),
     ),
   );
 }

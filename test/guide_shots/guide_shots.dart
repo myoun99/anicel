@@ -170,39 +170,6 @@ Future<void> settleReal(WidgetTester tester, [int rounds = 10]) async {
   }
 }
 
-/// The app's theme with the app's faces on its button labels.
-///
-/// The text and filled buttons' label style names no face, so a PC prints
-/// those labels in its own UI face and a test, which has none, printed
-/// boxes (the 1 · 2 · 3 · 4 · N on the timeline's bar). Only the face is
-/// added. ⚠️Delete this once the theme's button styles carry the faces.
-ThemeData guideTheme(AppLanguage language) {
-  final theme = buildAppTheme();
-  ButtonStyle? withFaces(ButtonStyle? style) {
-    final label = style?.textStyle;
-    if (style == null || label == null) return style;
-    return style.copyWith(
-      textStyle: WidgetStateProperty.resolveWith(
-        (states) => label
-            .resolve(states)
-            ?.copyWith(
-              fontFamily: AppTypography.familyFor(language),
-              fontFamilyFallback: AppTypography.fallbackFor(language),
-            ),
-      ),
-    );
-  }
-
-  return theme.copyWith(
-    textButtonTheme: TextButtonThemeData(
-      style: withFaces(theme.textButtonTheme.style),
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: withFaces(theme.filledButtonTheme.style),
-    ),
-  );
-}
-
 Future<void> pumpApp(
   WidgetTester tester,
   Project project,
@@ -224,7 +191,7 @@ Future<void> pumpApp(
     RepaintBoundary(
       key: shotKey,
       child: MaterialApp(
-        theme: guideTheme(language),
+        theme: buildAppTheme(),
         debugShowCheckedModeBanner: false,
         home: HomePage(
           initialProject: project,
