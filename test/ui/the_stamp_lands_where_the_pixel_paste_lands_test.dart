@@ -570,6 +570,39 @@ void main() {
     expectSamePicture(stamped, celOf(session, 'c4'), '확정, on c4');
   });
 
+  testWidgets('확정 lays it down in the stamp\'s own blend — under what the '
+      'cel holds, when the stamp landed under', (tester) async {
+    final session = await pump(tester);
+    // Blue over the piece's left half, on the cel the stamp lands on and on
+    // the one 확정 lays it on again.
+    for (final cel in ['c1', 'c2']) {
+      paint(
+        session,
+        cel,
+        box: (left: 10, top: 10, right: 20, bottom: 30),
+        rgba: blue,
+      );
+    }
+    await holdStamp(tester, squareOf(red), blend: BrushBlendMode.behind);
+    session.selectFrameIndex(1);
+    await pumpFrames(tester);
+    await pasteInPlace(tester);
+    expect(pixel(session, 'c1', 15, 15), blueRgba, reason: '⛔premise: under');
+    expect(pixel(session, 'c1', 25, 15), redRgba, reason: '⛔premise: landed');
+
+    session.selectFrameIndex(2);
+    await pumpFrames(tester);
+    workspaceOf(tester).lastStroke!.reinput();
+    await pumpFrames(tester);
+
+    expect(pixel(session, 'c2', 25, 15), redRgba, reason: 'it lands again');
+    expect(
+      pixel(session, 'c2', 15, 15),
+      blueRgba,
+      reason: 'and under, as the stamp did',
+    );
+  });
+
   /// 🗣️유저 2026-09-17, of a range that crosses rows: 「몇 행에 걸쳐서 적용하던
   /// **동시적용은 가능하게**」 — rows and frames are one law, and each row
   /// stands on the canvas where its OWN placement puts it
@@ -735,6 +768,37 @@ void main() {
         closeTo(10, 1),
         reason: 'read through the plain row\'s outline, the posed row\'s '
             'piece — half as far out — would lie wholly inside it',
+      );
+    });
+
+    testWidgets('원래 위치에 붙여넣기 cuts the ONE piece through the marquee '
+        'as each row shows it', (tester) async {
+      final session = await pumpRows(tester, standOn: plain);
+      // The piece goes back to (10, 10)–(30, 30) on both rows. The marquee's
+      // right edge is the canvas's x = 20: the plain row keeps the piece's
+      // left half. The posed row shows that edge at about its own x = 595 —
+      // far to the right of the piece, which it keeps whole.
+      marquee(
+        session,
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(
+            left: -4000,
+            top: -4000,
+            right: 20,
+            bottom: 8000,
+          ),
+        ),
+      );
+      await pasteInPlace(tester);
+
+      final onPlain = inkOn(session, plain);
+      final onPosed = inkOn(session, posed);
+      expect((onPlain.left, onPlain.rightExclusive), (10, 20));
+      expect(
+        (onPosed.left, onPosed.rightExclusive),
+        (10, 30),
+        reason: 'cut once and handed to both, the posed row would hold the '
+            'plain row\'s half',
       );
     });
 

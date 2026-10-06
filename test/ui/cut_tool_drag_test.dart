@@ -14,6 +14,10 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_selection.dart'
+    show SelectionMaskOptions;
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/canvas_selection_shape.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
@@ -70,7 +74,11 @@ void main() {
     // a-marquee-on-a-posed-row: where the row stands on the canvas. Null =
     // unposed.
     LayerPoseSample? placement,
+    // The selection's softness, as the tool settings would set it.
+    SelectionMaskOptions maskOptions = SelectionMaskOptions.none,
   }) async {
+    final softness = ValueNotifier(maskOptions);
+    addTearDown(softness.dispose);
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -106,6 +114,7 @@ void main() {
                 cutStampOpacity: stampOpacity,
               )),
               selectionCommands: commands,
+              selectionMaskOptions: softness,
               cutPieceSlot: slot,
               rowAcceptsStrokes: rowTakesStrokes,
               interactiveContentPose: placement,
@@ -481,6 +490,72 @@ void main() {
     );
   });
 
+  testWidgets('a press on the canvas presses at the stamp tool\'s opacity '
+      'too', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    final canvas = find.byType(BrushCanvasPanel);
+    int alphaAt(int x, int y) =>
+        (surfacePixelRgba(
+              env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+              x,
+              y,
+            ) ??
+            0) &
+        0xFF;
+
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 0.5);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+    await tester.pump();
+    await env.setTool(CanvasTool.cutStamp, stampOpacity: 1);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 200));
+    await tester.pump();
+
+    final half = alphaAt(50, 140);
+    final full = alphaAt(50, 200);
+    expect(full, greaterThan(0), reason: '⛔premise: the press stamps');
+    expect(half, closeTo(full / 2, 2));
+  });
+
+  testWidgets('a stamp lands through the selection, at its softness', (
+    tester,
+  ) async {
+    final env = await pumpPanel(
+      tester,
+      tool: CanvasTool.cut,
+      maskOptions: const SelectionMaskOptions(featherPx: 4),
+    );
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    // A selection whose right edge runs down the middle of the stamp.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape.rect(left: 0, top: 100, right: 50, bottom: 200),
+      ),
+    );
+    await env.setTool(CanvasTool.cutStamp);
+    final canvas = find.byType(BrushCanvasPanel);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+    await tester.pump();
+
+    int alphaAt(int x) =>
+        (surfacePixelRgba(
+              env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+              x,
+              140,
+            ) ??
+            0) &
+        0xFF;
+    expect(alphaAt(25), 255, reason: 'deep inside it lands whole');
+    expect(
+      alphaAt(49),
+      allOf(greaterThan(0), lessThan(255)),
+      reason: 'just inside the edge it lands in part — the feather',
+    );
+    expect(alphaAt(60), 0, reason: 'past the outline nothing lands');
+  });
+
   testWidgets('paste at origin lands nothing on a row that takes no strokes', (
     tester,
   ) async {
@@ -545,8 +620,8 @@ void main() {
     //
     // 🚨`erase` rides the DAB, not the blend mode — passing the mode alone
     // PAINTS the dabs instead of clearing with them, which is the trap the
-    // three stamp routes share one funnel to avoid. Here it would have made
-    // the reading below meaningless.
+    // piece door sets the flag to close. Here it would have made the
+    // reading below meaningless.
     Future<void> wipe() async {
       env.coordinator.commitSourceStroke(
         sourceDabs: [
