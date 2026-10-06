@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../services/command.dart';
@@ -38,7 +40,7 @@ class CelTextCommands extends ChangeNotifier {
     }
     _tool?.removeListener(notifyListeners);
     _tool = tool..addListener(notifyListeners);
-    notifyListeners();
+    _tellOfTheHand();
   }
 
   /// Lets go of [tool] — a no-op for one that is not bound, so a canvas
@@ -49,7 +51,37 @@ class CelTextCommands extends ChangeNotifier {
     }
     tool.removeListener(notifyListeners);
     _tool = null;
-    notifyListeners();
+    _tellOfTheHand();
+  }
+
+  bool _tellingOfTheHand = false;
+  bool _disposed = false;
+
+  /// Tells that another hand is bound — or none — ONCE THIS TURN IS OVER,
+  /// and once for however many bindings the turn held.
+  ///
+  /// 🚨A CANVAS BINDS ITS HAND AS IT MOUNTS and lets go of it as it goes
+  /// (`_CanvasPanelText`) — in the middle of a build. Told at once, whoever
+  /// listens — the tool settings, in another panel — is marked to build
+  /// while the framework is building, and the framework refuses: another
+  /// project's tab coming on screen threw (2026-10-07, found by the first
+  /// test that opened one with the settings up). The selection's channel
+  /// answers the same way, for the same reason
+  /// (`CanvasSelectionCommands.notifySessionChanged`).
+  ///
+  /// ⚠️Only the BINDING is told late. What the bound hand itself tells of
+  /// is told at once ([bind]'s listener).
+  void _tellOfTheHand() {
+    if (_tellingOfTheHand) {
+      return;
+    }
+    _tellingOfTheHand = true;
+    scheduleMicrotask(() {
+      _tellingOfTheHand = false;
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
   }
 
   /// Whether a text is in hand.
@@ -83,6 +115,7 @@ class CelTextCommands extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _tool?.removeListener(notifyListeners);
     _tool = null;
     super.dispose();
