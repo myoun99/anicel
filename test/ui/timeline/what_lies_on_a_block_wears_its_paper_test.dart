@@ -60,6 +60,17 @@ void main() {
     );
     expect(shape.tlRadius, const Radius.circular(4), reason: '⛔전제: 법이 문다');
     expect(shape.brRadius, shape.tlRadius, reason: 'every corner');
+    // I-44: the corner is measured on the PAPER — a row of 9 lays 8 of
+    // paper, and half of that is the corner, not half the row.
+    expect(
+      timelineBlockPaperShape(
+        axis: Axis.horizontal,
+        along: 100,
+        rowExtent: 9,
+        frameCellExtent: 100,
+      ).tlRadius,
+      const Radius.circular(4),
+    );
 
     expect(
       timelineBlockPaperShape(
