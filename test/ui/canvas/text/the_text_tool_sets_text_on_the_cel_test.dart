@@ -1,6 +1,8 @@
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,6 +64,11 @@ void main() {
     await typeText(tester, 'hi');
 
     expect(tool.session!.shown.content.text, 'hi', reason: 'it is shown');
+    expect(
+      shownPixel(canvasShows(tester), c.dx.toInt() + 10, c.dy.toInt() + 10),
+      black,
+      reason: '🚨the canvas draws it while it is typed',
+    );
     expect(
       celOf(tester).texts,
       isEmpty,
@@ -167,7 +174,8 @@ void main() {
       final y = c.dy.toInt();
       expect(shownPixel(celOf(tester), x + 110, y + 91), black);
       expect(shownPixel(celOf(tester), x + 10, y + 10), nothing);
-      expect(textToolOf(tester).hold, CelTextHold.box, reason: 'still in hand');
+      expect(textToolOf(tester).session, isNotNull, reason: 'still in hand');
+      expect(textToolOf(tester).hold, CelTextHold.box);
 
       history.undo();
       await pumpFrames(tester);
@@ -247,6 +255,69 @@ void main() {
         tool.letters!.selection,
         const TextSelection(baseOffset: 0, extentOffset: 2),
       );
+      // The selected letters are washed over, in place of the caret: the
+      // wash, and the box.
+      final chrome = tester.renderObject(textChrome());
+      expect(
+        chrome,
+        paints..path(
+          includes: [onLayer(tester, c.dx + 72, c.dy + 45)],
+          excludes: [onLayer(tester, c.dx + 120, c.dy + 30)],
+          style: PaintingStyle.fill,
+        ),
+      );
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 0));
+    });
+
+    testWidgets('the rail\'s ↶ says what the key says: while the letters '
+        'are typed it takes a step back in THEM', (tester) async {
+      final c = await textToolInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await pumpFrames(tester);
+
+      final tool = textToolOf(tester);
+      expect(tool.hold, CelTextHold.letters);
+      expect(tool.letters!.text, '');
+      expect(history.undoCount, steps);
+      expect(
+        tester.widget<EditableText>(textField()).focusNode.hasFocus,
+        isTrue,
+        reason: 'a press on the rail does not take the keyboard from the text',
+      );
+    });
+
+    testWidgets('🚨a press on the canvas while a text is typed into leaves '
+        'the keyboard with the text: the next key is still a letter\'s', (
+      tester,
+    ) async {
+      final c = await textToolInHand(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+
+      // Between the two letters: the caret goes there.
+      await clickAt(tester, c.dx + 50, c.dy + 30);
+
+      expect(
+        textToolOf(tester).letters!.selection,
+        const TextSelection.collapsed(offset: 1),
+      );
+      expect(
+        tester.widget<EditableText>(textField()).focusNode.hasFocus,
+        isTrue,
+      );
+
+      // 「b」 with no field holding the keyboard is the brush.
+      await tester.sendKeyEvent(LogicalKeyboardKey.keyB);
+      await pumpFrames(tester);
+
+      expect(textLayer(), findsOneWidget);
+      expect(textToolOf(tester).hold, CelTextHold.letters);
     });
 
     testWidgets('🚨Ctrl+Z while they are typed takes a step back in the '
@@ -295,18 +366,45 @@ void main() {
       await clickAt(tester, c.dx, c.dy);
       await typeText(tester, 'hi');
 
-      final caret = textToolOf(tester).session!.shown.layout.caretRect(
-        const TextPosition(offset: 2),
-      );
-      expect(caret.topLeft, const Offset(96, 0), reason: '⛔fixture');
-      expect(caret.bottomLeft, const Offset(96, 60), reason: '⛔fixture');
+      // After 「hi」, as tall as its line — where the panel shows that, and
+      // a hairline on the SCREEN however far out the view is zoomed.
       final chrome = tester.renderObject(textChrome());
       expect(
         chrome,
-        paints..line(p1: const Offset(96, 0), p2: const Offset(96, 60)),
+        paints..line(
+          p1: onLayer(tester, c.dx + 96, c.dy),
+          p2: onLayer(tester, c.dx + 96, c.dy + 60),
+          strokeWidth: 1.5,
+        ),
       );
       expect(chrome, paintsExactlyCountTimes(#drawRect, 0));
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
+
+      // It blinks: half a second lit, half a second not.
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 0));
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 1));
+    });
+
+    testWidgets('a box being dragged out is drawn as it is traced, and gone '
+        'when the hand comes up', (tester) async {
+      final c = await textToolInHand(tester);
+      final chrome = tester.renderObject(textChrome());
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 0), reason: '⛔fixture');
+
+      final mouse = await pressAt(tester, c.dx, c.dy);
+      await mouse.moveTo(onScreen(tester, c.dx + 120, c.dy + 90));
+      await tester.pump();
+
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
+
+      await mouse.up();
+      await pumpFrames(tester);
+
+      // The box of the text that began — one box, and its caret.
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
+      expect(textToolOf(tester).session!.content.wrapWidth, 120);
     });
 
     testWidgets('the letters an IME is still composing wear a line under '
@@ -329,7 +427,11 @@ void main() {
       // Under 「i」: from its left edge to its right, at the foot of its line.
       expect(
         chrome,
-        paints..line(p1: const Offset(48, 60), p2: const Offset(96, 60)),
+        paints..line(
+          p1: onLayer(tester, c.dx + 48, c.dy + 60),
+          p2: onLayer(tester, c.dx + 96, c.dy + 60),
+          strokeWidth: 1.5,
+        ),
       );
       expect(chrome, paintsExactlyCountTimes(#drawLine, 2));
     });
@@ -352,6 +454,75 @@ void main() {
     expect(celOf(tester, textToolSecondKey).texts, isEmpty);
     expect(textToolOf(tester).session, isNull);
     expect(history.undoCount, steps + 1);
+  });
+
+  testWidgets('another frame taken mid-drag ends the drag where it is: the '
+      'box being traced begins nothing on the cel that came', (tester) async {
+    await pumpTextToolApp(tester, project: textToolProject(drawings: 2));
+    await takeTextTool(tester);
+    final c = canvasPixelInView(tester);
+    final mouse = await pressAt(tester, c.dx, c.dy);
+    await mouse.moveTo(onScreen(tester, c.dx + 60, c.dy + 40));
+    await tester.pump();
+
+    sessionOf(tester).selectFrameIndex(1);
+    await pumpFrames(tester);
+    await mouse.moveTo(onScreen(tester, c.dx + 120, c.dy + 90));
+    await mouse.up();
+    await pumpFrames(tester);
+
+    expect(textToolOf(tester).session, isNull);
+    expect(
+      tester.renderObject(textChrome()),
+      paintsExactlyCountTimes(#drawPath, 0),
+    );
+  });
+
+  testWidgets('🚨another project coming on screen lands the text in ITS OWN '
+      'project first', (tester) async {
+    final c = await textToolInHand(tester);
+    final first = sessionOf(tester);
+    await clickAt(tester, c.dx, c.dy);
+    await typeText(tester, 'hi');
+
+    for (final key in ['top-strip-project-button', 'menu-file-new']) {
+      await tester.tap(find.byKey(ValueKey<String>(key)));
+      // ⚠️Frames, not a settle: the caret blinks for as long as a text is
+      // typed into, and a tree that keeps asking for frames never settles.
+      await pumpFrames(tester, 40);
+    }
+    expect(
+      identical(sessionOf(tester), first),
+      isFalse,
+      reason: '⛔fixture: another project is on screen',
+    );
+
+    expect(
+      first.pixelEditing.coordinator!
+          .currentSurfaceOf(textToolKey)
+          .texts
+          .single
+          .content
+          .text,
+      'hi',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a button that is not the tool\'s begins nothing: the '
+      'secondary one', (tester) async {
+    final c = await textToolInHand(tester);
+
+    final mouse = await tester.startGesture(
+      onScreen(tester, c.dx, c.dy),
+      kind: PointerDeviceKind.mouse,
+      buttons: kSecondaryButton,
+    );
+    await tester.pump();
+    await mouse.up();
+    await pumpFrames(tester);
+
+    expect(textToolOf(tester).session, isNull);
   });
 
   testWidgets('🚨a save a person asked for lands the text being typed, as it '

@@ -1,5 +1,7 @@
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -68,7 +70,7 @@ void main() {
     expect(scaled.anchor.x, closeTo(c.dx - 48, 1e-6));
     expect(scaled.anchor.y, closeTo(c.dy - 30, 1e-6));
     expect(history.undoCount, steps + 1);
-    expect(textToolOf(tester).hold, CelTextHold.box);
+    expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     final x = c.dx.toInt();
     final y = c.dy.toInt();
     expect(
@@ -106,12 +108,83 @@ void main() {
     expect(turned.anchor.x, closeTo(c.dx + 78, 1e-6));
     expect(turned.anchor.y, closeTo(c.dy - 18, 1e-6));
     expect(history.undoCount, steps + 1);
-    expect(textToolOf(tester).hold, CelTextHold.box);
+    expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
 
     history.undo();
     await pumpFrames(tester);
 
     expect(celOf(tester).texts.single.content.rotationDegrees, 0);
+  });
+
+  group('a press that goes away', () {
+    testWidgets('mid-drag, it sets the text back as it stood: nothing '
+        'lands, and the text is still in hand', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = celOf(tester);
+
+      final mouse = await pressAt(tester, c.dx + 96, c.dy + 60);
+      await mouse.moveTo(onScreen(tester, c.dx + 144, c.dy + 90));
+      await pumpFrames(tester);
+      final tool = textToolOf(tester);
+      expect(
+        tool.session!.shown.content.spans.single.style.fontSize,
+        closeTo(96, 1e-6),
+        reason: '⛔fixture: it was following the hand',
+      );
+
+      await mouse.cancel();
+      await pumpFrames(tester);
+
+      expect(celOf(tester), same(before));
+      expect(history.undoCount, steps);
+      expect(tool.session, isNotNull, reason: 'in hand');
+      expect(tool.session!.shown.content.spans.single.style.fontSize, 48);
+    });
+
+    testWidgets('🚨a SECOND FINGER takes a finger\'s drag back — the pair is '
+        'the view\'s — and nothing lands when they lift', (tester) async {
+      AppInput.settings.value = AppInput.settings.value.copyWith(
+        touchDragOneFinger: CanvasTouchDragAction.draw,
+      );
+      addTearDown(() => AppInput.settings.value = const AppInputSettings());
+      final c = await hiInHandByItsBox(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = celOf(tester);
+      final tool = textToolOf(tester);
+
+      final first = await tester.startGesture(
+        onScreen(tester, c.dx + 48, c.dy + 30),
+        kind: PointerDeviceKind.touch,
+        pointer: 7,
+      );
+      await tester.pump();
+      await first.moveTo(onScreen(tester, c.dx + 148, c.dy + 130));
+      await tester.pump();
+      expect(
+        tool.session!.shown.content.anchor,
+        CanvasPoint(x: c.dx + 100, y: c.dy + 100),
+        reason: '⛔fixture: the finger was moving it',
+      );
+
+      final second = await tester.startGesture(
+        onScreen(tester, c.dx + 300, c.dy + 30),
+        kind: PointerDeviceKind.touch,
+        pointer: 8,
+      );
+      await tester.pump();
+
+      expect(tool.session!.shown.content.anchor, CanvasPoint(x: c.dx, y: c.dy));
+
+      await first.up();
+      await second.up();
+      await pumpFrames(tester);
+
+      expect(celOf(tester), same(before));
+      expect(history.undoCount, steps);
+    });
   });
 
   group('a box — a text of a set width', () {
@@ -133,7 +206,7 @@ void main() {
       expect(widened.wrapWidth, 300);
       expect(widened.anchor, CanvasPoint(x: c.dx, y: c.dy));
       expect(history.undoCount, steps + 1);
-      expect(textToolOf(tester).hold, CelTextHold.box);
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
     });
 
     testWidgets('🚨its LEFT edge carries the anchor: the right edge stays '

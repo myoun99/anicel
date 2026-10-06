@@ -20,6 +20,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool_layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -214,6 +216,15 @@ Finder textField() => find.byKey(
   skipOffstage: false,
 );
 
+/// The picture the canvas is DRAWING for the cel under the tool — what the
+/// person sees there, texts laid in, whether or not any of it has landed.
+BitmapSurface canvasShows(WidgetTester tester) => tester
+    .widgetList<CanvasLayerStackView>(find.byType(CanvasLayerStackView))
+    .map((stack) => stack.activeSurfacePainter)
+    .whereType<BitmapSurfacePainter>()
+    .single
+    .surface;
+
 /// The hand the canvas holds texts with.
 CelTextTool textToolOf(WidgetTester tester) =>
     tester.widget<CelTextToolLayer>(find.byType(CelTextToolLayer)).tool;
@@ -242,19 +253,30 @@ Offset canvasPixelInView(WidgetTester tester) {
   return Offset(artwork.dx.roundToDouble(), artwork.dy.roundToDouble());
 }
 
-/// Where the canvas pixel ([x], [y]) is on the screen.
-Offset onScreen(WidgetTester tester, double x, double y) {
-  final layer = tester.widget<CelTextToolLayer>(find.byType(CelTextToolLayer));
-  return tester.getTopLeft(textLayer()) + layer.stage.onPanel(Offset(x, y));
-}
+/// Where the canvas pixel ([x], [y]) is on the text tool's own layer — the
+/// frame everything it draws is drawn in.
+Offset onLayer(WidgetTester tester, double x, double y) => tester
+    .widget<CelTextToolLayer>(find.byType(CelTextToolLayer))
+    .stage
+    .onPanel(Offset(x, y));
 
-/// A mouse click on the canvas pixel ([x], [y]).
-Future<void> clickAt(WidgetTester tester, double x, double y) async {
+/// Where the canvas pixel ([x], [y]) is on the screen.
+Offset onScreen(WidgetTester tester, double x, double y) =>
+    tester.getTopLeft(textLayer()) + onLayer(tester, x, y);
+
+/// A mouse press on the canvas pixel ([x], [y]), still down a frame later.
+Future<TestGesture> pressAt(WidgetTester tester, double x, double y) async {
   final mouse = await tester.startGesture(
     onScreen(tester, x, y),
     kind: PointerDeviceKind.mouse,
   );
   await tester.pump();
+  return mouse;
+}
+
+/// A mouse click on the canvas pixel ([x], [y]).
+Future<void> clickAt(WidgetTester tester, double x, double y) async {
+  final mouse = await pressAt(tester, x, y);
   await mouse.up();
   await pumpFrames(tester);
 }
@@ -268,8 +290,7 @@ Future<void> dragFrom(
 }) async {
   final start = onScreen(tester, from.dx, from.dy);
   final end = onScreen(tester, to.dx, to.dy);
-  final mouse = await tester.startGesture(start, kind: PointerDeviceKind.mouse);
-  await tester.pump();
+  final mouse = await pressAt(tester, from.dx, from.dy);
   for (var i = 1; i <= steps; i += 1) {
     await mouse.moveTo(Offset.lerp(start, end, i / steps)!);
     await tester.pump();

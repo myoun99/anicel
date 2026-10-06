@@ -87,8 +87,15 @@ class CelTextChromePainter extends CustomPainter {
   );
 
   /// The selected letters, or with none selected the caret — and under
-  /// both, the line beneath the letters being composed — in the text's own
-  /// frame, under the panel's view of the artwork.
+  /// both, the line beneath the letters being composed.
+  ///
+  /// 🚨DRAWN IN PANEL PIXELS, AS THE BOX IS: every point is taken out of
+  /// the text's own frame, through the artwork, onto the panel
+  /// ([_onPanel]), and the lines are as wide on screen as the box's
+  /// whatever the zoom. ↩️They were drawn under the frame's own transform
+  /// with the zoom divided back out of the stroke — by a scale read off all
+  /// THREE axes, the depth's being one: zoomed out, the caret was a third
+  /// of a pixel wide (found writing its test, 2026-10-06).
   void _paintLetters(
     Canvas canvas,
     CelTextLayout layout,
@@ -103,17 +110,10 @@ class CelTextChromePainter extends CustomPainter {
     final length = layout.content.text.length;
     final start = math.min(selection.start, length);
     final end = math.min(selection.end, length);
-    final frame = stage.artworkOnPanel;
-    // A hairline on the SCREEN whatever the zoom: the frame's scale is
-    // taken back out of its width.
-    final scale = frame.getMaxScaleOnAxis();
     final hairline = Paint()
       ..color = color
-      ..strokeWidth = _hairlineWidth / (scale <= 0 ? 1 : scale);
-    canvas
-      ..save()
-      ..transform(frame.storage);
-    layout.applyFrame(canvas);
+      ..strokeWidth = _hairlineWidth;
+    Offset onPanel(Offset inText) => stage.onPanel(layout.toCanvas(inText));
     // The letters an IME is still composing wear a line under them, as a
     // field's do: which letters are not settled yet is the one thing the
     // cel's own pixels cannot say, and a syllable or a clause being
@@ -124,19 +124,34 @@ class CelTextChromePainter extends CustomPainter {
         math.min(composing.start, length),
         math.min(composing.end, length),
       )) {
-        canvas.drawLine(rect.bottomLeft, rect.bottomRight, hairline);
+        canvas.drawLine(
+          onPanel(rect.bottomLeft),
+          onPanel(rect.bottomRight),
+          hairline,
+        );
       }
     }
     if (start < end) {
       final wash = Paint()..color = color.withValues(alpha: 0.35);
       for (final rect in layout.selectionRects(start, end)) {
-        canvas.drawRect(rect, wash);
+        canvas.drawPath(
+          Path()..addPolygon([
+            onPanel(rect.topLeft),
+            onPanel(rect.topRight),
+            onPanel(rect.bottomRight),
+            onPanel(rect.bottomLeft),
+          ], true),
+          wash,
+        );
       }
     } else if (caretLit.value) {
       final caret = layout.caretRect(TextPosition(offset: end));
-      canvas.drawLine(caret.topLeft, caret.bottomLeft, hairline);
+      canvas.drawLine(
+        onPanel(caret.topLeft),
+        onPanel(caret.bottomLeft),
+        hairline,
+      );
     }
-    canvas.restore();
   }
 
   /// The caret's width on screen, and the composing line's — the stroke the
