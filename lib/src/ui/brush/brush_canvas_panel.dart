@@ -2030,13 +2030,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // H19's other question, carried down (F-196): the row decides what a
       // press may DO, so a lane over a cel draws no line at all.
       rowAcceptsStrokes: widget.rowAcceptsStrokes,
-      // Guides are stored in canvas space, but this view's strokes record
-      // in artwork coordinates (the draw-through wrap below). They make the
-      // same trip the pointers do, or the axis sits where the pen is not.
-      guides: guidesInArtworkSpace(
-        widget.guides ?? CutGuides.empty,
-        widget.interactiveContentPose,
-      ),
+      // Guides stand on the canvas, and this view's strokes record in
+      // artwork coordinates (the draw-through wrap below): what a guide
+      // measures makes the same trip the pointers do, or the axis sits
+      // where the pen is not.
+      guides: widget.guides ?? CutGuides.empty,
+      guideSpace: guideSpaceOf(widget.interactiveContentPose),
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to

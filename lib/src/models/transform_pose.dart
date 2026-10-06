@@ -26,13 +26,14 @@ CanvasPoint uniformScale(double zoom) => CanvasPoint(x: zoom, y: zoom);
 /// row LIES is one affine — its pose under its folders', folded as their
 /// product (`LayerPlacement`, stage two) — so the painter, the pick, the
 /// fill, a region and a stamp each take a stretched, a flipped or a
-/// sheared row as it is. Nothing lets the two scales differ YET, because
-/// four readers still work a row out as a similarity: the row's box (one
-/// scale a corner, and a turn measured on the canvas), the Scale lane's one
-/// number, the guides read in a posed row's artwork (the symmetry's copies
-/// and the perspective snap are rigid there), and a conte picture's ink
-/// view (one brush viewport for the whole chain). The ones that take a
-/// number take [zoom], which is how they are found.
+/// sheared row as it is — and so does everything a guide measures, which
+/// is measured on the canvas and read through the placement
+/// (`GuideSpace`). Nothing lets the two scales differ YET, because three
+/// readers still work a row out as a similarity: the row's box (one
+/// scale a corner, and a turn measured on the canvas), the Scale lane's
+/// one number, and a conte picture's ink view (one brush viewport for
+/// the whole chain). The ones that take a number take [zoom], which is
+/// how they are found.
 class TransformPose {
   TransformPose({
     required this.center,

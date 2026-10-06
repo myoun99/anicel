@@ -7,6 +7,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -29,11 +30,10 @@ void main() {
   const size = CanvasSize(width: 32, height: 32);
   const tile = 8;
 
-  /// An opaque black box outline [side] wide from ([left], [top]) on a
-  /// clear [canvas].
-  BitmapSurface box({
-    required int left,
-    required int top,
+  /// Opaque black box outlines, each [side] wide from its (left, top), on
+  /// a clear [canvas].
+  BitmapSurface boxes(
+    List<(int, int)> corners, {
     required int side,
     CanvasSize canvas = size,
   }) {
@@ -46,11 +46,13 @@ void main() {
       buffer[((y % tile) * tile + (x % tile)) * 4 + 3] = 255;
     }
 
-    for (var i = 0; i <= side; i += 1) {
-      ink(left + i, top);
-      ink(left + i, top + side);
-      ink(left, top + i);
-      ink(left + side, top + i);
+    for (final (left, top) in corners) {
+      for (var i = 0; i <= side; i += 1) {
+        ink(left + i, top);
+        ink(left + i, top + side);
+        ink(left, top + i);
+        ink(left + side, top + i);
+      }
     }
     return BitmapSurface(
       canvasSize: canvas,
@@ -61,6 +63,14 @@ void main() {
       },
     );
   }
+
+  /// One such outline, from ([left], [top]).
+  BitmapSurface box({
+    required int left,
+    required int top,
+    required int side,
+    CanvasSize canvas = size,
+  }) => boxes([(left, top)], side: side, canvas: canvas);
 
   /// An opaque black box outline [from]..[to] (inclusive) on a clear
   /// surface.
@@ -219,5 +229,55 @@ void main() {
     expect(width, lessThan(100), reason: 'the walls held');
     expect(width, inInclusiveRange(17, 21));
     expect(height, inInclusiveRange(17, 21));
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. A paint
+  // layer can be stretched along one axis, and a symmetry is still the
+  // canvas's: a stroke's copies and a fill's seeds are turned and mirrored
+  // where the user sees them.
+  test('🚨a symmetry copies the seed where the CANVAS turns it: under a paint '
+      'layer stretched along one axis, each quarter turn of the seed fills '
+      'the box the canvas shows a quarter turn round', () {
+    const wide = CanvasSize(width: 64, height: 64);
+    final middle = CanvasPoint(x: 32, y: 32);
+    // Four boxes a quarter turn apart about the middle of the canvas — to
+    // its right, below it, to its left and above it — each 5 across inside.
+    final line = boxes(
+      [(36, 29), (29, 36), (22, 29), (29, 22)],
+      side: 6,
+      canvas: wide,
+    );
+    // The paint layer shows half as wide: its own x at 32 + (x − 32) / 2.
+    final space = placementOf((
+      pose: TransformPose(center: middle, scaleX: 0.5),
+      anchorPoint: null,
+    ), wide);
+
+    final dab = buildFillDab(
+      cut: cutOf([cel('line'), cel('paint')], canvas: wide),
+      frameIndex: 0,
+      surfaceResolver: (layer, _) => layer.id.value == 'line' ? line : null,
+      // The middle of the right-hand box, (39, 32) on the canvas, in the
+      // paint layer's own pixels.
+      point: CanvasPoint(x: 46, y: 32),
+      color: 0xFF3366CC,
+      options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+      activeLayerId: const LayerId('paint'),
+      space: space,
+      symmetry: SymmetryShape(
+        axis: GuideAxis(origin: middle, angleDegrees: 90),
+        lineCount: 4,
+        lineSymmetry: false,
+      ),
+    )!;
+
+    // The four insides and nothing else: 19 across and 19 down on the
+    // canvas, so twice as many across in the paint layer's pixels.
+    // ⚠️Turned in the paint layer's own pixels instead, the seed's quarter
+    // turn shows at (32, 46) — under the lower box, in the open — and the
+    // fill runs over the whole picture.
+    final stamp = dab.stamp!;
+    expect(stamp.height, inInclusiveRange(15, 23));
+    expect(stamp.width, inInclusiveRange(30, 46));
   });
 }

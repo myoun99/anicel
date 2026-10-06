@@ -65,11 +65,12 @@ class _BrushEditStroke {
       guides: _state.widget.guides,
       start: canvasPosition,
       zoom: _state.widget.viewport.zoom,
+      space: _state.widget.guideSpace,
     );
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
         ? const []
-        : symmetryTransforms(symmetry);
+        : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
     // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
     // jitter come from its press, so every view that hears the press rolls
     // the same numbers. ↩️Written for a sheet's windows each drawing their

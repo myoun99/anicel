@@ -1271,9 +1271,15 @@ BrushDab? buildFillDab({
   // The raster is built ONCE and every flood samples it, so N copies cost N
   // floods and not N composites — and every copy sees the same untouched
   // picture, which is what makes the result independent of seed order.
+  //
+  // [symmetry] is the CANVAS's and [point] is in [space]: the copies are
+  // the canvas's, read through the seed's placement like a stroke's.
   final seeds = symmetry == null
       ? <CanvasPoint>[point]
-      : [for (final copy in symmetryTransforms(symmetry)) copy.apply(point)];
+      : [
+          for (final copy in symmetryCopiesIn(guideSpaceOf(space), symmetry))
+            copy.apply(point),
+        ];
   final parts = <FloodFillRegion>[];
   var reachedWall = false;
   for (final seed in seeds) {

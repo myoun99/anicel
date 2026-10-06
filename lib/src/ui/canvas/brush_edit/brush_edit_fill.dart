@@ -30,9 +30,12 @@ class _BrushEditFill {
     // arrives frames later.
     forgetFillTap();
     // The seed and the axis come from the same pair the STROKE path uses —
-    // this view's own position and its own guides, both already in the
-    // space the pointer is in. Reading the symmetry from the project
-    // instead would put the mirror where the pen is not under a pose.
+    // this view's own position and its own guides. The seed is in the
+    // space the pointer is in and the axis is the canvas's: the fill reads
+    // one through the other ([buildFillDab]'s `space`), as a stroke's
+    // copies do.
+    // ↩️The view's guides used to be carried into its own space, so both
+    // were 「already in the space the pointer is in」.
     final dab = fillDabAt(
       seed,
       _state.widget.inputSettings().color,

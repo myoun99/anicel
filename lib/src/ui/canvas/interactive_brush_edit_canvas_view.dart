@@ -104,6 +104,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.onPressNeedsCel,
     CanvasViewport? viewport,
     CutGuides? guides,
+    this.guideSpace = GuideSpace.canvas,
   }) : viewport = viewport ?? CanvasViewport(),
        guides = guides ?? CutGuides.empty;
 
@@ -160,11 +161,17 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// as before.
   final bool Function()? onPressNeedsCel;
 
-  /// The cut's drawing guides. Empty (the default) leaves the stroke path
-  /// exactly as it was — the ink surfaces that reuse this view (conte,
-  /// timesheet, cut envelope) are not the cut's drawing canvas and pass
-  /// nothing.
+  /// The cut's drawing guides, as they stand on the CANVAS. Empty (the
+  /// default) leaves the stroke path exactly as it was — the ink surfaces
+  /// that reuse this view (conte, timesheet, cut envelope) are not the
+  /// cut's drawing canvas and pass nothing.
   final CutGuides guides;
+
+  /// Where this view's own coordinates lie on that canvas: the placement
+  /// of the row it draws on, when the row carries one (the panel wraps the
+  /// view in the same placement, and hit testing brings a press back
+  /// through it). The canvas itself by default.
+  final GuideSpace guideSpace;
 
   /// The cel's pixels AS THEY STAND — asked at the moment they are used,
   /// never kept from the last build.

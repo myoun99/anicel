@@ -27,50 +27,72 @@ const double kPerspectiveSnapLockTravel = 6.0;
 /// taken back is exactly what this project does not do. The wait is a few
 /// pointer samples, and the stroke origin is on the ray by construction, so
 /// the released run starts flush with the pen-down point.
+///
+/// ★THE SESSION LIVES ON THE CANVAS. The guides are the canvas's, the
+/// travel that locks is travel the user sees, and the ray is a ray of the
+/// picture — so a stroke drawn in a posed row's artwork ([space]) hands its
+/// points OUT through the row's placement and takes the snapped ones back
+/// ([GuideSpace] has what measuring in the artwork got wrong).
 class PerspectiveSnapSession {
-  PerspectiveSnapSession._(this._candidates, this._start, this._lockTravel);
+  PerspectiveSnapSession._(
+    this._candidates,
+    this._start,
+    this._lockTravel,
+    this._space,
+  );
 
   /// A session for [guides], or null when nothing is snapping — callers
   /// skip the whole mechanism then and the stroke path is untouched.
+  ///
+  /// [start], and every point fed and handed back after it, is in the
+  /// stroke's own [space].
   static PerspectiveSnapSession? maybeStart({
     required CutGuides guides,
     required CanvasPoint start,
     required double zoom,
+    GuideSpace space = GuideSpace.canvas,
   }) {
     final snapping = guides.snappingPerspectives.toList();
     if (snapping.isEmpty) return null;
-    final candidates = snapCandidatesAt(snapping, start);
+    final onCanvas = space.isCanvas ? start : space.toCanvas.apply(start);
+    final candidates = snapCandidatesAt(snapping, onCanvas);
     if (candidates.isEmpty) return null;
     final lockTravel = zoom > 0
         ? kPerspectiveSnapLockTravel / zoom
         : kPerspectiveSnapLockTravel;
-    return PerspectiveSnapSession._(candidates, start, lockTravel);
+    return PerspectiveSnapSession._(candidates, onCanvas, lockTravel, space);
   }
 
   final List<SnapCandidate> _candidates;
+
+  /// Where the stroke started, on the canvas.
   final CanvasPoint _start;
   final double _lockTravel;
+  final GuideSpace _space;
 
+  /// The points held while the ray is undecided, on the canvas.
   final List<CanvasPoint> _held = <CanvasPoint>[];
   SnapCandidate? _locked;
 
-  /// The ray this stroke settled on, or null while it is still undecided.
+  /// The ray this stroke settled on — a ray of the CANVAS — or null while
+  /// it is still undecided.
   SnapCandidate? get lockedRay => _locked;
 
   /// Feeds one stabilized point; returns the points the stroke should now
   /// advance through, in order. Empty while the ray is still being decided.
   List<CanvasPoint> follow(CanvasPoint point) {
+    final onCanvas = _space.isCanvas ? point : _space.toCanvas.apply(point);
     final locked = _locked;
     if (locked != null) {
-      return [locked.project(point)];
+      return _inTheStrokesSpace([locked.project(onCanvas)]);
     }
-    _held.add(point);
-    final dx = point.x - _start.x;
-    final dy = point.y - _start.y;
+    _held.add(onCanvas);
+    final dx = onCanvas.x - _start.x;
+    final dy = onCanvas.y - _start.y;
     if (dx * dx + dy * dy < _lockTravel * _lockTravel) {
       return const [];
     }
-    return _lockOnto(dx, dy);
+    return _inTheStrokesSpace(_lockOnto(dx, dy));
   }
 
   /// Pen-up: settles on a ray even if the stroke never travelled far enough,
@@ -80,8 +102,15 @@ class PerspectiveSnapSession {
       return const [];
     }
     final last = _held.last;
-    return _lockOnto(last.x - _start.x, last.y - _start.y);
+    return _inTheStrokesSpace(
+      _lockOnto(last.x - _start.x, last.y - _start.y),
+    );
   }
+
+  List<CanvasPoint> _inTheStrokesSpace(List<CanvasPoint> onCanvas) =>
+      _space.isCanvas
+      ? onCanvas
+      : [for (final point in onCanvas) _space.toStroke.apply(point)];
 
   List<CanvasPoint> _lockOnto(double dx, double dy) {
     // A stroke that has not moved at all names no direction; keep holding
@@ -106,7 +135,8 @@ class PerspectiveSnapSession {
 ///
 /// Replication happens on DABS rather than on pen samples so interpolation,
 /// spacing and the pressure dynamics are computed once. The transforms are
-/// rigid, so distances — and therefore spacing — survive them exactly.
+/// rigid ON THE CANVAS, so distances — and therefore spacing — survive them
+/// exactly where the stroke is seen ([symmetryCopiesIn]).
 ///
 /// With a single identity transform the result is the input, sequence
 /// numbers included: a cut with no acting symmetry runs the code path it

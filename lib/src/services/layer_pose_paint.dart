@@ -5,9 +5,7 @@ import 'package:vector_math/vector_math_64.dart' show Matrix4;
 import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
-import '../models/drawing_guide.dart';
 import 'camera_projection_matrix.dart';
-import 'guide_geometry.dart';
 import 'layer_pose_matrix.dart';
 import 'viewport_transform_matrix.dart';
 
@@ -17,6 +15,7 @@ export 'layer_pose_matrix.dart'
         LayerPlacement,
         LayerPoseSample,
         canvasToArtwork,
+        guideSpaceOf,
         layerPoseMatrix,
         placementMatrix,
         placementOf;
@@ -71,25 +70,4 @@ Matrix4 placementViewportWrapMatrix(
   return viewportTransformMatrix(viewport).multiplied(
     placementMatrix(placement),
   )..multiply(viewportInverseTransformMatrix(viewport));
-}
-
-/// [guides] moved out of CANVAS space and into the ARTWORK space of a layer
-/// placed by [placement].
-///
-/// The counterpart of [placementViewportWrapMatrix]: that one puts the
-/// artwork on screen through the placement, and Flutter's hit testing
-/// brings pointers back the other way, so a stroke on a placed layer
-/// records in the layer's own coordinates. Guides live in canvas space, so
-/// they have to make the same trip or the axis will sit where the pen is
-/// not.
-///
-/// Built from [canvasToArtwork] — the one inverse — rather than from a
-/// pose's numbers, so there is one piece of pose math in the app, not two
-/// that can drift. Returns [guides] unchanged for a null or singular
-/// placement — a zero scale collapses the layer to nothing, and there is
-/// no artwork space to speak of then.
-CutGuides guidesInArtworkSpace(CutGuides guides, LayerPlacement? placement) {
-  if (placement == null || guides.isEmpty) return guides;
-  final toArtwork = canvasToArtwork(placement);
-  return toArtwork == null ? guides : mapGuides(guides, toArtwork);
 }

@@ -109,6 +109,20 @@ GuideTransform? canvasToArtwork(LayerPlacement placement) {
   return _planeOf(matrix);
 }
 
+/// The space a stroke on a row placed by [placement] is drawn in, for
+/// everything a guide measures ([GuideSpace]): the canvas for an unplaced
+/// row — and for one whose placement has no way back, since a collapsed
+/// layer has no artwork to draw in.
+GuideSpace guideSpaceOf(LayerPlacement? placement) {
+  if (placement == null) {
+    return GuideSpace.canvas;
+  }
+  final back = canvasToArtwork(placement);
+  return back == null
+      ? GuideSpace.canvas
+      : GuideSpace(toCanvas: placement, toStroke: back);
+}
+
 GuideTransform _planeOf(Matrix4 matrix) {
   final m = matrix.storage;
   return GuideTransform(m[0], m[1], m[4], m[5], m[12], m[13]);

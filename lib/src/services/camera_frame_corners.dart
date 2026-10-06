@@ -15,9 +15,10 @@ import 'camera_projection_matrix.dart';
 /// top-left, top-right, bottom-right, bottom-left.
 ///
 /// The output frame's four corners pulled BACK through the one camera
-/// projection ([cameraProjectionMatrix] inverted — the closure
-/// guidesInArtworkSpace uses for the layer pose), so the overlay's frame is
-/// exactly the region the export renderer and the playback painter show.
+/// projection ([cameraProjectionMatrix] inverted — the way a point comes
+/// back through a row's placement, `canvasToArtwork`), so the overlay's
+/// frame is exactly the region the export renderer and the playback
+/// painter show.
 List<Offset> cameraFrameCornersInCanvas({
   required CameraPose pose,
   required CanvasSize cameraFrameSize,
