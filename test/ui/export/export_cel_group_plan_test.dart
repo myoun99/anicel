@@ -19,6 +19,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
@@ -173,8 +174,7 @@ void main() {
     expect(first.memberFrames.map((frame) => frame?.id.value), ['f1', 'c1']);
     expect(first.fileName, 'A1.png');
     expect(built.cels.last.memberFrames.last?.id.value, 'c2');
-    expect(built.bundles.single.axis.name, 'A');
-    expect(built.bundles.single.sheets, hasLength(2));
+    expect({for (final task in built.cels) task.bundleAxis.name}, {'A'});
   });
 
   test('a rider wearing another label is not in the bundle; the delta puts '
@@ -305,7 +305,7 @@ void main() {
     );
 
     final applied = plan([paperRow, baseA]);
-    expect(applied.bundles.map((bundle) => bundle.axis.name), ['A']);
+    expect({for (final task in applied.cels) task.bundleAxis.name}, {'A'});
     expect(applied.cels, hasLength(2));
     for (final task in applied.cels) {
       expect(names(task.members), ['Paper', 'A']);
@@ -361,19 +361,36 @@ void main() {
     }
   });
 
-  test('an unticked bundle stays planned and listed, and is not written', () {
+  test('a drawing turned off stays planned and listed, and is not '
+      'written', () {
+    // 유저 2026-10-06: 「셀의 프레임버튼 누르면 내보내기 적용/미적용」.
     final built = plan(
-      [base('a', 'A', [frame('f1')]), base('b', 'B', [frame('g1')])],
+      [
+        base('a', 'A', [frame('f1'), frame('f2')]),
+        base('b', 'B', [frame('g1')]),
+      ],
       overrides: ExportProjectOverrides().withCelsDelta(
         const CutId('cut'),
-        ExportCelsCutDelta().withBaseSkipped(const LayerId('a'), true),
+        ExportCelsCutDelta().withCelSkipped((
+          row: const LayerId('a'),
+          cel: const FrameId('f1'),
+        ), true),
       ),
     );
-    expect(built.cels, hasLength(2));
-    expect(built.cels.first.skipped, isTrue);
-    expect(built.bundles, hasLength(2));
-    expect(names(built.writtenCels.map((task) => task.baseLayer)), ['B']);
-    expect(built.length, 1);
+    expect(
+      {for (final task in built.cels) task.fileName: task.skipped},
+      {'A1.png': true, 'A2.png': false, 'B1.png': false},
+      reason: 'one drawing, not its row',
+    );
+    expect(
+      [for (final task in built.writtenCels) task.fileName],
+      ['A2.png', 'B1.png'],
+    );
+    expect(built.length, 2);
+    final off = built.sheets.firstWhere(
+      (sheet) => sheet.look.fileName == 'A1.png',
+    );
+    expect((off.planned, off.skipped, off.written), (true, true, false));
   });
 
   test('the cel number IS the frame name; an unnamed frame is the '
@@ -1122,39 +1139,49 @@ void main() {
       });
     });
 
-    test('the list still shows ONE bundle a row — the cels of both cuts '
-        'under the row of the cut the window stands on', () {
+    test('the list still shows the cels of both cuts on the rows of the '
+        'cut the window stands on', () {
       final built = planFrom('c2');
 
       expect(
-        [for (final bundle in built.bundles) bundle.axis.id.value],
+        {for (final sheet in built.sheets) sheet.row.id.value}.toList(),
         ['c2-bg', 'c2-a'],
       );
+      expect({for (final sheet in built.sheets) sheet.cut.id.value}, {'c2'});
       // Every cel is listed in the cut the window stands on, whichever cut
       // it is composited in.
       expect({for (final task in built.cels) task.listedCut.id.value}, {'c2'});
       expect({for (final task in built.cels) task.cut.id.value}, {'c1', 'c2'});
       expect(
-        [
-          for (final bundle in built.bundles)
-            [for (final sheet in bundle.sheets) sheet.fileName],
-        ],
-        [
-          ['_BG1.png', '_BG2.png'],
-          ['A1.png', 'A2.png'],
-        ],
+        {
+          for (final row in ['c2-bg', 'c2-a'])
+            row: [
+              for (final sheet in built.sheets)
+                if (sheet.row.id.value == row) sheet.look.fileName,
+            ],
+        },
+        {
+          'c2-bg': ['_BG1.png', '_BG2.png'],
+          'c2-a': ['A1.png', 'A2.png'],
+        },
       );
     });
 
-    test('unticking the bundle on the window\'s cut skips its cels from '
-        'both cuts', () {
+    test('a drawing turned off on the window\'s cut is off wherever it is '
+        'composited — the one a sibling shows as much as its own', () {
+      // The window lists A 1 — the cel C1 shows — on C2's row, and the
+      // switch answers for the row it stands on.
+      final listed = planFrom('c2').sheets.firstWhere(
+        (sheet) => sheet.look.fileName == 'A1.png',
+      );
+      expect(listed.look.cut.id.value, 'c1');
       final built = buildExportCelGroupPlan(
         project: linked,
         activeCutId: const CutId('c2'),
         spec: const CelsExportSpec(),
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('c2'),
-          ExportCelsCutDelta().withBaseSkipped(const LayerId('c2-a'), true),
+          ExportCelsCutDelta().withCelSkipped(listed.ref, true),
         ),
       );
 
@@ -1164,7 +1191,7 @@ void main() {
           '_BG1.png': false,
           '_BG2.png': false,
           'A1.png': true,
-          'A2.png': true,
+          'A2.png': false,
         },
       );
     });
@@ -1337,6 +1364,361 @@ void main() {
         ],
         [('x', 'A1.png'), ('y', 'A1_2.png'), ('f2', 'A2.png')],
       );
+    });
+  });
+
+  /// 🚨THE PLAN ANSWERS FOR EVERY DRAWING of every listed row (F-289): the
+  /// cel it writes, or why it writes none. The window's list is these, a
+  /// block each — it works nothing out for itself.
+  group('a sheet a drawing', () {
+    Layer rider(
+      String id,
+      String name,
+      List<Frame> frames, {
+      required String on,
+      bool free = true,
+      Map<FrameId, FrameId> links = const {},
+    }) => Layer(
+      id: LayerId(id),
+      name: name,
+      frames: frames,
+      mark: key,
+      attachedToLayerId: LayerId(on),
+      attachedMode: free ? AttachedMode.free : AttachedMode.synced,
+      baseFrameLinks: links,
+    );
+
+    /// Each sheet as `row cel: written | off | <why it is refused>`.
+    Map<String, String> answers(ExportCelGroupPlan built) => {
+      for (final sheet in built.sheets)
+        '${sheet.row.name} ${sheet.celName}': sheet.written
+            ? 'written'
+            : sheet.planned
+            ? 'off'
+            : sheet.refused!.name,
+    };
+
+    ExportProjectOverrides hand(ExportCelsCutDelta delta) =>
+        ExportProjectOverrides().withCelsDelta(const CutId('cut'), delta);
+
+    test('written, turned off — and a row that is off, refused whole', () {
+      final built = plan(
+        [
+          base('a', 'A', [frame('f1'), frame('f2')]),
+          base('b', 'B', [frame('g1')], mark: layout),
+        ],
+        overrides: hand(
+          ExportCelsCutDelta().withCelSkipped((
+            row: const LayerId('a'),
+            cel: const FrameId('f2'),
+          ), true),
+        ),
+      );
+      expect(answers(built), {
+        'A 1': 'written',
+        'A 2': 'off',
+        'B 1': 'rowOff',
+      });
+      expect(files(built), ['A1.png', 'A2.png'], reason: 'planned alone');
+      expect(
+        built.sheets.last.look.fileName,
+        isEmpty,
+        reason: 'a drawing that is no file has no name',
+      );
+    });
+
+    test('a drawing no cut places, and one its cel has no picture for', () {
+      final placed = frame('f1');
+      final unplaced = frame('f2');
+      final half = Layer(
+        id: const LayerId('a'),
+        name: 'A',
+        frames: [placed, unplaced],
+        mark: key,
+        timeline: exposed([placed]),
+      );
+      expect(answers(plan([half])), {'A 1': 'written', 'A 2': 'notPlaced'});
+
+      // 부속 alone: the base numbers the cels, and only the ones the rider
+      // has a picture for are cels.
+      final baseB = base('b', 'B', [frame('g1'), frame('g2')]);
+      final synced = rider(
+        'b-color',
+        'B색',
+        [frame('c1')],
+        on: 'b',
+        free: false,
+        links: {const FrameId('g1'): const FrameId('c1')},
+      );
+      expect(answers(plan([baseB, synced], spec: attach)), {
+        'B 1': 'written',
+        'B 2': 'noPicture',
+      });
+    });
+
+    test('rows stacked under one name: the unnamed picture after the first '
+        'says a row of the same name files it', () {
+      final built = plan([
+        image('k1', 'BOOK', frame('p1', unnamed: true)),
+        image('k2', 'BOOK', frame('p2', unnamed: true)),
+      ]);
+      expect(
+        [
+          for (final sheet in built.sheets)
+            (sheet.row.id.value, sheet.refused?.name),
+        ],
+        [('k1', null), ('k2', 'sameName')],
+      );
+    });
+
+    test('what its BLOCK reads: its number, its row\'s name where it has '
+        'none — and of a direction\'s drawing what its block says alone, the '
+        'whole name kept for where there is the room', () {
+      final built = plan([
+        base('a', 'A', [frame('f1')]),
+        image('k', 'BOOK', frame('p', unnamed: true)),
+        instructionRow(
+          says: const InstructionEvent(
+            instructionId: 'tu',
+            length: 2,
+            text: 'T.U',
+            valueA: 'A',
+            valueB: 'B',
+          ),
+        ),
+        // A direction row's drawing whose block says nothing.
+        Layer(
+          id: const LayerId('mute'),
+          name: 'Notes',
+          kind: LayerKind.instruction,
+          frames: [frame('n1', unnamed: true)],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('n1'), length: 2),
+          },
+        ),
+      ], spec: const CelsExportSpec(kinds: withDirection));
+      expect(
+        {
+          for (final sheet in built.sheets)
+            sheet.row.name: (sheet.word, sheet.celName, sheet.fullName),
+        },
+        {
+          'A': ('1', '1', '1'),
+          'BOOK': ('BOOK', '', 'BOOK'),
+          'Camera': ('T.U', 'T.U_A-B', 'T.U_A-B'),
+          'Notes': ('Notes', '', 'Notes'),
+        },
+      );
+    });
+
+    test('a FREE attach row holds drawings of its own: beside its base they '
+        'ride the base\'s cels, alone they are the cels — and the base\'s '
+        'are off', () {
+      final baseA = base('a', 'A', [frame('f1'), frame('f2')]);
+      final free = rider('a-r', 'A_r', [frame('r1'), frame('r2')], on: 'a');
+
+      expect(answers(plan([baseA, free])), {
+        'A 1': 'written',
+        'A 2': 'written',
+        'A_r 1': 'ridesBase',
+        'A_r 2': 'ridesBase',
+      });
+      expect(answers(plan([baseA, free], spec: attach)), {
+        'A 1': 'rowOff',
+        'A 2': 'rowOff',
+        'A_r 1': 'written',
+        'A_r 2': 'written',
+      });
+      expect(
+        answers(
+          plan(
+            [baseA, free],
+            overrides: hand(
+              ExportCelsCutDelta().withLayerOverride(
+                const LayerId('a-r'),
+                false,
+              ),
+            ),
+          ),
+        ),
+        {
+          'A 1': 'written',
+          'A 2': 'written',
+          'A_r 1': 'rowOff',
+          'A_r 2': 'rowOff',
+        },
+      );
+    });
+
+    test('a SYNCED attach row has no sheet of its own — its drawings follow '
+        'its base\'s', () {
+      final built = plan([
+        base('a', 'A', [frame('f1')]),
+        rider(
+          'a-color',
+          'A색',
+          [frame('c1')],
+          on: 'a',
+          free: false,
+          links: {const FrameId('f1'): const FrameId('c1')},
+        ),
+      ]);
+      expect(answers(built), {'A 1': 'written'});
+    });
+
+    test('a row of a kind that is off has no sheet at all', () {
+      final built = plan(
+        [base('a', 'A', [frame('f1')]), image('bg', 'BG', frame('b1'))],
+        spec: const CelsExportSpec(kinds: {ExportCelKind.cel}),
+      );
+      expect(answers(built), {'A 1': 'written'});
+    });
+
+    test('what the preview shows of a drawing that is refused: the drawing '
+        'by itself over its cut\'s paper — and bare where no cut places it', (
+    ) {
+      final paperRow = base('p', 'Paper', [frame('p1')], mark: paper);
+      final off = base('b', 'B', [frame('g1')], mark: layout);
+      final look = plan([paperRow, off]).sheets.single.look;
+      expect(names(look.members), ['Paper', 'B']);
+      expect(
+        [for (final frame in look.memberFrames) frame?.id.value],
+        ['p1', 'g1'],
+      );
+
+      final nowhere = base('c', 'C', [frame('h1')], mark: layout, shown: false);
+      final bare = plan([paperRow, nowhere]).sheets.single;
+      expect(bare.refused, ExportCelRefusal.rowOff);
+      expect(names(bare.look.members), ['C']);
+      expect(bare.look.memberFrames.single?.id.value, 'h1');
+    });
+
+    test('a drawing turned off is remembered through a refusal: the row '
+        'back on lights the ones that were left on', () {
+      final rows = [base('b', 'B', [frame('g1'), frame('g2')], mark: layout)];
+      final off = ExportCelsCutDelta().withCelSkipped((
+        row: const LayerId('b'),
+        cel: const FrameId('g1'),
+      ), true);
+      final refused = plan(rows, overrides: hand(off));
+      expect(
+        [for (final sheet in refused.sheets) (sheet.refused, sheet.skipped)],
+        [(ExportCelRefusal.rowOff, true), (ExportCelRefusal.rowOff, false)],
+      );
+      final on = plan(
+        rows,
+        overrides: hand(off.withLayerOverride(const LayerId('b'), true)),
+      );
+      expect(answers(on), {'B 1': 'off', 'B 2': 'written'});
+    });
+  });
+
+  group('🗣️a direction laid over a drawing (유저 2026-10-06: 「BG의 1번 '
+      '그림에 디렉션레이어의 1번을 얹고싶다거나」)', () {
+    const tu = InstructionEvent(
+      instructionId: 'tu',
+      length: 2,
+      text: 'T.U',
+      valueA: 'A',
+      valueB: 'B',
+    );
+    Layer directionRow() => Layer(
+      id: const LayerId('dir'),
+      name: 'Direction',
+      frames: const [],
+      kind: LayerKind.instruction,
+      instructions: {
+        0: tu,
+        2: const InstructionEvent(instructionId: 'pan', length: 2, text: 'PAN'),
+      },
+    );
+    ExportCelRef drawingAt(Layer row, int index) =>
+        (row: row.id, cel: drawingBlocks(row.timeline)[index].frameId);
+
+    test('the drawings a cut offers: every direction row\'s, each by what '
+        'its block says — and by its whole name', () {
+      final row = directionRow();
+      final offered = exportDirectionDrawingsOf(
+        projectWith([base('a', 'A', [frame('f1')]), row])
+            .tracks
+            .single
+            .cuts
+            .single,
+        projectWith(const []).cameraInstructions,
+      );
+      expect(
+        [for (final one in offered) (one.name, one.fullName)],
+        [('T.U', 'T.U_A-B'), ('PAN', 'PAN')],
+      );
+      expect(offered.first.ref, drawingAt(row, 0));
+    });
+
+    test('it is in that drawing\'s cel, over every member — one drawing, '
+        'not its row — whether or not the direction kind is written', () {
+      final row = directionRow();
+      final layers = [base('a', 'A', [frame('f1'), frame('f2')]), row];
+      final built = plan(
+        layers,
+        overrides: ExportProjectOverrides().withCelsDelta(
+          const CutId('cut'),
+          ExportCelsCutDelta()
+              .withDirectionOver(
+                (row: const LayerId('a'), cel: const FrameId('f1')),
+                drawingAt(row, 1),
+                true,
+              )
+              .withDirectionOver(
+                (row: const LayerId('a'), cel: const FrameId('f1')),
+                drawingAt(row, 0),
+                true,
+              ),
+        ),
+      );
+      expect(files(built), ['A1.png', 'A2.png'], reason: 'the kind is off');
+      final laid = built.cels.first;
+      expect(
+        [for (final over in laid.overlays) over.frame.id],
+        [drawingAt(row, 0).cel, drawingAt(row, 1).cel],
+        reason: 'in the order the row holds them, whatever order they were '
+            'laid in',
+      );
+      expect({for (final over in laid.overlays) over.layer.id.value}, {'dir'});
+      expect(built.cels.last.overlays, isEmpty);
+      String keyOf(ExportCelGroupTask task) => celGroupPreviewKey(
+        task,
+        sizeMode: 'canvas',
+        backgroundKey: -1,
+        applyLayerFx: true,
+      );
+      expect(
+        keyOf(laid),
+        isNot(keyOf(plan(layers).cels.first)),
+        reason: 'the preview must not show the picture from before it was '
+            'laid',
+      );
+    });
+
+    test('a direction that is no longer in the cut is not laid, and nothing '
+        'is laid over a direction row\'s own drawing', () {
+      final row = directionRow();
+      final layers = [base('a', 'A', [frame('f1')]), row];
+      final delta = ExportCelsCutDelta()
+          .withDirectionOver(
+            (row: const LayerId('a'), cel: const FrameId('f1')),
+            (row: const LayerId('dir'), cel: const FrameId('gone')),
+            true,
+          )
+          .withDirectionOver(drawingAt(row, 0), drawingAt(row, 1), true);
+      final built = plan(
+        layers,
+        spec: const CelsExportSpec(kinds: withDirection),
+        overrides: ExportProjectOverrides().withCelsDelta(
+          const CutId('cut'),
+          delta,
+        ),
+      );
+      expect(built.cels, hasLength(3));
+      expect([for (final task in built.cels) task.overlays], [[], [], []]);
     });
   });
 }

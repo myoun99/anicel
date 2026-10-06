@@ -812,19 +812,16 @@ class ExportFrameRenderer {
     // in the cut that shows the cel ([ExportCelGroupTask.cut], F-300).
     final firstExposure = celGroupFirstExposure(task);
     final layers = <CutFrameCompositeLayer>[];
-    for (var i = 0; i < task.members.length; i += 1) {
-      final frame = task.memberFrames[i];
-      if (frame == null) {
-        continue;
-      }
-      final surface = _surfaceFor(task.cut, task.members[i], frame);
+    // One picture of the stack: [layer]'s [frame] as [cut] holds it.
+    void lay(Cut cut, Layer layer, Frame? frame) {
+      final surface = frame == null ? null : _surfaceFor(cut, layer, frame);
       if (surface == null) {
-        continue;
+        return;
       }
       layers.add(
         CutFrameCompositeLayer(
           surface: surface,
-          opacity: task.members[i].opacity,
+          opacity: layer.opacity,
           // R26 #30: the delivery cel is the stack as composited — the
           // members' blends apply. R6: their EFFECTS ride the same fx
           // gates every other route uses — the dialog's master toggle and
@@ -836,19 +833,28 @@ class ExportFrameRenderer {
           // wants raw line art back turns it off, which is what the other
           // tabs always allowed. Blend and static opacity are display
           // properties and stay either way.
-          blendMode: task.members[i].blendMode,
+          blendMode: layer.blendMode,
           effects: applyLayerFx
               ? resolveLayerEffectsAt(
                   // Each effect's own switch (R8) gates it from here.
-                  effects: task.members[i].effects,
+                  effects: layer.effects,
                   frameIndex: firstExposure,
                 )
               : const [],
         ),
       );
     }
+
+    for (var i = 0; i < task.members.length; i += 1) {
+      lay(task.cut, task.members[i], task.memberFrames[i]);
+    }
     if (layers.isEmpty) {
       return null;
+    }
+    // What is laid over the cel goes on top of all of it — and over a cel
+    // with no artwork there is nothing to lay it on (the null above).
+    for (final over in task.overlays) {
+      lay(over.cut, over.layer, over.frame);
     }
     final view = _viewFor(task.cut, firstExposure, mode);
     return renderService.renderThroughCamera(

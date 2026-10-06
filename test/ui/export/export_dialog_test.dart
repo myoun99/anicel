@@ -146,7 +146,7 @@ void main() {
     Key? dialogKey,
     TextStyle face = const TextStyle(),
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    await tester.binding.setSurfaceSize(const Size(1280, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // Unmount at teardown: the dialog's dispose cancels the preview
     // debounce timer — otherwise every test ends with a pending Timer.

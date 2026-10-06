@@ -293,7 +293,15 @@ void main() {
   /// drew a direction block's WRITING — a direction row writes the pictures
   /// drawn on it now, as every cel is written. 🔬The lane's scan against
   /// master (`9683cd75e`, at 420) named that one gone and nothing added.
-  const longBodies = 417;
+  ///
+  /// ⚠️417 → 415 on 2026-10-06, lowered as the rule asks (F-289, the Cels
+  /// list under its preview): the window's `_previewZone` lost the list
+  /// that stood beside the preview, and `_celBundleItem` — a row of that
+  /// list — went with it. The board that took their place is cut into
+  /// named parts (`export_cels_board.dart`). 🔬The lane's scan against the
+  /// kinds lane (`0079de186`, at 419) named those two gone and nothing
+  /// added.
+  const longBodies = 415;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

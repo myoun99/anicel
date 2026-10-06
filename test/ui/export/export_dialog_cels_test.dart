@@ -27,18 +27,22 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/export/export_cel_layer_row.dart';
+import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
-/// The Cels tab, v3 (유저 2026-09-09): one label picked through the
-/// timeline's own flyout, a take picker with 「최신」 added, 적용/추가 pills,
-/// the 선택 presets beside 「커스텀」, the cut's stack as the timeline draws it
-/// with a dot on every row, and the output cels listed beside the preview
-/// with a dot of their own.
+import '../../helpers/export_cels_board_probe.dart';
+
+/// The Cels tab (F-289): the rules that pick the rows — the kinds, one
+/// label picked through the timeline's own flyout, a take picker with
+/// 「최신」 added, the 레이어 filters, the paper applied — and beside them,
+/// under the preview, the cut's rows as the timeline draws them: a switch on
+/// every row, a block for every drawing.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -210,11 +214,8 @@ void main() {
   String textOf(WidgetTester tester, String key) =>
       tester.widget<Text>(find.byKey(ValueKey<String>(key))).data!;
 
-  String bundleCount(WidgetTester tester) =>
-      textOf(tester, 'export-cels-bundle-count');
-
-  ExportIncludeDot dot(WidgetTester tester, String key) =>
-      tester.widget<ExportIncludeDot>(find.byKey(ValueKey<String>(key)));
+  /// How many files the export writes, as the band says it.
+  String celCount(WidgetTester tester) => textOf(tester, 'export-cels-count');
 
   Pill pill(WidgetTester tester, String key) =>
       tester.widget<Pill>(find.byKey(ValueKey<String>(key)));
@@ -222,36 +223,54 @@ void main() {
   ExportCelsCutDelta? deltaOf(EditorSessionManager session) =>
       session.repository.requireProject().exportOverrides.deltaFor(cut1);
 
-  testWidgets('the list is the cut\'s stack, each row led by its dot — the '
-      'rule\'s picks on, the rest dim; the paper and the rows of a kind that '
-      'is off are not in it', (tester) async {
-    await pumpCels(tester, celsSession());
+  ExportCelRef ref(String row, String cel) =>
+      (row: LayerId(row), cel: FrameId(cel));
 
-    for (final id in ['a', 'a-color', 'b', 'f', 'c', 'd']) {
-      expect(
-        find.byKey(ValueKey<String>('export-cels-row-$id')),
-        findsOneWidget,
-        reason: 'row $id',
-      );
-    }
-    // The paper is applied, not listed, and the direction kind is off.
-    for (final id in ['paper', 'inst']) {
-      expect(
-        find.byKey(ValueKey<String>('export-cels-row-$id')),
-        findsNothing,
-        reason: 'row $id',
-      );
-    }
-    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
-    expect(dot(tester, 'export-cels-dot-a-color').value, isTrue);
-    expect(dot(tester, 'export-cels-dot-b').value, isFalse);
-    // The folder's leaves are both in, so the folder reads whole.
-    expect(dot(tester, 'export-cels-dot-f').value, isTrue);
-    expect(dot(tester, 'export-cels-dot-f').indeterminate, isFalse);
+  Future<void> standOn(WidgetTester tester, String row) =>
+      tapKey(tester, 'export-cels-stand-$row');
+
+  Future<void> pressBlock(WidgetTester tester, String row, String cel) =>
+      tapKey(tester, 'export-cels-block-$row-$cel');
+
+  testWidgets('the list is the cut\'s rows as the timeline draws them, each '
+      'led by its switch — the rule\'s picks on, the rest off; the paper and '
+      'the rows of a kind that is off are not in it', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+
+    final cut = session.cutById(cut1)!;
+    expect(
+      tester.celsBoardRowIds,
+      [
+        for (final layer in horizontalLayerDisplayOrder(cut.layers))
+          if (const {
+            'a',
+            'a-color',
+            'b',
+            'f',
+            'c',
+            'd',
+          }.contains(layer.id.value))
+            layer.id.value,
+      ],
+      reason: 'the paper is applied, not listed, and the direction kind is off',
+    );
+    expect(tester.celsBoardRowIds, hasLength(6));
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('b'), BooleanMix.off);
+    // The folder's rows are both in, so the folder reads whole.
+    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
+
+    // One block a drawing: A's two, bright — and B's one, hollow, its row
+    // off. A synced attach row has none of its own.
+    expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
+    expect(tester.celsBoardBlocksOf('a-color'), isEmpty);
+    expect(tester.celsBoardBlocksOf('b'), [('1', false)]);
+    expect(tester.celsBoardBlocksOf('c'), [('1', true)]);
 
     // A ×2 + C + D; the paper row is applied, not counted.
-    expect(bundleCount(tester), AppText.strings.exCelCount(4));
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(celCount(tester), AppText.strings.exCelCount(4));
     // The kinds' defaults: 셀 and 미술. The filters': 기준 and 부속 on, 시트
     // off. And the label reads its own name — nothing has left its rule.
     expect(pill(tester, 'export-cels-kind-cel').selected, isTrue);
@@ -269,17 +288,49 @@ void main() {
     );
   });
 
-  testWidgets('ticking a row the filters left out forces it in: the plan '
-      'grows, the label reads 「커스텀」, and a filter pill drops the '
+  testWidgets('🪦the two lists it was are gone: no bundle list beside the '
+      'preview, no 「셀」 module in the settings column', (tester) async {
+    await pumpCels(tester, celsSession());
+    for (final key in [
+      'export-cels-bundle-a',
+      'export-cels-bundle-dot-a',
+      'export-cels-bundle-count',
+      'export-cels-dot-a',
+    ]) {
+      expect(find.byKey(ValueKey<String>(key)), findsNothing, reason: key);
+    }
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is ExportAccordion && widget.title == AppText.strings.exCels,
+      ),
+      findsNothing,
+    );
+    // The board stands under the preview.
+    expect(
+      tester.getTopLeft(find.byType(ExportCelsBoard)).dy,
+      greaterThan(
+        tester
+            .getBottomLeft(
+              find.byKey(const ValueKey<String>('export-plan-headline')),
+            )
+            .dy,
+      ),
+    );
+  });
+
+  testWidgets('switching on a row the filters left out forces it in: the '
+      'plan grows, the label reads 「커스텀」, and a filter pill drops the '
       'exception', (tester) async {
     // 유저 2026-10-06: 「색라벨 필터 LO일때에서 작감용지 레이어 추가하면
     // 색라벨필터 LO인채인데, 그게아니라 커스텀인상태로 필터 바꾸고싶어」.
     final session = celsSession();
     await pumpCels(tester, session);
 
-    await tapKey(tester, 'export-cels-dot-b');
+    await tapKey(tester, 'export-cels-switch-b');
     expect(deltaOf(session)?.layerOverrides[const LayerId('b')], isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(5));
+    expect(celCount(tester), AppText.strings.exCelCount(5));
+    expect(tester.celsBoardBlocksOf('b'), [('1', true)]);
     expect(
       textOf(tester, 'export-cels-label-text'),
       AppText.strings.exSelCustom,
@@ -291,12 +342,19 @@ void main() {
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
     expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
     expect(pill(tester, 'export-cels-select-sheet').selected, isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(3));
+    expect(celCount(tester), AppText.strings.exCelCount(3));
+    expect(
+      tester.celsBoardRowIds,
+      contains('c'),
+      reason: 'a row a FILTER turns off stays in the list, off (유저: '
+          '「필터로 off되도 사라진다거나 하지않음」)',
+    );
+    expect(tester.celsBoardSwitchState('c'), BooleanMix.off);
   });
 
   testWidgets('🗣️picking a label — the very one it left — puts the rows back '
-      'on that label\'s rule; a take does too; the cels the hand turned off '
-      'stay off (F-298, 유저 2026-10-05: 「색 라벨 선택하면 사실상 초기화나 '
+      'on that label\'s rule; a take does too; the drawings the hand turned '
+      'off stay off (F-298, 유저 2026-10-05: 「색 라벨 선택하면 사실상 초기화나 '
       '마찬가지인데 커스텀 설정한게 안풀림」)', (tester) async {
     final session = celsSession();
     final state = await pumpCels(tester, session);
@@ -319,25 +377,25 @@ void main() {
       await mouse.removePointer();
     }
 
-    await tapKey(tester, 'export-cels-dot-b');
-    await tapKey(tester, 'export-cels-bundle-dot-d');
+    await tapKey(tester, 'export-cels-switch-b');
+    await pressBlock(tester, 'd', 'y1');
     expect(
       textOf(tester, 'export-cels-label-text'),
       AppText.strings.exSelCustom,
     );
-    expect(deltaOf(session)?.skippedBases, {const LayerId('d')});
+    expect(deltaOf(session)?.skippedCels, {ref('d', 'y1')});
 
     await pickTheKeyLabelAgain();
     expect(state.debugSpecs.cels.label, key);
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
     expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
     expect(
-      deltaOf(session)?.skippedBases,
-      {const LayerId('d')},
-      reason: 'a cel turned off is not a row that left the rule',
+      deltaOf(session)?.skippedCels,
+      {ref('d', 'y1')},
+      reason: 'a drawing turned off is not a row that left the rule',
     );
 
-    await tapKey(tester, 'export-cels-dot-b');
+    await tapKey(tester, 'export-cels-switch-b');
     expect(
       textOf(tester, 'export-cels-label-text'),
       AppText.strings.exSelCustom,
@@ -352,27 +410,36 @@ void main() {
     expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
   });
 
+  testWidgets('a drawing turned off alone does not make the label read '
+      '「커스텀」 — that is a row leaving its rule', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    await pressBlock(tester, 'd', 'y1');
+    expect(deltaOf(session)?.skippedCels, {ref('d', 'y1')});
+    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+  });
+
   testWidgets('a kind turned off and on again keeps what the hand did to its '
       'rows', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
 
-    await tapKey(tester, 'export-cels-dot-b');
+    await tapKey(tester, 'export-cels-switch-b');
     await tapKey(tester, 'export-cels-kind-cel');
     expect(
-      find.byKey(const ValueKey<String>('export-cels-row-b')),
-      findsNothing,
+      tester.celsBoardRowIds,
+      isEmpty,
       reason: 'the cel rows left the list with their kind',
     );
-    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exCelCount(0));
     expect(deltaOf(session)?.layerOverrides[const LayerId('b')], isTrue);
 
     await tapKey(tester, 'export-cels-kind-cel');
-    expect(dot(tester, 'export-cels-dot-b').value, isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(5));
+    expect(tester.celsBoardSwitchState('b'), BooleanMix.on);
+    expect(celCount(tester), AppText.strings.exCelCount(5));
   });
 
-  testWidgets('the 선택 pills are filters that STACK: 기준 off leaves the '
+  testWidgets('the 레이어 pills are filters that STACK: 기준 off leaves the '
       'riders on the base\'s axis, 부속 off leaves the bases alone, both off '
       'leaves nothing', (tester) async {
     // 유저 2026-09-09: 「기준/부속 고르면 기준레이어+부속레이어까지 묶고, 부속만
@@ -381,39 +448,43 @@ void main() {
 
     await tapKey(tester, 'export-cels-select-attach');
     expect(state.debugSpecs.cels.attach, isFalse);
-    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
-    expect(dot(tester, 'export-cels-dot-a-color').value, isFalse);
-    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.off);
+    expect(celCount(tester), AppText.strings.exCelCount(4));
 
     await tapKey(tester, 'export-cels-select-base');
     expect(state.debugSpecs.cels.base, isFalse);
-    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exCelCount(0));
 
-    // 부속 alone: the colour row rides base A's axis — two cels named by A.
+    // 부속 alone: the colour row rides base A's axis — two cels named by A,
+    // their blocks standing on A's row, bright, though A's own switch is
+    // off.
     await tapKey(tester, 'export-cels-select-attach');
-    expect(dot(tester, 'export-cels-dot-a').value, isFalse);
-    expect(dot(tester, 'export-cels-dot-a-color').value, isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(2));
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
+    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.on);
+    expect(celCount(tester), AppText.strings.exCelCount(2));
+    expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
+    await standOn(tester, 'a');
     expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
   });
 
   testWidgets('디렉션 is a KIND: off, its row is not in the list at all; its '
-      'pill puts the row there, on, beside the drawings', (tester) async {
+      'pill puts the row there, on, with a block for the drawing under its '
+      'block', (tester) async {
     final state = await pumpCels(tester, celsSession());
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-dot-inst')),
-      findsNothing,
-    );
+    expect(tester.celsBoardRowIds, isNot(contains('inst')));
 
     await tapKey(tester, 'export-cels-kind-direction');
     expect(state.debugSpecs.cels.kinds, contains(ExportCelKind.direction));
     expect(pill(tester, 'export-cels-kind-direction').selected, isTrue);
-    expect(dot(tester, 'export-cels-dot-inst').value, isTrue);
-    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(5));
+    expect(tester.celsBoardRowIds, contains('inst'));
+    expect(tester.celsBoardSwitchState('inst'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(celCount(tester), AppText.strings.exCelCount(5));
     expect(
-      find.byKey(const ValueKey<String>('export-cels-bundle-inst')),
-      findsOneWidget,
+      tester.celsBoardBlocksOf('inst'),
+      [('PAN', true)],
+      reason: 'named by what its block says',
     );
   });
 
@@ -467,70 +538,231 @@ void main() {
     );
   });
 
-  testWidgets('the folder dot ticks its leaves together and reads half when '
-      'they disagree', (tester) async {
+  testWidgets('🗣️the folder\'s switch turns its rows together, and says so '
+      'when they disagree (F-289-Q13: 「폴더줄의 스위치는 섞임모양 넣는게 '
+      '나을거같아」)', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
 
-    await tapKey(tester, 'export-cels-dot-c');
+    await tapKey(tester, 'export-cels-switch-c');
     expect(deltaOf(session)?.layerOverrides[const LayerId('c')], isFalse);
-    expect(dot(tester, 'export-cels-dot-f').indeterminate, isTrue);
-    expect(bundleCount(tester), AppText.strings.exCelCount(3));
+    expect(tester.celsBoardSwitchState('f'), BooleanMix.mixed);
+    expect(celCount(tester), AppText.strings.exCelCount(3));
 
-    // Half → whole: the exception that equals the rule again disappears.
-    await tapKey(tester, 'export-cels-dot-f');
+    // Mixed → all on: the exception that equals the rule again disappears.
+    await tapKey(tester, 'export-cels-switch-f');
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
-    expect(dot(tester, 'export-cels-dot-f').value, isTrue);
+    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
 
-    // Whole → none: both leaves off in one write.
-    await tapKey(tester, 'export-cels-dot-f');
+    // All on → all off: both rows in one write.
+    await tapKey(tester, 'export-cels-switch-f');
     expect(deltaOf(session)?.layerOverrides, {
       const LayerId('c'): false,
       const LayerId('d'): false,
     });
-    expect(dot(tester, 'export-cels-dot-f').value, isFalse);
-    expect(dot(tester, 'export-cels-dot-f').indeterminate, isFalse);
-    expect(bundleCount(tester), AppText.strings.exCelCount(2));
+    expect(tester.celsBoardSwitchState('f'), BooleanMix.off);
+    expect(celCount(tester), AppText.strings.exCelCount(2));
+
+    // All off → all on.
+    await tapKey(tester, 'export-cels-switch-f');
+    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
+    expect(celCount(tester), AppText.strings.exCelCount(4));
   });
 
-  testWidgets('the cel list: unticking a bundle keeps it listed, drops it '
-      'from the count, and Reset restores it', (tester) async {
+  testWidgets('🗣️a block is the drawing\'s switch: turned off it stays in '
+      'the list, hollow, and out of the count — and 초기화 puts the cut back '
+      'on its rules', (tester) async {
+    // 유저 2026-10-06: 「셀의 프레임버튼 누르면 내보내기 적용/미적용」.
     final session = celsSession();
     await pumpCels(tester, session);
 
-    await tapKey(tester, 'export-cels-bundle-dot-a');
-    expect(deltaOf(session)?.skippedBases, {const LayerId('a')});
-    expect(bundleCount(tester), AppText.strings.exCelCount(2));
-    expect(
-      find.byKey(const ValueKey<String>('export-cels-bundle-a')),
-      findsOneWidget,
-      reason: 'an unticked cel stays in the list with its dot off',
-    );
-    expect(dot(tester, 'export-cels-bundle-dot-a').value, isFalse);
-    // The row selection is a different question — the rows stay as they were.
-    expect(dot(tester, 'export-cels-dot-a').value, isTrue);
+    await pressBlock(tester, 'a', 'f1');
+    expect(deltaOf(session)?.skippedCels, {ref('a', 'f1')});
+    expect(celCount(tester), AppText.strings.exCelCount(3));
+    expect(tester.celsBoardBlocksOf('a'), [('1', false), ('2', true)]);
+    // The row is a different question — it stays as it was.
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
 
-    await tester.tap(find.text('Reset').first);
-    await tester.pump();
+    await pressBlock(tester, 'a', 'f1');
     expect(deltaOf(session), isNull);
-    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+    expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
+
+    await pressBlock(tester, 'a', 'f2');
+    await tapKey(tester, 'export-cels-switch-b');
+    await tapKey(tester, 'export-cels-reset');
+    expect(deltaOf(session), isNull);
+    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(tester.celsBoardSwitchState('b'), BooleanMix.off);
   });
 
-  testWidgets('the first file the window names is the first one WRITTEN — an '
-      'unticked bundle\'s cels are not it', (tester) async {
+  testWidgets('🗣️a drawing that cannot go out says why when it is pressed, '
+      'and stays as it was (유저 2026-10-06: 「나갈 수 없는 그림은 '
+      '작동하려하면 이유 띄우자」)', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+
+    // B wears LO: the 원화 label leaves its row off.
+    await pressBlock(tester, 'b', 'b1');
+    expect(find.text(AppText.strings.noticeExportRowOff), findsOneWidget);
+    expect(deltaOf(session), isNull, reason: 'a refusal writes nothing');
+    expect(tester.celsBoardBlocksOf('b'), [('1', false)]);
+
+    // The notice goes by itself.
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text(AppText.strings.noticeExportRowOff), findsNothing);
+  });
+
+  testWidgets('the row stood on is what the preview turns through — the '
+      'name stands on it, ◀ ▶ step its drawings', (tester) async {
+    await pumpCels(tester, celsSession());
+
+    await standOn(tester, 'c');
+    expect(textOf(tester, 'export-transport-line'), 'C1.png · 1 / 1');
+    await standOn(tester, 'a');
+    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(tester.celsBoardBlockOf('a', 'f1').shown, isTrue);
+
+    await tapKey(tester, 'export-cels-next');
+    expect(textOf(tester, 'export-transport-line'), 'A2.png · 2 / 2');
+    expect(tester.celsBoardBlockOf('a', 'f2').shown, isTrue);
+    await tapKey(tester, 'export-cels-next');
+    expect(
+      textOf(tester, 'export-transport-line'),
+      'A2.png · 2 / 2',
+      reason: 'there is nowhere further to step',
+    );
+    await tapKey(tester, 'export-cels-prev');
+    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+  });
+
+  testWidgets('the drawing shown is turned off: the nearest one left is '
+      'shown — and on a row that is off, the drawings left on are', (
+    tester,
+  ) async {
+    await pumpCels(tester, celsSession());
+
+    await standOn(tester, 'a');
+    await pressBlock(tester, 'a', 'f1');
+    expect(textOf(tester, 'export-transport-line'), 'A2.png · 1 / 1');
+
+    // B's row is off: its one drawing is what the preview shows of it, by
+    // the name its block wears.
+    await standOn(tester, 'b');
+    expect(textOf(tester, 'export-transport-line'), '1 · 1 / 1');
+  });
+
+  testWidgets('a twirl folds what the row holds under it — the window\'s '
+      'own fold, the film\'s rows as they were', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    final before = session.repository.requireProject();
+
+    await tapKey(tester, 'export-cels-twirl-f');
+    expect(tester.celsBoardRowIds, isNot(contains('c')));
+    expect(tester.celsBoardRowIds, isNot(contains('d')));
+    expect(tester.celsBoardRowIds, contains('f'));
+    expect(
+      tester.celsBoardSwitchState('f'),
+      BooleanMix.on,
+      reason: 'it still says what the rows it folds say',
+    );
+    expect(celCount(tester), AppText.strings.exCelCount(4));
+
+    await tapKey(tester, 'export-cels-twirl-a');
+    expect(tester.celsBoardRowIds, isNot(contains('a-color')));
+
+    await tapKey(tester, 'export-cels-twirl-f');
+    expect(tester.celsBoardRowIds, containsAll(['c', 'd']));
+    expect(
+      identical(session.repository.requireProject(), before),
+      isTrue,
+      reason: 'a fold in this window is not an edit of the film',
+    );
+  });
+
+  testWidgets('🗣️「이 그림에 디렉션 적용」: a pill a direction drawing lays '
+      'it over the drawing shown — whether or not the direction kind is '
+      'written — and the block wears a D', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    final direction = session
+        .cutById(cut1)!
+        .layers
+        .singleWhere((layer) => layer.kind == LayerKind.instruction);
+    final drawn = direction.frames.single.id.value;
+    final pillKey = 'export-cels-direction-inst-$drawn';
+
+    expect(
+      pill(tester, 'export-cels-kind-direction').selected,
+      isFalse,
+      reason: '유저: 「디렉션 on이든 off든 관계없이 떠있도록」',
+    );
+    expect(pill(tester, pillKey).label, 'PAN');
+    expect(pill(tester, pillKey).selected, isFalse);
+
+    await standOn(tester, 'a');
+    await tapKey(tester, pillKey);
+    expect(deltaOf(session)?.directionOver, {
+      (cel: ref('a', 'f1'), direction: ref('inst', drawn)),
+    });
+    expect(pill(tester, pillKey).selected, isTrue);
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-d-a-f1')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('export-cels-block-d-a-f2')),
+      findsNothing,
+      reason: 'laid over ONE drawing, not its row',
+    );
+    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+
+    // The other drawing: the pill reads that drawing's own answer.
+    await tapKey(tester, 'export-cels-next');
+    expect(pill(tester, pillKey).selected, isFalse);
+
+    // 초기화 is of the rules: what is laid over a drawing stays.
+    await tapKey(tester, 'export-cels-switch-b');
+    await tapKey(tester, 'export-cels-reset');
+    expect(deltaOf(session)?.directionOver, hasLength(1));
+
+    await tapKey(tester, 'export-cels-prev');
+    await tapKey(tester, pillKey);
+    expect(deltaOf(session), isNull);
+
+    expect(pill(tester, 'export-cels-cam').onTap, isNull);
+  });
+
+  testWidgets('the first file the window names is the first one WRITTEN — a '
+      'drawing turned off is not it', (tester) async {
     await pumpCels(tester, celsSession());
     expect(textOf(tester, 'export-pattern-preview'), 'A1.png');
 
-    await tapKey(tester, 'export-cels-bundle-dot-a');
-    expect(
-      textOf(tester, 'export-pattern-preview'),
-      'C1.png',
-      reason: 'A\'s cels are previewed still, and written no more',
-    );
+    await pressBlock(tester, 'a', 'f1');
+    expect(textOf(tester, 'export-pattern-preview'), 'A2.png');
 
-    await tapKey(tester, 'export-cels-bundle-dot-c');
-    await tapKey(tester, 'export-cels-bundle-dot-d');
+    await pressBlock(tester, 'a', 'f2');
+    await pressBlock(tester, 'c', 'x1');
+    await pressBlock(tester, 'd', 'y1');
     expect(textOf(tester, 'export-pattern-preview'), AppText.strings.exNoCels);
+  });
+
+  testWidgets('레이어: 기준 and 어태치 share a strip, and 시트만 stands in a '
+      'strip of its own', (tester) async {
+    await pumpCels(tester, celsSession());
+    Finder pillOf(String key) =>
+        find.byKey(ValueKey<String>('export-cels-select-$key'));
+    PillStrip stripOf(String key) => tester.widget<PillStrip>(
+      find.ancestor(of: pillOf(key), matching: find.byType(PillStrip)),
+    );
+    List<String> keysOf(PillStrip strip) => [
+      for (final item in strip.items) item.keyValue,
+    ];
+    expect(keysOf(stripOf('base')), [
+      'export-cels-select-base',
+      'export-cels-select-attach',
+    ]);
+    expect(keysOf(stripOf('sheet')), ['export-cels-select-sheet']);
   });
 
   testWidgets('each kind\'s pill, and its prefix field, reads that kind\'s '
@@ -539,7 +771,8 @@ void main() {
     final strings = AppText.strings;
     final names = {
       ExportCelKind.cel: strings.exCels,
-      ExportCelKind.conte: strings.panelConte,
+      // The conte ROW's word (콘티) — not the sheet panel's (콘티 용지).
+      ExportCelKind.conte: strings.tlKindStoryboard,
       ExportCelKind.art: strings.exArtLabel,
       ExportCelKind.direction: strings.exSelDirection,
     };
@@ -553,16 +786,6 @@ void main() {
       );
       expect(exportCelKindLabel(kind), name, reason: '$kind');
     }
-  });
-
-  testWidgets('choosing a cel in the list drives the preview to its first '
-      'sheet, and the nav counts that bundle alone', (tester) async {
-    await pumpCels(tester, celsSession());
-
-    await tapKey(tester, 'export-cels-bundle-c');
-    expect(textOf(tester, 'export-transport-line'), 'C1.png · 1 / 1');
-    await tapKey(tester, 'export-cels-bundle-a');
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
   });
 
   testWidgets('the label picker is the timeline\'s flyout: 「라벨 없음」 empties '
@@ -583,7 +806,7 @@ void main() {
       textOf(tester, 'export-cels-label-text'),
       AppText.strings.tlLayerMarkNone,
     );
-    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exCelCount(0));
 
     await tapKey(tester, 'export-cels-label-picker');
     await tester.pumpAndSettle();
@@ -624,7 +847,7 @@ void main() {
       AppText.strings.tlLayerTakeNumber(2),
     );
     // Nothing in the cut is a second take.
-    expect(bundleCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exCelCount(0));
 
     await tapKey(tester, 'export-cels-take-picker');
     await tester.pumpAndSettle();
@@ -633,7 +856,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, isNull);
-    expect(bundleCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exCelCount(4));
   });
 
   testWidgets('내보낼 종류 and 적용 are pills that write the spec', (
@@ -658,6 +881,7 @@ void main() {
     // 기본값은 셀:없음, 미술:_, 디렉션:_」 · 「콘티레이어는 다만 기본값
     // 없음으로」.
     final state = await pumpCels(tester, celsSession());
+    await standOn(tester, 'a');
     final naming = find.byWidgetPredicate(
       (widget) =>
           widget is ExportAccordion && widget.title == AppText.strings.exNaming,

@@ -63,10 +63,6 @@ void main() {
           'locks (the comment beside it says why it is a tween and not an '
           '`AnimatedOpacity`).',
     ),
-    'lib/src/ui/export/export_cel_layer_row.dart': (
-      count: 1,
-      why: 'a row in the export WINDOW. A dialog is not a baked panel.',
-    ),
     'lib/src/ui/media/media_pool_panel.dart': (
       count: 1,
       why: '`childWhenDragging` — the hole a dragged row leaves behind, for '

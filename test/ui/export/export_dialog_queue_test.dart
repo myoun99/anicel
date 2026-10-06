@@ -72,7 +72,7 @@ void main() {
     EditorSessionManager manager, {
     String? location,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    await tester.binding.setSurfaceSize(const Size(1280, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

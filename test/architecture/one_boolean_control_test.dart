@@ -160,6 +160,10 @@ const _ringsOfTheirOwn = <String, String>{
   'lib/src/ui/brush/guide_panels.dart':
       'a guide row: a press on the row SELECTS that guide, so the ring '
       'beside its name (acting on / off) cannot be the whole row',
+  'lib/src/ui/export/export_cels_board.dart':
+      'a row of the export window\'s Cels list: a press on its name STANDS '
+      'the list on it (what the preview shows), so the ring that says '
+      'whether the row is written leads the row as the rail\'s first cell',
 };
 
 /// 🚨THE LEDGER. Measured 2026-09-23: one file wears a check, and it is a

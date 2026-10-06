@@ -35,7 +35,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// are pinned beside it (`export_cel_group_plan_test.dart`,
 /// `export_dialog_cels_test.dart`), and neither of them writes anything.
 ///
-/// 🚨The run walked every cel the window PREVIEWS, so a bundle whose dot was
+/// 🚨The run walked every cel the window PREVIEWS, so one that was turned
 /// off — counted out of the headline — was rendered and written all the
 /// same (found reading the run for F-289, 2026-10-06).
 ///
@@ -196,7 +196,7 @@ void main() {
     );
   }
 
-  testWidgets('🚨the run writes the TICKED cels: a bundle whose dot is off '
+  testWidgets('🚨the run writes the drawings that are ON: one turned off '
       'leaves no file', (tester) async {
     final temp = Directory.systemTemp.createTempSync('qa-cels-ticked');
     deleteAfterSessionEnds(temp);
@@ -205,14 +205,14 @@ void main() {
     draw(session);
 
     final state = await pumpCels(tester, session, temp);
-    await tapKey(tester, 'export-cels-bundle-dot-a');
+    await tapKey(tester, 'export-cels-block-a-a1');
     await tester.runAsync(state.export);
     await tester.pump();
 
     expect(
       filesIn(temp),
-      ['B1.png'],
-      reason: 'A\'s two cels were written with their dot off',
+      ['A2.png', 'B1.png'],
+      reason: 'A 1 was written with its block turned off',
     );
     session.playbackRig.prerenderScheduler.cancel();
   });
@@ -261,6 +261,51 @@ void main() {
       reason: '↩️the file was a picture of the block\'s writing — its text, '
           'its arrow and its length — and never the drawing',
     );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🗣️a direction laid over ONE drawing is in that drawing\'s '
+      'file, over its picture — and in no other (유저 2026-10-06: 「BG의 1번 '
+      '그림에 디렉션레이어의 1번을 얹고싶다거나」)', (tester) async {
+    final temp = Directory.systemTemp.createTempSync('qa-cels-laid');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    final direction = session
+        .cutById(cutId)!
+        .layers
+        .singleWhere((layer) => layer.kind == LayerKind.instruction);
+
+    final state = await pumpCels(tester, session, temp);
+    // The list stands on its top row, B, with its one drawing shown.
+    await tapKey(tester, 'export-cels-stand-a');
+    await tapKey(
+      tester,
+      'export-cels-direction-inst-${direction.frames.single.id.value}',
+    );
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(
+      filesIn(temp),
+      ['A1.png', 'A2.png', 'B1.png'],
+      reason: 'the direction KIND is off: no file of its own',
+    );
+    Future<((int, int, int, int), (int, int, int, int))> dotsOf(
+      String file,
+    ) async => (await tester.runAsync(() async {
+      final png = File('${temp.path}/$file');
+      return (await pixelOf(png, 1, 1), await pixelOf(png, 2, 2));
+    }))!;
+    expect(
+      await dotsOf('A1.png'),
+      (black, red),
+      reason: 'its own drawing, and the direction over it',
+    );
+    final (own, laid) = await dotsOf('A2.png');
+    expect(own, black);
+    expect(laid, isNot(red), reason: 'nothing was laid over A 2');
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

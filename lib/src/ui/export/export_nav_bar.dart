@@ -117,26 +117,10 @@ class ExportNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    Widget stepButton(String glyph, int delta, String key) => ControlPressClaim(
+    Widget stepButton(String glyph, int delta, String key) => ExportStepButton(
+      keyValue: key,
+      glyph: glyph,
       onPressed: enabled && axis.length > 0 ? () => _step(delta) : null,
-      child: InkWell(
-        key: ValueKey<String>(key),
-        onTap: silentPress(
-          enabled && axis.length > 0 ? () => _step(delta) : null,
-        ),
-        customBorder: AppShapes.container(AppShapes.wellRadius),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: ShapeDecoration(
-            shape: AppShapes.container(
-              AppShapes.wellRadius,
-              side: BorderSide(color: theme.dividerColor),
-            ),
-          ),
-          child: Text(glyph, style: theme.textTheme.labelSmall),
-        ),
-      ),
     );
 
     return Row(
@@ -165,6 +149,47 @@ class ExportNavBar extends StatelessWidget {
           _endField(context, outController!, 'export-range-end-field'),
         ],
       ],
+    );
+  }
+}
+
+/// One step along what the window turns through — ◀ or ▶ in a hairline
+/// box: the nav bar's pair, and the Cels list's band (F-289: 「좌우 버튼
+/// 만들어서 넣자. 컴팩트하게」).
+class ExportStepButton extends StatelessWidget {
+  const ExportStepButton({
+    super.key,
+    required this.keyValue,
+    required this.glyph,
+    required this.onPressed,
+  });
+
+  final String keyValue;
+  final String glyph;
+
+  /// Null = nowhere to step: the button keeps its place and takes no press.
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ControlPressClaim(
+      onPressed: onPressed,
+      child: InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: silentPress(onPressed),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: theme.dividerColor),
+            ),
+          ),
+          child: Text(glyph, style: theme.textTheme.labelSmall),
+        ),
+      ),
     );
   }
 }

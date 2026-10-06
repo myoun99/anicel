@@ -22,6 +22,8 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+
+import '../../helpers/export_cels_board_probe.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 🚨F-300 (유저 2026-10-05): 「출력창은 현재컷을 기준으로 생각하긴한다만
@@ -134,16 +136,8 @@ void main() {
     await tester.pump();
   }
 
-  /// The bundle rows in the order they are DRAWN, read off the widget tree.
-  List<String> listedIds(WidgetTester tester) => [
-    for (final key in tester
-        .widgetList<InkWell>(find.byType(InkWell))
-        .map((ink) => ink.key)
-        .whereType<ValueKey<String>>()
-        .map((key) => key.value)
-        .where((value) => value.startsWith('export-cels-bundle-')))
-      key.substring('export-cels-bundle-'.length),
-  ];
+  /// The list's rows in the order they are DRAWN.
+  List<String> listedIds(WidgetTester tester) => tester.celsBoardRowIds;
 
   PanelFlyoutButton picker(WidgetTester tester) =>
       tester.widget<PanelFlyoutButton>(
@@ -158,12 +152,11 @@ void main() {
       .widget<Text>(find.byKey(const ValueKey<String>('export-plan-headline')))
       .data!;
 
-  Future<void> tapRow(WidgetTester tester, String layerId) async {
-    await tester.tap(
-      find.byKey(ValueKey<String>('export-cels-bundle-$layerId')),
-    );
-    await tester.pump();
-  }
+  /// Stands on a row: a press on its name.
+  Future<void> tapRow(WidgetTester tester, String layerId) =>
+      tester.pressInCelsBoard(
+        find.byKey(ValueKey<String>('export-cels-stand-$layerId')),
+      );
 
   for (final standingOn in ['c1', 'c2']) {
     testWidgets('🎯standing on ${standingOn.toUpperCase()}: the list is that '
@@ -189,6 +182,15 @@ void main() {
         reason: 'a label is a ROW of the list, not a row per cut its cels '
             'are composited in',
       );
+
+      for (final row in ['a', 'b']) {
+        expect(
+          tester.celsBoardBlocksOf('$standingOn-$row'),
+          [('1', true), ('2', true)],
+          reason: 'both cels stand on the row of the cut stood on, bright — '
+              'the one a sibling shows as much as its own',
+        );
+      }
 
       await tapRow(tester, '$standingOn-a');
       expect(transportLine(tester), 'A1.png · 1 / 2');

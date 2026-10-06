@@ -40,6 +40,7 @@ class ExportCelGroupTask {
     required this.fileName,
     this.skipped = false,
     this.listedUnder,
+    this.overlays = const [],
   });
 
   /// The cut this cel is COMPOSITED in — the one that SHOWS it: its rows
@@ -76,14 +77,13 @@ class ExportCelGroupTask {
   /// The cut the window lists this cel in ([listedUnder]).
   Cut get listedCut => listedUnder?.cut ?? cut;
 
-  /// The row the window lists this cel under, and the one a tick on the
-  /// bundle answers for ([listedUnder]).
+  /// The row the window lists this cel on — the one its block stands on
+  /// ([listedUnder]).
   Layer get bundleAxis => listedUnder?.axis ?? baseLayer;
 
-  /// The user unticked this bundle in the cel list: planned and previewable,
+  /// The user turned this drawing off in the list: planned and previewable,
   /// but not written ([ExportCelGroupPlan.writtenCels]). Kept in the plan
-  /// rather than dropped so the list can still show the bundle with its
-  /// dot off — a dropped bundle would be 「없다가 생기는 UI」 in reverse.
+  /// rather than dropped so the list still shows its block, hollow.
   final bool skipped;
 
   /// The stack slice this cel composites, bottom-up in cut order: the
@@ -104,13 +104,106 @@ class ExportCelGroupTask {
   /// numbered: this is what its block SAYS ([directionCelName]).
   final String celName;
 
-  /// Relative to the export directory; may contain `/` subfolders.
+  /// Relative to the export directory; may contain `/` subfolders. Empty
+  /// on a picture that is no file ([ExportCelSheet.look] of a refusal).
   final String fileName;
+
+  /// The direction drawings laid over this cel, bottom-up, above every
+  /// member ([ExportCelsCutDelta.directionOver]).
+  final List<ExportCelOverlay> overlays;
 }
 
-/// One bundle as the dialog's cel list shows it: the axis layer and its
-/// sheets in frame order.
-typedef ExportCelBundle = ({Layer axis, List<ExportCelGroupTask> sheets});
+/// A direction drawing laid over a cel: the direction row's drawing, in the
+/// cut it was picked in — the one the window lists the cel in, where its
+/// direction rows are.
+typedef ExportCelOverlay = ({Cut cut, Layer layer, Frame frame});
+
+/// Why a drawing of a listed row is no file as things stand — what its
+/// block says when it is pressed (F-289, 유저 2026-10-06: 「나갈 수 없는
+/// 그림은 작동하려하면 이유 띄우자」).
+enum ExportCelRefusal {
+  /// Its row is off, and so is everything riding it.
+  rowOff,
+
+  /// The rows of its cel that are on hold no picture for it (「그림이
+  /// 존재하는 영역만 출력」).
+  noPicture,
+
+  /// No cut places it on the timeline (「애초에 타임라인에 안놓은 셀은 출력에
+  /// 포함하지않음」).
+  notPlaced,
+
+  /// A row of the same name files its unnamed picture first (「순서상 첫
+  /// 블록만」).
+  sameName,
+
+  /// It rides its base's cels: a free attach row that is not the bundle's
+  /// only picture ([_bundleAxis]).
+  ridesBase,
+}
+
+/// ONE DRAWING of a listed row, as the plan answers for it: the cel it
+/// writes, or why it writes none. The window's list is these, a block each.
+///
+/// ⛔The plan answers for EVERY drawing — the list does not ask again. A
+/// list that worked out for itself which drawings go would be the planner
+/// written twice, and the second copy is the one that drifts.
+class ExportCelSheet {
+  const ExportCelSheet({
+    required this.cut,
+    required this.row,
+    required this.frame,
+    required this.celName,
+    required this.word,
+    required this.look,
+    this.refused,
+  });
+
+  /// The cut the window lists it in.
+  final Cut cut;
+
+  /// The row its block stands on, in [cut]: a base, or a free attach row —
+  /// the rows that hold drawings of their own.
+  final Layer row;
+
+  /// The row's drawing.
+  final Frame frame;
+
+  /// What it is called on its file ([ExportCelGroupTask.celName]): its
+  /// number, a direction's whole name (`T.U_A-B`) — or nothing, for a
+  /// picture that goes out under its row's name alone.
+  final String celName;
+
+  /// What its BLOCK reads: its number, its row's name where it has none,
+  /// and of a direction's drawing what its block says alone (`T.U`) — a
+  /// block is one cell wide (drawn so in the F-289 mock, and of the band's
+  /// buttons 유저 2026-10-06: 「버튼엔 지시이름만 넣자. T.U 이렇게하고
+  /// 툴팁으로 T.U_A-B 이렇게」).
+  final String word;
+
+  /// Its whole name, for where there is the room to say it.
+  String get fullName => celName.isEmpty ? row.name : celName;
+
+  /// Why it is no file as things stand, or null for a PLANNED drawing.
+  final ExportCelRefusal? refused;
+
+  /// The picture: the cel that is written, for a planned drawing — or, for
+  /// one that is [refused], the drawing by itself over its cut's paper,
+  /// which is what the preview shows of a row that is off.
+  final ExportCelGroupTask look;
+
+  /// The user turned it off — its picture's own answer, so the list and the
+  /// run cannot say two things. Kept while it is [refused] too: a row turned
+  /// back on lights the drawings that were left on, and no others.
+  bool get skipped => look.skipped;
+
+  bool get planned => refused == null;
+
+  /// Whether a file is written for it.
+  bool get written => planned && !skipped;
+
+  ExportCelRef get ref => (row: row.id, cel: frame.id);
+}
 
 /// The preview cache key for [task]: everything its picture depends on.
 ///
@@ -131,18 +224,31 @@ String celGroupPreviewKey(
       '${task.members[i].id.value}='
           '${task.memberFrames[i]?.id.value ?? '-'}',
   ].join(',');
+  final overlays = [
+    for (final over in task.overlays)
+      '${over.cut.id.value}/${over.layer.id.value}/${over.frame.id.value}',
+  ].join(',');
   return 'celgroup:${task.cut.id.value}:${task.baseLayer.id.value}:'
-      '${task.baseFrame.id.value}:$members:$sizeMode:$backgroundKey:'
-      '${applyLayerFx ? 'fx' : 'raw'}';
+      '${task.baseFrame.id.value}:$members:$overlays:$sizeMode:'
+      '$backgroundKey:${applyLayerFx ? 'fx' : 'raw'}';
 }
 
 class ExportCelGroupPlan {
-  const ExportCelGroupPlan({required this.cels});
+  ExportCelGroupPlan({required this.sheets})
+    : cels = [
+        for (final sheet in sheets)
+          if (sheet.planned) sheet.look,
+      ];
 
-  /// Every planned cel, ticked or not — what the dialog lists and previews.
+  /// Every drawing of every listed row, in the order the walk meets them —
+  /// what the window lists.
+  final List<ExportCelSheet> sheets;
+
+  /// Every planned cel, on or turned off, in WRITE order — the namer's
+  /// de-dup suffix rides on it.
   final List<ExportCelGroupTask> cels;
 
-  /// The cels that will be written: the ticked ones.
+  /// The cels that will be written: the planned ones that are on.
   List<ExportCelGroupTask> get writtenCels => [
     for (final task in cels)
       if (!task.skipped) task,
@@ -150,20 +256,6 @@ class ExportCelGroupPlan {
 
   /// How many files the export writes.
   int get length => writtenCels.length;
-
-  /// [cels] grouped by axis layer, in first-appearance (stack) order.
-  List<ExportCelBundle> get bundles {
-    final byAxis = <LayerId, List<ExportCelGroupTask>>{};
-    final axes = <LayerId, Layer>{};
-    for (final task in cels) {
-      byAxis.putIfAbsent(task.bundleAxis.id, () => []).add(task);
-      axes[task.bundleAxis.id] = task.bundleAxis;
-    }
-    return [
-      for (final entry in byAxis.entries)
-        (axis: axes[entry.key]!, sheets: entry.value),
-    ];
-  }
 }
 
 /// The frame [member] contributes to the cel numbered by [baseFrame] of
@@ -219,37 +311,44 @@ int? firstExposureOf(Layer axis, FrameId frameId) {
 }
 
 /// The frame of [task]'s cut its cel is sampled at: where the cel first
-/// shows there. A planned cel is always shown by its cut ([_bundleTasks]),
+/// shows there. A planned cel is always shown by its cut ([_axisSheets]),
 /// so the fallback is for a task built by hand.
 int celGroupFirstExposure(ExportCelGroupTask task) =>
     firstExposureOf(task.baseLayer, task.baseFrame.id) ?? 0;
 
 /// One cut as this export run sees it: the cut itself, the name its files
-/// carry (a 겸용 group's joined name), the run's namer and the bundles the
-/// user unticked. They travel together because every step of the walk needs
-/// all four.
+/// carry (a 겸용 group's joined name), the run's namer and what the hand
+/// did to this cut. They travel together because every step of the walk
+/// needs all four.
 typedef _CutRun = ({
   Cut cut,
   String cutName,
   _NamingRun run,
-  Set<LayerId> skipped,
+  ExportCelsCutDelta? delta,
 });
 
-/// One task per numbered cel of every bundle the selection touches.
+/// One sheet per drawing of every listed row of [cut].
 ///
 /// A bundle exists for every base whose stack holds a selected picture —
 /// the base itself, or an attach row riding it (어태치 preset: the base is
 /// OFF and its parts are ON). A cel is planned only where some picture
 /// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
-/// picture. Bundles the user unticked in the cel list ([skipped]) are
-/// planned but marked, so the list keeps showing them.
-Iterable<ExportCelGroupTask> _celGroupTasksFor(
+/// picture. A drawing that is not planned is still answered for, with why
+/// ([ExportCelRefusal]).
+Iterable<ExportCelSheet> _celSheetsFor(
   _CutRun cut,
   ExportCelsSelection selection,
 ) sync* {
   final unnamedFiled = <String>{};
-  for (final bundle in _celBundlesOf(cut.cut, selection)) {
-    yield* _bundleTasks(bundle, cut, unnamedFiled: unnamedFiled);
+  for (final stack in _celStacksOf(cut, selection)) {
+    final bundle = stack.bundle;
+    for (final row in stack.rows) {
+      if (bundle != null && row.id == bundle.axis.id) {
+        yield* _axisSheets(bundle, cut, unnamedFiled: unnamedFiled);
+      } else {
+        yield* _sheetsBesideTheAxis(row, bundle, cut);
+      }
+    }
   }
 }
 
@@ -263,35 +362,59 @@ typedef _CelBundle = ({
   Set<LayerId> pictureIds,
 });
 
-/// Every bundle the selection touches, in stack order: one per base whose
-/// own stack — itself or an attach row riding it — holds a selected
-/// picture. A base with none is not a bundle at all.
-Iterable<_CelBundle> _celBundlesOf(
-  Cut cut,
+/// One listed base's stack: the rows of it that hold drawings of their own
+/// — the base and the FREE attach rows riding it (a synced one follows the
+/// base's cels) — and the bundle the selection makes of it, or null where
+/// it keeps no picture of the stack at all.
+typedef _CelStack = ({List<Layer> rows, _CelBundle? bundle});
+
+/// Every listed base's stack, in stack order. A base of a kind the export
+/// does not write is not listed, so it is not here ([exportCelsListsRow]).
+Iterable<_CelStack> _celStacksOf(
+  _CutRun cut,
   ExportCelsSelection selection,
 ) sync* {
+  final layers = cut.cut.layers;
   final selectedIds = {for (final layer in selection.celLayers) layer.id};
   final paperIds = {for (final layer in selection.paperLayers) layer.id};
-  for (final base in cut.layers) {
-    if (!_canOwnABundle(base)) {
+  for (final base in layers) {
+    if (!_canOwnABundle(base) ||
+        !exportCelsListsRow(base, layers, cut.run.spec)) {
       continue;
     }
-    final pictures = _bundlePictures(cut, base, selectedIds);
-    if (pictures.isEmpty) {
-      continue;
-    }
-    final pictureIds = {for (final layer in pictures) layer.id};
+    final pictures = _bundlePictures(cut.cut, base, selectedIds);
     yield (
-      axis: _bundleAxis(pictures, base),
-      members: [
-        for (final layer in cut.layers)
-          if (pictureIds.contains(layer.id) || paperIds.contains(layer.id))
-            layer,
+      rows: [
+        base,
+        for (final rider in attachedLayersOf(base.id, layers))
+          if (!isSyncedAttachedLayer(rider) &&
+              exportCelsListsRow(rider, layers, cut.run.spec))
+            rider,
       ],
-      pictureIds: pictureIds,
+      bundle: pictures.isEmpty
+          ? null
+          : _bundleOf(cut.cut, _bundleAxis(pictures, base), {
+              for (final layer in pictures) layer.id,
+            }, paperIds),
     );
   }
 }
+
+/// The bundle numbered by [axis] whose pictures are [pictureIds], over the
+/// paper rows [paperIds], bottom-up in [cut]'s order.
+_CelBundle _bundleOf(
+  Cut cut,
+  Layer axis,
+  Set<LayerId> pictureIds,
+  Set<LayerId> paperIds,
+) => (
+  axis: axis,
+  members: [
+    for (final layer in cut.layers)
+      if (pictureIds.contains(layer.id) || paperIds.contains(layer.id)) layer,
+  ],
+  pictureIds: pictureIds,
+);
 
 /// A bundle as ONE cut of its 겸용 group has it: that cut, and the bundle's
 /// rows there.
@@ -399,38 +522,86 @@ Layer _bundleAxis(List<Layer> pictures, Layer base) {
 ///
 /// Every other row's are its NUMBERED frames ([_fileCelName]), by number
 /// ([_inCelOrder]).
-Iterable<({Frame frame, String celName})> _celsOf(
-  Layer axis,
-  Project project,
-) sync* {
+Iterable<_RowCel> _celsOf(Layer axis, CameraInstructionSet terms) sync* {
   if (axis.kind != LayerKind.instruction) {
     for (final frame in _inCelOrder(axis.frames)) {
       if (_fileCelName(axis, frame) case final celName?) {
-        yield (frame: frame, celName: celName);
+        yield (
+          row: axis,
+          frame: frame,
+          celName: celName,
+          word: celName.isEmpty ? axis.name : celName,
+        );
       }
     }
     return;
   }
+  for (final (:frame, :says) in _directedDrawingsOf(axis)) {
+    yield (
+      row: axis,
+      frame: frame,
+      celName: directionCelName(says, terms),
+      word: says == null ? axis.name : _directionWord(says, terms),
+    );
+  }
+}
+
+/// ONE DRAWING of a row that is a cel: the row its block stands on, the
+/// drawing, what it is called on its file and what its block reads
+/// ([_celsOf]). They travel together because a sheet is made of all four.
+typedef _RowCel = ({Layer row, Frame frame, String celName, String word});
+
+/// A direction row's drawings in the order the timeline shows them, each
+/// with what its block says — null where it says nothing. A drawing two
+/// blocks show is one drawing, called by the first.
+Iterable<({Frame frame, InstructionEvent? says})> _directedDrawingsOf(
+  Layer row,
+) sync* {
   final listed = <FrameId>{};
-  for (final block in drawingBlocks(axis.timeline)) {
+  for (final block in drawingBlocks(row.timeline)) {
     // A ghost shows again what its own block already listed, and says
     // nothing of its own.
     if (block.entry.ghost) {
       continue;
     }
-    final frame = axis.frameById(block.frameId);
+    final frame = row.frameById(block.frameId);
     if (frame == null || !listed.add(frame.id)) {
       continue;
     }
-    yield (
-      frame: frame,
-      celName: directionCelName(
-        axis.instructions[block.startIndex],
-        project.cameraInstructions,
-      ),
-    );
+    yield (frame: frame, says: row.instructions[block.startIndex]);
   }
 }
+
+/// A direction row's drawing as the window offers it to be laid over a cel:
+/// which it is, what its button reads — what its block says (유저
+/// 2026-10-06: 「버튼엔 지시이름만 넣자. T.U 이렇게하고 툴팁으로 T.U_A-B
+/// 이렇게」), its row's name where the block says nothing — and its whole
+/// name.
+typedef ExportDirectionDrawing = ({
+  ExportCelRef ref,
+  String name,
+  String fullName,
+});
+
+/// Every drawing of [cut]'s direction rows, in the order the cut stacks the
+/// rows and each row's timeline shows its drawings.
+List<ExportDirectionDrawing> exportDirectionDrawingsOf(
+  Cut cut,
+  CameraInstructionSet terms,
+) => [
+  for (final row in cut.layers)
+    if (row.kind == LayerKind.instruction)
+      for (final drawing in _celsOf(row, terms))
+        (
+          ref: (row: row.id, cel: drawing.frame.id),
+          name: drawing.word,
+          fullName: drawing.celName.isEmpty ? row.name : drawing.celName,
+        ),
+];
+
+/// What a direction's block says: the name of what it directs.
+String _directionWord(InstructionEvent says, CameraInstructionSet terms) =>
+    says.displayLabel(terms.defById(says.instructionId));
 
 /// What a direction row's drawing is called: what its block says and the
 /// two ends it runs between — `T.U_A-B` — or nothing for a block that says
@@ -447,68 +618,195 @@ String directionCelName(InstructionEvent? says, CameraInstructionSet terms) {
     for (final end in [says.valueA, says.valueB])
       if (end != null && end.trim().isNotEmpty) end.trim(),
   ].join('-');
-  final name = says.displayLabel(terms.defById(says.instructionId));
+  final name = _directionWord(says, terms);
   return ends.isEmpty ? name : '${name}_$ends';
 }
 
-/// One task per cel of [bundle] — the axis drawings that are cels
-/// ([_celsOf]) AND hold a picture. [unnamedFiled] holds the labels whose
-/// unnamed cel the cut has already filed.
-Iterable<ExportCelGroupTask> _bundleTasks(
-  _CelBundle bundle,
-  _CutRun cut, {
-  required Set<String> unnamedFiled,
-}) sync* {
-  final group = _bundleAcrossTheGroup(cut, bundle);
-  for (final (frame: axisFrame, :celName) in _celsOf(
-    bundle.axis,
-    cut.run.project,
-  )) {
-    // 🚨F-300: the cel is composited in the cut that SHOWS it.
-    //
-    // 🗣️F-289 ⑥ (유저 2026-10-06): 「애초에 타임라인에 안놓은 셀은 출력에
-    // 포함하지않음」 — a cel no cut of the group shows is no cel of this
-    // export. ↩️It went out from the window's cut with nothing under it:
-    // an unshown cel has no place on the timeline for the paper or a free
-    // rider to answer at ([celGroupMemberFrame]).
-    final shown = _shownIn(group, axisFrame.id);
-    if (shown == null) {
-      continue;
-    }
-    final baseFrame = shown.bundle.axis.frameById(axisFrame.id) ?? axisFrame;
-    final frames = [
+/// A drawing of a bundle where a cut of its 겸용 group SHOWS it: that cut's
+/// bundle, the drawing as that cut's axis holds it, and what each member
+/// contributes to it there.
+typedef _PlacedCel = ({_BundleIn shown, Frame baseFrame, List<Frame?> frames});
+
+/// [axisFrame] of the bundle [group] is of, where it is shown — or null
+/// when no cut of the group shows it.
+///
+/// 🚨F-300: the cel is composited in the cut that SHOWS it.
+_PlacedCel? _placedIn(List<_BundleIn> group, Frame axisFrame) {
+  final shown = _shownIn(group, axisFrame.id);
+  if (shown == null) {
+    return null;
+  }
+  final baseFrame = shown.bundle.axis.frameById(axisFrame.id) ?? axisFrame;
+  return (
+    shown: shown,
+    baseFrame: baseFrame,
+    frames: [
       for (final member in shown.bundle.members)
         celGroupMemberFrame(
           base: shown.bundle.axis,
           member: member,
           baseFrame: baseFrame,
         ),
-    ];
-    if (!_holdsAPicture(shown.bundle, frames) ||
-        _unnamedIsFiledAlready(bundle.axis, celName, unnamedFiled)) {
+    ],
+  );
+}
+
+/// One sheet per cel of [bundle]'s axis ([_celsOf]): the task that writes
+/// it, or why none does. [unnamedFiled] holds the labels whose unnamed cel
+/// the cut has already filed.
+Iterable<ExportCelSheet> _axisSheets(
+  _CelBundle bundle,
+  _CutRun cut, {
+  required Set<String> unnamedFiled,
+}) sync* {
+  final group = _bundleAcrossTheGroup(cut, bundle);
+  for (final drawing in _celsOf(
+    bundle.axis,
+    cut.run.project.cameraInstructions,
+  )) {
+    final placed = _placedIn(group, drawing.frame);
+    // 🗣️F-289 ⑥ (유저 2026-10-06): 「애초에 타임라인에 안놓은 셀은 출력에
+    // 포함하지않음」 — a cel no cut of the group shows is no cel of this
+    // export. ↩️It went out from the window's cut with nothing under it:
+    // an unshown cel has no place on the timeline for the paper or a free
+    // rider to answer at ([celGroupMemberFrame]).
+    if (placed == null) {
+      yield _refusedSheet(drawing, cut, ExportCelRefusal.notPlaced);
       continue;
     }
-    yield ExportCelGroupTask(
-      cut: shown.cut,
-      baseLayer: shown.bundle.axis,
-      listedUnder: identical(shown.bundle, bundle)
-          ? null
-          : (cut: cut.cut, axis: bundle.axis),
-      members: shown.bundle.members,
-      memberFrames: frames,
-      baseFrame: baseFrame,
-      celName: celName,
-      fileName: cut.run.fileNameFor(
-        // A bundle is listed — so it has a kind: its axis's
-        // ([exportCelKindOf]; a lone attach row answers with its base's).
-        kind: exportCelKindOf(bundle.axis, cut.cut.layers)!,
-        cutName: cut.cutName,
-        labelName: bundle.axis.name,
-        celName: celName,
+    final refused = !_holdsAPicture(placed.shown.bundle, placed.frames)
+        ? ExportCelRefusal.noPicture
+        : _unnamedIsFiledAlready(bundle.axis, drawing.celName, unnamedFiled)
+        ? ExportCelRefusal.sameName
+        : null;
+    if (refused != null) {
+      yield _refusedSheet(drawing, cut, refused);
+      continue;
+    }
+    yield _sheet(
+      drawing,
+      cut,
+      look: _cel(
+        placed,
+        cut,
+        drawing,
+        fileName: cut.run.fileNameFor(
+          // A bundle is listed — so it has a kind: its axis's
+          // ([exportCelKindOf]; a lone attach row answers with its base's).
+          kind: exportCelKindOf(bundle.axis, cut.cut.layers)!,
+          cutName: cut.cutName,
+          labelName: bundle.axis.name,
+          celName: drawing.celName,
+        ),
       ),
-      skipped: cut.skipped.contains(bundle.axis.id),
     );
   }
+}
+
+/// [drawing] as [cut]'s list holds it: what it looks like, and why it is no
+/// file where it is none.
+ExportCelSheet _sheet(
+  _RowCel drawing,
+  _CutRun cut, {
+  required ExportCelGroupTask look,
+  ExportCelRefusal? refused,
+}) => ExportCelSheet(
+  cut: cut.cut,
+  row: drawing.row,
+  frame: drawing.frame,
+  celName: drawing.celName,
+  word: drawing.word,
+  refused: refused,
+  look: look,
+);
+
+/// The drawings of [row] — a row of a listed stack that is NOT its bundle's
+/// axis — none of them a file: its base's cels carry it ([bundle] holds it
+/// as a picture), or it is off.
+Iterable<ExportCelSheet> _sheetsBesideTheAxis(
+  Layer row,
+  _CelBundle? bundle,
+  _CutRun cut,
+) sync* {
+  final why = bundle != null && bundle.pictureIds.contains(row.id)
+      ? ExportCelRefusal.ridesBase
+      : ExportCelRefusal.rowOff;
+  for (final drawing in _celsOf(row, cut.run.project.cameraInstructions)) {
+    yield _refusedSheet(drawing, cut, why);
+  }
+}
+
+/// [drawing] as one the export does not write: [why], and what it looks
+/// like by itself — its row alone over the paper of the cut that shows it,
+/// laid by the same steps a written cel is ([_placedIn]). A drawing no cut
+/// shows is the bare drawing.
+ExportCelSheet _refusedSheet(
+  _RowCel drawing,
+  _CutRun cut,
+  ExportCelRefusal why,
+) {
+  final (:row, :frame, celName: _, word: _) = drawing;
+  final alone = _bundleOf(cut.cut, row, {row.id}, {
+    for (final paper in exportPaperRowsOf(cut.cut, cut.run.spec)) paper.id,
+  });
+  final placed =
+      _placedIn(_bundleAcrossTheGroup(cut, alone), frame) ??
+      (
+        shown: (cut: cut.cut, bundle: _bundleOf(cut.cut, row, {row.id}, {})),
+        baseFrame: frame,
+        frames: <Frame?>[frame],
+      );
+  return _sheet(
+    drawing,
+    cut,
+    refused: why,
+    look: _cel(placed, cut, drawing, fileName: ''),
+  );
+}
+
+/// The cel [placed] is, listed as [listed] in [cut]'s cut: whether the hand
+/// turned it off there, and what is laid over it.
+ExportCelGroupTask _cel(
+  _PlacedCel placed,
+  _CutRun cut,
+  _RowCel listed, {
+  required String fileName,
+}) => ExportCelGroupTask(
+  cut: placed.shown.cut,
+  baseLayer: placed.shown.bundle.axis,
+  listedUnder: placed.shown.cut.id == cut.cut.id
+      ? null
+      : (cut: cut.cut, axis: listed.row),
+  members: placed.shown.bundle.members,
+  memberFrames: placed.frames,
+  baseFrame: placed.baseFrame,
+  celName: listed.celName,
+  fileName: fileName,
+  skipped: _turnedOff(cut, listed.row, listed.frame),
+  overlays: _overlaysOn(cut, listed.row, listed.frame),
+);
+
+/// Whether the hand turned [frame] of [row] off in [cut]'s list.
+bool _turnedOff(_CutRun cut, Layer row, Frame frame) =>
+    cut.delta?.skippedCels.contains((row: row.id, cel: frame.id)) ?? false;
+
+/// The direction drawings laid over [frame] of [row]
+/// ([ExportCelsCutDelta.directionOver]), in the order [cut]'s cut stacks
+/// its direction rows and each row holds its drawings. A direction that is
+/// no longer in the cut is not laid — and nothing is laid over a direction
+/// row's own drawing.
+List<ExportCelOverlay> _overlaysOn(_CutRun cut, Layer row, Frame frame) {
+  final laid = cut.delta?.directionsOver((row: row.id, cel: frame.id));
+  if (laid == null || laid.isEmpty || row.kind == LayerKind.instruction) {
+    return const [];
+  }
+  return [
+    for (final layer in cut.cut.layers)
+      if (layer.kind == LayerKind.instruction)
+        for (final drawing in layer.frames)
+          if (laid.contains((row: layer.id, cel: drawing.id)))
+            (cut: cut.cut, layer: layer, frame: drawing),
+  ];
 }
 
 /// Whether [axis]'s unnamed cel — one called [celName], empty — is one the
@@ -635,8 +933,9 @@ String celGroupCutName(Project project, Cut cut) {
 
 /// Builds the bundle cel plan for the Cels tab: rules → delta per cut (the
 /// resolver), one bundle per base whose stack holds a selected picture, one
-/// task per axis cel that has a picture ([_celsOf]). Under the project
-/// scope a 겸용 group is walked once, from its owner cut.
+/// sheet per drawing of every listed row — a task where it is a cel that
+/// has a picture, a refusal where it is not ([_celSheetsFor]). Under the
+/// project scope a 겸용 group is walked once, from its owner cut.
 ExportCelGroupPlan buildExportCelGroupPlan({
   required Project project,
   required CutId activeCutId,
@@ -653,7 +952,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
     ),
   );
   final projectScope = spec.scope == ExportScopeKind.project;
-  final cels = <ExportCelGroupTask>[];
+  final sheets = <ExportCelSheet>[];
   for (final cut in exportCutsInScope(
     project: project,
     activeCutId: activeCutId,
@@ -670,16 +969,14 @@ ExportCelGroupPlan buildExportCelGroupPlan({
       delta: delta,
     );
     final cutName = celGroupCutName(project, cut);
-    cels.addAll(
-      _celGroupTasksFor((
-        cut: cut,
-        cutName: cutName,
-        run: run,
-        skipped: delta?.skippedBases ?? const {},
-      ), selection),
+    sheets.addAll(
+      _celSheetsFor(
+        (cut: cut, cutName: cutName, run: run, delta: delta),
+        selection,
+      ),
     );
   }
-  return ExportCelGroupPlan(cels: cels);
+  return ExportCelGroupPlan(sheets: sheets);
 }
 
 /// `[prefix][proj_][cut_]<label><cel>[suffix]` — the bundle reading of the

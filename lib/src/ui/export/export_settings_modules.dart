@@ -94,7 +94,7 @@ class ExportAccordion extends StatelessWidget {
                       ),
                     ),
                     if (reset != null) ...[
-                      _ResetChip(
+                      ExportResetChip(
                         enabled: reset!.enabled,
                         onPressed: reset!.onTap,
                       ),
@@ -121,8 +121,10 @@ class ExportAccordion extends StatelessWidget {
   }
 }
 
-class _ResetChip extends StatelessWidget {
-  const _ResetChip({required this.enabled, this.onPressed});
+/// 「초기화」 at the head of a module, and of the Cels list's rules: off —
+/// dim, taking no press — while there is nothing to put back.
+class ExportResetChip extends StatelessWidget {
+  const ExportResetChip({super.key, required this.enabled, this.onPressed});
 
   final bool enabled;
   final VoidCallback? onPressed;
@@ -780,7 +782,9 @@ class _DigitsFieldState extends State<_DigitsField> {
 /// 「내보낼 종류」 and its prefix field in the naming module.
 String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   ExportCelKind.cel => AppText.strings.exCels,
-  ExportCelKind.conte => AppText.strings.panelConte,
+  // The conte ROW's word (콘티), not the sheet panel's (콘티 용지): the kind
+  // is the row's drawings, written as cels are.
+  ExportCelKind.conte => AppText.strings.tlKindStoryboard,
   ExportCelKind.art => AppText.strings.exArtLabel,
   ExportCelKind.direction => AppText.strings.exSelDirection,
 };
