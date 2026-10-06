@@ -149,7 +149,13 @@ void main() {
     );
     final rest = await at(playing: false, looping: true);
     final other = await at(playing: true, looping: false);
-    expect(other.play, isNot(rest.play), reason: 'playing ≠ stopped');
-    expect(other.loop, isNot(rest.loop), reason: 'once ≠ loop');
+    // By the table's KEY, not by the word: which arm stands for which state.
+    final table = AppStrings.of(AppLanguage.ko);
+    expect(rest.play, table.menuPlay, reason: 'stopped: the press plays');
+    expect(other.play, table.playbackStop, reason: 'playing: it stops');
+    expect(rest.loop, table.transportLoop);
+    expect(other.loop, table.transportOnce);
+    expect(other.play, isNot(rest.play), reason: '⛔전제: two words');
+    expect(other.loop, isNot(rest.loop), reason: '⛔전제: two words');
   });
 }
