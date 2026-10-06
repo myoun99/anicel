@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../models/font_face_facts.dart';
-import '../models/media_asset.dart' show mintMediaCarry;
+import '../models/media_asset.dart' show isOneStoredName, mintMediaCarry;
 import 'persistence/app_support_path.dart';
 import 'persistence/versioned_settings_file.dart';
 
@@ -46,7 +46,16 @@ class FontLibraryService {
 
   String get indexPath => '$directoryPath/index.json';
 
-  String _pathOf(String file) => '$directoryPath/$file';
+  /// Where the library keeps a file called [file] — or null when [file] is
+  /// not a name of its own ([isFontLibraryFileName]): nothing is kept, read
+  /// or deleted under such a name.
+  ///
+  /// ⛔THE ONE LINE THAT JOINS THE FOLDER AND A NAME IT WAS HANDED (board
+  /// `law-저장`, as the room's `_pathInTheRoom` is its): an index is a file
+  /// on a disk and a project is a file from anywhere, and what either says
+  /// reaches the disk through here or not at all.
+  String? _pathOf(String file) =>
+      isFontLibraryFileName(file) ? '$directoryPath/$file' : null;
 
   /// A name to keep a file of [facts]' face under, [extension] at its end
   /// ([mintFontLibraryFileName]) — minted, so never one a file was kept
@@ -67,11 +76,8 @@ class FontLibraryService {
   /// DISK is asked, not the index: the bytes are what is wanted, and a
   /// name means one set of them for good.
   String? pathOfFontHeld(String file) {
-    if (!isFontLibraryFileName(file)) {
-      return null;
-    }
     final path = _pathOf(file);
-    return File(path).existsSync() ? path : null;
+    return path != null && File(path).existsSync() ? path : null;
   }
 
   /// The faces of the library, in the order they were brought. A missing or
@@ -106,8 +112,16 @@ class FontLibraryService {
 
   /// Writes [bytes] as the library's copy of a face, under [file]. The
   /// caller owns the index; this only puts the file on disk.
+  ///
+  /// ⚠️[file] is a name the library minted ([mintFileName]); one that is
+  /// not a name of its own is the caller's mistake and is refused, rather
+  /// than written where nothing would read it back.
   Future<void> writeFont(String file, Uint8List bytes) async {
-    final target = File(_pathOf(file));
+    final path = _pathOf(file);
+    if (path == null) {
+      throw ArgumentError.value(file, 'file', 'is not a name of the library');
+    }
+    final target = File(path);
     await target.parent.create(recursive: true);
     await target.writeAsBytes(bytes, flush: true);
   }
@@ -115,8 +129,12 @@ class FontLibraryService {
   /// The bytes of [file], or null when it is gone or unreadable — a face
   /// that cannot be read is a face this device does not have.
   Future<Uint8List?> readFont(String file) async {
+    final path = _pathOf(file);
+    if (path == null) {
+      return null;
+    }
     try {
-      return await File(_pathOf(file)).readAsBytes();
+      return await File(path).readAsBytes();
     } on Object {
       return null;
     }
@@ -125,8 +143,12 @@ class FontLibraryService {
   /// Removes a face's file. A missing file is not an error — the index is
   /// the record that matters, and it is written by the caller.
   Future<void> deleteFont(String file) async {
+    final path = _pathOf(file);
+    if (path == null) {
+      return;
+    }
     try {
-      final target = File(_pathOf(file));
+      final target = File(path);
       if (await target.exists()) {
         await target.delete();
       }
@@ -161,7 +183,9 @@ class FontLibraryService {
 /// The face rides in the name — its family and weight, made safe by the
 /// one algorithm that makes a stored name safe (`mediaNameParts`) — so a
 /// person looking in the folder, or inside a project file, can tell what
-/// they are looking at.
+/// they are looking at. ⚠️Where the family is named in the letters a stored
+/// name keeps: one named in Korean or Japanese rides as that many `_`, and
+/// the name is still one of a kind by what is minted before it.
 String mintFontLibraryFileName(
   FontFaceFacts facts, {
   required String extension,
@@ -184,18 +208,18 @@ const int _familyLettersKept = 40;
 /// disk and a project is a file from anywhere, and what either says is not
 /// let name a path: `deleteFont` deletes what it is handed.
 ///
-/// ONE NAME, WITH NOTHING OF A PATH IN IT: a word, a dash, and more — the
-/// shape a minted name has ([mintFontLibraryFileName]) — ending in a font's
-/// extension. The dash is in the rule and not only in the habit: a name
-/// with one before its first dot is never one the system reads as a
-/// device (`nul.ttf`, `con.ttf`).
+/// ONE NAME, WITH NOTHING OF A PATH IN IT ([isOneStoredName] — the law
+/// every name that becomes a path in this app is asked, board `law-저장`:
+/// a place that makes a path of a file's name asks that predicate and does
+/// not write the rule again) — and, of those, one that ends in a font's
+/// extension and is no longer than a name this app mints.
 bool isFontLibraryFileName(String file) =>
-    file.length <= _longestName && _aNameOfTheLibrary.hasMatch(file);
+    file.length <= _longestName &&
+    isOneStoredName(file) &&
+    _endsAsAFontFile.hasMatch(file);
 
 /// Longer than any name this app mints, shorter than what a path can hold
 /// beside its folder.
 const int _longestName = 120;
 
-final RegExp _aNameOfTheLibrary = RegExp(
-  r'^[A-Za-z0-9_]+-[A-Za-z0-9._-]+\.(ttf|otf|ttc)$',
-);
+final RegExp _endsAsAFontFile = RegExp(r'\.(ttf|otf|ttc)$');

@@ -131,10 +131,55 @@ void main() {
           'font-100.ttf',
           'font-104.otf',
           'font-105.ttc',
+          // One name by the stored-name law, and it ends as a font does.
+          'font-.ttf',
           '1a2b3c4d-9f8e7d6c-Probe_Sans-400.ttf',
           '${'a' * 114}-b.ttf',
         ],
       );
+    });
+
+    test('🚨nothing is read, written or deleted under a name that is not '
+        'the library\'s, though a file is there to reach', () async {
+      final outside = File('${room.path}/secret.ttf')..writeAsBytesSync([9]);
+      Directory(library.directoryPath).createSync(recursive: true);
+      final index = File(library.indexPath)..writeAsStringSync('{}');
+
+      expect(await library.readFont('../secret.ttf'), isNull);
+      expect(await library.readFont('index.json'), isNull);
+      await library.deleteFont('../secret.ttf');
+      await library.deleteFont('index.json');
+
+      expect(outside.readAsBytesSync(), [9]);
+      expect(index.existsSync(), isTrue);
+
+      await expectLater(
+        library.writeFont('../planted.ttf', Uint8List.fromList([1])),
+        throwsArgumentError,
+      );
+      expect(File('${room.path}/planted.ttf').existsSync(), isFalse);
+    });
+
+    test('⛔one line of the library joins its folder and a name it was '
+        'HANDED — the one that asks whether it is a name of its own', () {
+      // A verb added later that wrote `'$directoryPath/$file'` for itself
+      // would pass every test here: none of them knows it exists. The
+      // other two joins name nothing they were handed — the index's own
+      // file, and what a new name is minted from.
+      final joins = [
+        for (final line in File(
+          'lib/src/services/font_library_service.dart',
+        ).readAsLinesSync())
+          if (!line.trimLeft().startsWith('//') &&
+              RegExp(r'\$\{?directoryPath\}?/').hasMatch(line))
+            line.trim(),
+      ];
+
+      expect(joins, [
+        r"String get indexPath => '$directoryPath/index.json';",
+        r"isFontLibraryFileName(file) ? '$directoryPath/$file' : null;",
+        r"return mintMediaCarry('$directoryPath/$face.$extension');",
+      ]);
     });
 
     group('🚨a name is minted WHOLE: it means one set of bytes, on this '
