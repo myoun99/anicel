@@ -1,9 +1,10 @@
 part of '../brush_canvas_panel.dart';
 
-/// WHAT A MAPPED BUTTON DOES THAT IS NOT DRAWING — the history verbs a pen
-/// or mouse button fires, and the pick it holds the eyedropper for — read
-/// where every press on the canvas passes, so one code answers under every
-/// tool, with or without a cel to draw on.
+/// WHAT A MAPPED BUTTON AND THE PEN'S TAIL DO UNDER EVERY TOOL — the
+/// history verbs a pen or mouse button fires, the pick it holds the
+/// eyedropper for, the tail's hold on the tool, and the way in for a press
+/// that erases — read where every press on the canvas passes, so one code
+/// answers under every tool, with or without a cel to draw on.
 ///
 /// 🗣️F-299 (유저 2026-10-05): 「어떤 도구 들고있던 규칙 만들지말고 법 통일해서
 /// 작동하도록」.
@@ -20,6 +21,12 @@ part of '../brush_canvas_panel.dart';
 /// and carries the erase in its own settings. One that does not is read
 /// here, as the pan already was one layer up
 /// ([CanvasViewportGestureLayer]).
+///
+/// 🚨What is read here of a press that erases is only WHERE IT GOES. Under
+/// the tools whose layer lies over the drawing view, that view hears
+/// neither the press nor the pen turned over in the air — so this hands it
+/// the press ([_handOver]) and reads the tail ([_syncTail]), and the view
+/// erases with its own code, as it does where it hears them itself.
 ///
 /// ⛔A hold is the TOOL, held (유저 2026-09-11, I-15: 「누르는동안 툴
 /// 바뀌도록. 툴 바껴서 해당툴을 사용한다는 심플한 규칙」). The pick it makes
@@ -50,6 +57,11 @@ class _CanvasPanelMappedButtons {
   /// of [_lastHoverButtons] (R27 #17).
   final Map<int, int> _lastContactButtons = {};
 
+  /// The presses handed to the drawing view ([_handOver]) — each pointer
+  /// from its down to its lift. Whether it draws with one is the view's
+  /// to say, as of a press it hears: it draws one stroke at a time.
+  final Set<int> _handedOver = <int>{};
+
   /// Whether this canvas reads [event]'s buttons at all: a finger has none,
   /// and content that takes no tool takes no mapped button either
   /// (playback — T28-c 「뭘 누르든 입력이 존재하면 정지」,
@@ -67,10 +79,19 @@ class _CanvasPanelMappedButtons {
 
   bool get _penTail => _state._toolHolds.penTail;
 
+  /// The tail is read on every hover sample and at every contact this
+  /// canvas hears: that is what makes turning the pen over — not touching
+  /// down with it — the moment the eraser arrives, under every tool.
+  void _syncTail() => _state._toolHolds.syncPenTail(
+    hold: _state.widget.onTemporaryToolHold,
+    release: _state.widget.onTemporaryToolRelease,
+  );
+
   void hover(PointerHoverEvent event) {
     if (!_reads(event)) {
       return;
     }
+    _syncTail();
     final buttons = canvasPressButtons(event);
     final before = _lastHoverButtons;
     _lastHoverButtons = buttons;
@@ -111,8 +132,23 @@ class _CanvasPanelMappedButtons {
     if (controlOwnsTap(event.pointer)) {
       return;
     }
+    if (_busy) {
+      return;
+    }
+    _syncTail();
     final mapping = canvasMappingFor(event, penTailActive: _penTail);
-    if (mapping == null || _busy || _pick is _ContactPick) {
+    if (mapping == null) {
+      // No button — or a tail that speaks over one: a pen turned
+      // tail-down erases with its contact. ⛔Not asked for the primary
+      // bit: the view does not ask it of a tail's press it hears
+      // either (`mappedErase`), and a driver that reports the tail's
+      // contact as its own switch need not set it.
+      if (_state._toolHolds.penTailErases) {
+        _handOver(event);
+      }
+      return;
+    }
+    if (_pick is _ContactPick) {
       return;
     }
     switch (mapping.action) {
@@ -129,13 +165,26 @@ class _CanvasPanelMappedButtons {
       case CanvasPointerAction.eyedropper:
         _hold(_ContactPick(mapping.release, event.pointer));
         _pickAt(event);
-      // The eraser's press draws: the drawing view's. The pan is the
-      // viewport gesture layer's.
-      case CanvasPointerAction.eraser ||
-          CanvasPointerAction.pan ||
-          CanvasPointerAction.none:
+      // The eraser's press draws: the drawing view's, heard or handed.
+      case CanvasPointerAction.eraser:
+        _handOver(event);
+      // The pan is the viewport gesture layer's.
+      case CanvasPointerAction.pan || CanvasPointerAction.none:
         break;
     }
+  }
+
+  /// Hands the drawing view a press that erases, when it could not hear it
+  /// itself — the layer of the tool in hand took it. What the view makes of
+  /// it is the view's: the hold on the tool, the stroke, its landing.
+  void _handOver(PointerDownEvent event) {
+    final holds = _state._toolHolds;
+    final door = holds.handOver;
+    if (door == null || holds.heardByTheView.contains(event.pointer)) {
+      return;
+    }
+    _handedOver.add(event.pointer);
+    door(event);
   }
 
   bool _heldSinceHover(PointerDownEvent event) =>
@@ -143,6 +192,10 @@ class _CanvasPanelMappedButtons {
       0;
 
   void move(PointerMoveEvent event) {
+    if (_handedOver.contains(event.pointer)) {
+      _state._toolHolds.handOver?.call(event);
+      return;
+    }
     if (!_reads(event) || controlOwnsTap(event.pointer)) {
       return;
     }
@@ -181,6 +234,9 @@ class _CanvasPanelMappedButtons {
   /// the canvas has become since (F-232 — an ending that stood behind a
   /// gate left the tool held).
   void up(PointerEvent event) {
+    if (_handedOver.remove(event.pointer)) {
+      _state._toolHolds.handOver?.call(event);
+    }
     _lastContactButtons.remove(event.pointer);
     final pick = _pick;
     if (pick is _ContactPick && pick.pointer == event.pointer) {

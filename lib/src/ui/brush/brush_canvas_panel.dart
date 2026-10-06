@@ -4,7 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, PointerHoverEvent, kPrimaryButton;
+    show PointerDeviceKind, PointerHoverEvent;
 import 'package:flutter/material.dart';
 
 import '../canvas/shown_cels.dart';

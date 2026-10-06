@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
@@ -36,6 +37,16 @@ import '../helpers/device_viewport.dart';
 /// drive a panel wired as the shell wires one — a hold goes through the
 /// real [TemporaryTool] — across the whole matrix: ten tools × three
 /// grounds × the roads a button is pressed by.
+///
+/// 🚨★★★**AND A PRESS THAT ERASES ERASES UNDER EVERY TOOL** — the other
+/// half of the same table (`mapped-eraser-and-pen-tail-under-every-tool`).
+/// A button mapped to the eraser and the pen's tail DRAW, so their stroke
+/// is the drawing view's; 🧪measured 2026-10-07, their four roads (a mouse
+/// button · a pen's barrel pressed in hover and then touched down · a
+/// barrel down at the contact · the pen turned over) erased under the
+/// brush, the eraser, the bucket and the guide, and under none of the six
+/// tools whose own layer lies over that view. The panel reads the tail in
+/// the air and hands the view the press it could not hear.
 void main() {
   tearDown(() {
     AppInput.settings.value = AppInputSettings.testCorpusBaseline;
@@ -123,6 +134,310 @@ void main() {
       });
     }
   }
+
+  for (final tool in CanvasTool.values) {
+    group('a press that ERASES, with the ${tool.name} in hand', () {
+      const eraserOnTheBarrel = AppInputSettings(
+        canvasRightClick: CanvasPointerMapping(
+          action: CanvasPointerAction.eraser,
+        ),
+      );
+      const tipAndBarrel = kPrimaryButton | kPrimaryStylusButton;
+
+      /// The whole of what an erasing press may do: one hold on the eraser,
+      /// given back, the ink under it gone — and nothing of the tool that
+      /// was in hand.
+      void expectItErasedAndNothingElse(_Shell shell) {
+        expect(shell.inkAt(40, 30), 0, reason: 'erased along the drag');
+        expect(shell.holds, [CanvasTool.eraser], reason: 'ONE hold');
+        expect(shell.releases, [false], reason: 'spring back');
+        expect(shell.tool, tool, reason: 'and the tool is back');
+        expect(shell.picked, isEmpty, reason: 'no pick');
+        expect(shell.selection.region, isNull, reason: 'no marquee');
+        expect(_tester(shell).takeException(), isNull);
+      }
+
+      testWidgets('🚨a MOUSE button mapped to the eraser erases with that '
+          'very press, along its drag', (tester) async {
+        AppInput.settings.value = eraserOnTheBarrel;
+        final shell = await _Shell.inked(tester, tool: tool);
+
+        final right = await tester.startGesture(
+          shell.at(const Offset(20, 30)),
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pump();
+        expect(shell.tool, CanvasTool.eraser, reason: 'while it is held');
+        await right.moveTo(shell.at(const Offset(40, 30)));
+        await tester.pump();
+        await right.moveTo(shell.at(const Offset(60, 30)));
+        await tester.pump();
+        await right.up();
+        await tester.pump();
+
+        expectItErasedAndNothingElse(shell);
+      });
+
+      testWidgets("🚨a pen's BARREL pressed in hover and then touched down "
+          'erases from the contact — the hover alone takes no tool, as under '
+          'the brush', (tester) async {
+        AppInput.settings.value = eraserOnTheBarrel;
+        final shell = await _Shell.inked(tester, tool: tool);
+
+        await shell.hover(tester, const Offset(20, 30), buttons: 0);
+        await shell.hover(
+          tester,
+          const Offset(20, 30),
+          buttons: kPrimaryStylusButton,
+        );
+        expect(shell.holds, isEmpty, reason: 'the eraser arrives with a press');
+        await shell.contact(
+          tester,
+          const Offset(20, 30),
+          buttons: tipAndBarrel,
+        );
+        expect(shell.tool, CanvasTool.eraser);
+        await shell.contactMoves(
+          tester,
+          const Offset(60, 30),
+          buttons: tipAndBarrel,
+        );
+        await shell.contactLifts(tester, const Offset(60, 30));
+        await shell.hover(tester, const Offset(60, 30), buttons: 0);
+
+        expectItErasedAndNothingElse(shell);
+      });
+
+      testWidgets('🚨a barrel already DOWN at the contact erases with it', (
+        tester,
+      ) async {
+        AppInput.settings.value = eraserOnTheBarrel;
+        final shell = await _Shell.inked(tester, tool: tool);
+
+        await shell.contact(
+          tester,
+          const Offset(20, 30),
+          buttons: tipAndBarrel,
+        );
+        expect(shell.tool, CanvasTool.eraser);
+        await shell.contactMoves(
+          tester,
+          const Offset(60, 30),
+          buttons: tipAndBarrel,
+        );
+        await shell.contactLifts(tester, const Offset(60, 30));
+
+        expectItErasedAndNothingElse(shell);
+      });
+
+      testWidgets('🚨the pen turned TAIL-DOWN is the eraser from the flip — '
+          'in the air, before it touches — and until it is turned back',
+          (tester) async {
+        final shell = await _Shell.inked(tester, tool: tool);
+        final raw = _rawPen();
+
+        // HID Invert with nothing touching: turned over in the air.
+        raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+        await shell.hover(tester, const Offset(20, 30), buttons: 0);
+        expect(shell.tool, CanvasTool.eraser, reason: 'at the flip');
+        expect(shell.inkAt(40, 30), 255, reason: '⛔premise: nothing yet');
+
+        // The tail touches: HID Eraser beside the Invert.
+        raw.debugInjectState(
+          const QaPenRawState(flags: 0x08 | 0x04, sequence: 2),
+        );
+        await shell.contact(
+          tester,
+          const Offset(20, 30),
+          buttons: kPrimaryButton,
+        );
+        await shell.contactMoves(
+          tester,
+          const Offset(60, 30),
+          buttons: kPrimaryButton,
+        );
+        await shell.contactLifts(tester, const Offset(60, 30));
+        raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 3));
+        await shell.hover(tester, const Offset(60, 30), buttons: 0);
+        expect(shell.tool, CanvasTool.eraser, reason: 'lifted, still turned');
+        expect(shell.releases, isEmpty, reason: 'one flip, one erasing pass');
+
+        raw.debugInjectState(const QaPenRawState(flags: 0, sequence: 4));
+        await shell.hover(tester, const Offset(60, 30), buttons: 0);
+
+        expectItErasedAndNothingElse(shell);
+        raw.debugReset();
+      });
+
+      testWidgets('🚨a tail whose FIRST report is the contact erases with '
+          'that contact — and it is not a press of the tool in hand', (
+        tester,
+      ) async {
+        final shell = await _Shell.inked(tester, tool: tool);
+        final raw = _rawPen();
+
+        // No hover came first: the driver reports nothing in the air.
+        raw.debugInjectState(
+          const QaPenRawState(flags: 0x08 | 0x04, sequence: 1),
+        );
+        await shell.contact(
+          tester,
+          const Offset(20, 30),
+          buttons: kPrimaryButton,
+        );
+        expect(shell.holds, [CanvasTool.eraser], reason: 'at the contact');
+        await shell.contactMoves(
+          tester,
+          const Offset(60, 30),
+          buttons: kPrimaryButton,
+        );
+        await shell.contactLifts(tester, const Offset(60, 30));
+        raw.debugInjectState(const QaPenRawState(flags: 0, sequence: 2));
+        await shell.hover(tester, const Offset(60, 30), buttons: 0);
+
+        expectItErasedAndNothingElse(shell);
+        raw.debugReset();
+      });
+
+      for (final ground in [_Ground.emptyFrame, _Ground.nothingDrawn]) {
+        testWidgets('with no cel to erase (${ground.said}), the button '
+            'holds nothing — and the frame is asked for as often as under '
+            'any other tool', (tester) async {
+          AppInput.settings.value = eraserOnTheBarrel;
+          final shell = await _Shell.pump(tester, tool: tool, ground: ground);
+
+          final right = await tester.startGesture(
+            shell.at(const Offset(20, 30)),
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await tester.pump();
+          await right.moveTo(shell.at(const Offset(60, 30)));
+          await right.up();
+          await tester.pump();
+
+          expect(shell.holds, isEmpty);
+          expect(shell.tool, tool);
+          expect(
+            shell.cellAsks,
+            ground == _Ground.emptyFrame ? 1 : 0,
+            reason: 'ONCE where a view stands down on the frame, whether it '
+                'heard the press or was handed it; never where none is built',
+          );
+          expect(shell.drewSomething, isFalse);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('with no cel to erase (${ground.said}), the tail still '
+            'holds the tool from the flip', (tester) async {
+          final shell = await _Shell.pump(tester, tool: tool, ground: ground);
+          final raw = _rawPen();
+
+          raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+          await shell.hover(tester, const Offset(20, 30), buttons: 0);
+          expect(shell.tool, CanvasTool.eraser);
+
+          raw.debugInjectState(const QaPenRawState(flags: 0, sequence: 2));
+          await shell.hover(tester, const Offset(20, 30), buttons: 0);
+          expect(shell.tool, tool);
+          expect(shell.holds, [CanvasTool.eraser]);
+          expect(shell.releases, [false]);
+          expect(tester.takeException(), isNull);
+          raw.debugReset();
+        });
+      }
+    });
+  }
+
+  group('a press handed to the drawing view', () {
+    const eraserOnTheBarrel = AppInputSettings(
+      canvasRightClick: CanvasPointerMapping(
+        action: CanvasPointerAction.eraser,
+      ),
+    );
+
+    testWidgets('a 「keep」 release leaves the eraser in hand', (tester) async {
+      AppInput.settings.value = const AppInputSettings(
+        canvasRightClick: CanvasPointerMapping(
+          action: CanvasPointerAction.eraser,
+          release: CanvasPointerRelease.keep,
+        ),
+      );
+      final shell = await _Shell.inked(tester, tool: CanvasTool.select);
+
+      final right = await tester.startGesture(
+        shell.at(const Offset(20, 30)),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await tester.pump();
+      await right.moveTo(shell.at(const Offset(60, 30)));
+      await right.up();
+      await tester.pump();
+
+      expect(shell.inkAt(40, 30), 0);
+      expect(shell.releases, [true]);
+      expect(shell.tool, CanvasTool.eraser, reason: 'kept');
+    });
+
+    testWidgets('🚨ONE at a time: a second erasing press while one is being '
+        'drawn waits its turn, and the first still lands and lets go', (
+      tester,
+    ) async {
+      AppInput.settings.value = eraserOnTheBarrel;
+      final shell = await _Shell.inked(tester, tool: CanvasTool.select);
+
+      final right = await tester.startGesture(
+        shell.at(const Offset(20, 30)),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await right.moveTo(shell.at(const Offset(40, 30)));
+      // A pen comes down beside it with its barrel held.
+      await shell.contact(
+        tester,
+        const Offset(20, 60),
+        buttons: kPrimaryButton | kPrimaryStylusButton,
+      );
+      await right.moveTo(shell.at(const Offset(60, 30)));
+      await right.up();
+      await tester.pump();
+
+      expect(shell.inkAt(40, 30), 0, reason: 'the first stroke landed');
+      expect(shell.holds, [CanvasTool.eraser], reason: 'one hold, not two');
+      expect(shell.releases, [false], reason: 'and it let go');
+      await shell.contactLifts(tester, const Offset(20, 60));
+      expect(shell.tool, CanvasTool.select);
+    });
+
+    testWidgets('🚨a marquee being dragged is not taken from under the hand '
+        'by a barrel that goes down in the middle of it', (tester) async {
+      AppInput.settings.value = eraserOnTheBarrel;
+      final shell = await _Shell.inked(tester, tool: CanvasTool.select);
+
+      await shell.contact(
+        tester,
+        const Offset(10, 10),
+        buttons: kPrimaryButton,
+      );
+      await shell.contactMoves(
+        tester,
+        const Offset(50, 40),
+        buttons: kPrimaryButton,
+      );
+      await shell.contactMoves(
+        tester,
+        const Offset(70, 50),
+        buttons: kPrimaryButton | kPrimaryStylusButton,
+      );
+      await shell.contactLifts(tester, const Offset(70, 50));
+
+      expect(shell.holds, isEmpty);
+      expect(shell.inkAt(40, 30), 255, reason: 'nothing was erased');
+      expect(shell.selection.region, isNotNull, reason: 'the marquee landed');
+    });
+  });
 
   testWidgets('a contact TAKES OVER a hover-engaged hold: one hold session, '
       'one release, and it picks from the contact on (R26 #19/#20)', (
@@ -697,6 +1012,57 @@ class _Shell {
   /// Where each pick was sampled, on the CANVAS.
   final picked = <Offset>[];
 
+  /// The canvas's selection — a tool layer that acted on a press it should
+  /// have left alone shows here.
+  final selection = CanvasSelectionCommands();
+
+  /// How often a press asked the shell for a cel (I-10).
+  int cellAsks = 0;
+
+  /// The alpha of the cel's pixel at ([x], [y]) — 0 where nothing is drawn
+  /// or what was drawn is erased.
+  int inkAt(int x, int y) {
+    final surface = _coordinator.frameStore.hotBakedSurfaceOrNull(
+      _coordinator.activeFrameKey,
+    );
+    if (surface == null) {
+      return 0;
+    }
+    final size = surface.tileSize;
+    final tile = surface.tileAt(TileCoord(x: x ~/ size, y: y ~/ size));
+    return tile == null
+        ? 0
+        : tile.pixels[tile.byteOffsetForPixel(x: x % size, y: y % size) + 3];
+  }
+
+  /// A shell on a cel with a line of ink along y = 30 — drawn with the
+  /// brush by a mouse, through the panel — and [tool] then put in hand.
+  static Future<_Shell> inked(
+    WidgetTester tester, {
+    required CanvasTool tool,
+  }) async {
+    final shell = await pump(tester, tool: CanvasTool.brush);
+    const mouse = PointerDeviceKind.mouse;
+    await shell.contact(
+      tester,
+      const Offset(20, 30),
+      buttons: kPrimaryButton,
+      kind: mouse,
+    );
+    await shell.contactMoves(
+      tester,
+      const Offset(60, 30),
+      buttons: kPrimaryButton,
+      kind: mouse,
+    );
+    await shell.contactLifts(tester, const Offset(60, 30), kind: mouse);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(shell.inkAt(40, 30), 255, reason: '⛔premise: the ink is there');
+    shell.take(tool);
+    await tester.pump();
+    return shell;
+  }
+
   CanvasTool get tool => _brush.value.tool;
 
   /// Puts [tool] in hand, as the toolbar or a tool key would.
@@ -824,7 +1190,11 @@ class _Shell {
                 : frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             brushToolState: brush,
-            selectionCommands: CanvasSelectionCommands(),
+            selectionCommands: shell.selection,
+            onPressNeedsCel: () {
+              shell.cellAsks += 1;
+              return false;
+            },
             cutPieceSlot: CutPieceSlot(),
             toolInputEnabled: toolInput,
             viewportControlsBuilder: controls,
@@ -853,4 +1223,17 @@ class _Shell {
     await tester.pump();
     return shell;
   }
+}
+
+WidgetTester _tester(_Shell shell) => shell._tester;
+
+/// The raw pen service running on injected reports — which end of the pen
+/// is down is the driver's word, and these say it.
+RawPenInputService _rawPen() {
+  final raw = RawPenInputService.instance;
+  addTearDown(raw.debugReset);
+  RawPenInputService.debugClockOverride = () => DateTime(2024);
+  raw.debugPollOverride = () => null;
+  raw.start();
+  return raw;
 }

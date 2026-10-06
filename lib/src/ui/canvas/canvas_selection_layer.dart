@@ -46,6 +46,7 @@ import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
 import '../widgets/app_icon_button.dart';
+import 'canvas_press.dart';
 import 'canvas_viewport_offset.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
@@ -2091,8 +2092,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     )) {
       return;
     }
-    if (event.buttons != kPrimaryButton &&
-        event.kind != PointerDeviceKind.touch) {
+    // No tool this layer mounts for is one a pen's tail holds.
+    if (!canvasPressIsTheTools(event, tailsToolInHand: (_) => false)) {
       return;
     }
     final canvasPoint = _toCanvas(event.localPosition);

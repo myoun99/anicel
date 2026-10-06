@@ -412,7 +412,13 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
+    _toolHolds.handOver = _door;
   }
+
+  /// This view's door for a press it could not hear
+  /// ([CanvasToolHolds.handOver]) — one closure, so the view takes down
+  /// the door it put up and no other.
+  late final void Function(PointerEvent event) _door = _press.handedOver;
 
   @override
   void didUpdateWidget(covariant InteractiveBrushEditCanvasView oldWidget) {
@@ -423,6 +429,13 @@ class _InteractiveBrushEditCanvasViewState
     // UI-thread hitch — the constant flip lag. A cel identity change now
     // resets the per-stroke state in place; everything else (session
     // state, lineage) flows through the ordinary rebuild.
+    if (!identical(oldWidget.toolHolds, widget.toolHolds)) {
+      final before = oldWidget.toolHolds ?? _ownToolHolds;
+      if (identical(before.handOver, _door)) {
+        before.handOver = null;
+      }
+      _toolHolds.handOver = _door;
+    }
     if (oldWidget.layerId != widget.layerId ||
         oldWidget.frameId != widget.frameId) {
       _endStrokeAfterTheFrame();
@@ -467,6 +480,9 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
+    if (identical(_toolHolds.handOver, _door)) {
+      _toolHolds.handOver = null;
+    }
     // A view taken away mid-stroke still hears the rest of the gesture —
     // Flutter routes it along the path the press found — and must not land
     // it: what it would land on is torn down right here.

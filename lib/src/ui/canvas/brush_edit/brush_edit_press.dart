@@ -91,7 +91,35 @@ class _BrushEditPress {
     return true;
   }
 
+  /// A pointer event of a press this view could not hear, as the panel's
+  /// listener heard it ([CanvasToolHolds.handOver]): one that erases, and
+  /// landed on the layer another tool lays over this view. It comes in
+  /// through the handler its own kind comes in through, placed in this
+  /// view's box, so the stroke it makes is the stroke a heard press makes.
+  void handedOver(PointerEvent event) {
+    final box = _state.context.findRenderObject();
+    if (box is! RenderBox || !box.attached) {
+      return;
+    }
+    final toHere = Matrix4.tryInvert(box.getTransformTo(null));
+    if (toHere == null) {
+      return;
+    }
+    final here = event.transformed(toHere);
+    switch (here) {
+      case PointerDownEvent():
+        pointerDown(here);
+      case PointerMoveEvent():
+        pointerMove(here);
+      case PointerUpEvent():
+        pointerUp(here);
+      case PointerCancelEvent():
+        pointerCancel(here);
+    }
+  }
+
   void pointerDown(PointerDownEvent event) {
+    _state._toolHolds.heardByTheView.add(event.pointer);
     // (No deferred stroke commit to land first: pen-up commits inside its
     // own event now — R25-④'s one-frame deferral existed to hide a
     // synchronous re-materialize that the promotion round deleted.)
@@ -117,7 +145,7 @@ class _BrushEditPress {
     // reach this stroke's settings snapshot directly — the tool switch it
     // requests is asynchronous, and the stroke starts now.
     _state._overlay.syncPenTailMapping();
-    var mappedErase = _state._overlay.penTailErases;
+    var mappedErase = _state._toolHolds.penTailErases;
     final mapping = canvasMappingFor(
       event,
       penTailActive: _state._toolHolds.penTail,
@@ -274,6 +302,7 @@ class _BrushEditPress {
   }
 
   void pointerUp(PointerUpEvent event) {
+    _state._toolHolds.heardByTheView.remove(event.pointer);
     // A TAP on an empty cel is a dot, so the press still begins here — and
     // then this same event ends it: one dab, one undo entry.
     _state._celPress.resumePressThatMadeTheCel(event.pointer);
@@ -377,6 +406,7 @@ class _BrushEditPress {
   }
 
   void pointerCancel(PointerCancelEvent event) {
+    _state._toolHolds.heardByTheView.remove(event.pointer);
     if (_state._celPress._pendingCelPress?.pointer == event.pointer) {
       _state._celPress._pendingCelPress = null;
     }

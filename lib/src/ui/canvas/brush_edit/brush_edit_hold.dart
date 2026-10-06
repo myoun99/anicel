@@ -26,11 +26,8 @@ class _BrushEditHold {
   CanvasPointerRelease? _mappedHoldRelease;
 
   /// A BUTTON holds the tool — this view's eraser, or a pick the panel
-  /// reads ([CanvasToolHolds.pick]). Whoever engaged first keeps it: the
-  /// pen's tail does not take the tool from under one, and a second mapped
-  /// press waits its turn.
-  bool get buttonHoldsTheTool =>
-      _mappedHoldPointer != null || _state._toolHolds.pick;
+  /// reads ([CanvasToolHolds.buttonHoldsTheTool]).
+  bool get buttonHoldsTheTool => _state._toolHolds.buttonHoldsTheTool;
 
   void handlePointerHover(PointerHoverEvent event) {
     if (!_state.widget.editable) {
@@ -50,6 +47,7 @@ class _BrushEditHold {
   void holdEraser(int pointer, CanvasPointerRelease release) {
     _mappedHoldPointer = pointer;
     _mappedHoldRelease = release;
+    _state._toolHolds.erase = true;
     _state.widget.onTemporaryToolHold?.call(CanvasTool.eraser);
   }
 
@@ -62,6 +60,7 @@ class _BrushEditHold {
     final keep = _mappedHoldRelease == CanvasPointerRelease.keep;
     _mappedHoldPointer = null;
     _mappedHoldRelease = null;
+    _state._toolHolds.erase = false;
     _state.widget.onTemporaryToolRelease?.call(keep: keep);
   }
 }

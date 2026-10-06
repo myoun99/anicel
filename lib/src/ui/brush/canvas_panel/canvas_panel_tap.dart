@@ -194,8 +194,14 @@ class _CanvasPanelTap {
     // now, under this layer as under every other
     // ([_CanvasPanelMappedButtons]): a press with a mapped button down is
     // whatever that button is mapped to — the pick included — and never a
-    // tool tap as well.
-    if (event.buttons != kPrimaryButton) {
+    // tool tap as well. Nor is a pen's TAIL, unless the pick it is mapped
+    // to is this very tool ([canvasPressIsTheTools]).
+    if (!canvasPressIsTheTools(
+      event,
+      tailsToolInHand: (tail) =>
+          tail == CanvasPointerAction.eyedropper &&
+          _state._brush.tool == CanvasTool.eyedropper,
+    )) {
       return;
     }
     // TS9: and a finger
