@@ -5,6 +5,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_viewport.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../dashed_path.dart';
 import '../theme/app_theme.dart';
 import '../repaint_props.dart';
 import '../timeline/memo_token.dart';
@@ -293,34 +294,18 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// here already (R28-S pulled it out of the selection layer so the same
   /// ants show under every tool), so 「앞으로 개미행렬은 이 공통 ui를 사용」
   /// is a rule about where the NEXT one goes rather than a change here.
-  void _paintAnts(Canvas canvas, Path path, double phase) {
-    final white = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = Colors.white;
-    final dashes = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = _antColour;
-    canvas.drawPath(path, white);
-    canvas.drawPath(_dashPath(path, phase), dashes);
-  }
-
-  Path _dashPath(Path source, double phase) {
-    final dashed = Path();
-    for (final metric in source.computeMetrics()) {
-      var distance = -phase % (_dashOn + _dashOff);
-      while (distance < metric.length) {
-        final start = distance.clamp(0.0, metric.length);
-        final end = (distance + _dashOn).clamp(0.0, metric.length);
-        if (end > start) {
-          dashed.addPath(metric.extractPath(start, end), Offset.zero);
-        }
-        distance += _dashOn + _dashOff;
-      }
-    }
-    return dashed;
-  }
+  ///
+  /// The pair itself is drawn in one place ([paintDashedOutline]) — a
+  /// dashed line that stands still is the same pair with no phase.
+  void _paintAnts(Canvas canvas, Path path, double phase) =>
+      paintDashedOutline(
+        canvas,
+        path,
+        color: _antColour,
+        on: _dashOn,
+        off: _dashOff,
+        phase: phase,
+      );
 
   @override
   Object get props => (

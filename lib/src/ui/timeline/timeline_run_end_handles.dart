@@ -6,6 +6,7 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_repeat.dart';
+import '../dashed_path.dart';
 import 'axis_turn.dart' show extentAlong;
 import 'timeline_cell_style.dart'
     show timelineDrawingHeldColor, timelineTextOnColor;
@@ -476,14 +477,12 @@ void paintTimelineRunPatternSpan(
     ..color = ink.withValues(alpha: 0.85)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2;
-  final path = Path()..addRRect(rrect.deflate(1));
-  for (final metric in path.computeMetrics()) {
-    var start = 0.0;
-    while (start < metric.length) {
-      final end = math.min(start + _patternDashLength, metric.length);
-      canvas.drawPath(metric.extractPath(start, end), stroke);
-      start = end + _patternDashGap;
-    }
+  for (final dash in dashesAlong(
+    Path()..addRRect(rrect.deflate(1)),
+    on: _patternDashLength,
+    off: _patternDashGap,
+  )) {
+    canvas.drawPath(dash, stroke);
   }
 }
 

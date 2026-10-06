@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../dashed_path.dart';
 import '../repaint_props.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'axis_turn.dart';
@@ -81,13 +82,12 @@ class TimelineSilhouettePainter extends CustomPainter with RepaintOnProps {
       ..color = accent
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    for (final metric in (Path()..addRRect(box)).computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final end = (distance + _on).clamp(0.0, metric.length);
-        canvas.drawPath(metric.extractPath(distance, end), stroke);
-        distance += _on + _off;
-      }
+    for (final dash in dashesAlong(
+      Path()..addRRect(box),
+      on: _on,
+      off: _off,
+    )) {
+      canvas.drawPath(dash, stroke);
     }
   }
 }
