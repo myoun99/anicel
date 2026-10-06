@@ -3,16 +3,51 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 
 /// The grid the cel-text tests stand on: small tiles, so a test can name
 /// every pixel it cares about and a failure prints something readable.
 const int celTextTestTileSize = 8;
 const CanvasSize celTextTestCanvas = CanvasSize(width: 32, height: 32);
+
+/// The cel the cel-text tests set their texts on.
+const BrushFrameKey celTextTestKey = BrushFrameKey(
+  projectId: ProjectId('p'),
+  trackId: TrackId('t'),
+  cutId: CutId('c'),
+  layerId: LayerId('l'),
+  frameId: FrameId('f'),
+);
+
+/// An editing stack on the test grid, standing on [celTextTestKey] with
+/// nothing drawn there.
+BrushFrameEditingCoordinator editingStack() => BrushFrameEditingCoordinator(
+  initialFrameKey: celTextTestKey,
+  frameStore: BrushFrameStore(),
+  sessionStore: BrushFrameEditSessionStore(
+    canvasSize: celTextTestCanvas,
+    tileSize: celTextTestTileSize,
+  ),
+  historyPolicy: const BrushHistoryPolicy(),
+);
+
+/// An editing stack whose cel at [celTextTestKey] holds [picture].
+BrushFrameEditingCoordinator editingStackOn(BitmapSurface picture) =>
+    editingStack()..restoreSurfaceSnapshot(celTextTestKey, picture);
 
 /// A tile of [celTextTestTileSize] holding [pixels] — `(x, y)` to straight
 /// RGBA — and nothing anywhere else.
