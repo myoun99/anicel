@@ -1422,6 +1422,23 @@ enum AppStrings {
   String get textToolLineHeight => _s('textToolLineHeight');
   String get textToolBackground => _s('textToolBackground');
 
+  /// The ＋ over the list of faces, and a brought face's own delete.
+  String get textToolFontImport => _s('textToolFontImport');
+  String get textToolFontDelete => _s('textToolFontDelete');
+
+  /// ⚠️WARNINGS, written at the face they are about (유저 2026-10-06: 「이
+  /// 글꼴은 편집하는 문서에 넣도록 허용되지않아서 다른 기기에서 열면 바뀐다
+  /// 이런식으로 적어두자」): a face its maker does not let ride in a project,
+  /// and a face a text is written in that this device does not hold.
+  String get textToolFontStaysOnThisDevice =>
+      _s('textToolFontStaysOnThisDevice');
+  String get textToolFontNotOnThisDevice => _s('textToolFontNotOnThisDevice');
+
+  /// Why a picked file was not taken as a font.
+  String get textToolFontUnreadable => _s('textToolFontUnreadable');
+  String get textToolFontIsTheApps => _s('textToolFontIsTheApps');
+  String get textToolFontNotKept => _s('textToolFontNotKept');
+
   String get toolSelect => _s('toolSelect');
   String get toolTransform => _s('toolTransform');
   String get toolShapeFill => _s('toolShapeFill');
@@ -2478,6 +2495,16 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixed',
     'textToolLineHeight': 'Line spacing',
     'textToolBackground': 'Background',
+    'textToolFontImport': 'Import a font file',
+    'textToolFontDelete': 'Delete font',
+    'textToolFontStaysOnThisDevice':
+        'This font may not be put inside a document that is edited, so it '
+        'changes when opened on another device.',
+    'textToolFontNotOnThisDevice':
+        'This font is not on this device, so it shows in another.',
+    'textToolFontUnreadable': 'That file could not be read as a font.',
+    'textToolFontIsTheApps': "That font is already one of the app's own.",
+    'textToolFontNotKept': 'That font could not be saved.',
     'toolSelect': 'Select',
     'toolTransform': 'Transform',
     'toolShapeFill': 'Shape Fill',
@@ -3728,6 +3755,15 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行間',
     'textToolBackground': '背景',
+    'textToolFontImport': 'フォントファイルを読み込む',
+    'textToolFontDelete': 'フォントを削除',
+    'textToolFontStaysOnThisDevice':
+        'このフォントは編集する文書への埋め込みが許可されていないため、'
+        '別の端末で開くと別のフォントになります。',
+    'textToolFontNotOnThisDevice': 'この端末にないフォントのため、別のフォントで表示されます。',
+    'textToolFontUnreadable': 'フォントファイルとして読み込めませんでした。',
+    'textToolFontIsTheApps': 'アプリにすでに入っているフォントです。',
+    'textToolFontNotKept': 'フォントを保存できませんでした。',
     'toolSelect': '選択',
     'toolTransform': '変形',
     // TVPaint's own term for this verb in Japanese studios.
@@ -5075,6 +5111,14 @@ enum AppStrings {
     'textToolWidthFixed': '고정',
     'textToolLineHeight': '줄 간격',
     'textToolBackground': '배경',
+    'textToolFontImport': '글꼴 파일 가져오기',
+    'textToolFontDelete': '글꼴 삭제',
+    'textToolFontStaysOnThisDevice':
+        '이 글꼴은 편집하는 문서에 넣도록 허용되지 않아서 다른 기기에서 열면 바뀝니다.',
+    'textToolFontNotOnThisDevice': '이 기기에 없는 글꼴이라 다른 글꼴로 보입니다.',
+    'textToolFontUnreadable': '글꼴 파일로 읽을 수 없습니다.',
+    'textToolFontIsTheApps': '앱에 이미 들어 있는 글꼴입니다.',
+    'textToolFontNotKept': '글꼴을 저장하지 못했습니다.',
     'toolSelect': '선택',
     'toolTransform': '변형',
     'toolShapeFill': '도형 채우기',
@@ -6514,6 +6558,17 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixe',
     'textToolLineHeight': 'Interligne',
     'textToolBackground': 'Fond',
+    'textToolFontImport': 'Importer un fichier de police',
+    'textToolFontDelete': 'Supprimer la police',
+    'textToolFontStaysOnThisDevice':
+        'Cette police ne peut pas être intégrée à un document modifiable : '
+        "elle changera à l'ouverture sur un autre appareil.",
+    'textToolFontNotOnThisDevice':
+        "Cette police n'est pas sur cet appareil : le texte s'affiche avec "
+        'une autre.',
+    'textToolFontUnreadable': "Ce fichier n'a pas pu être lu comme une police.",
+    'textToolFontIsTheApps': "Cette police fait déjà partie de l'application.",
+    'textToolFontNotKept': "La police n'a pas pu être enregistrée.",
     'toolSelect': 'Sélection',
     'toolTransform': 'Transformation',
     'toolShapeFill': 'Remplissage de forme',
@@ -7806,6 +7861,13 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行距',
     'textToolBackground': '背景',
+    'textToolFontImport': '导入字体文件',
+    'textToolFontDelete': '删除字体',
+    'textToolFontStaysOnThisDevice': '此字体不允许嵌入可编辑的文档，在其他设备上打开时会变成其他字体。',
+    'textToolFontNotOnThisDevice': '此设备上没有该字体，因此以其他字体显示。',
+    'textToolFontUnreadable': '无法将该文件读取为字体。',
+    'textToolFontIsTheApps': '该字体已内置于应用中。',
+    'textToolFontNotKept': '无法保存该字体。',
     'toolSelect': '选择',
     'toolTransform': '变换',
     'toolShapeFill': '形状填充',
