@@ -103,6 +103,9 @@ void main() {
 
   testWidgets('🚨Alt held is the eyedropper under every tool whose own drag '
       'does not read Alt, and letting go gives the tool back', (tester) async {
+    // ⛔Spelled here, not asked of the predicate: an oracle that follows the
+    // code it checks agrees with whatever the code says.
+    const keepsItsAlt = {CanvasTool.select, CanvasTool.move};
     final brush = await pumpShell(tester);
     for (final tool in CanvasTool.values) {
       await take(tester, brush, tool);
@@ -110,7 +113,7 @@ void main() {
       await tester.pump();
       expect(
         brush.value.tool,
-        canvasToolReadsAlt(tool) ? tool : CanvasTool.eyedropper,
+        keepsItsAlt.contains(tool) ? tool : CanvasTool.eyedropper,
         reason: '${tool.name}, Alt held',
       );
       await tester.sendKeyUpEvent(LogicalKeyboardKey.altLeft);
