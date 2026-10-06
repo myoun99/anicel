@@ -667,6 +667,11 @@ class FrameRangeMoveDrag {
   /// is the base's block, and the hop starts where that block lives.
   final LayerId? _grabLayerId;
 
+  /// The row a step's row hop is measured FROM — and the row a step with no
+  /// frame delta has come back to: the row grabbed, or the selection's
+  /// anchor for a caller that names none.
+  LayerId get _hopOrigin => _grabLayerId ?? _selectionBefore.layerId;
+
   /// The single-row subject: the row as it stood, and the start of the
   /// block that anchors the group. ⛔ONE field for the pair — they are
   /// set together and read together, and two nullables let "a row with no
@@ -1176,7 +1181,7 @@ class FrameRangeMoveDrag {
     final lattices = step.lattices;
     final displayDelta = layerIndexDelta(
       lattices.rows,
-      _grabLayerId ?? step.selection.layerId,
+      _hopOrigin,
       targetLayerId,
     );
     if (displayDelta == null) {
@@ -1533,10 +1538,14 @@ class FrameRangeMoveDrag {
     // R28 #5: back at the start = the origin, not a refusal. A row change
     // still owns the step (a delta-0 drop onto a sibling row is a real
     // move), so only same-row zero deltas reset.
-    if (frameDelta == 0 &&
-        (pointedAt == null ||
-            pointedAt == selection.layerId ||
-            pointedAt == _grabLayerId)) {
+    //
+    // ↩️F-263: "same row" is the row the hop is measured from
+    // ([_hopOrigin]). It was that row OR the selection's anchor, so a span
+    // grabbed by another of its rows could not be carried one row toward
+    // its anchor — the step landing there read as "back at the start". No
+    // press reached that case while a press off the anchor dropped the
+    // selection (`Standing._seatLayer`).
+    if (frameDelta == 0 && (pointedAt == null || pointedAt == _hopOrigin)) {
       _resetPreviewToOrigin();
       return;
     }

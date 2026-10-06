@@ -961,10 +961,21 @@ class Standing {
   /// lane you are on repaints nothing.
   void _seatLayer(LayerId layerId, {TimelineRowAddress? row}) {
     var changed = false;
-    // A frame-range selection is single-layer (UI-R8): moving to another
-    // row drops it. The lane selection follows the same rule.
-    if (_selection.frameRangeSelection.value != null &&
-        _selection.frameRangeSelection.value!.layerId != layerId) {
+    // A frame-range selection lives on the rows it COVERS: moving to a row
+    // outside them drops it. The lane selection follows the same rule, on
+    // its one layer.
+    //
+    // ↩️F-263 (유저 2026-10-02): 「프레임 여러행,여러프레임 복수선택하고
+    // 이동하려고 클릭할때, 선택내의 현재 행을 클릭해야 이동시작가능함.
+    // 선택된곳 어디든 클릭하면 이동시작하도록」. It read 「a frame-range
+    // selection is single-layer (UI-R8): moving to another row drops it」 and
+    // asked the ANCHOR row — true when a selection was one row. Since it
+    // spans rows (UI-R17 #8), a press on any other row it covered was let
+    // through by the press's own question ([standOnRow], T10: inside the
+    // selection holds it) and then dropped here, so the drag that followed
+    // swept a new selection instead of carrying this one.
+    if (_selection.frameRangeSelection.value case final cells?
+        when !cells.coversLayer(layerId)) {
       _selection.clearFrameRangeSelection();
       changed = true;
     }
