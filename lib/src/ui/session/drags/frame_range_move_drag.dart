@@ -93,12 +93,14 @@ typedef MultiRowStep = ({
 
 /// The frame-axis riders shifted with a move: the camera's track with its
 /// keys shifted (null when no camera row rides), the transition's events
-/// by row, and each DIRECTION row as the row its shifted blocks make (R27 —
-/// its spans are its blocks, so they ride as blocks).
+/// by row, and each row riding as BLOCKS as the row its shifted blocks make
+/// — a DIRECTION row (R27: its spans are its blocks, so they ride as
+/// blocks) and the rows a FOLDER row of the span holds (F-311,
+/// [rowsHeldByFolderRowsOf]).
 typedef FrameAxisRiders = ({
   TransformTrack? camera,
   Map<LayerId, Map<int, InstructionEvent>> instructions,
-  Map<LayerId, Layer> directions,
+  Map<LayerId, Layer> blockRiders,
 });
 
 /// No rider moves: a PURE row hop (frameDelta 0) leaves every key where
@@ -106,7 +108,7 @@ typedef FrameAxisRiders = ({
 const FrameAxisRiders noRiders = (
   camera: null,
   instructions: {},
-  directions: {},
+  blockRiders: {},
 );
 
 /// A TRANSITION row riding a frame-range move: the GLOBAL row as it stood
@@ -117,11 +119,15 @@ const FrameAxisRiders noRiders = (
 typedef TransitionRider = ({Layer row, Set<int> starts});
 
 /// The KEY sources a frame-range move carries (P3b-2): the camera's track
-/// (with the camera row's id), the DIRECTION rows that own spans in the
-/// range, and the transition rows.
+/// (with the camera row's id), the rows that ride as BLOCKS — the DIRECTION
+/// rows that own spans in the range, joined at [FrameRangeMoveDrag.begin]
+/// by the rows a folder row holds — and the transition rows.
+///
+/// ↩️`blockRiders` was `instructionSources` while only a direction row rode
+/// this way; a folder's rows are no instruction (F-311).
 typedef KeySources = ({
   ({TransformTrack before, LayerId layerId})? camera,
-  List<Layer> instructionSources,
+  List<Layer> blockRiders,
   List<TransitionRider> transitionRiders,
 });
 
@@ -268,7 +274,7 @@ KeySources _castKeySources(
   required Transitions transitions,
 }) {
   ({TransformTrack before, LayerId layerId})? camera;
-  final instructionSources = <Layer>[];
+  final blockRiders = <Layer>[];
   bool anyKeyIn(Iterable<int> keys) => keys.any(
     (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
   );
@@ -286,7 +292,7 @@ KeySources _castKeySources(
     }
     if (layer.kind == LayerKind.instruction &&
         anyKeyIn(layer.instructions.keys)) {
-      instructionSources.add(layer);
+      blockRiders.add(layer);
     }
     // UI-R23 #3: a frame-range selection NO LONGER carries the layer's
     // own transform keys — frame selection ⊥ transform keys. The
@@ -320,7 +326,7 @@ KeySources _castKeySources(
   ];
   return (
     camera: camera,
-    instructionSources: instructionSources,
+    blockRiders: blockRiders,
     transitionRiders: transitionRiders,
   );
 }
@@ -433,7 +439,7 @@ class FrameRangeMoveDrag {
     required ({Layer layer, int groupStart})? singleRow,
     required List<({Layer commit, int offset})>? multiSources,
     required ({TransformTrack before, LayerId layerId})? cameraKeys,
-    required List<Layer>? instructionSources,
+    required List<Layer>? blockRiders,
     required List<TransitionRider> transitionRiders,
   }) : _project = roles.project,
        _selection = roles.selection,
@@ -454,7 +460,7 @@ class FrameRangeMoveDrag {
        _singleRow = singleRow,
        _multiSources = multiSources,
        _cameraKeys = cameraKeys,
-       _instructionSources = instructionSources,
+       _blockRiders = blockRiders,
        _transitionRiders = transitionRiders;
 
   /// A range-move drag on the TRACK axis — the storyboard's S rows. Null
@@ -498,7 +504,7 @@ class FrameRangeMoveDrag {
       singleRow: null,
       multiSources: sources,
       cameraKeys: null,
-      instructionSources: null,
+      blockRiders: null,
       transitionRiders: transitionRiders,
     );
   }
@@ -534,8 +540,8 @@ class FrameRangeMoveDrag {
     // beside the direction rows as the blocks they are.
     final keys = (
       camera: cast.camera,
-      instructionSources: [
-        ...cast.instructionSources,
+      blockRiders: [
+        ...cast.blockRiders,
         ...rowsHeldByFolderRowsOf(
           span,
           project: roles.project,
@@ -571,8 +577,8 @@ class FrameRangeMoveDrag {
       singleRow: subjects.singleRow,
       multiSources: subjects.multiSources,
       cameraKeys: multiSource ? keys.camera : null,
-      instructionSources: multiSource && keys.instructionSources.isNotEmpty
-          ? keys.instructionSources
+      blockRiders: multiSource && keys.blockRiders.isNotEmpty
+          ? keys.blockRiders
           : null,
       transitionRiders: keys.transitionRiders,
     );
@@ -599,7 +605,7 @@ class FrameRangeMoveDrag {
     ];
     final carriesKeys =
         keys.camera != null ||
-        keys.instructionSources.isNotEmpty ||
+        keys.blockRiders.isNotEmpty ||
         keys.transitionRiders.isNotEmpty;
     return ownRows.length != 1 ||
             carriesKeys ||
@@ -645,7 +651,7 @@ class FrameRangeMoveDrag {
     }
     if (sources.isEmpty &&
         keys.camera == null &&
-        keys.instructionSources.isEmpty &&
+        keys.blockRiders.isEmpty &&
         keys.transitionRiders.isEmpty) {
       // A span of nothing but SYNCED attach rows dies here. Their blocks
       // are borrowed exposures — the move refuses with the "edit the
@@ -776,7 +782,10 @@ class FrameRangeMoveDrag {
   /// with a `!` because two fields could not say so.
   final ({TransformTrack before, LayerId layerId})? _cameraKeys;
 
-  final List<Layer>? _instructionSources;
+  /// The rows riding the move as BLOCKS, as they stood at begin
+  /// ([KeySources]): along the frame axis by the move's delta, across no
+  /// row.
+  final List<Layer>? _blockRiders;
 
   final List<TransitionRider> _transitionRiders;
 
@@ -794,9 +803,9 @@ class FrameRangeMoveDrag {
 
   Map<LayerId, Map<int, InstructionEvent>>? _instructionShifted;
 
-  /// The DIRECTION riders' shifted rows (R27), committed as their timeline
-  /// writes beside [_instructionShifted].
-  Map<LayerId, Layer>? _directionShifted;
+  /// The block riders' shifted rows ([_blockRiders] — R27, F-311),
+  /// committed as their timeline writes beside [_instructionShifted].
+  Map<LayerId, Layer>? _rowsShifted;
 
   /// A ROW-CHANGE drop in flight within the SE / camera sections (P3b-4,
   /// 같은 섹션 행이동): the planned GLOBAL layer pair for an SE→SE drop,
@@ -884,7 +893,7 @@ class FrameRangeMoveDrag {
       _multiPlans = null;
       _cameraShifted = null;
       _instructionShifted = null;
-      _directionShifted = null;
+      _rowsShifted = null;
       _camera.showCameraKeysDragPreview(null);
       _slideSelectionOutline(
         selection,
@@ -1220,7 +1229,7 @@ class FrameRangeMoveDrag {
     //
     // · The camera and instruction rows (the transition included, via its
     //   display clone) are frame-axis riders — WHO rides was decided at
-    //   begin ([_cameraKeys], [_instructionSources] and [_transitionRiders],
+    //   begin ([_cameraKeys], [_blockRiders] and [_transitionRiders],
     //   the same answers the plain slide consumes). Re-deriving them here is
     //   the copy that silently dropped the TRANSITION on rigid steps (C④):
     //   its clone's kind matched no arm, so the spans snapped home the
@@ -1370,8 +1379,8 @@ class FrameRangeMoveDrag {
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    final directionShifted = <LayerId, Layer>{};
-    for (final layer in _instructionSources ?? const <Layer>[]) {
+    final rowsShifted = <LayerId, Layer>{};
+    for (final layer in _blockRiders ?? const <Layer>[]) {
       // A direction row's spans are its blocks (R27): they ride as the
       // drawing rows' own slide, drawings and all — and the rows a folder
       // row holds beside them (F-311, [rowsHeldByFolderRowsOf]).
@@ -1379,7 +1388,7 @@ class FrameRangeMoveDrag {
       if (slid == null || slid.went != frameDelta) {
         return null;
       }
-      directionShifted[layer.id] = slid.plan.sourceAfter;
+      rowsShifted[layer.id] = slid.plan.sourceAfter;
     }
     for (final (:row, :starts) in _transitionRiders) {
       final shifted = shiftInstructionEventsAt(
@@ -1395,7 +1404,7 @@ class FrameRangeMoveDrag {
     return (
       camera: cameraShifted,
       instructions: instructionShifted,
-      directions: directionShifted,
+      blockRiders: rowsShifted,
     );
   }
 
@@ -1439,7 +1448,7 @@ class FrameRangeMoveDrag {
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
-    _directionShifted = riders.directions.isEmpty ? null : riders.directions;
+    _rowsShifted = riders.blockRiders.isEmpty ? null : riders.blockRiders;
     _camera.showCameraKeysDragPreview(cameraShifted);
     final sePreviews = {
       for (final se in sePlans) ...{
@@ -1457,11 +1466,12 @@ class FrameRangeMoveDrag {
               drawnFrameCount: _project.activeCutDrawnFrameCount,
             ),
         for (final entry in sePreviews.entries) entry.key: entry.value.shown,
-        // R27 #8: the frame-axis riders preview in place — a DIRECTION row
-        // as the row its shifted blocks make (its spans are its blocks).
+        // R27 #8: the frame-axis riders preview in place — a block rider
+        // as the row its shifted blocks make (a DIRECTION row: its spans
+        // are its blocks; a folder's rows: F-311).
         // A riding TRANSITION is in [sePreviews] above, in the SE rows'
         // two forms.
-        for (final entry in riders.directions.entries)
+        for (final entry in riders.blockRiders.entries)
           entry.key: rederiveRunBehaviors(
             entry.value,
             drawnFrameCount: _project.activeCutDrawnFrameCount,
@@ -1564,7 +1574,7 @@ class FrameRangeMoveDrag {
     _multiSeRowChanges = null;
     _cameraShifted = null;
     _instructionShifted = null;
-    _directionShifted = null;
+    _rowsShifted = null;
     _dropPreviewChannels();
     _liveSpan = _selectionBefore;
   }
@@ -1770,7 +1780,7 @@ class FrameRangeMoveDrag {
     _instructionShifted = instructionShifted.isEmpty
         ? null
         : instructionShifted;
-    _directionShifted = riders.directions.isEmpty ? null : riders.directions;
+    _rowsShifted = riders.blockRiders.isEmpty ? null : riders.blockRiders;
     _publishSlidePreview(plans, riders);
     _slideSelectionOutline(
       selection,
@@ -1805,7 +1815,7 @@ class FrameRangeMoveDrag {
     if (aRowHopWasLast) {
       _cameraShifted = null;
       _instructionShifted = null;
-      _directionShifted = null;
+      _rowsShifted = null;
     }
   }
 
@@ -1878,7 +1888,7 @@ class FrameRangeMoveDrag {
     List<({Layer commit, int offset})> multiSources,
   ) => [
     ...multiSources,
-    for (final rider in _instructionSources ?? const <Layer>[])
+    for (final rider in _blockRiders ?? const <Layer>[])
       (commit: rider, offset: 0),
   ];
 
@@ -1967,9 +1977,10 @@ class FrameRangeMoveDrag {
         previewGlobalLayers[commitForm.id] = global;
       }
     }
-    // A DIRECTION row previews as the row its shifted blocks make — its
-    // spans are its blocks (R27), so the cells row reads them there.
-    for (final entry in riders.directions.entries) {
+    // A block rider previews as the row its shifted blocks make — a
+    // DIRECTION row's spans are its blocks (R27), so the cells row reads
+    // them there; the rows a folder row holds are rows of blocks (F-311).
+    for (final entry in riders.blockRiders.entries) {
       previewLayers[entry.key] = rederiveRunBehaviors(
         entry.value,
         drawnFrameCount: _project.activeCutDrawnFrameCount,
@@ -2084,15 +2095,16 @@ class FrameRangeMoveDrag {
   /// cut-gated copy with the transition arm missing).
   List<Command> _riderCommands(Cut? cut) {
     final instructionShifted = _instructionShifted;
-    final directionShifted = _directionShifted;
+    final rowsShifted = _rowsShifted;
     final cameraShifted = _cameraShifted;
     return [
       if (instructionShifted != null)
         ..._instructionShiftCommands(instructionShifted),
-      // A DIRECTION rider lands as the timeline write any block move makes
-      // — its spans are its blocks (R27).
-      if (directionShifted != null)
-        for (final MapEntry(key: id, value: after) in directionShifted.entries)
+      // A block rider lands as the timeline write any block move makes —
+      // a DIRECTION row's spans are its blocks (R27), a folder's rows hold
+      // them (F-311).
+      if (rowsShifted != null)
+        for (final MapEntry(key: id, value: after) in rowsShifted.entries)
           if (_project.commitLayerById(id) case final before?)
             UpdateLayerTimelineCommand(
               repository: _project.repository,
