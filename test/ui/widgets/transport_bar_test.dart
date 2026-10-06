@@ -224,7 +224,10 @@ void main() {
     testWidgets('a press seeks there — once', (tester) async {
       final seeks = <int>[];
       await pump(tester, frameCount: 100, onSeek: seeks.add);
-      await tester.tapAt(along(tester, 'track', 0.5));
+      final gesture = await tester.startGesture(along(tester, 'track', 0.5));
+      expect(seeks, [50], reason: 'under the finger, before it lets go');
+      await gesture.up();
+      await tester.pump();
       expect(
         seeks,
         [50],
