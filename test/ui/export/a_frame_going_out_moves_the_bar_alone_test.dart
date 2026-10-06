@@ -168,6 +168,24 @@ void main() {
         find.byKey(const ValueKey<String>('export-progress')),
       );
 
+  /// What [frameOut] — a frame of the run going out — builds again.
+  Future<List<String>> builtBy(
+    WidgetTester tester,
+    void Function() frameOut,
+  ) async {
+    final built = <String>[];
+    debugOnRebuildDirtyWidget = (element, _) =>
+        built.add('${element.widget.runtimeType}');
+    frameOut();
+    await tester.pump();
+    debugOnRebuildDirtyWidget = null;
+    return built;
+  }
+
+  /// Whether the bar's own builder is among [built].
+  bool barIn(List<String> built) =>
+      built.any((type) => type.startsWith('ValueListenableBuilder<'));
+
   testWidgets('the bar moves; the window is not built again', (tester) async {
     final run = _HeldVideoRun();
     final state = await open(tester, run);
@@ -175,25 +193,14 @@ void main() {
     // The run is under way: the bar is up, at nothing yet.
     expect(bar(tester).value, isNull);
 
-    /// What a frame of the run going out builds again.
-    Future<List<Type>> builtBy(void Function() frameOut) async {
-      final built = <Type>[];
-      debugOnRebuildDirtyWidget = (element, _) =>
-          built.add(element.widget.runtimeType);
-      frameOut();
-      await tester.pump();
-      debugOnRebuildDirtyWidget = null;
-      return built;
-    }
+    final first = await builtBy(tester, () => run.report!(1, 4));
+    expect(bar(tester).value, closeTo(0.25, 0.01));
+    expect(barIn(first), isTrue, reason: 'LIVENESS: the bar was built again');
+    expect(first, isNot(contains('$ExportDialog')));
 
-    final first = await builtBy(() => run.report!(1, 4));
-    expect(bar(tester).value, 0.25);
-    expect(first, isNotEmpty, reason: 'LIVENESS: the bar was built again');
-    expect(first, isNot(contains(ExportDialog)));
-
-    final second = await builtBy(() => run.report!(2, 4));
-    expect(bar(tester).value, 0.5);
-    expect(second, isNot(contains(ExportDialog)));
+    final second = await builtBy(tester, () => run.report!(2, 4));
+    expect(bar(tester).value, closeTo(0.5, 0.01));
+    expect(second, isNot(contains('$ExportDialog')));
 
     await ended(tester, run, exporting);
     expect(
@@ -208,6 +215,26 @@ void main() {
     await ended(tester, run, again);
   });
 
+  testWidgets('🚨a frame that does not move the bar by a pixel is not heard — '
+      'nothing is built for it', (tester) async {
+    final run = _HeldVideoRun();
+    final state = await open(tester, run);
+    final (whole: exporting) = await begun(tester, run, state.export);
+
+    // A film of a million frames: its first frame puts the bar at its
+    // start, and its second leaves the bar's end on the pixel it was on.
+    final first = await builtBy(tester, () => run.report!(1, 1000000));
+    expect(barIn(first), isTrue, reason: 'LIVENESS: the bar came to stand');
+    expect(bar(tester).value, 0);
+    final second = await builtBy(tester, () => run.report!(2, 1000000));
+    expect(barIn(second), isFalse);
+
+    final half = await builtBy(tester, () => run.report!(500000, 1000000));
+    expect(barIn(half), isTrue);
+    expect(bar(tester).value, closeTo(0.5, 0.01));
+    await ended(tester, run, exporting);
+  });
+
   testWidgets('a queued run leaves nothing standing on the bar either', (
     tester,
   ) async {
@@ -219,7 +246,11 @@ void main() {
     final (whole: queued) = await begun(tester, run, state.runQueue);
     run.report!(3, 4);
     await tester.pump();
-    expect(bar(tester).value, 0.75, reason: 'LIVENESS: the queued run moved it');
+    expect(
+      bar(tester).value,
+      closeTo(0.75, 0.01),
+      reason: 'LIVENESS: the queued run moved it',
+    );
     await ended(tester, run, queued);
 
     final (whole: next) = await begun(tester, run, state.export);

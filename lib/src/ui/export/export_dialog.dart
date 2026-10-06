@@ -193,15 +193,26 @@ class ExportDialogState extends State<ExportDialog> {
   bool _cancelRequested = false;
   String? _statusMessage;
 
-  /// How far the run under way has got — null when none is. The footer's
-  /// bar is all that hears it ([_footerBetween]).
+  /// Where the end of the footer's bar stands for the run under way, in the
+  /// bar's own pixels ([_barPixels]) — null when no run is. The bar is all
+  /// that hears it ([_footerBetween]).
   ///
-  /// ↩️It was the window's own state, and every frame of a run rebuilt the
-  /// whole window to move the bar — and wrote a sentence counting the
-  /// frames into the status line, which a run keeps out of sight.
-  final ValueNotifier<(int completed, int total)?> _progress = ValueNotifier(
-    null,
-  );
+  /// 🚨IN PIXELS, SO THAT A FRAME WHICH DOES NOT MOVE THE BAR IS NOT HEARD.
+  /// A notifier says nothing when its value is the one it had, and a film
+  /// of two thousand frames moves a bar of three hundred pixels three
+  /// hundred times. ↩️Counted in frames, every frame that went out drew the
+  /// whole window again to move the bar by less than can be seen (F-289,
+  /// measured 2026-10-07: 2,278 window frames in a 46 s export, 12 s of
+  /// the raster thread the export's own pictures wait on).
+  ///
+  /// ↩️Before that it was the window's own state, and every frame of a run
+  /// rebuilt the whole window — and wrote a sentence counting the frames
+  /// into the status line, which a run keeps out of sight.
+  final ValueNotifier<({int end, int of})?> _progress = ValueNotifier(null);
+
+  /// How many device pixels long the footer's bar was last laid out — none
+  /// until it has been.
+  int _barPixels = 0;
 
   // The preview's renderers key on (FX, ground): both change what a frame
   // looks like (EX4).
@@ -1683,7 +1694,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   void _reportProgress(int completed, int total) {
     if (mounted) {
-      _progress.value = (completed, total);
+      _progress.value = (
+        end: total <= 0 ? 0 : completed * _barPixels ~/ total,
+        of: _barPixels,
+      );
     }
     final jobId = _activeJobId;
     if (jobId != null) {
@@ -2739,15 +2753,28 @@ class ExportDialogState extends State<ExportDialog> {
         children: [
           Expanded(
             child: _isExporting
-                ? ValueListenableBuilder<(int, int)?>(
-                    valueListenable: _progress,
-                    builder: (context, progress, _) => LinearProgressIndicator(
-                      key: const ValueKey<String>('export-progress'),
-                      value: progress != null && progress.$2 > 0
-                          ? progress.$1 / progress.$2
-                          : null,
-                      minHeight: 4,
-                    ),
+                ? LayoutBuilder(
+                    builder: (context, bar) {
+                      // What a run's frames are counted in from here on
+                      // ([_progress]).
+                      _barPixels =
+                          (bar.maxWidth *
+                                  MediaQuery.devicePixelRatioOf(context))
+                              .floor();
+                      return ValueListenableBuilder<({int end, int of})?>(
+                        valueListenable: _progress,
+                        builder: (context, progress, _) =>
+                            LinearProgressIndicator(
+                              key: const ValueKey<String>('export-progress'),
+                              // Nothing to stand on until a frame has been
+                              // counted in a bar that has a length.
+                              value: progress != null && progress.of > 0
+                                  ? progress.end / progress.of
+                                  : null,
+                              minHeight: 4,
+                            ),
+                      );
+                    },
                   )
                 : _statusNote(theme),
           ),
