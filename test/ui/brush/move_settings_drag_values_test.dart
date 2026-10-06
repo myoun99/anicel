@@ -285,6 +285,15 @@ void main() {
       reason: '⛔전제: the scrub really did write many times',
     );
     expect(steps, 1, reason: 'and it was ONE operation');
+    // Each write adds to what the BOX holds by then, not to a number this
+    // panel last heard at rest — there is nothing for a late ping to eat.
+    for (var i = 1; i < applied.length; i += 1) {
+      expect(
+        applied[i].tx,
+        greaterThan(applied[i - 1].tx),
+        reason: 'write $i went on from write ${i - 1}',
+      );
+    }
 
     // A press that never moves the value opens the text field instead —
     // nothing has happened yet, so there is nothing to step back to.

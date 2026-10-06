@@ -3837,6 +3837,25 @@ void main() {
       });
     }
 
+    testWidgets('🚨a write that names one value is handed the box as it '
+        'stands — a typed X over a 상하반전 leaves it mirrored', (tester) async {
+      // 🧪2026-10-06, before the fix: the four-value write restated a scale
+      // read off the horizontal axis, and the picture stood back up.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.flipTransform(horizontal: false);
+      await tester.pump();
+
+      env.commands.editTransformValues((now) => now.copyWith(tx: now.tx + 5));
+      await tester.pump();
+
+      expect(
+        env.commands.transformValues,
+        const TransformValues(sy: -1, tx: 5),
+      );
+    });
+
     testWidgets('🚨a corner of a mirrored box grows the mirror — one drag '
         'after 좌우반전 neither stands it back up nor collapses it', (
       tester,
