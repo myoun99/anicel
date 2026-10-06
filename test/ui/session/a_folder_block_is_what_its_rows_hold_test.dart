@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -419,6 +420,26 @@ void main() {
         ),
       );
     });
+
+    test('a folder inside it is no row that drew: what it holds is asked, '
+        'the folder\'s own row answers nothing', () {
+      final s = _session([
+        _row('c', const {1: 2}, inside: 'G'),
+        _folderRow('G', inside: 'F'),
+        _folderRow('F'),
+      ]);
+      bool drawn(int frame) =>
+          stackOf(s).celHasContentForLayer(_band(s), frame);
+
+      expect(
+        [drawn(1), drawn(2)],
+        [false, false],
+        reason: 'c\'s block is empty — and G, a row of F that holds no cel, '
+            'is not a picture',
+      );
+      _draw(s, 'c', 'c1');
+      expect([drawn(1), drawn(2)], [true, true]);
+    });
   });
 
   group('a drag on the folder\'s block carries the rows it holds', () {
@@ -690,6 +711,147 @@ void main() {
         reason: 'b went to 11..15, and the folder shows what its rows hold',
       );
       s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('…and on no folder whose rows stand still', () {
+      final s = _session([
+        _row('a', const {0: 4}, inside: 'F'),
+        _folderRow('F'),
+        _row('h', const {0: 4}, inside: 'H'),
+        _folderRow('H'),
+      ]);
+      s.updateFrameRangeSelectionDrag(
+        layerId: const LayerId('a'),
+        anchorIndex: 1,
+        headIndex: 1,
+      );
+      s.rangeMove.beginFrameRangeMoveDrag(const LayerId('a'));
+
+      s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 3);
+
+      final shown =
+          (s.dragPreview.value! as BlockMoveDragPreview).previewLayers;
+      expect(
+        shown.keys,
+        unorderedEquals([const LayerId('a'), _folder]),
+        reason: 'a step rebuilds the rows it moves: H holds none of them, '
+            'and a band handed to it every step would rebuild its row',
+      );
+      s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('a hop to another row shows on the folder the rows stand in', () {
+      final s = _session(_stack());
+      // b and a, the two rows under the folder's own.
+      s.updateFrameRangeSelectionDrag(
+        layerId: const LayerId('b'),
+        anchorIndex: 3,
+        headIndex: 3,
+        headLayerId: const LayerId('a'),
+      );
+      expect(
+        s.frameRangeSelection.value!.spanLayerIds,
+        unorderedEquals([const LayerId('a'), const LayerId('b')]),
+        reason: 'the premise',
+      );
+      s.rangeMove.beginFrameRangeMoveDrag(const LayerId('b'));
+
+      // One row down: b's block onto a's row, a's onto the row under it.
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: const LayerId('a'),
+      );
+
+      final shown =
+          (s.dragPreview.value! as BlockMoveDragPreview).previewLayers;
+      expect(_blocks(shown[const LayerId('under')]!), {0: 4}, reason: 'a\'s');
+      expect(_blocks(shown[const LayerId('a')]!), {2: 4, 8: 2}, reason: 'b\'s');
+      expect(
+        shown[_folder] == null ? null : _blocks(shown[_folder]!),
+        {2: 4, 8: 2},
+        reason: 'a\'s block left the folder: its band is what stays in it',
+      );
+      s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('a direction row carried to another shows on the folder they '
+        'stand in', () {
+      Layer direction(String id, Map<int, InstructionEvent> spans) => Layer(
+        id: LayerId(id),
+        name: id,
+        kind: LayerKind.instruction,
+        folderId: _folder,
+        frames: const [],
+        timeline: const {},
+        instructions: spans,
+      );
+      final s = _session([
+        direction('d2', const {}),
+        direction('d1', const {
+          1: InstructionEvent(instructionId: 'pan', length: 2),
+        }),
+        _folderRow('F'),
+      ]);
+      expect(
+        _blocks(_band(s)),
+        {1: 2},
+        reason: 'the premise: a span is a block',
+      );
+      s.updateFrameRangeSelectionDrag(
+        layerId: const LayerId('d1'),
+        anchorIndex: 1,
+        headIndex: 2,
+      );
+      expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
+
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 2,
+        targetLayerId: const LayerId('d2'),
+      );
+
+      final folder = timelineRowPreviewLayer(s.dragPreview.value, _band(s));
+      expect(folder == null ? null : _blocks(folder), {3: 2});
+      s.rangeMove.cancelFrameRangeMoveDrag();
+    });
+
+    test('a row hop the rows riding cannot go the frames of does not '
+        'happen: the folder\'s rows go as far as the hop or not at all', () {
+      final s = _session([
+        ..._stack(over: const {1: 2}),
+        _row('top', const {}),
+      ]);
+      s.updateFrameRangeSelectionDrag(
+        layerId: const LayerId('over'),
+        anchorIndex: 1,
+        headIndex: 1,
+        headLayerId: _folder,
+      );
+      expect(heldRowsOf(s), unorderedEquals(['a', 'b']), reason: 'the premise');
+      s.rangeMove.beginFrameRangeMoveDrag(const LayerId('over'));
+
+      // Up a row and five frames along: over's block can; a's stops at 4.
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 5,
+        targetLayerId: const LayerId('top'),
+      );
+      expect(
+        s.dragPreview.value,
+        isNull,
+        reason: 'a rider that lands short of the hop tears the group: the '
+            'step has no landing, and the first step leaves nothing shown',
+      );
+
+      // Four frames along every row can go.
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 4,
+        targetLayerId: const LayerId('top'),
+      );
+      s.rangeMove.endFrameRangeMoveDrag();
+
+      expect(_blocks(_layer(s, 'top')), {5: 2});
+      expect(_blocks(_layer(s, 'over')), isEmpty);
+      expect(_blocks(_layer(s, 'a')), {4: 4, 8: 2});
+      expect(_blocks(_layer(s, 'b')), {6: 4});
     });
   });
 }

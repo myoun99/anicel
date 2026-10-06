@@ -1379,17 +1379,16 @@ class FrameRangeMoveDrag {
       }
     }
     final instructionShifted = <LayerId, Map<int, InstructionEvent>>{};
-    final rowsShifted = <LayerId, Layer>{};
-    for (final layer in _blockRiders ?? const <Layer>[]) {
-      // A direction row's spans are its blocks (R27): they ride as the
-      // drawing rows' own slide, drawings and all — and the rows a folder
-      // row holds beside them (F-311, [rowsHeldByFolderRowsOf]).
-      final slid = _slideOnOwnRow(layer, selection, frameDelta);
-      if (slid == null || slid.went != frameDelta) {
-        return null;
-      }
-      rowsShifted[layer.id] = slid.plan.sourceAfter;
+    // A direction row's spans are its blocks (R27): they ride as the
+    // drawing rows' own slide, drawings and all — and the rows a folder
+    // row holds beside them (F-311, [rowsHeldByFolderRowsOf]).
+    final ridden = _slideExactly(_blockRiderRows, selection, frameDelta);
+    if (ridden == null) {
+      return null;
     }
+    final rowsShifted = {
+      for (final plan in ridden) plan.sourceAfter.id: plan.sourceAfter,
+    };
     for (final (:row, :starts) in _transitionRiders) {
       final shifted = shiftInstructionEventsAt(
         events: row.instructions,
@@ -1765,7 +1764,7 @@ class FrameRangeMoveDrag {
       _resetPreviewToOrigin();
       return;
     }
-    final plans = _planSlide(multiSources, selection, went);
+    final plans = _slideExactly(multiSources, selection, went);
     final riders = plans == null
         ? null
         : _shiftFrameAxisRiders(selection, went);
@@ -1819,24 +1818,28 @@ class FrameRangeMoveDrag {
     }
   }
 
-  /// Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
-  /// frame delta on itself — the one the group goes ([_rigidSlideDelta]);
-  /// any illegal landing HOLDS the last valid preview (all-or-nothing, the
-  /// single-layer discipline). KEY sources (P3b-2) join the same contract:
+  /// Cross-layer slide (UI-R18 #1): every one of [rows] plans the SAME
+  /// frame delta on itself, in [rows]' order — or null when one of them
+  /// does not land exactly that far, and then the step has no plan
+  /// (all-or-nothing, the single-layer discipline: an illegal landing HOLDS
+  /// the last valid preview). KEY sources (P3b-2) join the same contract:
   /// camera keys and instruction spans shift by the same delta or the
   /// whole move voids.
-  List<DrawingBlockMovePlan>? _planSlide(
-    List<({Layer commit, int offset})> multiSources,
+  ///
+  /// The sources of a slide ask with the delta the group agreed on
+  /// ([_rigidSlideDelta]); the rows riding a row hop ask with the hop's.
+  List<DrawingBlockMovePlan>? _slideExactly(
+    Iterable<({Layer commit, int offset})> rows,
     TimelineFrameRangeSelection selection,
     int frameDelta,
   ) {
     final plans = <DrawingBlockMovePlan>[];
-    for (final source in multiSources) {
+    for (final row in rows) {
       final slid = _slideOnOwnRow(
-        source.commit,
+        row.commit,
         selection,
         frameDelta,
-        offset: source.offset,
+        offset: row.offset,
       );
       if (slid == null || slid.went != frameDelta) {
         return null;
@@ -1886,8 +1889,11 @@ class FrameRangeMoveDrag {
   /// row holds.
   Iterable<({Layer commit, int offset})> _slidingRows(
     List<({Layer commit, int offset})> multiSources,
-  ) => [
-    ...multiSources,
+  ) => [...multiSources, ..._blockRiderRows];
+
+  /// The block riders as rows of a slide. They are cut rows, keyed on the
+  /// axis the span is stated in — no offset.
+  Iterable<({Layer commit, int offset})> get _blockRiderRows => [
     for (final rider in _blockRiders ?? const <Layer>[])
       (commit: rider, offset: 0),
   ];
@@ -1915,6 +1921,7 @@ class FrameRangeMoveDrag {
     while (delta != 0) {
       var reach = delta;
       for (final row in rows) {
+        // Zero when the row does not move at all, else where it stopped.
         final went =
             _slideOnOwnRow(
               row.commit,
@@ -1923,24 +1930,14 @@ class FrameRangeMoveDrag {
               offset: row.offset,
             )?.went ??
             0;
-        if (went == delta) {
-          continue;
-        }
-        // Short of what was asked: zero when the row does not move at all
-        // — it will not for less — else where it stopped. Should a rule
-        // ever land a row PAST what was asked, or behind where it began,
-        // the walk goes one frame nearer; either way nearer home, so it
-        // ends.
-        final short =
-            went == 0 || went.sign == delta.sign && went.abs() < delta.abs();
-        final nearer = short ? went : delta - delta.sign;
-        if (nearer.abs() < reach.abs()) {
-          reach = nearer;
+        if (went.abs() < reach.abs()) {
+          reach = went;
         }
       }
       if (reach == delta) {
         return delta;
       }
+      // Nearer home each time round, so the walk ends.
       delta = reach;
     }
     return 0;
