@@ -44,12 +44,20 @@ class BooleanDot extends StatelessWidget {
   const BooleanDot({
     super.key,
     required this.value,
+    this.mixed = false,
     this.inPickOneGroup = false,
     this.enabled = true,
     this.size,
-  });
+  }) : assert(!(mixed && value), 'a mixed ring is not on');
 
   final bool value;
+
+  /// Whether what this stands for is on in some places and off in others —
+  /// the letters a text setting speaks for, some bold and some not
+  /// (R9-rest, the tool settings 유저 took on 2026-10-06: 「섞인 값은 「—」로
+  /// 보입니다」). The ring wears a dash then: neither state's glyph, and
+  /// still a ring. [value] is false with it — a press turns every one ON.
+  final bool mixed;
 
   /// Whether turning this ON turns something else OFF.
   final bool inPickOneGroup;
@@ -73,9 +81,15 @@ class BooleanDot extends StatelessWidget {
   /// reports it without saying it again.
   @override
   Widget build(BuildContext context) => Semantics(
-    toggled: value,
+    // A mixed ring is neither: it says so, and says no state.
+    toggled: mixed ? null : value,
+    mixed: mixed ? true : null,
     child: Icon(
-      value ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+      switch ((mixed, value)) {
+        (true, _) => Icons.remove_circle_outline,
+        (false, true) => Icons.radio_button_checked,
+        (false, false) => Icons.radio_button_unchecked,
+      },
       size: size,
       color: switch ((enabled, value, inPickOneGroup)) {
         (false, _, _) => AppColors.glyphDisabled,

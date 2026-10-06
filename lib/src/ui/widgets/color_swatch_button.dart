@@ -31,7 +31,9 @@ class ColorSwatchButton extends StatelessWidget {
     this.currentColorOf,
     this.onNone,
     this.none = false,
+    this.mixed = false,
     this.keepsAlpha = false,
+    this.onSettled,
     this.tooltip,
   });
 
@@ -71,6 +73,21 @@ class ColorSwatchButton extends StatelessWidget {
   /// absence IS a null colour (the アフレコ box) leaves this false.
   final bool none;
 
+  /// Whether [color] is only ONE of the colours this stands for — the
+  /// letters a text setting speaks for, set in several (R9-rest, 유저
+  /// 2026-10-06: 「섞인 값은 「—」로 보입니다」). The face wears a dash, and
+  /// the window opens on [color], which is where a pick starts from.
+  final bool mixed;
+
+  /// The window closed: whatever [onChanged] was handed while it was open
+  /// has come to rest.
+  ///
+  /// [onChanged] fires for every colour the wheel passes, and the window
+  /// has no other way to say a pick is over — a host that files what was
+  /// picked as ONE step (the text tool) lands it here. Null for a host that
+  /// keeps every colour as it comes.
+  final VoidCallback? onSettled;
+
   /// Whether the host keeps ALPHA — the canvas's paper, pasteboard and
   /// backdrop (F-114: 「불투명도는 체크무늬는 안되고 진짜 불투명도를
   /// 낮추는행위」). The window's opacity bar is live for it and a pick keeps
@@ -100,7 +117,10 @@ class ColorSwatchButton extends StatelessWidget {
               width: _diameter,
               height: _diameter,
               child: CustomPaint(
-                painter: _SwatchPainter(color: none ? null : color),
+                painter: _SwatchPainter(
+                  color: none ? null : color,
+                  mixed: mixed,
+                ),
               ),
             ),
           ),
@@ -114,34 +134,41 @@ class ColorSwatchButton extends StatelessWidget {
     return AppTooltip(message: message, child: swatch);
   }
 
-  void _open(BuildContext anchorContext) => showColorPickerPopup(
-    anchorContext,
-    color: color,
-    onChanged: onChanged,
-    currentColorOf: currentColorOf,
-    onNone: onNone,
-    none: none,
-    keepsAlpha: keepsAlpha,
+  void _open(BuildContext anchorContext) => unawaited(
+    showColorPickerPopup(
+      anchorContext,
+      color: color,
+      onChanged: onChanged,
+      currentColorOf: currentColorOf,
+      onNone: onNone,
+      none: none,
+      keepsAlpha: keepsAlpha,
+    ).then((_) => onSettled?.call()),
   );
 }
 
-/// The swatch face: the colour, or the 「없음」 diagonal.
+/// The swatch face: the colour, the 「없음」 diagonal, or the dash of
+/// several colours at once.
 ///
 /// ⛔A slash rather than an empty circle. Absence and 「a very dark colour」
 /// are one glyph apart on this app's surfaces, and the box colour's default
 /// is dark — an unfilled circle would have read as 「#202020」 to the eye.
 class _SwatchPainter extends CustomPainter with RepaintOnProps {
-  const _SwatchPainter({required this.color});
+  const _SwatchPainter({required this.color, this.mixed = false});
 
   final int? color;
+
+  /// Several colours at once: the face shows none of them.
+  final bool mixed;
 
   @override
   void paint(Canvas canvas, Size size) {
     final centre = size.center(Offset.zero);
     final radius = size.shortestSide / 2;
+    final shown = mixed ? null : color;
     final fill = Paint()..style = PaintingStyle.fill;
-    if (color != null) {
-      fill.color = Color(color!);
+    if (shown != null) {
+      fill.color = Color(shown);
       canvas.drawCircle(centre, radius, fill);
     }
     final edge = Paint()
@@ -149,20 +176,30 @@ class _SwatchPainter extends CustomPainter with RepaintOnProps {
       ..strokeWidth = 1
       ..color = AppColors.hairline;
     canvas.drawCircle(centre, radius - 0.5, edge);
-    if (color != null) {
+    if (shown != null) {
+      return;
+    }
+    final inset = radius * 0.7071; // cos 45°, so the ends meet the circle
+    final mark = edge..color = AppColors.textDim;
+    if (mixed) {
+      // The 「—」 every mixed value in the app reads as, level in the ring.
+      canvas.drawLine(
+        centre - Offset(inset * 0.7, 0),
+        centre + Offset(inset * 0.7, 0),
+        mark,
+      );
       return;
     }
     // The 「no colour」 slash, corner to corner inside the ring.
-    final inset = radius * 0.7071; // cos 45°, so the ends meet the circle
     canvas.drawLine(
       centre + Offset(-inset, inset),
       centre + Offset(inset, -inset),
-      edge..color = AppColors.textDim,
+      mark,
     );
   }
 
   @override
-  Object get props => (color,);
+  Object get props => (color, mixed);
 }
 
 /// Opens the shared color picker anchored to [anchorContext]'s widget.
