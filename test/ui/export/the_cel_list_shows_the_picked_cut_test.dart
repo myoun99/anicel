@@ -231,6 +231,24 @@ void main() {
     expect(label(), custom);
   });
 
+  testWidgets('the picked cut\'s DOCUMENTS are its own: each cut\'s list '
+      'closes with its own timesheet, and no other cut\'s', (tester) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    await tester.pressInCelsBoard(
+      find.byKey(const ValueKey<String>('export-cels-kind-timesheet')),
+    );
+
+    expect(listedIds(tester), const ['b', 'a', 'document-timesheet']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [('001', true)]);
+
+    await pick(tester, second);
+
+    expect(listedIds(tester), const ['e', 'd', 'document-timesheet']);
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [('002', true)]);
+  });
+
   testWidgets('under the cut scope the button is there, shut, naming the '
       'cut', (tester) async {
     final session = twoCuts();

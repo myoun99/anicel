@@ -396,6 +396,28 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('a cel is open where its format says, and a document is its '
+      'paper: the transparency checker stands under the one and not the '
+      'other', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    final state = await pumpCels(tester, session, spec: everything);
+    final checker = keyed('export-preview-checker');
+
+    await press(tester, 'export-cels-stand-a');
+    await tester.runAsync(state.debugFlushPreview);
+    await tester.pump();
+    expect(checker, findsOneWidget, reason: 'LIVENESS — a cel, RGBA');
+
+    await press(tester, 'export-cels-stand-document-timesheet');
+    await tester.runAsync(state.debugFlushPreview);
+    await tester.pump();
+    expect(keyed('export-preview-image'), findsOneWidget);
+    expect(checker, findsNothing);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('셀 형식 · 타임시트 형식 · 컷봉투 형식: three modules, there '
       'whatever kinds are written — the cels\' folded, the documents\' open',
       (tester) async {

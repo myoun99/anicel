@@ -1984,6 +1984,43 @@ void main() {
           ('c2', 'c1', '_CUTC1_envelope.png'),
         ],
       );
+
+      // The plan READS the delta of the cut a document is of: C2's sheet
+      // switched off is C2's alone, though the group is C1's entry.
+      final c2Off = buildExportCelGroupPlan(
+        project: project,
+        activeCutId: const CutId('c2'),
+        spec: documents.copyWith(scope: ExportScopeKind.project),
+        overrides: ExportProjectOverrides().withCelsDelta(
+          const CutId('c2'),
+          ExportCelsCutDelta().withDocumentOff(ExportCelKind.timesheet, true),
+        ),
+      );
+      expect(c2Off.writtenFileNames, [
+        '_TSC1.png',
+        '_CUTC1_envelope.png',
+        '_TSC3.png',
+        '_CUTC3_envelope.png',
+      ]);
+
+      // With a folder a cut, a group's documents stand in ONE folder — the
+      // entry's — whichever of its cuts each is of.
+      final foldered = buildExportCelGroupPlan(
+        project: project,
+        activeCutId: const CutId('c2'),
+        spec: documents.copyWith(
+          scope: ExportScopeKind.project,
+          naming: const ExportCelNaming(cutFolder: true),
+        ),
+      ).writtenFileNames;
+      String folderOf(String ending) {
+        final file = foldered.singleWhere((name) => name.endsWith(ending));
+        return file.substring(0, file.lastIndexOf('/'));
+      }
+
+      expect(folderOf('_TSC2.png'), folderOf('_TSC1.png'));
+      expect(folderOf('_CUTC1_envelope.png'), folderOf('_TSC1.png'));
+      expect(folderOf('_TSC3.png'), isNot(folderOf('_TSC1.png')));
     });
   });
 }
