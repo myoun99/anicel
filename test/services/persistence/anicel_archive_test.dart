@@ -247,6 +247,19 @@ void main() {
           'a session — it must refuse the file up front (R9-rest, 10-06)',
     );
   });
+
+  test('🚨a build that reads version 6 refuses what this one writes — a '
+      'project carries the fonts its texts are set with now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(6),
+      reason:
+          'a v6 build reads neither the document\'s fonts nor their '
+          'entries: it opens the project without them and its next save '
+          'writes the document back without the list — it must refuse the '
+          'file, not shorten it (R9-rest, 10-07)',
+    );
+  });
 }
 
 /// The project manifest is compressed, and an old uncompressed one still

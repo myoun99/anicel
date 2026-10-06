@@ -66,6 +66,20 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v7 (2026-10-07, the text tool's fonts — R9-rest): a project carries the
+/// font files its texts are set with — a `fonts` list in the document
+/// (`Project.fonts`) and an entry apiece under `fonts/`
+/// ([anicelFontEntryName]). A v6 build reads neither: it opens the project
+/// without them and its next save writes the document back without the
+/// list, so the fonts are the project's no longer and a machine that was
+/// never brought them sets those texts in another face. The bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape is read for it, and the floor stays where it was
+/// ([anicelOldestReadFormatVersion]): a document that lists no fonts is
+/// what a project that carries none writes at THIS version
+/// (`Project.toJson` leaves the list out), so a v6 file is such a document.
+///
 /// v6 (2026-10-06, F-256-Q1 — a layer's Scale keys an axis apiece): a
 /// transform track's `scale` lane holds `{x, y}` where it held one number
 /// (`TransformTrack.toJson` — a layer's `transform`, a cut's `camera`). A
@@ -113,7 +127,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 6;
+const int anicelFormatVersion = 7;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

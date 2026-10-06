@@ -145,7 +145,7 @@ class _CanvasPanelText implements CelTextToolHost {
       stage: CelTextStage(
         viewport: _state._viewportState._viewport,
         canvasSize: _state.widget.canvasSize,
-        pose: _state.widget.interactiveContentPose,
+        placement: _state.widget.interactiveContentPose,
       ),
       cel: cel,
       // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).

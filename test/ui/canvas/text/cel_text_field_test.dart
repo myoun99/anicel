@@ -51,7 +51,7 @@ void main() {
   final stage = CelTextStage(
     viewport: CanvasViewport(zoom: 2, panX: 10, panY: 20),
     canvasSize: celTextTestCanvas,
-    pose: null,
+    placement: null,
   );
 
   /// The field for [content], mounted, and what it was laid out as.

@@ -1,14 +1,13 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
-import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
@@ -20,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_fixture.dart';
 import '../../../helpers/cel_text_held_baker.dart';
+import '../../../helpers/placement_reading.dart';
 
 /// R9-rest (the text tool): THE PRESS TABLE, asked of the table itself —
 /// what a press takes hold of by what the tool has in hand, and what it
@@ -80,7 +80,7 @@ void main() {
             CelTextStage(
               viewport: CanvasViewport(zoom: 4),
               canvasSize: celTextTestCanvas,
-              pose: null,
+              placement: null,
             ),
         cel: noCel ? null : cel,
         onTraced: traced.add,
@@ -153,7 +153,7 @@ void main() {
         stage: CelTextStage(
           viewport: CanvasViewport(zoom: 0.1),
           canvasSize: celTextTestCanvas,
-          pose: null,
+          placement: null,
         ),
       );
 
@@ -834,13 +834,9 @@ void main() {
     final posed = CelTextStage(
       viewport: CanvasViewport(zoom: 4),
       canvasSize: celTextTestCanvas,
-      pose: (
-        pose: CameraPose(
-          center: CanvasPoint(x: 22, y: 18),
-          zoom: 2,
-          rotationDegrees: 0,
-        ),
-        anchorPoint: null,
+      placement: placedBy(
+        TransformPose.uniform(center: CanvasPoint(x: 22, y: 18), zoom: 2),
+        celTextTestCanvas,
       ),
     );
 
@@ -862,11 +858,8 @@ void main() {
       expect(framed.dx, closeTo(40, 1e-9));
       expect(framed.dy, closeTo(24, 1e-9));
       expect(
-        artworkToCanvas(posed.pose!, celTextTestCanvas)
-            .apply(CanvasPoint(x: 10, y: 10)),
-        isA<CanvasPoint>()
-            .having((p) => p.x, 'x', closeTo(10, 1e-9))
-            .having((p) => p.y, 'y', closeTo(6, 1e-9)),
+        posed.placement!.apply(CanvasPoint(x: 10, y: 10)),
+        nearPoint(CanvasPoint(x: 10, y: 6)),
       );
     });
 

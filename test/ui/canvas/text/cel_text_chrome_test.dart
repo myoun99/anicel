@@ -34,7 +34,7 @@ void main() {
   CelTextStage stageAt(double zoom) => CelTextStage(
     viewport: CanvasViewport(zoom: zoom),
     canvasSize: celTextTestCanvas,
-    pose: null,
+    placement: null,
   );
 
   late TextHand hand;

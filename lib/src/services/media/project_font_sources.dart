@@ -193,12 +193,16 @@ List<MediaLeftBehind> fontsLeftBehind({
   required String? projectFilePath,
   required Set<String> fontsInFile,
   required Set<String> held,
-}) => entriesLeftBehind(projectFilePath, {
-  for (final name in fontsInFile.difference(held))
-    if (name.startsWith(anicelFontEntryPrefix) &&
-        isFontLibraryFileName(name.substring(anicelFontEntryPrefix.length)))
-      name,
-});
+}) => entriesLeftBehind(
+  projectFilePath,
+  {
+    for (final name in fontsInFile.difference(held))
+      if (name.startsWith(anicelFontEntryPrefix) &&
+          isFontLibraryFileName(name.substring(anicelFontEntryPrefix.length)))
+        name,
+  },
+  under: anicelFontEntryPrefix,
+);
 
 /// What [read] makes of where [find] says a font's bytes are — and, when an
 /// entry of the project file reads WRONG, of where [find] says they are
