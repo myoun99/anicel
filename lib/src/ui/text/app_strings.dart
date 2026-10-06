@@ -322,6 +322,7 @@ enum AppStrings {
 
   /// '{name}' is replaced with the layer name.
   String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
+  String get deleteLayerHeldHeading => _s('deleteLayerHeldHeading');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
 
   /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
@@ -1757,6 +1758,7 @@ enum AppStrings {
     'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
     'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
+    'deleteLayerHeldHeading': 'Layers inside',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'Each frame listed takes a name another frame on its layer already '
@@ -2848,6 +2850,7 @@ enum AppStrings {
     'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
     'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
+    'deleteLayerHeldHeading': '中のレイヤー',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
@@ -4181,6 +4184,7 @@ enum AppStrings {
     'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
     'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
+    'deleteLayerHeldHeading': '안에 든 레이어',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
@@ -5512,6 +5516,7 @@ enum AppStrings {
     'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
     'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
+    'deleteLayerHeldHeading': 'Calques contenus',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Chaque image listée prend un nom déjà utilisé par une autre image de '
@@ -6910,6 +6915,7 @@ enum AppStrings {
     'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',
     'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
+    'deleteLayerHeldHeading': '其中的图层',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'

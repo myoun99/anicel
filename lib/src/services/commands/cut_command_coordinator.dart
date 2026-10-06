@@ -491,11 +491,8 @@ class CutCommandCoordinator {
   void deleteLayer({required CutId cutId, required LayerId layerId}) {
     final cut = _requireCut(cutId);
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
-    // Deleting a FOLDER row means dissolving it: the members are rows in
-    // their own right and stay where they are. (Deleting the pictures too
-    // would make one Delete key destroy work the row itself never held.)
     if (layer.kind.groupsLayers) {
-      dissolveFolder(cutId: cutId, folderId: layerId);
+      _deleteFolderWithWhatItHolds(cutId: cutId, folder: layer);
       return;
     }
     // Attach rows are accessories — always deletable, never counted toward
@@ -620,6 +617,47 @@ class CutCommandCoordinator {
           layerId: layerId,
         ),
       ],
+    );
+  }
+
+  /// Deletes [folder] and every row it holds, as ONE undo step.
+  ///
+  /// 🗣️F-305 (유저 2026-10-06): 「타임라인에서 폴더 삭제할때 내용물도 함께
+  /// 삭제 … 드래그로 밖으로 꺼내고 폴더삭제하는게 확실함. 폴더 삭제한단건
+  /// 내용물도 삭제하고싶다는것임」.
+  ///
+  /// ↩️Since the folder became a layer (2026-07-23) its delete DISSOLVED it:
+  /// 「the members are rows in their own right and stay where they are.
+  /// (Deleting the pictures too would make one Delete key destroy work the
+  /// row itself never held.)」 — that round's own reasoning, and the user's
+  /// ruling is the other way: what is to be kept is dragged out first.
+  ///
+  /// Each row goes by its OWN delete, from the top down ([deleteLayer]) — a
+  /// folder inside by this walk again, a base with its attach rows, and a
+  /// row the cut may not lose (its last instruction row) not at all. So
+  /// what stays behind stays for the reason it would have stayed alone, and
+  /// is let out to the folder's parent as the folder row goes
+  /// ([dissolveFolder] — every 겸용 counterpart with it).
+  void _deleteFolderWithWhatItHolds({
+    required CutId cutId,
+    required Layer folder,
+  }) {
+    List<Layer> rows() => _requireCut(cutId).layers;
+    historyManager.runAsOneStep(
+      'Delete folder ${folder.name} and what it holds',
+      () {
+        for (final held in rows().directMembersOf(folder.id).reversed) {
+          // A row above may have taken this one along — a base its attach
+          // rows, the last attach row its organizer.
+          if (rows().byId(held.id) != null) {
+            deleteLayer(cutId: cutId, layerId: held.id);
+          }
+        }
+        // Gone already when it was an organizer its last row took along.
+        if (rows().folderById(folder.id) != null) {
+          dissolveFolder(cutId: cutId, folderId: folder.id);
+        }
+      },
     );
   }
 

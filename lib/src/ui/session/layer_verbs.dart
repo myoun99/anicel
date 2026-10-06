@@ -6,6 +6,7 @@ import '../../models/conte/conte_ink_keys.dart' show conteInkRowKey;
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/new_row_placement.dart';
@@ -62,8 +63,36 @@ class LayerVerbs {
   /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
   /// rows simply contribute nothing here instead of being kept out of the
   /// selection.
-  List<LayerId> deletableSelectedLayerIds() =>
-      selectedLayerIdsWhere(canDeleteLayer);
+  ///
+  /// A row inside a folder that is selected too is that folder's: the folder
+  /// alone is deleted, and takes it along (F-305, 유저 2026-10-06:
+  /// 「폴더/내용물 선택하고 삭제하는건 알아서 폴더만 삭제되도록 하는게
+  /// 로직적으로 깔끔」).
+  List<LayerId> deletableSelectedLayerIds() {
+    final ids = selectedLayerIdsWhere(canDeleteLayer);
+    final rows = _project.layers;
+    return [
+      for (final id in ids)
+        if (!ids.any(
+          (other) => rows.isInsideFolder(rows.byId(id)?.folderId, other),
+        ))
+          id,
+    ];
+  }
+
+  /// What a delete of [ids] takes BESIDES them: every row a folder among
+  /// them holds, as the rail lists them — top first (F-305: 「내용물도
+  /// 삭제리스트에 보여지게」). A row named by [ids] itself is not repeated.
+  List<Layer> rowsHeldBy(Iterable<LayerId> ids) {
+    final named = ids.toSet();
+    final rows = _project.layers;
+    return [
+      for (final row in rows.reversed)
+        if (!named.contains(row.id) &&
+            named.any((id) => rows.isInsideFolder(row.folderId, id)))
+          row,
+    ];
+  }
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
@@ -164,8 +193,8 @@ class LayerVerbs {
       // 허용"). The global track is the thing that has to exist, not any
       // particular row inside a cut, and every drawing path already
       // handles "no editable cel" (that is the R26 #35 refusal notice).
-      // A folder row deletes by DISSOLVING (the coordinator routes it) —
-      // its members are rows of their own and survive.
+      // A folder row goes WITH what it holds (F-305, the coordinator
+      // routes it) — ↩️it used to dissolve, its members surviving.
       // An ADJUSTMENT row has no floor either: deleting it just stops the
       // stack below being filtered.
       LayerKind.animation ||
@@ -395,6 +424,26 @@ class LayerVerbs {
         ).isNotEmpty;
   }
 
+  /// Where to stand once [ids] — top first, as they are deleted — are gone
+  /// with what they hold: [stableLayerIdAfterDeleting]'s hand-off from the
+  /// LOWEST of them, over the rows that stay.
+  ///
+  /// ↩️The hand-off was made over the whole stack, as if that one row were
+  /// all that went. A folder takes its rows along now (F-305), and the row
+  /// next to it in the stack is one of them.
+  LayerId? _standAfterDeleting(List<LayerId> ids) {
+    final from = ids.last;
+    final gone = {...ids, for (final row in rowsHeldBy(ids)) row.id}
+      ..remove(from);
+    return stableLayerIdAfterDeleting(
+      beforeLayers: [
+        for (final layer in _project.requireActiveCut.layers)
+          if (!gone.contains(layer.id)) layer,
+      ],
+      deletedLayerId: from,
+    );
+  }
+
   /// Deletes the active layer. Callers should confirm via dialog first and check
   /// [canDeleteActiveLayer]; this is a no-op when deletion is not allowed.
   void deleteActiveLayer() {
@@ -424,11 +473,7 @@ class LayerVerbs {
       return;
     }
 
-    final beforeLayers = List<Layer>.of(_project.requireActiveCut.layers);
-    final nextActiveLayerId = stableLayerIdAfterDeleting(
-      beforeLayers: beforeLayers,
-      deletedLayerId: activeLayer.id,
-    );
+    final nextActiveLayerId = _standAfterDeleting([activeLayer.id]);
 
     _project.cutCommandCoordinator.deleteLayer(
       cutId: _project.requireActiveCut.id,
@@ -465,10 +510,7 @@ class LayerVerbs {
     };
     final ordered = [...ids]
       ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
-    final nextActiveLayerId = stableLayerIdAfterDeleting(
-      beforeLayers: List<Layer>.of(cut.layers),
-      deletedLayerId: ordered.last,
-    );
+    final nextActiveLayerId = _standAfterDeleting(ordered);
     _project.historyManager.runAsOneStep('Delete rows', () {
       for (final layerId in ordered) {
         _project.cutCommandCoordinator.deleteLayer(

@@ -114,6 +114,7 @@ void main() {
     'cutNoteField': (s) => s.cutNoteField,
     'deleteLayerTitle': (s) => s.deleteLayerTitle,
     'deleteLayerMessageTemplate': (s) => s.deleteLayerMessageTemplate,
+    'deleteLayerHeldHeading': (s) => s.deleteLayerHeldHeading,
     'frameNameConflictTitle': (s) => s.frameNameConflictTitle,
     'frameNameConflictBody': (s) => s.frameNameConflictBody,
     'linkedPasteConflictBody': (s) => s.linkedPasteConflictBody,

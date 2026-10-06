@@ -920,6 +920,71 @@ void main() {
         );
       });
 
+      test('F-305: deleting a folder deletes what it holds, in every 겸용 '
+          'cut — the base with its attach row — and one undo brings both '
+          'cuts back', () {
+        final fixture = _fixture(
+          _project(
+            tracks: [
+              _track(id: 'track-1', name: 'V', cuts: [linkFixtureCut()]),
+            ],
+          ),
+          activeCutId: const CutId('cut-1'),
+        );
+        fixture.coordinator.createLinkedCut(
+          sourceCutId: const CutId('cut-1'),
+          name: 'linked',
+        );
+        final linkedCutId = fixture
+            .cutsFor(const TrackId('track-1'))
+            .firstWhere((cut) => cut.name == 'linked')
+            .id;
+        final folderId = fixture.coordinator.createFolderFromLayer(
+          cutId: const CutId('cut-1'),
+          layerId: const LayerId('base'),
+        )!;
+        Cut origin() => requireCut(fixture.project, const CutId('cut-1'));
+        Cut linked() => requireCut(fixture.project, linkedCutId);
+        List<String> names(Cut cut) => [
+          for (final layer in cut.layers) layer.name,
+        ];
+        expect(names(origin()), ['base', 'color', 'Folder 1', 'unrelated']);
+        // The linked cut carries a direction row of its own beside them.
+        const mirrored = [
+          'base',
+          'color',
+          'Folder 1',
+          'unrelated',
+          'Direction 1',
+        ];
+        expect(names(linked()), mirrored, reason: 'fixture');
+        final steps = fixture.historyManager.undoCount;
+
+        fixture.coordinator.deleteLayer(
+          cutId: const CutId('cut-1'),
+          layerId: folderId,
+        );
+
+        expect(
+          names(origin()),
+          ['unrelated'],
+          reason: 'the folder went and took the base and its attach row — '
+              'it used to dissolve and leave them standing',
+        );
+        expect(names(linked()), ['unrelated', 'Direction 1']);
+        expect(fixture.historyManager.undoCount, steps + 1, reason: 'ONE');
+
+        fixture.historyManager.undo();
+        expect(names(origin()), ['base', 'color', 'Folder 1', 'unrelated']);
+        expect(names(linked()), mirrored);
+        expect(folderStructureProblem(origin().layers), isNull);
+        expect(folderStructureProblem(linked().layers), isNull);
+        expect(
+          origin().layers.firstWhere((layer) => layer.name == 'base').folderId,
+          folderId,
+        );
+      });
+
       test('a folder FX track rides updateLayerTransformTrack in one undo '
           '(per-use — the 겸용 counterpart keeps its own)', () {
         final fixture = _fixture(

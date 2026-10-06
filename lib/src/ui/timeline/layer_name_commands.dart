@@ -44,14 +44,9 @@ Future<void> deleteRowSelectionWithDialog(
   if (ids.isEmpty) {
     return Future<void>.value();
   }
-  final byId = {for (final layer in session.layers) layer.id: layer};
-  final names = [
-    for (final id in ids)
-      if (byId[id] case final layer?) layer.name,
-  ];
   return confirmThenCommit(
     context,
-    dialog: (_) => DeleteLayerDialog(layerName: names.join(', ')),
+    dialog: (_) => _deleteWindowFor(session, ids),
     commit: session.deleteSelectionSubject,
   );
 }
@@ -66,8 +61,25 @@ Future<void> deleteActiveLayerWithDialog(
   }
   return confirmThenCommit(
     context,
-    dialog: (_) => DeleteLayerDialog(layerName: activeLayer.name),
+    dialog: (_) => _deleteWindowFor(session, [activeLayer.id]),
     commit: session.layerVerbs.deleteActiveLayer,
+  );
+}
+
+/// The delete window for [ids]: their names in its sentence, and the rows
+/// they take along listed under it — a folder's ([LayerVerbs.rowsHeldBy],
+/// F-305). One window for the selection's delete and the standing row's.
+DeleteLayerDialog _deleteWindowFor(
+  EditorSessionManager session,
+  List<LayerId> ids,
+) {
+  final byId = {for (final layer in session.layers) layer.id: layer};
+  return DeleteLayerDialog(
+    layerName: [
+      for (final id in ids)
+        if (byId[id] case final layer?) layer.name,
+    ].join(', '),
+    held: [for (final row in session.layerVerbs.rowsHeldBy(ids)) row.name],
   );
 }
 
