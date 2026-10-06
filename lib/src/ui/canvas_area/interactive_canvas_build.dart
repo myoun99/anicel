@@ -308,6 +308,9 @@ class _InteractiveCanvasBuild {
       // …each through its OWN row's placement, the one the pixel verbs
       // restate an outline through (a-marquee-on-a-posed-row ④).
       cellPlacementOf: session.pixelVerbs.placementOf,
+      // F-293: the cut tool's stamp lands where 픽셀 붙여넣기 lands — the
+      // ground is read by the one that reads it for the paste.
+      pieceGround: session.pixelVerbs.pieceGround,
       // Camera mode still needs artwork on screen: fall
       // back to the first drawn layer at the playhead.
       selection: _selection,

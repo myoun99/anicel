@@ -124,12 +124,26 @@ class _CanvasPanelSelection {
   /// A canvas point on the active row's artwork — where a press on the
   /// canvas lands on a posed row (a stamp's), the same inverse the eyedropper
   /// and the guides ask ([canvasToArtwork]).
-  CanvasPoint? pointOnTheRow(CanvasPoint point) {
-    final placement = _state.widget.interactiveContentPose;
+  CanvasPoint? pointOnTheRow(CanvasPoint point) =>
+      pointOnARow(point, _state.widget.interactiveContentPose);
+
+  /// [pointOnTheRow] for a row standing at [placement] — any row a range
+  /// names, each of which shows the press somewhere of its own (F-293).
+  CanvasPoint? pointOnARow(CanvasPoint point, LayerPoseSample? placement) {
     if (placement == null) {
       return point;
     }
     return canvasToArtwork(placement, _state.widget.canvasSize)?.apply(point);
+  }
+
+  /// [pointOnTheRow] run backwards: a point of the active row's artwork,
+  /// where the canvas shows it.
+  CanvasPoint pointOnTheCanvas(CanvasPoint onTheRow) {
+    final placement = _state.widget.interactiveContentPose;
+    if (placement == null) {
+      return onTheRow;
+    }
+    return artworkToCanvas(placement, _state.widget.canvasSize).apply(onTheRow);
   }
 
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the stamp

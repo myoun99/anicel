@@ -58,6 +58,7 @@ void main() {
         CanvasShapeKind? shape,
         BrushBlendMode? stampBlend,
         double? stampOpacity,
+        bool rowTakesStrokes,
       })
       setTool,
     })
@@ -83,6 +84,8 @@ void main() {
       CanvasShapeKind? shape,
       BrushBlendMode? stampBlend,
       double? stampOpacity,
+      // False = standing on a row that takes no strokes (a property lane).
+      bool rowTakesStrokes = true,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -104,6 +107,7 @@ void main() {
               )),
               selectionCommands: commands,
               cutPieceSlot: slot,
+              rowAcceptsStrokes: rowTakesStrokes,
               interactiveContentPose: placement,
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
@@ -292,8 +296,8 @@ void main() {
     // Passing the mode alone sends the stamp down the ordinary path with
     // the flag false, and the piece gets PAINTED where it should have cut a
     // hole. That has now been the same mistake in three places (bucket,
-    // shape fill, stamp), which is why all three stamp routes go through
-    // one commit method.
+    // shape fill, stamp), which is why every road a piece lands by passes
+    // the one line that sets it (`pieceLandings`).
     final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
     expect(env.slot.isNotEmpty, isTrue);
@@ -475,6 +479,39 @@ void main() {
           0,
       isNot(0),
     );
+  });
+
+  testWidgets('paste at origin lands nothing on a row that takes no strokes', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+    int inkOnTheBar() =>
+        surfacePixelRgba(
+          env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+          50,
+          40,
+        ) ??
+        0;
+
+    // Standing on a property lane: the cel shows, and nothing may write it.
+    // With the stamp set to ERASE, a landing would clear the bar it was cut
+    // from.
+    await env.setTool(
+      CanvasTool.cutStamp,
+      stampBlend: BrushBlendMode.erase,
+      rowTakesStrokes: false,
+    );
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    expect(inkOnTheBar(), isNot(0), reason: 'the lane refused it');
+
+    // CONTROL: the same press on the row itself does land.
+    await env.setTool(CanvasTool.cutStamp, stampBlend: BrushBlendMode.erase);
+    env.slot.pasteAtOrigin();
+    await tester.pump();
+    expect(inkOnTheBar(), 0);
   });
 
   testWidgets('paste at origin presses at the STAMP tool\'s opacity', (
@@ -872,6 +909,55 @@ void main() {
         reason: 'pressed at canvas (130,140), which the row shows (30,140) at',
       );
       expect(inkAt(130, 140), 0);
+    });
+
+    testWidgets('a drag\'s trail lands where it is dragged on the canvas', (
+      tester,
+    ) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        placement: placedRight,
+      );
+      await dragOnLayer(tester, const Offset(106, 30), const Offset(194, 50));
+      expect(env.slot.isNotEmpty, isTrue);
+      // The trail is spaced a whole piece apart.
+      final piece = env.slot.piece!.image.width;
+      expect(piece, inInclusiveRange(70, 95), reason: '⛔premise: the bar');
+
+      await env.setTool(CanvasTool.cutStamp);
+      final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+      final gesture = await tester.startGesture(
+        origin + const Offset(130, 150),
+        kind: PointerDeviceKind.mouse,
+        buttons: kPrimaryButton,
+      );
+      await tester.pump();
+      for (var x = 150; x <= 330; x += 20) {
+        await gesture.moveTo(origin + Offset(x.toDouble(), 150));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+
+      int inkAt(int x, int y) =>
+          surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            x,
+            y,
+          ) ??
+          0;
+      expect(inkAt(30, 150), isNot(0), reason: 'the press: canvas 130');
+      expect(
+        inkAt(30 + 2 * piece, 150),
+        isNot(0),
+        reason: 'two pieces on, dragged to canvas 330 — the row\'s 230',
+      );
+      expect(
+        inkAt(30 + 3 * piece, 150),
+        0,
+        reason: 'and no further: the trail is laid on the row\'s own artwork',
+      );
     });
   });
 }

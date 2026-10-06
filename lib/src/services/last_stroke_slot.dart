@@ -9,10 +9,12 @@ import 'brush_stroke_commit_data.dart';
 ///
 /// 🗣️유저 2026-09-24 (confirm-button-Q2): 「일반상태=마지막 스트로크 재입력」,
 /// and how: 「그냥 브러시로 다시 그린다기보단 **그린걸 픽셀 보관해서 덮는게**
-/// 가장 쉽고 깔끔하고 가벼운 근본적인 방법」. So this holds what the stroke
-/// funnel LANDED — the brush, the eraser, the bucket, a shape fill and a
-/// stamp all go through it — with the blend it landed with, so an erase lays
-/// down as an erase. Laying it down again is one step and one undo.
+/// 가장 쉽고 깔끔하고 가벼운 근본적인 방법」. So this holds what a drawing
+/// verb LANDED — the brush, the eraser, the bucket and a shape fill, which
+/// come down the stroke funnel, and the cut tool's stamp, which lands
+/// through the piece door (F-293) — with the blend it landed with, so an
+/// erase lays down as an erase. Laying it down again is one step and one
+/// undo.
 ///
 /// Lifetime (유저 08-27): until the app closes. It survives cuts and
 /// projects, like [CutPieceSlot] and for the same reason: it holds dabs and

@@ -253,13 +253,7 @@ class _CanvasPanelTap {
           if (piece == null || onTheRow == null) {
             return;
           }
-          _state._commitStampDabs([
-            buildCutStampDab(
-              piece: piece,
-              center: onTheRow,
-              opacity: _state._brush.cutStampOpacity,
-            ),
-          ]);
+          _stampAt(piece, point);
           // A press is also the start of a possible drag, and the drag
           // measures its spacing from the stamp that just landed.
           _lastStampCenter = onTheRow;
@@ -288,8 +282,33 @@ class _CanvasPanelTap {
     }
   }
 
-  /// Where the last stamp of the current drag landed. Null between drags.
+  /// Where the last stamp of the current drag landed, on the standing row's
+  /// own artwork. Null between drags.
   CanvasPoint? _lastStampCenter;
+
+  /// One stamp of [piece] centred on [onCanvas] — a point on the CANVAS,
+  /// which every row the stamp lands on takes on its own artwork, where
+  /// that row shows it ([_BrushCanvasPanelState._landStamp]).
+  ///
+  /// One dab per distinct centre: rows are mostly unplaced and a range is
+  /// mostly one row, so a posed piece is resampled once and the door cuts
+  /// it once ([PieceStamp.onTheRow]).
+  void _stampAt(CutPiece piece, CanvasPoint onCanvas) {
+    final atCentre = <CanvasPoint, BrushDab>{};
+    _state._landStamp((placement) {
+      final centre = _state._selectionSeat.pointOnARow(onCanvas, placement);
+      return centre == null
+          ? null
+          : atCentre.putIfAbsent(
+              centre,
+              () => buildCutStampDab(
+                piece: piece,
+                center: centre,
+                opacity: _state._brush.cutStampOpacity,
+              ),
+            );
+    });
+  }
 
   /// 🚨★★★A TOUCH TAP RESOLVES ON THE LIFT OR ON THE SLOP, NEVER ON THE
   /// TOUCH — the fill's law (#1277), now the tap layer's too.
@@ -372,13 +391,8 @@ class _CanvasPanelTap {
       return;
     }
     for (final center in centers) {
-      _state._commitStampDabs([
-        buildCutStampDab(
-          piece: piece,
-          center: center,
-          opacity: _state._brush.cutStampOpacity,
-        ),
-      ]);
+      // Back on the canvas, where the other rows of a range read it from.
+      _stampAt(piece, _state._selectionSeat.pointOnTheCanvas(center));
     }
     _lastStampCenter = centers.last;
   }

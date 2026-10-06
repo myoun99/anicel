@@ -36,6 +36,7 @@ import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/commands/brush_lift_move_history_command.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
+import '../../services/piece_landing.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/bitmap_surface_painter.dart';
@@ -169,6 +170,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.pieceGround,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -324,6 +326,24 @@ class BrushCanvasPanel extends StatefulWidget {
   /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
   /// every cel through the standing row's, the one the lift crossed.
   final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
+
+  /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
+  /// lands on, read by the session that reads it for the paste
+  /// (`PixelVerbs.pieceGround`): the cels the ladder names, each row's
+  /// placement, the selection and its softness.
+  ///
+  /// 🗣️F-293 (유저 2026-10-05): 「잘라내기도구의 스탬프, 여러 프레임 선택해서
+  /// 여러프레임 붙여넣을수있도록. **색편집의 픽셀붙여넣기랑 법 통일**」.
+  ///
+  /// ⛔The WHOLE ground, not its cels alone ([transformTargetKeys] hands the
+  /// transform a list and the panel reads the rest itself): the stamp and
+  /// the paste are one verb held by two buttons, and four facts assembled in
+  /// two places is how one range comes to mean two sets of cels.
+  ///
+  /// ⚠️Null (a host with no session behind it — the focused tests) lands on
+  /// the cel you stand on, through what this panel holds
+  /// ([_BrushCanvasPanelState._pieceGround]).
+  final PieceGround Function()? pieceGround;
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
@@ -2260,34 +2280,100 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// would reach this from the brush — and then "active" would mean the 40%
   /// left over from shading, which is exactly the leak TP1's per-tool fields
   /// were built to make impossible.
+  ///
+  /// 🗣️I-28-paste-in-place-Q1 (유저 2026-10-01): 「같은 문으로 — 범위 전부 ·
+  /// 페더 따름」 — on every cel 픽셀 붙여넣기 would land on, through the
+  /// selection's softness ([_landStamp]). ↩️It asked for a cel under the
+  /// playhead first; the ground answers that now, as it does for the paste.
   void pasteCutPieceAtOrigin() {
     final piece = widget.cutPieceSlot?.piece;
-    if (piece == null || widget._editableCoordinator == null) {
+    if (piece == null) {
       return;
     }
-    _commitStampDabs([
-      buildCutPasteDab(piece, opacity: _brush.cutStampOpacity),
-    ]);
+    // ONE dab for every row: the piece goes back where it was cut from,
+    // whichever row takes it.
+    final dab = buildCutPasteDab(piece, opacity: _brush.cutStampOpacity);
+    _landStamp((_) => dab);
   }
 
-  /// Lands stamp dabs with the stamp tool's own blend.
+  /// Lands the held piece with the stamp tool's own blend — [onTheRow] is
+  /// the piece as a row standing at a placement takes it
+  /// ([PieceStamp.onTheRow]).
   ///
-  /// 🚨ERASE rides a flag on the DAB, not the blend mode — the materializer
-  /// reads `dab.erase` per dab and the erase blend takes the plain path, so
-  /// passing the mode alone paints the piece instead of clearing with it.
-  /// This is the THIRD place that trap has been hit (bucket, shape fill,
-  /// here), which is why all three stamp routes go through one method.
-  void _commitStampDabs(List<BrushDab> dabs) {
+  /// 🚨★★★**ALL THREE STAMP ROADS, THROUGH THE PIECE DOOR** ([pieceLandings])
+  /// — a press on the canvas, a drag's trail and 원래 위치에 붙여넣기 land
+  /// where 픽셀 붙여넣기 lands: every cel the ladder names, each through the
+  /// selection as its own row shows it, one undo.
+  ///
+  /// 🗣️F-293 (유저 2026-10-05): 「잘라내기도구의 스탬프, 여러 프레임 선택해서
+  /// 여러프레임 붙여넣을수있도록. **색편집의 픽셀붙여넣기랑 법 통일**」 · 「선택
+  /// 범위로 선택한채로 커서로 붙여넣거나, 원래 위치에 붙여넣기나 동일하게」.
+  ///
+  /// ↩️They went down the stroke funnel ([_commitSourceStroke]), which lands
+  /// on the cel you stand on and cuts through a selection's hard outline.
+  /// The erase flag a stamp's dab wears rode along here; the door sets it.
+  void _landStamp(BrushDab? Function(LayerPoseSample? placement) onTheRow) {
+    final coordinator = widget.coordinator;
+    if (coordinator == null) {
+      return;
+    }
     final blend = _brush.activeBlendMode;
-    _commitSourceStroke(
+    final landed = pieceLandings(
+      coordinator: coordinator,
+      ground: widget.pieceGround?.call() ?? _pieceGround(coordinator),
+      stamp: PieceStamp(
+        onTheRow: onTheRow,
+        blend: blend,
+        description: 'Stamp',
+      ),
+      cacheInvalidationSink: widget.cacheInvalidationSink,
+    );
+    if (landed.isEmpty) {
+      // No cel named, or nothing of the piece inside the selection: nothing
+      // lands, nothing undoes.
+      return;
+    }
+    // What landed, cut as it landed — the pixels 확정 lays down again
+    // ([LastStrokeSlot]): the cel you stand on's share when it took one.
+    // ⛔The stamp is the one drawing verb that does not pass
+    // [_commitSourceStroke], so it is the one that records itself.
+    final standing = coordinator.frameStore.canonicalKeyOf(
+      coordinator.activeFrameKey,
+    );
+    widget.lastStroke?.hold(
       BrushStrokeCommitData(
-        sourceDabs: blend == BrushBlendMode.erase
-            ? [for (final dab in dabs) dab.copyWith(erase: true)]
-            : dabs,
+        sourceDabs: [(landed[standing] ?? landed.values.first).dab],
         blendMode: blend,
       ),
     );
+    setState(() {
+      final landings = [for (final cel in landed.values) cel.landing];
+      final historyManager = widget.historyManager;
+      if (historyManager == null) {
+        // Headless hosts (focused tests): land raw.
+        for (final landing in landings) {
+          landing.execute();
+        }
+        return;
+      }
+      historyManager.executeAsOneStep('Stamp', landings);
+    });
   }
+
+  /// The ground for a host with no session behind it
+  /// ([BrushCanvasPanel.pieceGround] null): the cel you stand on, when it
+  /// can be drawn on, through what this panel holds.
+  PieceGround _pieceGround(BrushFrameEditingCoordinator coordinator) =>
+      PieceGround(
+        cels: [
+          if (widget._editableCoordinator != null) coordinator.activeFrameKey,
+        ],
+        placementOf:
+            widget.cellPlacementOf ?? (_) => widget.interactiveContentPose,
+        selection: widget.selectionCommands?.region,
+        options:
+            widget.selectionMaskOptions?.value ?? SelectionMaskOptions.none,
+      );
 
   BitmapSurface? _contentBoundsSurface;
   ({int left, int top, int rightExclusive, int bottomExclusive})?
@@ -2346,8 +2432,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     // What landed, clipped as it landed — the pixels 확정 lays down again.
-    // ⛔Here and nowhere else: every drawing verb passes this line, so no
-    // verb can be the one that forgets to record itself.
+    // ⛔Here, for every verb that comes down this funnel: each passes this
+    // line, so none can be the one that forgets to record itself. The one
+    // drawing verb that lands elsewhere — the cut tool's stamp, through the
+    // piece door — records at its own ([_landStamp]).
     widget.lastStroke?.hold(strokeData);
     setState(() {
       final historyManager = widget.historyManager;

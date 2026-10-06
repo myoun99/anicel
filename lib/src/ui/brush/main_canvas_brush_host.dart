@@ -24,6 +24,7 @@ import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
+import '../../services/piece_landing.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../../services/layer_pose_paint.dart';
 import 'brush_canvas_panel.dart';
@@ -110,6 +111,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.rowAcceptsStrokes = true,
     this.transformTargetKeys,
     this.cellPlacementOf,
+    this.pieceGround,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -375,6 +377,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
   final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
 
+  /// Where the cut tool's stamp lands (F-293) — passed straight through to
+  /// the panel ([BrushCanvasPanel.pieceGround]).
+  final PieceGround Function()? pieceGround;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -553,6 +559,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       transformTargetKeys: widget.transformTargetKeys,
       cellPlacementOf: widget.cellPlacementOf,
+      pieceGround: widget.pieceGround,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
       guides: widget.guides,
