@@ -392,19 +392,21 @@ void main() {
     final session = film();
     addTearDown(session.dispose);
     draw(session);
-    final state = await pumpCels(tester, session, spec: everything);
-    final checker = keyed('export-preview-checker');
+    await pumpCels(tester, session, spec: everything);
 
     await press(tester, 'export-cels-stand-a');
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    expect(checker, findsOneWidget, reason: 'LIVENESS — a cel, RGBA');
+    await tester.settleExportPreview();
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(
+      tester.exportPreviewCheckered,
+      isTrue,
+      reason: 'LIVENESS — a cel, RGBA',
+    );
 
     await press(tester, 'export-cels-stand-document-timesheet');
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    expect(keyed('export-preview-image'), findsOneWidget);
-    expect(checker, findsNothing);
+    await tester.settleExportPreview();
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(tester.exportPreviewCheckered, isFalse);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
