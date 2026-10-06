@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import '../../core/path_names.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
-import 'app_save_settings.dart' show GrantedDirectory;
 
 /// Where an export's outputs go: a PLACE asked before the run
 /// ([ExportPlace] — a folder for several files, one file's own path for a
@@ -31,24 +30,26 @@ sealed class ExportPlace extends ExportDestination {
   String get folderPath;
 }
 
-/// A folder asked before the run — what several files are asked. The
-/// bookmark half is the token the OS issued with the pick (macOS/iOS); it
-/// is what lets the folder be WRITTEN to (Q-scoped-folder-settings, 유저
-/// 08-26).
+/// A folder asked before the run — what several files are asked.
+///
+/// ↩️It carried the token the OS issued with the pick (macOS/iOS), for the
+/// days a folder was chosen ahead, stored, and written into again after a
+/// relaunch (Q-scoped-folder-settings, 유저 08-26). A folder asked at every
+/// export is written in the run that asked it, where the pick itself is
+/// the grant — so it is a path (`app_save_settings.dart` keeps the law for
+/// the next folder that is stored).
 final class ExportIntoFolder extends ExportPlace {
-  const ExportIntoFolder(this.folder);
-
-  final GrantedDirectory folder;
+  const ExportIntoFolder(this.folderPath);
 
   @override
-  String get folderPath => folder.path;
+  final String folderPath;
 
   @override
   bool operator ==(Object other) =>
-      other is ExportIntoFolder && other.folder == folder;
+      other is ExportIntoFolder && other.folderPath == folderPath;
 
   @override
-  int get hashCode => folder.hashCode;
+  int get hashCode => folderPath.hashCode;
 }
 
 /// ONE FILE's own place, asked before the run through a save window
@@ -162,11 +163,14 @@ class AppExportSettings {
       lastSpecs: json['lastSpecs'] == null
           ? const ExportTabSpecs()
           : ExportTabSpecs.fromJson(json['lastSpecs'] as Map<String, dynamic>),
-      // Both spellings of a folder: the bare path, or the path+bookmark a
-      // build wrote while the folder was reused. A file written while
-      // 「끝나면 고르기」 was a choice says `handOver` and no folder: it reads
-      // as nothing remembered, which is what it is.
-      lastFolder: GrantedDirectory.fromJson(json['lastLocation'])?.path,
+      // A path. What a build wrote while the place was chosen ahead — the
+      // path beside its token, or `handOver` and no folder at all — reads
+      // as nothing remembered: the next window opens where the system
+      // puts it.
+      lastFolder: switch (json['lastLocation']) {
+        final String path when path.isNotEmpty => path,
+        _ => null,
+      },
       presetsDrawerOpen: json['presetsDrawerOpen'] as bool? ?? true,
       queueDrawerOpen: json['queueDrawerOpen'] as bool? ?? true,
     );

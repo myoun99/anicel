@@ -471,6 +471,46 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
+  testWidgets('a queued job that has come to write NOTHING is not asked '
+      'again, and does not fail — there is nothing to put anywhere', (
+    tester,
+  ) async {
+    asWindows();
+    final temp = Directory.systemTemp.createTempSync('qa-cels-queued-none');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    var asked = 0;
+
+    final state = await pumpCels(
+      tester,
+      session,
+      temp,
+      askedWhere: () {
+        asked += 1;
+        return temp;
+      },
+    );
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tapKey(tester, 'export-queue-add-button');
+    // The last drawing off as well: the queued job writes nothing now.
+    await tapKey(tester, 'export-cels-block-b-b1');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(asked, 1);
+    expect(filesWrittenUnder(temp), isEmpty);
+    final strings = AppText.strings;
+    expect(
+      status(tester),
+      strings.exQueueRest(strings.exJobCount(1), failed: 0, kept: false),
+    );
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
   testWidgets('ONE cel behind folders of its rule\'s making is a FOLDER to '
       'hand over: it is asked the folder window — a save window cannot name '
       'it — and written under its folders there', (tester) async {

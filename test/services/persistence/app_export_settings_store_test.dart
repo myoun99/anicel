@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/export_preset.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -53,35 +52,41 @@ void main() {
     expect(restored.presetsFor(ExportTab.cels).single.name, '납품 셀');
   });
 
-  test('the remembered folder reads from both spellings a build has written '
-      '— the bare path, and the path beside the token of a folder that was '
-      'reused', () {
+  test('the remembered folder is written and read as a bare path', () {
+    expect(
+      AppExportSettings(lastFolder: 'D:/o').toJson()['lastLocation'],
+      'D:/o',
+    );
     expect(
       AppExportSettings.fromJson(const {
-        'lastLocation': 'D:/deliver/legacy',
+        'lastLocation': 'D:/deliver/rush',
       }).lastFolder,
-      'D:/deliver/legacy',
+      'D:/deliver/rush',
     );
+  });
+
+  test('what a build wrote while the place was chosen AHEAD reads as nothing '
+      'remembered — the folder beside its token, and 「끝나면 고르기」', () {
     expect(
       AppExportSettings.fromJson(const {
         'lastLocation': {'path': 'D:/deliver/granted', 'bookmark': 'Ym9v'},
       }).lastFolder,
-      'D:/deliver/granted',
+      isNull,
     );
-  });
-
-  test('what is remembered is a folder or nothing: 「끝나면 고르기」 written by '
-      'a build that had it reads as nothing', () {
-    expect(AppExportSettings().lastFolder, isNull);
-    expect(AppExportSettings().toJson().containsKey('lastLocation'), isFalse);
     expect(
       AppExportSettings.fromJson(const {'handOver': true}).lastFolder,
       isNull,
     );
     expect(
-      AppExportSettings(lastFolder: 'D:/o').toJson()['lastLocation'],
-      'D:/o',
+      AppExportSettings.fromJson(const {'lastLocation': ''}).lastFolder,
+      isNull,
     );
+  });
+
+  test('nothing remembered is nothing written, and one folder is not '
+      'another', () {
+    expect(AppExportSettings().lastFolder, isNull);
+    expect(AppExportSettings().toJson().containsKey('lastLocation'), isFalse);
     expect(
       AppExportSettings(lastFolder: 'D:/o').copyWith(lastFolder: null),
       AppExportSettings(),
@@ -96,13 +101,13 @@ void main() {
 
   test('a place stands in a folder: the folder itself, or the one its lone '
       'file is in', () {
-    const folder = ExportIntoFolder(GrantedDirectory(path: 'D:/out'));
+    const folder = ExportIntoFolder('D:/out');
     const file = ExportToFile('D:/out/shot.mp4');
     expect(folder.folderPath, 'D:/out');
     expect(file.folderPath, 'D:/out');
     expect(file, const ExportToFile('D:/out/shot.mp4'));
     expect(file, isNot(const ExportToFile('D:/out/other.mp4')));
-    expect(folder, isNot(const ExportIntoFolder(GrantedDirectory(path: 'D:/b'))));
+    expect(folder, isNot(const ExportIntoFolder('D:/b')));
     expect(const ExportHandOver(), const ExportHandOver());
   });
 

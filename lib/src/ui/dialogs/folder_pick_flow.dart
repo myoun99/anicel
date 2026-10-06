@@ -8,8 +8,6 @@ import '../../core/path_names.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_export_settings.dart'
     show ExportDestination, ExportHandOver, ExportIntoFolder, ExportToFile;
-import '../../services/persistence/app_save_settings.dart'
-    show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/provider_documents.dart';
@@ -439,7 +437,7 @@ bool aLoneFileIsAskedThroughASaveWindow(String operatingSystem) =>
 /// window opens, and whether one opens at all, is the door's to say for
 /// every caller.
 typedef OutputPlaceWindows = ({
-  Future<GrantedDirectory?> Function(String? initialDirectory) folder,
+  Future<String?> Function(String? initialDirectory) folder,
   Future<String?> Function(String suggestedName, String? initialDirectory)
   file,
 });
@@ -481,20 +479,13 @@ Future<ExportDestination?> askWhereOutputsGo(
 /// The system's two windows ([OutputPlaceWindows]).
 ///
 /// PICK-2: the folder has to be a durable real path — `getDirectoryPath`
-/// gave a SAF tree URI on Android and threw on iOS. And the GRANT flavour:
-/// on macOS a path without its token is refused at the first write there
-/// (Q-scoped-folder-settings, 유저 08-26).
+/// gave a SAF tree URI on Android and threw on iOS — so it comes through
+/// the app's own folder pick, which is also what opens the folder to this
+/// run on macOS (the pick is the grant; nothing is kept of it, because
+/// nothing is written there once the run is over).
 OutputPlaceWindows _systemPlaceWindows(BuildContext context) => (
-  folder: (initialDirectory) async {
-    final grant = await pickFolderGrantForUser(
-      context,
-      initialDirectory: initialDirectory,
-    );
-    final path = grant?.path;
-    return path == null
-        ? null
-        : GrantedDirectory(path: path, bookmark: grant!.bookmark);
-  },
+  folder: (initialDirectory) =>
+      pickFolderForUser(context, initialDirectory: initialDirectory),
   file: (suggestedName, initialDirectory) async => (await pickSaveFileForUser(
     context,
     suggestedName: suggestedName,

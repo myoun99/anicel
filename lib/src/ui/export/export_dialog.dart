@@ -20,8 +20,6 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
-import '../../services/persistence/app_save_settings.dart'
-    show GrantedDirectory;
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
@@ -146,18 +144,16 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// Where the outputs of the run under way go — asked when Export is
   /// pressed ([_askWhere]), and of a queued job when it was queued; null
-  /// until then. A folder carries the security-scoped token the OS issued
-  /// for it (macOS/iOS), which is what lets it be WRITTEN to
-  /// (Q-scoped-folder-settings, 유저 08-26). A lone file asked a place of
-  /// its own is written at it ([_placedFile]). A run asked its place
-  /// afterwards (drive-folder-windows-Q1) writes into an outbox of its own
-  /// ([_runOutbox]) and [handOverFilesForUser] takes it from there.
+  /// until then. A run asked a folder writes into it ([_location]); a lone
+  /// file asked a place of its own is written at it ([_placedFile]). A run
+  /// asked its place afterwards (drive-folder-windows-Q1) writes into an
+  /// outbox of its own ([_runOutbox]) and [handOverFilesForUser] takes it
+  /// from there.
   ///
-  /// ⚠️ONE value on purpose. The path and its token were two fields kept
-  /// together by one setter — a bookmark that outlived its path is a grant
-  /// for somewhere else — and 「끝나면 고르기」 would have made a third to
-  /// keep apart from them. As one value, no code can leave half of a
-  /// destination behind.
+  /// ⚠️ONE value on purpose: which kind of place it is, and the place, were
+  /// fields kept together by hand — a path, the token beside it, and
+  /// 「끝나면 고르기」 as a third to keep apart from them. As one value, no
+  /// code can leave half of a destination behind.
   ExportDestination? _destination;
 
   /// The folder the run under way writes into — the one it was asked, or
@@ -2171,7 +2167,7 @@ class ExportDialogState extends State<ExportDialog> {
     // The lone file of a run asked a place of its own wears the name it was
     // given there, whatever its rule calls it ([_placedName]).
     final placedName = _placedName;
-    if (placedName != null && total != 1) {
+    if (placedName != null && total > 1) {
       // ⛔A file's place holds ONE file. Written on regardless, every file
       // of the run would land on that one name, each over the last — so a
       // run that reaches here with more is stopped before it writes
@@ -2615,10 +2611,7 @@ class ExportDialogState extends State<ExportDialog> {
       return null;
     }
     return (
-      folder: (_) async => switch (await picker()) {
-        final directory? => GrantedDirectory(path: directory),
-        null => null,
-      },
+      folder: (_) => picker(),
       file: (suggestedName, _) async => switch (await picker()) {
         final directory? => '$directory/$suggestedName',
         null => null,

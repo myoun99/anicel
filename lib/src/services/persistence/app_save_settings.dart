@@ -3,60 +3,23 @@ import 'package:flutter/foundation.dart';
 
 import 'session_scratch.dart';
 
-/// A user-chosen folder plus the token that reopens it after a relaunch
-/// on the scoped platforms (Q-scoped-folder-settings, 유저 08-26 「알아서
-/// 맡김」 → A: bookmarks ride along, the project-grants machinery reused).
-///
-/// ONE value on purpose, not two parallel fields: a bookmark written
-/// beside its path can drift — a copyWith that moves the path and keeps
-/// the token is a grant for somewhere else, silently. Travelling
-/// together makes that unrepresentable.
-///
-/// On Windows/Linux/Android the [bookmark] is simply null — a real path
-/// keeps working on its own there, exactly like the project grants.
-@immutable
-class GrantedDirectory {
-  const GrantedDirectory({required this.path, this.bookmark});
-
-  final String path;
-  final String? bookmark;
-
-  /// A settings file's spelling: the bare path when there is no token
-  /// (byte-identical to what older builds wrote), a map when there is.
-  Object toJson() =>
-      bookmark == null ? path : {'path': path, 'bookmark': bookmark};
-
-  /// Reads both spellings; null for anything else (an older build's
-  /// reader treats the map as absent and falls back to the default —
-  /// a folder setting, not data, so that costs a re-pick at worst).
-  static GrantedDirectory? fromJson(Object? json) {
-    if (json is String && json.isNotEmpty) {
-      return GrantedDirectory(path: json.replaceAll('\\', '/'));
-    }
-    if (json is Map) {
-      final path = json['path'];
-      final bookmark = json['bookmark'];
-      if (path is String && path.isNotEmpty) {
-        return GrantedDirectory(
-          path: path.replaceAll('\\', '/'),
-          bookmark: bookmark is String && bookmark.isNotEmpty
-              ? bookmark
-              : null,
-        );
-      }
-    }
-    return null;
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is GrantedDirectory &&
-      other.path == path &&
-      other.bookmark == bookmark;
-
-  @override
-  int get hashCode => Object.hash(path, bookmark);
-}
+// 🪦**`GrantedDirectory` STOOD HERE — a user-chosen folder and the token that
+// reopens it after a relaunch on the scoped platforms, as ONE value**
+// (Q-scoped-folder-settings, 유저 08-26 「알아서 맡김」 → A: bookmarks ride
+// along, the project-grants machinery reused). One value and not two
+// parallel fields, because a bookmark written beside its path can drift: a
+// copyWith that moves the path and keeps the token is a grant for somewhere
+// else, silently.
+//
+// Its last holder was the export window's remembered folder. Every export
+// is asked its place now (F-221-Q4, 유저 2026-10-06), so that folder is
+// only where the next window opens and nothing is written into it unasked
+// — a path, with no token to keep beside it (2026-10-07).
+//
+// ⛔THE LAW SURVIVES, with the shape: the next folder the app STORES AND
+// WRITES INTO UNASKED carries its token in the same value as its path, and
+// resolves it before the first write (the tombstone at the foot of
+// [AppSave]).
 
 /// SAVE-1: the save policy (the 2026-07 저장 설계 확정).
 ///
@@ -238,7 +201,7 @@ abstract final class AppSave {
   // ⛔The LAW survives and applies to the next configurable folder anyone
   // adds: **a stored folder needs its bookmark resolved before the first
   // write, or the setting lies.** What is gone is the only folder that
-  // needed it. The export dialog remembers a `lastLocation` the same way,
-  // and does not need this because its picker asks again every time — the
-  // app never writes there unattended.
+  // needed it. The export window remembers a `lastLocation` too, and does
+  // not need this: every export is asked its place, so that folder is only
+  // where the window opens — the app never writes there unattended.
 }

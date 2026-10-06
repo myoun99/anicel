@@ -87,8 +87,11 @@ void main() {
   // a moved one while leaving an unresolvable one UNTOUCHED. The folder is
   // gone (유저 2026-09-08: 앱이 쓰는 곳은 앱 컨테이너와 프로젝트 파일
   // 둘뿐), so `resolveSettingsDirectories` had nothing left to resolve.
-  // ⛔The LAW is not gone and `GrantedDirectory` still carries it for the
-  // export dialog — see `app_export_settings_store_test`.
+  // ⛔The LAW is not gone: it waits for the next folder the app stores and
+  // writes into unasked (the tombstones in `app_save_settings.dart`).
+  // ↩️`GrantedDirectory` carried it for the export window's remembered
+  // folder until every export came to be asked its place (F-221,
+  // 2026-10-07) — what is remembered there is only where a window opens.
 
   test('a setting whose feature is gone is read and DROPPED', () {
     // The sidecar location is fixed now, and a setting that outlives its

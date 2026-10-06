@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart';
 import 'package:anicel/src/ui/export/export_job.dart';
 
 void main() {
@@ -13,13 +12,13 @@ void main() {
 
       final first = queue.enqueue(
         spec: const SequenceExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
         fileName: 'a.mp4',
         now: () => DateTime.utc(2026),
       );
       final second = queue.enqueue(
         spec: const CelsExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
         now: () => DateTime.utc(2026),
       );
 
@@ -37,11 +36,11 @@ void main() {
       final queue = ExportQueueModel();
       final first = queue.enqueue(
         spec: const SequenceExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
       );
       final second = queue.enqueue(
         spec: const ImageExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
       );
       expect(queue.nextQueued?.id, first.id);
 
@@ -57,7 +56,7 @@ void main() {
       final queue = ExportQueueModel();
       final job = queue.enqueue(
         spec: const SequenceExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
       );
       queue.update(
         job.id,
@@ -77,7 +76,7 @@ void main() {
       final queue = ExportQueueModel();
       final running = queue.enqueue(
         spec: const SequenceExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
       );
       queue.update(
         running.id,
@@ -85,7 +84,7 @@ void main() {
       );
       final done = queue.enqueue(
         spec: const ImageExportSpec(),
-        destination: const ExportIntoFolder(GrantedDirectory(path: 'D:/out')),
+        destination: const ExportIntoFolder('D:/out'),
       );
       queue.update(
         done.id,

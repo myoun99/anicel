@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/services/persistence/app_save_settings.dart'
-    show GrantedDirectory;
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 
@@ -56,7 +54,7 @@ void main() {
       windows: (
         folder: (at) async {
           opened.add('folder, at $at');
-          return backedOut ? null : const GrantedDirectory(path: 'D:/picked');
+          return backedOut ? null : 'D:/picked';
         },
         file: (name, at) async {
           opened.add('file $name, at $at');
@@ -80,7 +78,7 @@ void main() {
       expect(several.opened, ['folder, at D:/last']);
       expect(
         several.said,
-        const ExportIntoFolder(GrantedDirectory(path: 'D:/picked')),
+        const ExportIntoFolder('D:/picked'),
       );
     });
 
@@ -91,7 +89,7 @@ void main() {
       expect(one.opened, ['folder, at D:/last']);
       expect(
         one.said,
-        const ExportIntoFolder(GrantedDirectory(path: 'D:/picked')),
+        const ExportIntoFolder('D:/picked'),
       );
     });
 
