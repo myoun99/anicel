@@ -66,35 +66,33 @@ class CelTextLayout {
   final TextPainter _fill;
   final TextPainter? _stroke;
 
-  double get _radians => content.rotationDegrees * math.pi / 180;
+  late final _TextFrame _frame = _TextFrame.of(content);
 
   /// Sets [canvas] — which is in canvas space — up for drawing in the
   /// text's own frame. The caller saves and restores around it.
   void applyFrame(ui.Canvas canvas) {
     canvas.translate(content.anchor.x, content.anchor.y);
     if (content.rotationDegrees != 0) {
-      canvas.rotate(_radians);
+      canvas.rotate(_frame.radians);
     }
   }
 
   /// [local], a point of the text's own frame, on the canvas.
-  ui.Offset toCanvas(ui.Offset local) => _turned(
-    local,
-    _radians,
-  ).translate(content.anchor.x, content.anchor.y);
+  ui.Offset toCanvas(ui.Offset local) => _frame.toCanvas(local);
 
   /// [point], a point of the canvas, in the text's own frame.
-  ui.Offset toLocal(ui.Offset point) => _turned(
-    point.translate(-content.anchor.x, -content.anchor.y),
-    -_radians,
-  );
+  ui.Offset toLocal(ui.Offset point) => _frame.toLocal(point);
+
+  /// [box] as it stands on the canvas — what is kept of this text once its
+  /// letters are let go ([celTextBoxOf]).
+  late final CelTextBox onCanvas = CelTextBox._(_frame, box);
 
   /// [box]'s corners on the canvas: top left, top right, bottom right,
   /// bottom left — as the text reads, so they turn with it.
-  List<ui.Offset> get boxCorners => _cornersOf(box, toCanvas);
+  List<ui.Offset> get boxCorners => onCanvas.corners;
 
   /// Whether [point], on the canvas, is inside the text's box.
-  bool boxContains(ui.Offset point) => box.contains(toLocal(point));
+  bool boxContains(ui.Offset point) => onCanvas.contains(point);
 
   /// Draws the text at its place on the canvas — the caller sets up any
   /// viewport or camera first.
@@ -143,6 +141,74 @@ class CelTextLayout {
     _fill.dispose();
     _stroke?.dispose();
   }
+}
+
+/// The frame a text is set in: its origin at the text's anchor, its x along
+/// the lines — turned as the text is.
+class _TextFrame {
+  _TextFrame.of(CelTextContent content)
+    : anchor = ui.Offset(content.anchor.x, content.anchor.y),
+      radians = content.rotationDegrees * math.pi / 180;
+
+  final ui.Offset anchor;
+  final double radians;
+
+  /// [local], a point of the frame, on the canvas.
+  ui.Offset toCanvas(ui.Offset local) => _turned(local, radians) + anchor;
+
+  /// [point], a point of the canvas, in the frame.
+  ui.Offset toLocal(ui.Offset point) => _turned(point - anchor, -radians);
+}
+
+/// WHERE A TEXT'S BOX STANDS ON THE CANVAS: the frame a person sees the
+/// text by and takes it by, turned as the text is — and nothing of its
+/// letters.
+///
+/// 유저 2026-10-02 (R9-rest): 「텍스트는 텍스트 툴을 선택했을때만 **텍스트별로
+/// 박스가 떠서** 편집가능」 — every text of the cel wears its box while the
+/// tool is in hand, the ones nobody is holding too, and a press asks each
+/// of them whether it is inside. Those are drawn and asked through this
+/// ([celTextBoxOf]): the one in hand through its layout's
+/// ([CelTextLayout.onCanvas]), which is the same value.
+class CelTextBox {
+  const CelTextBox._(this._frame, this._rect);
+
+  final _TextFrame _frame;
+
+  /// The box in the text's own frame.
+  final ui.Rect _rect;
+
+  /// Top left, top right, bottom right, bottom left — as the text reads, so
+  /// they turn with it.
+  List<ui.Offset> get corners => _cornersOf(_rect, _frame.toCanvas);
+
+  /// The middle of the box — what a hand on it turns and sizes it about.
+  ui.Offset get centre => _frame.toCanvas(_rect.center);
+
+  /// Whether [point], on the canvas, is inside the box.
+  bool contains(ui.Offset point) => _rect.contains(_frame.toLocal(point));
+}
+
+/// [content]'s box on the canvas — set once for a content, and kept with
+/// it.
+///
+/// A content never changes, so neither does its box; and the boxes of the
+/// texts nobody is holding are drawn every frame the text tool is in hand
+/// and asked on every press. Setting their letters each time would be
+/// setting type to draw four lines.
+///
+/// ⚠️It is the box the letters have ON THIS MACHINE, in the fonts it has
+/// when first asked.
+CelTextBox celTextBoxOf(CelTextContent content) =>
+    _boxes[content] ??= _boxSetFor(content);
+
+final Expando<CelTextBox> _boxes = Expando<CelTextBox>('cel text box');
+
+CelTextBox _boxSetFor(CelTextContent content) {
+  final layout = layoutCelText(content);
+  final box = layout.onCanvas;
+  layout.dispose();
+  return box;
 }
 
 /// Sets [content].

@@ -13,6 +13,7 @@ import 'package:anicel/src/services/command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -727,6 +728,118 @@ void main() {
 
       tool.confirm();
       expect(host.redrawn, greaterThan(baked));
+    });
+  });
+
+  group('the boxes of the texts in nobody\'s hand', () {
+    /// The box [content] has on the canvas, its letters set afresh.
+    List<Offset> boxOf(CelTextContent content) {
+      final layout = layoutCelText(content);
+      addTearDown(layout.dispose);
+      return layout.boxCorners;
+    }
+
+    List<List<Offset>> resting(CelTextTool tool, CelTextCel cel) => [
+      for (final box in tool.restingBoxesOn(cel.key, pictureOf(cel)))
+        box.corners,
+    ];
+
+    final first = said([run('ab')]);
+    final second = said([run('cde')], x: 40, y: 24);
+
+    test('with nothing in hand: every text of the cel, as they are '
+        'stacked', () {
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [carried(1, first), carried(2, second)],
+      );
+
+      expect(resting(tool, cel), [boxOf(first), boxOf(second)]);
+      expect(boxOf(first), isNot(boxOf(second)), reason: '⛔fixture');
+    });
+
+    test('🚨the text IN HAND is not among them — its own box says it is '
+        'the one', () {
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [carried(1, first), carried(2, second)],
+      );
+
+      tool.takeText(cel, pictureOf(cel).texts.last);
+
+      expect(resting(tool, cel), [boxOf(first)]);
+
+      tool.confirm();
+
+      expect(resting(tool, cel), [boxOf(first), boxOf(second)]);
+    });
+
+    test('a text in hand speaks for none of ANOTHER cel\'s, whatever their '
+        'ids', () {
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [carried(1, first), carried(2, second)],
+      );
+      tool.takeText(cel, pictureOf(cel).texts.last);
+
+      expect(
+        [
+          for (final box in tool.restingBoxesOn(elsewhere, pictureOf(cel)))
+            box.corners,
+        ],
+        [boxOf(first), boxOf(second)],
+      );
+    });
+
+    test('🚨a text let go of that still OWES its landing rests where it is '
+        'SHOWN — not where the cel still carries it, and once', () async {
+      final (:tool, host: _, :baker, :cel) = hand(texts: [carried(1, first)]);
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      await baker.pending.answer();
+      typeInto(tool, 'abcd');
+
+      tool.confirm();
+
+      expect(tool.session, isNull, reason: '⛔fixture');
+      expect(tool.holdsAnything, isTrue, reason: '⛔fixture: a landing owed');
+      expect(textsOn(cel), [(1, 'ab')], reason: '⛔fixture: not landed yet');
+      expect(resting(tool, cel), [boxOf(said([run('abc')]))]);
+
+      await baker.pending.answer();
+
+      expect(textsOn(cel), [(1, 'abcd')], reason: '⛔fixture');
+      expect(resting(tool, cel), [boxOf(said([run('abcd')]))]);
+    });
+
+    test('a NEW text let go of before anything of it was made rests '
+        'nowhere, until it is', () async {
+      final (:tool, host: _, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+
+      tool.confirm();
+
+      expect(tool.holdsAnything, isTrue, reason: '⛔fixture: a landing owed');
+      expect(resting(tool, cel), isEmpty);
+
+      await baker.pending.answer();
+
+      expect(resting(tool, cel), [boxOf(pictureOf(cel).texts.single.content)]);
+    });
+
+    test('and one let go of mid-typing rests where its last letters were '
+        'made, though the cel has none of it yet', () async {
+      final (:tool, host: _, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      final shown = tool.session!.shown.content;
+      typeInto(tool, 'ab');
+
+      tool.confirm();
+
+      expect(textsOn(cel), isEmpty, reason: '⛔fixture: not landed yet');
+      expect(resting(tool, cel), [boxOf(shown)]);
     });
   });
 

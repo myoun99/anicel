@@ -290,6 +290,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   Widget build(BuildContext context) {
     final session = _tool.session;
     final letters = _tool.letters;
+    final cel = widget.cel;
     return Stack(
       children: [
         Positioned.fill(
@@ -310,6 +311,12 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
                 painter: CelTextChromePainter(
                   tool: _tool,
                   stage: widget.stage,
+                  restingBoxes: cel == null
+                      ? const []
+                      : _tool.restingBoxesOn(
+                          cel.key,
+                          cel.coordinator.currentSurfaceOf(cel.key),
+                        ),
                   tracedBox: _tracedBox,
                   caretLit: _caretLit,
                   color: AppColors.accent,

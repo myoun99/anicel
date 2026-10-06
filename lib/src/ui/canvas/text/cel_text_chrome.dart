@@ -3,31 +3,44 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart';
 
+import '../../dashed_path.dart';
+import '../../repaint_props.dart';
 import '../../text/cel_text_layout.dart';
+import '../../timeline/memo_token.dart';
 import '../box_chrome.dart';
 import 'cel_text_editing_controller.dart';
 import 'cel_text_press.dart';
 import 'cel_text_stage.dart';
 import 'cel_text_tool.dart';
 
-/// WHAT THE TEXT TOOL DRAWS OVER THE CANVAS (R9-rest): the box of the text
-/// in hand — 유저 2026-10-02: 「해당 박스가 선택된건지 UI는 필요」 — its
-/// handles while it is held by its box; the caret, the selected letters
-/// and the line under the ones being composed while it is held by its
-/// letters; and the box an empty drag is tracing.
+/// WHAT THE TEXT TOOL DRAWS OVER THE CANVAS (R9-rest) — the three states
+/// of a text's box in the drawing 유저 took on 2026-10-06:
 ///
-/// The box is the one every box on the canvas wears ([paintBoxChrome],
-/// F-222), in the colour its host hands it. It wears no cross: a text has
-/// no anchor of its own to carry about.
+/// · NOT IN HAND — a dashed box, on every text of the cel (유저 2026-10-02:
+///   「텍스트 툴을 선택했을때만 텍스트별로 박스가 떠서」);
+/// · HELD BY ITS BOX — the box in the host's colour (「선택된지 알수있도록 ui
+///   필요」), its handles, and a cross at the centre it is turned and sized
+///   about;
+/// · HELD BY ITS LETTERS — the box, and in it the caret, the selected
+///   letters and the line under the ones being composed.
+///
+/// And the box an empty drag is tracing.
+///
+/// The held box is the one every box on the canvas wears ([paintBoxChrome],
+/// F-222). ↩️It wore no cross until 2026-10-06 — 「a text has no anchor of
+/// its own to carry about」 was this file's reasoning, and not the user's:
+/// the drawing they took has one. ⚠️It MARKS the centre and is not taken by
+/// a press, which the press table has no row for (`celTextPressAt`).
 ///
 /// 🚨EVERYTHING HERE IS READ OFF THE TEXT AS IT IS SHOWN — the layout its
 /// plate was baked from — never off what the field holds, which can be a
 /// letter ahead. So the box and the caret cannot lead the letters on the
 /// cel.
-class CelTextChromePainter extends CustomPainter {
+class CelTextChromePainter extends CustomPainter with RepaintOnProps {
   CelTextChromePainter({
     required this.tool,
     required this.stage,
+    required this.restingBoxes,
     required this.tracedBox,
     required this.caretLit,
     required this.color,
@@ -35,6 +48,10 @@ class CelTextChromePainter extends CustomPainter {
 
   final CelTextTool tool;
   final CelTextStage stage;
+
+  /// The boxes of the cel's texts that are in nobody's hand, on the artwork
+  /// ([CelTextTool.restingBoxesOn]).
+  final List<CelTextBox> restingBoxes;
 
   /// The box an empty drag is tracing, on the artwork.
   final Rect? tracedBox;
@@ -45,6 +62,17 @@ class CelTextChromePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    for (final box in restingBoxes) {
+      paintDashedOutline(
+        canvas,
+        Path()..addPolygon([
+          for (final corner in box.corners) stage.onPanel(corner),
+        ], true),
+        color: _restingColor,
+        on: _restingDash,
+        off: _restingDash,
+      );
+    }
     final traced = tracedBox;
     if (traced != null) {
       _paintBox(canvas, [
@@ -63,28 +91,42 @@ class CelTextChromePainter extends CustomPainter {
     if (letters != null) {
       _paintLetters(canvas, layout, letters);
     }
+    // A text held by its letters is typed into: nothing of it is sized or
+    // turned, so it wears neither the handles nor the cross.
+    final byBox = letters == null;
     _paintBox(
       canvas,
       layout.boxCorners,
-      // A text held by its letters is typed into, not sized.
-      handles: letters != null ? const [] : celTextHandlesOf(layout),
+      handles: byBox ? celTextHandlesOf(layout) : const [],
+      centre: byBox ? layout.onCanvas.centre : null,
     );
   }
 
-  /// A box on the artwork, with [handles], as the panel shows it.
+  /// A box on the artwork, with [handles] and the cross at [centre], as the
+  /// panel shows it.
   void _paintBox(
     Canvas canvas,
     List<Offset> corners, {
     List<Offset> handles = const [],
+    Offset? centre,
   }) => paintBoxChrome(
     canvas,
     (
       box: [for (final corner in corners) stage.onPanel(corner)],
       handles: [for (final handle in handles) stage.onPanel(handle)],
-      anchor: null,
+      anchor: centre == null ? null : stage.onPanel(centre),
     ),
     color: color,
   );
+
+  /// The dashes of a box nobody is holding, and the gaps between them, on
+  /// screen — the drawing's 「안 고름」 box.
+  static const double _restingDash = 3;
+
+  /// ⛔A constant, as the ants' black is: canvas chrome has to read on the
+  /// artwork, and follows neither the accent — that is the box in hand —
+  /// nor a theme.
+  static const Color _restingColor = Color(0xFF808080);
 
   /// The selected letters, or with none selected the caret — and under
   /// both, the line beneath the letters being composed.
@@ -159,9 +201,13 @@ class CelTextChromePainter extends CustomPainter {
   static const double _hairlineWidth = 1.5;
 
   @override
-  bool shouldRepaint(CelTextChromePainter oldDelegate) =>
-      oldDelegate.stage != stage ||
-      oldDelegate.tracedBox != tracedBox ||
-      oldDelegate.color != color ||
-      !identical(oldDelegate.tool, tool);
+  Object get props => (
+    ByIdentity(tool),
+    stage,
+    // A box is one object for as long as its text says the same.
+    ByList(restingBoxes),
+    tracedBox,
+    ByIdentity(caretLit),
+    color,
+  );
 }

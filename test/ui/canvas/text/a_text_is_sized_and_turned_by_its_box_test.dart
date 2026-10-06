@@ -1,7 +1,9 @@
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -235,37 +237,223 @@ void main() {
     });
   });
 
+  // The three boxes of the drawing 유저 took on 2026-10-06: dashed on a text
+  // nobody is holding; the host's colour, handles and a cross at the centre
+  // on one held by its box; the box and the caret on one held by its
+  // letters.
   group('the box it wears', () {
+    /// The cross at [centre], a point of the layer: two arms seven long,
+    /// each white and then in the box's colour.
+    PaintPattern crossAt(Offset centre) {
+      const across = Offset(7, 0);
+      const down = Offset(0, 7);
+      return paints
+        ..line(p1: centre - across, p2: centre + across, color: Colors.white)
+        ..line(p1: centre - down, p2: centre + down, color: Colors.white)
+        ..line(
+          p1: centre - across,
+          p2: centre + across,
+          color: AppColors.accent,
+        )
+        ..line(p1: centre - down, p2: centre + down, color: AppColors.accent);
+    }
+
     // A handle is its square, filled and then stroked: two rects.
-    testWidgets('a text that grows: the box, and a handle on each corner', (
+    testWidgets('🚨held by its BOX: the box, a handle on each corner, and '
+        'the cross at the centre it is turned and sized about', (
       tester,
     ) async {
-      await hiInHandByItsBox(tester);
+      final c = await hiInHandByItsBox(tester);
 
       final chrome = tester.renderObject(textChrome());
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
       expect(chrome, paintsExactlyCountTimes(#drawRect, 4 * 2));
-      expect(chrome, paintsExactlyCountTimes(#drawLine, 0));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 4));
+      expect(chrome, crossAt(onLayer(tester, c.dx + 48, c.dy + 30)));
     });
 
-    testWidgets('a box: one on each side edge too — what is drawn is what '
-        'is grabbed', (tester) async {
+    testWidgets('a box: a handle on each side edge too — what is drawn is '
+        'what is grabbed', (tester) async {
       await boxInHand(tester);
 
       final chrome = tester.renderObject(textChrome());
       expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
       expect(chrome, paintsExactlyCountTimes(#drawRect, 6 * 2));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 4));
     });
 
-    testWidgets('with nothing in hand the tool draws nothing', (tester) async {
-      await hiInHandByItsBox(tester);
+    testWidgets('the cross is where the text is TURNED about: a turn leaves '
+        'it standing', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+      final centre = onLayer(tester, c.dx + 48, c.dy + 30);
+
+      await dragFrom(
+        tester,
+        Offset(c.dx + 248, c.dy + 30),
+        Offset(c.dx + 48, c.dy + 230),
+      );
+      expect(
+        celOf(tester).texts.single.content.rotationDegrees,
+        closeTo(90, 1e-6),
+        reason: '⛔fixture',
+      );
+
+      // ⚠️To a millionth of a pixel: the turn is made of sines.
+      final arms = <(Offset, Offset)>[];
+      expect(
+        tester.renderObject(textChrome()),
+        paints..something((method, arguments) {
+          if (method == #drawLine) {
+            arms.add((arguments[0] as Offset, arguments[1] as Offset));
+          }
+          return arms.length == 4;
+        }),
+      );
+      for (final (from, to) in arms) {
+        expect(((from + to) / 2 - centre).distance, lessThan(1e-6));
+        expect((to - from).distance, closeTo(14, 1e-6));
+      }
+    });
+
+    testWidgets('🚨held by its LETTERS: the box and the caret — no handle '
+        'and no cross', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+
+      // ⚠️On the cross itself: it marks the centre and takes no press, so
+      // this is a click INSIDE the box — the letters open.
+      await clickAt(tester, c.dx + 48, c.dy + 30);
+      expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
+
+      final chrome = tester.renderObject(textChrome());
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 1));
+      expect(chrome, paintsExactlyCountTimes(#drawRect, 0));
+      // The caret, and nothing else that is a line.
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 1));
+    });
+
+    testWidgets('🚨in NOBODY\'S hand: the text wears a dashed box — white '
+        'along its whole edge, grey dashes over that — and nothing else', (
+      tester,
+    ) async {
+      final c = await hiInHandByItsBox(tester);
       await tester.sendKeyEvent(LogicalKeyboardKey.escape);
       await pumpFrames(tester);
       expect(textToolOf(tester).session, isNull, reason: '⛔fixture');
 
       final chrome = tester.renderObject(textChrome());
-      expect(chrome, paintsExactlyCountTimes(#drawPath, 0));
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2));
       expect(chrome, paintsExactlyCountTimes(#drawRect, 0));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 0));
+      // The box's own edge on the layer, and how the dashes go round it:
+      // three of line, three of none, from its first corner.
+      final corners = [
+        onLayer(tester, c.dx, c.dy),
+        onLayer(tester, c.dx + 96, c.dy),
+        onLayer(tester, c.dx + 96, c.dy + 60),
+        onLayer(tester, c.dx, c.dy + 60),
+      ];
+      final edge =
+          2 * ((corners[1] - corners[0]).distance) +
+          2 * ((corners[2] - corners[1]).distance);
+      final dashes = <double>[];
+      expect(
+        chrome,
+        paints
+          ..path(
+            includes: [
+              onLayer(tester, c.dx + 48, c.dy + 30),
+              onLayer(tester, c.dx + 2, c.dy + 2),
+              onLayer(tester, c.dx + 94, c.dy + 58),
+            ],
+            excludes: [
+              onLayer(tester, c.dx - 2, c.dy + 30),
+              onLayer(tester, c.dx + 98, c.dy + 30),
+              onLayer(tester, c.dx + 48, c.dy - 2),
+              onLayer(tester, c.dx + 48, c.dy + 62),
+            ],
+            color: Colors.white,
+            style: PaintingStyle.stroke,
+            strokeWidth: 1,
+          )
+          ..something((method, arguments) {
+            if (method != #drawPath) {
+              return false;
+            }
+            final paint = arguments[1] as Paint;
+            dashes.addAll([
+              for (final dash in (arguments[0] as Path).computeMetrics())
+                dash.length,
+            ]);
+            return paint.color.toARGB32() == 0xFF808080 &&
+                paint.style == PaintingStyle.stroke &&
+                paint.strokeWidth == 1;
+          }),
+      );
+      expect(dashes.first, closeTo(3, 1e-3));
+      expect(dashes, hasLength((edge / 6).ceil()));
+    });
+
+    testWidgets('🚨every text of the cel wears one, and the one in hand '
+        'wears its own INSTEAD', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+      // A second text, under the first.
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      await clickAt(tester, c.dx, c.dy + 120);
+      await typeText(tester, 'yo');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      expect(celOf(tester).texts, hasLength(2), reason: '⛔fixture');
+      expect(textToolOf(tester).session, isNotNull, reason: '⛔fixture');
+
+      // 「yo」 in hand by its box: 「hi」 dashed — two paths — and the box.
+      final chrome = tester.renderObject(textChrome());
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2 + 1));
+      expect(chrome, paintsExactlyCountTimes(#drawRect, 4 * 2));
+      expect(
+        chrome,
+        paints..path(
+          includes: [onLayer(tester, c.dx + 48, c.dy + 30)],
+          excludes: [onLayer(tester, c.dx + 48, c.dy + 150)],
+          color: Colors.white,
+        ),
+      );
+      expect(chrome, crossAt(onLayer(tester, c.dx + 48, c.dy + 150)));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+
+      // Both in nobody's hand: two dashed boxes, 「hi」's first — it is the
+      // one underneath.
+      expect(textToolOf(tester).session, isNull, reason: '⛔fixture');
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2 * 2));
+      expect(chrome, paintsExactlyCountTimes(#drawRect, 0));
+      expect(chrome, paintsExactlyCountTimes(#drawLine, 0));
+      expect(
+        chrome,
+        paints
+          ..path(includes: [onLayer(tester, c.dx + 48, c.dy + 30)])
+          ..path()
+          ..path(includes: [onLayer(tester, c.dx + 48, c.dy + 150)]),
+      );
+    });
+
+    testWidgets('a step of history that takes a text off its cel takes its '
+        'box with it', (tester) async {
+      await hiInHandByItsBox(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      final chrome = tester.renderObject(textChrome());
+      expect(chrome, paintsExactlyCountTimes(#drawPath, 2), reason: '⛔fixture');
+
+      sessionOf(tester).historyManager.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts, isEmpty, reason: '⛔fixture');
+      expect(
+        tester.renderObject(textChrome()),
+        paintsExactlyCountTimes(#drawPath, 0),
+      );
     });
   });
 }

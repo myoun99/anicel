@@ -138,7 +138,7 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
     },
     onStage: scene.stage.onStage,
   );
-  final centre = layout.toCanvas(layout.box.center);
+  final centre = layout.onCanvas.centre;
   return switch (hit?.press) {
     BoxPress.handle when hit!.handle < _leftEdgeHandle => _ScalePress(
       event,
@@ -183,10 +183,7 @@ CelText? _textAt(CelTextTool tool, CelTextCel cel, Offset artwork) {
     if (text.id == inHand) {
       continue;
     }
-    final layout = layoutCelText(text.content);
-    final inside = layout.boxContains(artwork);
-    layout.dispose();
-    if (inside) {
+    if (celTextBoxOf(text.content).contains(artwork)) {
       return text;
     }
   }

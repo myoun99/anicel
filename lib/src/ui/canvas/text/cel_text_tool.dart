@@ -16,6 +16,7 @@ import '../../../services/commands/cel_text_edit_command.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../brush/text_tool_options.dart';
 import '../../text/cel_text_bake.dart' show CelTextBaker;
+import '../../text/cel_text_layout.dart' show CelTextBox, celTextBoxOf;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
@@ -122,6 +123,33 @@ class CelTextTool extends ChangeNotifier {
       surface = held.session.shownOver(surface);
     }
     return identical(surface, cel) ? null : surface;
+  }
+
+  /// Where the texts of [key]'s cel stand that are in NOBODY'S hand:
+  /// [cel]'s own, but for the ones this tool speaks for — and, of those,
+  /// the ones let go of that still owe a landing, as they are shown.
+  ///
+  /// 🗣️유저 2026-10-02: 「텍스트는 텍스트 툴을 선택했을때만 **텍스트별로
+  /// 박스가 떠서** 편집가능. 화면에 텍스트박스를 선택해서(선택된지 알수있도록
+  /// ui 필요.)」 — every text wears a box while the tool is in hand, and the
+  /// one in hand wears its own ([session]), which says it is the one.
+  List<CelTextBox> restingBoxesOn(BrushFrameKey key, BitmapSurface cel) {
+    final leaving = [
+      for (final holding in _leaving)
+        if (holding.session.key == key) holding.session,
+    ];
+    final held = _held?.session;
+    final spokenFor = {
+      for (final session in leaving) session.textId,
+      if (held != null && held.key == key) held.textId,
+    };
+    return [
+      for (final text in cel.texts)
+        if (!spokenFor.contains(text.id)) celTextBoxOf(text.content),
+      for (final session in leaving)
+        // A text with no letters is not there, shown or landed.
+        if (!session.shown.content.isEmpty) session.shown.layout.onCanvas,
+    ];
   }
 
   // ── taking hold ─────────────────────────────────────────────────────

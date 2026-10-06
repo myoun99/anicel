@@ -602,6 +602,53 @@ void main() {
     });
   });
 
+  group('a text\'s box on the canvas', () {
+    test('is the layout\'s own box as a value: its corners, its middle and '
+        'what is inside it — turned as the text is', () {
+      // 「ab」 is 40 by 20, the box behind it 5 further out on every side:
+      // from (-5, -5) to (45, 25) in the text's own frame, its middle at
+      // (20, 10). A quarter turn about the anchor takes (x, y) to (-y, x).
+      final layout = set(
+        [run('ab')],
+        x: 30,
+        y: 10,
+        turn: 90,
+        background: 0xFFFFFFFF,
+      );
+      final box = layout.onCanvas;
+
+      expect(box.corners, layout.boxCorners);
+      expect(box.centre.dx, closeTo(20, 1e-9));
+      expect(box.centre.dy, closeTo(30, 1e-9));
+      // Along the text's own line, which runs DOWN the canvas now: 44 from
+      // the anchor is inside the box, 46 is past its end.
+      expect(box.contains(const ui.Offset(30, 54)), isTrue);
+      expect(box.contains(const ui.Offset(30, 56)), isFalse);
+      expect(layout.boxContains(const ui.Offset(30, 54)), isTrue);
+      expect(layout.boxContains(const ui.Offset(30, 56)), isFalse);
+    });
+
+    test('🚨is kept WITH the content: asked for again it is the same box, '
+        'and it is the box the content has when its letters are set', () {
+      final content = CelTextContent(
+        spans: [run('ab')],
+        anchor: CanvasPoint(x: 30, y: 10),
+        rotationDegrees: 90,
+        backgroundColor: 0xFFFFFFFF,
+      );
+
+      final box = celTextBoxOf(content);
+
+      expect(identical(celTextBoxOf(content), box), isTrue);
+      final layout = layoutCelText(content);
+      addTearDown(layout.dispose);
+      expect(box.corners, layout.boxCorners);
+      expect(box.centre, layout.onCanvas.centre);
+      expect(box.contains(const ui.Offset(30, 54)), isTrue);
+      expect(box.contains(const ui.Offset(30, 56)), isFalse);
+    });
+  });
+
   group('the app\'s faces', () {
     test('a run with no chosen face is set in the app\'s, and a bold run in '
         'its bold', () async {
