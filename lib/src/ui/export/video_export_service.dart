@@ -295,6 +295,9 @@ class VideoExportService {
     }
     var cancelled = false;
     while (index < count) {
+      // Between the frame just taken and the next — so a press on Cancel
+      // during it is heard at once.
+      await _appsTurn();
       if (isCancelled?.call() ?? false) {
         cancelled = true;
         break;
@@ -320,6 +323,17 @@ class VideoExportService {
     await sink.finish(cancelled: cancelled);
     return (written: sink.written, processed: processed);
   }
+
+  /// The app's turn between two frames: whatever it has waiting — a frame
+  /// of its own to draw, a press on Cancel — before the walk takes the next.
+  ///
+  /// 🚨A frame that is the picture before it asks nothing of the engine: the
+  /// renderer hands it again and the sink puts in the bytes it read then.
+  /// So a run of them is nothing but this walk's own loop, and a loop that
+  /// waits for nothing lets nothing else in — the bar would stand still and
+  /// Cancel go unheard for the length of the hold, where every frame used
+  /// to wait on a raster and gave the turn without meaning to.
+  static Future<void> _appsTurn() => Future<void>.delayed(Duration.zero);
 
   /// The FIRST frame that renders, and how far the run got finding it.
   ///

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -415,5 +416,36 @@ void main() {
     expect(bytes.sublist(size, 2 * size), first);
     expect(bytes.sublist(2 * size, 3 * size), isNot(first));
     expect(bytes.sublist(3 * size), first);
+  });
+
+  test('🚨the walk gives the app a turn between two frames: a run of frames '
+      'that are one picture waits for nothing else, and must not hold the '
+      'app for its length', () async {
+    // What the app has waiting when a frame has gone out, and how much of
+    // it had been seen to by the time each frame went out.
+    var turns = 0;
+    final turnsByFrame = <int>[];
+    final process = FakeFfmpegProcess(
+      onFrame: (_) {
+        turnsByFrame.add(turns);
+        Timer(Duration.zero, () => turns += 1);
+      },
+    );
+    final (:service, started: _) = over(process);
+    final held = (await frame())!;
+    addTearDown(held.dispose);
+
+    await service.exportVideo(
+      count: 6,
+      renderImage: (_) async {
+        final again = held.clone();
+        made.add(again);
+        return again;
+      },
+      outputFilePath: 'out.mp4',
+      frameRate: ProjectFrameRate.fps24,
+    );
+
+    expect(turnsByFrame, [0, 1, 2, 3, 4, 5]);
   });
 }
