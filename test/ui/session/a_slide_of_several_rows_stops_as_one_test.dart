@@ -16,6 +16,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/drags/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/session/frame_range_move_drag.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -46,6 +47,14 @@ Map<int, int>? shownBlocks(EditorSessionManager s, String id) {
       : null;
   return row == null ? null : _blocksOf(row);
 }
+
+/// The move's own casting, asked of the drag itself: what the span carries
+/// besides its rows — none here, where no folder row is swept.
+List<Layer> heldBeside(EditorSessionManager s) => rowsHeldByFolderRowsOf(
+  s.frameRangeSelection.value!,
+  project: s,
+  rangeSelections: s.rangeSelections,
+);
 
 Map<int, int> _blocksOf(Layer layer) => {
   for (final entry in layer.timeline.entries)
@@ -117,6 +126,7 @@ void _pickUpBothRows(EditorSessionManager s) {
     (0, 6, 2),
     reason: 'the premise: both rows, over a\'s first block and b\'s',
   );
+  expect(heldBeside(s), isEmpty);
   expect(moveOf(s).beginFrameRangeMoveDrag(const LayerId('a')), isTrue);
 }
 

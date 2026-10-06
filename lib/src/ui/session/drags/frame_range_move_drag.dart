@@ -9,6 +9,7 @@ import '../../../models/cut_camera.dart';
 import '../../../models/drawing_block_move.dart';
 import '../../../models/key_range_move.dart';
 import '../../../models/layer.dart';
+import '../../../models/layer_folder.dart' show LayerFolderIndex;
 import '../../../models/layer_id.dart';
 import '../../../models/layer_kind.dart';
 import '../../../models/layer_stack_order.dart';
@@ -33,6 +34,7 @@ import '../../timeline/transform_lane_policy.dart'
 import '../active_cut_controllers.dart';
 import '../camera.dart';
 import '../drawing_block_move_drag.dart';
+import '../folder_bands.dart' show folderBandsFollowing;
 import '../folders_and_attachments.dart';
 import '../range_selections.dart';
 import '../render_caches.dart';
@@ -323,6 +325,55 @@ KeySources _castKeySources(
   );
 }
 
+/// The rows a FOLDER row of [span] holds, as the riders its block is
+/// (F-311, 유저 2026-10-06: 「폴더의 블록 드래그로 이동할 수 있게. 내부
+/// 전체적으로 이동하는 느낌」).
+///
+/// A folder's row stands no block of its own: the band it shows is the
+/// blocks its rows make together (`folderAggregateRuns`), so those rows are
+/// what a drag on it carries. They ride the way a DIRECTION row's blocks do
+/// ([_castKeySources]) — along the frame axis by the span's own delta, and
+/// across no row: a folder's row has no row axis to travel.
+///
+/// A row rides when a retime may touch it
+/// ([RangeSelections.retimableSpanRows]) and it stands a whole block in the
+/// range — the rule every source of a move is picked by ([_wholeBlockIn]).
+/// A row the span covers itself is a source of its own, and is not taken a
+/// second time.
+List<Layer> rowsHeldByFolderRowsOf(
+  TimelineFrameRangeSelection span, {
+  required ProjectAccess project,
+  required RangeSelections rangeSelections,
+}) {
+  final folders = LayerFolderIndex(project.layers);
+  final held = [
+    ...{
+      for (final id in span.spanLayerIds)
+        for (final row in folders.subtreeMembersOf(id))
+          if (!span.coversLayer(row.id)) row.id,
+    },
+  ];
+  if (held.isEmpty) {
+    return const [];
+  }
+  final rows = rangeSelections.retimableSpanRows(
+    TimelineFrameRangeSelection(
+      layerId: span.layerId,
+      startIndex: span.startIndex,
+      endIndexExclusive: span.endIndexExclusive,
+      layerIds: held,
+    ),
+  );
+  return [
+    for (final row in rows)
+      if (drawingBlocks(row.display.timeline).any(
+        (block) =>
+            _wholeBlockIn(block, span.startIndex, span.endIndexExclusive),
+      ))
+        row.commit,
+  ];
+}
+
 /// What one cut-local begin picked up — EXACTLY one of the two arms is
 /// set. Null means the span carries nothing this drag could move, which
 /// is how [FrameRangeMoveDrag.begin] refuses.
@@ -474,10 +525,24 @@ class FrameRangeMoveDrag {
     if (span == null || !rangeSelections.rangeSelectionEligible(span.layerId)) {
       return null;
     }
-    final keys = _castKeySources(
+    final cast = _castKeySources(
       span,
       project: roles.project,
       transitions: roles.transitions,
+    );
+    // F-311: a folder row of the span brings the rows it holds, riding
+    // beside the direction rows as the blocks they are.
+    final keys = (
+      camera: cast.camera,
+      instructionSources: [
+        ...cast.instructionSources,
+        ...rowsHeldByFolderRowsOf(
+          span,
+          project: roles.project,
+          rangeSelections: rangeSelections,
+        ),
+      ],
+      transitionRiders: cast.transitionRiders,
     );
     final singleRowId = _singleRowOf(span, keys, roles.project);
     final multiSource = singleRowId == null;
@@ -898,7 +963,7 @@ class FrameRangeMoveDrag {
       _directionRowChange = (plan: plan, source: sourceLayer);
       final drawn = _project.activeCutDrawnFrameCount;
       _dragPreview.value = BlockMoveDragPreview(
-        previewLayers: {
+        previewLayers: _withFolderBands({
           selection.layerId: rederiveRunBehaviors(
             plan.sourceAfter,
             drawnFrameCount: drawn,
@@ -907,7 +972,7 @@ class FrameRangeMoveDrag {
             plan.targetAfter!,
             drawnFrameCount: drawn,
           ),
-        },
+        }),
       );
       followOutline();
       return true;
@@ -1308,7 +1373,8 @@ class FrameRangeMoveDrag {
     final directionShifted = <LayerId, Layer>{};
     for (final layer in _instructionSources ?? const <Layer>[]) {
       // A direction row's spans are its blocks (R27): they ride as the
-      // drawing rows' own slide, drawings and all.
+      // drawing rows' own slide, drawings and all — and the rows a folder
+      // row holds beside them (F-311, [rowsHeldByFolderRowsOf]).
       final slid = _slideOnOwnRow(layer, selection, frameDelta);
       if (slid == null || slid.went != frameDelta) {
         return null;
@@ -1383,7 +1449,7 @@ class FrameRangeMoveDrag {
       ..._transitionPreviewForms(instructionShifted),
     };
     _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: {
+      previewLayers: _withFolderBands({
         if (plan != null)
           for (final entry in plan.layersAfter.entries)
             entry.key: rederiveRunBehaviors(
@@ -1400,7 +1466,7 @@ class FrameRangeMoveDrag {
             entry.value,
             drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
-      },
+      }),
       // C2: the SE passengers' global forms, for the storyboard strips.
       previewGlobalLayers: {
         for (final entry in sePreviews.entries) entry.key: ?entry.value.global,
@@ -1502,6 +1568,14 @@ class FrameRangeMoveDrag {
     _dropPreviewChannels();
     _liveSpan = _selectionBefore;
   }
+
+  /// [rows] with, beside them, the band of every folder one of them stands
+  /// in: a folder's row shows what its rows make together (F-311), so it
+  /// follows the hand as they do ([folderBandsFollowing]).
+  Map<LayerId, Layer> _withFolderBands(Map<LayerId, Layer> rows) => {
+    ...rows,
+    ...folderBandsFollowing(_project.layers, rows),
+  };
 
   /// Clears every channel this drag publishes to. They live OUTSIDE the
   /// drag (on the session and its collaborators), so dropping the object
@@ -1627,7 +1701,7 @@ class FrameRangeMoveDrag {
   ) {
     _plan = plan;
     _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: {
+      previewLayers: _withFolderBands({
         plan.sourceAfter.id: rederiveRunBehaviors(
           plan.sourceAfter,
           drawnFrameCount: _project.activeCutDrawnFrameCount,
@@ -1637,7 +1711,7 @@ class FrameRangeMoveDrag {
             plan.targetAfter!,
             drawnFrameCount: _project.activeCutDrawnFrameCount,
           ),
-      },
+      }),
     );
     _slideSelectionOutline(
       _selectionBefore,
@@ -1798,7 +1872,8 @@ class FrameRangeMoveDrag {
   }
 
   /// Every row whose BLOCKS a slide carries along its own row: the sources
-  /// and the direction rows, which ride as the blocks their spans are.
+  /// and the rows riding as blocks — direction rows, and the rows a folder
+  /// row holds.
   Iterable<({Layer commit, int offset})> _slidingRows(
     List<({Layer commit, int offset})> multiSources,
   ) => [
@@ -1908,7 +1983,7 @@ class FrameRangeMoveDrag {
       }
     }
     _dragPreview.value = BlockMoveDragPreview(
-      previewLayers: previewLayers,
+      previewLayers: _withFolderBands(previewLayers),
       previewGlobalLayers: previewGlobalLayers,
       cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
       cameraTrack: cameraShifted,

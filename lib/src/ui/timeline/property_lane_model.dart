@@ -7,6 +7,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_row_address.dart';
+import '../../models/timeline_run_behavior.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -450,19 +451,102 @@ class PropertyLaneEditCallbacks {
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of
-/// the subtree members' exposure intervals merged into runs. Pure display
-/// — nameless, no comma edits, no moves.
+/// the subtree members' BLOCKS merged into runs. Nameless, and no comma
+/// edits.
+///
+/// ↩️F-311 (유저 2026-10-06): it was 「pure display … no moves」, and the
+/// union took every entry a member's timeline holds.
+///  · 「폴더의 블록 드래그로 이동할 수 있게. 내부 전체적으로 이동하는 느낌」 —
+///    a run is what a drag on the folder's row carries now: the rows the
+///    folder holds ride it (`rowsHeldByFolderRowsOf`).
+///  · 「지금 성질 홀드로하면 폴더에서 콘티블록마냥 블록 꽉 채워지는데, 그거말고
+///    홀드면 홀드 점선 그대로 사용하도록. 왜냐하면 홀드면 사실 뒤가 빈공간인데
+///    블록 드래그 이동하기 번거로우니까. 그래서 실제 존재하는 블록만 제대로
+///    하고싶은것. 리피트의 고스트프레임도 마찬가지」 — a GHOST is an entry of
+///    the timeline and no block of the row: merged in like one, a hold ran
+///    the folder's block to the end of the cut. What the members project
+///    there is [folderGhostRuns].
 List<({int start, int endExclusive})> folderAggregateRuns(
   Iterable<Layer> members,
+) => _mergedRuns([
+  for (final member in members)
+    for (final entry in member.timeline.entries)
+      if (entry.value.length != null && !entry.value.ghost)
+        (start: entry.key, endExclusive: entry.key + entry.value.length!),
+]);
+
+/// What a folder's band shows where none of its rows stands a block and
+/// one projects a ghost — beside [runs], its blocks: a hold's stretch, then
+/// a repeat's where no hold reaches (the order the rows' own rederive lays
+/// them in).
+List<({int start, int endExclusive, TimelineRunEdgeMode mode})>
+folderGhostRuns(
+  Iterable<Layer> members,
+  List<({int start, int endExclusive})> runs,
 ) {
-  final intervals = <({int start, int endExclusive})>[
-    for (final member in members)
-      for (final entry in member.timeline.entries)
-        if (entry.value.length != null)
-          (start: entry.key, endExclusive: entry.key + entry.value.length!),
-  ]..sort((a, b) => a.start.compareTo(b.start));
+  List<({int start, int endExclusive})> projected(TimelineRunEdgeMode mode) =>
+      _mergedRuns([
+        for (final member in members)
+          for (final entry in member.timeline.entries)
+            if (entry.value.ghostOf?.mode == mode)
+              (start: entry.key, endExclusive: entry.key + entry.value.length!),
+      ]);
+  final holds = _runsOutside(projected(TimelineRunEdgeMode.hold), runs);
+  final repeats = _runsOutside(
+    projected(TimelineRunEdgeMode.repeat),
+    _mergedRuns([...runs, ...holds]),
+  );
+  return [
+    for (final (:start, :endExclusive) in holds)
+      (
+        start: start,
+        endExclusive: endExclusive,
+        mode: TimelineRunEdgeMode.hold,
+      ),
+    for (final (:start, :endExclusive) in repeats)
+      (
+        start: start,
+        endExclusive: endExclusive,
+        mode: TimelineRunEdgeMode.repeat,
+      ),
+  ];
+}
+
+/// The stretches of [runs] that [taken] leaves free — each list in order,
+/// no two of its runs meeting.
+List<({int start, int endExclusive})> _runsOutside(
+  List<({int start, int endExclusive})> runs,
+  List<({int start, int endExclusive})> taken,
+) {
+  final free = <({int start, int endExclusive})>[];
+  for (final run in runs) {
+    var from = run.start;
+    for (final other in taken) {
+      if (other.endExclusive <= from) {
+        continue;
+      }
+      if (other.start >= run.endExclusive) {
+        break;
+      }
+      if (other.start > from) {
+        free.add((start: from, endExclusive: other.start));
+      }
+      from = other.endExclusive;
+    }
+    if (from < run.endExclusive) {
+      free.add((start: from, endExclusive: run.endExclusive));
+    }
+  }
+  return free;
+}
+
+/// [intervals] as runs: in order, every two that meet or overlap made one.
+List<({int start, int endExclusive})> _mergedRuns(
+  Iterable<({int start, int endExclusive})> intervals,
+) {
+  final inOrder = [...intervals]..sort((a, b) => a.start.compareTo(b.start));
   final runs = <({int start, int endExclusive})>[];
-  for (final interval in intervals) {
+  for (final interval in inOrder) {
     if (runs.isNotEmpty && interval.start <= runs.last.endExclusive) {
       if (interval.endExclusive > runs.last.endExclusive) {
         runs[runs.length - 1] = (

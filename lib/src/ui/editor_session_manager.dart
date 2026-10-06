@@ -680,6 +680,7 @@ class EditorSessionManager extends ChangeNotifier
     folderBands: folderBands,
     renderCaches: renderCaches,
     brushInputActive: brushInputActive,
+    dragPreview: dragPreview,
   );
 
   bool get canCopyFrameAtCurrentFrame => clipboard.canCopyFrameAtCurrentFrame;

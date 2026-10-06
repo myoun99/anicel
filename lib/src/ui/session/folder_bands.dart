@@ -4,8 +4,62 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_exposure.dart';
-import '../timeline/property_lane_model.dart' show folderAggregateRuns;
+import '../../models/timeline_run_behavior.dart';
+import '../timeline/property_lane_model.dart'
+    show folderAggregateRuns, folderGhostRuns;
 import 'session_roles.dart';
+
+/// [folder]'s row as the grids render it — its BAND: the folder carrying, as
+/// an ordinary timeline, the blocks its [members] make together
+/// ([folderAggregateRuns]) and, where none of them stands a block, the
+/// ghosts they project ([folderGhostRuns]).
+///
+/// Its entries resolve to no Frame on purpose: nothing composites a folder
+/// band, it only paints. A ghost is stamped the way a row's own is, so the
+/// shared cells painter draws a hold's dash here as it does there. The
+/// stamp's SIDE is the row's business — a band paints the mode, and
+/// nothing reads its side.
+Layer folderBandOf(Layer folder, Iterable<Layer> members) {
+  final runs = folderAggregateRuns(members);
+  FrameId celAt(int start) => FrameId('band:${folder.id.value}:$start');
+  return folder.copyWith(
+    timeline: {
+      for (final run in runs)
+        run.start: TimelineExposure.drawing(
+          celAt(run.start),
+          length: run.endExclusive - run.start,
+        ),
+      for (final ghost in folderGhostRuns(members, runs))
+        ghost.start: TimelineExposure.drawing(
+          celAt(ghost.start),
+          length: ghost.endExclusive - ghost.start,
+          ghostOf: TimelineRunEdgeGhost(
+            side: TimelineRunEdgeSide.end,
+            mode: ghost.mode,
+          ),
+        ),
+    },
+  );
+}
+
+/// The bands of the folders of [stack] that hold a row [shown] shows moved
+/// — each as the band its rows make where the drag has them. A folder's row
+/// is what its rows hold (F-311), so it follows the hand as they do.
+Map<LayerId, Layer> folderBandsFollowing(
+  List<Layer> stack,
+  Map<LayerId, Layer> shown,
+) {
+  final index = LayerFolderIndex(stack);
+  return {
+    for (final folder in stack)
+      if (folder.kind.groupsLayers)
+        if (index.subtreeMembersOf(folder.id) case final members
+            when members.any((member) => shown.containsKey(member.id)))
+          folder.id: folderBandOf(folder, [
+            for (final member in members) shown[member.id] ?? member,
+          ]),
+  };
+}
 
 /// The FOLDER BANDS — which layer a folder's band stands on, who its members
 /// are and which runs it shows — as a cache that knows what it was built
@@ -20,7 +74,7 @@ class FolderBands {
   final ProjectAccess _project;
 
   /// The folder BAND cache (R10): a folder row's display clone, whose
-  /// `timeline` IS its subtree's exposure union.
+  /// `timeline` IS its subtree's exposure union ([folderBandOf]).
   ///
   /// A folder Layer is empty — no frames, no timeline — so handing it to
   /// the shared cells painter paints a blank row, which is exactly what
@@ -72,31 +126,25 @@ class FolderBands {
       }
       final members = index.subtreeMembersOf(layer.id);
       _folderBandMembers[layer.id] = members;
-      final runs = folderAggregateRuns(members);
+      final band = folderBandOf(layer, members);
       final cached = _folderBandCache[layer.id];
       // The FOLDER's own instance is half the key: the repository hands back
       // the same instance while nothing about the folder changed, and a new
-      // one the moment anything did.
+      // one the moment anything did. The other half is everything the band
+      // shows of its rows — the ghosts beside the blocks (F-311).
       if (cached != null &&
           identical(cached.source, layer) &&
-          listEquals(cached.runs, runs)) {
+          mapEquals(cached.band.timeline, band.timeline)) {
         continue;
       }
       _folderBandCache[layer.id] = (
-        runs: runs,
+        runs: [
+          for (final entry in band.timeline.entries)
+            if (!entry.value.ghost)
+              (start: entry.key, endExclusive: entry.key + entry.value.length!),
+        ],
         source: layer,
-        band: layer.copyWith(
-          timeline: {
-            for (final run in runs)
-              run.start: TimelineExposure.drawing(
-                // The union's entries are AUTHORED, not ghosts, and they
-                // resolve to no Frame on purpose: nothing composites a
-                // folder band, it only paints.
-                FrameId('band:${layer.id.value}:${run.start}'),
-                length: run.endExclusive - run.start,
-              ),
-          },
-        ),
+        band: band,
       );
     }
     _folderBandCache.removeWhere(
@@ -120,7 +168,8 @@ class FolderBands {
     return _folderBandMembers[folderId] ?? const [];
   }
 
-  /// The folder's merged exposure runs — the range selection's snap lane.
+  /// The folder's merged BLOCK runs — the range selection's snap lane, and
+  /// what a drag on the row carries. No ghost is one (F-311).
   List<({int start, int endExclusive})> folderBandRunsOf(LayerId folderId) {
     _fillFolderBandCache();
     return _folderBandCache[folderId]?.runs ?? const [];
