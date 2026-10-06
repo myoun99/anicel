@@ -287,7 +287,13 @@ void main() {
   /// `eyedropperPick`, which a held button asks too. 🔬The lane's scan
   /// against master (`0b620fa9a`, at 420) named that one and the paste's,
   /// and nothing added.
-  const longBodies = 418;
+  ///
+  /// ⚠️418 → 417 on 2026-10-06, lowered as the rule asks (F-289, the kinds
+  /// of the Cels tab): `paintInstructionCel` went with the renderer that
+  /// drew a direction block's WRITING — a direction row writes the pictures
+  /// drawn on it now, as every cel is written. 🔬The lane's scan against
+  /// master (`9683cd75e`, at 420) named that one gone and nothing added.
+  const longBodies = 417;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
