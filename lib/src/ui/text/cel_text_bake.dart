@@ -12,6 +12,28 @@ import '../../services/import/raster_cel_import.dart';
 import '../canvas/raster_picture.dart';
 import 'cel_text_layout.dart';
 
+/// How a set text is turned into its plate — [bakeCelTextPlate]'s shape.
+typedef CelTextBaker =
+    Future<Map<TileCoord, BitmapTile>> Function(
+      CelTextLayout layout, {
+      required CanvasSize canvasSize,
+      required int tileSize,
+      Map<TileCoord, BitmapTile> previous,
+    });
+
+/// Stands in for the ENGINE behind [bakeCelTextPlate] in a test.
+///
+/// 🚨Not a convenience. Under a widget test's clock the engine's raster
+/// never answers, so a test that drives the real app could type a text and
+/// never see it shown, let alone land — every road the text tool has would
+/// go untravelled. ⚠️IT DOES NOT REPLACE THE ENGINE'S OWN PINS: that the
+/// plate is what the engine draws is measured against the engine
+/// (`cel_text_bake_test.dart`); what the tool does with a plate is measured
+/// through here. Neither can do the other's job
+/// (`debugRawRgbaUploader`'s reasoning, one seam over).
+@visibleForTesting
+CelTextBaker? debugCelTextBaker;
+
 /// [layout]'s text as the PLATE a cel keeps for it (`CelText.plate`): what
 /// the engine draws for it at canvas resolution, cut into the cel's tiles.
 ///
@@ -43,6 +65,15 @@ Future<Map<TileCoord, BitmapTile>> bakeCelTextPlate(
   required int tileSize,
   Map<TileCoord, BitmapTile> previous = const {},
 }) async {
+  final standIn = debugCelTextBaker;
+  if (standIn != null) {
+    return standIn(
+      layout,
+      canvasSize: canvasSize,
+      tileSize: tileSize,
+      previous: previous,
+    );
+  }
   final window = celTextBakeWindow(layout, canvasSize);
   if (window.isEmpty) {
     return const {};

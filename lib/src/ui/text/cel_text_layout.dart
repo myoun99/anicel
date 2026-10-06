@@ -162,46 +162,18 @@ CelTextLayout layoutCelText(
   TextLetterStyle nextLetterStyle = const TextLetterStyle(),
 }) {
   final lineHeight = content.lineHeight;
-  final wrapWidth = content.wrapWidth;
-  // What no run sets is set by the paragraph the runs are nested in: how
-  // tall a text with NO letters is — the caret before the first one. (A
-  // line a break opens at the end of the text is not one of those: measured
-  // 2026-10-06, the engine makes it as tall as the line the break ended.)
-  final paragraphLetters = content.isEmpty
-      ? nextLetterStyle
-      : content.spans.last.style;
-
-  TextPainter build(TextStyle Function(TextLetterStyle letters) styleOf) {
-    final painter = TextPainter(
-      text: TextSpan(
-        style: canvasLetterTextStyle(
-          paragraphLetters,
-          lineHeight: lineHeight,
-        ),
-        children: [
-          for (final span in content.spans)
-            TextSpan(text: span.text, style: styleOf(span.style)),
-        ],
-      ),
-      textAlign: canvasTextAlign(content.align),
-      textDirection: TextDirection.ltr,
-    );
-    if (wrapWidth == null) {
-      painter.layout();
-    } else {
-      painter.layout(minWidth: wrapWidth, maxWidth: wrapWidth);
-    }
-    return painter;
-  }
-
-  final fill = build(
+  final fill = _painterOf(
+    content,
+    nextLetterStyle,
     (letters) => canvasLetterTextStyle(letters, lineHeight: lineHeight),
   );
   final outlined = content.spans.any(
     (span) => canvasLetterOutlinePaint(span.style) != null,
   );
   final stroke = outlined
-      ? build(
+      ? _painterOf(
+          content,
+          nextLetterStyle,
           (letters) => canvasLetterTextStyle(
             letters,
             lineHeight: lineHeight,
@@ -213,17 +185,6 @@ CelTextLayout layoutCelText(
           ),
         )
       : null;
-
-  // A growing text stands ABOUT its anchor; a box hangs from it.
-  final left = wrapWidth != null
-      ? 0.0
-      : switch (content.align) {
-          TextCelAlign.left => 0.0,
-          TextCelAlign.center => -fill.width / 2,
-          TextCelAlign.right => -fill.width,
-        };
-  final block = ui.Rect.fromLTWH(left, 0, fill.width, fill.height);
-
   final letters = [
     if (content.isEmpty) nextLetterStyle,
     for (final span in content.spans) span.style,
@@ -235,21 +196,103 @@ CelTextLayout layoutCelText(
   // The SE tag's box (`layoutTextCel`): a quarter of the letter's size of
   // breathing room. Here the largest letter's, so the box clears them all.
   final pad = content.backgroundColor == null ? 0.0 : largest * 0.25;
-  final widestOutline = letters.fold(
-    0.0,
-    (width, style) => canvasLetterOutlinePaint(style) == null
-        ? width
-        : math.max(width, style.outlineWidth),
-  );
   return CelTextLayout._(
     content: content,
-    block: block,
+    block: _blockOf(content, fill),
     pad: pad,
-    reach: pad + widestOutline / 2 + largest * _glyphReach,
+    reach: pad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
     fill: fill,
     stroke: stroke,
   );
 }
+
+/// [content]'s letters as the engine sets them, each run in the style
+/// [styleOf] makes of its letters: wrapped at the box's width, or as long
+/// as its lines are.
+TextPainter _painterOf(
+  CelTextContent content,
+  TextLetterStyle nextLetterStyle,
+  TextStyle Function(TextLetterStyle letters) styleOf,
+) {
+  final wrapWidth = content.wrapWidth;
+  final painter = TextPainter(
+    text: _spanOf(
+      content,
+      _paragraphLettersOf(content, nextLetterStyle),
+      styleOf,
+    ),
+    textAlign: canvasTextAlign(content.align),
+    textDirection: TextDirection.ltr,
+  );
+  if (wrapWidth == null) {
+    painter.layout();
+  } else {
+    painter.layout(minWidth: wrapWidth, maxWidth: wrapWidth);
+  }
+  return painter;
+}
+
+/// The lines' block in the text's own frame, [fill] being its letters set:
+/// a growing text stands ABOUT its anchor, a box hangs from it.
+ui.Rect _blockOf(CelTextContent content, TextPainter fill) {
+  final left = content.wrapWidth != null
+      ? 0.0
+      : switch (content.align) {
+          TextCelAlign.left => 0.0,
+          TextCelAlign.center => -fill.width / 2,
+          TextCelAlign.right => -fill.width,
+        };
+  return ui.Rect.fromLTWH(left, 0, fill.width, fill.height);
+}
+
+/// The widest outline any of [letters] is stroked with — a width with no
+/// colour is no outline.
+double _widestOutlineOf(List<TextLetterStyle> letters) => letters.fold(
+  0.0,
+  (width, style) => canvasLetterOutlinePaint(style) == null
+      ? width
+      : math.max(width, style.outlineWidth),
+);
+
+/// [content]'s letters as the engine is handed them: one span a run, each
+/// saying its whole style, nested in the style of [paragraphLetters].
+TextSpan _spanOf(
+  CelTextContent content,
+  TextLetterStyle paragraphLetters,
+  TextStyle Function(TextLetterStyle letters) styleOf,
+) => TextSpan(
+  style: canvasLetterTextStyle(
+    paragraphLetters,
+    lineHeight: content.lineHeight,
+  ),
+  children: [
+    for (final span in content.spans)
+      TextSpan(text: span.text, style: styleOf(span.style)),
+  ],
+);
+
+/// The letters of [content] as a FIELD is handed them — the very spans the
+/// layout's own fill pass is set from ([layoutCelText]), so a field that
+/// types into a text breaks its lines, and moves its caret up and down
+/// them, where the text on the canvas does.
+TextSpan celTextFieldSpan(
+  CelTextContent content, {
+  required TextLetterStyle nextLetterStyle,
+}) => _spanOf(
+  content,
+  _paragraphLettersOf(content, nextLetterStyle),
+  (letters) => canvasLetterTextStyle(letters, lineHeight: content.lineHeight),
+);
+
+/// The letters the PARAGRAPH is set in — the style [content]'s runs are
+/// nested in. What no run sets is set by it: how tall a text with NO
+/// letters is, the caret before the first one. (A line a break opens at the
+/// end of the text is not one of those: measured 2026-10-06, the engine
+/// makes it as tall as the line the break ended.)
+TextLetterStyle _paragraphLettersOf(
+  CelTextContent content,
+  TextLetterStyle nextLetterStyle,
+) => content.isEmpty ? nextLetterStyle : content.spans.last.style;
 
 /// How far past its line's box a glyph is given room to reach, in letter
 /// sizes ([CelTextLayout.inkBounds]). A whole one: an italic leans out by a
