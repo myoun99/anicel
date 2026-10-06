@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -206,6 +208,41 @@ void main() {
     );
     session.undo();
     expect(_stack(session), ['a', 'memo', 'F']);
+  });
+
+  test('an attach organizer goes the same way, with the attach rows it '
+      'holds — its last row takes the organizer along, and the base stays', () {
+    final session = EditorSessionManager(
+      initialProject: createDefaultProject(),
+    );
+    addTearDown(session.dispose);
+    final base = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(base);
+    session.folders.addAttachedLayer(AttachedPlacement.above);
+    final attached = session.activeLayer!.id;
+    session.folders.groupActiveAttachIntoFolder();
+    final organizer = session.requireActiveCut.layers.folderLayers.single.id;
+    final before = _stack(session);
+    expect(
+      session.requireActiveCut.layers.byId(attached)!.folderId,
+      organizer,
+      reason: 'fixture: the attach row stands in its organizer',
+    );
+    session.selectLayer(organizer);
+
+    rowsOf(session).deleteActiveLayer();
+
+    expect(
+      _stack(session),
+      [...before]
+        ..remove(attached.value)
+        ..remove(organizer.value),
+    );
+    session.undo();
+    expect(_stack(session), before);
+    expect(folderStructureProblem(session.requireActiveCut.layers), isNull);
   });
 
   testWidgets('the delete window lists what the folder holds under its '

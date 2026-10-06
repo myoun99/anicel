@@ -960,9 +960,14 @@ void main() {
         expect(names(linked()), mirrored, reason: 'fixture');
         final steps = fixture.historyManager.undoCount;
 
-        fixture.coordinator.deleteLayer(
-          cutId: const CutId('cut-1'),
-          layerId: folderId,
+        expect(
+          () => fixture.coordinator.deleteLayer(
+            cutId: const CutId('cut-1'),
+            layerId: folderId,
+          ),
+          returnsNormally,
+          reason: 'the base takes its attach row along, and the walk must '
+              'not then reach for a row that is gone',
         );
 
         expect(

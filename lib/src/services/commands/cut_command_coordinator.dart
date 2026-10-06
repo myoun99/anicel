@@ -632,12 +632,13 @@ class CutCommandCoordinator {
   /// row itself never held.)」 — that round's own reasoning, and the user's
   /// ruling is the other way: what is to be kept is dragged out first.
   ///
-  /// Each row goes by its OWN delete, from the top down ([deleteLayer]) — a
-  /// folder inside by this walk again, a base with its attach rows, and a
-  /// row the cut may not lose (its last instruction row) not at all. So
-  /// what stays behind stays for the reason it would have stayed alone, and
-  /// is let out to the folder's parent as the folder row goes
-  /// ([dissolveFolder] — every 겸용 counterpart with it).
+  /// Each row goes by its OWN delete ([deleteLayer]) — a folder inside by
+  /// this walk again, a base with its attach rows, and a row the cut may not
+  /// lose (its last instruction row) not at all. So what stays behind stays
+  /// for the reason it would have stayed alone, and is let out to the
+  /// folder's parent as the folder row goes ([dissolveFolder] — every 겸용
+  /// counterpart with it; it finds nothing to do where the folder went
+  /// along already, an organizer with its last row).
   void _deleteFolderWithWhatItHolds({
     required CutId cutId,
     required Layer folder,
@@ -646,17 +647,14 @@ class CutCommandCoordinator {
     historyManager.runAsOneStep(
       'Delete folder ${folder.name} and what it holds',
       () {
-        for (final held in rows().directMembersOf(folder.id).reversed) {
-          // A row above may have taken this one along — a base its attach
-          // rows, the last attach row its organizer.
+        for (final held in rows().directMembersOf(folder.id)) {
+          // A row before it may have taken this one along: a base, its
+          // attach rows.
           if (rows().byId(held.id) != null) {
             deleteLayer(cutId: cutId, layerId: held.id);
           }
         }
-        // Gone already when it was an organizer its last row took along.
-        if (rows().folderById(folder.id) != null) {
-          dissolveFolder(cutId: cutId, folderId: folder.id);
-        }
+        dissolveFolder(cutId: cutId, folderId: folder.id);
       },
     );
   }
