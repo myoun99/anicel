@@ -3,6 +3,7 @@ import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
 import '../models/brush_frame_key.dart';
 import '../models/canvas_size.dart';
+import '../models/cel_text.dart';
 import '../models/tile_coord.dart';
 import 'persistence/brush_drawing_binary_codec.dart';
 import 'persistence/compress_in_worker.dart';
@@ -141,6 +142,7 @@ class UndoSurfaceSnapshot {
     required BitmapSurface? sharedWith,
   }) : _canvasSize = snapshot.canvasSize,
        _tileSize = snapshot.tileSize,
+       _texts = snapshot.texts,
        _surface = snapshot,
        _owned = snapshot.tilesNotSharedWith(sharedWith);
 
@@ -150,6 +152,15 @@ class UndoSurfaceSnapshot {
 
   final CanvasSize _canvasSize;
   final int _tileSize;
+
+  /// The texts the picture carried — kept HERE through a park, with the
+  /// two sizes above, because the parked payload is the drawing's tiles and
+  /// nothing else: a picture put back together without them would undo a
+  /// stroke by deleting every letter on the cel.
+  ///
+  /// ⚠️They stay in RAM, plates and all, and are not billed. A plate is the
+  /// size of the letters it holds, and what parks is the drawing.
+  final List<CelText> _texts;
 
   /// WHERE the tiles somebody else is holding are — coordinates only.
   ///
@@ -377,6 +388,7 @@ class UndoSurfaceSnapshot {
           canvasSize: _canvasSize,
           tileSize: _tileSize,
           tiles: shared,
+          texts: _texts,
         ),
         owned: const <TileCoord, BitmapTile>{},
       );
@@ -396,6 +408,7 @@ class UndoSurfaceSnapshot {
         canvasSize: _canvasSize,
         tileSize: _tileSize,
         tiles: {...shared, ...owned},
+        texts: _texts,
       ),
       owned: owned,
     );

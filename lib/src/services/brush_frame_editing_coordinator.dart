@@ -148,7 +148,7 @@ class BrushFrameEditingCoordinator {
       return !identical(baked, current) &&
           baked.canvasSize == sessionStore.canvasSize;
     }
-    return current.tiles.isNotEmpty &&
+    return !current.holdsNothing &&
         !frameStore.isCelCold(key) &&
         !frameStore.isCelFileBacked(key);
   }

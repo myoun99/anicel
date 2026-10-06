@@ -279,9 +279,10 @@ class BrushFrameStore {
   }
 
   /// What [surface] holds in RAM — ONE measure for the hot drawings and the
-  /// movie pictures, because the two are paid from one budget.
+  /// movie pictures, because the two are paid from one budget. The plates of
+  /// the texts a picture carries are tiles like its own, and counted.
   static int _residentBytes(BitmapSurface surface) =>
-      surface.tiles.length * surface.tileBytes;
+      surface.keptTileCount * surface.tileBytes;
 
   /// Drops every derived display cache, e.g. after a canvas resize makes the
   /// cached preview surfaces the wrong size. Source paint commands are kept.
@@ -718,7 +719,10 @@ class BrushFrameStore {
       _storeHot(key, surface);
       return;
     }
-    if (surface.tiles.isEmpty) {
+    // ⚠️NOTHING AT ALL — a cel that carries only texts has no tile and is
+    // still a picture (유저 2026-10-06: a text is 「셀의 그림이랑 정확히
+    // 동일」), and dropping it here would be a text lost on its way in.
+    if (surface.holdsNothing) {
       _removeBaked(key);
       return;
     }
@@ -1026,7 +1030,13 @@ class BrushFrameStore {
       // [BitmapTile.hasInk] caches per tile and `any` stops at the first one
       // that has some — a drawn cel answers on its first tile, and only a
       // cel that is entirely clear reads to the end, once.
-      return baked.tiles.values.any((tile) => tile.hasInk);
+      //
+      // ★A TEXT IS PICTURE (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」): a
+      // cel that carries one has something to show whatever its tiles hold,
+      // so every reader of this oracle — the row's image, the block's tint,
+      // the pixel buttons — counts it without being told about texts.
+      return baked.texts.isNotEmpty ||
+          baked.tiles.values.any((tile) => tile.hasInk);
     }
     // ⛔Cold and file-backed cels answer by membership, deliberately: asking
     // them would MATERIALIZE every cel of the project, and this is called

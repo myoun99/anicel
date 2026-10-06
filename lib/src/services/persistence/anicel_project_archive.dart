@@ -66,6 +66,15 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v5 (2026-10-06, the text tool — R9-rest): a cel's entry carries the
+/// TEXTS set on its picture after its tiles (cel stream v3,
+/// `anicelCelBinaryVersion`). A v4 build stops at such an entry with
+/// 「Unsupported cel entry version」 the first time it shows that cel — one
+/// cel at a time, deep in a session, with the rest of the project open — so
+/// the bump refuses the whole file up front instead, as a newer Anicel's
+/// ([decodeAnicelProjectDocument]). v4 files open here unchanged: their
+/// cel streams say v2 and are read as v2.
+///
 /// v4 (audit 09-25, card `audit-0925-carry-follow`): `carriedAs` holds a
 /// carry's WHOLE name, minted when it is carried ([mintMediaCarry] —
 /// `<path hash>-<random>-<file name>`). A v3 build reads it as a bare token
@@ -87,7 +96,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 4;
+const int anicelFormatVersion = 5;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,
