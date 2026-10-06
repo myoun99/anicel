@@ -233,8 +233,17 @@ void main() {
     expect(coveredFrames(session, third), isEmpty);
   });
 
-  test('a LINKED paste reaches every swept row too, sharing the source cel',
-      () {
+  // ↩️I-71 (유저 2026-10-05): 「다른레이어에 붙여넣을때 … 링크붙여넣기
+  // 가능하게. 동작은 말한대로 이름 유지되는붙여넣기」. A row the copy was not
+  // taken from links by NAME, and the band's other rows are answered by the
+  // law a row pasted to alone is (절대명령 2: 선택이 있든 없든 같은 코드).
+  //
+  // It read 「…, sharing the source cel」 and expected the SOURCE's cel id
+  // on every row: each other row was handed a cel under another row's id —
+  // and no picture, since a linked paste carried none. What 결정 14 ③ⓐ
+  // decided is that the clip LANDS on every swept row, and it does.
+  test('a LINKED paste reaches every swept row too — the same drawing on the '
+      'row it was copied from, a drawing of its own on each other', () {
     final session = rig();
     copyTheBlock(session);
     session.selectLayer(source);
@@ -242,15 +251,43 @@ void main() {
 
     session.pasteLinkedFrameAtCurrentFrame();
 
-    for (final id in const [source, other, third]) {
+    final sourceCel = FrameId('${source.value}-cel');
+    expect(layerOf(session, source).timeline[4]?.frameId, sourceCel);
+    for (final id in const [other, third]) {
       final layer = layerOf(session, id);
       final at = layer.timeline[4];
-      expect(at?.frameId, FrameId('${source.value}-cel'), reason: '$id links');
+      expect(at?.frameId, isNotNull, reason: '$id took the clip');
+      expect(
+        at?.frameId,
+        isNot(sourceCel),
+        reason: 'a drawing belongs to its row — $id is given one of its own',
+      );
       expect(
         layer.frames.any((frame) => frame.id == at!.frameId),
         isTrue,
         reason: '⛔$id must hold the cel it points at, or the row renders a '
             'white block with `?` for a name',
+      );
+    }
+  });
+
+  test('…and a NAMED drawing reaches each other row under its name (I-71)', () {
+    final session = rig();
+    session.selectLayer(source);
+    session.selectFrameIndex(0);
+    expect(session.frameVerbs.renameSelectedFrame('X'), isNull, reason: '⛔전제');
+    copyTheBlock(session);
+    session.selectLayer(source);
+    sweep(session, const [source, other, third], from: 4, toExclusive: 6);
+
+    session.pasteLinkedFrameAtCurrentFrame();
+
+    for (final id in const [other, third]) {
+      final layer = layerOf(session, id);
+      expect(
+        layer.frameById(layer.timeline[4]!.frameId!)?.name,
+        'X',
+        reason: '$id holds a drawing of its own, named as the copy was',
       );
     }
   });

@@ -9,6 +9,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_splice.dart';
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
 import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
@@ -118,7 +119,6 @@ class FrameClipboard implements BringsMedia {
         // 「레이어 id가 다른거?라던가 … 알아서 조심하고」). From another
         // project the copy pastes independent only.
         !identical(copiedFrame.from, this) ||
-        layer.id != copiedFrame.layerId ||
         !rowHoldsLinks(layer) ||
         // An IMAGE row holds ONE block: once it stands, a second exposure
         // has no place on it ([canPasteIndependentFrameAtCurrentFrame]'s
@@ -127,6 +127,13 @@ class FrameClipboard implements BringsMedia {
         // 2026-10-04 — the cut's other half, [canCutRunAtCurrentFrame]).
         (layer.kind.holdsSingleCel && !pictureRowStandsEmpty(layer))) {
       return false;
+    }
+    // 🗣️I-71 — on a row the copy was NOT taken from, the link is by NAME
+    // ([_keepsNamesOn]). ↩️Every other row was turned away here: 「is that
+    // cel in THIS row」 was the whole of what a link could mean.
+    if (layer.id != copiedFrame.layerId) {
+      return _keepsNamesOn(layer, copiedFrame) &&
+          _controllers.timelineController.currentFrameIndex >= 0;
     }
 
     // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
@@ -201,15 +208,69 @@ class FrameClipboard implements BringsMedia {
   /// point at. The clipboard travels BY VALUE, so what the run exposes has
   /// to come with it — a paste onto another row has no source in
   /// `layer.frames` by definition.
+  ///
+  /// Each as the row PRINTS it ([_namePrintedOn]): the name a block shows is
+  /// the name a linked paste keeps.
   List<Frame> _celsCarriedBy(Layer row, TimelineClipRow clip) {
     final ids = <FrameId>{
       for (final exposure in clip.exposures.values)
         if (exposure.frameId != null) exposure.frameId!,
     };
+    final printed = _namePrintedOn(row);
     return [
       for (final cel in row.frames)
-        if (ids.contains(cel.id)) cel,
+        if (ids.contains(cel.id))
+          if (printed == null) cel else cel.copyWith(name: printed(cel.id)),
     ];
+  }
+
+  /// The name a SYNCED attach row prints each of its drawings with — its
+  /// BASE's (UI-R24 #2: a mirror's own cels are unnamed, and its blocks read
+  /// the base cel they mirror); null for a row whose drawings wear their own.
+  ///
+  /// 🗣️I-71 (유저 2026-10-05): 「싱크레이어의 프레임블록이라도 복사는
+  /// 가능하도록 … 링크면 이름유지된채로 붙여넣고 독립이면 모두 이름 리셋」.
+  /// The name kept is the one on screen.
+  String? Function(FrameId cel)? _namePrintedOn(Layer row) {
+    if (!isSyncedAttachedLayer(row)) {
+      return null;
+    }
+    final base = attachedBaseOf(
+      row,
+      _project.activeCutOrNull?.layers ?? const [],
+    );
+    return (cel) => switch (attachedBaseFrameIdOf(row, cel)) {
+      final baseCel? => base?.frameById(baseCel)?.name,
+      null => null,
+    };
+  }
+
+  /// [count] cells off [row] from [index], read off the row AS IT IS SHOWN.
+  ///
+  /// A synced attach row stores no timeline — it shows its base's blocks
+  /// with its own drawings in them ([attachedRowAsShown]) — so the stored
+  /// row every other copy reads ([TimelineController.copyRunForLayer]) came
+  /// back empty for one: the button was lit, and the paste laid nothing
+  /// (I-71, 🧪measured 2026-10-06).
+  TimelineClipRow _runCopiedOff(
+    Layer row, {
+    required int index,
+    required int count,
+  }) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null || !isSyncedAttachedLayer(row)) {
+      return _controllers.timelineController.copyRunForLayer(
+        layerId: row.id,
+        index: index,
+        count: count,
+      );
+    }
+    // Ghost-free, like the stored row's copy (F-134).
+    return captureTimelineRun(
+      timeline: ghostFreeTimeline(attachedRowAsShown(row, cut.layers)),
+      index: index,
+      count: count,
+    );
   }
 
   _CopiedRow _copiedRowFor(Layer row, TimelineClipRow clip) {
@@ -217,6 +278,7 @@ class FrameClipboard implements BringsMedia {
     final cut = _project.activeCutOrNull;
     return _CopiedRow(
       layerId: row.id,
+      linkable: row.kind.isDrawingCel,
       clip: clip,
       cels: cels,
       sounds: _soundsCarriedBy(row, cels),
@@ -304,6 +366,15 @@ class FrameClipboard implements BringsMedia {
     // active row is a row the controller edits — it throws on any other.
     final layer = _selection.activeLayer;
     if (layer == null || !canCopyFrameAtCurrentFrame) {
+      return false;
+    }
+    // A SYNCED attach row's blocks are its BASE's, shown again — it has none
+    // of its own to lift, selected or stood on. ↩️Stood on, the line below
+    // already said so; with a SELECTION the button was lit (🧪2026-10-06):
+    // the press lifted nothing, let the selection go and banked the copy — a
+    // 복사 wearing the cut's name. The copy is lit there (I-71), and is what
+    // that press was.
+    if (isSyncedAttachedLayer(layer)) {
       return false;
     }
     return _selection.frameRangeSelection.value != null ||
@@ -420,11 +491,7 @@ class FrameClipboard implements BringsMedia {
         : spliceRunOnActiveRow();
     return run == null
         ? _oneCellOf(frame.id)
-        : _controllers.timelineController.copyRunForLayer(
-            layerId: layer.id,
-            index: run.index,
-            count: run.count,
-          );
+        : _runCopiedOff(layer, index: run.index, count: run.count);
   }
 
   /// One comma of [frameId] — the whole clip a copy or a cut with nothing
@@ -549,16 +616,115 @@ class FrameClipboard implements BringsMedia {
     _pasteRun(layer: layer, copied: copiedFrame, independent: true);
   }
 
-  void pasteLinkedFrameAtCurrentFrame() {
+  /// 링크 붙여넣기. Null when it pasted, or had nothing to do.
+  ///
+  /// 🗣️I-71 (유저 2026-10-05): 「해당행동시 기존에 이름 존재한다면 링크시킬지
+  /// 묻는것도 띄우고」. On a row the copy was not taken from, a pasted block
+  /// whose name the row already holds shows the row's OWN drawing of that
+  /// name and the copied picture is not brought ([ClipLanding.sameNames]) —
+  /// so where that would happen and [joinTakenNames] was not given, this
+  /// writes NOTHING and hands back what it would join, for the caller to ask
+  /// about once. The rename's own contract ([FrameVerbs.renameSelectedFrame]:
+  /// the conflict comes back 「without mutating so the caller can offer to
+  /// link instead」).
+  LinkedPasteJoins? pasteLinkedFrameAtCurrentFrame({
+    bool joinTakenNames = false,
+  }) {
     final layer = _selection.activeLayer;
     final copiedFrame = _copiedFrame;
     if (layer == null ||
         copiedFrame == null ||
         !canPasteLinkedFrameAtCurrentFrame) {
-      return;
+      return null;
+    }
+    if (!joinTakenNames) {
+      final joins = _joinsOf(_landingsOn(layer, copiedFrame));
+      if (joins.isNotEmpty) {
+        return joins;
+      }
     }
     _pasteRun(layer: layer, copied: copiedFrame, independent: false);
+    return null;
   }
+
+  /// Whether a 링크 붙여넣기 of [copied] has anything to do on [layer], a row
+  /// it was NOT copied from — the name-keeping paste (I-71).
+  ///
+  /// It makes drawings there, so the row has to take them
+  /// ([rowTakesNewCels]) and to WEAR names: a direction row's drawings have
+  /// none (유저 2026-09-12: 「이름없으면 독립적인거니까」). And the copy has
+  /// to be one of NAMED drawings — with no name to keep, the press would be
+  /// the independent paste under another button, and that button alone is
+  /// lit (F-115, said of the SE row: 「링크붙여넣기의 차이점이 없기때문」).
+  bool _keepsNamesOn(Layer layer, _CopiedFrameReference copied) =>
+      rowTakesNewCels(layer) &&
+      !layer.kind.spansRideBlocks &&
+      (copied.rows.firstOrNull?.linkable ?? false) &&
+      copied.cels.any((cel) => cel.name != null);
+
+  /// 결정 14 ②ⓐ×③ⓐ — EVERY ROW a paste on [layer] lands on, each with the
+  /// row of the board it receives.
+  ///
+  /// A ONE-row clip goes to every target (③ⓐ: 「모든 행에 같은 것을」). A
+  /// clip that already holds several rows pairs with them IN ORDER — there
+  /// is no other reading that preserves what was copied — and the pairing
+  /// stops when the board runs out, because a target with no row to receive
+  /// has nothing to be given.
+  List<_PasteLanding> _landingsOn(Layer layer, _CopiedFrameReference copied) {
+    final board = copied.rows;
+    final landings = <_PasteLanding>[];
+    for (final (i, target) in [
+      layer,
+      ..._pasteTargetRowsBesides(layer),
+    ].indexed) {
+      if (board.length > 1 && i >= board.length) {
+        break;
+      }
+      // The anchor row is the board's first — the pictures live on rows.
+      final mine = board[board.length <= 1 ? 0 : i];
+      final clip = board.length <= 1 ? copied.clip : mine.clip;
+      landings.add((
+        target: target,
+        source: board.length <= 1 ? copied.layerId : mine.layerId,
+        linkable: mine.linkable,
+        // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
+        // holds ONE picture takes the clip's first, as one comma. The write
+        // lays that as the row's held block; a second cel minted beside it
+        // would sit in the bank with nothing showing it.
+        clip: target.kind.holdsSingleCel ? _firstPictureOf(clip) : clip,
+        cels: board.length <= 1 ? copied.cels : mine.cels,
+        sounds: board.length <= 1 ? copied.sounds : mine.sounds,
+        pictures: mine.pictures,
+        handwriting: mine.handwriting,
+      ));
+    }
+    return landings;
+  }
+
+  /// How [landing]'s row of the board lands by a 링크 붙여넣기: the SAME
+  /// drawings on the row it was copied from; on any other, its names kept
+  /// (I-71) — where the copy is one of drawings and the row wears names
+  /// ([_keepsNamesOn]) — and else as drawings of the row's own.
+  static ClipLanding _linkLandingOf(_PasteLanding landing) =>
+      landing.target.id == landing.source
+      ? ClipLanding.sameDrawings
+      : landing.linkable && !landing.target.kind.spansRideBlocks
+      ? ClipLanding.sameNames
+      : ClipLanding.ownDrawings;
+
+  /// The drawings a 링크 붙여넣기 of [landings] would JOIN, by row: the row's
+  /// own that already answer to a name being pasted
+  /// ([drawingsHeldUnderTheNamesOf]). Empty when it links nothing by name.
+  static LinkedPasteJoins _joinsOf(List<_PasteLanding> landings) => [
+    for (final landing in landings)
+      if (_linkLandingOf(landing) == ClipLanding.sameNames)
+        if (drawingsHeldUnderTheNamesOf(landing.target, (
+              clip: landing.clip,
+              cels: landing.cels,
+            ))
+            case final held when held.isNotEmpty)
+          (layerId: landing.target.id, held: {...held.values}.toList()),
+  ];
 
   /// 🚨★★★ BOTH pastes, because they differ in ONE thing.
   ///
@@ -621,7 +787,6 @@ class FrameClipboard implements BringsMedia {
     required _CopiedFrameReference copied,
     required bool independent,
   }) {
-    final clip = copied.clip;
     // A paste lands with what the copy names and this project lacks — its
     // media, its terms, spelled as this project spells them (I-7). From
     // another project that is what makes the row whole; at home it is, as a
@@ -675,61 +840,28 @@ class FrameClipboard implements BringsMedia {
     // linked or not, a block writes on the conte for itself.
     final handwritten =
         <(Map<String, String>, Map<String, BitmapSurface>)>[];
-    final targets = <Layer>[layer, ..._pasteTargetRowsBesides(layer)];
-    for (var i = 0; i < targets.length; i += 1) {
-      final target = targets[i];
-      // 🚨결정 14 ②ⓐ×③ⓐ — WHICH row of the board this target receives.
-      //
-      // A ONE-row clip goes to every target (③ⓐ: 「모든 행에 같은 것을」).
-      // A clip that already holds several rows pairs with them IN ORDER —
-      // there is no other reading that preserves what was copied — and the
-      // pairing stops when the board runs out, because a target with no row
-      // to receive has nothing to be given.
-      final board = copied.rows;
-      final TimelineClipRow? mine;
-      final List<Frame> mineCels;
-      final List<AudioClip> mineSounds;
-      final Map<FrameId, BitmapSurface> minePictures;
-      final Map<String, BitmapSurface> mineHandwriting;
-      if (board.length <= 1) {
-        mine = clip;
-        mineCels = copied.cels;
-        mineSounds = copied.sounds;
-        // The anchor row is the board's first — the pictures live on rows.
-        minePictures = board.first.pictures;
-        mineHandwriting = board.first.handwriting;
-      } else if (i < board.length) {
-        mine = board[i].clip;
-        mineCels = board[i].cels;
-        mineSounds = board[i].sounds;
-        minePictures = board[i].pictures;
-        mineHandwriting = board[i].handwriting;
-      } else {
-        continue;
-      }
-      // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
-      // holds ONE picture takes the clip's first, as one comma. The write
-      // lays that as the row's held block; a second cel minted beside it
-      // would sit in the bank with nothing showing it.
-      final taken = target.kind.holdsSingleCel ? _firstPictureOf(mine) : mine;
+    for (final landing in _landingsOn(layer, copied)) {
+      final target = landing.target;
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
       final placed = placedClipFor(
         layer: target,
         row: (
-          clip: _respelled(taken, arrival.respell),
-          cels: mineCels,
-          sounds: mineSounds,
+          clip: _respelled(landing.clip, arrival.respell),
+          cels: landing.cels,
+          sounds: landing.sounds,
         ),
-        independent: independent,
+        landing: independent
+            ? ClipLanding.ownDrawings
+            : _linkLandingOf(landing),
         ids: _frameIds,
       );
       if (placed.minted.isNotEmpty) {
-        mintedByLayer.add((target.id, placed.minted, minePictures));
+        mintedByLayer.add((target.id, placed.minted, landing.pictures));
       }
       if (placed.handwriting.isNotEmpty) {
-        handwritten.add((placed.handwriting, mineHandwriting));
+        handwritten.add((placed.handwriting, landing.handwriting));
       }
       runs.add((
         layerId: target.id,
@@ -1046,6 +1178,25 @@ class FrameClipboard implements BringsMedia {
 /// keys, the ones [TimelineController.copyRunForLayer] reads.
 typedef UnlinkRun = ({Layer layer, int index, int count});
 
+/// What a 링크 붙여넣기 would JOIN, by row: on each row it lands on, the
+/// row's own drawings that already answer to a name being pasted — the
+/// drawings its blocks would show instead of the copied ones
+/// ([FrameClipboard.pasteLinkedFrameAtCurrentFrame], I-71).
+typedef LinkedPasteJoins = List<({LayerId layerId, List<FrameId> held})>;
+
+/// One row a paste lands on, with the row of the board it receives: where
+/// that was copied from ([source], [linkable]) and what it carries.
+typedef _PasteLanding = ({
+  Layer target,
+  LayerId source,
+  bool linkable,
+  TimelineClipRow clip,
+  List<Frame> cels,
+  List<AudioClip> sounds,
+  Map<FrameId, BitmapSurface> pictures,
+  Map<String, BitmapSurface> handwriting,
+});
+
 /// Whether [layer] is a row a LINK can live on — the linked paste's gate and
 /// 링크 독립's, stated once.
 ///
@@ -1076,6 +1227,7 @@ bool rowHoldsLinks(Layer layer) =>
 class _CopiedRow {
   const _CopiedRow({
     required this.layerId,
+    required this.linkable,
     required this.clip,
     this.cels = const [],
     this.sounds = const [],
@@ -1084,6 +1236,16 @@ class _CopiedRow {
   });
 
   final LayerId layerId;
+
+  /// Whether the row this was copied off holds DRAWINGS — what a link names.
+  /// Taken at the copy, like everything a row of the board holds: the paste
+  /// may stand in a cut that row is not in (F-161).
+  ///
+  /// F-115 (유저 2026-09-12): an SE row's copy 「독립 붙여넣기만 가능.
+  /// 왜냐하면 링크붙여넣기의 차이점이 없기때문」 — its cels hold no artwork,
+  /// and their names (the dialogue) repeat. A synced attach row's copy is
+  /// one of drawings (I-71), though the row itself takes no paste.
+  final bool linkable;
   final TimelineClipRow clip;
 
   /// Carried BY VALUE, for [_CopiedFrameReference.cels]'s reason: a

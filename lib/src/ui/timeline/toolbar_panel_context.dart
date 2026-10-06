@@ -13,6 +13,7 @@ import '../../models/timeline_row_address.dart';
 import '../../models/track_id.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
+import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
@@ -289,8 +290,19 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   @override
   bool get canPasteLinkedFrame => session.canPasteLinkedFrameAtCurrentFrame;
 
+  /// On a row the copy was not taken from it links by NAME, and asks before
+  /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
+  /// With no window to ask in, such a paste stands down — the verb writes
+  /// nothing until it is told to join.
   @override
-  void pasteLinkedFrame() => session.pasteLinkedFrameAtCurrentFrame();
+  void pasteLinkedFrame() {
+    final context = waitIn;
+    if (context == null) {
+      session.pasteLinkedFrameAtCurrentFrame();
+      return;
+    }
+    unawaited(pasteLinkedAskingFirst(context, session));
+  }
 
   @override
   PillSubject get deleteSubject =>

@@ -222,7 +222,9 @@ class FrameVerbs {
     final placed = placedClipFor(
       layer: layer,
       row: (clip: clip, cels: layer.frames, sounds: layer.audioClips),
-      independent: !linked,
+      landing: linked
+          ? ClipLanding.sameDrawings
+          : ClipLanding.ownDrawings,
       ids: _frameIds,
     );
     _controllers.timelineController.spliceRunsForLayers(

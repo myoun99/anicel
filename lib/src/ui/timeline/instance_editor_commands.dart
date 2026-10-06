@@ -739,53 +739,6 @@ Future<void> _editInstructionSet(
   commit: session.camera.updateCameraInstructionSet,
 );
 
-/// THE NAME-THEN-OFFER-TO-LINK FLOW, once: ask, attempt the naming, and
-/// when a name is already taken ask ONCE — never once per key, never once
-/// per drawing — whether to join what holds it, listing what the join takes.
-///
-/// The three presses that wear it — a frame's rename, a lane key's and
-/// 자동 이름 지정 (I-18) — differ only in the question they ask, in what the
-/// naming hands back when it collides (the conflicting [FrameId] for a
-/// frame, the taken name for a key, the whole plan for a press — one
-/// nullable conflict token either way), in the lines that conflict lists
-/// and in which link verb takes it. All are collaborators, not modes; this
-/// template is the ONE place holding the guard between the two windows.
-///
-/// `onConflict` holds the list and the two answers to the question: `join`
-/// takes the name that is taken, and `decline` is what the flow still owes
-/// when the user keeps the name as it was — the part of the window that did
-/// not collide.
-Future<void> _nameThenOfferLink<A extends Object, C extends Object>(
-  BuildContext context, {
-  required Future<A?> Function() ask,
-  required C? Function(A answer) name,
-  required ({
-    List<String> Function(C conflict) lines,
-    void Function(C conflict) join,
-    VoidCallback? decline,
-  })
-  onConflict,
-}) async {
-  final answer = await ask();
-  if (answer == null) {
-    return;
-  }
-  final conflict = name(answer);
-  if (conflict == null || !context.mounted) {
-    return;
-  }
-  // Asked ONCE for the whole press, never once per key or per drawing.
-  final shouldLink = await showDialogVerb<bool>(
-    context,
-    (_) => FrameNameConflictDialog(targets: onConflict.lines(conflict)),
-  );
-  if (shouldLink != true) {
-    onConflict.decline?.call();
-    return;
-  }
-  onConflict.join(conflict);
-}
-
 /// The rename prompt a frame and a lane key ask their name with. Its
 /// `fieldTrailing` is content confirmed alongside the name — the key
 /// window's TYPE — built with the window's own setState so it can show its
@@ -841,7 +794,7 @@ Future<void> _renameLaneKey(
   // link, so re-stating it is no longer free).
   final agreed = session.laneVerbs.laneKeyInterpolationForSelection;
   PropertyKeyInterpolation? picked;
-  return _nameThenOfferLink<String, String>(
+  return nameThenOfferLink<String, String>(
     context,
     ask: () => _askName(context, (
       // What the covered keys already AGREE on; blank when they disagree,
@@ -926,7 +879,7 @@ Future<void> _renameSelectedFrame(
       !session.frameVerbs.canRenameFrameAtCurrentFrame) {
     return Future<void>.value();
   }
-  return _nameThenOfferLink<String, FrameId>(
+  return nameThenOfferLink<String, FrameId>(
     context,
     ask: () => _askName(context, (
       initialName: session.selectedFrameName ?? '',
@@ -963,7 +916,7 @@ Future<void> autoNameWithWindow(
   required ToolbarPanelContext panel,
 }) {
   final naming = session.blockNaming;
-  return _nameThenOfferLink<int, AutoNamePlan>(
+  return nameThenOfferLink<int, AutoNamePlan>(
     context,
     ask: () => showDialogVerb<int>(context, (_) => const StartNumberWindow()),
     name: (start) {

@@ -328,6 +328,11 @@ enum AppStrings {
   /// 아니라 복수 대응을 기본으로」) — the frames are the list under it.
   String get frameNameConflictBody => _s('frameNameConflictBody');
 
+  /// The same notice said of a LINKED PASTE onto another row (I-71): the
+  /// frames listed are the row's own, already holding the names — what
+  /// is not brought is the copied drawing, not theirs.
+  String get linkedPasteConflictBody => _s('linkedPasteConflictBody');
+
   /// The fold over the frames a name link would join.
   String get frameNameConflictListHeading =>
       _s('frameNameConflictListHeading');
@@ -1855,6 +1860,11 @@ enum AppStrings {
         'uses. Link them to the frames holding those names? The same name '
         "then shares the same material, and each listed frame's drawing is "
         'discarded.',
+    'linkedPasteConflictBody':
+        'Each frame listed already uses a name the pasted frames '
+        'carry. Link the pasted blocks to them? The same name then '
+        'shares the same material: the pasted blocks show the listed '
+        'frames, and the copied drawings are not brought.',
     'frameNameConflictListHeading': 'Frames to link',
     'seInstanceNewTitle': 'New SE',
     'seInstanceEditTitle': 'Edit SE',
@@ -2990,6 +3000,11 @@ enum AppStrings {
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
         'その名前のフレームにリンクしますか？リンクすると同じ名前が同じ素材を共有し、'
         '一覧のフレームの絵は破棄されます。',
+    'linkedPasteConflictBody':
+        '貼り付けるフレームの名前を、一覧のフレームが既に使っています。'
+        '貼り付けるブロックをそのフレームにリンクしますか？リンクすると同じ名前が'
+        '同じ素材を共有し、貼り付けたブロックは一覧のフレームを表示します。'
+        'コピーした絵は取り込まれません。',
     'frameNameConflictListHeading': 'リンクするフレーム',
     'seInstanceNewTitle': 'SEの新規作成',
     'seInstanceEditTitle': 'SEの編集',
@@ -4364,6 +4379,11 @@ enum AppStrings {
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
         '있습니다. 그 이름의 프레임에 링크할까요? 링크하면 같은 이름이 같은 '
         '원화를 공유하고, 목록의 프레임 그림은 버려집니다.',
+    'linkedPasteConflictBody':
+        '붙여넣는 프레임의 이름을 목록의 프레임이 이미 쓰고 있습니다. '
+        '붙여넣는 블록을 그 프레임에 링크할까요? 링크하면 같은 이름이 '
+        '같은 원화를 공유해서, 붙여넣은 블록은 목록의 프레임을 보여 '
+        '주고 복사해 온 그림은 들어오지 않습니다.',
     'frameNameConflictListHeading': '링크할 프레임',
     'seInstanceNewTitle': '새 SE',
     'seInstanceEditTitle': 'SE 편집',
@@ -5737,6 +5757,12 @@ enum AppStrings {
         'son calque. Les lier aux images qui portent ces noms ? Le même nom '
         'partagera alors le même dessin, et le dessin de chaque image listée '
         'sera supprimé.',
+    'linkedPasteConflictBody':
+        'Chaque image listée utilise déjà un nom porté par les images '
+        'collées. Lier les blocs collés à ces images ? Le même nom '
+        'partagera alors le même dessin : les blocs collés montreront '
+        'les images listées, et les dessins copiés ne seront pas '
+        'apportés.',
     'frameNameConflictListHeading': 'Images à lier',
     'seInstanceNewTitle': 'Nouveau SE',
     'seInstanceEditTitle': 'Modifier le SE',
@@ -7173,6 +7199,9 @@ enum AppStrings {
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
         '链接后相同名称共用同一张原画，列表中各帧的原画将被舍弃。',
+    'linkedPasteConflictBody':
+        '列表中的帧已在使用要粘贴的帧所带的名称。是否将粘贴的块链接到这些帧？'
+        '链接后相同名称共用同一张原画：粘贴的块显示列表中的帧，复制来的原画不会带入。',
     'frameNameConflictListHeading': '要链接的帧',
     'seInstanceNewTitle': '新建 SE',
     'seInstanceEditTitle': '编辑 SE',
