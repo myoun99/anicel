@@ -370,12 +370,7 @@ void main() {
   group('nothing is resampled past the wall the carry was given', () {
     // Each of these takes the float's bottom-right out to (250, 250); the
     // wall stops at 180.
-    const SelectionVisibleRect wall = (
-      left: 0,
-      top: 0,
-      right: 180,
-      bottom: 180,
-    );
+    const wall = (left: 0.0, top: 0.0, right: 180.0, bottom: 180.0);
     final corners = stampCornersOf(float())!;
     final carries = <String, StampCarry>{
       'an affine': AffineCarry(
