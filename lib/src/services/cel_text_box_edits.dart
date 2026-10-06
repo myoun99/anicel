@@ -1,0 +1,119 @@
+import 'dart:math' as math;
+
+import '../models/canvas_point.dart';
+import '../models/cel_text.dart';
+
+/// THE EDITS A TEXT'S BOX TAKES (R9-rest, the text tool) — what a hand on
+/// its corner, outside it or on its edge does — as values: a content in, a
+/// content out. The letters' own edits are `cel_text_edits.dart`.
+///
+/// ⚠️A text turns about its ANCHOR (`CelTextContent.anchor`), and a box is
+/// turned and scaled by hand about its CENTRE — the one law every box on
+/// the canvas keeps (F-222, 유저 2026-09-22: 「확대/축소의 기준점은 항상
+/// 상자의 중심」). So each of these moves the anchor as well, to where the
+/// centre standing still puts it.
+
+/// The smallest a letter is set at, in canvas pixels. A scale stops there
+/// and so does the size setting: the engine sets nothing at a size of none,
+/// and a text scaled to nothing could not be scaled back.
+const double celTextMinFontSize = 1;
+
+/// The narrowest a box wraps at, in canvas pixels.
+const double celTextMinWrapWidth = 1;
+
+/// [content] with every LENGTH of it [factor] times what it was — the
+/// letters' size, their tracking and their outline, and the box's width —
+/// about [centre], which stays where it is.
+///
+/// 🗣️The press table 유저 took on 2026-10-06: a corner scales 「글자가
+/// 커진다, 중심 기준」 — the letters themselves, not a picture of them.
+///
+/// ⚠️[factor] stops where the smallest letter would go under
+/// [celTextMinFontSize].
+CelTextContent celTextScaledAbout(
+  CelTextContent content,
+  double factor,
+  CanvasPoint centre,
+) {
+  final smallest = content.spans.fold(
+    double.infinity,
+    (size, span) => math.min(size, span.style.fontSize),
+  );
+  final scale = smallest.isFinite
+      ? math.max(factor, celTextMinFontSize / smallest)
+      : factor;
+  final wrapWidth = content.wrapWidth;
+  return content.copyWith(
+    spans: [
+      for (final span in content.spans)
+        CelTextSpan(
+          text: span.text,
+          style: span.style.copyWith(
+            fontSize: span.style.fontSize * scale,
+            letterSpacing: span.style.letterSpacing * scale,
+            outlineWidth: span.style.outlineWidth * scale,
+          ),
+        ),
+    ],
+    wrapWidth: wrapWidth == null
+        ? null
+        : math.max(wrapWidth * scale, celTextMinWrapWidth),
+    anchor: CanvasPoint(
+      x: centre.x + (content.anchor.x - centre.x) * scale,
+      y: centre.y + (content.anchor.y - centre.y) * scale,
+    ),
+  );
+}
+
+/// [content] turned a further [degrees] clockwise about [centre], which
+/// stays where it is.
+CelTextContent celTextTurnedAbout(
+  CelTextContent content,
+  double degrees,
+  CanvasPoint centre,
+) {
+  final radians = degrees * math.pi / 180;
+  final cos = math.cos(radians);
+  final sin = math.sin(radians);
+  final dx = content.anchor.x - centre.x;
+  final dy = content.anchor.y - centre.y;
+  return content.copyWith(
+    rotationDegrees: content.rotationDegrees + degrees,
+    anchor: CanvasPoint(
+      x: centre.x + dx * cos - dy * sin,
+      y: centre.y + dx * sin + dy * cos,
+    ),
+  );
+}
+
+/// A box [content] made [width] wide by one of its two side edges: the
+/// other edge stays where it is.
+///
+/// A box hangs from its anchor, its top left corner — so the RIGHT edge
+/// only changes the width, and the LEFT edge ([byLeftEdge]) carries the
+/// anchor along the text's own line by what the width lost.
+///
+/// ⛔For a box only: a text that grows has no width to drag.
+CelTextContent celTextBoxWidened(
+  CelTextContent content,
+  double width, {
+  required bool byLeftEdge,
+}) {
+  final before = content.wrapWidth;
+  if (before == null) {
+    throw ArgumentError.value(content, 'content', 'has no box to widen');
+  }
+  final after = math.max(width, celTextMinWrapWidth);
+  if (!byLeftEdge) {
+    return content.copyWith(wrapWidth: after);
+  }
+  final radians = content.rotationDegrees * math.pi / 180;
+  final along = before - after;
+  return content.copyWith(
+    wrapWidth: after,
+    anchor: CanvasPoint(
+      x: content.anchor.x + along * math.cos(radians),
+      y: content.anchor.y + along * math.sin(radians),
+    ),
+  );
+}
