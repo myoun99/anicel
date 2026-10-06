@@ -313,6 +313,40 @@ void main() {
       }
     });
 
+    test('🚨a stamp reaching past the box by PART of a cell is carried to '
+        'its last pixel', () {
+      // 60 past a box whose cells are 50: one whole cell and a fifth of the
+      // next. The ink stands in that last fifth, on each side.
+      CanvasPoint grown(CanvasPoint p) => CanvasPoint(
+        x: 100 + (p.x - 100) * 1.5,
+        y: 100 + (p.y - 100) * 1.5,
+      );
+      final spots = [
+        CanvasPoint(x: 45, y: 150), // left
+        CanvasPoint(x: 255, y: 150), // right
+        CanvasPoint(x: 150, y: 45), // above
+        CanvasPoint(x: 150, y: 255), // below
+      ];
+      final reaching = stampOver(
+        left: 40,
+        top: 40,
+        width: 220,
+        height: 220,
+        ink: spots,
+      );
+
+      final carried = meshWhere(grown).through(reaching);
+
+      for (final spot in spots) {
+        final sent = grown(spot);
+        expect(
+          apart(inkNear(carried, sent), sent),
+          lessThan(1.5),
+          reason: 'ink at $spot goes to $sent',
+        );
+      }
+    });
+
     test('a grid dragged whole carries every stamp by its step, byte for '
         'byte', () {
       final dragged = meshWhere(
@@ -333,20 +367,63 @@ void main() {
     });
   });
 
-  test('nothing is resampled past the wall the carry was given', () {
-    // Twice the size about the float's centre reaches (50, 50)–(250, 250);
-    // the wall stops at 180.
-    final carry = AffineCarry(
-      SelectionAffine(pivot: CanvasPoint(x: 150, y: 150), sx: 2, sy: 2),
-      mode: mode,
-      within: (left: 0, top: 0, right: 180, bottom: 180),
+  group('nothing is resampled past the wall the carry was given', () {
+    // Each of these takes the float's bottom-right out to (250, 250); the
+    // wall stops at 180.
+    const SelectionVisibleRect wall = (
+      left: 0,
+      top: 0,
+      right: 180,
+      bottom: 180,
     );
+    final corners = stampCornersOf(float())!;
+    final carries = <String, StampCarry>{
+      'an affine': AffineCarry(
+        SelectionAffine(pivot: CanvasPoint(x: 150, y: 150), sx: 2, sy: 2),
+        mode: mode,
+        within: wall,
+      ),
+      'a quad': QuadCarry(
+        base: corners,
+        corners: [
+          corners[0],
+          corners[1],
+          CanvasPoint(x: 250, y: 250),
+          corners[3],
+        ],
+        mode: mode,
+        within: wall,
+      ),
+      'a mesh': MeshCarry(
+        (
+          base: stampRectOf(float())!,
+          columns: 1,
+          rows: 1,
+          points: [
+            corners[0],
+            corners[1],
+            corners[3],
+            CanvasPoint(x: 250, y: 250),
+          ],
+        ),
+        mode: mode,
+        within: wall,
+      ),
+    };
+    for (final MapEntry(key: name, value: carry) in carries.entries) {
+      test(name, () {
+        final carried = carry.through(float());
 
-    final carried = carry.through(float());
-
-    final stamp = carried.stamp!;
-    expect(carried.center.x + stamp.width / 2, lessThanOrEqualTo(181));
-    expect(carried.center.y + stamp.height / 2, lessThanOrEqualTo(181));
+        final stamp = carried.stamp!;
+        expect(
+          carried.center.x + stamp.width / 2,
+          greaterThan(170),
+          reason: '⛔premise: the picture reaches the wall',
+        );
+        expect(carried.center.x + stamp.width / 2, lessThanOrEqualTo(181));
+        expect(carried.center.y + stamp.height / 2, lessThanOrEqualTo(181));
+      });
+    }
   });
 
   /// ↩️The mesh allocated its whole output rect and filled the part that
