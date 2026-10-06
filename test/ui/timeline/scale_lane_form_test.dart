@@ -188,6 +188,12 @@ void main() {
           near(third * 2, 1.5),
           reason: 'across was left, and doubles from 1.3333…, not from 1.333',
         );
+        // The same down the other way: 33.3 is what 0.3333… prints as.
+        expect(
+          linked('200, 33.3%', scale(1, 1 / 3)),
+          near(2, 2 / 3),
+          reason: 'down was left, and doubles from 0.3333…, not from 0.333',
+        );
         // …while a number that prints differently IS typed.
         expect(
           linked('133.4, 75%', scale(third, 0.75)),
