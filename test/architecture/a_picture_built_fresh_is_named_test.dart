@@ -33,11 +33,12 @@ void main() {
           'take the same pass',
     ),
     'lib/src/services/undo_surface_snapshot.dart': (
-      count: 3,
+      count: 1,
       why:
-          'a parked snapshot is put back together from its tiles — both '
-          'rebuilds pass `texts: _texts`; the third is the payload it '
-          'parks, which is the drawing\'s tiles alone',
+          'a snapshot is put back together from the tiles it kept in ONE '
+          'place (`_pictureOf`) — the drawing\'s as its tiles, and each '
+          'text it pinned with the plate tiles kept for it (`texts: [`); '
+          'what it parks is that same picture of the tiles it owns',
     ),
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': (
       count: 1,
@@ -81,7 +82,7 @@ void main() {
   /// each says so.
   const carriers = <String, int>{
     'lib/src/services/bitmap_surface_geometry.dart': 3,
-    'lib/src/services/undo_surface_snapshot.dart': 2,
+    'lib/src/services/undo_surface_snapshot.dart': 1,
     // Read back from an entry, and written into one.
     'lib/src/services/persistence/brush_drawing_binary_codec.dart': 2,
   };
@@ -123,7 +124,7 @@ void main() {
           '`texts:`; if it really starts a picture, name it in the ledger '
           'with the reason',
     );
-    expect(found.values.fold<int>(0, (sum, count) => sum + count), 18);
+    expect(found.values.fold<int>(0, (sum, count) => sum + count), 16);
   });
 
   test('the places that rebuild a picture from its parts hand the texts '
