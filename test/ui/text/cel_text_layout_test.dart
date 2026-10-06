@@ -211,10 +211,11 @@ void main() {
         layout.caretRect(const TextPosition(offset: 3)).left,
         closeTo(0, 1e-3),
       );
-      // A press in the middle of 「b」 — from -60 to -30 — is nearest its
-      // near edge.
-      expect(layout.positionAt(const ui.Offset(-50, 10)).offset, 1);
-      expect(layout.positionAt(const ui.Offset(-40, 10)).offset, 2);
+      // 「b」 runs from -60 to -30: a press either side of its middle is
+      // nearest that side's edge — to the half pixel, which is less than
+      // the room the letters' own box begins before the block.
+      expect(layout.positionAt(const ui.Offset(-45.5, 10)).offset, 1);
+      expect(layout.positionAt(const ui.Offset(-44.5, 10)).offset, 2);
     });
 
     test('it is DRAWN there: the longest line ends at the anchor by its '

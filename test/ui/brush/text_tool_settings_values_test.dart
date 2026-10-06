@@ -328,6 +328,24 @@ void main() {
       expect(host.ran, hasLength(1), reason: 'nothing more to land');
     });
 
+    test('a setting of the WHOLE text dragged does not land either, until '
+        'it comes to rest', () async {
+      final (:values, options: _, tool: _, :host, :baker, :cel) = settings(
+        text: said([run('ab')]),
+      );
+
+      values.setLineHeight(2, settled: false);
+      await baker.pending.answer();
+
+      expect(host.ran, isEmpty);
+      expect(landed(cel).lineHeight, CelTextContent.defaultLineHeight);
+
+      values.setLineHeight(2);
+
+      expect(host.ran, hasLength(1));
+      expect(landed(cel).lineHeight, 2);
+    });
+
     test('a line pitch dragged is the next text\'s as it goes', () {
       final (:values, :options, tool: _, host: _, baker: _, cel: _) =
           settings();

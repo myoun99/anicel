@@ -153,6 +153,29 @@ void main() {
       );
     });
 
+    testWidgets('🚨the face is drawn AGAIN when only whether it is mixed '
+        'changes — and not when nothing does', (tester) async {
+      CustomPainter painterNow() => tester
+          .widget<CustomPaint>(
+            find.descendant(
+              of: find.byKey(key),
+              matching: find.byType(CustomPaint),
+            ),
+          )
+          .painter!;
+
+      await pumpSwatch(tester, mixed: false);
+      final plain = painterNow();
+      await pumpSwatch(tester, mixed: true);
+      final mixed = painterNow();
+
+      expect(mixed.shouldRepaint(plain), isTrue);
+
+      await pumpSwatch(tester, mixed: true);
+
+      expect(painterNow().shouldRepaint(mixed), isFalse);
+    });
+
     testWidgets('a mixed swatch opens on the colour it was handed — where a '
         'pick starts from', (tester) async {
       final picked = <int>[];
