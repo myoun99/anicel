@@ -516,6 +516,45 @@ void main() {
     expect(bundleCount(tester), AppText.strings.exCelCount(4));
   });
 
+  testWidgets('the first file the window names is the first one WRITTEN — an '
+      'unticked bundle\'s cels are not it', (tester) async {
+    await pumpCels(tester, celsSession());
+    expect(textOf(tester, 'export-pattern-preview'), 'A1.png');
+
+    await tapKey(tester, 'export-cels-bundle-dot-a');
+    expect(
+      textOf(tester, 'export-pattern-preview'),
+      'C1.png',
+      reason: 'A\'s cels are previewed still, and written no more',
+    );
+
+    await tapKey(tester, 'export-cels-bundle-dot-c');
+    await tapKey(tester, 'export-cels-bundle-dot-d');
+    expect(textOf(tester, 'export-pattern-preview'), AppText.strings.exNoCels);
+  });
+
+  testWidgets('each kind\'s pill, and its prefix field, reads that kind\'s '
+      'name', (tester) async {
+    await pumpCels(tester, celsSession());
+    final strings = AppText.strings;
+    final names = {
+      ExportCelKind.cel: strings.exCels,
+      ExportCelKind.conte: strings.panelConte,
+      ExportCelKind.art: strings.exArtLabel,
+      ExportCelKind.direction: strings.exSelDirection,
+    };
+    expect(names.keys, ExportCelKind.values, reason: 'every kind is named');
+    expect(names.values.toSet(), hasLength(names.length));
+    for (final MapEntry(key: kind, value: name) in names.entries) {
+      expect(
+        pill(tester, 'export-cels-kind-${kind.jsonValue}').label,
+        name,
+        reason: '$kind',
+      );
+      expect(exportCelKindLabel(kind), name, reason: '$kind');
+    }
+  });
+
   testWidgets('choosing a cel in the list drives the preview to its first '
       'sheet, and the nav counts that bundle alone', (tester) async {
     await pumpCels(tester, celsSession());
