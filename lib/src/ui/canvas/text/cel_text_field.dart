@@ -55,10 +55,38 @@ class CelTextField extends StatelessWidget {
   static const double _caretGap = 1;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Transform(
+    transform: _frame,
+    child: Offstage(
+      child: MediaQuery.withNoTextScaling(
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onKeyEvent: _key,
+          child: Actions(
+            // The field's own steps back hold letters alone; the text's
+            // hold how each was set ([CelTextEditingController]).
+            actions: <Type, Action<Intent>>{
+              UndoTextIntent: CallbackAction<UndoTextIntent>(
+                onInvoke: (_) => letters.undo(),
+              ),
+              RedoTextIntent: CallbackAction<RedoTextIntent>(
+                onInvoke: (_) => letters.redo(),
+              ),
+            },
+            child: _field(),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// The field itself, its letters set as the canvas sets them: the very
+  /// spans, no strut, and for a box the box's own width.
+  Widget _field() {
     final content = letters.content;
     final wrapWidth = content.wrapWidth;
-    Widget field = EditableText(
+    final field = EditableText(
       key: const ValueKey<String>('cel-text-field'),
       controller: letters,
       focusNode: focusNode,
@@ -98,34 +126,9 @@ class CelTextField extends StatelessWidget {
       onTapOutside: _keepTheKeyboard,
       onTapUpOutside: _keepTheKeyboard,
     );
-    if (wrapWidth != null) {
-      field = SizedBox(width: wrapWidth + _caretGap, child: field);
-    }
-    return Transform(
-      transform: _frame,
-      child: Offstage(
-        child: MediaQuery.withNoTextScaling(
-          child: Focus(
-            canRequestFocus: false,
-            skipTraversal: true,
-            onKeyEvent: _key,
-            child: Actions(
-              // The field's own steps back hold letters alone; the text's
-              // hold how each was set ([CelTextEditingController]).
-              actions: <Type, Action<Intent>>{
-                UndoTextIntent: CallbackAction<UndoTextIntent>(
-                  onInvoke: (_) => letters.undo(),
-                ),
-                RedoTextIntent: CallbackAction<RedoTextIntent>(
-                  onInvoke: (_) => letters.redo(),
-                ),
-              },
-              child: field,
-            ),
-          ),
-        ),
-      ),
-    );
+    return wrapWidth == null
+        ? field
+        : SizedBox(width: wrapWidth + _caretGap, child: field);
   }
 
   /// The text's own frame — its lines' block — on the panel.

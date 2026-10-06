@@ -90,36 +90,60 @@ class CelTextEditingController extends TextEditingController {
           ? caret.extentOffset
           : null,
     );
-    // The edit is INSIDE what the IME was composing — a syllable growing,
-    // a clause converted, a letter put into the middle of it: the same
-    // typing, however many letters it set again.
-    final rewrites =
-        old.composing.isValid &&
-        edit.range.start >= old.composing.start &&
-        edit.range.end <= old.composing.end;
-    final typed = (
-      end: edit.range.start + edit.letters.length,
-      // Letters with no space or break among them, set by a keyboard: one
-      // after the caret, or whatever an IME is composing.
-      goesOn:
-          !edit.letters.contains(_break) &&
-          (rewrites ||
-              newValue.composing.isValid ||
-              (edit.range.start == edit.range.end &&
-                  edit.letters.length == 1)),
-    );
-    final last = _lastEdit;
-    final goesOn =
-        last != null &&
-        last.goesOn &&
-        typed.goesOn &&
-        (rewrites || edit.range.start == last.end);
-    if (!goesOn) {
+    final typed = _typingOf(edit, from: old, to: newValue);
+    if (!_goesOnFromLast(typed)) {
       _keepStep(old);
     }
     _stepsForward.clear();
     // A composition committed ends the run it was typed in.
     _lastEdit = committed ? null : typed;
+    _setLetters(edit);
+    super.value = newValue;
+  }
+
+  /// [edit] — what the keyboard made of [from] to leave [to] — as typing:
+  /// where it began and ended, whether it set what the IME was composing
+  /// again, and whether a next letter can go on from it.
+  _Typed _typingOf(
+    _Edit edit, {
+    required TextEditingValue from,
+    required TextEditingValue to,
+  }) {
+    final (:range, :letters) = edit;
+    // The edit is INSIDE what the IME was composing — a syllable growing,
+    // a clause converted, a letter put into the middle of it: the same
+    // typing, however many letters it set again.
+    final rewrites =
+        from.composing.isValid &&
+        range.start >= from.composing.start &&
+        range.end <= from.composing.end;
+    return (
+      start: range.start,
+      end: range.start + letters.length,
+      rewrites: rewrites,
+      // Letters with no space or break among them, set by a keyboard: one
+      // after the caret, or whatever an IME is composing.
+      goesOn:
+          !letters.contains(_break) &&
+          (rewrites ||
+              to.composing.isValid ||
+              (range.start == range.end && letters.length == 1)),
+    );
+  }
+
+  /// Whether [typed] is more of the run the edit before it was typing: a
+  /// next letter can go on from both, and this one set the IME's letters
+  /// again or began where that one ended.
+  bool _goesOnFromLast(_Typed typed) {
+    final last = _lastEdit;
+    return last != null &&
+        last.goesOn &&
+        typed.goesOn &&
+        (typed.rewrites || typed.start == last.end);
+  }
+
+  /// Makes [edit] on the runs.
+  void _setLetters(_Edit edit) {
     final before = _content;
     _content = celTextWithLetters(
       before,
@@ -132,7 +156,6 @@ class CelTextEditingController extends TextEditingController {
       // first one taken out wore.
       _nextLetterStyle = celTextStylesOf(before, (start: 0, end: 1)).single;
     }
-    super.value = newValue;
   }
 
   /// A space or a break: where a run of typing ends.
@@ -220,6 +243,10 @@ typedef _Step = ({
   TextEditingValue field,
 });
 
-/// What an edit left for the next one to go on from: where it ended, and
-/// whether it was typing that a next letter can go on from.
-typedef _Typed = ({int end, bool goesOn});
+/// One replacement a keyboard made: the letters of `range` gave way to
+/// `letters` ([textReplacementBetween]).
+typedef _Edit = ({CelTextRange range, String letters});
+
+/// An edit as TYPING: where it began and ended, whether it set again what
+/// the IME was composing, and whether a next letter can go on from it.
+typedef _Typed = ({int start, int end, bool rewrites, bool goesOn});
