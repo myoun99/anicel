@@ -273,7 +273,13 @@ void main() {
   /// run — the media viewer's PLAY was its one tenant, and a document that
   /// runs stands on the transport now. 🔬The lane's scan against master
   /// (`5ebc1afe6`, at 421) named that one gone and nothing added.
-  const longBodies = 420;
+  ///
+  /// ⚠️420 → 419 on 2026-10-06, lowered as the rule asks (F-293, the piece
+  /// door): the pixel verbs' `_pastePixels` — the ladder walk, the selection
+  /// read a row, the cut and the landing in one body — is `pieceLandings`
+  /// and a reader of its selection, each under the line. 🔬The lane's scan
+  /// against master (`0b620fa9a`, at 420) named that one and nothing added.
+  const longBodies = 419;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
