@@ -67,7 +67,9 @@ void main() {
   const layerId = LayerId('sb');
   const frameId = FrameId('sb-0');
 
-  Cut cut() => Cut(
+  /// [rowPose]: where the conte row lies on the canvas — as it is drawn,
+  /// when null.
+  Cut cut({TransformPose? rowPose}) => Cut(
     id: cutId,
     name: '39',
     duration: 10,
@@ -81,16 +83,23 @@ void main() {
         timeline: const {
           0: TimelineExposure.drawing(frameId, length: 10),
         },
+        transformTrack: rowPose == null
+            ? null
+            : TransformTrack(keyframes: {0: rowPose}),
       ),
     ],
   );
 
-  Project project() => Project(
+  Project project({TransformPose? rowPose}) => Project(
     id: const ProjectId('conte-project'),
     name: 'Conte',
     createdAt: DateTime.utc(2026, 9, 26),
     tracks: [
-      Track(id: const TrackId('track'), name: 'Video', cuts: [cut()]),
+      Track(
+        id: const TrackId('track'),
+        name: 'Video',
+        cuts: [cut(rowPose: rowPose)],
+      ),
     ],
   );
 
@@ -134,10 +143,14 @@ void main() {
     /// The name the band of a block not yet written on is written under.
     String bandOf(ContePlacedCell cell) => 'band-${cell.source.startFrame}';
 
-    Future<Offset> pump(WidgetTester tester, CameraPose pose) async {
-      final drawn = cut();
+    Future<Offset> pump(
+      WidgetTester tester,
+      CameraPose pose, {
+      TransformPose? rowPose,
+    }) async {
+      final drawn = cut(rowPose: rowPose);
       page = layoutConteSheet(
-        buildConteSheetSource(project()),
+        buildConteSheetSource(project(rowPose: rowPose)),
         metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
       ).first;
       final metrics = page.metrics;
@@ -236,6 +249,91 @@ void main() {
         isFalse,
         reason: 'unzoomed, it would have gone twice as far',
       );
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+    // 반전)」. A row's placement is no longer a zoom, a turn and a move: the
+    // pen goes to its cel through one no viewport can say.
+    group('through a row\'s placement', () {
+      // The camera shows the canvas as it is.
+      final still = CameraPose(center: CanvasPoint(x: 320, y: 180));
+
+      testWidgets('🚨a row STRETCHED along one axis: a step right on the '
+          'paper is half as far along the cel, a step down twice as far', (
+        tester,
+      ) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: 2,
+            scaleY: 0.5,
+          ),
+        );
+        final shown = picture.shown;
+        const right = 24.0;
+        const down = 12.0;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(right / 2, 0),
+          shown.center + const Offset(right, 0),
+        ]);
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(0, down / 2),
+          shown.center + const Offset(0, down),
+        ]);
+
+        // Canvas pixels per paper unit.
+        final perPaper = canvas.width / shown.width;
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(inkAt(cel, const Offset(320, 180)), isTrue);
+        expect(
+          inkAt(cel, Offset(320 + right * perPaper / 2, 180)),
+          isTrue,
+          reason: 'twice as wide on the canvas: half as far in the cel',
+        );
+        expect(
+          inkAt(cel, Offset(320 + right * perPaper, 180)),
+          isFalse,
+          reason: 'read as it is drawn, the stroke would have gone this far',
+        );
+        expect(
+          inkAt(cel, Offset(320, 180 + down * perPaper * 2)),
+          isTrue,
+          reason: 'half as tall on the canvas: twice as far in the cel',
+        );
+      });
+
+      testWidgets('🚨a row FLIPPED: a step right on the paper is a step left '
+          'along the cel', (tester) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: -1,
+          ),
+        );
+        final shown = picture.shown;
+        const step = 24.0;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(step / 2, 0),
+          shown.center + const Offset(step, 0),
+        ]);
+
+        final along = step * canvas.width / shown.width;
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(inkAt(cel, const Offset(320, 180)), isTrue);
+        expect(inkAt(cel, Offset(320 - along, 180)), isTrue);
+        expect(
+          inkAt(cel, Offset(320 + along, 180)),
+          isFalse,
+          reason: 'unflipped, the stroke would have gone right',
+        );
+      });
     });
 
     testWidgets('🗣️H49: a stroke from the picture out over its cell\'s band '

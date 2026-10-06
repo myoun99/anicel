@@ -27,7 +27,6 @@ import '../../services/camera_frame_corners.dart'
     show CameraView, pictureView;
 import '../../services/camera_projection_matrix.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
-import '../../services/layer_pose_matrix.dart';
 import '../../services/project_lookup.dart' show cutPositionOf;
 import '../canvas/active_stroke_overlay.dart';
 import '../editor_session_manager.dart';
@@ -149,9 +148,7 @@ ContePicture? _pictureOf(
         canvas: _canvasOnPaper(cut.canvasSize, canvasToPaper),
         canvasToPaper: canvasToPaper,
       ),
-      artworkToCanvas: placement == null
-          ? Matrix4.identity()
-          : placementMatrix(placement),
+      placement: placement,
       overlay: overlayOf(id),
       refusal: pending ? project.refusalOf(CutId(cell.cutId)) : null,
     ),

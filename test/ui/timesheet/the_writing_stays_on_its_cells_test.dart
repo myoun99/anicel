@@ -167,7 +167,25 @@ void main() {
       TimesheetSheetKind.threeSeconds,
     );
     expect(placement.stretch, stretch);
-    expect(window.stretch, stretch);
+    // The window hands the layer that stretch as how its view is laid:
+    // [stretch] times as wide from the window's left edge on screen.
+    final panel = CanvasViewport(zoom: 2, panX: 30, panY: 5);
+    final laid = window.viewLaidBy(panel)!;
+    final left = window.screenRect(panel).left;
+    final atTheEdge = MatrixUtils.transformPoint(laid, Offset(left, 40));
+    final tenAcross = MatrixUtils.transformPoint(laid, Offset(left + 10, 40));
+    expect(atTheEdge.dx, closeTo(left, 1e-9));
+    expect(tenAcross.dx, closeTo(left + 10 * stretch, 1e-9));
+    expect((atTheEdge.dy, tenAcross.dy), (40, 40), reason: 'across only');
+    // A 6-second window shows its surface at the surface's own shape: its
+    // view is laid by nothing.
+    final six = _layout(TimesheetSheetKind.sixSeconds);
+    final plain = timesheetInkWindows(
+      layout: six,
+      pagedLayout: six,
+      cutId: _cutId,
+    ).firstWhere((window) => window.plane == TimesheetInkPlane.strip);
+    expect(plain.viewLaidBy(panel), isNull);
     // Round trip, and a surface pixel — one of the paper's — is [stretch]
     // of its own width across on the sheet.
     final scale = three.paperScale;
