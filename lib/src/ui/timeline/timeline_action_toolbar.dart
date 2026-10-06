@@ -38,13 +38,15 @@ import '../widgets/frame_count_field.dart';
 /// it to the selection (or the current block). Shared by the toolbar's N
 /// button and the digit-5 shortcut.
 ///
-/// B8: the toolbar's button passes its [panel] so the count lands where
-/// the 1–4 presses land — the panel the button was pressed in. The digit
-/// shortcut passes none and keeps the session's cut-local verb.
+/// B8: the count lands where the 1–4 presses land — on [panel], the panel
+/// the button was pressed in. ↩️The digit shortcut passed none and kept the
+/// session's cut-local verb; a key presses the button of the panel being
+/// worked in now (유저 2026-09-24), so every caller names its panel and the
+/// third dispatch that stood here is gone (F-283).
 Future<void> showTimelineCommaCountDialog(
   BuildContext context,
   EditorSessionManager session, {
-  ToolbarPanelContext? panel,
+  required ToolbarPanelContext panel,
 }) async {
   final comma = await showDialog<int>(
     context: context,
@@ -60,11 +62,7 @@ Future<void> showTimelineCommaCountDialog(
     ),
   );
   if (comma != null && comma >= 1) {
-    if (panel != null) {
-      panel.setComma(comma);
-    } else {
-      session.edgeDrag.setCommaForTimelineCursor(comma);
-    }
+    panel.setComma(comma);
   }
 }
 

@@ -8,11 +8,13 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/edge_drag.dart';
 import 'package:anicel/src/ui/session/range_selections.dart';
 import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// F-283 (유저 2026-10-04): 「타임라인패널의 se블록에 대해 코마조절 1,2,3,4
 /// 버튼이 작동안함. 콘티패널에선 작동하는데. 또 법 멋대로 사본만든건지
@@ -94,8 +96,10 @@ void main() {
       expect(blocksOf(sound()), [(cut2 + 3, 2)], reason: 'fixture');
       session.selectFrameIndex(4);
 
-      expect(cursorOf(session).canSetCommaForTimelineCursor, isTrue);
-      commaOf(session).setCommaForTimelineCursor(4);
+      // The toolbar's own door: its 1/2/3/4 buttons press this.
+      final buttons = TimelineToolbarPanelContext(session);
+      expect(buttons.canSetComma, isTrue);
+      buttons.setComma(4);
 
       expect(
         blocksOf(sound()),
@@ -109,15 +113,33 @@ void main() {
       expect(blocksOf(sound()), [(cut2 + 3, 2)], reason: 'one press, one step');
     });
 
+    test('a cel under the cursor takes it at the CUT\'s frame — a cut\'s own '
+        'row is read on the cut\'s axis, a track\'s on the track\'s', () {
+      final cel = celAtZero();
+
+      expect(cursorOf(session).canSetCommaForTimelineCursor, isTrue);
+      commaOf(session).setCommaForTimelineCursor(3);
+
+      expect(blocksOf(session.layerById(cel)!), [(0, 3)]);
+    });
+
     test('a band over the sound still holds it after the press — in the '
         'cut\'s frames — so the next press finds it', () {
       placeSound(3, length: 2);
+      // Off the sound first, so only the band can light the buttons.
+      session.selectFrameIndex(10);
       session.updateFrameRangeSelectionDrag(
         layerId: s1,
         anchorIndex: 3,
         headIndex: 4,
       );
+      expect(
+        cursorOf(session).timelineCursorBlockOrNull(),
+        isNull,
+        reason: 'premise: the cursor itself stands on nothing',
+      );
 
+      expect(cursorOf(session).canSetCommaForTimelineCursor, isTrue);
       commaOf(session).setCommaForTimelineCursor(5);
 
       expect(blocksOf(sound()), [(cut2 + 3, 5)]);
@@ -269,7 +291,12 @@ void main() {
             'on an image row\'s block (F-98)',
       );
 
-      expect(cursorOf(session).canSetCommaForTimelineCursor, isFalse);
+      expect(
+        TimelineToolbarPanelContext(session).canSetComma,
+        isFalse,
+        reason: 'the timeline\'s buttons ask the timeline\'s cursor — the '
+            'storyboard\'s stands on the cut here, and would light them',
+      );
     });
 
     test('standing on a lane, the press is the lane\'s, and a lane has no '
@@ -308,11 +335,15 @@ void main() {
         headGlobalFrame: cut2 + 2,
       );
 
-      commaOf(session).setCommaForStoryboardCursor(2);
+      commaOf(session).setCommaForStoryboardCursor(10);
 
-      expect(blocksOf(sound()), [(cut2, 2), (cut2 + 2, 2), (cut2 + 4, 2)]);
+      expect(blocksOf(sound()), [(cut2, 10), (cut2 + 10, 10), (cut2 + 20, 10)]);
       final band = session.trackFrameRangeSelection.value;
-      expect([band?.startFrame, band?.endFrameExclusive], [cut2, cut2 + 6]);
+      expect(
+        [band?.startFrame, band?.endFrameExclusive],
+        [cut2, cut2 + 30],
+        reason: 'on the track\'s axis, where its rows\' keys already are',
+      );
       expect(band?.anchorRow, LayerRowAddress(s1));
 
       commaOf(session).setCommaForStoryboardCursor(1);
@@ -321,9 +352,32 @@ void main() {
         blocksOf(sound()),
         [(cut2, 1), (cut2 + 1, 1), (cut2 + 2, 1)],
         reason: 'the cut\'s band has followed its cels since UI-R17 #7; this '
-            'one stayed where it was swept, and the third sound — pushed out '
-            'of it by the first press — was left on twos',
+            'one stayed where it was swept, and the sounds the first press '
+            'pushed out of it were left on tens',
       );
+    });
+
+    test('and it keeps the rows it swept', () {
+      placeSound(0, length: 1);
+      final rows = [
+        LayerRowAddress(s1),
+        TrackRowAddress(session.selectedTrackId),
+      ];
+      session.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+        trackId: session.selectedTrackId,
+        anchorRow: rows.first,
+        rows: rows,
+        startFrame: cut2,
+        endFrameExclusive: cut2 + 1,
+      );
+
+      commaOf(session).setCommaForStoryboardCursor(4);
+
+      expect(blocksOf(sound()), [(cut2, 4)]);
+      final band = session.trackFrameRangeSelection.value;
+      expect([band?.startFrame, band?.endFrameExclusive], [cut2, cut2 + 4]);
+      expect(band?.rows, rows);
+      expect(band?.trackId, session.selectedTrackId);
     });
   });
 }
