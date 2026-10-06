@@ -63,7 +63,7 @@ Future<void> showTimelineCommaCountDialog(
     if (panel != null) {
       panel.setComma(comma);
     } else {
-      session.exposureVerbs.setCommaForSelectionOrCurrent(comma);
+      session.edgeDrag.setCommaForTimelineCursor(comma);
     }
   }
 }

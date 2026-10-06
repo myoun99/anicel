@@ -185,6 +185,39 @@ void main() {
     );
   });
 
+  test('the comma answers in the gap too — its buttons were lit there, and '
+      'the press returned', () {
+    final s = standingAt(10);
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
+    expect(s.activeCutOrNull, isNull, reason: 'premise: still parked');
+    expect(storyboardCursorOf(s).canSetCommaForStoryboardCursor, isTrue);
+
+    s.edgeDrag.setCommaForStoryboardCursor(3);
+
+    expect(
+      s.trackSeGlobalLayerById(seLayerId)!.timeline[10]!.length,
+      3,
+      reason: 'the fifth copy of 「a parked playhead has no cut to lens '
+          'through」 (F-283): the sound\'s start is in its row\'s own keys and '
+          'the retime applies no lens',
+    );
+  });
+
+  test('and a band over that sound takes the comma in the gap as well', () {
+    final s = standingAt(10);
+    s.storyboardCursor.createSeEntryAtStoryboardCursor();
+    s.rangeSelections.updateTrackRowRangeSelectionByFrame(
+      layerId: seLayerId,
+      anchorGlobalFrame: 10,
+      headGlobalFrame: 10,
+    );
+    expect(s.activeCutOrNull, isNull, reason: 'premise: still parked');
+
+    s.edgeDrag.setCommaForStoryboardCursor(3);
+
+    expect(s.trackSeGlobalLayerById(seLayerId)!.timeline[10]!.length, 3);
+  });
+
   test('delete answers in the gap too — the same law, said once', () {
     final s = standingAt(10);
     s.storyboardCursor.createSeEntryAtStoryboardCursor();

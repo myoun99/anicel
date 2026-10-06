@@ -647,7 +647,7 @@ void main() {
         anchorIndex: 0,
         headIndex: 0,
       );
-      expect(s.exposureVerbs.canSetCommaForSelectionOrCurrent, isFalse);
+      expect(s.storyboardCursor.canSetCommaForTimelineCursor, isFalse);
     });
 
     test('독립시키기 from a BELOW attach row unlinks the whole group '

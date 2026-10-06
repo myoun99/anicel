@@ -86,6 +86,7 @@ abstract interface class SelectionAccess {
   void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis});
   Frame? get selectedFrame;
   TimelineRowAddress get storyboardStandingRow;
+  TimelineRowAddress get timelineStandingRow;
   TrackId get selectedTrackId;
   ValueNotifier<TrackFrameRangeSelection?> get trackFrameRangeSelection;
 }

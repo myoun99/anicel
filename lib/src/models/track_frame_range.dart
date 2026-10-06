@@ -65,6 +65,17 @@ class TrackFrameRangeSelection {
     endFrameExclusive: endFrameExclusive + delta,
   );
 
+  /// This selection ending at [endExclusive] — the same rows from the same
+  /// start, over the blocks a retime made longer or shorter.
+  TrackFrameRangeSelection endingAt(int endExclusive) =>
+      TrackFrameRangeSelection(
+        trackId: trackId,
+        anchorRow: anchorRow,
+        rows: rows,
+        startFrame: startFrame,
+        endFrameExclusive: endExclusive,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

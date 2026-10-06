@@ -96,6 +96,17 @@ class TimelineFrameRangeSelection {
         endIndexExclusive: endIndexExclusive + delta,
       );
 
+  /// This selection ending at [endExclusive] — the same rows from the same
+  /// start, over the cels a retime made longer or shorter.
+  TimelineFrameRangeSelection endingAt(int endExclusive) =>
+      TimelineFrameRangeSelection(
+        layerId: layerId,
+        layerIds: layerIds,
+        rows: rows,
+        startIndex: startIndex,
+        endIndexExclusive: endExclusive,
+      );
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

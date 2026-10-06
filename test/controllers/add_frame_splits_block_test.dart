@@ -20,7 +20,7 @@ void main() {
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
     // Hold it out to [0, length).
-    session.exposureVerbs.setCommaForSelectionOrCurrent(length);
+    session.edgeDrag.setCommaForTimelineCursor(length);
     expect(
       session.layers.firstWhere((layer) => layer.id == layerId).timeline.keys,
       [0],
@@ -63,10 +63,10 @@ void main() {
       final session = sessionWithHeldBlock();
       session.selectFrameIndex(6);
       session.createDrawingAtCurrentFrame();
-      session.exposureVerbs.setCommaForSelectionOrCurrent(2);
+      session.edgeDrag.setCommaForTimelineCursor(2);
       session.selectFrameIndex(10);
       session.createDrawingAtCurrentFrame();
-      session.exposureVerbs.setCommaForSelectionOrCurrent(2);
+      session.edgeDrag.setCommaForTimelineCursor(2);
       final timeline = timelineOf(session);
       expect(
         {for (final e in timeline.entries) e.key: e.value.length},

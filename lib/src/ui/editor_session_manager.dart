@@ -758,6 +758,10 @@ class EditorSessionManager extends ChangeNotifier
   TimelineRowAddress get storyboardStandingRow =>
       standing.storyboardStandingRow;
 
+  /// The row the TIMELINE's verbs act on ([Standing.timelineStandingRow]).
+  @override
+  TimelineRowAddress get timelineStandingRow => standing.timelineStandingRow;
+
   void standOnRow(
     TimelineRowAddress row, {
     WorkingPanel panel = WorkingPanel.timeline,

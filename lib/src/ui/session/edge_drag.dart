@@ -60,7 +60,6 @@ class EdgeDragVerbs {
          rangeSelections: rangeSelections,
        ),
        _selection = selection,
-       _rangeSelections = rangeSelections,
        _storyboardCursor = storyboardCursor,
        _transitions = transitions,
        _exposureVerbs = exposureVerbs;
@@ -73,13 +72,11 @@ class EdgeDragVerbs {
   /// gesture keeps.
   final ExposureBeginRoles _beginRoles;
 
-  /// What the transition grip and [setCommaForStoryboardCursor] read for
-  /// themselves.
+  /// What the transition grip reads for itself.
   final SelectionAccess _selection;
-  final RangeSelections _rangeSelections;
   final Transitions _transitions;
 
-  /// What [setCommaForStoryboardCursor] reads.
+  /// What the comma press reads ([_setCommaAt]).
   final StoryboardCursor _storyboardCursor;
   final ExposureVerbs _exposureVerbs;
 
@@ -397,41 +394,34 @@ class EdgeDragVerbs {
   /// - a CUT block rides the trailing-edge drag verbs, so a conte row's last
   ///   comma and the following gap behave exactly as if the edge had been
   ///   dragged to frame [comma];
-  /// - an SE block takes the timeline comma buttons' own retime
-  ///   ([TimelineController.retimeBlocksForLayers]), stated in global keys;
+  /// - a ROW's block — an S row's, a cel row's — takes the comma buttons'
+  ///   own retime ([ExposureVerbs.retimeKeepingTheCutOnItsRow]), stated in
+  ///   the row's commit keys;
   /// - a TRANSITION span rides its edge-drag verbs (the grips own length).
-  void setCommaForStoryboardCursor(int comma) {
-    if (comma < 1) {
+  void setCommaForStoryboardCursor(int comma) =>
+      _setCommaAt(_storyboardCursor.storyboardCursorBlockOrNull, comma);
+
+  /// The TIMELINE's comma press: the selection's blocks, else THE BLOCK
+  /// UNDER ITS CURSOR ([StoryboardCursor.timelineCursorBlockOrNull]) — by
+  /// the storyboard's own ladder and dispatch, so a block takes the comma
+  /// whichever panel shows it (F-283, 유저 2026-10-04: 「블록이면 1,2,3,4 등
+  /// 코마조절버튼 작동하는게 규칙임」).
+  void setCommaForTimelineCursor(int comma) =>
+      _setCommaAt(_storyboardCursor.timelineCursorBlockOrNull, comma);
+
+  /// One press for both panels — THE selection's blocks
+  /// ([ExposureVerbs.setCommaForSelection]: either axis, and a cell band
+  /// that holds none ends the press there), else the block [cursorBlock]
+  /// resolves, each kind through the machinery its own grips commit with.
+  ///
+  /// ↩️The panels differed in more than their cursor: the storyboard's
+  /// press had the track-axis band's rung and the timeline's had none, and
+  /// the timeline's cursor rung was a second resolver of its own (F-283).
+  void _setCommaAt(StoryboardCursorBlock? Function() cursorBlock, int comma) {
+    if (comma < 1 || _exposureVerbs.setCommaForSelection(comma)) {
       return;
     }
-    // The strip's cut-local selection: the shared verb's selection branch,
-    // verbatim. ⚠️Guarded so its active-layer fallback — the other panel's
-    // subject — stays unreachable from this panel.
-    final selection = _selection.frameRangeSelection.value;
-    if (selection != null) {
-      // Single-cel rows never appear in the collector, so a non-null map IS
-      // a retimable one.
-      if (_rangeSelections.cutLocalSelectionBlockStartsByLayer() != null) {
-        _exposureVerbs.setCommaForSelectionOrCurrent(comma);
-      }
-      return;
-    }
-    // The S rows' track-axis selection: the same retime, already in global
-    // commit keys (the shared verb never had this rung — its selection
-    // branch reads the cut-local notifier alone).
-    final trackTargets = _rangeSelections.trackSelectionBlockStartsByLayer();
-    if (trackTargets != null) {
-      // ⛔No active-cut guard: these starts are ALREADY global keys and the
-      // retime applies no lens, so a gap changes nothing about them (H11).
-      _roles.controllers.timelineController.retimeBlocksForLayers({
-        for (final entry in trackTargets.entries)
-          entry.key: {for (final start in entry.value) start: comma},
-      });
-      _roles.changes.warmActiveCut();
-      _roles.changes.notifyChanged();
-      return;
-    }
-    switch (_storyboardCursor.storyboardCursorBlockOrNull()) {
+    switch (cursorBlock()) {
       case null:
         return;
       case StoryboardCursorCutBlock(:final cut):
@@ -443,11 +433,17 @@ class EdgeDragVerbs {
         }
         updateCutEdgeDrag(comma - cut.duration);
         endCutEdgeDrag();
-      case StoryboardCursorSeBlock(:final layerId, :final blockStartIndex):
-        if (_roles.project.activeCutOrNull == null) {
-          return;
-        }
-        _roles.controllers.timelineController.retimeBlocksForLayers({
+      case StoryboardCursorRowBlock(:final layerId, :final blockStartIndex):
+        // The comma buttons' own retime — a conte row takes its cut along
+        // (F-91 · F-100), every other row is re-timed alone.
+        //
+        // ↩️The S rows' arm returned here with no active cut — a copy of
+        // the sentence H11 retired (유저 2026-08-22: 「각 행들은 독립적인
+        // 글로벌행이라 뭐든 가능해야함」), which the gate and the delete had
+        // already dropped: parked in a gap over a sound, the buttons were lit
+        // and the press did nothing. The start is in the row's own keys and
+        // the retime applies no lens — a gap changes nothing about them.
+        _exposureVerbs.retimeKeepingTheCutOnItsRow({
           layerId: {blockStartIndex: comma},
         });
         _roles.changes.warmActiveCut();

@@ -940,19 +940,57 @@ class RangeSelections {
     return byLayer.isEmpty ? null : byLayer;
   }
 
-  /// Re-snaps the selection to the SAME cels after a retime: each layer's
+  /// Re-snaps THE selection to the SAME cels after a retime: each layer's
   /// first retimed block kept its start; the span now ends where the last
   /// of its retimed blocks ends (max across layers).
-  void reselectRetimedSelection(
-    TimelineFrameRangeSelection selection,
-    Map<LayerId, List<int>> startsByLayer,
-  ) {
+  ///
+  /// [startsByLayer] is in COMMIT keys ([selectionBlockStartsByLayer]), so
+  /// each row is read in its commit form and its end brought back onto the
+  /// selection's own axis. ↩️It read the row the panel SHOWS: a track-owned
+  /// S row past the first cut holds no key as large as its commit starts
+  /// there, so nothing matched and the comma press let the selection go
+  /// (F-283, 🧪measured 2026-10-06 — the same axis the cursor's half missed).
+  ///
+  /// Whichever axis the selection is in, and over the rows it swept. ↩️A
+  /// band swept on the TRACK's axis was left where it stood, so the second
+  /// press found only the blocks still starting inside it (🧪measured the
+  /// same day: three sounds on ones, pressed 2 then 1, left the third on
+  /// twos); and the cut's band came back naming its layers alone, so a lane
+  /// it had swept was let go by the press.
+  void reselectRetimedSelection(Map<LayerId, List<int>> startsByLayer) {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      final end = _retimedEndOf(startsByLayer, behind: _project.rowAxisOffset);
+      _selection.frameRangeSelection.value = end == null
+          ? null
+          : inCut.endingAt(end);
+      return;
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack == null) {
+      return;
+    }
+    // The track's rows key the track's own axis: nothing lies behind it.
+    final end = _retimedEndOf(startsByLayer, behind: (_) => 0);
+    _selection.trackFrameRangeSelection.value = end == null
+        ? null
+        : onTrack.endingAt(end);
+  }
+
+  /// Where the last retimed block of [startsByLayer] ends now (max across
+  /// rows), each row's commit keys brought [behind] frames back onto the
+  /// axis asking. Null when no row answers.
+  int? _retimedEndOf(
+    Map<LayerId, List<int>> startsByLayer, {
+    required int Function(LayerId id) behind,
+  }) {
     int? end;
     for (final entry in startsByLayer.entries) {
-      final layer = _project.layerById(entry.key);
+      final layer = _project.commitLayerById(entry.key);
       if (layer == null) {
         continue;
       }
+      final offset = behind(entry.key);
       var remaining = entry.value.length;
       for (final timelineEntry in layer.timeline.entries) {
         if (timelineEntry.key < entry.value.first ||
@@ -960,7 +998,8 @@ class RangeSelections {
             timelineEntry.value.ghost) {
           continue;
         }
-        final blockEnd = timelineEntry.key + timelineEntry.value.length!;
+        final blockEnd =
+            timelineEntry.key + timelineEntry.value.length! - offset;
         end = end == null ? blockEnd : math.max(end, blockEnd);
         remaining -= 1;
         if (remaining == 0) {
@@ -968,14 +1007,7 @@ class RangeSelections {
         }
       }
     }
-    _selection.frameRangeSelection.value = end == null
-        ? null
-        : TimelineFrameRangeSelection(
-            layerId: selection.layerId,
-            startIndex: selection.startIndex,
-            endIndexExclusive: end,
-            layerIds: selection.layerIds,
-          );
+    return end;
   }
 
   /// D40: whether the standing row has an authored span for

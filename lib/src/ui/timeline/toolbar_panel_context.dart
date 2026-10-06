@@ -233,10 +233,10 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   void toggleMark() => session.layerMarks.toggleMarkAtCurrentFrame();
 
   @override
-  bool get canSetComma => session.exposureVerbs.canSetCommaForSelectionOrCurrent;
+  bool get canSetComma => session.storyboardCursor.canSetCommaForTimelineCursor;
 
   @override
-  void setComma(int comma) => session.exposureVerbs.setCommaForSelectionOrCurrent(comma);
+  void setComma(int comma) => session.edgeDrag.setCommaForTimelineCursor(comma);
 
   @override
   bool get canSelectRowSpan => session.rangeSelections.canSelectRowSpanForCurrentRow;

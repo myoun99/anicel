@@ -54,7 +54,7 @@ void main() {
     // A cel held over 0-2: its first cell, then the one after.
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
-    session.exposureVerbs.setCommaForSelectionOrCurrent(3);
+    session.edgeDrag.setCommaForTimelineCursor(3);
     await tester.pumpAndSettle();
     final addBefore = iconButton('new-frame-button');
     final commaBefore = commaButton();

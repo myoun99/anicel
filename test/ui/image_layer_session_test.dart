@@ -247,8 +247,8 @@ void main() {
       reason: 'the unselected active row must not lose its drawing',
     );
 
-    expect(s.exposureVerbs.canSetCommaForSelectionOrCurrent, isFalse);
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    expect(s.storyboardCursor.canSetCommaForTimelineCursor, isFalse);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     expect(
       celRow().timeline[0]!.length,
       1,
@@ -318,7 +318,7 @@ void main() {
 
     expect(s.cells.cellSelectionClaimsSubject, isTrue);
     expect(
-      s.exposureVerbs.canSetCommaForSelectionOrCurrent,
+      s.storyboardCursor.canSetCommaForTimelineCursor,
       isFalse,
       reason:
           'the delete gate answers true here for the LANE KEYS, which '
@@ -330,7 +330,7 @@ void main() {
         .firstWhere((layer) => layer.id == celId)
         .timeline[0]!
         .length;
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     expect(
       s.layers.firstWhere((layer) => layer.id == celId).timeline[0]!.length,
       before,
@@ -416,7 +416,7 @@ void main() {
     s.createDrawingAtCurrentFrame();
     // A real HOLD, so X-here has something to blank — without this the
     // gate is already false and the pin would pass for the wrong reason.
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
     s.selectFrameIndex(2);
     expect(
       s.exposureVerbs.canBlankExposureAtCurrentFrame,
@@ -459,7 +459,7 @@ void main() {
     s.selectLayer(rowA);
     s.selectFrameIndex(0);
     s.createDrawingAtCurrentFrame();
-    s.exposureVerbs.setCommaForSelectionOrCurrent(4);
+    s.edgeDrag.setCommaForTimelineCursor(4);
 
     // A SECOND drawing row, with a block of its own — so the band holds
     // real blocks and the collector answers non-null. That is exactly

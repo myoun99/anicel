@@ -106,7 +106,7 @@ void main() {
     s.cells.canDeleteCellAtCurrentFrame,
     s.exposureVerbs.canDecreaseSelectedExposure,
     s.exposureVerbs.canIncreaseSelectedExposure,
-    s.exposureVerbs.canSetCommaForSelectionOrCurrent,
+    s.storyboardCursor.canSetCommaForTimelineCursor,
   );
 
   test('the playhead SAYS it moved on a scrub, not only on the release', () {
