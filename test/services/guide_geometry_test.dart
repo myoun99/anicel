@@ -41,6 +41,26 @@ PerspectiveShape _perspective(
 );
 
 void main() {
+  // A row's placement is one of these (F-256-Q1), and a stamp crosses a
+  // placement that only MOVES by moving its centre, byte for byte.
+  test('a map only moves when every direction is left as it is — a shear '
+      'or a mirror that keeps a 1 somewhere is not a move', () {
+    expect(const GuideTransform(1, 0, 0, 1, 7, -3).isPureTranslation, isTrue);
+    expect(const GuideTransform.identity().isPureTranslation, isTrue);
+    for (final (a, b, c, d) in const [
+      (1.0, 0.5, 0.0, 1.0),
+      (1.0, 0.0, 0.5, 1.0),
+      (-1.0, 0.0, 0.0, 1.0),
+      (1.0, 0.0, 0.0, 2.0),
+    ]) {
+      expect(
+        GuideTransform(a, b, c, d, 7, -3).isPureTranslation,
+        isFalse,
+        reason: '[$a $c; $b $d]',
+      );
+    }
+  });
+
   group('symmetryTransforms', () {
     test('produces exactly lineCount copies in both modes', () {
       for (final count in [2, 4, 6, 8, 16]) {
