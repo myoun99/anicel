@@ -4,7 +4,12 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/path_names.dart';
 import '../../services/persistence/app_documents.dart';
+import '../../services/persistence/app_export_settings.dart'
+    show ExportDestination, ExportHandOver, ExportIntoFolder, ExportToFile;
+import '../../services/persistence/app_save_settings.dart'
+    show GrantedDirectory;
 import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/provider_documents.dart';
@@ -335,10 +340,6 @@ enum HandOver {
   /// document a save window made. What was handed over is spent.
   placed,
 
-  /// Another app was offered them (Android's share sheet) and reads them
-  /// when it will, so what was handed over has to stay for this run.
-  offered,
-
   /// The user backed out, or no window could open.
   declined,
 }
@@ -353,12 +354,11 @@ enum HandOverRoad {
   /// Google Drive included.
   saveWindow,
 
-  /// Android's share sheet: several files, offered to whichever app takes
-  /// them (「드라이브에 저장」). No Android window places more than one.
-  shareSheet,
-
-  /// A folder window, and the outputs moved there — the desktops, where the
-  /// folder window reaches every drive (Google Drive for desktop is one).
+  /// A folder window, and the outputs moved there: Android's road for
+  /// SEVERAL finished outputs, which only a queue ends on — several jobs of
+  /// one file each (F-221-Q5, 유저 2026-10-06: 「큐가 끝날때 한번 위치
+  /// 묻는건 어떻지?」). No Android window places more than one file, and
+  /// its folder window does not list Google Drive.
   folderWindow,
 }
 
@@ -366,13 +366,26 @@ enum HandOverRoad {
 /// [oneFile] when they are a single file. Pure over the OS name so every
 /// road can be pinned from the Windows workstation this is written on,
 /// the seam [folderPickNeedsStorageGrant] uses for the same reason.
+///
+/// ⛔ONLY THE PLATFORMS THAT HAND OVER HAVE A ROAD. A desktop is asked
+/// before anything is made, whatever it is ([outputsAskedTheirPlaceFirst]),
+/// so nothing finished waits for a window there — asking for its road is a
+/// caller that made outputs it had nowhere to put.
+///
+/// 🪦Two roads went with F-221 (유저 2026-10-06, 「최종통일안」): Android's
+/// share sheet for several files — it unpacked a folder into loose files,
+/// and only OFFERED them — and the desktops' 「make, then a folder window
+/// moves them」.
 HandOverRoad handOverRoadFor(
   String operatingSystem, {
   required bool oneFile,
 }) => switch (operatingSystem) {
   'ios' => HandOverRoad.exportPicker,
-  'android' => oneFile ? HandOverRoad.saveWindow : HandOverRoad.shareSheet,
-  _ => HandOverRoad.folderWindow,
+  'android' => oneFile ? HandOverRoad.saveWindow : HandOverRoad.folderWindow,
+  _ => throw StateError(
+    '$operatingSystem is asked where outputs go before they are made; '
+    'nothing is handed over there.',
+  ),
 };
 
 /// Whether outputs can be asked their place BEFORE they are made on
@@ -400,14 +413,103 @@ bool outputsAskedTheirPlaceFirst(
 bool outputsAskedTheirPlaceFirstHere({required bool oneFile}) =>
     outputsAskedTheirPlaceFirst(_operatingSystem, oneFile: oneFile);
 
+/// Whether ONE file that is asked its place first is asked through a SAVE
+/// WINDOW on [operatingSystem] — its own name in a folder — rather than
+/// through the folder window several files are asked.
+///
+/// The WINDOW is the count's (F-221-Q3, 유저 2026-10-06: 「한 장이면 파일
+/// 저장 창, 두 장부터 폴더 창」 — 「문제없고 입구만 통일하면 됨」), where
+/// the platform has the window.
+///
+/// ⚠️macOS answers false FOR NOW, and that is a gap, not the law: it has a
+/// save window and is to ask like Windows (유저: 「맥도 그럼 윈도랑
+/// 통일할수있으면 통일」). What it lacks is the road behind the answer — its
+/// sandbox grants the picked file and nothing beside it, so the run cannot
+/// simply write where it was told — and until that road is laid a lone file
+/// is asked a folder there, as it was (board `F-221`).
+bool aLoneFileIsAskedThroughASaveWindow(String operatingSystem) =>
+    operatingSystem == 'windows' || operatingSystem == 'linux';
+
+/// The two windows [askWhereOutputsGo] opens, as functions: a folder
+/// window, and a save window offering a name — each answering null when
+/// the user backed out.
+///
+/// The system's, unless a caller hands the door its own (the export
+/// window's test seam). ⛔The windows are handed in, never an ANSWER: which
+/// window opens, and whether one opens at all, is the door's to say for
+/// every caller.
+typedef OutputPlaceWindows = ({
+  Future<GrantedDirectory?> Function(String? initialDirectory) folder,
+  Future<String?> Function(String suggestedName, String? initialDirectory)
+  file,
+});
+
+/// THE DOOR EVERY EXPORT ASKS ITS PLACE AT (F-221, 유저 2026-10-06: 「최대한
+/// 멀티플랫폼 통일하고싶음」 — 「입구만 통일하면 됨」): what is about to be
+/// written says which window, and the platform says when.
+///
+/// - [loneFileName] is the name of the ONE file the run writes, or null
+///   when it writes several. One file is asked a save window, that name
+///   written in it; several are asked a folder.
+/// - A platform that can be asked before the files are made is asked HERE
+///   ([outputsAskedTheirPlaceFirst]), and the answer is an [ExportPlace].
+///   One that cannot answers [ExportHandOver] without a window: its
+///   outputs are made first and handed over ([handOverFilesForUser]).
+///
+/// Null when the user backed out of the window, or was told why what they
+/// chose cannot be used. [initialDirectory] is where the window opens — a
+/// hint, as everywhere.
+Future<ExportDestination?> askWhereOutputsGo(
+  BuildContext context, {
+  required String? loneFileName,
+  String? initialDirectory,
+  OutputPlaceWindows? windows,
+}) async {
+  final oneFile = loneFileName != null;
+  if (!outputsAskedTheirPlaceFirst(_operatingSystem, oneFile: oneFile)) {
+    return const ExportHandOver();
+  }
+  final ask = windows ?? _systemPlaceWindows(context);
+  if (oneFile && aLoneFileIsAskedThroughASaveWindow(_operatingSystem)) {
+    final file = await ask.file(loneFileName, initialDirectory);
+    return file == null ? null : ExportToFile(file);
+  }
+  final folder = await ask.folder(initialDirectory);
+  return folder == null ? null : ExportIntoFolder(folder);
+}
+
+/// The system's two windows ([OutputPlaceWindows]).
+///
+/// PICK-2: the folder has to be a durable real path — `getDirectoryPath`
+/// gave a SAF tree URI on Android and threw on iOS. And the GRANT flavour:
+/// on macOS a path without its token is refused at the first write there
+/// (Q-scoped-folder-settings, 유저 08-26).
+OutputPlaceWindows _systemPlaceWindows(BuildContext context) => (
+  folder: (initialDirectory) async {
+    final grant = await pickFolderGrantForUser(
+      context,
+      initialDirectory: initialDirectory,
+    );
+    final path = grant?.path;
+    return path == null
+        ? null
+        : GrantedDirectory(path: path, bookmark: grant!.bookmark);
+  },
+  file: (suggestedName, initialDirectory) async => (await pickSaveFileForUser(
+    context,
+    suggestedName: suggestedName,
+    initialDirectory: initialDirectory,
+  ))?.path,
+);
+
 /// Hands finished outputs — [paths], files or folders — to wherever the
 /// user picks, AFTER they were made (drive-folder-windows-Q1, 유저
 /// 2026-09-27: 「내보내기가 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」):
-/// the one way an export reaches a place no folder window opens, Google
-/// Drive above all. The road is [handOverRoadFor]'s.
+/// all a platform that cannot be asked first can do, and the one way an
+/// export reaches Google Drive on iOS. The road is [handOverRoadFor]'s.
 ///
 /// The caller owns [paths] afterwards: gone when [HandOver.placed] (moved,
-/// or poured and theirs to clear), still needed when [HandOver.offered].
+/// or poured and theirs to clear).
 Future<HandOver> handOverFilesForUser(
   BuildContext context, {
   required List<String> paths,
@@ -428,10 +530,6 @@ Future<HandOver> handOverFilesForUser(
               null
           ? HandOver.declined
           : HandOver.placed;
-    case HandOverRoad.shareSheet:
-      return await FolderPicker.shareFiles(paths)
-          ? HandOver.offered
-          : HandOver.declined;
     case HandOverRoad.folderWindow:
       final folder = await pickFolderForUser(context);
       if (folder == null) {
@@ -444,17 +542,42 @@ Future<HandOver> handOverFilesForUser(
   }
 }
 
-/// The DESKTOP half of Save As: the system save dialog answers with a
-/// path, nothing is created, and the save that follows writes it. See
-/// [FolderPicker.pickSaveDestination] for why desktop stopped staging a
-/// file and moving it.
-Future<FolderGrant?> pickSaveDestinationForUser(
+/// ONE FILE's place through the system save window — the DESKTOP half of
+/// Save As, and of everything else that writes one file where it is told:
+/// the window answers with a path, nothing is created, and the caller
+/// writes there itself (see [FolderPicker.pickSaveDestination] for why
+/// desktop stopped staging a file and moving it). The grant is for that
+/// path, or null when the user backed out — of the window, or of the
+/// question below.
+///
+/// The name the window answers with is not yet the file's:
+///
+/// 1. **THE SUFFIX IS THE CALLER'S.** Windows shows the type filter and
+///    never appends the extension it names
+///    ([FolderPicker.pickSaveDestination]), so a name typed bare comes back
+///    bare. The extension is [suggestedName]'s — what is being written
+///    decides it, not what was typed — and it is appended where missing.
+/// 2. **THE REPLACE QUESTION IS ASKED AGAIN (F-14).** Appending claims a
+///    DIFFERENT path than the one the window's own replace prompt asked
+///    about — 「type Foo over an existing Foo.anicel」 was a silent
+///    overwrite — so when the suffixed name is taken, the question is asked
+///    about it.
+///
+/// ⛔THE ONE DOOR TO THE SAVE WINDOW. ↩️There was a barer one beside it
+/// (`pickSaveDestinationForUser`: the pick, said out loud, and no more),
+/// and its three callers each answered the two points above for
+/// themselves: Save As answered both; the brush export answered the first
+/// and wrote over whatever stood at the suffixed name; the WAV export
+/// answered neither, and a name typed bare was written bare. An export's
+/// lone file is the fourth to ask (F-221, 2026-10-07) — so the answers are
+/// here, and the barer door is gone.
+Future<FolderGrant?> pickSaveFileForUser(
   BuildContext context, {
   required String suggestedName,
   String? initialDirectory,
   List<XTypeGroup> acceptedTypeGroups = const [],
 }) async {
-  final grant = await FolderPicker.pickSaveDestination(
+  final answer = await FolderPicker.pickSaveDestination(
     suggestedName: suggestedName,
     initialDirectory: initialDirectory,
     acceptedTypeGroups: acceptedTypeGroups,
@@ -462,7 +585,54 @@ Future<FolderGrant?> pickSaveDestinationForUser(
   if (!context.mounted) {
     return null;
   }
-  return _spokenFor(context, grant);
+  final grant = await _spokenFor(context, answer);
+  final picked = grant?.path;
+  if (picked == null || !context.mounted) {
+    return null;
+  }
+  final suffix = _suffixOf(suggestedName);
+  if (suffix.isEmpty || picked.toLowerCase().endsWith(suffix.toLowerCase())) {
+    return grant;
+  }
+  final suffixed = '$picked$suffix';
+  if (File(suffixed).existsSync()) {
+    final strings = AppText.strings;
+    final replace = await askConfirm(
+      context,
+      ConfirmQuestion(
+        keys: (
+          window: const ValueKey<String>('save-as-replace-dialog'),
+          decline: const ValueKey<String>('save-as-replace-cancel'),
+          accept: const ValueKey<String>('save-as-replace-confirm'),
+        ),
+        title: strings.replaceFileTitle,
+        titleIcon: Icons.save_as_outlined,
+        message: strings.replaceFileMessageTemplate.replaceAll(
+          '{name}',
+          fileNameOfPath(suffixed),
+        ),
+      ),
+      accept: ConfirmChoice(
+        strings.commonReplace,
+        emphasis: AppWindowActionEmphasis.danger,
+      ),
+    );
+    if (replace != true || !context.mounted) {
+      return null;
+    }
+  }
+  return FolderGrant.granted(
+    path: suffixed,
+    bookmark: grant!.bookmark,
+    kind: GrantKind.file,
+  );
+}
+
+/// The extension [name] ends in, its dot included — empty for a name that
+/// has none (a leading dot is a name, not an extension).
+String _suffixOf(String name) {
+  final dot = name.lastIndexOf('.');
+  return dot <= 0 || dot == name.length - 1 ? '' : name.substring(dot);
 }
 
 /// Android alone has to clear a storage grant before a picker is worth
@@ -609,7 +779,7 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
 /// to again.
 ///
 /// So the roads are the same and the reasons are the ones already written
-/// down: desktop has a save panel, so [pickSaveDestinationForUser] answers
+/// down: desktop has a save panel, so [pickSaveFileForUser] answers
 /// with a path and this writes there. iOS has none — Apple never built one
 /// — so the file is written into the app container FIRST and
 /// [exportFileForUser] moves it where the picker says.
@@ -636,7 +806,7 @@ Future<String?> handWrittenFileToUser(
   List<XTypeGroup> acceptedTypeGroups = const [],
 }) async {
   if (!FolderPicker.grantsAreScoped) {
-    final grant = await pickSaveDestinationForUser(
+    final grant = await pickSaveFileForUser(
       context,
       suggestedName: suggestedName,
       acceptedTypeGroups: acceptedTypeGroups,

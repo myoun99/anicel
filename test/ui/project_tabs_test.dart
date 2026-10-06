@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
@@ -258,6 +259,37 @@ void main() {
     expect(find.text(AppText.strings.fileOpenInAnotherTab), findsOneWidget);
     expect(second.projectFile.path, isNull, reason: 'no second writer');
     expect(File(path).existsSync(), isFalse, reason: 'not a byte written');
+  });
+
+  testWidgets('Save As opens its window beside the project\'s file — and in '
+      'the app\'s documents for a project never saved', (tester) async {
+    final folder = Directory.systemTemp.createTempSync('qa_project_tabs_');
+    deleteAfterSessionEnds(folder);
+    final beside = folder.path.replaceAll(r'\', '/');
+    // The save window is the desktops'; a scoped runner takes another road.
+    FolderPicker.debugOperatingSystem = 'windows';
+    addTearDown(() => FolderPicker.debugOperatingSystem = null);
+    final openedAt = <String?>[];
+    FolderPicker.debugSaveDestinationPicker = ({
+      required String suggestedName,
+      String? initialDirectory,
+    }) async {
+      openedAt.add(initialDirectory);
+      return const FolderGrant.cancelled();
+    };
+    final projects = await pumpApp(tester);
+
+    await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as');
+    projects.active.projectFile.bindToSavedFile(
+      '$beside/Saved.anicel',
+      mediaInFile: {},
+      cleanAsOf: 0,
+    );
+    await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as');
+
+    expect(openedAt, [appDocumentsDirectory(), beside]);
   });
 
   test('the census adds up EVERY open project, and what the app holds once '

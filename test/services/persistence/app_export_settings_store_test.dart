@@ -43,46 +43,67 @@ void main() {
       lastSpecs: const ExportTabSpecs().withSpec(
         const SequenceExportSpec(inFrame: 23, outFrame: 94),
       ),
-      lastDestination: const ExportIntoFolder(
-        GrantedDirectory(
-          path: 'D:/deliver/ep03/rush',
-          bookmark: 'Ym9va21hcms=',
-        ),
-      ),
+      lastFolder: 'D:/deliver/ep03/rush',
       presetsDrawerOpen: false,
     );
     await store.save(settings);
     final restored = await store.load();
     expect(restored, settings);
     expect(restored!.presetsFor(ExportTab.sequence), hasLength(1));
-    // An older build's bare-string spelling still reads (token-less).
-    expect(
-      AppExportSettings.fromJson(const {
-        'lastLocation': 'D:/deliver/legacy',
-      }).lastDestination,
-      const ExportIntoFolder(GrantedDirectory(path: 'D:/deliver/legacy')),
-    );
     expect(restored.presetsFor(ExportTab.cels).single.name, '납품 셀');
   });
 
-  test('「끝나면 고르기」 round-trips as a destination of its own — never a '
-      'folder beside it', () async {
-    final store = AppExportSettingsStore(filePath: pathIn('hand-over'));
-    final settings = AppExportSettings(lastDestination: const ExportHandOver());
-    await store.save(settings);
-    expect(await store.load(), settings);
-    expect(settings.toJson().containsKey('lastLocation'), isFalse);
+  test('the remembered folder reads from both spellings a build has written '
+      '— the bare path, and the path beside the token of a folder that was '
+      'reused', () {
     expect(
-      AppExportSettings(
-        lastDestination: const ExportIntoFolder(GrantedDirectory(path: 'D:/o')),
-      ).toJson().containsKey('handOver'),
-      isFalse,
+      AppExportSettings.fromJson(const {
+        'lastLocation': 'D:/deliver/legacy',
+      }).lastFolder,
+      'D:/deliver/legacy',
     );
-    expect(AppExportSettings().lastDestination, isNull);
     expect(
-      const ExportIntoFolder(GrantedDirectory(path: 'D:/a')),
-      isNot(const ExportIntoFolder(GrantedDirectory(path: 'D:/b'))),
+      AppExportSettings.fromJson(const {
+        'lastLocation': {'path': 'D:/deliver/granted', 'bookmark': 'Ym9v'},
+      }).lastFolder,
+      'D:/deliver/granted',
     );
+  });
+
+  test('what is remembered is a folder or nothing: 「끝나면 고르기」 written by '
+      'a build that had it reads as nothing', () {
+    expect(AppExportSettings().lastFolder, isNull);
+    expect(AppExportSettings().toJson().containsKey('lastLocation'), isFalse);
+    expect(
+      AppExportSettings.fromJson(const {'handOver': true}).lastFolder,
+      isNull,
+    );
+    expect(
+      AppExportSettings(lastFolder: 'D:/o').toJson()['lastLocation'],
+      'D:/o',
+    );
+    expect(
+      AppExportSettings(lastFolder: 'D:/o').copyWith(lastFolder: null),
+      AppExportSettings(),
+    );
+    // The live settings are a ValueNotifier: one that compared equal to the
+    // last would be dropped, and the folder with it.
+    expect(
+      AppExportSettings(lastFolder: 'D:/a'),
+      isNot(AppExportSettings(lastFolder: 'D:/b')),
+    );
+  });
+
+  test('a place stands in a folder: the folder itself, or the one its lone '
+      'file is in', () {
+    const folder = ExportIntoFolder(GrantedDirectory(path: 'D:/out'));
+    const file = ExportToFile('D:/out/shot.mp4');
+    expect(folder.folderPath, 'D:/out');
+    expect(file.folderPath, 'D:/out');
+    expect(file, const ExportToFile('D:/out/shot.mp4'));
+    expect(file, isNot(const ExportToFile('D:/out/other.mp4')));
+    expect(folder, isNot(const ExportIntoFolder(GrantedDirectory(path: 'D:/b'))));
+    expect(const ExportHandOver(), const ExportHandOver());
   });
 
   test('corrupt JSON loads as null', () async {

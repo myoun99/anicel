@@ -58,7 +58,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../core/path_names.dart' show pathHash;
+import '../../core/path_names.dart' show folderOfPath, pathHash;
 import '../../models/media_asset.dart' show normalizedMediaPath;
 import '../media/media_byte_source.dart';
 import '../persistence/anicel_incremental_writer.dart'
@@ -699,11 +699,7 @@ class AudioConformPipeline {
     String? cacheError;
     if (conformPath != null) {
       try {
-        final directory = conformPath.substring(
-          0,
-          conformPath.replaceAll('\\', '/').lastIndexOf('/'),
-        );
-        Directory(directory).createSync(recursive: true);
+        Directory(folderOfPath(conformPath)).createSync(recursive: true);
         final wav = encodeConform(
           samples: converted,
           channels: decoded.channels,

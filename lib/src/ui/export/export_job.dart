@@ -38,9 +38,11 @@ class ExportJob {
   final int id;
   final ExportTabSpec spec;
 
-  /// Where the outputs go, frozen when the job was queued: the folder
-  /// (위치 선행 — chosen before the job exists), or 「끝나면 고르기」 — handed
-  /// over when the queue is done (drive-folder-windows-Q1).
+  /// Where the outputs go, frozen when the job was queued: a folder, or its
+  /// lone file's own path (위치 선행 — asked before the job exists) — or
+  /// handed over when the queue is done, where a place can only be asked
+  /// of what is made (drive-folder-windows-Q1). A file's place the job has
+  /// outgrown is asked again when the queue is run (F-221).
   final ExportDestination destination;
 
   /// The single-file name for video/image jobs; null when the job writes a

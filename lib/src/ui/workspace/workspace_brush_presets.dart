@@ -546,25 +546,20 @@ class _WorkspaceBrushPresets {
     final message = await _state._presetLibrary.exportPresets(
       presets,
       pickDestination: (suggestedName) async {
-        final grant = await pickSaveDestinationForUser(
+        // The suffix a name typed bare lacks, and the replace question it
+        // re-opens, are the save window's door's ([pickSaveFileForUser]) —
+        // not the library's, which has no business knowing which platform
+        // asked. ↩️This appended the suffix itself, at the write, and so
+        // wrote over whatever stood at the suffixed name unasked.
+        final grant = await pickSaveFileForUser(
           _state.context,
           suggestedName: suggestedName,
           acceptedTypeGroups: const [FileTypeGroups.anicelBrush],
         );
         return grant?.path;
       },
-      write: (path, contents) async {
-        // ⚠️The Windows save dialog does not append the extension the filter
-        // names (see `FolderPicker.pickSaveDestination`), so the caller
-        // answers the suffix — here, once, rather than in the library, which
-        // has no business knowing which platform asked.
-        final withSuffix = path.toLowerCase().endsWith(
-          '.$anicelBrushExtension',
-        )
-            ? path
-            : '$path.$anicelBrushExtension';
-        await File(withSuffix).writeAsString(contents, flush: true);
-      },
+      write: (path, contents) =>
+          File(path).writeAsString(contents, flush: true),
     );
     if (message != null) {
       await _notice(message);

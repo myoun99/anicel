@@ -301,11 +301,6 @@ abstract final class FolderPicker {
   static Future<FolderGrant> Function(List<String> sourcePaths)?
   debugFilesExporter;
 
-  /// The same seam for [shareFiles]. ⚠️Reset in
-  /// `test/flutter_test_config.dart`, like the seams above.
-  @visibleForTesting
-  static Future<bool> Function(List<String> paths)? debugFileSharer;
-
   /// Test seam for the OS these rules are read from.
   ///
   /// ⚠️Reset in `test/flutter_test_config.dart`, like [debugFolderPicker].
@@ -549,20 +544,12 @@ abstract final class FolderPicker {
     }, GrantKind.file)).first;
   }
 
-  /// Offers [paths] to another app through the system's share sheet —
-  /// Android's road for several files, where no picker places more than
-  /// one (「드라이브에 저장」 takes them there). True once the sheet was
-  /// shown; whatever takes them reads them afterwards, so they must stay.
-  static Future<bool> shareFiles(List<String> paths) async {
-    final override = debugFileSharer;
-    if (override != null) {
-      return override(paths);
-    }
-    final answer = await _invoke('shareFiles', {
-      'paths': paths,
-    }, GrantKind.file);
-    return answer.first.status == FolderPickStatus.granted;
-  }
+  // 🪦`shareFiles` — Android's share sheet, the road several finished
+  // outputs took there while no window placed more than one — is gone
+  // (F-221, 유저 2026-10-06). It unpacked a folder into loose files, and it
+  // only ever OFFERED them: whatever took them read them later, so they
+  // could not be let go. Several files are asked a folder now, before they
+  // are made (`outputsAskedTheirPlaceFirst`).
 
   /// Save As on the platforms that HAVE a save dialog: the dialog answers
   /// with a path — nothing is created and nothing moves. The save that

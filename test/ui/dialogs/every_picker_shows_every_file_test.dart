@@ -82,6 +82,7 @@ bool _isSaveDialog(String source, String line) {
   }
   final before = source.substring((at - 400).clamp(0, at), at);
   return before.contains('pickSaveDestination') ||
+      before.contains('pickSaveFileForUser') ||
       before.contains('exportFile') ||
       before.contains('handWrittenFileToUser');
 }

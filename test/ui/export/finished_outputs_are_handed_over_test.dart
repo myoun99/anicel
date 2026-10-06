@@ -42,9 +42,10 @@ import '../../helpers/temp_dir.dart';
 /// 넘긴다 — 파일 창을 거쳐」 — the one way an export reaches Google Drive on
 /// iOS).
 ///
-/// The window's side of it: when it asks, what it does with the answer, and
-/// the line that says which order this export takes. Every OS's road is
-/// driven from the Windows workstation through the OS seam.
+/// The window's side of it: when it asks and through which window (one
+/// file — the save window; several — a folder), what it does with the
+/// answer, and the line that says which order this export takes. Every
+/// OS's road is driven from the Windows workstation through the OS seam.
 void main() {
   late Directory temp;
   late Directory placed;
@@ -67,7 +68,7 @@ void main() {
     FolderPicker.debugFolderPicker = null;
     FolderPicker.debugFileExporter = null;
     FolderPicker.debugFilesExporter = null;
-    FolderPicker.debugFileSharer = null;
+    FolderPicker.debugSaveDestinationPicker = null;
     clearOutbox();
     deleteTempQuietly(temp);
   });
@@ -249,18 +250,13 @@ void main() {
       expect(asked, [null, placed.path]);
     });
 
-    testWidgets('Android asks a FOLDER first for several files — and nothing '
-        'is offered through the share sheet', (tester) async {
+    testWidgets('Android asks a FOLDER first for several files, and the run '
+        'writes straight into it', (tester) async {
       AppStorage.debugAllFilesAccessOverride = true;
-      var shared = 0;
       List<String>? madeWhenAsked;
       FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
         madeWhenAsked = leftIn(outbox());
         return FolderGrant.granted(path: placed.path);
-      };
-      FolderPicker.debugFileSharer = (paths) async {
-        shared += 1;
-        return true;
       };
       final state = await open(tester, 'android');
       await pickPngSequence(tester);
@@ -270,7 +266,7 @@ void main() {
 
       expect(madeWhenAsked, isEmpty);
       expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
-      expect(shared, 0);
+      expect(leftIn(outbox()), isEmpty);
     });
 
     testWidgets('a queue asks each job its folder when it is QUEUED, and '
@@ -310,6 +306,179 @@ void main() {
         find.byKey(const ValueKey<String>('export-queue-job-1')),
         findsNothing,
       );
+    });
+  });
+
+  group('ONE file is asked the SAVE window, where the platform has one to '
+      'ask before the file exists', () {
+    /// A desktop's two windows, written down as they are asked: the save
+    /// window answering [saveAs] in [placed] — or backed out of, when null
+    /// — and the folder window answering [placed].
+    ({
+      List<String> names,
+      List<String?> openedAt,
+      List<List<String>> madeWhenAsked,
+      List<String?> folders,
+    })
+    desktopWindows({required String? saveAs}) {
+      final names = <String>[];
+      final openedAt = <String?>[];
+      final madeWhenAsked = <List<String>>[];
+      final folders = <String?>[];
+      FolderPicker.debugSaveDestinationPicker = ({
+        required String suggestedName,
+        String? initialDirectory,
+      }) async {
+        names.add(suggestedName);
+        openedAt.add(initialDirectory);
+        madeWhenAsked.add([
+          ...filesWrittenUnder(placed),
+          ...leftIn(outbox()),
+        ]);
+        return saveAs == null
+            ? const FolderGrant.cancelled()
+            : FolderGrant.granted(
+                path: '${placed.path}/$saveAs',
+                kind: GrantKind.file,
+              );
+      };
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        folders.add(initialDirectory);
+        return FolderGrant.granted(path: placed.path);
+      };
+      return (
+        names: names,
+        openedAt: openedAt,
+        madeWhenAsked: madeWhenAsked,
+        folders: folders,
+      );
+    }
+
+    Future<void> showTab(WidgetTester tester, String tab) async {
+      await tester.tap(find.byKey(ValueKey<String>('export-tab-$tab')));
+      await tester.pump();
+    }
+
+    testWidgets('🎯a desktop: Export of ONE file opens the save window with '
+        'its name in it before the file is made — and the run writes it at '
+        'the path the window answers, under the name given there', (
+      tester,
+    ) async {
+      final windows = desktopWindows(saveAs: 'renamed.png');
+      final state = await open(tester, 'windows');
+      await showTab(tester, 'image');
+      expect(windows.names, isEmpty, reason: 'nothing is asked until Export');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(windows.names, ['Project.png']);
+      expect(windows.folders, isEmpty, reason: 'one file asks no folder');
+      expect(windows.madeWhenAsked.single, isEmpty);
+      expect(filesWrittenUnder(placed), ['renamed.png']);
+      expect(leftIn(outbox()), isEmpty, reason: 'it wrote straight there');
+      expect(status(tester), AppText.strings.exDoneFile('renamed.png'));
+    });
+
+    testWidgets('the COUNT decides the window, not the format: stills '
+        'trimmed to ONE frame are asked the save window by the name their '
+        'rule gives, and written under the one given there', (tester) async {
+      final windows = desktopWindows(saveAs: 'only.png');
+      final state = await open(tester, 'windows');
+      await pickPngSequence(tester);
+      await tester.typeExportRange(inFrame: '2');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(windows.names, ['frame_0001.png']);
+      expect(windows.folders, isEmpty);
+      expect(filesWrittenUnder(placed), ['only.png']);
+    });
+
+    testWidgets('a video is encoded AT the path the window answers', (
+      tester,
+    ) async {
+      final windows = desktopWindows(saveAs: 'rush.mp4');
+      List<String>? encoderArguments;
+      final state = await open(
+        tester,
+        'windows',
+        video: VideoExportService(
+          processStarter: (executable, arguments) async {
+            encoderArguments = arguments;
+            return FakeFfmpegProcess();
+          },
+        ),
+      );
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(windows.names, ['Project.mp4']);
+      expect(encoderArguments!.last, '${placed.path}/rush.mp4');
+    });
+
+    testWidgets('backing out of the save window runs nothing — and says '
+        'nothing', (tester) async {
+      final windows = desktopWindows(saveAs: null);
+      final state = await open(tester, 'windows');
+      await showTab(tester, 'image');
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(windows.names, hasLength(1));
+      expect(filesWrittenUnder(placed), isEmpty);
+      expect(status(tester), '');
+      expect(exportLive(tester), isTrue);
+    });
+
+    testWidgets('the next window opens in the folder the last place stands '
+        'in — a file\'s as a folder\'s', (tester) async {
+      final windows = desktopWindows(saveAs: 'renamed.png');
+      final state = await open(tester, 'windows');
+      await showTab(tester, 'image');
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      await showTab(tester, 'sequence');
+      await pickPngSequence(tester);
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      await showTab(tester, 'image');
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(
+        windows.folders,
+        [placed.path.replaceAll(r'\', '/')],
+        reason: 'the folder window, after a file was placed',
+      );
+      expect(
+        windows.openedAt,
+        [null, placed.path],
+        reason: 'the save window: first of all, then after a folder',
+      );
+    });
+
+    testWidgets('a lone file is asked its save window when it is QUEUED, '
+        'and the queue writes it there — asking nothing more', (tester) async {
+      final windows = desktopWindows(saveAs: 'queued.png');
+      final state = await open(tester, 'windows');
+      await showTab(tester, 'image');
+
+      await tapKey(tester, 'export-queue-add-button');
+      expect(windows.names, ['Project.png'], reason: 'asked as it is queued');
+      expect(filesWrittenUnder(placed), isEmpty);
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(windows.names, hasLength(1), reason: 'the run asks nothing');
+      expect(windows.folders, isEmpty);
+      expect(filesWrittenUnder(placed), ['queued.png']);
     });
   });
 
@@ -418,6 +587,45 @@ void main() {
       expect(handed, [
         ['frame_0001.png', 'frame_0002.png', 'shot_0001.png', 'shot_0002.png'],
       ]);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('Android: a queue of single files hands them over in ONE '
+        'folder window once the last is done — the save window takes one '
+        'file, and these are two', (tester) async {
+      AppStorage.debugAllFilesAccessOverride = true;
+      final folders = <String?>[];
+      var saved = 0;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+        folders.add(initialDirectory);
+        return FolderGrant.granted(path: placed.path);
+      };
+      FolderPicker.debugFileExporter = ({
+        required String sourcePath,
+        String? suggestedName,
+      }) async {
+        saved += 1;
+        return FolderGrant.granted(path: sourcePath, kind: GrantKind.file);
+      };
+      final state = await open(tester, 'android');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-tab-sequence')),
+      );
+      await tester.pump();
+      await pickPngSequence(tester);
+      await tester.typeExportRange(inFrame: '2');
+      await tapKey(tester, 'export-queue-add-button');
+      expect(folders, isEmpty, reason: 'one file each: nothing asked first');
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(folders, hasLength(1));
+      expect(saved, 0);
+      expect(filesWrittenUnder(placed), ['Project.png', 'frame_0001.png']);
       expect(leftIn(outbox()), isEmpty);
     });
 

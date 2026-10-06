@@ -13,6 +13,32 @@ String fileNameOfPath(String path) {
   return slash < 0 ? normalized : normalized.substring(slash + 1);
 }
 
+/// The folder [path] stands in, for either platform's separator — the half
+/// [fileNameOfPath] leaves off. Empty when [path] names no folder at all (a
+/// bare file name). A root keeps its slash: `C:/a.png` stands in `C:/`, not
+/// in `C:` — which a window asked to open there reads as 「wherever that
+/// drive last was」.
+///
+/// ↩️Save As spelled this out twice to find where its window opens and the
+/// conform cache once, to make the folder it writes into; they ask here
+/// now (2026-10-07).
+///
+/// ⚠️ONE SPELLING IS LEFT, AND IT ANSWERS DIFFERENTLY:
+/// `AnicelFileService._parentDirectory`, which the save joins names onto.
+/// It answers `.` for a bare name and `C:` for a root — a prefix to put
+/// `/name` after, where this is a folder to open — and `.` for `/a.anicel`
+/// too, which is the working directory rather than the root (board
+/// `the-save-keeps-its-own-folder-of-a-path`).
+String folderOfPath(String path) {
+  final normalized = path.replaceAll(r'\', '/');
+  final slash = normalized.lastIndexOf('/');
+  if (slash < 0) {
+    return '';
+  }
+  final folder = normalized.substring(0, slash);
+  return folder.isEmpty || folder.endsWith(':') ? '$folder/' : folder;
+}
+
 /// FNV-1a over [text] — the one hash a derived name in the app is built
 /// from, so two of them cannot disagree about what "the same path" means.
 ///

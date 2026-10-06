@@ -109,26 +109,55 @@ void main() {
     }
   });
 
-  test('finished outputs reach the user by the window each OS has — iOS\'s '
-      'export picker takes any number, Android places one file and shares '
-      'several, the desktops move them into a folder', () {
+  test('finished outputs reach the user by the window their OS has: iOS — '
+      'the export picker, any number; Android — the save window for one '
+      'file, a folder window for several', () {
     for (final oneFile in const [true, false]) {
       expect(
         handOverRoadFor('ios', oneFile: oneFile),
         HandOverRoad.exportPicker,
       );
-      for (final os in const ['macos', 'windows', 'linux']) {
-        expect(
-          handOverRoadFor(os, oneFile: oneFile),
-          HandOverRoad.folderWindow,
-          reason: os,
-        );
-      }
     }
     expect(handOverRoadFor('android', oneFile: true), HandOverRoad.saveWindow);
     expect(
       handOverRoadFor('android', oneFile: false),
-      HandOverRoad.shareSheet,
+      HandOverRoad.folderWindow,
     );
+  });
+
+  test('⛔a desktop has no road for finished outputs — it is asked before '
+      'anything is made, so nothing waits for a window there', () {
+    for (final os in const ['macos', 'windows', 'linux']) {
+      for (final oneFile in const [true, false]) {
+        expect(
+          outputsAskedTheirPlaceFirst(os, oneFile: oneFile),
+          isTrue,
+          reason: os,
+        );
+        expect(
+          () => handOverRoadFor(os, oneFile: oneFile),
+          throwsStateError,
+          reason: os,
+        );
+      }
+    }
+  });
+
+  test('the ORDER is the OS\'s: the desktops are asked before, iOS never, '
+      'Android before for a folder and afterwards for one file', () {
+    for (final oneFile in const [true, false]) {
+      expect(outputsAskedTheirPlaceFirst('ios', oneFile: oneFile), isFalse);
+    }
+    expect(outputsAskedTheirPlaceFirst('android', oneFile: false), isTrue);
+    expect(outputsAskedTheirPlaceFirst('android', oneFile: true), isFalse);
+  });
+
+  test('a lone file is asked a save window where the road behind it is '
+      'laid — Windows and Linux; macOS still asks a folder', () {
+    expect(aLoneFileIsAskedThroughASaveWindow('windows'), isTrue);
+    expect(aLoneFileIsAskedThroughASaveWindow('linux'), isTrue);
+    for (final os in const ['macos', 'ios', 'android', 'fuchsia']) {
+      expect(aLoneFileIsAskedThroughASaveWindow(os), isFalse, reason: os);
+    }
   });
 }

@@ -11,6 +11,9 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_cel_naming.dart';
+import 'package:anicel/src/models/export_overrides.dart';
+import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -25,9 +28,13 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart'
+    show debugOperatingSystemOverride;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/files_written_under.dart';
@@ -141,8 +148,10 @@ void main() {
   Future<ExportDialogState> pumpCels(
     WidgetTester tester,
     EditorSessionManager session,
-    Directory into,
-  ) async {
+    Directory into, {
+    Directory? Function()? askedWhere,
+    bool throughTheSystemsWindows = false,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -151,7 +160,13 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: session,
-            exportDirectoryPicker: () async => into.path,
+            // The folder a person picks in whichever window is asked (null:
+            // they backed out) — or the system's own windows, behind
+            // [FolderPicker]'s seams.
+            exportDirectoryPicker: throughTheSystemsWindows
+                ? null
+                : () async =>
+                      askedWhere == null ? into.path : askedWhere()?.path,
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
@@ -298,6 +313,246 @@ void main() {
     final (own, laid) = await dotsOf('A2.png');
     expect(own, black);
     expect(laid, isNot(red), reason: 'nothing was laid over A 2');
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  String? status(WidgetTester tester) => tester
+      .widget<Text>(find.byKey(const ValueKey<String>('export-status')))
+      .data;
+
+  /// The lone file of the tests below is asked the save window — which is
+  /// Windows' and Linux's, and not yet the host's on every runner.
+  void asWindows() {
+    debugOperatingSystemOverride = 'windows';
+    addTearDown(() => debugOperatingSystemOverride = null);
+  }
+
+  testWidgets('🚨a queued job asked ONE file\'s place that has come to write '
+      'several is asked again when the queue is run — a FOLDER, this time, '
+      'opening where the file was placed — and every cel is its own file '
+      'there (F-221)', (tester) async {
+    asWindows();
+    final first = Directory.systemTemp.createTempSync('qa-cels-queued-file');
+    final second = Directory.systemTemp.createTempSync('qa-cels-queued-into');
+    deleteAfterSessionEnds(first);
+    deleteAfterSessionEnds(second);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    final saves = <String>[];
+    final folders = <String?>[];
+    FolderPicker.debugSaveDestinationPicker =
+        ({required String suggestedName, String? initialDirectory}) async {
+          saves.add(suggestedName);
+          return FolderGrant.granted(
+            path: '${first.path}/B1.png',
+            kind: GrantKind.file,
+          );
+        };
+    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
+      folders.add(initialDirectory);
+      return FolderGrant.granted(path: second.path);
+    };
+    addTearDown(() {
+      FolderPicker.debugSaveDestinationPicker = null;
+      FolderPicker.debugFolderPicker = null;
+    });
+
+    final state = await pumpCels(
+      tester,
+      session,
+      first,
+      throughTheSystemsWindows: true,
+    );
+    // A's two drawings off: B 1 is the one file the run writes.
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tapKey(tester, 'export-queue-add-button');
+    expect(saves, ['B1.png'], reason: 'asked as it is queued: ONE file');
+    expect(folders, isEmpty);
+    // One of them back on. The ticks are the project's, not the job's: the
+    // queued job writes two files now.
+    await tapKey(tester, 'export-cels-block-a-a1');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(saves, hasLength(1));
+    expect(
+      folders,
+      [first.path.replaceAll(r'\', '/')],
+      reason: 'the place of one file cannot take two: a folder is asked',
+    );
+    expect(
+      filesWrittenUnder(second),
+      ['A1.png', 'B1.png'],
+      reason: '↩️both would have landed on the one name the file was given',
+    );
+    expect(filesWrittenUnder(first), isEmpty);
+
+    // The place asked again is the last place asked: the next window opens
+    // there.
+    await tester.runAsync(state.export);
+    await tester.pump();
+    expect(folders.last, second.path);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('backing out of the window that asks again runs NOTHING and '
+      'says nothing — the job stays queued, and runs the next time the '
+      'queue is asked', (tester) async {
+    asWindows();
+    final first = Directory.systemTemp.createTempSync('qa-cels-reask-file');
+    final later = Directory.systemTemp.createTempSync('qa-cels-reask-into');
+    deleteAfterSessionEnds(first);
+    deleteAfterSessionEnds(later);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    // The place of one file, as it is queued; backed out of, when the queue
+    // asks again; a folder, the time after.
+    final answers = <Directory?>[first, null, later];
+    var asked = 0;
+
+    final state = await pumpCels(
+      tester,
+      session,
+      first,
+      askedWhere: () => answers[asked++],
+    );
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tapKey(tester, 'export-queue-add-button');
+    await tapKey(tester, 'export-cels-block-a-a1');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(asked, 2);
+    expect(filesWrittenUnder(first), isEmpty);
+    expect(status(tester), '');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(asked, 3, reason: 'still queued, and still owed a place');
+    expect(filesWrittenUnder(later), ['A1.png', 'B1.png']);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('a queued job whose place still fits is asked nothing when '
+      'the queue is run', (tester) async {
+    asWindows();
+    final temp = Directory.systemTemp.createTempSync('qa-cels-queued-fits');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    var asked = 0;
+
+    final state = await pumpCels(
+      tester,
+      session,
+      temp,
+      askedWhere: () {
+        asked += 1;
+        return temp;
+      },
+    );
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tapKey(tester, 'export-queue-add-button');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(asked, 1);
+    expect(filesWrittenUnder(temp), ['B1.png']);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('ONE cel behind folders of its rule\'s making is a FOLDER to '
+      'hand over: it is asked the folder window — a save window cannot name '
+      'it — and written under its folders there', (tester) async {
+    AppExport.settings.value = AppExportSettings(
+      lastSpecs: const ExportTabSpecs(
+        cels: CelsExportSpec(
+          kinds: celKindsAlone,
+          naming: ExportCelNaming(cutFolder: true),
+        ),
+      ),
+    );
+    final temp = Directory.systemTemp.createTempSync('qa-cels-one-in-folder');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+    final savesAsked = <String>[];
+    FolderPicker.debugSaveDestinationPicker =
+        ({required String suggestedName, String? initialDirectory}) async {
+          savesAsked.add(suggestedName);
+          return FolderGrant.granted(
+            path: '${temp.path}/asked.png',
+            kind: GrantKind.file,
+          );
+        };
+    FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
+        FolderGrant.granted(path: temp.path);
+    addTearDown(() {
+      FolderPicker.debugSaveDestinationPicker = null;
+      FolderPicker.debugFolderPicker = null;
+    });
+
+    final state = await pumpCels(
+      tester,
+      session,
+      temp,
+      throughTheSystemsWindows: true,
+    );
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(savesAsked, isEmpty);
+    expect(filesWrittenUnder(temp), ['CUT1/B1.png']);
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('⛔a file\'s place takes ONE file: a run that finds it writes '
+      'more stops before it writes any, and says so', (tester) async {
+    asWindows();
+    final temp = Directory.systemTemp.createTempSync('qa-cels-one-place');
+    deleteAfterSessionEnds(temp);
+    final session = film();
+    addTearDown(session.dispose);
+    draw(session);
+
+    final state = await pumpCels(
+      tester,
+      session,
+      temp,
+      // Between the window opening and its answer, every drawing that was
+      // off comes back on: the place was asked for one file, and the run
+      // that follows writes three.
+      askedWhere: () {
+        session.repository.updateExportOverrides(
+          (_) => ExportProjectOverrides.empty,
+        );
+        return temp;
+      },
+    );
+    await tapKey(tester, 'export-cels-block-a-a1');
+    await tapKey(tester, 'export-cels-block-a-a2');
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(
+      filesWrittenUnder(temp),
+      isEmpty,
+      reason: '↩️three cels written to one name, each over the last',
+    );
+    expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
     session.playbackRig.prerenderScheduler.cancel();
   });
 }

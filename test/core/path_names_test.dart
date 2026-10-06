@@ -16,6 +16,19 @@ void main() {
     expect(fileNameOfPath('C:/work/cuts/'), '');
   });
 
+  test('the folder a path stands in comes off either separator — the half '
+      'the name leaves', () {
+    expect(folderOfPath(r'C:\work\cuts\A1.png'), 'C:/work/cuts');
+    expect(folderOfPath('/home/me/cut 01.anicel'), '/home/me');
+    expect(folderOfPath(r'C:\work/cuts\A1.png'), 'C:/work/cuts');
+  });
+
+  test('a root keeps its slash, and a bare name stands in no folder', () {
+    expect(folderOfPath('C:/shot.mp4'), 'C:/');
+    expect(folderOfPath('/shot.mp4'), '/');
+    expect(folderOfPath('bare.anicel'), '');
+  });
+
   // The recent-projects row used to split on `/` alone and lean on the
   // constructor's normalisation to make that safe. It answers through the
   // one rule now, so the row is right whichever way the path was spelled.

@@ -1739,53 +1739,20 @@ Future<ProjectPick?> _pickDesktopSaveTarget(
   String name,
   String initialDirectory,
 ) async {
-  final grant = await pickSaveDestinationForUser(
+  // [name] carries the suffix, and the save window's door answers for it:
+  // Windows shows the filter and never appends the extension, and the
+  // suffixed name is asked the replace question the window asked of the
+  // bare one (F-14 — [pickSaveFileForUser]).
+  final grant = await pickSaveFileForUser(
     context,
     suggestedName: name,
     initialDirectory: initialDirectory,
-    // The dialog filters to the project type; Windows shows the filter but
-    // never appends the extension itself, so the suffix answer below stays.
     acceptedTypeGroups: const [FileTypeGroups.anicelProject],
   );
   final picked = grant?.path;
-  if (picked == null || !context.mounted) {
-    return null;
-  }
-  if (picked.toLowerCase().endsWith(anicelProjectSuffix)) {
-    return (path: picked, folderBookmark: grant!.bookmark, placed: false);
-  }
-  // F-14: the suffix is the pick's answer. But appending it claims a
-  // DIFFERENT path than the one the dialog's replace prompt asked about —
-  // "type Foo over an existing Foo.anicel" was a silent overwrite — so
-  // when the real target is taken, the question is asked again about it.
-  final suffixed = '$picked$anicelProjectSuffix';
-  if (File(suffixed).existsSync()) {
-    final strings = AppText.strings;
-    final replace = await askConfirm(
-      context,
-      ConfirmQuestion(
-        keys: (
-          window: const ValueKey<String>('save-as-replace-dialog'),
-          decline: const ValueKey<String>('save-as-replace-cancel'),
-          accept: const ValueKey<String>('save-as-replace-confirm'),
-        ),
-        title: strings.replaceFileTitle,
-        titleIcon: Icons.save_as_outlined,
-        message: strings.replaceFileMessageTemplate.replaceAll(
-          '{name}',
-          suffixed.split('/').last,
-        ),
-      ),
-      accept: ConfirmChoice(
-        strings.commonReplace,
-        emphasis: AppWindowActionEmphasis.danger,
-      ),
-    );
-    if (replace != true || !context.mounted) {
-      return null;
-    }
-  }
-  return (path: suffixed, folderBookmark: grant!.bookmark, placed: false);
+  return picked == null
+      ? null
+      : (path: picked, folderBookmark: grant!.bookmark, placed: false);
 }
 
 Future<ProjectPick?> _pickScopedSaveTarget(
@@ -2137,13 +2104,11 @@ Future<void> backUpFailedCopy(
         session.projectDoor.backUpFailedCopy(chosen.copyPath, destination),
   );
   try {
-    final projectPath = chosen.projectPath.replaceAll(r'\', '/');
+    final beside = folderOfPath(chosen.projectPath);
     final pick = await pickProjectSaveTarget(
       context,
       _backupNameFor(chosen),
-      projectPath.contains('/')
-          ? projectPath.substring(0, projectPath.lastIndexOf('/'))
-          : ensuredAppDocumentsDirectorySync(),
+      beside.isEmpty ? ensuredAppDocumentsDirectorySync() : beside,
       stageArchive: (stagingPath) => backUpTo(
         stagingPath,
         running: strings.savePrepareRunning,
@@ -2331,16 +2296,16 @@ Future<void> promptSaveProjectAs(
   final suggested =
       '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
       '$anicelProjectSuffix';
-  final currentPath = session.projectFile.path?.replaceAll('\\', '/');
+  final beside = folderOfPath(session.projectFile.path ?? '');
   // 🚨THE SYNC TWIN, like [pickProjectToOpen] twenty lines up — one file
   // asking one question one way. The async spelling stood here and it is
   // documented as unusable from a widget test: 「sync dart:io works under
   // the widget-test clock; async never completes there」. So the FIRST LINE
   // of the flow whose ordering F-57 is about could never be reached by a
   // test, whatever seam it was given.
-  final initialDirectory = currentPath != null && currentPath.contains('/')
-      ? currentPath.substring(0, currentPath.lastIndexOf('/'))
-      : ensuredAppDocumentsDirectorySync();
+  final initialDirectory = beside.isEmpty
+      ? ensuredAppDocumentsDirectorySync()
+      : beside;
   // What the staged archive holds, kept from the staging call to the
   // adoption below — the two are one decision ("this file is the project
   // now") split across the picker that sits between them.

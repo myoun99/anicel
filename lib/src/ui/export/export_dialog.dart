@@ -7,6 +7,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../../core/argb_channels.dart';
+import '../../core/path_names.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
@@ -93,12 +94,13 @@ import '../widgets/cursor_notice.dart';
 import '../widgets/pill_strip.dart';
 import '../widgets/transport_bar.dart' show TransportRange;
 
-/// Picks the output directory (the Browse… button); `null` on cancel.
+/// A test's stand-in for the system window that asks where outputs go: the
+/// folder a person picks there; `null` when they back out.
 typedef ExportDirectoryPicker = Future<String?> Function();
 
-/// The v10 export window: five zones (file/location bar → presets |
-/// preview | settings | queue → footer), four tabs, location-first flow —
-/// Export starts immediately, files land in the chosen location.
+/// The v10 export window: presets | preview | settings | queue over a
+/// footer, four tabs. Where the outputs go is asked when Export is pressed
+/// (F-221) — there is no location to choose ahead.
 ///
 /// EX2 ships the shell with today's capabilities behind the new grammar
 /// (MP4·H.264 / PNG / XDTS); the format lineup, the live preview and the
@@ -115,7 +117,8 @@ class ExportDialog extends StatefulWidget {
 
   final EditorSessionManager session;
 
-  /// Injectable for tests; defaults to the platform directory picker.
+  /// Injectable for tests: stands in for whichever system window the door
+  /// opens — the folder window, or the save window of a lone file.
   final ExportDirectoryPicker? exportDirectoryPicker;
 
   /// Injectable for tests; the real one prefers the OS encoder and falls
@@ -145,7 +148,8 @@ class ExportDialogState extends State<ExportDialog> {
   /// pressed ([_askWhere]), and of a queued job when it was queued; null
   /// until then. A folder carries the security-scoped token the OS issued
   /// for it (macOS/iOS), which is what lets it be WRITTEN to
-  /// (Q-scoped-folder-settings, 유저 08-26). A run asked its place
+  /// (Q-scoped-folder-settings, 유저 08-26). A lone file asked a place of
+  /// its own is written at it ([_placedFile]). A run asked its place
   /// afterwards (drive-folder-windows-Q1) writes into an outbox of its own
   /// ([_runOutbox]) and [handOverFilesForUser] takes it from there.
   ///
@@ -156,11 +160,32 @@ class ExportDialogState extends State<ExportDialog> {
   /// destination behind.
   ExportDestination? _destination;
 
-  /// The folder the run under way writes into; null while its outputs are
+  /// The folder the run under way writes into — the one it was asked, or
+  /// the one its lone file was asked a place in; null while its outputs are
   /// handed over afterwards.
   String? get _location => switch (_destination) {
-    ExportIntoFolder(:final folder) => folder.path,
+    ExportPlace(:final folderPath) => folderPath,
     _ => null,
+  };
+
+  /// The file the run under way was asked a place for — its ONE file, at
+  /// the path the save window answered ([ExportToFile]); null for every
+  /// other run.
+  ///
+  /// ⛔READ ONLY WHERE A RUN WRITES ([_joinLocation], [_runImageExport],
+  /// [_exportCurrentFrame]). [_destination] stays after its run ends, so a
+  /// name field or a preview plate that read this would go on showing the
+  /// last run's name — they say what the form names ([_singleFileName]).
+  String? get _placedFile => switch (_destination) {
+    ExportToFile(:final path) => path,
+    _ => null,
+  };
+
+  /// The name [_placedFile] gives the run's lone file — the one the window
+  /// answered with, which a person may have changed there.
+  String? get _placedName => switch (_placedFile) {
+    final file? => fileNameOfPath(file),
+    null => null,
   };
 
   bool _presetsOpen = true;
@@ -366,7 +391,6 @@ class ExportDialogState extends State<ExportDialog> {
   void _persist() {
     final next = AppExport.settings.value.copyWith(
       lastSpecs: _specs,
-      lastDestination: _destination,
       presetsDrawerOpen: _presetsOpen,
       queueDrawerOpen: _queueOpen,
     );
@@ -1676,10 +1700,10 @@ class ExportDialogState extends State<ExportDialog> {
         : const ui.Color(0xFFFFFFFF),
   );
 
-  bool get _canExport {
-    if (_isExporting) {
-      return false;
-    }
+  bool get _canExport => !_isExporting && _writesAnything;
+
+  /// Whether this tab's run writes any file at all.
+  bool get _writesAnything {
     switch (_tab) {
       case ExportTab.sequence:
         return _sequencePlanForRun(
@@ -1696,8 +1720,11 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- export runners -------------------------------------------------------
 
+  /// Where the run writes the file a rule or a field calls [name]: under
+  /// that name in [_outputDirectory] — or, for the lone file of a run asked
+  /// a place of its own, at that place whatever it was to be called.
   String _joinLocation(String name) =>
-      '$_outputDirectory${Platform.pathSeparator}$name';
+      _placedFile ?? '$_outputDirectory${Platform.pathSeparator}$name';
 
   void _reportProgress(int completed, int total) {
     if (mounted) {
@@ -1737,11 +1764,12 @@ class ExportDialogState extends State<ExportDialog> {
     }
   }
 
-  /// [run] where the destination sends it: into [_location] — or, handing
-  /// over, into an outbox of its own, answered with the run's sentence so
-  /// the caller hands the outbox over when its time comes (at once for
-  /// Export, after the last job for the queue). A run that was stopped or
-  /// failed leaves nothing to hand over.
+  /// [run] where the destination sends it: into [_location] — its lone file
+  /// at the place it was asked ([_placedFile]) — or, handing over, into an
+  /// outbox of its own, answered with the run's sentence so the caller
+  /// hands the outbox over when its time comes (at once for Export, after
+  /// the last job for the queue). A run that was stopped or failed leaves
+  /// nothing to hand over.
   Future<({String message, String? outbox})> _runIntoDestination(
     Future<String> Function() run,
   ) async {
@@ -1781,10 +1809,8 @@ class ExportDialogState extends State<ExportDialog> {
   ///
   /// What was handed over is gone from the room afterwards — and so is
   /// what the user declined or what failed to arrive: nothing asks for it
-  /// again. What another app was only offered (Android's share sheet)
-  /// stays for it to read, and goes with the run.
+  /// again.
   Future<String?> _handOverOutboxes(List<String> outboxes) async {
-    var handed = HandOver.declined;
     try {
       final outputs = [
         for (final outbox in outboxes)
@@ -1793,16 +1819,14 @@ class ExportDialogState extends State<ExportDialog> {
       if (outputs.isEmpty || !mounted) {
         return null;
       }
-      handed = await handOverFilesForUser(context, paths: outputs);
+      final handed = await handOverFilesForUser(context, paths: outputs);
       return handed == HandOver.declined
           ? AppText.strings.exHandOverDeclined
           : null;
     } on Object catch (error) {
       return AppText.strings.exFailed(error);
     } finally {
-      if (handed != HandOver.offered) {
-        _discardOutboxes(outboxes);
-      }
+      _discardOutboxes(outboxes);
     }
   }
 
@@ -1985,8 +2009,12 @@ class ExportDialogState extends State<ExportDialog> {
     // not ask five times where its outputs go.
     final outboxes = <String>[];
     String? handOverSaid;
+    // Whether the queue ran at all: backing out of a window that asks a
+    // place runs nothing, and says nothing — as it does for Export.
+    var ran = false;
     try {
-      while (!_cancelRequested) {
+      ran = await _placesStillFit();
+      while (ran && !_cancelRequested) {
         final job = _queue.nextQueued;
         if (job == null) {
           break;
@@ -2011,13 +2039,53 @@ class ExportDialogState extends State<ExportDialog> {
           _specs = snapshotSpecs;
           _destination = snapshotDestination;
           _syncControllersFromSpecs();
-          _statusMessage =
-              handOverSaid ?? _queueRestSentence(succeeded, failed);
+          if (ran) {
+            _statusMessage =
+                handOverSaid ?? _queueRestSentence(succeeded, failed);
+          }
         });
         _persist();
         _settleStanding();
       }
     }
+  }
+
+  /// [모두 렌더] IS WHERE A QUEUED PLACE IS HELD AGAINST WHAT ITS JOB WRITES
+  /// NOW (F-221, 저장 세션의 제안을 유저가 2026-10-06 「ok 문제없음」으로
+  /// 받음: 「받아 둔 자리가 지금 장수와 안 맞게 된 작업만 그 자리에서 다시
+  /// 묻는다」).
+  ///
+  /// A job is asked its place when it is queued and renders the project as
+  /// it stands when it RUNS — and the cut and layer ticks are the
+  /// project's, not the job's, so a job queued while it wrote one file can
+  /// have come to write several. A file's place holds one. Those jobs, and
+  /// only those, are asked again — each with its setup in the form, so the
+  /// window shows which job is asking — before anything runs. A folder
+  /// asked for several holds the one they became.
+  ///
+  /// False when the user backed out of a window: nothing runs, and a place
+  /// already answered in this pass is kept.
+  Future<bool> _placesStillFit() async {
+    for (final job in _queue.jobs) {
+      if (job.status != ExportJobStatus.queued ||
+          job.destination is! ExportToFile) {
+        continue;
+      }
+      _loadJobIntoForm(job);
+      if (!_writesAnything || _loneOutputName() != null) {
+        continue;
+      }
+      final destination = await _askWhere();
+      if (destination == null || !mounted) {
+        return false;
+      }
+      _queue.update(
+        job.id,
+        (current) => current.copyWith(destination: destination),
+      );
+      _takeDestination(destination);
+    }
+    return true;
   }
 
   /// Runs ONE queued job and returns the status it ended in — the same
@@ -2100,10 +2168,22 @@ class ExportDialogState extends State<ExportDialog> {
     List<Future<void> Function()> thenWrite = const [],
   }) async {
     final total = count + thenWrite.length;
+    // The lone file of a run asked a place of its own wears the name it was
+    // given there, whatever its rule calls it ([_placedName]).
+    final placedName = _placedName;
+    if (placedName != null && total != 1) {
+      // ⛔A file's place holds ONE file. Written on regardless, every file
+      // of the run would land on that one name, each over the last — so a
+      // run that reaches here with more is stopped before it writes
+      // (the queue asks such a job its place again, [_placesStillFit]).
+      throw StateError(
+        'A place asked for one file cannot take the $total this run writes.',
+      );
+    }
     final summary = await _exportService.exportImages(
       count: count,
       renderImage: renderImage,
-      fileNameFor: fileNameFor,
+      fileNameFor: placedName == null ? fileNameFor : (_) => placedName,
       directoryPath: _outputDirectory,
       encoderFor: encoderFor,
       isCancelled: () => _cancelRequested,
@@ -2321,10 +2401,14 @@ class ExportDialogState extends State<ExportDialog> {
       cut: _activeCut,
       frameIndex: _currentImageFrame(),
     );
-    final fileName = _singleFileName(
-      _imageFileController,
-      spec.format.stillFormat.fileExtension,
-    );
+    // Under the name it was given where its place was asked, when it was
+    // ([_placedName]) — the sentence below names the file that was written.
+    final fileName =
+        _placedName ??
+        _singleFileName(
+          _imageFileController,
+          spec.format.stillFormat.fileExtension,
+        );
     final summary = await _exportService.exportImages(
       count: 1,
       renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
@@ -2505,66 +2589,101 @@ class ExportDialogState extends State<ExportDialog> {
 
   // --- build ----------------------------------------------------------------
 
-  /// THE DOOR — where this tab's outputs go, asked at the earliest moment
-  /// the platform lets it be asked ([outputsAskedTheirPlaceFirstHere]):
-  /// before they are made, through the folder window; or afterwards, when
-  /// the run hands them over ([ExportHandOver]). Null = the user backed out
-  /// of the window that asks first, and nothing runs.
+  /// THE DOOR — where this tab's outputs go, asked at the one door every
+  /// export asks at ([askWhereOutputsGo]): a lone file is asked a save
+  /// window with its name in it, several a folder — before they are made
+  /// where the platform lets that be asked, and otherwise once the run
+  /// hands them over ([ExportHandOver]). Null = the user backed out of the
+  /// window that asks first, and nothing runs.
   ///
-  /// ⚠️What opens behind this door is F-221's to change (a save window for
-  /// one file, the roads that go). The window calls it here and nowhere
-  /// else, so that change lands behind it.
-  Future<ExportDestination?> _askWhere() async {
-    if (!_asksWhereFirst) {
-      return const ExportHandOver();
+  /// The window opens where the last export was asked a place
+  /// ([AppExportSettings.lastFolder]).
+  Future<ExportDestination?> _askWhere() => askWhereOutputsGo(
+    context,
+    loneFileName: _loneOutputName(),
+    initialDirectory: AppExport.settings.value.lastFolder,
+    windows: _standInWindows(),
+  );
+
+  /// The test seam's windows: the folder [ExportDialog.exportDirectoryPicker]
+  /// answers stands for what a person picks in WHICHEVER window the door
+  /// opens — that folder, or the lone file under its offered name in it.
+  /// Null in production: the door opens the system's own.
+  OutputPlaceWindows? _standInWindows() {
+    final picker = widget.exportDirectoryPicker;
+    if (picker == null) {
+      return null;
     }
-    final folder = await _pickFolder();
-    return folder == null ? null : ExportIntoFolder(folder);
+    return (
+      folder: (_) async => switch (await picker()) {
+        final directory? => GrantedDirectory(path: directory),
+        null => null,
+      },
+      file: (suggestedName, _) async => switch (await picker()) {
+        final directory? => '$directory/$suggestedName',
+        null => null,
+      },
+    );
   }
 
   /// Whether this tab's run is asked its place before it makes its files.
   bool get _asksWhereFirst =>
-      outputsAskedTheirPlaceFirstHere(oneFile: _writesOneFile);
+      outputsAskedTheirPlaceFirstHere(oneFile: _loneOutputName() != null);
 
-  /// Whether this tab's run writes ONE file — with the platform, what
-  /// decides when its place is asked. The count that is actually written
-  /// decides, not the format (F-221-Q3): a sheet of one page is one file.
-  bool get _writesOneFile =>
-      _loneFile() != null ||
-      switch (_tab) {
-        ExportTab.sequence => _sequencePlanForRun(video: false).length == 1,
-        ExportTab.cels => _celGroupPlan().length == 1,
-        ExportTab.conte => _conteSheet().$2.length == 1,
-        ExportTab.image => true,
-      };
-
-  /// The folder window, opening where the last export went.
+  /// The ONE file this tab's run hands over, by the name a field or a rule
+  /// gives it — or null when it hands over several, or a folder, or
+  /// nothing.
   ///
-  /// PICK-2: the folder has to be a durable real path — `getDirectoryPath`
-  /// gave a SAF tree URI on Android and threw on iOS. And the GRANT
-  /// flavour: on macOS a path without its token is refused at the first
-  /// write there (Q-scoped-folder-settings, 유저 08-26).
-  Future<GrantedDirectory?> _pickFolder() async {
-    final picker = widget.exportDirectoryPicker;
-    if (picker != null) {
-      final directory = await picker();
-      return directory == null ? null : GrantedDirectory(path: directory);
+  /// With the platform, what decides which window asks its place and when
+  /// ([askWhereOutputsGo]). The count that is actually written decides, not
+  /// the format (F-221-Q3, 유저 2026-10-06: 「한 장이면 파일 저장 창, 두
+  /// 장부터 폴더 창」): a sheet of one page is one file.
+  ///
+  /// ⚠️ONE FILE BEHIND FOLDERS IS A FOLDER. A naming rule that files a cel
+  /// under its cut and its layer makes `CUT1/A/A0001.png` of the only cel
+  /// there is — and what leaves the run then is `CUT1`, which a save window
+  /// cannot name. The hand-over reads a run's outbox the same way
+  /// ([handOverFilesForUser]: one FILE at its top is one file), so the two
+  /// ends of a run cannot disagree about which window it is owed.
+  String? _loneOutputName() {
+    final name = _onlyOutputName();
+    return name == null || fileNameOfPath(name) != name ? null : name;
+  }
+
+  /// The name of the only file this tab's run writes, folders of its rule's
+  /// making included — or null when it writes several, or none.
+  String? _onlyOutputName() {
+    final lone = _loneFile();
+    if (lone != null) {
+      return _singleFileName(lone.controller, lone.extension);
     }
-    final last = AppExport.settings.value.lastDestination;
-    final grant = await pickFolderGrantForUser(
-      context,
-      initialDirectory: last is ExportIntoFolder ? last.folder.path : null,
-    );
-    final path = grant?.path;
-    return path == null
-        ? null
-        : GrantedDirectory(path: path, bookmark: grant!.bookmark);
+    switch (_tab) {
+      case ExportTab.sequence:
+        return _sequencePlanForRun(video: false).length == 1
+            ? _sequenceFileNameFor(0)
+            : null;
+      case ExportTab.cels:
+        final written = _celGroupPlan().writtenFileNames;
+        return written.length == 1 ? written.single : null;
+      case ExportTab.conte:
+        return _conteSheet().$2.length == 1 ? _contePageFileName(0, 1) : null;
+      case ExportTab.image:
+        // A lone file by its format, answered above.
+        return null;
+    }
   }
 
   /// The run about to start, or the job just queued, goes to [destination]
-  /// — and it is remembered, as where the next folder window opens.
+  /// — and where it was asked a place is remembered, as where the next
+  /// window opens. A run that hands over was asked none, and leaves what
+  /// was remembered as it was.
   void _takeDestination(ExportDestination destination) {
     setState(() => _destination = destination);
+    if (destination is ExportPlace) {
+      AppExport.settings.value = AppExport.settings.value.copyWith(
+        lastFolder: destination.folderPath,
+      );
+    }
     _persist();
   }
 

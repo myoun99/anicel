@@ -1,25 +1,47 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/path_names.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
 import 'app_save_settings.dart' show GrantedDirectory;
 
-/// Where an export's outputs go: a folder chosen before the run, or —
-/// 「끝나면 고르기」 (drive-folder-windows-Q1, 유저 2026-09-27: 「내보내기가 끝나면
-/// 드라이브로 넘긴다 — 파일 창을 거쳐」) — handed over once the run is done.
-/// ONE value, so a destination is never both and no code can leave half of
-/// one behind.
+/// Where an export's outputs go: a PLACE asked before the run
+/// ([ExportPlace] — a folder for several files, one file's own path for a
+/// lone one), or handed over once the run is done, where the platform
+/// cannot be asked before (F-221, closed 2026-10-06; drive-folder-windows-Q1,
+/// 유저 2026-09-27: 「내보내기가 끝나면 드라이브로 넘긴다 — 파일 창을 거쳐」).
+/// ONE value, so a destination is never two of them and no code can leave
+/// half of one behind.
+///
+/// ⛔Which of them a run gets is not a choice a person makes any more (the
+/// 「찾아보기…」 · 「끝나면 고르기」 pair is gone): what is written and the
+/// platform decide it, at the one door (`askWhereOutputsGo`).
 sealed class ExportDestination {
   const ExportDestination();
 }
 
-/// A folder chosen before the run. The bookmark half is what lets the
-/// replayed folder be WRITTEN to after a relaunch on macOS
-/// (Q-scoped-folder-settings, 유저 08-26).
-final class ExportIntoFolder extends ExportDestination {
+/// A destination that IS somewhere: asked before the run, so it names a
+/// folder or a file on a disk — where a hand-over is nowhere until its
+/// window is answered.
+sealed class ExportPlace extends ExportDestination {
+  const ExportPlace();
+
+  /// The folder the place stands in: where the run writes, and where the
+  /// window asking the NEXT place opens ([AppExportSettings.lastFolder]).
+  String get folderPath;
+}
+
+/// A folder asked before the run — what several files are asked. The
+/// bookmark half is the token the OS issued with the pick (macOS/iOS); it
+/// is what lets the folder be WRITTEN to (Q-scoped-folder-settings, 유저
+/// 08-26).
+final class ExportIntoFolder extends ExportPlace {
   const ExportIntoFolder(this.folder);
 
   final GrantedDirectory folder;
+
+  @override
+  String get folderPath => folder.path;
 
   @override
   bool operator ==(Object other) =>
@@ -29,9 +51,30 @@ final class ExportIntoFolder extends ExportDestination {
   int get hashCode => folder.hashCode;
 }
 
-/// 「끝나면 고르기」: the outputs are made in the run's room and handed to the
-/// user's pick once the run is done — the one way an export reaches a place
-/// no folder window opens, Google Drive above all.
+/// ONE FILE's own place, asked before the run through a save window
+/// (F-221-Q3, 유저 2026-10-06: the count decides — 「한 장이면 파일 저장 창,
+/// 두 장부터 폴더 창」). [path] is the file itself, under the name the window
+/// answered with: the run writes its lone file there, whatever name a rule
+/// or a field would have given it.
+final class ExportToFile extends ExportPlace {
+  const ExportToFile(this.path);
+
+  final String path;
+
+  @override
+  String get folderPath => folderOfPath(path);
+
+  @override
+  bool operator ==(Object other) => other is ExportToFile && other.path == path;
+
+  @override
+  int get hashCode => path.hashCode;
+}
+
+/// Asked afterwards: the outputs are made in the run's room and handed to
+/// the user's pick once the run is done — all a platform with no window
+/// that asks first can do, and the one way an export reaches a place no
+/// folder window opens, Google Drive above all.
 final class ExportHandOver extends ExportDestination {
   const ExportHandOver();
 
@@ -43,7 +86,8 @@ final class ExportHandOver extends ExportDestination {
 }
 
 /// APP-side export UI state (출력 UI v10): the per-tab presets, the last
-/// used spec per tab, the last destination and the drawer states.
+/// used spec per tab, the folder the last export was asked a place in and
+/// the drawer states.
 /// App state, not project state — presets are the user's own vocabulary
 /// and follow the machine; per-cut manual exceptions are project data
 /// (`ExportProjectOverrides`).
@@ -51,7 +95,7 @@ class AppExportSettings {
   AppExportSettings({
     List<ExportPreset> presets = const [],
     this.lastSpecs = const ExportTabSpecs(),
-    this.lastDestination,
+    this.lastFolder,
     this.presetsDrawerOpen = true,
     this.queueDrawerOpen = true,
   }) : presets = List.unmodifiable(presets);
@@ -59,8 +103,18 @@ class AppExportSettings {
   final List<ExportPreset> presets;
   final ExportTabSpecs lastSpecs;
 
-  /// The last chosen destination; null until the first choice.
-  final ExportDestination? lastDestination;
+  /// The folder the last place an export was asked stands in
+  /// ([ExportPlace.folderPath]); null until the first.
+  ///
+  /// Remembered for ONE thing: the next window that asks opens there. A
+  /// place is asked afresh at every Export (F-221-Q4, 유저 2026-10-06), so
+  /// this is never where one goes unasked — which is why it is a path and
+  /// carries no token: the app writes nowhere it was not just handed.
+  ///
+  /// ↩️It was the whole destination — folder and token, or 「끝나면 고르기」
+  /// — while a place was chosen ahead and every run reused it. A hand-over
+  /// is not somewhere: a run that was handed over leaves this as it was.
+  final String? lastFolder;
 
   final bool presetsDrawerOpen;
   final bool queueDrawerOpen;
@@ -75,15 +129,15 @@ class AppExportSettings {
   AppExportSettings copyWith({
     List<ExportPreset>? presets,
     ExportTabSpecs? lastSpecs,
-    Object? lastDestination = _unset,
+    Object? lastFolder = _unset,
     bool? presetsDrawerOpen,
     bool? queueDrawerOpen,
   }) => AppExportSettings(
     presets: presets ?? this.presets,
     lastSpecs: lastSpecs ?? this.lastSpecs,
-    lastDestination: identical(lastDestination, _unset)
-        ? this.lastDestination
-        : lastDestination as ExportDestination?,
+    lastFolder: identical(lastFolder, _unset)
+        ? this.lastFolder
+        : lastFolder as String?,
     presetsDrawerOpen: presetsDrawerOpen ?? this.presetsDrawerOpen,
     queueDrawerOpen: queueDrawerOpen ?? this.queueDrawerOpen,
   );
@@ -91,11 +145,7 @@ class AppExportSettings {
   Map<String, dynamic> toJson() => {
     'presets': [for (final preset in presets) preset.toJson()],
     'lastSpecs': lastSpecs.toJson(),
-    ...switch (lastDestination) {
-      ExportIntoFolder(:final folder) => {'lastLocation': folder.toJson()},
-      ExportHandOver() => {'handOver': true},
-      null => const <String, dynamic>{},
-    },
+    'lastLocation': ?lastFolder,
     if (!presetsDrawerOpen) 'presetsDrawerOpen': false,
     if (!queueDrawerOpen) 'queueDrawerOpen': false,
   };
@@ -112,14 +162,11 @@ class AppExportSettings {
       lastSpecs: json['lastSpecs'] == null
           ? const ExportTabSpecs()
           : ExportTabSpecs.fromJson(json['lastSpecs'] as Map<String, dynamic>),
-      lastDestination: json['handOver'] == true
-          ? const ExportHandOver()
-          // Both spellings: the bare path older builds wrote, or
-          // path+bookmark.
-          : switch (GrantedDirectory.fromJson(json['lastLocation'])) {
-              final folder? => ExportIntoFolder(folder),
-              null => null,
-            },
+      // Both spellings of a folder: the bare path, or the path+bookmark a
+      // build wrote while the folder was reused. A file written while
+      // 「끝나면 고르기」 was a choice says `handOver` and no folder: it reads
+      // as nothing remembered, which is what it is.
+      lastFolder: GrantedDirectory.fromJson(json['lastLocation'])?.path,
       presetsDrawerOpen: json['presetsDrawerOpen'] as bool? ?? true,
       queueDrawerOpen: json['queueDrawerOpen'] as bool? ?? true,
     );
@@ -131,7 +178,7 @@ class AppExportSettings {
       other is AppExportSettings &&
           listEquals(other.presets, presets) &&
           other.lastSpecs == lastSpecs &&
-          other.lastDestination == lastDestination &&
+          other.lastFolder == lastFolder &&
           other.presetsDrawerOpen == presetsDrawerOpen &&
           other.queueDrawerOpen == queueDrawerOpen;
 
@@ -139,7 +186,7 @@ class AppExportSettings {
   int get hashCode => Object.hash(
     Object.hashAll(presets),
     lastSpecs,
-    lastDestination,
+    lastFolder,
     presetsDrawerOpen,
     queueDrawerOpen,
   );
