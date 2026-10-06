@@ -114,6 +114,7 @@ Widget d() => SettingsSwitchRow(label: 'x', value: true, onChanged: null);
 Widget e() => Icon(on ? Icons.check_box : Icons.check_box_outline_blank);
 Widget f() => Icon(Icons.indeterminate_check_box_outlined);
 Widget g() => BooleanDotButton(keyValue: 'k', value: on, onChanged: null);
+Widget h() => BooleanMixDotButton(keyValue: 'k', value: mix, onChanged: null);
 ''';
     List<String> lines(RegExp pattern) => [
       for (final hit in _hits('planted.dart', planted, pattern))
@@ -121,7 +122,7 @@ Widget g() => BooleanDotButton(keyValue: 'k', value: on, onChanged: null);
     ];
     expect(lines(_materialBoolean), ['planted.dart:1', 'planted.dart:2']);
     expect(lines(_checkGlyph), ['planted.dart:5']);
-    expect(lines(_ringButton), ['planted.dart:7']);
+    expect(lines(_ringButton), ['planted.dart:7', 'planted.dart:8']);
   });
 }
 
@@ -142,8 +143,9 @@ final _materialBoolean = RegExp(
   r'CheckedPopupMenuItem)(\.adaptive)?(<[^>()]*>)?\(',
 );
 
-/// The ring as a button of its own.
-final _ringButton = RegExp(r'\bBooleanDotButton\(');
+/// The ring as a button of its own — the boolean's, and the one a switch
+/// over several things wears (`BooleanMixDotButton`, F-289-Q13).
+final _ringButton = RegExp(r'\bBoolean(Mix)?DotButton\(');
 
 /// 🚨THE RINGS THAT ARE BUTTONS OF THEIR OWN, and why the row around each
 /// cannot be the control.
