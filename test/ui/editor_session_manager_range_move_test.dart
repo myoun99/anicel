@@ -494,6 +494,11 @@ void main() {
       slide(s, camera, from: 2, by: 2);
       final shown = s.camera.activeCutCameraTrack;
       expect(shown, isNot(landed(s)), reason: 'nothing is written yet');
+      // The channel hands the project's views — the storyboard, the sheet
+      // — the same track, for the cut it is the camera of.
+      final onChannel = s.dragPreview.value! as BlockMoveDragPreview;
+      expect(onChannel.cameraTrack, shown);
+      expect(onChannel.cameraCutId, s.activeCutOrNull!.id);
 
       rangeMove(s).endFrameRangeMoveDrag();
       expect(landed(s), shown);
@@ -1684,6 +1689,14 @@ void main() {
       s.activeCutOrNull!.camera.keyframeAt(0),
       isNotNull,
       reason: 'the repository stays put while the drag previews',
+    );
+    // The multi-row arm previews the camera's keys where the plain slide
+    // does: to the session's readers and on the channel, the one track.
+    final shown = s.camera.activeCutCameraTrack!;
+    expect(shown.position.keys.keys, [2]);
+    expect(
+      (s.dragPreview.value! as BlockMoveDragPreview).cameraTrack,
+      shown,
     );
     final undoDepthBefore = s.canUndo;
     rangeMove(s).endFrameRangeMoveDrag();
