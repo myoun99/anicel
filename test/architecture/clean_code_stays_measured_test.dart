@@ -260,7 +260,14 @@ void main() {
   /// order) and the canvas area's `_layerBox` (116 — the row's pose under
   /// its folders and the four landings, each with the decision it
   /// carries). 🔬The lane's scan against master (`25fdf5106`, at 422).
-  const longBodies = 422;
+  ///
+  /// ⚠️422 → 421 on 2026-10-06, lowered as the rule asks (F-280, the one
+  /// fold): the selection layer's `_commitTransform` — three branches, one
+  /// per shape a box can be, each with its own copy of the landing — is
+  /// gone into `_foldOpenBox`, which every ending of a transform now takes.
+  /// 🔬The lane's scan against master (`973c69ed8`, at 422) named that one
+  /// and nothing added.
+  const longBodies = 421;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

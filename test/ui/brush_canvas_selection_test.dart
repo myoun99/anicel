@@ -3897,6 +3897,194 @@ void main() {
     });
   });
 
+  /// 🚨★★★**WHATEVER ENDS AN OPEN TRANSFORM LANDS WHAT 확정 LANDS** (F-280).
+  ///
+  /// 🗣️유저 2026-10-04: 「일반변형은 도중에 도구 바꾼다거나 하는 동작하면
+  /// 확정되고 바뀌는데, 자유변형은 취소되고 바뀜. 동작이 서로 다르니
+  /// 변형도구는 기본적으로 확정되고 바뀌도록. 기록도 남기는거 등 법 통일도」.
+  ///
+  /// The landing had three implementations, and which one ran depended on
+  /// how the session ended. 🧪Measured 2026-10-06, before the fix, each
+  /// ending against 확정 on the same gesture:
+  ///
+  /// · a painting tool (the layer unmounts) folded the AFFINE alone — a
+  ///   quad or a mesh whose numbers were at rest landed unwarped (유저's
+  ///   「취소되고 바뀜」), and no mode left a record for 재현;
+  /// · another selection tool (the layer stays) folded and then committed —
+  ///   a scaled or turned picture went through its transform TWICE;
+  /// · Ctrl+D landed raw: the same unwarped quad, no record, and NO undo
+  ///   entry — one undo brought the outline back over a picture that stayed
+  ///   transformed.
+  ///
+  /// ⛔Compared against 확정's own landing rather than a number, because
+  /// 「the same as Enter」 is the law — the pixels, the record 재현 replays,
+  /// and an undo that brings the picture back.
+  group('whatever ends an open transform lands what 확정 lands', () {
+    final gestures =
+        <
+          String,
+          ({
+            TransformMode mode,
+            Future<void> Function(
+              WidgetTester tester,
+              CanvasSelectionCommands commands,
+            )
+            perform,
+          })
+        >{
+          '일반 — an edge middle stretched': (
+            mode: TransformMode.normal,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(70, 45),
+              const Offset(82.5, 45),
+            ),
+          ),
+          '자유 — a corner pulled, every number at rest': (
+            mode: TransformMode.perspective,
+            perform: (tester, commands) =>
+                dragOnLayer(tester, const Offset(20, 20), const Offset(8, 14)),
+          ),
+          '자유 — a corner pulled, then turned and moved': (
+            mode: TransformMode.perspective,
+            perform: (tester, commands) async {
+              await dragOnLayer(
+                tester,
+                const Offset(20, 20),
+                const Offset(8, 14),
+              );
+              commands.editTransformValues(
+                (now) => now.copyWith(rotationDegrees: 20, tx: 6),
+              );
+              await tester.pump();
+            },
+          ),
+          '메쉬 — a grid point pulled, every number at rest': (
+            mode: TransformMode.mesh,
+            perform: (tester, commands) => dragOnLayer(
+              tester,
+              const Offset(37, 37),
+              const Offset(31, 42),
+            ),
+          ),
+        };
+
+    for (final gesture in gestures.entries) {
+      testWidgets(gesture.key, (tester) async {
+        late List<int> original;
+        // One ending of the gesture: what it left on the cel, what it left
+        // for 재현, and whether undo brings the picture back.
+        Future<
+          ({
+            List<int> pixels,
+            TransformRecall? recall,
+            int entries,
+            List<int> undone,
+          })
+        >
+        endedBy(String ending) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            transformMode: gesture.value.mode,
+          );
+          List<int> read() {
+            final surface = currentSurface(env.coordinator);
+            return [
+              for (var y = 0; y < 120; y += 1)
+                for (var x = 0; x < 120; x += 1)
+                  surfacePixelRgba(surface, x, y) ?? 0,
+            ];
+          }
+
+          original = read();
+          await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+          await env.setTool(CanvasTool.move);
+          env.commands.beginTransform();
+          await tester.pump();
+          final before = env.history.undoCount;
+          await gesture.value.perform(tester, env.commands);
+          switch (ending) {
+            case '확정':
+              env.commands.applyTransform();
+            case 'a painting tool':
+              await env.setTool(CanvasTool.brush);
+            case 'another selection tool':
+              await env.setTool(CanvasTool.select);
+            case 'Ctrl+D':
+              env.commands.deselect();
+          }
+          // The unmount lands a frame later — history never runs in a build.
+          await tester.pump();
+          await tester.pump();
+          await settle(tester);
+          final pixels = read();
+          final entries = env.history.undoCount - before;
+          for (var i = 0; i < entries; i += 1) {
+            env.history.undo();
+            await tester.pump();
+          }
+          await settle(tester);
+          final landed = (
+            pixels: pixels,
+            recall: env.commands.recallFor(gesture.value.mode),
+            entries: entries,
+            undone: read(),
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pump();
+          return landed;
+        }
+
+        final confirmed = await endedBy('확정');
+        expect(
+          confirmed.pixels,
+          isNot(original),
+          reason: '⛔전제: 확정이 그림을 바꿨다',
+        );
+        expect(confirmed.recall, isNotNull, reason: '⛔전제: 확정이 기록을 남겼다');
+        expect(confirmed.entries, 1, reason: '⛔전제');
+        expect(confirmed.undone, original, reason: '⛔전제: 언두 하나로 돌아온다');
+
+        for (final ending in const [
+          'a painting tool',
+          'another selection tool',
+          'Ctrl+D',
+        ]) {
+          final ended = await endedBy(ending);
+          expect(
+            ended.pixels,
+            confirmed.pixels,
+            reason: '$ending: the cel holds what 확정 would have landed',
+          );
+          final recall = ended.recall;
+          expect(recall, isNotNull, reason: '$ending: 재현 has a record');
+          expect(recall!.values, confirmed.recall!.values, reason: ending);
+          expect(
+            recall.cornerOffsets,
+            confirmed.recall!.cornerOffsets,
+            reason: ending,
+          );
+          expect(
+            recall.meshOffsets,
+            confirmed.recall!.meshOffsets,
+            reason: ending,
+          );
+          // Ctrl+D is the landing and then the deselect — two steps back.
+          expect(
+            ended.entries,
+            ending == 'Ctrl+D' ? 2 : 1,
+            reason: '$ending: the landing is ONE undo entry of its own',
+          );
+          expect(
+            ended.undone,
+            original,
+            reason: '$ending: undo brings the picture back',
+          );
+        }
+      });
+    }
+  });
+
   for (final mode in const [TransformMode.perspective, TransformMode.mesh]) {
     testWidgets('적용 over a box changed only by its WARP commits it — a '
         'point pulled is a change though every number is at rest ($mode)', (
