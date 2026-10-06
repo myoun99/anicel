@@ -3,7 +3,8 @@ import 'dart:ui' as ui show Image;
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../canvas/shown_cels.dart';
@@ -49,6 +50,8 @@ import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/selection_float_overlay.dart';
 import '../canvas/canvas_pan_hold.dart';
+import '../canvas/canvas_press.dart';
+import '../canvas/canvas_tool_holds.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
@@ -107,6 +110,7 @@ part 'canvas_panel/canvas_panel_selection.dart';
 part 'canvas_panel/canvas_panel_tool_cursor.dart';
 part 'canvas_panel/canvas_panel_tap.dart';
 part 'canvas_panel/canvas_panel_lift.dart';
+part 'canvas_panel/canvas_panel_mapped_buttons.dart';
 part 'canvas_panel/canvas_panel_book.dart';
 part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
@@ -1414,6 +1418,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   // The tap (Round 6): press, slop, stamp drag, and the pointers holding aim.
   late final _CanvasPanelTap _tap = _CanvasPanelTap(this);
 
+  // What a mapped button does that is not drawing (F-299): the history
+  // verbs and the pick it holds the eyedropper for, under every tool.
+  late final _CanvasPanelMappedButtons _mappedButtons =
+      _CanvasPanelMappedButtons(this);
+
+  /// Who holds the tool besides the hand on the keys: the pen's tail, which
+  /// the drawing view reads, and a button held for a pick, which
+  /// [_mappedButtons] reads — each sees the other here.
+  final CanvasToolHolds _toolHolds = CanvasToolHolds();
+
   /// Self-reporting devices (mouse, stylus) currently ON THE GLASS.
   ///
   /// The other kind of holder. A hovering pen writes the aim without ever
@@ -1971,32 +1985,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       frameId: activeKey.frameId,
       inputSettings: _inputSettingsNow,
       viewport: _viewportState._viewport,
-      // A held mapped button's live pick (PEN-7a) — the eyedropper's own
-      // pick, because the tool IS the eyedropper while it is held.
-      //
-      // ⛔It arrives from INSIDE the draw-through wrap, in the posed layer's
-      // artwork, and the sampler reads the CANVAS — the space the tool's own
-      // tap and the hover swatch ask in (I-36: one space for a pick). The
-      // pose carries it back out, as it carried the pointer in.
-      onHoldPick:
-          widget.sampleColorAt == null || widget.onEyedropperPick == null
-          ? null
-          : (point) {
-              final pose = widget.interactiveContentPose;
-              final color = widget.sampleColorAt!(
-                pose == null
-                    ? point
-                    : artworkToCanvas(pose, widget.canvasSize).apply(point),
-              );
-              if (color != null) {
-                widget.onEyedropperPick!(color);
-              }
-            },
       onPressNeedsCel: widget.onPressNeedsCel,
+      // The pen's tail and a button mapped to the eraser — the holds that
+      // DRAW. A held pick and the history verbs are [_mappedButtons]'.
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
-      // PEN-11: one-shot mapped actions (undo/redo) from pen buttons.
-      onInvokeAction: widget.onInvokeAction,
+      toolHolds: _toolHolds,
       onSourceStrokeCommitted: _handleSourceStrokeCommitted,
       // R22-A: the FILL tool runs through the view's stroke pipeline
       // (the result tiles on the tap frame, landed like a pen-up) instead

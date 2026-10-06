@@ -1,17 +1,17 @@
 part of '../interactive_brush_edit_canvas_view.dart';
 
 /// WHAT A POINTER MEANS HERE — the touch census that turns a second
-/// finger into navigation, the mapped button that pans or undoes or holds
-/// a tool, the Alt pick, the fill tap, and the press that is none of
-/// those and therefore starts a stroke.
+/// finger into navigation, the mapped button this view stands down for or
+/// erases with, the fill tap, and the press that is none of those and
+/// therefore starts a stroke.
 ///
 /// 🚨A collaborator carved out of `_InteractiveBrushEditCanvasViewState`
 /// (the audit's SRP cut, Round 7, 2026-09-05). The four `Listener`
 /// callbacks and the shared multi-touch listener are its entry points; it
 /// reaches the view through `_state`.
 ///
-/// ⚠️It owns the three fields NOTHING else read — the live touch
-/// contacts, the navigation latch and the Alt-pick pointer. The rest
+/// ⚠️It owns the two fields NOTHING else read — the live touch contacts
+/// and the navigation latch. The rest
 /// (`_activeDrawingPointer`, the touch-stroke pair, the fill tap slot)
 /// stay on the State because the stroke, overlay and fill collaborators
 /// read them too.
@@ -120,18 +120,26 @@ class _BrushEditPress {
     var mappedErase = _state._overlay.penTailErases;
     final mapping = canvasMappingFor(
       event,
-      penTailActive: _state._penTailActive,
+      penTailActive: _state._toolHolds.penTail,
     );
     if (mapping != null) {
-      if (_multiTouchNavigation ||
+      // 🚨A mapped press that does not DRAW is not this view's. The pan is
+      // the panel's viewport gesture layer's, and the pick, the history
+      // verbs and 「none」 are its mapped buttons' — read where every press
+      // on the canvas passes, so they answer under every tool and with no
+      // cel (F-299). This view only stands down, so no stroke competes.
+      //
+      // ↩️It acted on all of them here, on its way down, and so they
+      // answered only where this view hears a press.
+      if (!canvasMappedActionDraws(mapping.action) ||
+          _multiTouchNavigation ||
           _state._activeDrawingPointer != null ||
-          _state._hold._mappedHoldPointer != null) {
+          _state._hold.buttonHoldsTheTool) {
         return;
       }
-      _actOnMappedPress(mapping, event);
-      if (!canvasMappedActionDraws(mapping.action)) {
-        return;
-      }
+      // The eraser hold takes the tool, and the stroke that starts with
+      // this same press erases through its own settings.
+      _state._hold.holdEraser(event.pointer, mapping.release);
       mappedErase = true;
     }
 
@@ -144,10 +152,10 @@ class _BrushEditPress {
 
     // 🚨F-196: a press that would DRAW asks the row first, so a row that
     // takes no strokes shows no line at all — the fill and the stroke
-    // below are both drawing. The mapped verbs above still ran: an undo or
-    // an eyedropper hold is not drawing. The host explains the refusal
-    // (`MainCanvasBrushHost`'s listener speaks for 「a row that takes no
-    // strokes」), so nothing is said twice.
+    // below are both drawing. The mapped verbs that are not drawing — an
+    // undo, an eyedropper hold — never came this far (the panel's). The
+    // host explains the refusal (`MainCanvasBrushHost`'s listener speaks
+    // for 「a row that takes no strokes」), so nothing is said twice.
     if (!_state.widget.rowAcceptsStrokes) {
       return;
     }
@@ -175,57 +183,6 @@ class _BrushEditPress {
       startsInsidePasteboard: startsInsidePasteboard,
       mappedErase: mappedErase,
     );
-  }
-
-  /// What a mapped button's press DOES on its way down: the history verbs
-  /// fire, the eyedropper hold picks, the eraser hold takes the tool, and
-  /// the pan is the panel's gesture layer's. Whether a stroke follows is
-  /// not decided here — [canvasMappedActionDraws] says, for this press and
-  /// for the empty cel that asks whether the press will draw.
-  void _actOnMappedPress(
-    CanvasPointerMapping mapping,
-    PointerDownEvent event,
-  ) {
-    switch (mapping.action) {
-      case CanvasPointerAction.none:
-      // Pan belongs to the panel's viewport gesture layer — this view
-      // only stands down so no stroke competes with it.
-      case CanvasPointerAction.pan:
-        break;
-      case CanvasPointerAction.undo:
-        // Skip when the button press already fired during hover (the
-        // hover edge below) and the tip then touched with it held.
-        if (!_state._hold.mappedButtonHeldSinceHover(event)) {
-          _state.widget.onInvokeAction?.call('edit-undo');
-        }
-      case CanvasPointerAction.redo:
-        if (!_state._hold.mappedButtonHeldSinceHover(event)) {
-          _state.widget.onInvokeAction?.call('edit-redo');
-        }
-      case CanvasPointerAction.eyedropper:
-        _state._hold._mappedHoldPointer = event.pointer;
-        _state._hold._mappedHoldRelease = mapping.release;
-        _state._hold._mappedHoldIsEyedropper = true;
-        // The contact takes over a hover-engaged hold (R26 #19/#20):
-        // one hold session, one release.
-        _state._hold._hoverToolHoldActive = false;
-        _state._hold._hoverToolHoldRelease = null;
-        _state._hold._hoverToolHoldButton = 0;
-        _state.widget.onTemporaryToolHold?.call(CanvasTool.eyedropper);
-        final pickPosition = _state._canvasPositionFromLocal(
-          event.localPosition,
-        );
-        // The eyedropper picks anywhere on the pasteboard, like Flash
-        // (off-canvas artwork is real artwork).
-        if (_state._isInsidePasteboard(pickPosition)) {
-          _state.widget.onHoldPick?.call(pickPosition);
-        }
-      case CanvasPointerAction.eraser:
-        _state._hold._mappedHoldPointer = event.pointer;
-        _state._hold._mappedHoldRelease = mapping.release;
-        _state._hold._mappedHoldIsEyedropper = false;
-        _state.widget.onTemporaryToolHold?.call(CanvasTool.eraser);
-    }
   }
 
   /// A press the armed FILL spends on nothing: it lands beyond the
@@ -296,25 +253,6 @@ class _BrushEditPress {
     _state._celPress.resumePressThatMadeTheCel(event.pointer);
     if (!_state.widget.editable) {
       return; // Standing down: inert, exactly as when nothing was built.
-    }
-    // R27 #17: a mapped button can also rise DURING contact — some pen
-    // drivers report the barrel bit a moment after the tip lands rather
-    // than on the down event, and the hover edge above never sees it
-    // then. Only picked up while nothing is drawing yet, so a live
-    // stroke is never hijacked mid-line.
-    _state._hold.handleMappedButtonRiseDuringContact(event);
-    // A held eyedropper mapping picks LIVE along the whole drag (PEN-7a:
-    // '누르는 동안 해당 색을 뽑는다'). 유저 확정 — one law for every dropper:
-    // 「클릭중이면 색 바뀌도록 … 같은법으로. 드래그중 계속샘플」 — the tool
-    // does it on the tap layer and a held button does it here. Alt was a
-    // third door until I-15 made it the tool itself.
-    if (event.pointer == _state._hold._mappedHoldPointer &&
-        _state._hold._mappedHoldIsEyedropper) {
-      final pickPosition = _state._canvasPositionFromLocal(event.localPosition);
-      if (_state._isInsidePasteboard(pickPosition)) {
-        _state.widget.onHoldPick?.call(pickPosition);
-      }
-      return;
     }
     if (event.pointer != _state._activeDrawingPointer) {
       return;
@@ -475,13 +413,12 @@ class _BrushEditPress {
   }
 
   /// THIS POINTER IS GONE — the bookkeeping both endings of a press owe,
-  /// whether the pointer lifted or was cancelled: its contact buttons, its
-  /// place in the touch census, and the tool mapping it was holding. What
-  /// each ending does BESIDES this (a lift
-  /// runs the fill tap and commits the dabs; a cancel forgets the tap and
-  /// discards) is the two laws, and they stay at the callers.
+  /// whether the pointer lifted or was cancelled: its place in the touch
+  /// census, and the tool mapping it was holding. What each ending does
+  /// BESIDES this (a lift runs the fill tap and commits the dabs; a cancel
+  /// forgets the tap and discards) is the two laws, and they stay at the
+  /// callers.
   void _releasePointer(int pointer) {
-    _state._hold._lastContactButtons.remove(pointer);
     _forgetTouchPointer(pointer);
     _state._hold.releaseMappedHold(pointer);
   }

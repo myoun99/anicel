@@ -16,7 +16,6 @@ import 'package:anicel/src/models/brush_edit_session_state.dart';
 import 'package:anicel/src/models/brush_input_source.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart';
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -1223,10 +1222,15 @@ void main() {
         await tester.pump();
       }
 
-      testWidgets('the default right-click mapping is a HELD eyedropper: '
-          'live picks, no stroke, tool springs back', (tester) async {
+      /// 🚨F-299 (2026-10-06): what a mapped button does that is NOT
+      /// drawing — a pick, the history verbs, 「none」 — is the PANEL's,
+      /// read where every press on the canvas passes
+      /// (`a_mapped_button_answers_under_every_tool_test`). ↩️It was this
+      /// view's, and so answered only where a drawing tool stood over a
+      /// cel. What is left here is to stand down: no stroke, no tool taken.
+      testWidgets('a button mapped to the eyedropper — the default — never '
+          'strokes here, and the view takes no tool for it', (tester) async {
         final results = <List<BrushDab>>[];
-        final picks = <CanvasPoint>[];
         final holds = <CanvasTool>[];
         final releases = <bool>[];
         await tester.pumpWidget(
@@ -1235,7 +1239,6 @@ void main() {
               _sessionState(width: 200, height: 16),
               results.add,
               inputSettings: BrushEditCanvasInputSettings(size: 8),
-              onHoldPick: picks.add,
               onTemporaryToolHold: holds.add,
               onTemporaryToolRelease: ({required keep}) => releases.add(keep),
             ),
@@ -1244,16 +1247,14 @@ void main() {
 
         await barrelStroke(tester);
 
-        expect(results, isEmpty, reason: 'a mapped hold never strokes');
-        expect(picks, isNotEmpty, reason: 'picks at down AND along the drag');
-        expect(picks.length, greaterThanOrEqualTo(2));
-        expect(holds, [CanvasTool.eyedropper]);
-        expect(releases, [false], reason: 'returnToTool = spring back');
+        expect(results, isEmpty, reason: 'a mapped pick never strokes');
+        expect(holds, isEmpty, reason: 'the hold is the panel\'s to take');
+        expect(releases, isEmpty);
       });
 
       testWidgets(
-        'a barrel press Ink disguises as a phantom pen tap still reaches '
-        'its mapping — and never strokes',
+        'a barrel press Ink disguises as a phantom pen tap is still read '
+        'as the mapped press it is — and never strokes',
         (tester) async {
           final service = WintabPenService.instance;
           addTearDown(service.debugReset);
@@ -1262,16 +1263,12 @@ void main() {
           service.start();
 
           final results = <List<BrushDab>>[];
-          final picks = <CanvasPoint>[];
-          final holds = <CanvasTool>[];
           await tester.pumpWidget(
             _app(
               _view(
                 _sessionState(width: 200, height: 16),
                 results.add,
                 inputSettings: BrushEditCanvasInputSettings(size: 8),
-                onHoldPick: picks.add,
-                onTemporaryToolHold: holds.add,
               ),
             ),
           );
@@ -1300,9 +1297,9 @@ void main() {
           );
           await tester.pump();
 
+          // ⛔Taken literally — the primary button, on a stylus — this is
+          // a drawing contact. (That the mapping FIRES is the panel's pin.)
           expect(results, isEmpty, reason: 'the phantom must not draw');
-          expect(holds, [CanvasTool.eyedropper], reason: 'the mapping fires');
-          expect(picks, isNotEmpty);
 
           // The poll timer must die before the binding's pending-timer
           // invariant check.
@@ -1310,17 +1307,12 @@ void main() {
         },
       );
 
-      testWidgets('a mouse RIGHT drag routes the same mapping', (tester) async {
+      testWidgets('a mouse RIGHT drag is the same mapped press', (
+        tester,
+      ) async {
         final results = <List<BrushDab>>[];
-        final picks = <CanvasPoint>[];
         await tester.pumpWidget(
-          _app(
-            _view(
-              _sessionState(width: 200, height: 16),
-              results.add,
-              onHoldPick: picks.add,
-            ),
-          ),
+          _app(_view(_sessionState(width: 200, height: 16), results.add)),
         );
 
         final gesture = await tester.startGesture(
@@ -1334,7 +1326,6 @@ void main() {
         await tester.pump();
 
         expect(results, isEmpty);
-        expect(picks, isNotEmpty);
       });
 
       testWidgets('mapped ERASER erases the whole stroke and "keep" holds '
@@ -1459,14 +1450,12 @@ void main() {
           ),
         );
         final results = <List<BrushDab>>[];
-        final picks = <CanvasPoint>[];
         final holds = <CanvasTool>[];
         await tester.pumpWidget(
           _app(
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
-              onHoldPick: picks.add,
               onTemporaryToolHold: holds.add,
             ),
           ),
@@ -1475,12 +1464,11 @@ void main() {
         await barrelStroke(tester);
 
         expect(results, isEmpty);
-        expect(picks, isEmpty);
         expect(holds, isEmpty);
       });
 
-      testWidgets('mapped UNDO fires once at the press — no stroke, no '
-          'hold (PEN-11)', (tester) async {
+      testWidgets('a press mapped to UNDO makes no stroke and no hold '
+          '(PEN-11)', (tester) async {
         AppInput.settings.value = const AppInputSettings(
           canvasRightClick: CanvasPointerMapping(
             action: CanvasPointerAction.undo,
@@ -1488,76 +1476,20 @@ void main() {
         );
         final results = <List<BrushDab>>[];
         final holds = <CanvasTool>[];
-        final invoked = <String>[];
         await tester.pumpWidget(
           _app(
             _view(
               _sessionState(width: 200, height: 16),
               results.add,
               onTemporaryToolHold: holds.add,
-              onInvokeAction: invoked.add,
             ),
           ),
         );
 
         await barrelStroke(tester);
 
-        expect(invoked, ['edit-undo']);
         expect(results, isEmpty, reason: 'a one-shot action never strokes');
         expect(holds, isEmpty);
-      });
-
-      testWidgets('a HOVER barrel press fires UNDO without contact, and a '
-          'buttoned contact right after does not double-fire (PEN-11)', (
-        tester,
-      ) async {
-        AppInput.settings.value = const AppInputSettings(
-          canvasRightClick: CanvasPointerMapping(
-            action: CanvasPointerAction.undo,
-          ),
-        );
-        final results = <List<BrushDab>>[];
-        final invoked = <String>[];
-        await tester.pumpWidget(
-          _app(
-            _view(
-              _sessionState(width: 200, height: 16),
-              results.add,
-              onInvokeAction: invoked.add,
-            ),
-          ),
-        );
-
-        final at = canvasGlobalOffset(tester, const Offset(10, 4));
-        void hover(int buttons) {
-          tester.binding.handlePointerEvent(
-            PointerHoverEvent(
-              kind: PointerDeviceKind.stylus,
-              position: at,
-              buttons: buttons,
-            ),
-          );
-        }
-
-        // Approach → button press mid-hover: fires without any contact
-        // (the S-Pen hover window blocks touch, not the pen itself).
-        hover(0);
-        await tester.pump();
-        hover(kPrimaryStylusButton);
-        await tester.pump();
-        expect(invoked, ['edit-undo']);
-
-        // The tip then touches with the button STILL held: no double.
-        await barrelStroke(tester);
-        expect(invoked, ['edit-undo']);
-        expect(results, isEmpty);
-
-        // Released and pressed again on a later hover: fires again.
-        hover(0);
-        await tester.pump();
-        hover(kPrimaryStylusButton);
-        await tester.pump();
-        expect(invoked, ['edit-undo', 'edit-undo']);
       });
     });
 
@@ -2062,10 +1994,8 @@ InteractiveBrushEditCanvasView _view(
   BrushEditCanvasInputSettings inputSettings =
       BrushEditCanvasInputSettings.defaults,
   CanvasViewport? viewport,
-  ValueChanged<CanvasPoint>? onHoldPick,
   void Function(CanvasTool tool)? onTemporaryToolHold,
   void Function({required bool keep})? onTemporaryToolRelease,
-  void Function(String actionId)? onInvokeAction,
 }) {
   return InteractiveBrushEditCanvasView(
     celNow: () => sessionState.canvasState.currentSurface,
@@ -2073,10 +2003,8 @@ InteractiveBrushEditCanvasView _view(
     frameId: const FrameId('frame-a'),
     inputSettings: () => inputSettings,
     viewport: viewport,
-    onHoldPick: onHoldPick,
     onTemporaryToolHold: onTemporaryToolHold,
     onTemporaryToolRelease: onTemporaryToolRelease,
-    onInvokeAction: onInvokeAction,
     // Tests observe the committed source dabs; the exact pre-rasterized
     // stroke pixels travel alongside them in the commit data.
     onSourceStrokeCommitted: (strokeData) => onResult(strokeData.sourceDabs),

@@ -108,6 +108,7 @@ class _CanvasPanelTap {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
     _lastStampCenter = null;
+    _letGoOfPress(event.pointer);
   }
 
   void _toolTapUp(PointerUpEvent event) {
@@ -120,9 +121,30 @@ class _CanvasPanelTap {
     _tapLayerTouches.remove(event.pointer);
     _touchTap = null;
     _lastStampCenter = null;
+    _letGoOfPress(event.pointer);
+  }
+
+  /// The pointer whose press this layer TOOK, for as long as it is down:
+  /// the one a move continues the press verb for.
+  ///
+  /// ⛔A move alone never says whose it is. This layer hears every pointer
+  /// that crosses it, so a press it had refused at its down — a mapped
+  /// button's, the pan's — went on to sample colours all along its drag
+  /// while the eyedropper was armed; and with the mapped buttons read by
+  /// the panel ([_CanvasPanelMappedButtons]) a held pick would have picked
+  /// twice a move, once there and once here.
+  int? _pressPointer;
+
+  void _letGoOfPress(int pointer) {
+    if (pointer == _pressPointer) {
+      _pressPointer = null;
+    }
   }
 
   void _toolTapMove(PointerMoveEvent event) {
+    if (event.pointer != _pressPointer) {
+      return;
+    }
     // The gesture
     // declares itself by
     // MOVING: crossing
@@ -164,20 +186,16 @@ class _CanvasPanelTap {
     // stray fill, which is why one
     // fill sometimes took two undos.
     //
-    // R28 #8: the EYEDROPPER is
-    // exempt. Its whole point under a
-    // mapped hold (pen barrel /
-    // right-click) is that the held
-    // NON-primary button is what
-    // picks — the strict test meant
-    // the mapping switched the tool
-    // and then refused every press,
-    // so it "제대로 작동하지도않고".
-    // A pick writes no pixels, so
-    // there is no stray-edit hazard
-    // to guard against here.
-    if (_state._brush.tool != CanvasTool.eyedropper &&
-        event.buttons != kPrimaryButton) {
+    // ↩️R28 #8 exempted the EYEDROPPER: under a mapped hold (pen barrel /
+    // right-click) the held NON-primary button is what picks, and this
+    // layer — mounted by the tool switch — was all that stood in such a
+    // press's way, so the mapping switched the tool and then refused every
+    // press (「제대로 작동하지도않고」). The panel reads mapped buttons itself
+    // now, under this layer as under every other
+    // ([_CanvasPanelMappedButtons]): a press with a mapped button down is
+    // whatever that button is mapped to — the pick included — and never a
+    // tool tap as well.
+    if (event.buttons != kPrimaryButton) {
       return;
     }
     // TS9: and a finger
@@ -200,9 +218,17 @@ class _CanvasPanelTap {
     if (event.kind == PointerDeviceKind.touch) {
       _tapLayerTouches.add(event.pointer);
       if (_tapLayerTouches.length > 1) {
-        _touchTap = null;
+        // A tap still waiting was the first half of a pinch, and a pinch
+        // continues no verb whichever of its fingers moves. A drag that
+        // had already declared itself keeps its press: the newcomer is a
+        // resting palm (PEN-12 #4, the stroke's law).
+        if (_touchTap != null) {
+          _touchTap = null;
+          _pressPointer = null;
+        }
         return;
       }
+      _pressPointer = event.pointer;
       _touchTap = (
         pointer: event.pointer,
         canvas: _state._viewportState.canvasPointOf(event),
@@ -210,6 +236,7 @@ class _CanvasPanelTap {
       );
       return;
     }
+    _pressPointer = event.pointer;
     toolTapHandler()!(_state._viewportState.canvasPointOf(event));
   }
 
@@ -259,17 +286,7 @@ class _CanvasPanelTap {
           _lastStampCenter = onTheRow;
         };
       case CanvasTool.eyedropper:
-        final sample = _state.widget.sampleColorAt;
-        final pick = _state.widget.onEyedropperPick;
-        if (sample == null || pick == null) {
-          return null;
-        }
-        return (point) {
-          final color = sample(point);
-          if (color != null) {
-            pick(color);
-          }
-        };
+        return eyedropperPick();
       case CanvasTool.fill:
         // R22-A: fill taps are handled by the interactive view's stroke
         // pipeline (fillDabAt) — the result tiles on the tap frame, and the
@@ -280,6 +297,31 @@ class _CanvasPanelTap {
         // its own layer in the viewport overlay, like the selection tools.
         return null;
     }
+  }
+
+  /// THE EYEDROPPER'S PICK at a point on the canvas — the tool's own tap,
+  /// every sample of its drag, and what a button held for it does all along
+  /// its press (유저 확정, one law for every dropper: 「클릭중이면 색 바뀌도록
+  /// … 같은법으로. 드래그중 계속샘플」). Null where this canvas has nothing
+  /// to sample, or nowhere to send a colour.
+  ///
+  /// ⛔ONE SPACE FOR A PICK (I-36): the sampler reads the CANVAS, the space
+  /// the tap and the hover swatch ask in. ↩️A held button's pick used to
+  /// arrive from inside the draw-through wrap, in the posed layer's
+  /// artwork, and was carried back out through the pose; read by the panel
+  /// it is on the canvas to begin with.
+  void Function(CanvasPoint point)? eyedropperPick() {
+    final sample = _state.widget.sampleColorAt;
+    final pick = _state.widget.onEyedropperPick;
+    if (sample == null || pick == null) {
+      return null;
+    }
+    return (point) {
+      final color = sample(point);
+      if (color != null) {
+        pick(color);
+      }
+    };
   }
 
   /// Where the last stamp of the current drag landed, on the standing row's

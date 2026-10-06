@@ -50,7 +50,7 @@ class _BrushEditOverlay {
   /// asynchronous, so the stroke's own settings snapshot has to carry
   /// the substitution exactly as the barrel-eraser path does.
   bool get penTailErases =>
-      _state._penTailActive &&
+      _state._toolHolds.penTail &&
       AppInput.settings.value.canvasPenTail.action ==
           CanvasPointerAction.eraser;
 
@@ -69,13 +69,13 @@ class _BrushEditOverlay {
   /// pen is not the same as the pen being turned back over.
   void syncPenTailMapping() {
     final inverted = PenSidecars.freshInverted();
-    if (inverted == null || inverted == _state._penTailActive) {
+    if (inverted == null || inverted == _state._toolHolds.penTail) {
       return;
     }
     final mapping = AppInput.settings.value.canvasPenTail;
     if (inverted) {
       // A barrel hold that is already running owns the tool.
-      if (_state._hold._hoverToolHoldActive || _state._hold._mappedHoldPointer != null) {
+      if (_state._hold.buttonHoldsTheTool) {
         return;
       }
       final tool = switch (mapping.action) {
@@ -88,11 +88,11 @@ class _BrushEditOverlay {
       if (tool == null) {
         return;
       }
-      _state._penTailActive = true;
+      _state._toolHolds.penTail = true;
       _state.widget.onTemporaryToolHold?.call(tool);
       return;
     }
-    _state._penTailActive = false;
+    _state._toolHolds.penTail = false;
     _state.widget.onTemporaryToolRelease?.call(
       keep: mapping.release == CanvasPointerRelease.keep,
     );

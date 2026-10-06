@@ -38,7 +38,7 @@ class _BrushEditCelPress {
     if (_pendingCelPress != null) {
       return;
     }
-    if (!canvasPressDraws(event, penTailActive: _state._penTailActive)) {
+    if (!canvasPressDraws(event, penTailActive: _state._toolHolds.penTail)) {
       return;
     }
     // Nor for a fill beyond the wall, which does nothing there — so it

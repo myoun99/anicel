@@ -40,6 +40,7 @@ import 'bitmap_tile_image_cache.dart';
 import '../../models/brush_edit_canvas_input_settings.dart';
 import 'brush_edit_canvas_view.dart';
 import 'canvas_press.dart';
+import 'canvas_tool_holds.dart';
 import 'canvas_touch_contacts.dart';
 import 'shown_cels.dart';
 import 'canvas_viewport_offset.dart';
@@ -91,10 +92,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
-    this.onHoldPick,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
-    this.onInvokeAction,
+    this.toolHolds,
     this.fillDabAt,
     this.selectionRegion,
     this.overlayModel,
@@ -215,23 +215,25 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// A held mapped button's live pick (PEN-7a: 「누르는 동안 해당 색을
-  /// 뽑는다」) — the press began here, so this view keeps sampling for it.
-  /// Null disables it. 🪦It was `onAltPick` while Alt picked through this
-  /// view too; I-15 put Alt on the eyedropper tool itself.
-  final ValueChanged<CanvasPoint>? onHoldPick;
-
-  /// PEN-7a mapped-hold session: a secondary-button press switched the
-  /// tool temporarily — the shell mirrors it on the tool notifier so the
-  /// cursor/panels follow, and restores (or keeps) on release.
+  /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
+  /// eraser, switched the tool temporarily — the shell mirrors it on the
+  /// tool notifier so the cursor/panels follow, and restores (or keeps) on
+  /// release.
+  ///
+  /// ↩️A held PICK and the history verbs came through this view too
+  /// (`onHoldPick` — 🪦`onAltPick` before I-15 — and `onInvokeAction`,
+  /// PEN-11). They draw nothing, and the view hears a press only while a
+  /// drawing tool is armed over a cel, so a button mapped to the eyedropper
+  /// was dead under every other tool (F-299). The panel reads them now,
+  /// where every press on the canvas passes.
   final void Function(CanvasTool tool)? onTemporaryToolHold;
   final void Function({required bool keep})? onTemporaryToolRelease;
 
-  /// PEN-11: one-shot mapped actions (undo/redo) dispatch through the
-  /// registry funnel — fired at a mapped press, or at a HOVER button
-  /// press for pens that report it (the S-Pen hover palm-rejection
-  /// window blocks touch, so the pen carries its own undo).
-  final void Function(String actionId)? onInvokeAction;
+  /// Who holds the tool besides the hand on the keys ([CanvasToolHolds]) —
+  /// the panel's, so its reader of mapped buttons and this view's reading
+  /// of the pen's tail each see the other. Null = this view keeps its own
+  /// (a sheet's ink: no button holds a pick there).
+  final CanvasToolHolds? toolHolds;
 
   /// FILL mode (R22-A): non-null while the fill tool is active — a
   /// primary tap builds the flood's stamp dab here and the view runs it
@@ -319,12 +321,9 @@ class _InteractiveBrushEditCanvasViewState
   /// first dab — rests at 0.0.
   double _currentSpeed = 0.0;
 
-  // The held button (Round 6): a mapped button standing in for a tool.
+  // The held button (Round 6): a mapped button the eraser stands in for.
   late final _BrushEditHold _hold = _BrushEditHold(this);
 
-  /// The contact that started as an ALT pick (TS7), so its moves keep
-  /// sampling.
-  ///
   /// Placement dynamics (scatter/jitter/direction rotation) for the active
   /// stroke; created at pointer-down from the stroke's settings snapshot.
   BrushStrokeDynamics? _strokeDynamics;
@@ -565,10 +564,12 @@ class _InteractiveBrushEditCanvasViewState
   /// has (H43).
   late final _BrushEditOpening _opening = _BrushEditOpening(this);
 
-  /// Whether the pen-tail mapping is engaged (the pen is turned
-  /// tail-down). Not a button hold: it spans strokes until the pen is
-  /// turned back over.
-  bool _penTailActive = false;
+  /// Who holds the tool besides the hand on the keys — the host's when it
+  /// handed one. [CanvasToolHolds.penTail] is this view's to write: whether
+  /// the pen-tail mapping is engaged (the pen is turned tail-down). Not a
+  /// button hold: it spans strokes until the pen is turned back over.
+  late final CanvasToolHolds _ownToolHolds = CanvasToolHolds();
+  CanvasToolHolds get _toolHolds => widget.toolHolds ?? _ownToolHolds;
 
   /// EVERY tool works anywhere on the pasteboard (Flash-style — the
   /// stage rectangle is a crop at composite time, not an input

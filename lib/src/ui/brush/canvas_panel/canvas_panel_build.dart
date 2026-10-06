@@ -140,8 +140,23 @@ class _PanelBuild {
   /// behind the pan hold's gate (I-15): while the 「이동」 key is held the
   /// deck takes no pointer at all, so every tool stands down for the pan at
   /// once, and the hand says what a press will do.
-  Widget _cursorDeck(BuildContext context) =>
-      PanHoldGate(child: _toolDeck(context));
+  ///
+  /// The mapped buttons are read INSIDE the gate, with the tools: what one
+  /// holds is a tool, and it stands down for the pan with the rest.
+  /// ⚠️As an ANCESTOR of the deck, so it hears a press whichever tool's
+  /// layer took it — and after every control floating on the canvas has
+  /// claimed its own (pointer-down is dispatched deepest-first).
+  Widget _cursorDeck(BuildContext context) => PanHoldGate(
+    child: Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerHover: _state._mappedButtons.hover,
+      onPointerDown: _state._mappedButtons.down,
+      onPointerMove: _state._mappedButtons.move,
+      onPointerUp: _state._mappedButtons.up,
+      onPointerCancel: _state._mappedButtons.up,
+      child: _toolDeck(context),
+    ),
+  );
 
   /// The deck — underlay, canvas, overlay, the tap layer, the tool cursors,
   /// the selection layer and the idle ants.
