@@ -645,6 +645,8 @@ void main() {
     expect(canvasToolMarksCel(CanvasTool.text), isTrue);
     expect(canvasToolPaints(CanvasTool.text), isFalse);
     expect(canvasToolSelects(CanvasTool.text), isFalse);
-    expect(canvasToolTakesDrawingPress(CanvasTool.text), isFalse);
+    // Alt held is the eyedropper under it, as under every tool that
+    // does not read Alt for itself (F-299).
+    expect(canvasToolReadsAlt(CanvasTool.text), isFalse);
   });
 }
