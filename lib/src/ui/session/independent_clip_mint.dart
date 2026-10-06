@@ -206,12 +206,11 @@ Map<FrameId, FrameId> drawingsHeldUnderTheNamesOf(
   Layer layer,
   ({TimelineClipRow clip, List<Frame> cels}) row,
 ) {
-  final holders = <String, FrameId>{};
-  for (final frame in layer.frames) {
-    if (frame.name case final name?) {
-      holders.putIfAbsent(name, () => frame.id);
-    }
-  }
+  // A name is held ONCE on a row whose names are identities, so which
+  // holder a second would be is not a question this has to answer.
+  final holders = <String, FrameId>{
+    for (final frame in layer.frames) ?frame.name: frame.id,
+  };
   final shown = {
     for (final exposure in row.clip.exposures.values) ?exposure.frameId,
   };

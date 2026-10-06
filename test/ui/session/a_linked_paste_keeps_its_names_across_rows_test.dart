@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -9,9 +10,15 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_reference.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_splice.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
+import 'package:anicel/src/ui/session/independent_clip_mint.dart';
 
 /// 🗣️I-71 (유저 2026-10-05):
 ///
@@ -151,6 +158,51 @@ void main() {
       expect(clipboardOf(s).pasteLinkedFrameAtCurrentFrame(), isNull);
 
       expect(blocksOf(s, other), {4: ('X', 31), 6: ('Y', 32)});
+    });
+
+    test('the ghost of a hold on the row is no block of the run — the copy '
+        'reads the row ghost-free, as the copy of every row does (F-134)', () {
+      final (:s, :base, :mirror, :other) = baseMirrorAndAnEmptyRow();
+      s.rangeMove.setRunEdgeBehavior(
+        layerId: base,
+        blockStartIndex: 2,
+        side: TimelineRunEdgeSide.end,
+        mode: TimelineRunEdgeMode.hold,
+      );
+      expect(
+        coveringDrawingBlockAt(
+          attachedRowAsShown(
+            rowOf(s, mirror),
+            s.requireActiveCut.layers,
+          ).timeline,
+          4,
+        )?.entry.ghost,
+        isTrue,
+        reason: 'PREMISE: the row shows the ghost of the hold at 4',
+      );
+      s.selectLayer(mirror);
+      s.selectFrameIndex(0);
+      s.updateFrameRangeSelectionDrag(
+        layerId: mirror,
+        anchorIndex: 0,
+        headIndex: 4,
+      );
+      clipboardOf(s).copyFrameAtCurrentFrame();
+
+      standOn(s, other, 0);
+      clipboardOf(s).pasteIndependentFrameAtCurrentFrame();
+
+      expect(blocksOf(s, other), {0: (null, 31), 2: (null, 32)});
+      // The hold is its BLOCK's and rode it here, so what stands past the
+      // block is this row's own ghost of it — not a piece of the copied one.
+      expect(
+        [
+          for (final MapEntry(key: frame, value: exposure)
+              in rowOf(s, other).timeline.entries)
+            if (exposure.ghost) frame,
+        ],
+        [3],
+      );
     });
 
     test('stood on, one comma of the drawing shown', () {
@@ -325,6 +377,56 @@ void main() {
       standOn(s, direction, 0);
       expect(clipboardOf(s).canPasteLinkedFrameAtCurrentFrame, isFalse);
       expect(clipboardOf(s).canPasteIndependentFrameAtCurrentFrame, isTrue);
+    });
+
+    test('…and swept under a band with a row that does, it is given '
+        'drawings of no name', () {
+      final (:s, :base, mirror: _, :other) = baseMirrorAndAnEmptyRow();
+      copyTheRunOf(s, base);
+      s.layerStack.addLayerOfKind(LayerKind.instruction);
+      final direction = s.activeLayer!.id;
+      standOn(s, other, 0);
+      s.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: other,
+        startIndex: 0,
+        endIndexExclusive: 4,
+        layerIds: [other, direction],
+      );
+
+      expect(clipboardOf(s).pasteLinkedFrameAtCurrentFrame(), isNull);
+
+      expect(blocksOf(s, other), {0: ('X', 10), 2: ('Y', 20)});
+      expect(blocksOf(s, direction), {0: (null, 10), 2: (null, 20)});
+    });
+
+    test('only the names the pasted run SHOWS are asked about', () {
+      final (:s, :base, mirror: _, other: _) = baseMirrorAndAnEmptyRow();
+      final row = rowOf(s, base);
+      final x = row.timeline[0]!.frameId!;
+      // A run showing X alone, off a board that carries Y as well.
+      final joins = drawingsHeldUnderTheNamesOf(row, (
+        clip: TimelineClipRow.untimed(row.timeline[0]!),
+        cels: row.frames,
+      ));
+      expect(row.frames, hasLength(2), reason: '⛔전제: X and Y');
+      expect(joins, {x: x});
+    });
+
+    test('a row that takes no new drawing takes no linked paste either — a '
+        'reference row\'s picture comes from the library', () {
+      final (:s, :base, mirror: _, :other) = baseMirrorAndAnEmptyRow();
+      copyTheRunOf(s, base);
+      s.repository.updateLayer(
+        layerId: other,
+        update: (layer) => layer.copyWith(
+          mediaReference: MediaReference(assetPath: 'media/a.png'),
+        ),
+      );
+
+      standOn(s, other, 0);
+      expect(rowOf(s, other).mediaReference, isNotNull, reason: '⛔전제');
+      expect(clipboardOf(s).canPasteLinkedFrameAtCurrentFrame, isFalse);
+      expect(clipboardOf(s).canPasteIndependentFrameAtCurrentFrame, isFalse);
     });
 
     test('an SE row\'s copy links nowhere (F-115)', () {
