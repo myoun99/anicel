@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../services/font_library_service.dart';
 import '../services/persistence/failed_save_copies.dart';
 import '../services/persistence/media_staging_store.dart';
 import '../services/persistence/open_project_file.dart';
@@ -179,6 +180,7 @@ class EditorSessionManager extends ChangeNotifier
     EditorAppSettings? appSettings,
     AudioConformStore? audioConformStore,
     MediaStagingStore? mediaStagingStore,
+    FontLibraryService? fontLibrary,
     ImageCache? frameworkImageCache,
     FailedSaveCopies? failedSaveCopies,
     AppClipboard? appClipboard,
@@ -186,6 +188,7 @@ class EditorSessionManager extends ChangeNotifier
   }) : editingSession = EditingSessionState.forProject(initialProject),
        _injectedAudioConformStore = audioConformStore,
        _injectedMediaStagingStore = mediaStagingStore,
+       _injectedFontLibrary = fontLibrary,
        _frameworkImageCache = frameworkImageCache,
        failedSaveCopies = failedSaveCopies ?? FailedSaveCopies(),
        _appClipboard = appClipboard ?? AppClipboard(),
@@ -1368,6 +1371,17 @@ class EditorSessionManager extends ChangeNotifier
   /// never decode real files.
   final AudioConformStore? _injectedAudioConformStore;
   final MediaStagingStore? _injectedMediaStagingStore;
+  final FontLibraryService? _injectedFontLibrary;
+
+  /// The fonts a person brought to this device (R9-rest) — asked, at a save
+  /// and whenever a font this project carries is read, where the file the
+  /// project registered is kept (`ProjectFile.fontsToStore`).
+  ///
+  /// The shell hands every open project the library its font list is read
+  /// from. A session built without one reads the app's own folder — which
+  /// under a test is a sandbox (`FontLibraryService.defaultFontDirectoryPath`).
+  late final FontLibraryService fontLibrary =
+      _injectedFontLibrary ?? FontLibraryService();
 
   /// [CacheBudgetLine.imageCache]'s holder: the framework's image cache,
   /// which exists only once a binding does. The screen hands it in. A plain
@@ -3197,6 +3211,9 @@ class EditorSessionManager extends ChangeNotifier
   late final ProjectFile projectFile = ProjectFile(
     project: this,
     staging: mediaStagingStore,
+    // Asked when a font is looked for, and not before: a session that
+    // carries none never builds the library.
+    deviceFontFile: (file) => fontLibrary.pathOfFontHeld(file),
     openElsewhere: _fileIsOpenElsewhere,
   );
 

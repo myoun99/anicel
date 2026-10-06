@@ -237,7 +237,12 @@ void main() {
     final path = '${folder.path.replaceAll(r'\', '/')}/Taken.anicel';
     final projects = await pumpApp(tester);
     final first = projects.active;
-    first.projectFile.bindToSavedFile(path, mediaInFile: {}, cleanAsOf: 0);
+    first.projectFile.bindToSavedFile(
+      path,
+      mediaInFile: {},
+      fontsInFile: {},
+      cleanAsOf: 0,
+    );
     await newProject(tester);
     final second = projects.active;
     FolderPicker.debugSaveDestinationPicker = ({
@@ -795,6 +800,7 @@ void main() {
     projects.active.projectFile.bindToSavedFile(
       '${folder.path.replaceAll(r'\', '/')}/Gone.anicel',
       mediaInFile: {},
+      fontsInFile: {},
       cleanAsOf: 0,
     );
     await newProject(tester);

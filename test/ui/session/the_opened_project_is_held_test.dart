@@ -135,7 +135,11 @@ void main() {
 
     session.projectDoor.adoptPlacedArchive(
       placed,
-      staged: (mediaInFile: const <String>{}, cleanAsOf: 0),
+      staged: (
+        mediaInFile: const <String>{},
+        fontsInFile: const <String>{},
+        cleanAsOf: 0,
+      ),
     );
     expect(
       OpenProjectFile.instance.isHolding(first),

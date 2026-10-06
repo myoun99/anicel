@@ -465,6 +465,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       frameworkImageCache: PaintingBinding.instance.imageCache,
       failedSaveCopies: _failedSaveCopies,
       appClipboard: _clipboard,
+      // The library the workspace lists its fonts from, so a project is
+      // saved with the files a person sees in that list.
+      fontLibrary: widget.fontLibraryService,
       // ONE FILE, ONE WRITER — see [ProjectFile.isOpenElsewhere].
       fileIsOpenElsewhere: (path) {
         final bound = _projects.boundTo(path);

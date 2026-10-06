@@ -111,6 +111,7 @@ void main() {
                   report(1);
                   return (
                     mediaInFile: const <String>{},
+                    fontsInFile: const <String>{},
                     cleanAsOf: session.projectFile.editCount,
                   );
                 },

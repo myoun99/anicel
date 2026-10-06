@@ -18,6 +18,8 @@ import '../../models/project.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ConformCacheLayout;
 import '../../services/media/media_byte_source.dart';
+import '../../services/media/project_font_sources.dart'
+    show ProjectFontsToStore, projectFontSources;
 import '../../services/media/project_media_sources.dart'
     show
         MediaBytesAt,
@@ -49,13 +51,23 @@ class ProjectFile {
   ProjectFile({
     required ProjectAccess project,
     required MediaStagingStore staging,
+    String? Function(String file)? deviceFontFile,
     bool Function(String path)? openElsewhere,
   }) : _project = project,
        _staging = staging,
+       _deviceFontFile = deviceFontFile ?? _onNoDevice,
        _openElsewhere = openElsewhere;
 
   final ProjectAccess _project;
   final MediaStagingStore _staging;
+
+  /// Where this device's font library keeps the file called [file], if it
+  /// keeps one (`FontLibraryService.pathOfFontHeld`) — the last place a
+  /// font this project carries is looked for (`storedFontBytesFor`). A
+  /// record built without one is on a device that was brought no font.
+  final String? Function(String file) _deviceFontFile;
+
+  static String? _onNoDevice(String file) => null;
   final bool Function(String path)? _openElsewhere;
 
   /// Whether ANOTHER open project is bound to the file at [path] (I-7).
@@ -86,6 +98,16 @@ class ProjectFile {
   /// (card `recarry-after-remove-reads-the-old`). A carry is asked for by
   /// its own name ([mediaEntryHeld]).
   Set<String> _mediaInFile = const {};
+
+  /// The font entries the bound file was last written or opened with, by
+  /// entry name (`projectFontEntryNames`).
+  ///
+  /// What a save asks to learn which fonts it is about to take OUT of the
+  /// file (`fontsLeftBehind`): the ones here that the project's list no
+  /// longer names. Remembered, as [_mediaInFile] is and for its reason — a
+  /// save that takes nothing out must not open the archive's directory to
+  /// find that out, and almost every save takes nothing out.
+  Set<String> _fontsInFile = const {};
 
   /// The carry the pool's [poolPath] asset is right now, or null when the
   /// pool points at the file or names nothing there — the first half of
@@ -281,6 +303,9 @@ class ProjectFile {
   /// The media entries the bound file holds ([_mediaInFile]) — what the
   /// save's walk tells a loss from an asset that was never saved.
   Set<String> get mediaInFile => Set<String>.unmodifiable(_mediaInFile);
+
+  /// The font entries the bound file holds ([_fontsInFile]).
+  Set<String> get fontsInFile => Set<String>.unmodifiable(_fontsInFile);
 
   /// Whether the PROJECT has [poolPath]'s bytes, wherever the file on disk
   /// has got to.
@@ -630,6 +655,21 @@ class ProjectFile {
     );
   }
 
+  /// What a save of [project] should do about the fonts registered with it
+  /// — the entry names it may hold, and where the bytes of each one that
+  /// can be read are right now: the bound file, this run's room, this
+  /// device's library (`storedFontBytesFor`).
+  ///
+  /// [project] is the one the save is writing (`ProjectFileDoor._carryFor`
+  /// reads it once, for every road). ⚠️Resolved fresh at every save, like
+  /// the media sources and the conforms beside it.
+  ProjectFontsToStore fontsToStore(Project project) => projectFontSources(
+    project: project,
+    projectFilePath: _projectFilePath,
+    staging: _staging,
+    deviceFontFile: _deviceFontFile,
+  );
+
   /// The conform this project CARRIES for [sourcePath], as a range inside
   /// the `.anicel`, or null when it carries none.
   ///
@@ -838,7 +878,8 @@ class ProjectFile {
   /// way out; nothing may save it again.
   bool _discardedUnsavedWork = false;
 
-  /// [filePath] IS the project now, holding the media entries [mediaInFile]
+  /// [filePath] IS the project now, holding the media entries [mediaInFile],
+  /// the font entries [fontsInFile] ([_fontsInFile])
   /// and every edit up to [cleanAsOf] — the tail BOTH writers share: the
   /// direct save and the picker-placed archive that is adopted without a
   /// second write.
@@ -854,9 +895,11 @@ class ProjectFile {
   void bindToSavedFile(
     String filePath, {
     required Set<String> mediaInFile,
+    required Set<String> fontsInFile,
     required int cleanAsOf,
   }) {
     _mediaInFile = mediaInFile;
+    _fontsInFile = fontsInFile;
     _projectFilePath = filePath;
     _editsInFile = cleanAsOf;
     _forgetFailedCopy();
@@ -877,7 +920,8 @@ class ProjectFile {
   }
 
   /// The session is bound to [filePath], which was just OPENED: it holds
-  /// the media entries [mediaInFile], and [unsaved] says whether memory
+  /// the media entries [mediaInFile] and the font entries [fontsInFile],
+  /// and [unsaved] says whether memory
   /// already differs from the file.
   ///
   /// ⚠️Called AFTER the load has cleared the history. `clear()` runs the
@@ -886,9 +930,11 @@ class ProjectFile {
   void bindToOpenedFile(
     String filePath, {
     required Set<String> mediaInFile,
+    required Set<String> fontsInFile,
     required bool unsaved,
   }) {
     _mediaInFile = mediaInFile;
+    _fontsInFile = fontsInFile;
     _projectFilePath = filePath;
     _fileGeneration += 1;
     invalidateConformStoredBytes();

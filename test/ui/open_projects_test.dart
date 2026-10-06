@@ -33,7 +33,12 @@ void main() {
 
   /// Binds [session] to [path] the way a save does — the record only.
   void bind(EditorSessionManager session, String path) =>
-      session.projectFile.bindToSavedFile(path, mediaInFile: {}, cleanAsOf: 0);
+      session.projectFile.bindToSavedFile(
+        path,
+        mediaInFile: {},
+        fontsInFile: {},
+        cleanAsOf: 0,
+      );
 
   test('opening adds a tab AFTER the others and shows it — the tab that '
       'was shown stays open behind it', () {

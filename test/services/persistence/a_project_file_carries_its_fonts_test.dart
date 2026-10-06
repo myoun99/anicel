@@ -22,6 +22,7 @@ import 'package:anicel/src/services/media/project_media_sources.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
+import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
@@ -243,7 +244,8 @@ void main() {
         projectFontSources(
           project: project,
           projectFilePath: path,
-          deviceFontFileFor: (face) => null,
+          staging: null,
+          deviceFontFile: (file) => null,
         );
 
     test('🚨⛔a save that changes one drawing keeps the font — the journey '
@@ -294,6 +296,59 @@ void main() {
       final entry = entryOf(copy, sansName);
       expect(entry, isNotNull);
       expect(bytesOf(copy, entry!), List<int>.filled(30000, 7));
+    });
+
+    test('🚨a save that PACKS the file moves the font with the rest: its '
+        'bytes are whole where they land, and found there', () async {
+      final s = saving();
+      final project = carrying([registered(sansName)]);
+      await s.service.save(
+        project: project,
+        brushFrameStore: s.store,
+        filePath: s.path,
+        fonts: fromDevice({sansName: deviceFont('probe.ttf', 30000, 7)}),
+      );
+      // A hole in front of the font, as a deleted medium leaves: the next
+      // save is past the garbage ratio, so it packs in place.
+      appendAnicelEntries(
+        path: s.path,
+        newEntries: {'junk.bin': Uint8List(64 * 1024)},
+      );
+      appendAnicelEntries(
+        path: s.path,
+        newEntries: {
+          anicelFontEntryName(sansName): bytesOf(
+            s.path,
+            entryOf(s.path, sansName)!,
+          ),
+        },
+        removeNames: const {'junk.bin'},
+      );
+      final before = File(s.path).lengthSync();
+      final was = entryOf(s.path, sansName)!.dataOffset;
+
+      s.store.storeBakedSurface(key('f1'), inked(5));
+      await s.service.save(
+        project: project,
+        brushFrameStore: s.store,
+        filePath: s.path,
+        fonts: heldInTheFile(s.path, project),
+      );
+
+      expect(
+        File(s.path).lengthSync(),
+        lessThan(before - 32 * 1024),
+        reason: '⛔fixture: this save packed the file',
+      );
+      final entry = entryOf(s.path, sansName)!;
+      expect(entry.dataOffset, lessThan(was), reason: '⛔fixture: it moved');
+      expect(bytesOf(s.path, entry), List<int>.filled(30000, 7));
+      expect(
+        heldInTheFile(s.path, project)
+            .entries[anicelFontEntryName(sansName)]!
+            .readSync(),
+        List<int>.filled(30000, 7),
+      );
     });
 
     test('🚨a whole rewrite of the SAME file keeps it too', () async {
@@ -396,7 +451,8 @@ void main() {
       final sources = projectFontSources(
         project: project,
         projectFilePath: null,
-        deviceFontFileFor: (face) => null,
+        staging: null,
+        deviceFontFile: (file) => null,
       );
 
       expect(sources.held, {anicelFontEntryName(sansName)});
@@ -405,35 +461,45 @@ void main() {
   });
 
   group('where a font\'s bytes are read from', () {
+    /// This run's room, with [bytes] kept in it under [name] — as a save
+    /// that took the font out of its file leaves them.
+    MediaStagingStore roomKeeping(String name, List<int> bytes) {
+      final room = '${directory.path.replaceAll('\\', '/')}/Room';
+      File('$room/$name')
+        ..createSync(recursive: true)
+        ..writeAsBytesSync(bytes, flush: true);
+      return MediaStagingStore(directoryPath: room);
+    }
+
     test('a project that carries none is handed nothing to hold', () {
       final sources = projectFontSources(
         project: carrying(const []),
         projectFilePath: null,
-        deviceFontFileFor: (face) => fail('nothing to ask about'),
+        staging: null,
+        deviceFontFile: (file) => fail('nothing to ask about'),
       );
 
       expect(sources.held, isEmpty);
       expect(sources.entries, isEmpty);
     });
 
-    test('the device\'s copy of the face, where the file has none yet — '
-        'asked by the face the font is', () {
+    test('the file this device\'s library keeps, where the project file '
+        'has none yet — asked by the NAME the font is carried under', () {
       final sans = deviceFont('sans.ttf', 500, 7);
       final serif = deviceFont('serif.otf', 600, 9);
-      final sansFont = registered(sansName);
-      final serifFont = registered(serifName, family: 'Probe Serif');
-      final asked = <FontFaceFacts>[];
+      final asked = <String>[];
 
       final sources = projectFontSources(
-        project: carrying([sansFont, serifFont]),
+        project: carrying([registered(sansName), registered(serifName)]),
         projectFilePath: null,
-        deviceFontFileFor: (face) {
-          asked.add(face);
-          return face == serifFont.facts ? serif : sans;
+        staging: null,
+        deviceFontFile: (file) {
+          asked.add(file);
+          return file == serifName ? serif : sans;
         },
       );
 
-      expect(asked, [sansFont.facts, serifFont.facts]);
+      expect(asked, [sansName, serifName]);
       expect(sources.held, {
         anicelFontEntryName(sansName),
         anicelFontEntryName(serifName),
@@ -445,19 +511,8 @@ void main() {
       expect(fileOf(serifName), serif);
     });
 
-    test('a device copy that is named and is not THERE is no copy', () {
-      final sources = projectFontSources(
-        project: carrying([registered(sansName)]),
-        projectFilePath: null,
-        deviceFontFileFor: (face) => '${directory.path}/gone.ttf',
-      );
-
-      expect(sources.held, {anicelFontEntryName(sansName)});
-      expect(sources.entries, isEmpty);
-    });
-
-    test('🚨the FILE\'s own entry before the device\'s copy: once written, '
-        'the entry is what the name means', () async {
+    test('🚨the FILE\'s own entry before any other copy: once written, the '
+        'entry is what the name means', () async {
       final s = saving();
       final project = carrying([registered(sansName)]);
       await s.service.save(
@@ -466,18 +521,243 @@ void main() {
         filePath: s.path,
         fonts: fromDevice({sansName: deviceFont('first.ttf', 30000, 7)}),
       );
-      final other = deviceFont('second.ttf', 31000, 9);
 
       final sources = projectFontSources(
         project: project,
         projectFilePath: s.path,
-        deviceFontFileFor: (face) => other,
+        staging: roomKeeping(sansName, List.filled(40, 3)),
+        deviceFontFile: (file) => deviceFont('second.ttf', 31000, 9),
       );
 
       final source = sources.entries[anicelFontEntryName(sansName)];
       expect(source, isA<MediaArchiveBytes>());
       expect(source!.lengthSync(), 30000);
       expect(source.readSync().first, 7);
+    });
+
+    test('🚨the copy this run\'s ROOM keeps before the device\'s: a font a '
+        'save took out of the file, back in the list after an undo, is '
+        'read from where that save left it', () {
+      final sources = projectFontSources(
+        project: carrying([registered(sansName)]),
+        projectFilePath: null,
+        staging: roomKeeping(sansName, List.filled(40, 3)),
+        deviceFontFile: (file) => deviceFont('second.ttf', 31000, 9),
+      );
+
+      final source = sources.entries[anicelFontEntryName(sansName)];
+      expect(source, isA<MediaAppFileBytes>());
+      expect(source!.storedIsFramed, isFalse);
+      expect(source.readSync(), List.filled(40, 3));
+    });
+
+    group('🚨a project is a file from anywhere: a font it names by anything '
+        'but ONE NAME of the library\'s', () {
+      const unsafe = [
+        '../../outside-1.ttf',
+        r'..\outside-1.ttf',
+        'C:/Windows/win.ini',
+        'folder/ab12-cd34-font.ttf',
+        'nul.ttf',
+        'ab12-cd34-font.exe',
+        '',
+      ];
+
+      test('is not held, not looked for anywhere, and has no bytes to '
+          'write — the others of the project are unaffected', () {
+        final asked = <String>[];
+
+        final sources = projectFontSources(
+          project: carrying([
+            for (final name in unsafe) registered(name),
+            registered(sansName),
+          ]),
+          projectFilePath: null,
+          staging: roomKeeping(sansName, List.filled(40, 3)),
+          deviceFontFile: (file) {
+            asked.add(file);
+            return null;
+          },
+        );
+
+        expect(sources.held, {anicelFontEntryName(sansName)});
+        expect(sources.entries.keys, [anicelFontEntryName(sansName)]);
+        expect(asked, isEmpty, reason: 'the room answered for the one');
+        expect(
+          projectFontEntryNames(
+            carrying([for (final name in unsafe) registered(name)]),
+          ),
+          isEmpty,
+        );
+      });
+
+      test('⛔is not read out of the project file either, though an entry '
+          'by that name is there', () async {
+        final s = saving();
+        const name = '../outside-1.ttf';
+        await s.service.save(
+          project: carrying([registered(name)]),
+          brushFrameStore: s.store,
+          filePath: s.path,
+          // A file written by something that is not this app.
+          fonts: ProjectFontsToStore(
+            held: {anicelFontEntryName(name)},
+            entries: {
+              anicelFontEntryName(name): MediaFileBytes(
+                deviceFont('crafted.ttf', 100, 5),
+              ),
+            },
+          ),
+        );
+        final layout = parseAnicelZipLayoutFile(s.path);
+        expect(
+          layout.entryNamed(anicelFontEntryName(name)),
+          isNotNull,
+          reason: '⛔fixture',
+        );
+
+        expect(
+          storedFontBytesFor(
+            name,
+            layout: layout,
+            archivePath: s.path,
+            staging: null,
+            deviceFontFile: (file) => fail('never made a path of'),
+          ),
+          isNull,
+        );
+      });
+    });
+  });
+
+  group('🚨what a save takes OUT of the file goes to the room first', () {
+    /// A project file holding both fonts, and where each entry lies in it.
+    Future<String> fileHoldingBoth() async {
+      final s = saving();
+      await s.service.save(
+        project: carrying([registered(sansName), registered(serifName)]),
+        brushFrameStore: s.store,
+        filePath: s.path,
+        fonts: fromDevice({
+          sansName: deviceFont('sans.ttf', 30000, 7),
+          serifName: deviceFont('serif.otf', 20000, 9),
+        }),
+      );
+      return s.path;
+    }
+
+    final both = {
+      anicelFontEntryName(sansName),
+      anicelFontEntryName(serifName),
+    };
+
+    test('the entries the file was written with that the project no '
+        'longer holds — each under its own name, where it lies now', () async {
+      final path = await fileHoldingBoth();
+      final sans = entryOf(path, sansName)!;
+
+      final left = fontsLeftBehind(
+        projectFilePath: path,
+        fontsInFile: both,
+        held: {anicelFontEntryName(serifName)},
+      );
+
+      expect(left, [
+        (name: sansName, offset: sans.dataOffset, length: sans.length),
+      ]);
+    });
+
+    test('⛔none, of a font the project still holds', () async {
+      final path = await fileHoldingBoth();
+
+      expect(
+        fontsLeftBehind(projectFilePath: path, fontsInFile: both, held: both),
+        isEmpty,
+      );
+    });
+
+    test('none, where the file does not hold what the record says — or '
+        'there is no file to read', () async {
+      final path = await fileHoldingBoth();
+      const never = 'ab12-0000-font-9.ttf';
+
+      expect(
+        fontsLeftBehind(
+          projectFilePath: path,
+          fontsInFile: {anicelFontEntryName(never)},
+          held: const {},
+        ),
+        isEmpty,
+      );
+      expect(
+        fontsLeftBehind(
+          projectFilePath: '${directory.path}/gone.anicel',
+          fontsInFile: both,
+          held: const {},
+        ),
+        isEmpty,
+      );
+      expect(
+        fontsLeftBehind(
+          projectFilePath: null,
+          fontsInFile: both,
+          held: const {},
+        ),
+        isEmpty,
+      );
+    });
+
+    test('🚨⛔never an entry under a name that is not one of the library\'s '
+        '— what comes back is WRITTEN, under that name, into the room', () async {
+      final s = saving();
+      const crafted = [
+        'fonts/../outside-1.ttf',
+        'fonts/nul.ttf',
+        'fonts/ab12-cd34-font.exe',
+        'media/ab12-cd34-font.ttf',
+      ];
+      await s.service.save(
+        project: carrying(const []),
+        brushFrameStore: s.store,
+        filePath: s.path,
+        // A file written by something that is not this app: every one of
+        // these entries is IN it.
+        fonts: ProjectFontsToStore(
+          held: {...crafted},
+          entries: {
+            for (final name in crafted)
+              name: MediaFileBytes(deviceFont('crafted.ttf', 100, 5)),
+          },
+        ),
+      );
+      final layout = parseAnicelZipLayoutFile(s.path);
+      for (final name in crafted) {
+        expect(layout.entryNamed(name), isNotNull, reason: '⛔fixture $name');
+      }
+
+      expect(
+        fontsLeftBehind(
+          projectFilePath: s.path,
+          fontsInFile: {...crafted},
+          held: const {},
+        ),
+        isEmpty,
+      );
+    });
+
+    test('and what a save lets go of in the room afterwards is the fonts it '
+        'had bytes for, by the names the room keeps them under', () {
+      final stored = ProjectFontsToStore(
+        held: {...both, anicelFontEntryName('ab12-0000-font-9.ttf')},
+        entries: {
+          for (final name in both) name: const MediaFileBytes('anywhere'),
+          'fonts/../outside-1.ttf': const MediaFileBytes('anywhere'),
+          'media/ab12-cd34-font.ttf': const MediaFileBytes('anywhere'),
+        },
+      );
+
+      expect(fontNamesStored(stored), unorderedEquals([sansName, serifName]));
+      expect(fontNamesStored(const ProjectFontsToStore.none()), isEmpty);
     });
   });
 

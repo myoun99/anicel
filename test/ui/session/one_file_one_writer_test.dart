@@ -51,7 +51,11 @@ void main() {
     expect(
       () => session.projectDoor.adoptPlacedArchive(
         taken,
-        staged: (mediaInFile: const <String>{}, cleanAsOf: 0),
+        staged: (
+          mediaInFile: const <String>{},
+          fontsInFile: const <String>{},
+          cleanAsOf: 0,
+        ),
       ),
       throwsA(isA<FileOpenInAnotherProject>()),
     );

@@ -293,7 +293,12 @@ void main() {
     expect(file.mediaStoredBytesFor(path), isNotNull, reason: 'the premise');
     // A record that does not list the entry the file holds: the readers
     // then go to the carry's staged copy or its original, never that entry.
-    file.bindToOpenedFile(projectPath, mediaInFile: const {}, unsaved: false);
+    file.bindToOpenedFile(
+      projectPath,
+      mediaInFile: const {},
+      fontsInFile: const {},
+      unsaved: false,
+    );
 
     expect(
       file.mediaStoredBytesFor(path),
