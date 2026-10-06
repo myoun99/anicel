@@ -3,6 +3,7 @@ import 'dart:collection';
 import '../core/collection_equality.dart';
 import 'bitmap_tile.dart';
 import 'canvas_size.dart';
+import 'cel_text.dart';
 import 'pasteboard_bounds.dart';
 import 'placed_tile.dart';
 import 'tile_coord.dart';
@@ -36,16 +37,39 @@ import 'tile_coord.dart';
 /// GIMP uses 128, which is where this landed.
 const int defaultCelTileSize = 128;
 
+/// A cel's PICTURE: its pixels, as tiles — and the texts set above them.
+///
+/// 🚨★★★**THE TEXTS ARE IN THE PICTURE'S OWN VALUE, AND THAT IS THE WHOLE
+/// DESIGN OF THE TEXT TOOL** (유저 2026-10-06, R9-rest: 「주인은 셀임 … 셀의
+/// 그림이랑 정확히 동일. 복사/링크도 같이감」). This is the value the app hands
+/// about as 「a cel's picture」 — what a copy, a paste and an unlink carry
+/// (`carrySurfaces`), what undo puts back (`restoreSurfaceSnapshot`), what a
+/// canvas resize moves (`translateBitmapSurface`), what the store keeps in
+/// its three tiers and counts a revision of. A text that lives here goes
+/// everywhere the picture goes, by every road that already exists. Kept
+/// beside it instead — on the timeline's frame, in a store of its own — each
+/// of those roads would have had to be taught, and the one nobody taught is
+/// a text left behind.
+///
+/// ⚠️[tiles] are the DRAWING alone: what a brush writes, an eraser takes
+/// and a selection lifts. What a cel SHOWS is those with the texts laid over
+/// them (`celSurfaceWithTextsLaid`), and nothing that draws or reads a
+/// picture may take the tiles of a surface that still carries texts.
 class BitmapSurface {
   BitmapSurface({
     required this.canvasSize,
     this.tileSize = defaultCelTileSize,
     Map<TileCoord, BitmapTile> tiles = const {},
-  }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles) {
+    List<CelText> texts = const [],
+  }) : _tiles = Map<TileCoord, BitmapTile>.unmodifiable(tiles),
+       texts = List<CelText>.unmodifiable(texts) {
     _validateTileSize(tileSize);
     _validateCanvasSize(canvasSize);
     for (final entry in _tiles.entries) {
       _validateTileEntry(entry.key, entry.value, this);
+    }
+    for (final text in this.texts) {
+      _validatePlate(text, this);
     }
   }
 
@@ -70,20 +94,66 @@ class BitmapSurface {
   /// ⚠️[tiles] is ADOPTED, not copied: every caller builds it inline and
   /// lets go. That is the second half of the measured cost, and it is only
   /// safe because this constructor is private and no caller keeps the map.
+  ///
+  /// 🚨★★★**[texts] RIDES EVERY DERIVATION.** A commit builds its surface
+  /// through here, and a derivation that let the texts fall would make one
+  /// stroke delete every letter on the cel. It is `required` for that reason
+  /// alone: nobody deriving a surface gets to forget the question.
   BitmapSurface._derived({
     required this.canvasSize,
     required this.tileSize,
     required Map<TileCoord, BitmapTile> tiles,
     required Iterable<PlacedTile> added,
+    required this.texts,
   }) : _tiles = UnmodifiableMapView(tiles) {
     for (final placed in added) {
       _validateTileEntry(placed.coord, placed.tile, this);
     }
   }
 
+  /// [from]'s very tiles under other [texts] — the map itself, not a view
+  /// of it: a text edit changes no pixel of the drawing, and wrapping the
+  /// map once more per edit would make every later read walk the wrappers.
+  BitmapSurface._withTexts(BitmapSurface from, List<CelText> texts)
+    : canvasSize = from.canvasSize,
+      tileSize = from.tileSize,
+      _tiles = from._tiles,
+      texts = List<CelText>.unmodifiable(texts) {
+    for (final text in this.texts) {
+      // A text this surface already carried was checked when it came in.
+      if (!from.texts.any((kept) => identical(kept, text))) {
+        _validatePlate(text, this);
+      }
+    }
+  }
+
   final CanvasSize canvasSize;
   final int tileSize;
   final Map<TileCoord, BitmapTile> _tiles;
+
+  /// The texts set above the drawing, bottom → top — 유저 2026-10-02:
+  /// 「텍스트의 수직축은 해당 레이어의 가장 위임. 새로운 텍스트일수록 위에
+  /// 쌓임. 즉 그림/텍스트/텍스트 이런식」. Read-only.
+  final List<CelText> texts;
+
+  /// This picture with [texts] in place of its own; the drawing is the
+  /// same tiles. The surface itself when [texts] is the list it holds.
+  BitmapSurface withTexts(List<CelText> texts) =>
+      identical(texts, this.texts) ? this : BitmapSurface._withTexts(this, texts);
+
+  /// Whether this picture holds nothing at all — no tile and no text. A
+  /// tile may still be blank; that is [BitmapTile.hasInk]'s question.
+  bool get holdsNothing => _tiles.isEmpty && texts.isEmpty;
+
+  /// How many tiles this picture keeps in memory: the drawing's, and every
+  /// text's plate.
+  int get keptTileCount {
+    var count = _tiles.length;
+    for (final text in texts) {
+      count += text.plate.length;
+    }
+    return count;
+  }
 
   /// The tiles, read-only.
   ///
@@ -214,6 +284,7 @@ class BitmapSurface {
       tileSize: tileSize,
       tiles: updated,
       added: tilesToPut,
+      texts: texts,
     );
   }
 
@@ -256,6 +327,7 @@ class BitmapSurface {
       tileSize: tileSize,
       tiles: updated,
       added: kept,
+      texts: texts,
     );
   }
 
@@ -286,11 +358,13 @@ class BitmapSurface {
     CanvasSize? canvasSize,
     int? tileSize,
     Map<TileCoord, BitmapTile>? tiles,
+    List<CelText>? texts,
   }) {
     return BitmapSurface(
       canvasSize: canvasSize ?? this.canvasSize,
       tileSize: tileSize ?? this.tileSize,
       tiles: tiles ?? _tiles,
+      texts: texts ?? this.texts,
     );
   }
 
@@ -305,6 +379,7 @@ class BitmapSurface {
       for (final entry in _tiles.entries)
         {'coord': entry.key.toJson(), 'tile': entry.value.toJson()},
     ],
+    if (texts.isNotEmpty) 'texts': [for (final text in texts) text.toJson()],
   };
 
   factory BitmapSurface.fromJson(Map<String, dynamic> json) {
@@ -328,6 +403,10 @@ class BitmapSurface {
       // read those old bytes at the wrong stride.
       tileSize: json['tileSize'] as int? ?? 256,
       tiles: tiles,
+      texts: [
+        for (final text in json['texts'] as List? ?? const [])
+          CelText.fromJson(text as Map<String, dynamic>),
+      ],
     );
   }
 
@@ -337,7 +416,8 @@ class BitmapSurface {
       other is BitmapSurface &&
           other.canvasSize == canvasSize &&
           other.tileSize == tileSize &&
-          mapEquals(other._tiles, _tiles);
+          mapEquals(other._tiles, _tiles) &&
+          listEquals(other.texts, texts);
 
   @override
   int get hashCode => Object.hash(
@@ -346,6 +426,7 @@ class BitmapSurface {
     Object.hashAllUnordered(
       _tiles.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),
+    Object.hashAll(texts),
   );
 
   @override
@@ -403,5 +484,15 @@ void _validateTileEntry(TileCoord key, BitmapTile tile, BitmapSurface surface) {
       'tiles',
       'BitmapSurface tile coord must be inside surface tile bounds.',
     );
+  }
+}
+
+/// A text's plate is tiles of ITS SURFACE's grid, so it answers to the law
+/// the drawing's tiles answer to ([_validateTileEntry]) — laid over them
+/// coordinate for coordinate, a plate of another size or off the pasteboard
+/// would have nowhere to land.
+void _validatePlate(CelText text, BitmapSurface surface) {
+  for (final entry in text.plate.entries) {
+    _validateTileEntry(entry.key, entry.value, surface);
   }
 }
