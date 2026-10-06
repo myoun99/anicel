@@ -323,7 +323,13 @@ void main() {
   /// (`_ExportScrubPainter.paint`) went with the bar — the preview's own
   /// transport turns the picture. 🔬The lane's scan against the tabs lane
   /// (`3eebdddec`, at 414) named that one gone and nothing added.
-  const longBodies = 411;
+  ///
+  /// ⚠️411 → 410 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// window without its name bar): `_nameBar` went — the name is a module
+  /// of the settings column and the place is asked when Export is pressed.
+  /// 🔬The lane's scan against its own preview commit (`8743ae700`, at 413)
+  /// named that one gone and nothing added.
+  const longBodies = 410;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
