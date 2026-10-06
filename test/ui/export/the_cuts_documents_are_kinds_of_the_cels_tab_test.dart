@@ -59,7 +59,7 @@ void main() {
       Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 
   /// One cut, 301: a KEY row A with two cels.
-  EditorSessionManager film() => EditorSessionManager(
+  EditorSessionManager film({int duration = 2}) => EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -73,7 +73,7 @@ void main() {
             Cut(
               id: cutId,
               name: '301',
-              duration: 2,
+              duration: duration,
               canvasSize: size,
               layers: [
                 Layer(
@@ -516,6 +516,61 @@ void main() {
       contains('exchangeDigitalTimeSheet'),
     );
     expect(textOf(tester, 'export-status'), 'Exported 3 files.');
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('🚨a timesheet that runs over several pages is a file a PAGE: '
+      'a block each, numbered — turned off one by one, stood on one by one, '
+      'written one by one — and its digital sheet is still ONE file', (
+    tester,
+  ) async {
+    final temp = Directory.systemTemp.createTempSync('qa-cels-sheet-pages');
+    deleteAfterSessionEnds(temp);
+    // 300 frames at 24 a second: three pages of 144.
+    final session = film(duration: 300);
+    addTearDown(session.dispose);
+    final state = await pumpCels(
+      tester,
+      session,
+      spec: const CelsExportSpec(kinds: {ExportCelKind.timesheet}),
+      into: temp,
+    );
+
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [
+      ('1', true),
+      ('2', true),
+      ('3', true),
+    ]);
+    expect(listed(tester), ['_TS301_1.png', '_TS301_2.png', '_TS301_3.png']);
+    expect(count(tester), '3 files');
+
+    // The second page alone goes — its row stays on.
+    await tester.pressInCelsBoard(
+      tester.celsBoardBlock('document-timesheet', 'timesheet-cut-1'),
+    );
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [
+      ('1', true),
+      ('2', false),
+      ('3', true),
+    ]);
+    expect(tester.celsBoardSwitchState('document-timesheet'), BooleanMix.on);
+    expect(count(tester), '2 files');
+
+    // Stood on, the row walks the pages it writes.
+    await press(tester, 'export-cels-stand-document-timesheet');
+    expect(textOf(tester, 'export-transport-line'), '_TS301_1.png · 1 / 2');
+    await press(tester, 'export-cels-next');
+    expect(textOf(tester, 'export-transport-line'), '_TS301_3.png · 2 / 2');
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+    expect(filesWrittenUnder(temp), ['_TS301_1.png', '_TS301_3.png']);
+    expect(textOf(tester, 'export-status'), 'Exported 2 files.');
+
+    // The digital sheet holds every page in its one file.
+    await press(tester, 'export-tsformat-xdts');
+    expect(tester.celsBoardBlocksOf('document-timesheet'), [('301', true)]);
+    expect(listed(tester), ['_TS301.xdts']);
     session.playbackRig.prerenderScheduler.cancel();
   });
 

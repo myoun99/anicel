@@ -871,6 +871,7 @@ class ExportDialogState extends State<ExportDialog> {
       spec: spec,
       overrides: _overrides,
       fileExtension: spec.format.stillFormat.fileExtension,
+      sheetPagesOf: _sheetPagesOf,
     );
     _celPlanCache = (project, spec, plan);
     return plan;
@@ -1585,7 +1586,9 @@ class ExportDialogState extends State<ExportDialog> {
         // included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸 그대로 …
         // A0001.png 이런식으로 확장자까지」) — and one that is no file by its
         // whole name.
-        final name = sheet.fileName.isNotEmpty ? sheet.fileName : sheet.fullName;
+        final name = sheet.fileName.isNotEmpty
+            ? sheet.fileName
+            : sheet.fullName;
         return '$name · ${pages.indexOf(sheet) + 1} / ${pages.length}';
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
