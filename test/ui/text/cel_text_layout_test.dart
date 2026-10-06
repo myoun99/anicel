@@ -268,6 +268,21 @@ void main() {
       expect(first(TextCelAlign.center).left, 5);
       expect(first(TextCelAlign.right).left, 10);
     });
+
+    test('🚨a text SHORTER than its box is still in a box that wide: its '
+        'line stands in the WIDTH as the alignment says, not in its own '
+        'length', () {
+      // 「ab」 is 40 long, in a box of 100.
+      ui.Rect first(TextCelAlign align) {
+        final boxed = set([run('ab')], wrapWidth: 100, align: align);
+        expect(boxed.block, const ui.Rect.fromLTWH(0, 0, 100, 20));
+        return boxed.caretRect(const TextPosition(offset: 0));
+      }
+
+      expect(first(TextCelAlign.left).left, 0);
+      expect(first(TextCelAlign.center).left, 30);
+      expect(first(TextCelAlign.right).left, 60);
+    });
   });
 
   group('runs', () {
