@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
@@ -56,6 +57,129 @@ void main() {
     expect(tester.getSize(find.byType(PillStrip)).width, lessThanOrEqualTo(120));
   });
 
+  /// The width of each pill of [labels], in a strip given [width] of room.
+  Future<Map<String, double>> widthsIn(
+    WidgetTester tester,
+    double width,
+    List<String> labels, {
+    String? tooltipOn,
+  }) async {
+    await pump(
+      tester,
+      width,
+      Align(
+        alignment: Alignment.centerLeft,
+        child: PillStrip(
+          items: [
+            for (final label in labels)
+              PillItem(
+                keyValue: label,
+                label: label,
+                selected: false,
+                tooltip: label == tooltipOn ? 'said on hover' : null,
+                onTap: () {},
+              ),
+          ],
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    return {
+      for (final label in labels)
+        label: tester.getSize(find.byKey(ValueKey<String>(label))).width,
+    };
+  }
+
+  testWidgets('🚨across, a strip that FITS gives every pill its own width — '
+      'a long word beside short ones is not cut to an equal share of the '
+      'room', (tester) async {
+    const labels = ['a', 'b', 'a long word'];
+    final own = await widthsIn(tester, 2000, labels, tooltipOn: 'b');
+    final strip = tester.getSize(find.byType(PillStrip)).width;
+    expect(
+      own['a long word'],
+      greaterThan(strip / 3),
+      reason: 'the fixture: the long pill is wider than a third of the strip',
+    );
+
+    // Exactly the room the strip asks for, and a little more.
+    for (final room in [strip, strip + 20]) {
+      expect(
+        await widthsIn(tester, room, labels, tooltipOn: 'b'),
+        own,
+        reason: 'in $room',
+      );
+    }
+    for (final label in labels) {
+      final word = tester.renderObject<RenderParagraph>(find.text(label));
+      expect(
+        word.size.width,
+        greaterThanOrEqualTo(word.getMaxIntrinsicWidth(double.infinity) - 0.01),
+        reason: '「$label」 is cut short',
+      );
+    }
+    // Side by side, each where the one before it ends — and drawn.
+    Rect at(String label) =>
+        tester.getRect(find.byKey(ValueKey<String>(label)));
+    expect(at('b').left, at('a').right);
+    expect(at('a long word').left, at('b').right);
+    expect(
+      find.byType(PillStrip),
+      paints
+        ..paragraph()
+        ..paragraph()
+        ..paragraph(),
+    );
+  });
+
+  testWidgets('across, a strip that does NOT fit: the short words keep '
+      'their width and the long ones share what is left, evenly — and the '
+      'strip is as wide as its room', (tester) async {
+    const labels = ['a', 'storyboard', 'direction'];
+    final own = await widthsIn(tester, 2000, labels);
+    final strip = tester.getSize(find.byType(PillStrip)).width;
+    final room = strip - 60;
+
+    final given = await widthsIn(tester, room, labels);
+    expect(given['a'], own['a'], reason: 'the short word is whole');
+    expect(given['storyboard'], lessThan(own['storyboard']!));
+    expect(given['direction'], lessThan(own['direction']!));
+    expect(
+      given['storyboard'],
+      closeTo(given['direction']!, 0.01),
+      reason: 'one cap, shared',
+    );
+    expect(
+      tester.getSize(find.byType(PillStrip)).width,
+      closeTo(room, 0.01),
+      reason: 'it gives up no more than it has to',
+    );
+    double sum(Map<String, double> widths) =>
+        widths.values.fold(0.0, (all, width) => all + width);
+    expect(
+      sum(given),
+      closeTo(room - (strip - sum(own)), 0.01),
+      reason: 'the pills fill the strip — and do not run past its outline',
+    );
+  });
+
+  testWidgets('across, a pill a HAIR over its share is kept whole — a word '
+      'does not lose a glyph to save the others half a pixel', (tester) async {
+    const labels = ['ab', 'cd', 'a long long word'];
+    final own = await widthsIn(tester, 2000, labels);
+    final strip = tester.getSize(find.byType(PillStrip)).width;
+    final outline =
+        strip - own.values.fold(0.0, (sum, width) => sum + width);
+    // Once 「ab」 has its width, 「cd」 and the long word have half a pixel
+    // less than two of 「cd」 between them.
+    final room = own['ab']! + 2 * own['cd']! - 1 + outline;
+
+    final given = await widthsIn(tester, room, labels);
+    expect(given['ab'], own['ab']);
+    expect(given['cd'], own['cd'], reason: 'half a pixel over: kept whole');
+    expect(given['a long long word'], closeTo(own['cd']! - 1, 0.01));
+  });
+
   testWidgets('across, the line between two pills runs down the left of the '
       'second', (tester) async {
     await pump(
@@ -72,6 +196,75 @@ void main() {
       BorderStyle.solid,
       BorderStyle.none,
     ));
+  });
+
+  testWidgets('a chosen pill is tinted the accent — or its own tone where it '
+      'has one, word and wash alike; a pill that is not chosen wears '
+      'neither', (tester) async {
+    const tone = Color(0xFFC95C5C);
+    await pump(
+      tester,
+      400,
+      Align(
+        alignment: Alignment.centerLeft,
+        child: PillStrip(
+          items: [
+            const PillItem(keyValue: 'plain', label: 'a', selected: true),
+            const PillItem(
+              keyValue: 'toned',
+              label: 'b',
+              selected: true,
+              tone: tone,
+            ),
+            PillItem(
+              keyValue: 'off',
+              label: 'c',
+              selected: false,
+              tone: tone,
+              onTap: () {},
+            ),
+          ],
+        ),
+      ),
+    );
+    final theme = Theme.of(tester.element(find.byType(PillStrip)));
+    Color? wordOf(String key) => tester
+        .widget<Text>(
+          find.descendant(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(Text),
+          ),
+        )
+        .style!
+        .color;
+    Color? washOf(String key) =>
+        (tester
+                    .widget<Container>(
+                      find
+                          .descendant(
+                            of: find.byKey(ValueKey<String>(key)),
+                            matching: find.byType(Container),
+                          )
+                          .first,
+                    )
+                    .decoration!
+                as BoxDecoration)
+            .color;
+
+    final accent = theme.colorScheme.primary;
+    expect(tone, isNot(accent));
+    expect(
+      (wordOf('plain'), washOf('plain')),
+      (accent, accent.withValues(alpha: 0.14)),
+    );
+    expect(
+      (wordOf('toned'), washOf('toned')),
+      (tone, tone.withValues(alpha: 0.14)),
+    );
+    expect(
+      (wordOf('off'), washOf('off')),
+      (theme.colorScheme.onSurface, null),
+    );
   });
 
   testWidgets('down, each pill spans the strip, and the line between two '

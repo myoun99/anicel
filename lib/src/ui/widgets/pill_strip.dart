@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart';
@@ -15,6 +16,7 @@ class PillItem {
     this.onTap,
     this.tooltip,
     this.otherLabel,
+    this.tone,
   });
 
   /// Tests reach for `ValueKey<String>(keyValue)`, so the key is part of
@@ -22,6 +24,12 @@ class PillItem {
   final String keyValue;
   final String label;
   final bool selected;
+
+  /// What a chosen pill is tinted with, where that is not the app's accent:
+  /// a choice that puts a mark of its own colour somewhere else wears that
+  /// colour, so the two read as one (the export window's laid direction and
+  /// the 「D」 on the drawing). Null — every other pill — is the accent.
+  final Color? tone;
 
   /// Null = offered but refused: the pill keeps its place and loses its
   /// tap (「없다가 생기는 UI 금지」).
@@ -44,9 +52,9 @@ class PillItem {
 /// wears it now (board `pill-group-everywhere`) — ⛔no `SegmentedButton`,
 /// no chip row of its own (`test/architecture/grouped_choices_are_one_pill_strip_test.dart`).
 ///
-/// ⚠️Laid along [axis]. Across, it needs a BOUNDED width: its pills are
-/// [Flexible] so the strip shrinks instead of overflowing a narrow column
-/// — as a child of a `Row`, wrap it in `Flexible` yourself; under `Align`,
+/// ⚠️Laid along [axis]. Across, it needs a BOUNDED width to give width up
+/// in ([_PillRow]): it shrinks instead of overflowing a narrow column — as
+/// a child of a `Row`, wrap it in `Flexible` yourself; under `Align`,
 /// `Wrap` or a `Column` it is fine. Down, the pills stand one per line at
 /// the strip's full width, for answers too long to sit side by side in a
 /// panel's width.
@@ -63,7 +71,9 @@ class PillStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final across = axis == Axis.horizontal;
+    final pills = [
+      for (var i = 0; i < items.length; i += 1) _pill(items[i], first: i == 0),
+    ];
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: ShapeDecoration(
@@ -72,18 +82,14 @@ class PillStrip extends StatelessWidget {
           side: BorderSide(color: theme.dividerColor),
         ),
       ),
-      child: Flex(
-        direction: axis,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < items.length; i += 1)
-            _pill(items[i], first: i == 0, across: across),
-        ],
-      ),
+      // Down, each pill is one line tall at the strip's full width.
+      child: axis == Axis.horizontal
+          ? _PillRow(children: pills)
+          : Column(mainAxisSize: MainAxisSize.min, children: pills),
     );
   }
 
-  Widget _pill(PillItem item, {required bool first, required bool across}) {
+  Widget _pill(PillItem item, {required bool first}) {
     final Widget pill = Pill(
       key: ValueKey<String>(item.keyValue),
       label: item.label,
@@ -92,17 +98,171 @@ class PillStrip extends StatelessWidget {
       onTap: item.onTap,
       leadingHairline: !first,
       axis: axis,
+      tone: item.tone,
     );
     final tooltip = item.tooltip;
-    final shown = tooltip == null
-        ? pill
-        : AppTooltip(message: tooltip, child: pill);
-    // Loose, across: a pill takes its own width while the strip fits, and
-    // gives width up (its label ellipsising) when the column is narrower
-    // than the strip — a strip never overflows its row. Down, each pill
-    // is one line tall.
-    return across ? Flexible(child: shown) : shown;
+    return tooltip == null ? pill : AppTooltip(message: tooltip, child: pill);
   }
+}
+
+/// Pills side by side: each its OWN width while the strip fits the room it
+/// is given — and where it does not, the widest give width up first (their
+/// words ellipsising), down to one cap they share, so a short word is never
+/// cut for a long one. A strip never overflows its row.
+///
+/// ↩️A `Flex` of loose `Flexible`s stood here. It capped every pill at an
+/// EQUAL share of the room whether or not the strip fit, so in a strip of
+/// one long word and three short ones the long one was cut while room stood
+/// empty beside it (found fitting 「디렉션」 beside 「셀」 into the export
+/// window's rules column, 2026-10-06).
+class _PillRow extends MultiChildRenderObjectWidget {
+  const _PillRow({required super.children});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderPillRow();
+}
+
+class _PillRowParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderPillRow extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _PillRowParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _PillRowParentData> {
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _PillRowParentData) {
+      child.parentData = _PillRowParentData();
+    }
+  }
+
+  /// What each pill of [natural] widths is given of [room]: its own while
+  /// they all fit — else the narrowest keep theirs and the rest share what
+  /// is left evenly.
+  static List<double> _sharesOf(List<double> natural, double room) {
+    // A strip that fits to the hair is a strip that fits: a pill short of
+    // its own width by a rounding would wear an ellipsis for it.
+    if (natural.fold(0.0, (sum, width) => sum + width) <= room + 0.01) {
+      return natural;
+    }
+    final narrowestFirst = [for (var i = 0; i < natural.length; i += 1) i]
+      ..sort((a, b) => natural[a].compareTo(natural[b]));
+    final shares = [...natural];
+    var left = room;
+    for (var kept = 0; kept < narrowestFirst.length; kept += 1) {
+      final cap = left / (narrowestFirst.length - kept);
+      if (natural[narrowestFirst[kept]] > cap + _hair) {
+        for (final index in narrowestFirst.skip(kept)) {
+          shares[index] = cap;
+        }
+        break;
+      }
+      left -= natural[narrowestFirst[kept]];
+    }
+    return shares;
+  }
+
+  /// How far past its share a pill may stand and still be kept whole. An
+  /// ellipsis costs a word its last glyph and more: taking it from a pill a
+  /// third of a pixel over would save the others a third of a pixel (「美術」
+  /// read 「美…」 beside two words that were being cut anyway).
+  static const double _hair = 1;
+
+  List<double> _sharesIn(BoxConstraints constraints) => _sharesOf([
+    for (var child = firstChild; child != null; child = childAfter(child))
+      child.getMaxIntrinsicWidth(double.infinity),
+  ], constraints.maxWidth);
+
+  /// The strip's size for [constraints], each pill measured by [layOut] at
+  /// the width it is given.
+  Size _sizeFor(
+    BoxConstraints constraints,
+    Size Function(RenderBox child, BoxConstraints constraints) layOut,
+  ) {
+    final shares = _sharesIn(constraints);
+    var width = 0.0;
+    var height = 0.0;
+    var index = 0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      final size = layOut(
+        child,
+        BoxConstraints(
+          minWidth: shares[index],
+          maxWidth: shares[index],
+          maxHeight: constraints.maxHeight,
+        ),
+      );
+      width += size.width;
+      height = height > size.height ? height : size.height;
+      index += 1;
+    }
+    return constraints.constrain(Size(width, height));
+  }
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      _sizeFor(constraints, (child, given) => child.getDryLayout(given));
+
+  @override
+  void performLayout() {
+    size = _sizeFor(constraints, (child, given) {
+      child.layout(given, parentUsesSize: true);
+      return child.size;
+    });
+    var left = 0.0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      // In the middle of the strip's height, as a row sets its children.
+      (child.parentData! as _PillRowParentData).offset = Offset(
+        left,
+        (size.height - child.size.height) / 2,
+      );
+      left += child.size.width;
+    }
+  }
+
+  double _across(double Function(RenderBox child) widthOf) {
+    var sum = 0.0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      sum += widthOf(child);
+    }
+    return sum;
+  }
+
+  double _tallest(double Function(RenderBox child) heightOf) {
+    var most = 0.0;
+    for (var child = firstChild; child != null; child = childAfter(child)) {
+      final height = heightOf(child);
+      most = most > height ? most : height;
+    }
+    return most;
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      _across((child) => child.getMinIntrinsicWidth(height));
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _across((child) => child.getMaxIntrinsicWidth(height));
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _tallest((child) => child.getMinIntrinsicHeight(double.infinity));
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _tallest((child) => child.getMaxIntrinsicHeight(double.infinity));
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      defaultComputeDistanceToHighestActualBaseline(baseline);
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      defaultHitTestChildren(result, position: position);
+
+  @override
+  void paint(PaintingContext context, Offset offset) =>
+      defaultPaint(context, offset);
 }
 
 /// One drawn segment of a [PillStrip] — the widget a test reaches through
@@ -116,11 +276,16 @@ class Pill extends StatelessWidget {
     required this.leadingHairline,
     this.axis = Axis.horizontal,
     this.otherLabel,
+    this.tone,
   });
 
   final String label;
   final bool selected;
   final VoidCallback? onTap;
+
+  /// The tint of the pill while it is chosen ([PillItem.tone]); null is the
+  /// app's accent.
+  final Color? tone;
 
   /// Every segment but the first draws the hairline that separates it
   /// from the one before — on its left across, on its top down.
@@ -136,7 +301,7 @@ class Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accent = theme.colorScheme.primary;
+    final accent = tone ?? theme.colorScheme.primary;
     Text word(String text, {bool shown = true}) => Text(
       text,
       maxLines: 1,
