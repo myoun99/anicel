@@ -383,6 +383,7 @@ class _FaceRow extends StatelessWidget {
     final strings = AppText.strings;
     final fonts = this.fonts;
     final brought = fonts?.families ?? const <ImportedFontFamily>[];
+    final carried = fonts?.carriedFamilies ?? const <String>[];
     bool isInUse(String? family) => !inUse.mixed && family == inUse.value;
     return [
       PanelFlyoutHeader(
@@ -404,10 +405,12 @@ class _FaceRow extends StatelessWidget {
           selected: isInUse(family),
           onSelected: () => _pick(family),
         ),
-      // The face in use is not on this device: it is named, as the one in
-      // use, and says what that means. There is nothing of it to pick.
+      // The face in use is nobody's — not this device's, not the project's:
+      // it is named, as the one in use, and says what that means. There is
+      // nothing of it to pick.
       if (!inUse.mixed &&
           !CanvasLetterFaces.isAppFace(inUse.value) &&
+          !carried.contains(inUse.value) &&
           !brought.any((family) => family.name == inUse.value))
         PanelFlyoutItem(
           keyValue: 'text-tool-font-${inUse.value}',
@@ -415,7 +418,66 @@ class _FaceRow extends StatelessWidget {
           selected: true,
           warning: strings.textToolFontNotOnThisDevice,
         ),
-      if (brought.isNotEmpty) const PanelFlyoutDivider(),
+      if (fonts != null) ...[
+        ..._ofTheProject(fonts, carried, isInUse),
+        ..._ofTheDevice(fonts, brought, isInUse),
+      ],
+    ];
+  }
+
+  /// The fonts registered with THE PROJECT ON SCREEN, under their own
+  /// heading — none of either, for a project that carries none.
+  ///
+  /// 🗣️유저 2026-10-06: 「뺄때까지 두는게 맞지않나 싶은데. 글꼴을 사실상
+  /// 등록하는거잖아」 — so they are listed as the project's own, and each
+  /// row has the taking of it out.
+  List<PanelFlyoutEntry> _ofTheProject(
+    ImportedFonts fonts,
+    List<String> carried,
+    bool Function(String? family) isInUse,
+  ) {
+    final strings = AppText.strings;
+    return [
+      if (carried.isNotEmpty) ...[
+        const PanelFlyoutDivider(),
+        PanelFlyoutHeader(strings.textToolFontsOfProject),
+      ],
+      for (final family in carried)
+        PanelFlyoutItem(
+          keyValue: 'text-tool-project-font-$family',
+          label: family,
+          selected: isInUse(family),
+          // Registered, and its bytes are nowhere this device can read: it
+          // is the project's all the same, and says why its letters show
+          // in another face.
+          warning: CanvasLetterFaces.current.holds(family)
+              ? null
+              : strings.textToolFontNotOnThisDevice,
+          onSelected: () => _pick(family),
+          action: PanelFlyoutRowAction(
+            keyValue: 'text-tool-project-font-$family-take-out',
+            icon: Icons.remove,
+            tooltip: strings.textToolFontTakeOut,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => fonts.takeOutOfProject(family),
+          ),
+        ),
+    ];
+  }
+
+  /// The fonts THIS DEVICE was brought, under their own heading — none of
+  /// either, on a device that was brought none.
+  List<PanelFlyoutEntry> _ofTheDevice(
+    ImportedFonts fonts,
+    List<ImportedFontFamily> brought,
+    bool Function(String? family) isInUse,
+  ) {
+    final strings = AppText.strings;
+    return [
+      if (brought.isNotEmpty) ...[
+        const PanelFlyoutDivider(),
+        PanelFlyoutHeader(strings.textToolFontsOfDevice),
+      ],
       for (final family in brought)
         PanelFlyoutItem(
           keyValue: 'text-tool-font-${family.name}',
@@ -430,7 +492,7 @@ class _FaceRow extends StatelessWidget {
             icon: Icons.delete_outline,
             tooltip: strings.textToolFontDelete,
             does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => unawaited(fonts!.delete(family.name)),
+            onPressed: () => unawaited(fonts.delete(family.name)),
           ),
         ),
     ];

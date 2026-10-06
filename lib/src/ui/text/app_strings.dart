@@ -1426,6 +1426,13 @@ enum AppStrings {
   String get textToolFontImport => _s('textToolFontImport');
   String get textToolFontDelete => _s('textToolFontDelete');
 
+  /// The two groups of the list of faces beside the app's own — the fonts
+  /// the project on screen carries, and the ones this device was brought —
+  /// and the taking of a font out of the project.
+  String get textToolFontsOfProject => _s('textToolFontsOfProject');
+  String get textToolFontsOfDevice => _s('textToolFontsOfDevice');
+  String get textToolFontTakeOut => _s('textToolFontTakeOut');
+
   /// ⚠️WARNINGS, written at the face they are about (유저 2026-10-06: 「이
   /// 글꼴은 편집하는 문서에 넣도록 허용되지않아서 다른 기기에서 열면 바뀐다
   /// 이런식으로 적어두자」): a face its maker does not let ride in a project,
@@ -2497,6 +2504,9 @@ enum AppStrings {
     'textToolBackground': 'Background',
     'textToolFontImport': 'Import a font file',
     'textToolFontDelete': 'Delete font',
+    'textToolFontsOfProject': 'Fonts in this project',
+    'textToolFontsOfDevice': 'Fonts on this device',
+    'textToolFontTakeOut': 'Take out of the project',
     'textToolFontStaysOnThisDevice':
         'This font may not be put inside a document that is edited, so it '
         'changes when opened on another device.',
@@ -3757,6 +3767,9 @@ enum AppStrings {
     'textToolBackground': '背景',
     'textToolFontImport': 'フォントファイルを読み込み',
     'textToolFontDelete': 'フォントを削除',
+    'textToolFontsOfProject': 'このプロジェクトのフォント',
+    'textToolFontsOfDevice': 'このデバイスのフォント',
+    'textToolFontTakeOut': 'プロジェクトから外す',
     'textToolFontStaysOnThisDevice':
         'このフォントは編集する文書への埋め込みが許可されていないため、'
         '別の端末で開くと別のフォントになります。',
@@ -5113,6 +5126,9 @@ enum AppStrings {
     'textToolBackground': '배경',
     'textToolFontImport': '글꼴 파일 가져오기',
     'textToolFontDelete': '글꼴 삭제',
+    'textToolFontsOfProject': '이 프로젝트의 글꼴',
+    'textToolFontsOfDevice': '이 기기의 글꼴',
+    'textToolFontTakeOut': '프로젝트에서 빼기',
     'textToolFontStaysOnThisDevice':
         '이 글꼴은 편집하는 문서에 넣도록 허용되지 않아서 다른 기기에서 열면 바뀝니다.',
     'textToolFontNotOnThisDevice': '이 기기에 없는 글꼴이라 다른 글꼴로 보입니다.',
@@ -6560,6 +6576,9 @@ enum AppStrings {
     'textToolBackground': 'Fond',
     'textToolFontImport': 'Importer un fichier de police',
     'textToolFontDelete': 'Supprimer la police',
+    'textToolFontsOfProject': 'Polices de ce projet',
+    'textToolFontsOfDevice': 'Polices de cet appareil',
+    'textToolFontTakeOut': 'Retirer du projet',
     'textToolFontStaysOnThisDevice':
         'Cette police ne peut pas être intégrée à un document modifiable : '
         "elle changera à l'ouverture sur un autre appareil.",
@@ -7863,6 +7882,9 @@ enum AppStrings {
     'textToolBackground': '背景',
     'textToolFontImport': '导入字体文件',
     'textToolFontDelete': '删除字体',
+    'textToolFontsOfProject': '此项目的字体',
+    'textToolFontsOfDevice': '此设备的字体',
+    'textToolFontTakeOut': '从项目中移除',
     'textToolFontStaysOnThisDevice': '此字体不允许嵌入可编辑的文档，在其他设备上打开时会变成其他字体。',
     'textToolFontNotOnThisDevice': '此设备上没有该字体，因此以其他字体显示。',
     'textToolFontUnreadable': '无法将该文件读取为字体。',

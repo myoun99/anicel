@@ -57,9 +57,13 @@ class FontLibraryInMemory implements FontLibraryService {
 
   static final RegExp _counted = RegExp(r'^font-([0-9]{1,9})\.');
 
-  /// No path: these files are on no disk.
+  /// Where a test put the bytes of a file on a real disk, by the file's
+  /// name — for what reads a font by its PATH (a save, a project taking its
+  /// copy). Empty: these files are on no disk.
+  final Map<String, String> onDisk = {};
+
   @override
-  String? pathOfFontHeld(String file) => null;
+  String? pathOfFontHeld(String file) => onDisk[file];
 
   @override
   String get directoryPath => 'memory://fonts';
@@ -98,5 +102,6 @@ class FontLibraryInMemory implements FontLibraryService {
   @override
   Future<void> deleteFont(String file) async {
     files.remove(file);
+    onDisk.remove(file);
   }
 }

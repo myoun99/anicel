@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/font_face_facts.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/picked_file.dart';
@@ -53,6 +54,7 @@ void main() {
     List<Uint8List> brought = const [],
     FilePicker? picker,
     bool keepsFonts = true,
+    ProjectFontsOnScreen? project,
   }) async {
     final library = FontLibraryInMemory();
     final fonts = ImportedFonts(
@@ -64,6 +66,9 @@ void main() {
     addTearDown(fonts.dispose);
     for (final bytes in brought) {
       expect((await fonts.importBytes(bytes)).refusal, isNull);
+    }
+    if (project != null) {
+      fonts.showCarried(project);
     }
     final hand = textHand(
       bake: bakesAtOnce,
@@ -405,6 +410,163 @@ void main() {
       await openList(tester);
       expect(listed(tester), isNot(contains('Probe Sans')));
       expect(listed(tester), contains('Probe Serif'));
+    });
+  });
+
+  group('🚨the fonts the PROJECT carries (유저 2026-10-06: 「뺄때까지 '
+      '두는게 맞지않나 싶은데. 글꼴을 사실상 등록하는거잖아」)', () {
+    PanelFlyoutItem projectFace(WidgetTester tester, String name) => tester
+        .widget<PopupMenuItem<PanelFlyoutItem>>(row('project-font-$name'))
+        .value!;
+
+    /// A project on screen whose list names [families], the bytes of
+    /// [readable] among them within reach — all of them, unless said — and
+    /// a note of every family taken out of it.
+    ({ProjectFontsOnScreen project, List<String> takenOut}) projectCarrying(
+      List<String> families, {
+      List<String>? readable,
+    }) {
+      final takenOut = <String>[];
+      return (
+        project: (
+          files: () => [
+            for (final family in readable ?? families)
+              (
+                name: 'ab12-cd34-${family.replaceAll(' ', '_')}.ttf',
+                facts: FontFaceFacts(
+                  family: family,
+                  weight: 400,
+                  italic: false,
+                  fsType: 0,
+                ),
+                read: () async => Uint8List(4),
+              ),
+          ],
+          families: () => families,
+          takeOut: takenOut.add,
+        ),
+        takenOut: takenOut,
+      );
+    }
+
+    testWidgets('🚨are listed as ITS OWN — under their own heading, between '
+        'the app\'s faces and this device\'s — each with the taking of it '
+        'out', (tester) async {
+      final carrying = projectCarrying(['Probe Carried']);
+      await pumpFaces(tester, brought: [sans], project: carrying.project);
+
+      await openList(tester);
+
+      expect(listed(tester), [
+        AppTypography.bundledFamily,
+        ...AppTypography.bundledFallback,
+        'Probe Carried',
+        'Probe Sans',
+      ]);
+      expect(find.text(AppText.strings.textToolFontsOfProject), findsOneWidget);
+      expect(find.text(AppText.strings.textToolFontsOfDevice), findsOneWidget);
+      final carried = projectFace(tester, 'Probe Carried');
+      expect(carried.warning, isNull);
+      expect(carried.action!.does, PanelFlyoutActionDoes.deletes);
+      expect(carried.action!.tooltip, AppText.strings.textToolFontTakeOut);
+      expect(row('project-font-Probe Carried-take-out'), findsOneWidget);
+      expect(
+        row('font-Probe Carried-delete'),
+        findsNothing,
+        reason: 'it is not this device\'s to delete',
+      );
+    });
+
+    testWidgets('a project that carries none has no such heading — and the '
+        'device\'s fonts still have theirs', (tester) async {
+      await pumpFaces(
+        tester,
+        brought: [sans],
+        project: projectCarrying(const []).project,
+      );
+
+      await openList(tester);
+
+      expect(find.text(AppText.strings.textToolFontsOfProject), findsNothing);
+      expect(find.text(AppText.strings.textToolFontsOfDevice), findsOneWidget);
+    });
+
+    testWidgets('🚨one picked is the next text\'s face — on a device that '
+        'was never brought it', (tester) async {
+      final (:hand, :fonts, library: _) = await pumpFaces(
+        tester,
+        project: projectCarrying(['Probe Carried']).project,
+      );
+      expect(fonts.families, isEmpty, reason: '⛔fixture');
+
+      await openList(tester);
+      await tester.tap(row('project-font-Probe Carried'));
+      await tester.pumpAndSettle();
+
+      expect(hand.options.value.letters.fontFamily, 'Probe Carried');
+      expect(faceInUse(tester), 'Probe Carried');
+    });
+
+    testWidgets('🚨its 빼기 takes the family out of the PROJECT — and '
+        'nothing off this device, which holds the same family', (tester) async {
+      final carrying = projectCarrying(['Probe Sans']);
+      final (hand: _, :fonts, :library) = await pumpFaces(
+        tester,
+        brought: [sans],
+        project: carrying.project,
+      );
+
+      await openList(tester);
+      await tester.tap(row('project-font-Probe Sans-take-out'));
+      await tester.pumpAndSettle();
+
+      expect(carrying.takenOut, ['Probe Sans']);
+      expect(
+        [for (final family in fonts.families) family.name],
+        ['Probe Sans'],
+      );
+      expect(library.files.values, [sans]);
+    });
+
+    testWidgets('🚨one whose bytes are NOWHERE this device can read is the '
+        'project\'s all the same, and says so at its own row — one this '
+        'device holds too says nothing', (tester) async {
+      await pumpFaces(
+        tester,
+        brought: [sans],
+        project: projectCarrying(
+          ['Dead Sans', 'Probe Sans'],
+          readable: const [],
+        ).project,
+      );
+
+      await openList(tester);
+
+      expect(
+        projectFace(tester, 'Dead Sans').warning,
+        AppText.strings.textToolFontNotOnThisDevice,
+      );
+      expect(projectFace(tester, 'Probe Sans').warning, isNull);
+    });
+
+    testWidgets('a text written in one of them has no stray row of its own: '
+        'its face is the project\'s row, and that is the one marked', (
+      tester,
+    ) async {
+      await pumpFaces(
+        tester,
+        text: said(
+          'ab',
+          const TextLetterStyle(fontSize: 16, fontFamily: 'Probe Carried'),
+        ),
+        project: projectCarrying(['Probe Carried']).project,
+      );
+
+      await openList(tester);
+
+      expect(row('font-Probe Carried'), findsNothing);
+      expect(projectFace(tester, 'Probe Carried').selected, isTrue);
+      expect(faceInUse(tester), 'Probe Carried');
     });
   });
 
