@@ -408,6 +408,7 @@ void main() {
     );
     final paper = paperOf(tester, 'b', 'b-2');
     expect(paper.color, layerMarkColor(key));
+    expect(paper.border, isNull, reason: 'a written block is its paper alone');
     expect(
       paper.borderRadius,
       BorderRadius.all(
