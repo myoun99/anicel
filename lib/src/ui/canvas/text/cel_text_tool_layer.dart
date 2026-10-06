@@ -9,6 +9,7 @@ import '../../../models/canvas_point.dart';
 import '../../../models/cel_text.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
+import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
 import 'cel_text_chrome.dart';
 import 'cel_text_field.dart';
@@ -96,6 +97,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   void initState() {
     super.initState();
     _tool.addListener(_toolChanged);
+    CanvasLetterFaces.changes.addListener(_facesChanged);
     _syncField();
   }
 
@@ -159,6 +161,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   @override
   void dispose() {
     _tool.removeListener(_toolChanged);
+    CanvasLetterFaces.changes.removeListener(_facesChanged);
     _caretBlink?.cancel();
     _caretLit.dispose();
     _fieldFocus.dispose();
@@ -174,6 +177,12 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       setState(_syncField);
     }
   }
+
+  /// The faces letters are set in are others — one arrived in the engine,
+  /// one left the device: which texts the tool can reach, and where their
+  /// boxes stand, is read again, here and by whoever lists them
+  /// ([celTextsInReach]).
+  void _facesChanged() => _tool.celTextsChanged();
 
   /// The keyboard is the text's while its letters are held, and the caret
   /// blinks only then.

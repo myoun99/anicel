@@ -16,7 +16,8 @@ import '../../../services/commands/cel_text_edit_command.dart';
 import '../../../services/history_manager.dart' show HistoryMark;
 import '../../brush/text_tool_options.dart';
 import '../../text/cel_text_bake.dart' show CelTextBaker;
-import '../../text/cel_text_layout.dart' show CelTextBox, celTextBoxOf;
+import '../../text/cel_text_layout.dart'
+    show CelTextBox, celTextAwaitsAFace, celTextBoxOf;
 import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
@@ -151,7 +152,7 @@ class CelTextTool extends ChangeNotifier {
       if (held != null && held.key == key) held.textId,
     };
     return [
-      for (final text in cel.texts)
+      for (final text in celTextsInReach(cel))
         if (!spokenFor.contains(text.id)) celTextBoxOf(text.content),
       for (final session in leaving)
         // A text with no letters is not there, shown or landed.
@@ -602,3 +603,17 @@ class CelTextTool extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// THE TEXTS OF A CEL'S PICTURE THE TOOL CAN REACH NOW, bottom to top: all
+/// of them but the ones written in a face that is still on its way to the
+/// engine ([celTextAwaitsAFace]).
+///
+/// Such a text shows from its baked plate like any other. What the tool
+/// would do with it — draw its box, ask whether a press is inside it, take
+/// it in hand — is measured in its letters, and until its face is here
+/// those would be set in another. So for the tool it is not there yet, in
+/// every place alike: the boxes ([CelTextTool.restingBoxesOn]), a press
+/// (`cel_text_press`), the settings' list ([CelTextList]). Asking is what
+/// sends for the face, and its arrival is told (`CanvasLetterFaces.changes`).
+Iterable<CelText> celTextsInReach(BitmapSurface picture) =>
+    picture.texts.where((text) => !celTextAwaitsAFace(text.content));

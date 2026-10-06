@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -10,6 +13,7 @@ import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -253,6 +257,45 @@ void main() {
       expect(tool.hold, CelTextHold.box, reason: 'a first click only takes');
       expect(begun, isEmpty);
       expect(baker.asked, isEmpty);
+    });
+
+    test('🚨a text written in a face that is still ON ITS WAY is not there '
+        'to take — a press on it is a press on nothing — until the face is '
+        'here', () async {
+      final arrival = Completer<void>();
+      CanvasLetterFaces.current = CanvasLetterFaces(
+        files: (family) async {
+          await arrival.future;
+          return [Uint8List(4)];
+        },
+        register: (bytes, {required engineFamily}) async {},
+      )..setOnDevice({'Probe Sans'});
+      addTearDown(() => CanvasLetterFaces.current = CanvasLetterFaces());
+      final brought = CelTextContent(
+        spans: [
+          CelTextSpan(
+            text: 'ab',
+            style: letters.copyWith(fontFamily: 'Probe Sans'),
+          ),
+        ],
+        anchor: CanvasPoint(x: 8, y: 8),
+      );
+      final (:tool, :scene, baker: _, :begun, traced: _) = table(
+        texts: [carried(4, brought)],
+      );
+
+      final early = press(scene, 12, 12)!;
+      up(scene, early, 12, 12);
+
+      expect(tool.session, isNull);
+      expect(begun, hasLength(1), reason: 'a click on nothing begins a text');
+
+      arrival.complete();
+      await pumpEventQueue();
+      press(scene, 12, 12);
+
+      expect(tool.session!.textId, 4);
+      expect(begun, hasLength(1));
     });
 
     test('🚨where two overlap it takes the one ON TOP — the newest', () {

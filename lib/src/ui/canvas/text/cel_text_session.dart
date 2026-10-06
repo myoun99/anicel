@@ -70,7 +70,17 @@ class CelTextSession extends ChangeNotifier {
        _shown = _shownOf(standing, content, nextLetterStyle),
        // ⚠️A text that is not on the cel yet starts with NO letters — there
        // is then nothing of it to draw, and so nothing to wait for.
-       assert(standing != null || content.isEmpty);
+       assert(standing != null || content.isEmpty) {
+    // A text with no letters is measured by the letter about to be typed,
+    // in whatever face that is. Where that face is still on its way, what
+    // is shown was measured in another, and is set again when it is here.
+    if (content.isEmpty &&
+        celTextFacesArriving(content, nextLetterStyle: nextLetterStyle) !=
+            null) {
+      _stale = true;
+      unawaited(_pump());
+    }
+  }
 
   static CelTextShown _shownOf(
     CelText? standing,
@@ -231,6 +241,17 @@ class CelTextSession extends ChangeNotifier {
       while (!_disposed && (_stale || _wanted != _shown.content)) {
         final content = _wanted;
         final letters = _nextLetterStyle;
+        // Letters are not set — and no plate is made of them — in a face
+        // that is still on its way: they would be set in another, and that
+        // is what would land.
+        final arriving = celTextFacesArriving(
+          content,
+          nextLetterStyle: letters,
+        );
+        if (arriving != null) {
+          await arriving;
+          continue;
+        }
         final layout = layoutCelText(content, nextLetterStyle: letters);
         final Map<TileCoord, BitmapTile> plate;
         try {
@@ -246,31 +267,46 @@ class CelTextSession extends ChangeNotifier {
                 );
         } on Object catch (error) {
           layout.dispose();
-          // The engine made no plate: what is shown is still the last text
-          // it did make, and the want goes back to it rather than be asked
-          // of the engine again and again.
-          _failure = error;
-          _wanted = _shown.content;
-          _stale = false;
+          _refused(error);
           break;
         }
         if (_disposed) {
           layout.dispose();
           return;
         }
-        _failure = null;
-        final before = _shown;
-        _shown = (content: content, layout: layout, plate: plate);
-        _stale = false;
-        before.layout.dispose();
-        notifyListeners();
+        _show((content: content, layout: layout, plate: plate));
       }
     } finally {
       _baking = false;
     }
-    if (_disposed) {
-      return;
+    if (!_disposed) {
+      _makingStopped();
     }
+  }
+
+  /// [made] is what is on screen from here on.
+  void _show(CelTextShown made) {
+    _failure = null;
+    final before = _shown;
+    _shown = made;
+    _stale = false;
+    before.layout.dispose();
+    notifyListeners();
+  }
+
+  /// The engine made no plate: what is shown is still the last text it did
+  /// make, and the want goes back to it rather than be asked of the engine
+  /// again and again.
+  void _refused(Object error) {
+    _failure = error;
+    _wanted = _shown.content;
+    _stale = false;
+  }
+
+  /// Nothing more is being made: whoever waited for the text on screen to
+  /// be the text wanted is answered, where it is, and whoever listens is
+  /// told the making has stopped.
+  void _makingStopped() {
     if (settled) {
       final waiting = List.of(_waiting);
       _waiting.clear();
