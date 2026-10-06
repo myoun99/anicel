@@ -8,21 +8,27 @@ import 'png_srgb.dart';
 /// returning `null` skips the file, e.g. empty cels).
 typedef ExportWriteSummary = ({int written, int processed});
 
+/// The bytes of one image's file, or null to write none.
+typedef ExportImageEncoder = Future<List<int>?> Function(ui.Image image);
+
 /// Streams rendered images to disk — one image rendered, encoded and
 /// released at a time, so a full-resolution sequence never lives in memory
 /// at once.
 class PngSequenceExportService {
   const PngSequenceExportService();
 
-  /// [encode] overrides the file bytes (the JPG path, later PSD); the
-  /// default stays the engine PNG + the sRGB tag. A null encode result
-  /// skips the file like a null render does.
+  /// [encoderFor] names the encoder of each file whose bytes are not the
+  /// default's — the engine PNG + the sRGB tag — (the JPG path, later
+  /// PSD). It is asked a FILE: one run writes files of more than one format
+  /// (the Cels tab's cels beside its sheets and envelopes). A null encoder
+  /// is the default; a null encode RESULT skips the file like a null render
+  /// does.
   Future<ExportWriteSummary> exportImages({
     required int count,
     required Future<ui.Image?> Function(int index) renderImage,
     required String Function(int index) fileNameFor,
     required String directoryPath,
-    Future<List<int>?> Function(ui.Image image)? encode,
+    ExportImageEncoder? Function(int index)? encoderFor,
     void Function(int completed, int total)? onProgress,
     bool Function()? isCancelled,
   }) async {
@@ -36,7 +42,7 @@ class PngSequenceExportService {
       if (image != null) {
         final path =
             '$directoryPath${Platform.pathSeparator}${fileNameFor(index)}';
-        if (await _writeOneImage(image, path, encode)) {
+        if (await _writeOneImage(image, path, encoderFor?.call(index))) {
           written += 1;
         }
       }
@@ -54,7 +60,7 @@ class PngSequenceExportService {
   Future<bool> _writeOneImage(
     ui.Image image,
     String path,
-    Future<List<int>?> Function(ui.Image image)? encode,
+    ExportImageEncoder? encode,
   ) async {
     try {
       final List<int>? fileBytes;

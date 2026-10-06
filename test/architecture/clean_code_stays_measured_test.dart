@@ -301,7 +301,15 @@ void main() {
   /// named parts (`export_cels_board.dart`). 🔬The lane's scan against the
   /// kinds lane (`0079de186`, at 419) named those two gone and nothing
   /// added.
-  const longBodies = 415;
+  ///
+  /// ⚠️415 → 412 on 2026-10-06, lowered as the rule asks (F-289, the
+  /// timesheet and the cut envelope as kinds of the Cels tab): three
+  /// bodies of the export window went with the two tabs — `_envelopeModules`
+  /// (the strata picker and the layered files), and the envelope's and the
+  /// timesheet's arms of `_transportLine` and `_navBar`. 🔬The lane's scan
+  /// against the list lane (`4084bf788`, at 417) named those three gone and
+  /// nothing added.
+  const longBodies = 412;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

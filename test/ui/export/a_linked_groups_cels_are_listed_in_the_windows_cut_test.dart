@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -115,9 +116,7 @@ void main() {
     EditorSessionManager session, {
     required ExportScopeKind scope,
   }) async {
-    AppExport.settings.value = AppExportSettings(
-      lastSpecs: ExportTabSpecs(cels: CelsExportSpec(scope: scope)),
-    );
+    AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));

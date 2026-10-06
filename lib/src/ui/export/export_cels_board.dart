@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../models/frame_id.dart';
+import '../../models/export_cel_kind.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
-import '../../models/layer_id.dart';
+import '../../models/layer_mark.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors, AppShapes;
@@ -21,32 +21,87 @@ import '../widgets/pill_strip.dart';
 import 'export_cel_group_plan.dart';
 import 'export_nav_bar.dart' show ExportStepButton;
 
-/// ONE ROW of the Cels tab's list: a row of the cut the list shows, what
-/// its switch says, whether it folds what is under it, and the drawings
-/// that stand on it.
-class ExportCelsBoardRow {
-  const ExportCelsBoardRow({
-    required this.layer,
-    required this.state,
-    required this.sheets,
-    this.open,
-  });
+/// ONE ROW of the Cels tab's list: what its switch says, whether it folds
+/// what is under it, and the files that stand on it, a block each — a row
+/// of the cut the list shows ([ExportCelsLayerRow]), or one of the cut's
+/// documents ([ExportCelsDocumentRow]).
+sealed class ExportCelsBoardRow {
+  const ExportCelsBoardRow({required this.state, this.open});
 
-  final Layer layer;
-
-  /// On or off — and, for a folder, what the rows under it say together.
+  /// On or off — and, over more than one thing (a folder's rows, the
+  /// documents of a 겸용 group's cuts), what they say together.
   final BooleanMix state;
-
-  /// The drawings that stand on this row, in the order the plan lists them:
-  /// none on a folder, and none on a synced attach row (its drawings follow
-  /// its base's).
-  final List<ExportCelSheet> sheets;
 
   /// Whether what this row holds under it — a folder's rows, a base's
   /// attach rows — is shown; null on a row that holds nothing.
   final bool? open;
 
+  /// Names the row in the list: its widget keys, and where the list stands.
+  String get idValue;
+
+  String get name;
+
+  /// The files that stand on this row, in the order the plan lists them.
+  List<ExportListSheet> get sheets;
+
+  /// The label its blocks are papered in.
+  LayerMark get mark;
+}
+
+/// A row of the cut.
+final class ExportCelsLayerRow extends ExportCelsBoardRow {
+  const ExportCelsLayerRow({
+    required this.layer,
+    required super.state,
+    required this.sheets,
+    super.open,
+  });
+
+  final Layer layer;
+
+  /// The row's drawings: none on a folder, and none on a synced attach row
+  /// (its drawings follow its base's).
+  @override
+  final List<ExportCelSheet> sheets;
+
+  @override
+  String get idValue => layer.id.value;
+
+  @override
+  String get name => layer.name;
+
+  @override
+  LayerMark get mark => layer.mark;
+
   bool get isFolder => layer.kind.groupsLayers;
+}
+
+/// One of the cut's DOCUMENTS the tab writes beside its cels — its
+/// timesheet, its cut envelope — closing the list under the cut's rows
+/// (drawn so in the F-289 mock).
+final class ExportCelsDocumentRow extends ExportCelsBoardRow {
+  const ExportCelsDocumentRow({
+    required this.kind,
+    required this.name,
+    required super.state,
+    required this.sheets,
+  });
+
+  final ExportCelKind kind;
+
+  @override
+  final String name;
+
+  @override
+  final List<ExportDocumentSheet> sheets;
+
+  /// No row of a cut wears this: a layer's id is never spelled so.
+  @override
+  String get idValue => 'document-${kind.jsonValue}';
+
+  /// A document wears no label: its blocks are plain paper.
+  @override
+  LayerMark get mark => LayerMark.none;
 }
 
 /// The Cels tab's list, under its preview (F-289): the rules that pick the
@@ -93,9 +148,10 @@ class ExportCelsBoard extends StatefulWidget {
   /// The cut's stack — a row's nesting depth is read from it.
   final List<Layer> layers;
 
-  /// The row stood on, and the drawing of it the preview shows.
-  final LayerId? standing;
-  final FrameId? shown;
+  /// The row stood on, and the file of it the preview shows
+  /// ([ExportCelsBoardRow.idValue] · [ExportListSheet.idValue]).
+  final String? standing;
+  final String? shown;
 
   /// False while an export runs: nothing here takes a press.
   final bool enabled;
@@ -105,7 +161,7 @@ class ExportCelsBoard extends StatefulWidget {
   final void Function(ExportCelsBoardRow row, bool on) onRowSwitched;
   final ValueChanged<ExportCelsBoardRow> onFolded;
   final ValueChanged<ExportCelsBoardRow> onStoodOn;
-  final ValueChanged<ExportCelSheet> onSheetPressed;
+  final ValueChanged<ExportListSheet> onSheetPressed;
 
   /// The rules column's width.
   static const double rulesWidth = 168;
@@ -283,18 +339,17 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   /// nesting guides, the name and the fold twirl's seat.
   Widget _rail(BuildContext context, ExportCelsBoardRow row, double height) {
     final scheme = Theme.of(context).colorScheme;
-    final layer = row.layer;
     final on = row.state != BooleanMix.off;
     final ink = on
         ? AppColors.text
         : AppColors.text.withValues(alpha: AppColors.offAlpha);
     final line = BorderSide(color: scheme.outlineVariant);
     return Container(
-      key: ValueKey<String>('export-cels-row-${layer.id.value}'),
+      key: ValueKey<String>('export-cels-row-${row.idValue}'),
       height: height,
       // The rail row's own plate: its standing wash, its hairlines.
       decoration: BoxDecoration(
-        color: layer.id == widget.standing
+        color: row.idValue == widget.standing
             ? railSelectedRowColor(scheme)
             : scheme.surface,
         border: Border(bottom: line, right: line),
@@ -303,11 +358,12 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ..._leading(row, ink: ink, lit: on),
-          ?layerRailDepthGuides(
-            Axis.horizontal,
-            widget.layers.ancestryOf(layer.folderId).length,
-            colorScheme: scheme,
-          ),
+          if (row case ExportCelsLayerRow(:final layer))
+            ?layerRailDepthGuides(
+              Axis.horizontal,
+              widget.layers.ancestryOf(layer.folderId).length,
+              colorScheme: scheme,
+            ),
           Expanded(child: _name(context, row, ink)),
           _twirlSeat(row),
         ],
@@ -323,38 +379,53 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     required Color ink,
     required bool lit,
   }) {
-    final layer = row.layer;
-    final idValue = layer.id.value;
-    return layerRailLeadingCells(
-      sectionBand: _switch(row),
-      mark: LayerMarkPlates(mark: layer.mark, isVisible: lit),
-      timesheet: isAttachedLayer(layer)
-          ? LayerAttachArrowCell(
-              keyPrefix: 'export-cels',
-              idValue: idValue,
-              placement: layer.attachedPlacement,
-            )
-          : null,
-      typeButton: IconTheme.merge(
-        data: IconThemeData(color: ink),
-        child: LayerTypeButton(
-          keyPrefix: 'export-cels',
-          idValue: idValue,
-          kind: layer.kind,
-          folderCollapsed: row.open == false,
+    final idValue = row.idValue;
+    Widget kindCell(LayerTypeButton button) =>
+        IconTheme.merge(data: IconThemeData(color: ink), child: button);
+    return switch (row) {
+      ExportCelsLayerRow(:final layer) => layerRailLeadingCells(
+        sectionBand: _switch(row),
+        mark: LayerMarkPlates(mark: layer.mark, isVisible: lit),
+        timesheet: isAttachedLayer(layer)
+            ? LayerAttachArrowCell(
+                keyPrefix: 'export-cels',
+                idValue: idValue,
+                placement: layer.attachedPlacement,
+              )
+            : null,
+        typeButton: kindCell(
+          LayerTypeButton(
+            keyPrefix: 'export-cels',
+            idValue: idValue,
+            kind: layer.kind,
+            folderCollapsed: row.open == false,
+          ),
         ),
       ),
-    );
+      // A document is no layer: its label plate and its sheet slot stand
+      // empty, and its kind cell wears its own panel's icon.
+      ExportCelsDocumentRow(:final kind) => layerRailLeadingCells(
+        sectionBand: _switch(row),
+        typeButton: kindCell(
+          LayerTypeButton(
+            keyPrefix: 'export-cels',
+            idValue: idValue,
+            icon: exportDocumentIcon(kind),
+            semanticLabel: row.name,
+          ),
+        ),
+      ),
+    };
   }
 
   /// The row's name — and, on a row that holds drawings, the press that
   /// stands the list on it.
   Widget _name(BuildContext context, ExportCelsBoardRow row, Color ink) {
-    final idValue = row.layer.id.value;
+    final idValue = row.idValue;
     final name = Align(
       alignment: Alignment.centerLeft,
       child: Text(
-        row.layer.name,
+        row.name,
         key: ValueKey<String>('export-cels-name-$idValue'),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -378,7 +449,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   /// has it (F-29), whether or not the row folds anything.
   Widget _twirlSeat(ExportCelsBoardRow row) {
     final open = row.open;
-    final idValue = row.layer.id.value;
+    final idValue = row.idValue;
     return SizedBox(
       key: ValueKey<String>('export-cels-twirl-seat-$idValue'),
       width: layerLaneToggleSlotWidth,
@@ -392,10 +463,10 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     );
   }
 
-  /// The row's switch: the app's boolean, and over a folder's rows the one
-  /// that can say they disagree.
+  /// The row's switch: the app's boolean — and over more than one thing (a
+  /// folder's rows, a document's files) the one that can say they disagree.
   Widget _switch(ExportCelsBoardRow row) {
-    final idValue = row.layer.id.value;
+    final idValue = row.idValue;
     final pressed = widget.enabled
         ? (bool on) => widget.onRowSwitched(row, on)
         : null;
@@ -404,7 +475,8 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       height: 24,
       iconSize: 14,
     );
-    return row.isFolder
+    final one = row is ExportCelsLayerRow && !row.isFolder;
+    return !one
         ? BooleanMixDotButton(
             keyValue: 'export-cels-switch-$idValue',
             tooltip: AppText.strings.exExport,
@@ -428,7 +500,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
       height: height,
       // The wash the timeline lays under the cells of the row stood on.
       decoration: BoxDecoration(
-        color: row.layer.id == widget.standing
+        color: row.idValue == widget.standing
             ? timelineActiveRowWashColor(colorScheme)
             : null,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
@@ -439,11 +511,13 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
           for (final sheet in row.sheets)
             ExportCelBlock(
               sheet: sheet,
+              rowId: row.idValue,
+              mark: row.mark,
               // The hairline under the row is the row's, not the block's.
               height: height - 1,
               shown:
-                  row.layer.id == widget.standing &&
-                  sheet.frame.id == widget.shown,
+                  row.idValue == widget.standing &&
+                  sheet.idValue == widget.shown,
               onPressed: widget.enabled
                   ? () => widget.onSheetPressed(sheet)
                   : null,
@@ -454,9 +528,17 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   }
 }
 
-/// ONE DRAWING in the list: the timeline's frame block — its row's label
-/// colour for paper, the block's own corner, its word in the block's print
-/// — at one cell's width whatever its length on the timeline.
+/// The icon of one of the cut's documents: its own panel's, as the
+/// workspace's tab wears it.
+IconData exportDocumentIcon(ExportCelKind kind) => switch (kind) {
+  ExportCelKind.envelope => Icons.mail_outline,
+  _ => Icons.table_chart_outlined,
+};
+
+/// ONE FILE in the list — a drawing, a page of a document: the timeline's
+/// frame block — its row's label colour for paper, the block's own corner,
+/// its word in the block's print — at one cell's width whatever its length
+/// on the timeline.
 ///
 /// BRIGHT while its file is written, HOLLOW while it is not; the one the
 /// preview shows wears the accent, and one a direction is laid over wears a
@@ -466,12 +548,19 @@ class ExportCelBlock extends StatelessWidget {
   const ExportCelBlock({
     super.key,
     required this.sheet,
+    required this.rowId,
+    required this.mark,
     required this.height,
     required this.shown,
     required this.onPressed,
   });
 
-  final ExportCelSheet sheet;
+  final ExportListSheet sheet;
+
+  /// The row it stands on ([ExportCelsBoardRow.idValue]), and the label
+  /// that row papers its blocks in.
+  final String rowId;
+  final LayerMark mark;
 
   /// The block's height — its row's, which its corner is cut against.
   final double height;
@@ -485,8 +574,8 @@ class ExportCelBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final written = sheet.written;
-    final idValue = '${sheet.row.id.value}-${sheet.frame.id.value}';
-    final file = sheet.look.fileName;
+    final idValue = '$rowId-${sheet.idValue}';
+    final file = sheet.fileName;
     return AppTooltip(
       message: file.isEmpty ? sheet.fullName : file,
       child: ControlPressClaim(
@@ -506,7 +595,7 @@ class ExportCelBlock extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 _word(context, written),
-                if (sheet.look.overlays.isNotEmpty) _laidMark(idValue, written),
+                if (sheet.laid) _laidMark(idValue, written),
               ],
             ),
           ),
@@ -523,7 +612,7 @@ class ExportCelBlock extends StatelessWidget {
   /// rounded by the block law ([timelineBlockCornerRadiusAt]), as its
   /// selection band and its standing wash are.
   BoxDecoration _paper(bool written) => BoxDecoration(
-    color: written ? layerMarkColor(sheet.row.mark) : null,
+    color: written ? layerMarkColor(mark) : null,
     borderRadius: BorderRadius.all(
       timelineBlockCornerRadiusAt(
         cellExtent: ExportCelsBoard.blockWidth,

@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 
@@ -35,7 +36,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 /// the namer's de-dup suffix rides on it, so re-walking it to fix a list
 /// would rename exported files.
 void main() {
-  setUp(() => AppExport.settings.value = AppExportSettings());
+  setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
   const cutId = CutId('cut');

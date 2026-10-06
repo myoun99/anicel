@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
@@ -44,7 +45,7 @@ import '../../helpers/export_cels_board_probe.dart';
 /// under the preview, the cut's rows as the timeline draws them: a switch on
 /// every row, a block for every drawing.
 void main() {
-  setUp(() => AppExport.settings.value = AppExportSettings());
+  setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
   const key = LayerMark(process: LayerProcess.key);
@@ -270,7 +271,7 @@ void main() {
     expect(tester.celsBoardBlocksOf('c'), [('1', true)]);
 
     // A ×2 + C + D; the paper row is applied, not counted.
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
     // The kinds' defaults: 셀 and 미술. The filters': 기준 and 부속 on, 시트
     // off. And the label reads its own name — nothing has left its rule.
     expect(pill(tester, 'export-cels-kind-cel').selected, isTrue);
@@ -329,7 +330,7 @@ void main() {
 
     await tapKey(tester, 'export-cels-switch-b');
     expect(deltaOf(session)?.layerOverrides[const LayerId('b')], isTrue);
-    expect(celCount(tester), AppText.strings.exCelCount(5));
+    expect(celCount(tester), AppText.strings.exWrittenCount(5));
     expect(tester.celsBoardBlocksOf('b'), [('1', true)]);
     expect(
       textOf(tester, 'export-cels-label-text'),
@@ -342,7 +343,7 @@ void main() {
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
     expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
     expect(pill(tester, 'export-cels-select-sheet').selected, isTrue);
-    expect(celCount(tester), AppText.strings.exCelCount(3));
+    expect(celCount(tester), AppText.strings.exWrittenCount(3));
     expect(
       tester.celsBoardRowIds,
       contains('c'),
@@ -431,12 +432,12 @@ void main() {
       isEmpty,
       reason: 'the cel rows left the list with their kind',
     );
-    expect(celCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exWrittenCount(0));
     expect(deltaOf(session)?.layerOverrides[const LayerId('b')], isTrue);
 
     await tapKey(tester, 'export-cels-kind-cel');
     expect(tester.celsBoardSwitchState('b'), BooleanMix.on);
-    expect(celCount(tester), AppText.strings.exCelCount(5));
+    expect(celCount(tester), AppText.strings.exWrittenCount(5));
   });
 
   testWidgets('the 레이어 pills are filters that STACK: 기준 off leaves the '
@@ -450,11 +451,11 @@ void main() {
     expect(state.debugSpecs.cels.attach, isFalse);
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
     expect(tester.celsBoardSwitchState('a-color'), BooleanMix.off);
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
 
     await tapKey(tester, 'export-cels-select-base');
     expect(state.debugSpecs.cels.base, isFalse);
-    expect(celCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exWrittenCount(0));
 
     // 부속 alone: the colour row rides base A's axis — two cels named by A,
     // their blocks standing on A's row, bright, though A's own switch is
@@ -462,7 +463,7 @@ void main() {
     await tapKey(tester, 'export-cels-select-attach');
     expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
     expect(tester.celsBoardSwitchState('a-color'), BooleanMix.on);
-    expect(celCount(tester), AppText.strings.exCelCount(2));
+    expect(celCount(tester), AppText.strings.exWrittenCount(2));
     expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
     await standOn(tester, 'a');
     expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
@@ -480,7 +481,7 @@ void main() {
     expect(tester.celsBoardRowIds, contains('inst'));
     expect(tester.celsBoardSwitchState('inst'), BooleanMix.on);
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
-    expect(celCount(tester), AppText.strings.exCelCount(5));
+    expect(celCount(tester), AppText.strings.exWrittenCount(5));
     expect(
       tester.celsBoardBlocksOf('inst'),
       [('PAN', true)],
@@ -547,7 +548,7 @@ void main() {
     await tapKey(tester, 'export-cels-switch-c');
     expect(deltaOf(session)?.layerOverrides[const LayerId('c')], isFalse);
     expect(tester.celsBoardSwitchState('f'), BooleanMix.mixed);
-    expect(celCount(tester), AppText.strings.exCelCount(3));
+    expect(celCount(tester), AppText.strings.exWrittenCount(3));
 
     // Mixed → all on: the exception that equals the rule again disappears.
     await tapKey(tester, 'export-cels-switch-f');
@@ -561,12 +562,12 @@ void main() {
       const LayerId('d'): false,
     });
     expect(tester.celsBoardSwitchState('f'), BooleanMix.off);
-    expect(celCount(tester), AppText.strings.exCelCount(2));
+    expect(celCount(tester), AppText.strings.exWrittenCount(2));
 
     // All off → all on.
     await tapKey(tester, 'export-cels-switch-f');
     expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
   });
 
   testWidgets('🗣️a block is the drawing\'s switch: turned off it stays in '
@@ -578,7 +579,7 @@ void main() {
 
     await pressBlock(tester, 'a', 'f1');
     expect(deltaOf(session)?.skippedCels, {ref('a', 'f1')});
-    expect(celCount(tester), AppText.strings.exCelCount(3));
+    expect(celCount(tester), AppText.strings.exWrittenCount(3));
     expect(tester.celsBoardBlocksOf('a'), [('1', false), ('2', true)]);
     // The row is a different question — it stays as it was.
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
@@ -591,7 +592,7 @@ void main() {
     await tapKey(tester, 'export-cels-switch-b');
     await tapKey(tester, 'export-cels-reset');
     expect(deltaOf(session), isNull);
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
     expect(tester.celsBoardSwitchState('b'), BooleanMix.off);
   });
 
@@ -666,7 +667,7 @@ void main() {
       BooleanMix.on,
       reason: 'it still says what the rows it folds say',
     );
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
 
     await tapKey(tester, 'export-cels-twirl-a');
     expect(tester.celsBoardRowIds, isNot(contains('a-color')));
@@ -840,6 +841,9 @@ void main() {
       ExportCelKind.conte: strings.tlKindStoryboard,
       ExportCelKind.art: strings.exArtLabel,
       ExportCelKind.direction: strings.exSelDirection,
+      // A document wears its panel's name.
+      ExportCelKind.timesheet: strings.panelTimesheet,
+      ExportCelKind.envelope: strings.panelEnvelope,
     };
     expect(names.keys, ExportCelKind.values, reason: 'every kind is named');
     expect(names.values.toSet(), hasLength(names.length));
@@ -871,7 +875,7 @@ void main() {
       textOf(tester, 'export-cels-label-text'),
       AppText.strings.tlLayerMarkNone,
     );
-    expect(celCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exWrittenCount(0));
 
     await tapKey(tester, 'export-cels-label-picker');
     await tester.pumpAndSettle();
@@ -912,7 +916,7 @@ void main() {
       AppText.strings.tlLayerTakeNumber(2),
     );
     // Nothing in the cut is a second take.
-    expect(celCount(tester), AppText.strings.exCelCount(0));
+    expect(celCount(tester), AppText.strings.exWrittenCount(0));
 
     await tapKey(tester, 'export-cels-take-picker');
     await tester.pumpAndSettle();
@@ -921,7 +925,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(state.debugSpecs.cels.take, isNull);
-    expect(celCount(tester), AppText.strings.exCelCount(4));
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
   });
 
   testWidgets('내보낼 종류 and 적용 are pills that write the spec', (
@@ -968,6 +972,8 @@ void main() {
         ExportCelKind.conte: '',
         ExportCelKind.art: '_',
         ExportCelKind.direction: '_',
+        ExportCelKind.timesheet: '_',
+        ExportCelKind.envelope: '_',
       },
     );
 

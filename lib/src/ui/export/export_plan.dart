@@ -452,17 +452,43 @@ class ExportCelFileNamer {
     required String cutName,
     required String layerName,
     required String base,
-  }) {
+  }) => _unused(
+    _foldersOf(projectName, cutName, layerName),
+    base,
+    fileExtension,
+  );
+
+  /// A cut's DOCUMENT — its timesheet, its cut envelope — under the same
+  /// rule: behind the project's and the cut's folders (a document is no
+  /// layer's, so the layer's folder is not one of them), with the
+  /// [extension] its own format writes, and never a name a cel of the run
+  /// has taken.
+  String uniqueDocumentName({
+    required String projectName,
+    required String cutName,
+    required String base,
+    required String extension,
+  }) => _unused(_foldersOf(projectName, cutName), base, extension);
+
+  /// The folders the naming rule makes, as the path a file name starts
+  /// with.
+  String _foldersOf(String projectName, String cutName, [String? layerName]) {
     final folder = [
       if (naming.projectFolder) sanitizeExportFileComponent(projectName),
       if (naming.cutFolder) sanitizeExportFileComponent(cutName),
-      if (naming.layerFolder) sanitizeExportFileComponent(layerName),
+      if (naming.layerFolder && layerName != null)
+        sanitizeExportFileComponent(layerName),
     ].join('/');
-    final prefix = folder.isEmpty ? '' : '$folder/';
-    var fileName = '$prefix$base.$fileExtension';
+    return folder.isEmpty ? '' : '$folder/';
+  }
+
+  /// `[folders][base].[extension]`, bumped (`_2`, `_3`…) past every name
+  /// the run has handed out.
+  String _unused(String folders, String base, String extension) {
+    var fileName = '$folders$base.$extension';
     var bump = 2;
     while (!_used.add(fileName)) {
-      fileName = '$prefix${base}_$bump.$fileExtension';
+      fileName = '$folders${base}_$bump.$extension';
       bump += 1;
     }
     return fileName;

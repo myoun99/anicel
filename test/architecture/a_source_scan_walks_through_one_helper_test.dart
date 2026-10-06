@@ -69,19 +69,13 @@ const _walksThatAreNotSourceScans = <String, String>{
   'test/architecture/the_import_graph_is_one_law_test.dart':
       'a FIXTURE inside a string: the text another scan is shown, not a '
       'walk this test makes',
+  'test/helpers/files_written_under.dart':
+      'THE walk of an OUTPUT folder — the files a run wrote, of any kind, '
+      'for every test that reads one (five spelled it for themselves)',
   'test/services/a_save_does_not_take_the_undo_with_it_test.dart':
       'walks the SAVE folder a run wrote — files of any kind, no Dart',
   'test/services/persistence/move_into_folder_test.dart':
       'walks the folder a move filled — files of any kind, no Dart',
-  'test/ui/export/export_dialog_queue_test.dart':
-      'walks the EXPORT output folder a run wrote — images, not Dart',
-  'test/ui/export/export_dialog_test.dart':
-      'walks the EXPORT output folder a run wrote — images, not Dart',
-  'test/ui/export/finished_outputs_are_handed_over_test.dart':
-      'walks the outputs a run wrote into its outbox and the folder they '
-      'were handed over to — images, not Dart',
-  'test/ui/export/the_cels_run_writes_the_ticked_drawings_test.dart':
-      'walks the EXPORT output folder a run wrote — images, not Dart',
   'test/ui/playback/a_take_is_staged_like_any_carry_test.dart':
       'walks the run\'s STAGING room a take was written into — each open '
       'project\'s store has a folder there (I-7) — media, not Dart',

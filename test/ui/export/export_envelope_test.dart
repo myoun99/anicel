@@ -11,10 +11,10 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
-import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -33,12 +33,15 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_envelope_render.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/export_scope_pick.dart';
 import '../../helpers/temp_dir.dart';
 
-/// The Envelope export tab: the 컷봉투 as PNG — at the cut's own pixel size
-/// so it drops into a working file as a layer, or at print size; flat, or
-/// one file per stratum so whoever opens it can delete the filled-in
-/// values without losing the printed form.
+/// The cut envelope (컷 봉투) as the Cels tab writes it (F-289, 유저
+/// 2026-10-05: 「컷봉투탭도 셀 내부로 편입 … 기존의 컷봉투탭에 있던 용지는
+/// 컷크기/실측용지 이거는 컷봉투 형식안에 넣고, 레이어 항목 버튼? 용지 서식
+/// 내용 선화 고르는거 싹 다 필요없어보이니 삭제」): one picture a sheet —
+/// at the cut's own pixel size, so it drops into a working file as a layer,
+/// or on the real envelope's paper — behind its kind's prefix.
 void main() {
   late Directory temp;
 
@@ -96,75 +99,6 @@ void main() {
     paperWidth: width.toDouble(),
     paperHeight: height.toDouble(),
   );
-
-  group('spec', () {
-    test('the default is the CUT\'s own pixels, every layer, one file', () {
-      const spec = EnvelopeExportSpec();
-
-      expect(spec.paperMode, CutEnvelopePaperMode.cut);
-      expect(spec.layers, EnvelopeExportSpec.defaultLayers);
-      expect(spec.orderedLayers, EnvelopeExportSpec.strata);
-      expect(spec.separateLayerFiles, isFalse);
-      expect(
-        spec.toJson(),
-        isEmpty,
-        reason: 'a default spec serializes to nothing, like its siblings',
-      );
-    });
-
-    test('a chosen shape round-trips through JSON', () {
-      const spec = EnvelopeExportSpec(
-        paperMode: CutEnvelopePaperMode.sheet,
-        scope: ExportScopeKind.project,
-        sheetScale: 3,
-        layers: {SheetPaintLayer.form, SheetPaintLayer.ink},
-        separateLayerFiles: true,
-      );
-
-      expect(EnvelopeExportSpec.fromJson(spec.toJson()), spec);
-      expect(
-        exportTabSpecFromJson(ExportTab.envelope, spec.toJson()),
-        spec,
-        reason: 'the tab discriminator reaches the envelope parser',
-      );
-    });
-
-    test('turning the last layer off is refused — a blank page is not an '
-        'export', () {
-      const spec = EnvelopeExportSpec(layers: {SheetPaintLayer.form});
-
-      expect(spec.withLayer(SheetPaintLayer.form, false).layers, {
-        SheetPaintLayer.form,
-      });
-      expect(spec.withLayer(SheetPaintLayer.ink, true).layers, {
-        SheetPaintLayer.form,
-        SheetPaintLayer.ink,
-      });
-    });
-
-    test('an empty layer list in a file reads as the default, not as a '
-        'blank sheet', () {
-      final spec = EnvelopeExportSpec.fromJson({'layers': <String>[]});
-
-      expect(spec.layers, EnvelopeExportSpec.defaultLayers);
-    });
-
-    test('the whole tab-spec set carries the envelope through JSON', () {
-      const specs = ExportTabSpecs(
-        envelope: EnvelopeExportSpec(separateLayerFiles: true),
-      );
-
-      expect(
-        ExportTabSpecs.fromJson(specs.toJson()).envelope.separateLayerFiles,
-        isTrue,
-      );
-      expect(specs.specFor(ExportTab.envelope), specs.envelope);
-      expect(
-        specs.withSpec(const EnvelopeExportSpec(sheetScale: 2)).envelope,
-        const EnvelopeExportSpec(sheetScale: 2),
-      );
-    });
-  });
 
   group('paper', () {
     test('the cut mode takes the canvas verbatim, so the PNG drops in as a '
@@ -230,36 +164,6 @@ void main() {
       });
     });
 
-    testWidgets('a layer subset draws only that stratum — the form alone '
-        'is transparent where the paper would be', (tester) async {
-      await tester.runAsync(() async {
-        final layout = analogOn(320, 240);
-        final flat = await renderCutEnvelopeImage(
-          face: const TextStyle(),
-          layout: layout,
-          source: const CutEnvelopeSource(),
-        );
-        addTearDown(flat.dispose);
-        final formOnly = await renderCutEnvelopeImage(
-          face: const TextStyle(),
-          layout: layout,
-          source: const CutEnvelopeSource(),
-          layers: const {SheetPaintLayer.form},
-        );
-        addTearDown(formOnly.dispose);
-
-        // Inside the form, away from any rule: kraft on the flat sheet,
-        // nothing at all on the form layer.
-        final flatPixel = await pixelAt(flat, 160, 130);
-        expect(flatPixel.$4, 255, reason: 'the flat sheet is opaque paper');
-        final formPixel = await pixelAt(formOnly, 160, 130);
-        expect(
-          formPixel.$4,
-          0,
-          reason: 'only the paper layer paints a background',
-        );
-      });
-    });
   });
 
   group('dialog', () {
@@ -267,7 +171,13 @@ void main() {
       WidgetTester tester,
       EditorSessionManager session,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1120, 660));
+      // The envelope alone, so a folder's files are the envelope's.
+      AppExport.settings.value = AppExportSettings(
+        lastSpecs: const ExportTabSpecs(
+          cels: CelsExportSpec(kinds: {ExportCelKind.envelope}),
+        ),
+      );
+      await tester.binding.setSurfaceSize(const Size(1280, 660));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
       await tester.pumpWidget(
@@ -283,9 +193,7 @@ void main() {
       );
       await tester.pump();
       final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-tab-envelope')),
-      );
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
       await tester.pump();
       await tester.tap(
         find.byKey(const ValueKey<String>('export-browse-button')),
@@ -305,8 +213,8 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('the Envelope tab writes one PNG for the active cut, at the '
-        'cut\'s own size', (tester) async {
+    testWidgets('the envelope kind writes one PNG for the active cut, at '
+        'the cut\'s own size, behind its prefix', (tester) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       final state = await pumpDialog(tester, session);
@@ -316,7 +224,7 @@ void main() {
 
       final file = File(
         '${temp.path}${Platform.pathSeparator}'
-        'CUT39_envelope.png',
+        '_CUT39_envelope.png',
       );
       expect(file.existsSync(), isTrue);
       final image = await tester.runAsync(
@@ -327,38 +235,10 @@ void main() {
       // The other cut stays out of it: the scope is the ACTIVE cut.
       expect(
         File(
-          '${temp.path}${Platform.pathSeparator}CUT40_envelope.png',
+          '${temp.path}${Platform.pathSeparator}_CUT40_envelope.png',
         ).existsSync(),
         isFalse,
       );
-    });
-
-    testWidgets('layered output writes one PNG per stratum, all the same '
-        'size so they stack', (tester) async {
-      final session = EditorSessionManager(initialProject: project());
-      addTearDown(session.dispose);
-      final state = await pumpDialog(tester, session);
-      await tapSetting(tester, 'export-envelope-files-layered');
-
-      await tester.runAsync(state.export);
-      await tester.pump();
-
-      for (final layer in EnvelopeExportSpec.strata) {
-        final file = File(
-          '${temp.path}${Platform.pathSeparator}'
-          'CUT39_envelope_${layer.jsonValue}.png',
-        );
-        expect(
-          file.existsSync(),
-          isTrue,
-          reason: 'the ${layer.jsonValue} layer ships as its own PNG',
-        );
-        final image = await tester.runAsync(
-          () => decodeImageFromList(file.readAsBytesSync()),
-        );
-        expect((image!.width, image.height), (320, 240));
-        image.dispose();
-      }
     });
 
     testWidgets('a 겸용 cut and its sibling are ONE envelope, so the whole '
@@ -370,7 +250,7 @@ void main() {
       session.selectCut(const CutId('39'));
       session.cutVerbs.convertActiveCutToLinked(const CutId('40'));
       final state = await pumpDialog(tester, session);
-      await tapSetting(tester, 'export-scope-project');
+      await tester.pickExportProjectScope();
 
       await tester.runAsync(state.export);
       await tester.pump();
@@ -408,7 +288,7 @@ void main() {
       await tester.pump();
 
       final file = File(
-        '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+        '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
       );
       expect(file.existsSync(), isTrue);
       final image = (await tester.runAsync(
@@ -450,7 +330,7 @@ void main() {
       final image = (await tester.runAsync(
         () => decodeImageFromList(
           File(
-            '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+            '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
           ).readAsBytesSync(),
         ),
       ))!;
@@ -465,8 +345,8 @@ void main() {
       expect(store.isCelCold(key), isTrue, reason: 'the ink stays parked');
     });
 
-    testWidgets('the export prints the WORK\'s form, and the tab has no '
-        'form picker of its own', (tester) async {
+    testWidgets('the export prints the WORK\'s form, and the window has '
+        'no form picker of its own', (tester) async {
       // 유저 답 envelope-form-in-export: 「출력은 작품의 서식을 따른다
       // (출력 창의 고르기는 뺀다)」.
       final session = EditorSessionManager(
@@ -489,13 +369,13 @@ void main() {
       // COLOUR says which did: the two bundled forms print on different
       // papers.
       await tapSetting(tester, 'export-envelope-paper-sheet');
-      expect(state.debugSpecs.envelope.sheetScale, 1);
+      expect(state.debugSpecs.cels.envelopePaper, CutEnvelopePaperMode.sheet);
 
       await tester.runAsync(state.export);
       await tester.pump();
 
       final file = File(
-        '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+        '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
       );
       final image = (await tester.runAsync(
         () => decodeImageFromList(file.readAsBytesSync()),
@@ -504,7 +384,7 @@ void main() {
       expect(
         (image.width, image.height),
         (3508, 2480),
-        reason: 'at 1x the real sheet is its paper\'s own pixels',
+        reason: 'the real sheet is its paper\'s own pixels',
       );
       (int, int, int) rgbOf(int argb) =>
           ((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
@@ -515,42 +395,67 @@ void main() {
       expect((corner.$1, corner.$2, corner.$3), digital);
     });
 
-    testWidgets('the real sheet takes the sheets\' one scale — its row '
-        'stands in the paper module, and 2x is two papers across', (
+    testWidgets('the real sheet is the envelope\'s paper at its own pixels '
+        '— there is no scale to pick — and as a JPG it is a JPG', (
       tester,
     ) async {
       final session = EditorSessionManager(initialProject: project());
       addTearDown(session.dispose);
       final state = await pumpDialog(tester, session);
       await tapSetting(tester, 'export-envelope-paper-sheet');
-      await tapSetting(tester, 'export-envelopescale-2');
-      expect(state.debugSpecs.envelope.sheetScale, 2);
-      // The headline says the paper's width — and so does the module's
-      // summary, which it shows folded.
       expect(
-        find.textContaining(AppText.strings.exEnvelopePaperSheet(7016)),
-        findsOneWidget,
+        find.byKey(const ValueKey<String>('export-envelopescale-2')),
+        findsNothing,
+        reason: '유저 2026-10-06: 「시트 이미지는 배율 없앰. 늘 용지 그대로」',
       );
-      // The first 「Paper」 is the module's title; the other is a layer chip.
-      await tester.tap(find.text(AppText.strings.exPaperLabel).first);
-      await tester.pumpAndSettle();
+      // Folded, the module's head says what it writes.
+      final head = find.text(AppText.strings.exEnvelopeFormat);
+      await tester.ensureVisible(head);
+      await tester.pump();
+      await tester.tap(head);
+      await tester.pump();
       expect(
         find.text(
-          '${AppText.strings.exPaperLabel} — '
-          '${AppText.strings.exSheetWidth(7016)}',
+          '${AppText.strings.exEnvelopeFormat} — '
+          'PNG · ${AppText.strings.exRealSheet}',
         ),
         findsOneWidget,
       );
+      await tester.tap(
+        find.textContaining('${AppText.strings.exEnvelopeFormat} — '),
+      );
+      await tester.pump();
 
       await tester.runAsync(state.export);
       await tester.pump();
-
-      final bytes = File(
-        '${temp.path}${Platform.pathSeparator}CUT39_envelope.png',
+      final png = File(
+        '${temp.path}${Platform.pathSeparator}_CUT39_envelope.png',
       ).readAsBytesSync();
       // A PNG's size from its IHDR — the first chunk, big-endian at 16.
-      final header = ByteData.sublistView(bytes);
-      expect((header.getUint32(16), header.getUint32(20)), (7016, 4960));
+      final header = ByteData.sublistView(png);
+      expect((header.getUint32(16), header.getUint32(20)), (3508, 2480));
+
+      await tapSetting(tester, 'export-envelope-format-jpg');
+      expect(
+        state.debugSpecs.cels.envelopeImage.stillFormat,
+        ExportStillFormat.jpg,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('export-envelope-format-quality')),
+        findsOneWidget,
+        reason: 'a JPG has a quality',
+      );
+      await tester.runAsync(state.export);
+      await tester.pump();
+      final jpg = File(
+        '${temp.path}${Platform.pathSeparator}_CUT39_envelope.jpg',
+      );
+      expect(jpg.existsSync(), isTrue);
+      expect(
+        jpg.readAsBytesSync().take(3),
+        [0xFF, 0xD8, 0xFF],
+        reason: 'a JPG by its bytes, not by its name alone',
+      );
     });
   });
 }

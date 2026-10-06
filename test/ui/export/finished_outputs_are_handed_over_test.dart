@@ -32,6 +32,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 
 /// 「끝나면 고르기」 (drive-folder-windows-Q1, 유저 2026-09-27: 「내보내기가 끝나면
@@ -148,20 +149,6 @@ void main() {
     await tester.pump();
   }
 
-  /// Every file under [directory], by its path inside it.
-  List<String> filesIn(Directory directory) => !directory.existsSync()
-      ? const []
-      : (directory
-                .listSync(recursive: true)
-                .whereType<File>()
-                .map(
-                  (file) => file.path
-                      .substring(directory.path.length + 1)
-                      .replaceAll('\\', '/'),
-                )
-                .toList()
-              ..sort());
-
   /// What [directory] still holds at its top — a run's own outbox counts,
   /// empty or not.
   List<String> leftIn(Directory directory) => !directory.existsSync()
@@ -182,7 +169,7 @@ void main() {
     debugOperatingSystemOverride = 'windows';
     List<String>? madeWhenAsked;
     FolderPicker.debugFolderPicker = ({String? initialDirectory}) async {
-      madeWhenAsked = namesOf(filesIn(outbox()));
+      madeWhenAsked = namesOf(filesWrittenUnder(outbox()));
       return FolderGrant.granted(path: placed.path);
     };
     final state = await openHandingOver(tester);
@@ -193,7 +180,7 @@ void main() {
     await tester.pump();
 
     expect(madeWhenAsked, ['frame_0001.png', 'frame_0002.png']);
-    expect(filesIn(placed), ['frame_0001.png', 'frame_0002.png']);
+    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
     expect(leftIn(outbox()), isEmpty);
     expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
   });
@@ -211,7 +198,7 @@ void main() {
 
     expect(status(tester), AppText.strings.exHandOverDeclined);
     expect(leftIn(outbox()), isEmpty);
-    expect(filesIn(placed), isEmpty);
+    expect(filesWrittenUnder(placed), isEmpty);
   });
 
   testWidgets('outputs that fail on their way say the failure, and are let '
@@ -253,7 +240,7 @@ void main() {
     expect(handed, [
       ['frame_0001.png', 'frame_0002.png'],
     ]);
-    expect(filesIn(placed), ['frame_0001.png', 'frame_0002.png']);
+    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
     expect(leftIn(outbox()), isEmpty);
   });
 
@@ -285,7 +272,7 @@ void main() {
 
     expect(saved, hasLength(1));
     expect(shared, 0);
-    expect(filesIn(placed), saved);
+    expect(filesWrittenUnder(placed), saved);
     expect(leftIn(outbox()), isEmpty);
   });
 
@@ -342,7 +329,7 @@ void main() {
     await tester.pump();
 
     expect(asked, 1);
-    expect(filesIn(placed), [
+    expect(filesWrittenUnder(placed), [
       'frame_0001.png',
       'frame_0002.png',
       'shot_0001.png',
@@ -426,7 +413,7 @@ void main() {
     await tester.pump();
 
     expect(asked, 1);
-    expect(filesIn(direct), ['frame_0001.png', 'frame_0002.png']);
+    expect(filesWrittenUnder(direct), ['frame_0001.png', 'frame_0002.png']);
   });
 
   testWidgets('a run that fails hands nothing over and keeps nothing', (
@@ -488,8 +475,8 @@ void main() {
     await tester.runAsync(state.runQueue);
     await tester.pump();
 
-    expect(filesIn(placed), ['frame_0001.png', 'frame_0002.png']);
-    expect(filesIn(direct), isEmpty);
+    expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+    expect(filesWrittenUnder(direct), isEmpty);
     expect(locationLabel(tester), direct.path);
   });
 

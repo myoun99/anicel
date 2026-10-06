@@ -14,6 +14,7 @@ import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -577,8 +578,6 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
-    await tester.pump();
     await tester.tap(
       find.byKey(const ValueKey<String>('export-browse-button')),
     );
@@ -631,8 +630,9 @@ void main() {
     expect(onBody, (0, 0, 255), reason: 'and so does the logo');
   });
 
-  testWidgets('the page-image scale rasters the page at that multiple — '
-      'the run passes its scale, the preview its fitted size', (
+  testWidgets('a page image is the page at its paper\'s own pixels, as PNG '
+      'or as JPG — there is no scale to pick (유저 2026-10-06: 「시트 '
+      '이미지는 배율 없앰. 늘 용지 그대로. 콘티든 컷봉투든 똑같음」)', (
     tester,
   ) async {
     final session = EditorSessionManager(initialProject: project());
@@ -672,22 +672,31 @@ void main() {
       return ByteData.sublistView(bytes).getUint32(16);
     }
 
-    // 1× is where an export starts: the page's paper, its own pixels
-    // (F-294, 유저 2026-10-05: 「1x하더라도 100%크기인채로 출력해야」).
-    expect(state.debugSpecs.conte.sheetScale, 1);
+    // The page's paper, its own pixels (F-294, 유저 2026-10-05: 「1x하더라도
+    // 100%크기인채로 출력해야」).
     await tester.runAsync(state.export);
     await tester.pump();
     expect(pngWidth('conte_p3.png'), 2480);
+    expect(
+      find.byKey(const ValueKey<String>('export-contescale-2')),
+      findsNothing,
+      reason: 'the scale row is gone',
+    );
 
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-2')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-jpg')),
+    );
     await tester.pump();
-    expect(state.debugSpecs.conte.sheetScale, 2);
+    expect(state.debugSpecs.conte.format, ExportConteFormat.pageImage);
+    expect(state.debugSpecs.conte.image.stillFormat, ExportStillFormat.jpg);
     await tester.runAsync(state.export);
     await tester.pump();
+    final jpg = File('${temp.path}${Platform.pathSeparator}conte_p3.jpg');
+    expect(jpg.existsSync(), isTrue);
     expect(
-      pngWidth('conte_p3.png'),
-      4960,
-      reason: 'the run rasters at sheetScale × the paper\'s pixels',
+      jpg.readAsBytesSync().take(3),
+      [0xFF, 0xD8, 0xFF],
+      reason: 'a JPG by its bytes, not by its name alone',
     );
   });
 
@@ -755,8 +764,6 @@ void main() {
       find.byKey(const ValueKey<String>('export-conteformat-png')),
     );
     await tester.pump();
-    await tester.tap(find.byKey(const ValueKey<String>('export-contescale-1')));
-    await tester.pump();
     await tester.runAsync(state.export);
     await tester.pump();
     final image = (await tester.runAsync(
@@ -816,16 +823,26 @@ void main() {
   });
 
   test('the conte spec round-trips through the persisted tab specs', () {
-    const specs = ExportTabSpecs(
+    final specs = ExportTabSpecs(
       conte: ConteExportSpec(
         format: ExportConteFormat.pageImage,
-        sheetScale: 3,
+        image: paperDocumentFormat.copyWith(
+          stillFormat: ExportStillFormat.jpg,
+          jpgQuality: 70,
+        ),
       ),
     );
     final restored = ExportTabSpecs.fromJson(specs.toJson());
     expect(restored.conte.format, ExportConteFormat.pageImage);
-    expect(restored.conte.sheetScale, 3);
+    expect(restored.conte.image.stillFormat, ExportStillFormat.jpg);
+    expect(restored.conte.image.jpgQuality, 70);
     expect(restored, specs);
+    // A scale a file of an older build names is not read: a page is its
+    // paper.
+    expect(
+      ConteExportSpec.fromJson(const {'format': 'pageImage', 'sheetScale': 3}),
+      const ConteExportSpec(format: ExportConteFormat.pageImage),
+    );
     // Old persisted JSON without a conte entry stays readable.
     expect(
       ExportTabSpecs.fromJson(const {'sequence': <String, dynamic>{}}).conte,

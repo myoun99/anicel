@@ -20,6 +20,8 @@ import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_cels_selection.dart';
+
+import '../../helpers/export_cels_alone.dart';
 import 'package:anicel/src/ui/export/export_cels_standing.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 
@@ -75,7 +77,7 @@ void main() {
 
   ({List<ExportCelsBoardRow> rows, ExportCelGroupPlan plan}) board(
     Cut cut, {
-    CelsExportSpec spec = const CelsExportSpec(),
+    CelsExportSpec spec = celsAlone,
     ExportCelsCutDelta? delta,
     Set<LayerId> shut = const {},
   }) {
@@ -104,21 +106,21 @@ void main() {
           spec: spec,
           delta: delta,
         ),
-        sheets: plan.sheets,
+        plan: plan,
         shut: shut,
       ),
     );
   }
 
   List<String> ids(List<ExportCelsBoardRow> rows) => [
-    for (final row in rows) row.layer.id.value,
+    for (final row in rows) row.idValue,
   ];
 
   ExportCelsBoardRow of(List<ExportCelsBoardRow> rows, String id) =>
-      rows.singleWhere((row) => row.layer.id.value == id);
+      rows.singleWhere((row) => row.idValue == id);
 
-  List<String> names(Iterable<ExportCelSheet> sheets) => [
-    for (final sheet in sheets) sheet.celName,
+  List<String> names(Iterable<ExportListSheet> sheets) => [
+    for (final sheet in sheets) sheet.word,
   ];
 
   ExportCelRef ref(String row, String cel) =>
@@ -247,11 +249,11 @@ void main() {
     test('with nothing chosen it is the first row that holds a drawing', () {
       final rows = board(film()).rows;
       const standing = ExportCelsStanding();
-      expect(standing.rowIn(rows)?.layer.id.value, 'c');
+      expect(standing.rowIn(rows)?.idValue, 'c');
       expect(standing.sheetIn(rows), isNull, reason: 'nothing is shown yet');
       final settled = standing.settledOn(rows);
       expect(
-        (settled.row?.value, settled.shown?.value, settled.place),
+        (settled.row, settled.shown, settled.place),
         ('c', 'c-1', 0),
       );
     });
@@ -259,42 +261,39 @@ void main() {
     test('standing on a row shows its drawing at the place remembered, and '
         'its first where it has none there', () {
       final rows = board(film()).rows;
-      final onA = const ExportCelsStanding().standingOn(
-        const LayerId('a'),
+      final onA = const ExportCelsStanding().standingOn('a',
         rows,
       );
-      expect((onA.row?.value, onA.shown?.value), ('a', 'a-1'));
+      expect((onA.row, onA.shown), ('a', 'a-1'));
 
       final third = onA.stepped(2, rows);
-      expect((third.shown?.value, third.place), ('a-3', 2));
+      expect((third.shown, third.place), ('a-3', 2));
 
       // B has a third drawing: the same place.
-      final onB = third.standingOn(const LayerId('b'), rows);
-      expect((onB.row?.value, onB.shown?.value, onB.place), ('b', 'b-3', 2));
+      final onB = third.standingOn('b', rows);
+      expect((onB.row, onB.shown, onB.place), ('b', 'b-3', 2));
       // C has one: its first — and the place is kept for the next row.
-      final onC = onB.standingOn(const LayerId('c'), rows);
-      expect((onC.shown?.value, onC.place), ('c-1', 2));
-      final backOnA = onC.standingOn(const LayerId('a'), rows);
-      expect(backOnA.shown?.value, 'a-3');
+      final onC = onB.standingOn('c', rows);
+      expect((onC.shown, onC.place), ('c-1', 2));
+      final backOnA = onC.standingOn('a', rows);
+      expect(backOnA.shown, 'a-3');
     });
 
     test('a folder is not stood on — it holds no drawing', () {
       final rows = board(film()).rows;
-      final onA = const ExportCelsStanding().standingOn(
-        const LayerId('a'),
+      final onA = const ExportCelsStanding().standingOn('a',
         rows,
       );
-      expect(onA.standingOn(const LayerId('f'), rows), onA);
+      expect(onA.standingOn('f', rows), onA);
     });
 
     test('the steps stop at the row\'s ends', () {
       final rows = board(film()).rows;
-      final onA = const ExportCelsStanding().standingOn(
-        const LayerId('a'),
+      final onA = const ExportCelsStanding().standingOn('a',
         rows,
       );
-      expect(onA.stepped(-1, rows).shown?.value, 'a-1');
-      expect(onA.stepped(9, rows).shown?.value, 'a-4');
+      expect(onA.stepped(-1, rows).shown, 'a-1');
+      expect(onA.stepped(9, rows).shown, 'a-4');
       expect(onA.stepped(9, rows).place, 3);
     });
 
@@ -303,16 +302,16 @@ void main() {
         'remembered', () {
       final before = board(film()).rows;
       final onSecond = const ExportCelsStanding()
-          .standingOn(const LayerId('a'), before)
+          .standingOn('a', before)
           .stepped(1, before);
-      expect(onSecond.shown?.value, 'a-2');
+      expect(onSecond.shown, 'a-2');
 
       final after = board(
         film(),
         delta: ExportCelsCutDelta().withCelSkipped(ref('a', '2'), true),
       ).rows;
       final settled = onSecond.settledOn(after);
-      expect((settled.shown?.value, settled.place), ('a-3', 2));
+      expect((settled.shown, settled.place), ('a-3', 2));
 
       // …and with the next one off too, the previous.
       final both = board(
@@ -322,25 +321,24 @@ void main() {
             .withCelSkipped(ref('a', '3'), true)
             .withCelSkipped(ref('a', '4'), true),
       ).rows;
-      expect(onSecond.settledOn(both).shown?.value, 'a-1');
+      expect(onSecond.settledOn(both).shown, 'a-1');
     });
 
     test('the row stood on leaves the list: the first row left with a '
         'drawing is stood on', () {
       final rows = board(film()).rows;
-      final onC = const ExportCelsStanding().standingOn(
-        const LayerId('c'),
+      final onC = const ExportCelsStanding().standingOn('c',
         rows,
       );
       final folded = board(film(), shut: {const LayerId('f')}).rows;
       final settled = onC.settledOn(folded);
-      expect((settled.row?.value, settled.shown?.value), ('ar', 'ar-1'));
+      expect((settled.row, settled.shown), ('ar', 'ar-1'));
     });
 
     test('a standing that still holds is left as it is', () {
       final rows = board(film()).rows;
       final onA = const ExportCelsStanding()
-          .standingOn(const LayerId('a'), rows)
+          .standingOn('a', rows)
           .stepped(1, rows);
       expect(identical(onA.settledOn(rows), onA), isTrue);
     });

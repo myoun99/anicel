@@ -1,5 +1,6 @@
 import '../core/collection_equality.dart';
 import 'cut_id.dart';
+import 'export_cel_kind.dart';
 import 'frame_id.dart';
 import 'layer_id.dart';
 
@@ -10,6 +11,10 @@ typedef ExportCelRef = ({LayerId row, FrameId cel});
 /// One direction drawing laid over one drawing ([ExportCelRef] each).
 typedef ExportDirectionOver = ({ExportCelRef cel, ExportCelRef direction});
 
+/// One file of one of the cut's documents ([ExportCelKind.isDocument]): a
+/// page of its timesheet, from 0 — and 0 for a document that is one file.
+typedef ExportDocumentPage = ({ExportCelKind document, int page});
+
 /// The Cels tab's per-cut MANUAL EXCEPTIONS (v10 ⑥ "규칙 적용 후 델타"):
 /// what the user hand-flipped away from the preset rules' outcome for one
 /// cut. Reset = back on the rules ([backOnTheRules]).
@@ -18,9 +23,13 @@ class ExportCelsCutDelta {
     Map<LayerId, bool> layerOverrides = const {},
     Set<ExportCelRef> skippedCels = const {},
     Set<ExportDirectionOver> directionOver = const {},
+    Set<ExportCelKind> documentsOff = const {},
+    Set<ExportDocumentPage> skippedPages = const {},
   }) : layerOverrides = Map.unmodifiable(layerOverrides),
        skippedCels = Set.unmodifiable(skippedCels),
-       directionOver = Set.unmodifiable(directionOver);
+       directionOver = Set.unmodifiable(directionOver),
+       documentsOff = Set.unmodifiable(documentsOff),
+       skippedPages = Set.unmodifiable(skippedPages);
 
   /// Per-layer forced include(true)/exclude(false), keyed by id — layer
   /// NAMES are not unique, ids are. A non-empty map is what makes the
@@ -44,14 +53,34 @@ class ExportCelsCutDelta {
   /// this cut.
   final Set<ExportDirectionOver> directionOver;
 
+  /// The cut's DOCUMENTS whose row the user switched off — its timesheet,
+  /// its cut envelope ([ExportCelKind.isDocument]). A document's row is on
+  /// by rule while its kind is written, so off is the only exception there
+  /// is; it is to a document what [layerOverrides] is to a row.
+  final Set<ExportCelKind> documentsOff;
+
+  /// The files of the cut's documents the user turned off in the list — to
+  /// a document what [skippedCels] is to a row.
+  final Set<ExportDocumentPage> skippedPages;
+
   bool get isEmpty =>
-      layerOverrides.isEmpty && skippedCels.isEmpty && directionOver.isEmpty;
+      layerOverrides.isEmpty &&
+      skippedCels.isEmpty &&
+      directionOver.isEmpty &&
+      documentsOff.isEmpty &&
+      skippedPages.isEmpty;
 
-  /// Whether this cut has left its rules: a row answered by hand, or a
-  /// drawing turned off — what [backOnTheRules] undoes.
+  /// Whether a ROW of this cut answers by hand rather than by the rules —
+  /// what makes the label button read 「커스텀」.
+  bool get hasRowExceptions =>
+      layerOverrides.isNotEmpty || documentsOff.isNotEmpty;
+
+  /// Whether this cut has left its rules: a row answered by hand, or a file
+  /// turned off — what [backOnTheRules] undoes.
   bool get leavesTheRules =>
-      layerOverrides.isNotEmpty || skippedCels.isNotEmpty;
+      hasRowExceptions || skippedCels.isNotEmpty || skippedPages.isNotEmpty;
 
+  /// This delta with what the hand did to the cut's ROWS changed.
   ExportCelsCutDelta _with({
     Map<LayerId, bool>? layerOverrides,
     Set<ExportCelRef>? skippedCels,
@@ -60,6 +89,20 @@ class ExportCelsCutDelta {
     layerOverrides: layerOverrides ?? this.layerOverrides,
     skippedCels: skippedCels ?? this.skippedCels,
     directionOver: directionOver ?? this.directionOver,
+    documentsOff: documentsOff,
+    skippedPages: skippedPages,
+  );
+
+  /// This delta with what the hand did to the cut's DOCUMENTS changed.
+  ExportCelsCutDelta _withDocuments({
+    Set<ExportCelKind>? off,
+    Set<ExportDocumentPage>? skipped,
+  }) => ExportCelsCutDelta(
+    layerOverrides: layerOverrides,
+    skippedCels: skippedCels,
+    directionOver: directionOver,
+    documentsOff: off ?? documentsOff,
+    skippedPages: skipped ?? skippedPages,
   );
 
   ExportCelsCutDelta withLayerOverride(LayerId id, bool? include) {
@@ -75,6 +118,14 @@ class ExportCelsCutDelta {
   /// This delta with [cel] turned off, or back on.
   ExportCelsCutDelta withCelSkipped(ExportCelRef cel, bool skipped) =>
       _with(skippedCels: _held(skippedCels, cel, skipped));
+
+  /// This delta with the row of [document] switched off, or back on.
+  ExportCelsCutDelta withDocumentOff(ExportCelKind document, bool off) =>
+      _withDocuments(off: _held(documentsOff, document, off));
+
+  /// This delta with [page] turned off, or back on.
+  ExportCelsCutDelta withPageSkipped(ExportDocumentPage page, bool skipped) =>
+      _withDocuments(skipped: _held(skippedPages, page, skipped));
 
   /// The directions laid over [cel].
   Set<ExportCelRef> directionsOver(ExportCelRef cel) => {
@@ -103,9 +154,9 @@ class ExportCelsCutDelta {
   }
 
   /// The row exceptions dropped, the rest kept — a filter press re-applies
-  /// the rule without touching which drawings are written.
-  ExportCelsCutDelta withoutLayerOverrides() =>
-      _with(layerOverrides: const {});
+  /// the rule without touching which files are written.
+  ExportCelsCutDelta withoutRowExceptions() =>
+      _with(layerOverrides: const {})._withDocuments(off: const {});
 
   /// Reset: every row back on the rule and every drawing on. What is laid
   /// over a drawing is no answer to a rule, and stays.
@@ -139,6 +190,23 @@ class ExportCelsCutDelta {
               ..sort((a, b) => _order(a).compareTo(_order(b))))
           _refJson(cel),
       ],
+    if (documentsOff.isNotEmpty)
+      'documentsOff': [
+        for (final document
+            in documentsOff.toList()
+              ..sort((a, b) => a.index.compareTo(b.index)))
+          document.jsonValue,
+      ],
+    if (skippedPages.isNotEmpty)
+      'skippedPages': [
+        for (final page
+            in skippedPages.toList()..sort(
+              (a, b) => a.document == b.document
+                  ? a.page.compareTo(b.page)
+                  : a.document.index.compareTo(b.document.index),
+            ))
+          {'document': page.document.jsonValue, 'page': page.page},
+      ],
     if (directionOver.isNotEmpty)
       'directionOver': [
         for (final laid
@@ -154,7 +222,17 @@ class ExportCelsCutDelta {
     final raw = json['layerOverrides'] as Map<String, dynamic>? ?? const {};
     final skipped = json['skippedCels'] as List<dynamic>? ?? const [];
     final over = json['directionOver'] as List<dynamic>? ?? const [];
+    final off = json['documentsOff'] as List<dynamic>? ?? const [];
+    final pages = json['skippedPages'] as List<dynamic>? ?? const [];
     return ExportCelsCutDelta(
+      documentsOff: {
+        for (final document in off) ?ExportCelKind.fromJson(document),
+      },
+      skippedPages: {
+        for (final page in pages.cast<Map<String, dynamic>>())
+          if (ExportCelKind.fromJson(page['document']) case final document?)
+            (document: document, page: (page['page'] as num).toInt()),
+      },
       layerOverrides: {
         for (final entry in raw.entries)
           LayerId(entry.key): entry.value as bool,
@@ -178,7 +256,9 @@ class ExportCelsCutDelta {
       other is ExportCelsCutDelta &&
           mapEquals(other.layerOverrides, layerOverrides) &&
           setEquals(other.skippedCels, skippedCels) &&
-          setEquals(other.directionOver, directionOver);
+          setEquals(other.directionOver, directionOver) &&
+          setEquals(other.documentsOff, documentsOff) &&
+          setEquals(other.skippedPages, skippedPages);
 
   @override
   int get hashCode => Object.hash(
@@ -188,6 +268,8 @@ class ExportCelsCutDelta {
     ]),
     Object.hashAllUnordered(skippedCels),
     Object.hashAllUnordered(directionOver),
+    Object.hashAllUnordered(documentsOff),
+    Object.hashAllUnordered(skippedPages),
   );
 }
 

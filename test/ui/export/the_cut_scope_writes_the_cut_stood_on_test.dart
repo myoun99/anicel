@@ -26,7 +26,10 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/export_scope_pick.dart';
 
 /// 🗣️유저 2026-10-05: 「출력은 정상적으로 됬는데 같은 겸용컷에서 타임시트랑
 /// 컷봉투 출력하려니 컷 없다고 뜨는데 이거뭐지? 겸용컷 문제 넓게 확인안한거
@@ -40,9 +43,14 @@ import '../../helpers/project_scratch_folder.dart';
 /// tab wrote the cut. A 겸용 cut had nothing to do with it: the cut alone
 /// did the same.
 ///
-/// The three tabs that list cuts ask one function now
-/// (`exportCutsInScope`): the cut scope is the cut stood on, the project
-/// scope the ticked cuts.
+/// The three asked one function then (`exportCutsInScope`): the cut scope
+/// is the cut stood on, the project scope the ticked cuts.
+///
+/// They are ONE tab now (F-289, 유저 2026-10-05: 「타임시트 탭을 그냥 셀
+/// 탭의 내부로 편입. 컷봉투탭도 셀 내부로 편입 … 기존의 범위는 셀의 범위
+/// 규칙 따라가고」): a cut's timesheet and its cut envelope are kinds the
+/// Cels tab writes, under the cels' one scope — and the answer above is
+/// the same.
 void main() {
   setUp(() => AppExport.settings.value = AppExportSettings());
   tearDown(() => AppExport.settings.value = AppExportSettings());
@@ -110,21 +118,25 @@ void main() {
         ),
       );
 
-  Future<void> pumpExport(
+  /// The Cels tab writing its cels, the timesheet and the cut envelope.
+  const threeKinds = {
+    ExportCelKind.cel,
+    ExportCelKind.timesheet,
+    ExportCelKind.envelope,
+  };
+
+  Future<ExportDialogState> pumpExport(
     WidgetTester tester,
     EditorSessionManager session, {
     required ExportScopeKind scope,
-    ExportScopeKind? timesheetScope,
-    ExportDirectoryPicker? picker,
+    Directory? into,
   }) async {
     AppExport.settings.value = AppExportSettings(
       lastSpecs: ExportTabSpecs(
-        cels: CelsExportSpec(scope: scope),
-        timesheet: TimesheetExportSpec(scope: timesheetScope ?? scope),
-        envelope: EnvelopeExportSpec(scope: scope),
+        cels: CelsExportSpec(scope: scope, kinds: threeKinds),
       ),
     );
-    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    await tester.binding.setSurfaceSize(const Size(1280, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(
@@ -132,43 +144,46 @@ void main() {
         home: Scaffold(
           body: ExportDialog(
             session: session,
-            exportDirectoryPicker: picker,
+            exportDirectoryPicker: into == null ? null : () async => into.path,
             formatAvailability: ExportFormatAvailability.permissive(),
           ),
         ),
       ),
     );
     await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-cels')));
+    await tester.pump();
+    if (into != null) {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-browse-button')),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+    return tester.state<ExportDialogState>(find.byType(ExportDialog));
   }
 
-  /// What [tab] says it writes: the headline's count, and the first file
-  /// on the transport line (null where it writes nothing).
-  Future<(String, String?)> written(WidgetTester tester, String tab) async {
-    await tester.tap(find.byKey(ValueKey<String>('export-tab-$tab')));
-    await tester.pump();
-    final headline = tester
-        .widget<Text>(find.byKey(const ValueKey<String>('export-plan-headline')))
-        .data!;
-    final transport = find.byKey(
-      const ValueKey<String>('export-transport-line'),
-    );
-    return (
-      // The count is the sentence up to its 「 as 」.
-      headline.substring(0, headline.indexOf(' as ')),
-      transport.evaluate().isEmpty
-          ? null
-          : tester.widget<Text>(transport).data,
-    );
-  }
+  /// What the list of the cut it shows says it writes: its bright blocks'
+  /// files, top to bottom.
+  List<String> listed(WidgetTester tester) => [
+    for (final row in tester.celsBoard.rows)
+      for (final sheet in row.sheets)
+        if (sheet.written) sheet.fileName,
+  ];
+
+  String count(WidgetTester tester) => tester
+      .widget<Text>(find.byKey(const ValueKey<String>('export-cels-count')))
+      .data!;
 
   // The 겸용 pair places both of A's cels between its two cuts; C3 places
   // the first alone, and a cel a cut never places is no cel of its export
   // (F-289 ⑥, 유저 2026-10-06: 「애초에 타임라인에 안놓은 셀은 출력에
-  // 포함하지않음」).
-  for (final (standingOn, owner, cels) in [
-    ('c1', 'C1', ('1 label · 2 files', 'A1.png · 1 / 2')),
-    ('c2', 'C1', ('1 label · 2 files', 'A1.png · 1 / 2')),
-    ('c3', 'C3', ('1 label · 1 file', 'A1.png · 1 / 1')),
+  // 포함하지않음」). The timesheet is the cut's own; the envelope is the
+  // pair's, which is its first cut's.
+  for (final (standingOn, files) in [
+    ('c1', ['A1.png', 'A2.png', '_TSC1.png', '_CUTC1_envelope.png']),
+    ('c2', ['A1.png', 'A2.png', '_TSC2.png', '_CUTC1_envelope.png']),
+    ('c3', ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']),
   ]) {
     testWidgets('🎯the cut scope, standing on ${standingOn.toUpperCase()} '
         'with its tick OFF: the cels, the sheet and the envelope are that '
@@ -179,116 +194,86 @@ void main() {
 
       await pumpExport(tester, session, scope: ExportScopeKind.cut);
 
-      expect(await written(tester, 'cels'), cels);
       expect(
-        await written(tester, 'timesheet'),
-        ('1 sheet page', 'CUT${standingOn.toUpperCase()} · p1/1 · 1 page'),
+        listed(tester),
+        files,
         reason: '「시트 0페이지」 · 「컷 없음」 — the tick no one could see '
-            'under this scope emptied the sheet',
+            'under this scope emptied the sheet and the envelope',
       );
-      expect(
-        await written(tester, 'envelope'),
-        ('1 envelope', 'CUT$owner · 1 / 1 · 1 file'),
-        reason: 'the envelope of the cut stood on (a 겸용 pair\'s is its '
-            'first cut\'s)',
-      );
+      expect(count(tester), '${files.length} files');
       session.playbackRig.prerenderScheduler.cancel();
     });
   }
 
   testWidgets('…and the RUN writes them: standing on C2 with its tick off, '
-      'the sheet and the pair\'s envelope land on disk', (tester) async {
+      'its sheet and the pair\'s envelope land on disk', (
+    tester,
+  ) async {
     final temp = Directory.systemTemp.createTempSync('qa-cut-scope');
     deleteAfterSessionEnds(temp);
     final session = film(unticked: {'c1', 'c2', 'c3'});
     addTearDown(session.dispose);
     session.selectCut(const CutId('c2'));
 
-    await pumpExport(
+    final state = await pumpExport(
       tester,
       session,
       scope: ExportScopeKind.cut,
-      picker: () async => temp.path,
+      into: temp,
     );
-    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
-    await tester.tap(
-      find.byKey(const ValueKey<String>('export-browse-button')),
-    );
+    await tester.runAsync(state.export);
     await tester.pump();
-    await tester.pump();
-    for (final tab in ['timesheet', 'envelope']) {
-      await written(tester, tab);
-      await tester.runAsync(state.export);
-      await tester.pump();
-    }
 
-    for (final name in ['CUTC2.png', 'CUTC1_envelope.png']) {
-      expect(
-        File('${temp.path}/$name').existsSync(),
-        isTrue,
-        reason: '$name was not written',
-      );
-    }
+    // (The fixture's cels are drawn on nothing, and a cel with no picture
+    // is no file.)
+    expect(filesWrittenUnder(temp), ['_CUTC1_envelope.png', '_TSC2.png']);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('the project scope writes the TICKED cuts — in each of the '
-      'three tabs', (tester) async {
+  testWidgets('the project scope writes the TICKED cuts — their cels, a '
+      'sheet a cut and an envelope a 겸용 group', (tester) async {
+    final temp = Directory.systemTemp.createTempSync('qa-project-scope');
+    deleteAfterSessionEnds(temp);
     final all = film();
     addTearDown(all.dispose);
-    await pumpExport(tester, all, scope: ExportScopeKind.project);
-
-    expect((await written(tester, 'cels')).$1, '2 labels · 3 files');
-    expect((await written(tester, 'timesheet')).$1, '3 sheet pages');
-    expect((await written(tester, 'envelope')).$1, '2 envelopes');
+    final state = await pumpExport(
+      tester,
+      all,
+      scope: ExportScopeKind.project,
+      into: temp,
+    );
+    expect(count(tester), '8 files');
+    await tester.runAsync(state.export);
+    await tester.pump();
+    expect(filesWrittenUnder(temp), [
+      '_CUTC1_envelope.png',
+      '_CUTC3_envelope.png',
+      '_TSC1.png',
+      '_TSC2.png',
+      '_TSC3.png',
+    ]);
+    all.playbackRig.prerenderScheduler.cancel();
 
     final pairOut = film(unticked: {'c1', 'c2'});
     addTearDown(pairOut.dispose);
     await pumpExport(tester, pairOut, scope: ExportScopeKind.project);
-
-    expect((await written(tester, 'cels')).$1, '1 label · 1 file');
-    expect(
-      await written(tester, 'timesheet'),
-      ('1 sheet page', 'CUTC3 · p1/1 · 1 page'),
-    );
-    expect(
-      await written(tester, 'envelope'),
-      ('1 envelope', 'CUTC3 · 1 / 1 · 1 file'),
-    );
+    expect(listed(tester), ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']);
+    expect(count(tester), '3 files');
+    pairOut.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('each tab reads its OWN scope switch', (tester) async {
-    final session = film();
-    addTearDown(session.dispose);
-    await pumpExport(
-      tester,
-      session,
-      scope: ExportScopeKind.project,
-      timesheetScope: ExportScopeKind.cut,
-    );
-
-    expect((await written(tester, 'cels')).$1, '2 labels · 3 files');
-    expect((await written(tester, 'timesheet')).$1, '1 sheet page');
-    expect((await written(tester, 'envelope')).$1, '2 envelopes');
-  });
-
-  group('the envelope tab shows the cut checks its project scope obeys '
-      '(envelope-export-cut-grid-Q1)', () {
+  group('the documents follow the cels\' scope — one switch, one grid (유저 '
+      '2026-10-05: 「기존의 범위는 셀의 범위 규칙 따라가고」)', () {
     final grid = find.byKey(const ValueKey<String>('export-cut-grid'));
 
-    testWidgets('a tick in its grid takes the pair\'s envelope out', (
-      tester,
-    ) async {
+    testWidgets('a tick in the grid takes the pair\'s cels, its sheets and '
+        'its envelope out together', (tester) async {
       final session = film();
       addTearDown(session.dispose);
       await pumpExport(tester, session, scope: ExportScopeKind.project);
-
-      expect((await written(tester, 'envelope')).$1, '2 envelopes');
-      expect(
-        grid,
-        findsOneWidget,
-        reason: 'the tab obeyed ticks only another tab could show',
-      );
+      expect(count(tester), '8 files');
+      await tester.openExportScope();
+      expect(grid, findsOneWidget);
 
       final pair = find.byKey(const ValueKey<String>('export-cut-cell-1'));
       await tester.ensureVisible(pair);
@@ -299,22 +284,23 @@ void main() {
         session.repository.requireProject().exportOverrides.excludedCutIds,
         {const CutId('c1'), const CutId('c2')},
       );
-      expect(
-        await written(tester, 'envelope'),
-        ('1 envelope', 'CUTC3 · 1 / 1 · 1 file'),
-      );
+      expect(count(tester), '3 files');
+      expect(listed(tester), ['A1.png', '_TSC3.png', '_CUTC3_envelope.png']);
+      session.playbackRig.prerenderScheduler.cancel();
     });
 
-    testWidgets('under the cut scope there is no grid, as in the other two '
-        'tabs', (tester) async {
+    testWidgets('under the cut scope there is no grid', (tester) async {
       final session = film();
       addTearDown(session.dispose);
       await pumpExport(tester, session, scope: ExportScopeKind.cut);
-
-      for (final tab in ['cels', 'timesheet', 'envelope']) {
-        await written(tester, tab);
-        expect(grid, findsNothing, reason: tab);
-      }
+      await tester.openExportScope();
+      expect(
+        find.byKey(const ValueKey<String>('export-scope-project')),
+        findsOneWidget,
+        reason: 'LIVENESS — the module is open',
+      );
+      expect(grid, findsNothing);
+      session.playbackRig.prerenderScheduler.cancel();
     });
   });
 }

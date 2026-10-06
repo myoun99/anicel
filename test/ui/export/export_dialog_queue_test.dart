@@ -18,6 +18,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 
 void main() {
@@ -103,17 +104,6 @@ void main() {
     await tester.pump();
   }
 
-  List<String> filesIn(Directory directory) => directory
-      .listSync(recursive: true)
-      .whereType<File>()
-      .map(
-        (file) => file.path
-            .substring(directory.path.length + 1)
-            .replaceAll('\\', '/'),
-      )
-      .toList()
-    ..sort();
-
   testWidgets('Add to Queue freezes specs; Render All runs them in order '
       'and restores the setup', (tester) async {
     final state = await pumpDialog(tester, session());
@@ -153,7 +143,7 @@ void main() {
     await tester.runAsync(state.runQueue);
     await tester.pump();
 
-    expect(filesIn(temp), [
+    expect(filesWrittenUnder(temp), [
       'frame_0001.png',
       'frame_0002.png',
       'shot_0001.png',
@@ -202,7 +192,7 @@ void main() {
       find.textContaining('1 job done, 1 failed'),
       findsOneWidget,
     );
-    expect(filesIn(temp), [
+    expect(filesWrittenUnder(temp), [
       'blocker',
       'frame_0001.png',
       'frame_0002.png',

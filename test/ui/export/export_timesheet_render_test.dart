@@ -58,7 +58,6 @@ void main() {
         layout: layout,
         pageIndex: index,
         words: timesheetWordsIn(AppLanguage.en),
-        scale: 1,
       );
 
       // F-294 (유저 2026-10-05: 「최신빌드로 시트 출력하면 1113x1574인데? …
@@ -88,18 +87,7 @@ void main() {
       }
       expect(nonPaper, greaterThan(100));
 
-      final scaled = await renderTimesheetPageImage(
-        face: const TextStyle(),
-        document: document,
-        layout: layout,
-        pageIndex: 0,
-        words: timesheetWordsIn(AppLanguage.en),
-        scale: 2,
-      );
-      expect(scaled.width, 3508, reason: '2x is two papers across');
-      expect(scaled.height, 4960);
-
-      // An explicit output size WINS over the scale — the sheet and the
+      // An explicit output size WINS over the paper's — the sheet and the
       // conte page answer this the same way, and the preview relies on it
       // to raster a thumbnail at a size it chose.
       final forced = await renderTimesheetPageImage(
@@ -108,7 +96,6 @@ void main() {
         layout: layout,
         pageIndex: 0,
         words: timesheetWordsIn(AppLanguage.en),
-        scale: 2,
         outputSize: const CanvasSize(width: 64, height: 40),
       );
       expect(forced.width, 64);
@@ -116,7 +103,6 @@ void main() {
 
       first.dispose();
       second.dispose();
-      scaled.dispose();
       forced.dispose();
     });
   });

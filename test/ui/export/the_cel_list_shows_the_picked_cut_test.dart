@@ -24,6 +24,7 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
+import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 
 /// F-177 (유저 2026-09-22): 「범위를 프로젝트로 설정시 미리보기 셀 출력
@@ -85,9 +86,7 @@ void main() {
     EditorSessionManager session, {
     required ExportScopeKind scope,
   }) async {
-    AppExport.settings.value = AppExportSettings(
-      lastSpecs: ExportTabSpecs(cels: CelsExportSpec(scope: scope)),
-    );
+    AppExport.settings.value = exportSettingsWritingCelsAlone(scope: scope);
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));

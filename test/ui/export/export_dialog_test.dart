@@ -43,10 +43,14 @@ import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
+import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import 'fake_ffmpeg_process.dart';
 import '../../helpers/temp_dir.dart';
+
+import '../../helpers/files_written_under.dart';
+import '../../helpers/export_scope_pick.dart';
 
 void main() {
   late Directory temp;
@@ -190,9 +194,33 @@ void main() {
     await tester.pump();
   }
 
+  /// Opens [tab]. The timesheet and the cut envelope are no tabs: they are
+  /// kinds the Cels tab writes (F-289), so their names open the Cels tab
+  /// writing THAT document alone — its row the list's one row, stood on.
   Future<void> switchTab(WidgetTester tester, String tab) async {
-    await tester.tap(find.byKey(ValueKey<String>('export-tab-$tab')));
+    final document = switch (tab) {
+      'timesheet' => ExportCelKind.timesheet,
+      'envelope' => ExportCelKind.envelope,
+      _ => null,
+    };
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>('export-tab-${document == null ? tab : 'cels'}'),
+      ),
+    );
     await tester.pump();
+    if (document == null) {
+      return;
+    }
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    for (final kind in ExportCelKind.values) {
+      if (state.debugSpecs.cels.kinds.contains(kind) != (kind == document)) {
+        await tester.tap(
+          find.byKey(ValueKey<String>('export-cels-kind-${kind.jsonValue}')),
+        );
+        await tester.pump();
+      }
+    }
   }
 
   /// The preview [tab] shows in the face [family], its bytes — of
@@ -240,17 +268,6 @@ void main() {
     );
     return status.data ?? '';
   }
-
-  List<String> filesIn(Directory directory) => directory
-      .listSync(recursive: true)
-      .whereType<File>()
-      .map(
-        (file) => file.path
-            .substring(directory.path.length + 1)
-            .replaceAll('\\', '/'),
-      )
-      .toList()
-    ..sort();
 
   int pngSignatureCount(Uint8List bytes) {
     const signature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -354,7 +371,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['frame_0001.png', 'frame_0002.png']);
+      expect(filesWrittenUnder(temp), ['frame_0001.png', 'frame_0002.png']);
       expect(statusText(tester), 'Exported 2 frames.');
     });
 
@@ -381,7 +398,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['shot_0001.png', 'shot_0002.png']);
+      expect(filesWrittenUnder(temp), ['shot_0001.png', 'shot_0002.png']);
     });
 
     testWidgets('in/out trims the cut scope; a reversed range disables',
@@ -400,7 +417,7 @@ void main() {
       await tester.pump();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesIn(temp), ['frame_0001.png']);
+      expect(filesWrittenUnder(temp), ['frame_0001.png']);
 
       await tester.enterText(
         find.byKey(const ValueKey<String>('export-range-start-field')),
@@ -424,10 +441,7 @@ void main() {
       );
       await browseTo(tester);
       await pickStillPng(tester);
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-scope-project')),
-      );
-      await tester.pump();
+      await tester.pickExportProjectScope();
       expect(
         find.byKey(const ValueKey<String>('export-size-canvas')),
         findsNothing,
@@ -435,7 +449,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), [
+      expect(filesWrittenUnder(temp), [
         'frame_0001.png',
         'frame_0002.png',
         'frame_0003.png',
@@ -510,7 +524,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['Project.png']);
+      expect(filesWrittenUnder(temp), ['Project.png']);
       expect(statusText(tester), 'Exported Project.png.');
     });
 
@@ -590,7 +604,9 @@ void main() {
       expect(statusText(tester), 'Project.png 내보냈습니다.');
     });
 
-    testWidgets('the sheet image counts sheet pages', (tester) async {
+    testWidgets('a sheet page is counted with the files of its run', (
+      tester,
+    ) async {
       final state = await pumpDialog(
         tester,
         exportSession(),
@@ -600,10 +616,10 @@ void main() {
       await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(statusText(tester), '시트 1페이지 내보냈습니다.');
+      expect(statusText(tester), '파일 1개 내보냈습니다.');
     });
 
-    testWidgets('XDTS counts its sheets', (tester) async {
+    testWidgets('…and so are the digital sheets', (tester) async {
       final state = await pumpDialog(
         tester,
         exportSession(),
@@ -615,13 +631,10 @@ void main() {
         find.byKey(const ValueKey<String>('export-tsformat-xdts')),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-scope-project')),
-      );
-      await tester.pump();
+      await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(statusText(tester), 'XDTS 시트 2장 내보냈습니다.');
+      expect(statusText(tester), '파일 2개 내보냈습니다.');
     });
 
     testWidgets('video: the audio summary and the finished sentence', (
@@ -662,10 +675,7 @@ void main() {
         ),
       );
       // The project's five frames, so stopping after two leaves work undone.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-scope-project')),
-      );
-      await tester.pump();
+      await tester.pickExportProjectScope();
       await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
@@ -734,9 +744,9 @@ void main() {
     });
   });
 
-  group('timesheet tab', () {
-    testWidgets('the default Sheet PNG writes the panel paper per cut',
-        (tester) async {
+  group('the timesheet kind', () {
+    testWidgets('by default a sheet is a PNG a page, named TS and its cut '
+        'behind the kind\'s prefix', (tester) async {
       final state = await pumpDialog(
         tester,
         exportSession(),
@@ -747,23 +757,13 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      // The headline names the paper the panel stands on (F-294) — it said
-      // 「B4」 by hand until the paper became A3 at 150dpi and it still did.
-      expect(
-        tester
-            .widget<Text>(
-              find.byKey(const ValueKey<String>('export-plan-headline')),
-            )
-            .data,
-        '1 sheet page as A3 PNG — the panel\'s own paper, offscreen.',
-      );
-
       // The sheet is filed under the cut's NAME — its number, whatever the
-      // user called it — not its position in the track.
-      expect(filesIn(temp), ['CUTCut.png']);
-      final bytes = File('${temp.path}/CUTCut.png').readAsBytesSync();
+      // user called it — not its position in the track (유저 2026-10-05:
+      // 「타임시트는 기본적으로 파일이름 TS로서 출력. TS+컷번호 이런식」).
+      expect(filesWrittenUnder(temp), ['_TSCut.png']);
+      final bytes = File('${temp.path}/_TSCut.png').readAsBytesSync();
       expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
-      expect(statusText(tester), 'Exported 1 sheet page.');
+      expect(statusText(tester), 'Exported 1 file.');
     });
 
     // export-sheet-lacks-transitions (2026-09-30): the panel printed an O.L
@@ -816,15 +816,15 @@ void main() {
 
       final image = (await tester.runAsync(
         () => decodeImageFromList(
-          File('${temp.path}/CUTCut.png').readAsBytesSync(),
+          File('${temp.path}/_TSCut.png').readAsBytesSync(),
         ),
       ))!;
       addTearDown(image.dispose);
       final data = (await tester.runAsync(
         () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
       ))!;
-      // F-294 (유저 2026-10-05: 「1x하더라도 100%크기인채로 출력해야」): the
-      // export starts at 1x, and at 1x a sheet is its paper's own pixels.
+      // F-294 (유저 2026-10-05: 「1x하더라도 100%크기인채로 출력해야」): a
+      // sheet is its paper's own pixels.
       expect((image.width, image.height), (1754, 2480));
       // The page ink's surface pixel (0, 0) sits on the page's corner, and a
       // pixel of the ink is a pixel of the paper.
@@ -841,21 +841,17 @@ void main() {
       );
       await switchTab(tester, 'timesheet');
       await browseTo(tester);
-      // XDTS is a chip now (Sheet PNG became the default).
       await tester.tap(
         find.byKey(const ValueKey<String>('export-tsformat-xdts')),
       );
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-scope-project')),
-      );
-      await tester.pump();
+      await tester.pickExportProjectScope();
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['CUTCut B.xdts', 'CUTCut.xdts']);
-      expect(statusText(tester), 'Exported 2 XDTS sheets.');
-      final content = File('${temp.path}/CUTCut.xdts').readAsStringSync();
+      expect(filesWrittenUnder(temp), ['_TSCut B.xdts', '_TSCut.xdts']);
+      expect(statusText(tester), 'Exported 2 files.');
+      final content = File('${temp.path}/_TSCut.xdts').readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });
@@ -881,7 +877,7 @@ void main() {
       await browseTo(tester);
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesIn(temp), ['Project.png']);
+      expect(filesWrittenUnder(temp), ['Project.png']);
     });
 
     testWidgets('project scope: in/out trims by whole-track positions',
@@ -893,10 +889,7 @@ void main() {
       );
       await browseTo(tester);
       await pickStillPng(tester);
-      await tester.tap(
-        find.byKey(const ValueKey<String>('export-scope-project')),
-      );
-      await tester.pump();
+      await tester.pickExportProjectScope();
       await tester.enterText(
         find.byKey(const ValueKey<String>('export-range-start-field')),
         '2',
@@ -908,7 +901,7 @@ void main() {
       await tester.pump();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesIn(temp), [
+      expect(filesWrittenUnder(temp), [
         'frame_0001.png',
         'frame_0002.png',
         'frame_0003.png',
@@ -950,17 +943,23 @@ void main() {
       expect(headline.data, contains('2 frames'));
     });
 
-    testWidgets('the timesheet tab scrubs cut/page (EX6)', (tester) async {
+    testWidgets('the timesheet stands in the Cels list — its row, a block a '
+        'page — and the line under the preview says its file', (
+      tester,
+    ) async {
       await pumpDialog(tester, exportSession());
       await switchTab(tester, 'timesheet');
       expect(
         find.byKey(const ValueKey<String>('export-nav-scrub')),
-        findsOneWidget,
+        findsNothing,
+        reason: 'the list\'s band turns the pages',
       );
+      expect(tester.celsBoardRowIds, ['document-timesheet']);
+      expect(tester.celsBoardBlocksOf('document-timesheet'), [('Cut', true)]);
       final transport = tester.widget<Text>(
         find.byKey(const ValueKey<String>('export-transport-line')),
       );
-      expect(transport.data, contains('CUTCut · p1/1'));
+      expect(transport.data, '_TSCut.png · 1 / 1');
     });
 
     /// 🚨THE FILE-BAR PREVIEW AND THE OUTPUT LINE ARE ONE ANSWER.
@@ -985,20 +984,20 @@ void main() {
       );
       await tester.pump();
 
-      // The fixture's cut is named 'Cut', so the file is CUTCut.xdts — the
-      // same name the timesheet export actually writes.
+      // The fixture's cut is named 'Cut', so the file is _TSCut.xdts — the
+      // same name the run actually writes.
       final pattern = tester
           .widget<Text>(
             find.byKey(const ValueKey<String>('export-pattern-preview')),
           )
           .data;
-      expect(pattern, 'CUTCut.xdts');
+      expect(pattern, '_TSCut.xdts');
       final line = tester
           .widget<Text>(
             find.byKey(const ValueKey<String>('export-output-line')),
           )
           .data;
-      expect(line, contains('CUTCut.xdts'));
+      expect(line, contains('_TSCut.xdts'));
     });
 
     testWidgets('a flushed preview shows the rendered picture',
@@ -1150,7 +1149,7 @@ void main() {
       await tester.pump();
       await tester.runAsync(state.export);
       await tester.pump();
-      expect(filesIn(temp), ['frame_0001.jpg', 'frame_0002.jpg']);
+      expect(filesWrittenUnder(temp), ['frame_0001.jpg', 'frame_0002.jpg']);
       final bytes = File('${temp.path}/frame_0001.jpg').readAsBytesSync();
       expect(bytes.sublist(0, 2), [0xFF, 0xD8]);
     });
@@ -1327,7 +1326,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       return {
-        for (final name in filesIn(folder))
+        for (final name in filesWrittenUnder(folder))
           name: File('${folder.path}/$name').readAsBytesSync(),
       };
     }

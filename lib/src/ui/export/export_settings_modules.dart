@@ -492,18 +492,12 @@ class ExportFormatModule extends StatelessWidget {
     ),
   );
 
-  Widget _qualityRow() => ExportModuleRow(
-    label: AppText.strings.exQuality,
-    child: FieldSlider(
-      key: const ValueKey<String>('export-format-quality'),
-      value: selection.jpgQuality.clamp(1, 100).toDouble(),
-      min: 1,
-      max: 100,
-      divisions: 99,
-      onChanged: enabled
-          ? (next) => _change(selection.copyWith(jpgQuality: next.round()))
-          : null,
-    ),
+  Widget _qualityRow() => ExportJpgQualityRow(
+    keyValue: 'export-format-quality',
+    quality: selection.jpgQuality,
+    onChanged: enabled
+        ? (quality) => _change(selection.copyWith(jpgQuality: quality))
+        : null,
   );
 
   Widget _channelsRow() => ExportChoiceRow<ExportChannels>(
@@ -571,8 +565,120 @@ class ExportFormatModule extends StatelessWidget {
   }
 }
 
+/// 품질: a JPG's quality, 1–100 — ONE row wherever a JPG is written, a cel
+/// or a paper document.
+class ExportJpgQualityRow extends StatelessWidget {
+  const ExportJpgQualityRow({
+    super.key,
+    required this.keyValue,
+    required this.quality,
+    required this.onChanged,
+  });
+
+  final String keyValue;
+  final int quality;
+
+  /// Null while the window is busy.
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final changed = onChanged;
+    return ExportModuleRow(
+      label: AppText.strings.exQuality,
+      child: FieldSlider(
+        key: ValueKey<String>(keyValue),
+        value: quality.clamp(1, 100).toDouble(),
+        min: 1,
+        max: 100,
+        divisions: 99,
+        onChanged: changed == null ? null : (next) => changed(next.round()),
+      ),
+    );
+  }
+}
+
+/// What a PAPER DOCUMENT is written as — a timesheet's pages, a cut
+/// envelope, the conte's page images: PNG, or JPG at a quality
+/// ([paperDocumentFormat]; 유저 2026-10-05: 「시트 그리고 png말고 jpg도
+/// 추가」).
+///
+/// A document that has a format which is no picture — the timesheet's
+/// digital sheet, the conte's PDF — offers it in the same strip ([before] ·
+/// [after]), and the picture formats are lit only while a picture is what
+/// is written ([pictured]).
+class ExportPaperFormatModule extends StatelessWidget {
+  const ExportPaperFormatModule({
+    super.key,
+    required this.keyPrefix,
+    required this.label,
+    required this.image,
+    required this.onImageChanged,
+    this.pictured = true,
+    this.before = const [],
+    this.after = const [],
+  });
+
+  /// Leads every key of the module: `<keyPrefix>-png`, `-jpg`, `-quality`.
+  final String keyPrefix;
+  final String label;
+  final ExportFormatSelection image;
+
+  /// A picture format, picked — or its quality, moved. Null while the
+  /// window is busy.
+  final ValueChanged<ExportFormatSelection>? onImageChanged;
+  final bool pictured;
+  final List<PillItem> before;
+  final List<PillItem> after;
+
+  static String summarize(ExportFormatSelection image) =>
+      image.stillFormat == ExportStillFormat.jpg
+      ? 'JPG · ${image.jpgQuality}'
+      : image.stillFormat.label;
+
+  @override
+  Widget build(BuildContext context) {
+    final changed = onImageChanged;
+    PillItem still(ExportStillFormat format) => PillItem(
+      keyValue: '$keyPrefix-${format.jsonValue}',
+      label: format.label,
+      selected: pictured && image.stillFormat == format,
+      onTap: changed == null
+          ? null
+          : () => changed(image.copyWith(stillFormat: format)),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ExportModuleRow(
+          label: label,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: PillStrip(
+              items: [
+                ...before,
+                still(ExportStillFormat.png),
+                still(ExportStillFormat.jpg),
+                ...after,
+              ],
+            ),
+          ),
+        ),
+        if (pictured && image.stillFormat == ExportStillFormat.jpg)
+          ExportJpgQualityRow(
+            keyValue: '$keyPrefix-quality',
+            quality: image.jpgQuality,
+            onChanged: changed == null
+                ? null
+                : (quality) => changed(image.copyWith(jpgQuality: quality)),
+          ),
+      ],
+    );
+  }
+}
+
 /// The Scope module: Cut/Project pills plus an optional tab-specific body
-/// (Sequence's in/out fields, the Cels/Timesheet cut grid later).
+/// (Sequence's in/out fields, the Cels cut grid).
 class ExportScopeModule extends StatelessWidget {
   const ExportScopeModule({
     super.key,
@@ -787,6 +893,8 @@ String exportCelKindLabel(ExportCelKind kind) => switch (kind) {
   ExportCelKind.conte => AppText.strings.tlKindStoryboard,
   ExportCelKind.art => AppText.strings.exArtLabel,
   ExportCelKind.direction => AppText.strings.exSelDirection,
+  ExportCelKind.timesheet => AppText.strings.panelTimesheet,
+  ExportCelKind.envelope => AppText.strings.panelEnvelope,
 };
 
 /// Cel-file naming: the CSP-style options ported into the module grammar.

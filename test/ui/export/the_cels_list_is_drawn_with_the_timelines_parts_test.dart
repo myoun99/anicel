@@ -36,6 +36,7 @@ import 'package:anicel/src/ui/widgets/app_scrollbar_lane.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
+import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
 
 /// The export window's Cels list ([ExportCelsBoard], F-289) — drawn with
@@ -113,7 +114,7 @@ void main() {
   ({List<ExportCelsBoardRow> rows, Cut cut}) listOf({
     ExportCelsCutDelta? delta,
     Set<LayerId> shut = const {},
-    CelsExportSpec spec = const CelsExportSpec(),
+    CelsExportSpec spec = celsAlone,
   }) {
     final cut = film();
     final overrides = delta == null
@@ -141,7 +142,7 @@ void main() {
           spec: spec,
           delta: delta,
         ),
-        sheets: plan.sheets,
+        plan: plan,
         shut: shut,
       ),
     );
@@ -157,7 +158,7 @@ void main() {
     bool enabled = true,
     double width = 900,
     List<ExportCelsDirection> directions = const [],
-    CelsExportSpec spec = const CelsExportSpec(),
+    CelsExportSpec spec = celsAlone,
   }) async {
     pressed.clear();
     final (:rows, :cut) = listOf(delta: delta, shut: shut, spec: spec);
@@ -174,7 +175,7 @@ void main() {
                 rules: const SizedBox(key: ValueKey<String>('rules')),
                 band: ExportCelsBand(
                   cutPicker: const SizedBox(key: ValueKey<String>('picker')),
-                  count: '6 cels',
+                  count: '6 files',
                   onStep: enabled ? (steps) => pressed.add('step $steps') : null,
                   canStepBack: false,
                   canStepOn: true,
@@ -182,16 +183,15 @@ void main() {
                 ),
                 rows: rows,
                 layers: cut.layers,
-                standing: stood.rowIn(rows)?.layer.id,
+                standing: stood.rowIn(rows)?.idValue,
                 shown: stood.shown,
                 enabled: enabled,
                 onRowSwitched: (row, on) =>
-                    pressed.add('switch ${row.layer.id.value} $on'),
-                onFolded: (row) => pressed.add('fold ${row.layer.id.value}'),
-                onStoodOn: (row) => pressed.add('stand ${row.layer.id.value}'),
-                onSheetPressed: (sheet) => pressed.add(
-                  'block ${sheet.row.id.value} ${sheet.celName}',
-                ),
+                    pressed.add('switch ${row.idValue} $on'),
+                onFolded: (row) => pressed.add('fold ${row.idValue}'),
+                onStoodOn: (row) => pressed.add('stand ${row.idValue}'),
+                onSheetPressed: (sheet) =>
+                    pressed.add('block ${sheet.idValue}'),
               ),
             ),
           ),
@@ -466,7 +466,7 @@ void main() {
       'shown the accent — by colour alone', (tester) async {
     await pumpBoard(
       tester,
-      standing: const ExportCelsStanding(row: LayerId('b')),
+      standing: const ExportCelsStanding(row: 'b'),
     );
     final scheme = Theme.of(
       tester.element(find.byType(ExportCelsBoard)),
@@ -499,7 +499,7 @@ void main() {
     await tester.tap(tester.celsBoardBlock('l', 'l-1'));
     await tester.tap(keyed('export-cels-stand-a'));
     await tester.pump();
-    expect(pressed, ['block b 3', 'block l 1', 'stand a']);
+    expect(pressed, ['block b-3', 'block l-1', 'stand a']);
     expect(
       keyed('export-cels-stand-f'),
       findsNothing,
@@ -561,7 +561,7 @@ void main() {
     testWidgets('the count, and the two steps — off where there is nowhere '
         'to step', (tester) async {
       await pumpBoard(tester);
-      expect(tester.widget<Text>(keyed('export-cels-count')).data, '6 cels');
+      expect(tester.widget<Text>(keyed('export-cels-count')).data, '6 files');
       await tester.tap(keyed('export-cels-prev'), warnIfMissed: false);
       await tester.tap(keyed('export-cels-next'));
       await tester.pump();
@@ -699,8 +699,8 @@ void main() {
       'file, its whole name', (tester) async {
     await pumpBoard(tester);
     final written = tester.celsBoardBlockOf('b', 'b-2').sheet;
-    expect(written.look.fileName, isNotEmpty);
-    expect(find.byTooltip(written.look.fileName), findsOneWidget);
+    expect(written.fileName, isNotEmpty);
+    expect(find.byTooltip(written.fileName), findsOneWidget);
     final refused = tester.celsBoardBlockOf('l', 'l-1').sheet;
     expect(refused.planned, isFalse);
     expect(find.byTooltip(refused.fullName), findsWidgets);

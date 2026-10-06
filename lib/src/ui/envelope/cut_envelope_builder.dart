@@ -6,7 +6,7 @@ import '../../models/project.dart';
 import '../../services/commands/link_mirror.dart';
 
 export '../../models/envelope/cut_envelope_paper.dart'
-    show CutEnvelopePaperMode, cutEnvelopePaperSize, envelopeSheetPaperSize;
+    show CutEnvelopePaperMode, cutEnvelopePaperSize;
 
 /// Builds the envelope's read-only description from the project — the
 /// conte sheet builder's job, said of envelopes.

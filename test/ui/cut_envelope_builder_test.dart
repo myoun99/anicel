@@ -106,8 +106,6 @@ void main() {
       final paper = cutEnvelopePaperSize(
         mode: CutEnvelopePaperMode.cut,
         cut: cut,
-        // The scale is the real sheet's alone.
-        sheetScale: 3,
       );
 
       expect(paper.width, cut.canvasSize.width);
@@ -115,21 +113,12 @@ void main() {
     });
 
     test('sheet mode is the envelope\'s own paper — A4 on its side at '
-        '300dpi, whatever the cut — and a scale is that many papers '
-        '(F-294)', () {
+        '300dpi, whatever the cut (F-294)', () {
       final cut = session.requireActiveCut;
 
       expect(
         cutEnvelopePaperSize(mode: CutEnvelopePaperMode.sheet, cut: cut),
         (width: 3508, height: 2480),
-      );
-      expect(
-        cutEnvelopePaperSize(
-          mode: CutEnvelopePaperMode.sheet,
-          cut: cut,
-          sheetScale: 2,
-        ),
-        (width: 7016, height: 4960),
       );
     });
 

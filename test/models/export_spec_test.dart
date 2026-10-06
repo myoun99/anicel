@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/models/export_cel_naming.dart';
 import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_preset.dart';
@@ -60,13 +61,17 @@ void main() {
   });
 
   group('CelsExportSpec', () {
-    test('defaults: canvas size, the 셀 and 미술 kinds, 원화 label, 「최신」 '
-        'take, paper applied, 기준 preset — and the JSON carries none of them',
-        () {
+    test('defaults: canvas size, the 셀 · 미술 · 타임시트 kinds, 원화 label, '
+        '「최신」 take, paper applied, 기준 preset — and the JSON carries none '
+        'of them', () {
       const spec = CelsExportSpec();
       expect(spec.sizeMode, ExportSizeMode.canvas);
       // 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
-      expect(spec.kinds, {ExportCelKind.cel, ExportCelKind.art});
+      expect(spec.kinds, {
+        ExportCelKind.cel,
+        ExportCelKind.art,
+        ExportCelKind.timesheet,
+      });
       expect(spec.label, const LayerMark(process: LayerProcess.key));
       expect(spec.take, isNull);
       expect(spec.applyPaper, isTrue);
@@ -141,11 +146,17 @@ void main() {
       const spec = CelsExportSpec();
       expect(spec.withKind(ExportCelKind.art, false).kinds, {
         ExportCelKind.cel,
+        ExportCelKind.timesheet,
       });
       expect(spec.withKind(ExportCelKind.direction, true).kinds, {
         ExportCelKind.cel,
         ExportCelKind.art,
+        ExportCelKind.timesheet,
         ExportCelKind.direction,
+      });
+      expect(spec.withKind(ExportCelKind.timesheet, false).kinds, {
+        ExportCelKind.cel,
+        ExportCelKind.art,
       });
       expect(spec.withKind(ExportCelKind.cel, true), spec);
       expect(
@@ -168,8 +179,8 @@ void main() {
     test('🗣️a kind\'s prefix is its own until the naming says otherwise, '
         'and is kept only where it differs — the default has one spelling',
         () {
-      // 유저 2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_」 · 「콘티레이어는
-      // 다만 기본값 없음으로」.
+      // 유저 2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_, 시트:_,
+      // 컷봉투:_」 · 「콘티레이어는 다만 기본값 없음으로」.
       const naming = ExportCelNaming();
       expect(
         {for (final kind in ExportCelKind.values) kind: naming.prefixOf(kind)},
@@ -178,6 +189,8 @@ void main() {
           ExportCelKind.conte: '',
           ExportCelKind.art: '_',
           ExportCelKind.direction: '_',
+          ExportCelKind.timesheet: '_',
+          ExportCelKind.envelope: '_',
         },
       );
       final typed = naming
@@ -205,58 +218,98 @@ void main() {
     });
   });
 
-  group('TimesheetExportSpec', () {
-    test('round-trips and clamps scale', () {
-      final spec = const TimesheetExportSpec().copyWith(
-        format: ExportTimesheetFormat.xdts,
-        scope: ExportScopeKind.project,
-        sheetScale: 9,
+  group('the cut\'s documents are kinds of the Cels tab (F-289)', () {
+    test('the timesheet and the cut envelope are documents; the rows\' '
+        'kinds are not — and both start behind an underscore (유저 '
+        '2026-10-06: 「기본값은 셀:없음, 미술:_, 디렉션:_, 시트:_, '
+        '컷봉투:_」)', () {
+      expect(
+        [
+          for (final kind in ExportCelKind.values)
+            if (kind.isDocument) kind,
+        ],
+        [ExportCelKind.timesheet, ExportCelKind.envelope],
       );
-      expect(spec.sheetScale, 4);
-      expect(TimesheetExportSpec.fromJson(spec.toJson()), spec);
+      expect(ExportCelKind.timesheet.defaultPrefix, '_');
+      expect(ExportCelKind.envelope.defaultPrefix, '_');
     });
-  });
 
-  group('🚨F-294: a sheet image\'s scale is over its PAPER, one law for the '
-      'timesheet, the conte and the envelope', () {
-    test('an export starts at 1x — the paper as it is — and a spec that '
-        'names no scale reads as that', () {
-      expect(SheetImageScale.paper, 1);
-      expect(const TimesheetExportSpec().sheetScale, 1);
-      expect(const ConteExportSpec().sheetScale, 1);
-      expect(const EnvelopeExportSpec().sheetScale, 1);
-      expect(TimesheetExportSpec.fromJson(const {}).sheetScale, 1);
-      expect(ConteExportSpec.fromJson(const {}).sheetScale, 1);
-      expect(EnvelopeExportSpec.fromJson(const {}).sheetScale, 1);
-      for (final spec in const <ExportTabSpec>[
-        TimesheetExportSpec(),
-        ConteExportSpec(),
-        EnvelopeExportSpec(),
+    test('타임시트 형식 and 컷봉투 형식 are the cels spec\'s: pictures by '
+        'default, the envelope on the cut\'s own pixels — and the JSON '
+        'carries none of it until one moves', () {
+      const spec = CelsExportSpec();
+      expect(spec.sheetFormat, ExportTimesheetFormat.sheetImage);
+      expect(spec.sheetImage, paperDocumentFormat);
+      expect(spec.envelopePaper, CutEnvelopePaperMode.cut);
+      expect(spec.envelopeImage, paperDocumentFormat);
+      expect(
+        spec.toJson().keys,
+        isNot(
+          anyOf(
+            contains('sheetFormat'),
+            contains('sheetImage'),
+            contains('envelopePaper'),
+            contains('envelopeImage'),
+          ),
+        ),
+      );
+
+      final jpg = paperDocumentFormat.copyWith(
+        stillFormat: ExportStillFormat.jpg,
+        jpgQuality: 72,
+      );
+      final moved = spec.copyWith(
+        sheetFormat: ExportTimesheetFormat.xdts,
+        sheetImage: jpg,
+        envelopePaper: CutEnvelopePaperMode.sheet,
+        envelopeImage: jpg,
+      );
+      expect(moved, isNot(spec));
+      final restored = CelsExportSpec.fromJson(moved.toJson());
+      expect(restored, moved);
+      expect(restored.sheetFormat, ExportTimesheetFormat.xdts);
+      expect(restored.sheetImage.jpgQuality, 72);
+      expect(restored.envelopePaper, CutEnvelopePaperMode.sheet);
+      expect(restored.envelopeImage.stillFormat, ExportStillFormat.jpg);
+      // Each of the four is its own field: one moved is a different spec.
+      for (final one in [
+        spec.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+        spec.copyWith(sheetImage: jpg),
+        spec.copyWith(envelopePaper: CutEnvelopePaperMode.sheet),
+        spec.copyWith(envelopeImage: jpg),
       ]) {
-        expect(spec.toJson(), isEmpty, reason: '${spec.tab}');
+        expect(one, isNot(spec));
+        expect(one.hashCode, isNot(spec.hashCode));
+        expect(CelsExportSpec.fromJson(one.toJson()), one);
       }
     });
 
-    test('every sheet holds its scale to the steps, and keeps a step it is '
-        'given through JSON', () {
-      expect(SheetImageScale.steps, [1, 2, 3, 4]);
-      expect(const TimesheetExportSpec().copyWith(sheetScale: 0).sheetScale, 1);
-      expect(const ConteExportSpec().copyWith(sheetScale: 9).sheetScale, 4);
-      expect(const EnvelopeExportSpec().copyWith(sheetScale: 9).sheetScale, 4);
-      expect(
-        EnvelopeExportSpec.fromJson(const {'sheetScale': 99}).sheetScale,
-        4,
-      );
-      expect(ConteExportSpec.fromJson(const {'sheetScale': 0}).sheetScale, 1);
+    test('a paper document is a still on its paper: PNG or JPG, never a '
+        'format with no paper under it — and one the file names wrongly '
+        'reads as PNG', () {
+      expect(paperDocumentFormat.isStill, isTrue);
+      expect(paperDocumentFormat.wantsAlpha, isFalse);
+      expect(paperDocumentFormat.stillFormat, ExportStillFormat.png);
+      expect(paperDocumentFormatFromJson(null), paperDocumentFormat);
+      final psd = const ExportFormatSelection(
+        kind: ExportMediaKind.still,
+        stillFormat: ExportStillFormat.psd,
+        jpgQuality: 55,
+      ).toJson();
+      final read = paperDocumentFormatFromJson(psd);
+      expect(read.stillFormat, ExportStillFormat.png);
+      expect(read.wantsAlpha, isFalse);
+      expect(read.jpgQuality, 55, reason: 'the quality is kept for a JPG');
+    });
 
-      const timesheet = TimesheetExportSpec(sheetScale: 3);
-      const conte = ConteExportSpec(sheetScale: 2);
-      const envelope = EnvelopeExportSpec(sheetScale: 4);
-      expect(timesheet.toJson()['sheetScale'], 3);
-      expect(TimesheetExportSpec.fromJson(timesheet.toJson()), timesheet);
-      expect(ConteExportSpec.fromJson(conte.toJson()), conte);
-      expect(EnvelopeExportSpec.fromJson(envelope.toJson()), envelope);
-      expect(envelope, isNot(const EnvelopeExportSpec(sheetScale: 3)));
+    test('🚨F-294: a paper document goes out at its paper\'s own pixels — '
+        'a scale a file of an older build names is not read (유저 '
+        '2026-10-06: 「시트 이미지는 배율 없앰. 늘 용지 그대로」)', () {
+      expect(
+        ConteExportSpec.fromJson(const {'sheetScale': 3}),
+        const ConteExportSpec(),
+      );
+      expect(const ConteExportSpec().toJson(), isEmpty);
     });
   });
 
@@ -265,14 +318,37 @@ void main() {
       const specs = ExportTabSpecs();
       final updated = specs
           .withSpec(const SequenceExportSpec(inFrame: 1))
-          .withSpec(const CelsExportSpec(take: 2));
+          .withSpec(const CelsExportSpec(take: 2))
+          .withSpec(const ConteExportSpec(format: ExportConteFormat.pageImage));
       expect(
         (updated.specFor(ExportTab.sequence) as SequenceExportSpec).inFrame,
         1,
       );
       expect(updated.cels.take, 2);
+      expect(updated.conte.format, ExportConteFormat.pageImage);
       expect(updated.image, specs.image);
       expect(ExportTabSpecs.fromJson(updated.toJson()), updated);
+    });
+
+    test('the tabs are four — the timesheet and the cut envelope are no '
+        'tab, and what a file of an older build kept for them is left '
+        'unread', () {
+      expect(ExportTab.values, [
+        ExportTab.sequence,
+        ExportTab.image,
+        ExportTab.cels,
+        ExportTab.conte,
+      ]);
+      expect(ExportTab.fromJsonOrNull('timesheet'), isNull);
+      expect(ExportTab.fromJsonOrNull('envelope'), isNull);
+      expect(ExportTab.fromJsonOrNull('cels'), ExportTab.cels);
+      expect(
+        ExportTabSpecs.fromJson(const {
+          'timesheet': {'format': 'xdts', 'scope': 'project'},
+          'envelope': {'paperMode': 'sheet'},
+        }),
+        const ExportTabSpecs(),
+      );
     });
   });
 
@@ -283,7 +359,7 @@ void main() {
         name: '러시 체크 MP4',
         spec: SequenceExportSpec(applyLayerFx: false),
       );
-      final restored = ExportPreset.fromJson(preset.toJson());
+      final restored = ExportPreset.fromJson(preset.toJson())!;
       expect(restored, preset);
       expect(restored.tab, ExportTab.sequence);
       expect((restored.spec as SequenceExportSpec).applyLayerFx, isFalse);
@@ -295,9 +371,25 @@ void main() {
         name: '납품 셀',
         spec: CelsExportSpec(kinds: {ExportCelKind.conte}),
       );
-      final restored = ExportPreset.fromJson(preset.toJson());
+      final restored = ExportPreset.fromJson(preset.toJson())!;
       expect(restored.spec, isA<CelsExportSpec>());
       expect((restored.spec as CelsExportSpec).kinds, {ExportCelKind.conte});
+    });
+
+    test('a preset saved for a tab that is one no longer is no preset', () {
+      const preset = ExportPreset(
+        id: ExportPresetId('preset-3'),
+        name: 'sheets',
+        spec: CelsExportSpec(),
+      );
+      expect(
+        ExportPreset.fromJson({...preset.toJson(), 'tab': 'timesheet'}),
+        isNull,
+      );
+      expect(
+        ExportPreset.fromJson({...preset.toJson(), 'tab': 'envelope'}),
+        isNull,
+      );
     });
   });
 }

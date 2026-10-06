@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart' show setEquals;
 
-import 'sheet_paint_layer.dart';
 import 'envelope/cut_envelope_paper.dart';
 import 'export_cel_kind.dart';
 import 'export_cel_naming.dart';
@@ -17,31 +16,34 @@ export 'export_cel_kind.dart';
 /// `ExportProjectOverrides`); the queue job carries one; the dialog binds
 /// one per tab.
 
+/// 🗣️F-289 (유저 2026-10-05): 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
+/// 컷봉투탭도 셀 내부로 편입」 — the timesheet and the cut envelope are KINDS
+/// the Cels tab writes ([ExportCelKind]), where they were tabs of their own.
 enum ExportTab {
   sequence,
   image,
   cels,
-  timesheet,
-  conte,
-  envelope;
+  conte;
 
   String get jsonValue => name;
 
-  static ExportTab fromJson(Object? json) {
+  /// The tab [json] names, or null for a name no tab has — a preset saved
+  /// for a tab that is one no longer is no preset of any tab.
+  static ExportTab? fromJsonOrNull(Object? json) {
     for (final tab in ExportTab.values) {
       if (tab.jsonValue == json) {
         return tab;
       }
     }
-    return ExportTab.sequence;
+    return null;
   }
 }
 
 /// The Scope module: the active cut, or the whole project. Sequence's
-/// project scope has NO cut list (in/out alone trims it); the Cels,
-/// Timesheet and Envelope PROJECT scope excludes cuts through the
-/// project-side overrides' cut checks — the cut scope never asks them
-/// (`exportCutsInScope`).
+/// project scope has NO cut list (in/out alone trims it); the Cels tab's
+/// PROJECT scope excludes cuts through the project-side overrides' cut
+/// checks — for its cels, its timesheets and its cut envelopes alike — and
+/// the cut scope never asks them (`exportCutsInScope`).
 enum ExportScopeKind {
   cut,
   project;
@@ -89,10 +91,10 @@ class ExportSequenceNaming {
   int get hashCode => Object.hash(baseName, digits);
 }
 
-/// What the Timesheet tab writes: the sheet's pages rendered on the
+/// What a cut's timesheet is written as: the sheet's pages rendered on the
 /// panel's paper as images, or a digital sheet file. (TDTS and the Auto
 /// Sheet JSON join this enum once their sample files arrive — the seam is
-/// this enum plus the tab's format module allow-list.)
+/// this enum plus the format module's allow-list.)
 enum ExportTimesheetFormat {
   sheetImage,
   xdts;
@@ -134,9 +136,7 @@ ExportTabSpec exportTabSpecFromJson(ExportTab tab, Map<String, dynamic> json) {
     ExportTab.sequence => SequenceExportSpec.fromJson(json),
     ExportTab.image => ImageExportSpec.fromJson(json),
     ExportTab.cels => CelsExportSpec.fromJson(json),
-    ExportTab.timesheet => TimesheetExportSpec.fromJson(json),
     ExportTab.conte => ConteExportSpec.fromJson(json),
-    ExportTab.envelope => EnvelopeExportSpec.fromJson(json),
   };
 }
 
@@ -328,12 +328,17 @@ class CelsExportSpec extends ExportTabSpec {
     this.attach = true,
     this.sheetOnly = false,
     this.scope = ExportScopeKind.cut,
+    this.sheetFormat = ExportTimesheetFormat.sheetImage,
+    this.sheetImage = paperDocumentFormat,
+    this.envelopePaper = CutEnvelopePaperMode.cut,
+    this.envelopeImage = paperDocumentFormat,
   });
 
   /// 유저 2026-10-06: 「기본값은 셀/미술/시트 체크 나머진 해제」.
   static const Set<ExportCelKind> defaultKinds = {
     ExportCelKind.cel,
     ExportCelKind.art,
+    ExportCelKind.timesheet,
   };
 
   /// 원화(上がり). A fresh preset exports the key cels; 「라벨 없음」 as the
@@ -397,6 +402,35 @@ class CelsExportSpec extends ExportTabSpec {
 
   final ExportScopeKind scope;
 
+  /// 타임시트 형식: what a cut's timesheet is written as — its pages as
+  /// pictures ([sheetImage]), or the digital sheet file. 유저 2026-10-05:
+  /// 「기존의 범위는 셀의 범위 규칙 따라가고, 형식만 타임시트 형식이라는 항목
+  /// 만들어서 법 통일해서 고를수있게」 — so its scope is the cels' ([scope]).
+  final ExportTimesheetFormat sheetFormat;
+
+  /// The picture a timesheet page is written as ([paperDocumentFormat]).
+  final ExportFormatSelection sheetImage;
+
+  /// 컷봉투 형식: the paper a cut envelope is written on (유저 2026-10-05:
+  /// 「기존의 컷봉투탭에 있던 용지는 컷크기/실측용지 이거는 컷봉투 형식안에
+  /// 넣고」). The CUT's own pixel size from the start, because the point of
+  /// the digital envelope is to drop into the working file as a layer and
+  /// line up with the artwork; the real envelope's paper is there for
+  /// printing.
+  ///
+  /// Which FORM prints is not here: it is the work's
+  /// (`TimesheetInfo.envelopeFormId`), chosen in the envelope panel — 유저 답
+  /// envelope-form-in-export (2026-09-25): 「출력은 작품의 서식을 따른다
+  /// (출력 창의 고르기는 뺀다)」.
+  ///
+  /// 🪦The tab it had could leave strata out and write one file a stratum.
+  /// 유저 2026-10-05: 「레이어 항목 버튼? 용지 서식 내용 선화 고르는거 싹 다
+  /// 필요없어보이니 삭제」 — an envelope is written whole.
+  final CutEnvelopePaperMode envelopePaper;
+
+  /// The picture a cut envelope is written as ([paperDocumentFormat]).
+  final ExportFormatSelection envelopeImage;
+
   @override
   ExportTab get tab => ExportTab.cels;
 
@@ -415,6 +449,10 @@ class CelsExportSpec extends ExportTabSpec {
     bool? attach,
     bool? sheetOnly,
     ExportScopeKind? scope,
+    ExportTimesheetFormat? sheetFormat,
+    ExportFormatSelection? sheetImage,
+    CutEnvelopePaperMode? envelopePaper,
+    ExportFormatSelection? envelopeImage,
   }) => CelsExportSpec(
     format: format ?? this.format,
     sizeMode: sizeMode ?? this.sizeMode,
@@ -428,6 +466,10 @@ class CelsExportSpec extends ExportTabSpec {
     attach: attach ?? this.attach,
     sheetOnly: sheetOnly ?? this.sheetOnly,
     scope: scope ?? this.scope,
+    sheetFormat: sheetFormat ?? this.sheetFormat,
+    sheetImage: sheetImage ?? this.sheetImage,
+    envelopePaper: envelopePaper ?? this.envelopePaper,
+    envelopeImage: envelopeImage ?? this.envelopeImage,
   );
 
   /// This spec with [kind] written or not.
@@ -456,6 +498,13 @@ class CelsExportSpec extends ExportTabSpec {
     if (!attach) 'attach': false,
     if (sheetOnly) 'sheetOnly': true,
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
+    if (sheetFormat != ExportTimesheetFormat.sheetImage)
+      'sheetFormat': sheetFormat.jsonValue,
+    if (sheetImage != paperDocumentFormat) 'sheetImage': sheetImage.toJson(),
+    if (envelopePaper != CutEnvelopePaperMode.cut)
+      'envelopePaper': envelopePaper.toJson(),
+    if (envelopeImage != paperDocumentFormat)
+      'envelopeImage': envelopeImage.toJson(),
   };
 
   static CelsExportSpec fromJson(Map<String, dynamic> json) => CelsExportSpec(
@@ -488,6 +537,13 @@ class CelsExportSpec extends ExportTabSpec {
     attach: json['attach'] as bool? ?? json['selection'] != 'direction',
     sheetOnly: json['sheetOnly'] as bool? ?? json['selection'] == 'sheet',
     scope: ExportScopeKind.fromJson(json['scope']),
+    sheetFormat: ExportTimesheetFormat.fromJson(json['sheetFormat']),
+    sheetImage: paperDocumentFormatFromJson(json['sheetImage']),
+    // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
+    envelopePaper: json['envelopePaper'] == null
+        ? CutEnvelopePaperMode.cut
+        : CutEnvelopePaperMode.fromJson(json['envelopePaper']),
+    envelopeImage: paperDocumentFormatFromJson(json['envelopeImage']),
   );
 
   static bool _presetJsonWas(Map<String, dynamic> json, Set<String> names) =>
@@ -508,7 +564,11 @@ class CelsExportSpec extends ExportTabSpec {
           other.base == base &&
           other.attach == attach &&
           other.sheetOnly == sheetOnly &&
-          other.scope == scope;
+          other.scope == scope &&
+          other.sheetFormat == sheetFormat &&
+          other.sheetImage == sheetImage &&
+          other.envelopePaper == envelopePaper &&
+          other.envelopeImage == envelopeImage;
 
   @override
   int get hashCode => Object.hash(
@@ -524,260 +584,89 @@ class CelsExportSpec extends ExportTabSpec {
     attach,
     sheetOnly,
     scope,
+    sheetFormat,
+    sheetImage,
+    envelopePaper,
+    envelopeImage,
   );
 }
 
-/// A SHEET IMAGE'S SCALE over its PAPER — one law for the three sheets'
-/// exports, the timesheet's, the conte's and the cut envelope's (F-294, 유저
-/// 2026-10-05: 「1x하더라도 100%크기인채로 출력해야되니 아까 말한대로
-/// 출력되야하는거아닌가」 · 「컷봉투도 확인한거맞아? 법 통일되있겠지?」). At 1 a
-/// page is its paper's own pixels (`SheetPaper`) — what its panel shows at
-/// 100% — and the steps go on in whole papers.
+/// The picture a PAPER DOCUMENT is written as — a timesheet page, a conte
+/// page, a cut envelope: PNG, or JPG at a quality (F-289, 유저 2026-10-05:
+/// 「시트 그리고 png말고 jpg도 추가」).
 ///
-/// ↩️The timesheet and the conte multiplied the form's own UNITS (1113×1574
-/// and 595×842 at 1x) and started at 2 to make up for it; the envelope named
-/// a width in pixels (1240 · 2480 · 3508) for a paper its panel never
-/// showed. With 1 the paper itself, 1 is where an export starts.
-abstract final class SheetImageScale {
-  /// The paper as it is.
-  static const int paper = 1;
+/// The format module's own value ([ExportFormatSelection]), held to what a
+/// sheet of paper can be: a still, opaque — the paper is its ground.
+///
+/// ↩️Each of the three carried a SCALE over its paper beside it (1x–4x,
+/// `SheetImageScale`). 유저 2026-10-06 took the row out: 「시트 이미지는 배율
+/// 없앰. 늘 용지 그대로. 콘티든 컷봉투든 똑같음. 필요하다면 해당 패널에
+/// 용지크기 설정을 만들어서 용지 크기를 바꾸게할것임」 — a paper document goes
+/// out at its paper's own pixels, what its panel shows at 100% (F-294).
+const ExportFormatSelection paperDocumentFormat = ExportFormatSelection(
+  kind: ExportMediaKind.still,
+  channels: ExportChannels.rgb,
+);
 
-  /// The steps an export offers.
-  static const List<int> steps = [1, 2, 3, 4];
-
-  /// [scale] held to the steps' range.
-  static int clamped(int scale) => scale.clamp(steps.first, steps.last);
-
-  /// The scale a saved spec names — the paper itself where it names none.
-  static int fromJson(Object? json) =>
-      clamped((json as num?)?.round() ?? paper);
-}
-
-class TimesheetExportSpec extends ExportTabSpec {
-  const TimesheetExportSpec({
-    this.format = ExportTimesheetFormat.sheetImage,
-    this.scope = ExportScopeKind.cut,
-    this.sheetScale = SheetImageScale.paper,
-  });
-
-  final ExportTimesheetFormat format;
-  final ExportScopeKind scope;
-
-  /// The sheet image's scale over its paper ([SheetImageScale]).
-  final int sheetScale;
-
-  @override
-  ExportTab get tab => ExportTab.timesheet;
-
-  TimesheetExportSpec copyWith({
-    ExportTimesheetFormat? format,
-    ExportScopeKind? scope,
-    int? sheetScale,
-  }) => TimesheetExportSpec(
-    format: format ?? this.format,
-    scope: scope ?? this.scope,
-    sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
+/// [json] read as a paper document's picture: [paperDocumentFormat] where
+/// the file names none, and a format a paper cannot be (PSD) is PNG.
+ExportFormatSelection paperDocumentFormatFromJson(Object? json) {
+  if (json is! Map<String, dynamic>) {
+    return paperDocumentFormat;
+  }
+  final read = ExportFormatSelection.fromJson(json);
+  return paperDocumentFormat.copyWith(
+    stillFormat: read.stillFormat == ExportStillFormat.jpg
+        ? ExportStillFormat.jpg
+        : ExportStillFormat.png,
+    jpgQuality: read.jpgQuality,
   );
-
-  @override
-  Map<String, dynamic> toJson() => {
-    if (format != ExportTimesheetFormat.sheetImage) 'format': format.jsonValue,
-    if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
-    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
-  };
-
-  static TimesheetExportSpec fromJson(Map<String, dynamic> json) =>
-      TimesheetExportSpec(
-        format: ExportTimesheetFormat.fromJson(json['format']),
-        scope: ExportScopeKind.fromJson(json['scope']),
-        sheetScale: SheetImageScale.fromJson(json['sheetScale']),
-      );
-
-  @override
-  bool operator ==(Object other) =>
-      other is TimesheetExportSpec &&
-      other.format == format &&
-      other.scope == scope &&
-      other.sheetScale == sheetScale;
-
-  @override
-  int get hashCode => Object.hash(format, scope, sheetScale);
 }
 
-/// The Conte tab: the storyboard sheet as one vector PDF (or page images).
+/// The Conte tab: the storyboard sheet as one vector PDF, or its pages as
+/// images.
 class ConteExportSpec extends ExportTabSpec {
   const ConteExportSpec({
     this.format = ExportConteFormat.pdf,
-    this.sheetScale = SheetImageScale.paper,
+    this.image = paperDocumentFormat,
   });
 
   final ExportConteFormat format;
 
-  /// The page image's scale over its paper ([SheetImageScale]); PDF output
-  /// is vector and ignores it.
-  final int sheetScale;
+  /// The picture a page image is written as ([paperDocumentFormat]); the
+  /// PDF is vector and does not ask it.
+  final ExportFormatSelection image;
 
   @override
   ExportTab get tab => ExportTab.conte;
 
-  ConteExportSpec copyWith({ExportConteFormat? format, int? sheetScale}) =>
-      ConteExportSpec(
-        format: format ?? this.format,
-        sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
-      );
+  ConteExportSpec copyWith({
+    ExportConteFormat? format,
+    ExportFormatSelection? image,
+  }) => ConteExportSpec(
+    format: format ?? this.format,
+    image: image ?? this.image,
+  );
 
   @override
   Map<String, dynamic> toJson() => {
     if (format != ExportConteFormat.pdf) 'format': format.jsonValue,
-    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
+    if (image != paperDocumentFormat) 'image': image.toJson(),
   };
 
   static ConteExportSpec fromJson(Map<String, dynamic> json) => ConteExportSpec(
     format: ExportConteFormat.fromJson(json['format']),
-    sheetScale: SheetImageScale.fromJson(json['sheetScale']),
+    image: paperDocumentFormatFromJson(json['image']),
   );
 
   @override
   bool operator ==(Object other) =>
       other is ConteExportSpec &&
       other.format == format &&
-      other.sheetScale == sheetScale;
+      other.image == image;
 
   @override
-  int get hashCode => Object.hash(format, sheetScale);
-}
-
-/// The Envelope tab: the 컷봉투 as an image — one sheet per cut, and one
-/// sheet for a 겸용 cut and all its siblings together.
-///
-/// The default is the CUT's own pixel size, because the point of the
-/// digital envelope is to drop into the working file as a layer and line
-/// up with the artwork. The real-envelope size is there for printing.
-///
-/// Which FORM prints is not here: it is the work's
-/// (`TimesheetInfo.envelopeFormId`), chosen in the envelope panel — 유저 답
-/// envelope-form-in-export (2026-09-25): 「출력은 작품의 서식을 따른다
-/// (출력 창의 고르기는 뺀다)」. ↩️The spec used to carry its own `formId`
-/// so a studio could read one form on screen and hand over another.
-class EnvelopeExportSpec extends ExportTabSpec {
-  const EnvelopeExportSpec({
-    this.paperMode = CutEnvelopePaperMode.cut,
-    this.scope = ExportScopeKind.cut,
-    this.sheetScale = SheetImageScale.paper,
-    this.layers = defaultLayers,
-    this.separateLayerFiles = false,
-  });
-
-  /// The strata an envelope HAS, in painting order — it shows no film
-  /// pictures ([SheetPaintLayer.picture] is the conte's).
-  static const List<SheetPaintLayer> strata = [
-    SheetPaintLayer.paper,
-    SheetPaintLayer.form,
-    SheetPaintLayer.content,
-    SheetPaintLayer.ink,
-  ];
-
-  /// Every stratum, which is what a flat PNG of the sheet means.
-  static const Set<SheetPaintLayer> defaultLayers = {...strata};
-
-  final CutEnvelopePaperMode paperMode;
-  final ExportScopeKind scope;
-
-  /// The real-envelope mode's scale over the envelope's paper
-  /// ([SheetImageScale]); the cut mode takes the canvas verbatim and
-  /// ignores this.
-  final int sheetScale;
-
-  /// Which strata print. Turning one off is how a printed sheet ships
-  /// without its handwriting, or how the form alone becomes a template.
-  final Set<SheetPaintLayer> layers;
-
-  /// One file per enabled layer instead of one flat image — the PSD
-  /// layering, shipping as PNGs until the PSD writer lands. Each file
-  /// carries exactly one stratum, so only the paper file is opaque and the
-  /// rest stack over it in whatever the recipient opens them in.
-  final bool separateLayerFiles;
-
-  /// The strata actually drawn, in painting order.
-  List<SheetPaintLayer> get orderedLayers => [
-    for (final layer in SheetPaintLayer.values)
-      if (layers.contains(layer)) layer,
-  ];
-
-  @override
-  ExportTab get tab => ExportTab.envelope;
-
-  EnvelopeExportSpec copyWith({
-    CutEnvelopePaperMode? paperMode,
-    ExportScopeKind? scope,
-    int? sheetScale,
-    Set<SheetPaintLayer>? layers,
-    bool? separateLayerFiles,
-  }) => EnvelopeExportSpec(
-    paperMode: paperMode ?? this.paperMode,
-    scope: scope ?? this.scope,
-    sheetScale: SheetImageScale.clamped(sheetScale ?? this.sheetScale),
-    layers: layers ?? this.layers,
-    separateLayerFiles: separateLayerFiles ?? this.separateLayerFiles,
-  );
-
-  /// Toggles one stratum, refusing to leave nothing to draw.
-  EnvelopeExportSpec withLayer(SheetPaintLayer layer, bool enabled) {
-    final next = {...layers};
-    if (enabled) {
-      next.add(layer);
-    } else {
-      next.remove(layer);
-    }
-    return next.isEmpty ? this : copyWith(layers: next);
-  }
-
-  @override
-  Map<String, dynamic> toJson() => {
-    if (paperMode != CutEnvelopePaperMode.cut) 'paperMode': paperMode.toJson(),
-    if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
-    if (sheetScale != SheetImageScale.paper) 'sheetScale': sheetScale,
-    if (!setEquals(layers, defaultLayers))
-      'layers': [for (final layer in orderedLayers) layer.jsonValue],
-    if (separateLayerFiles) 'separateLayerFiles': true,
-  };
-
-  static EnvelopeExportSpec fromJson(Map<String, dynamic> json) {
-    final rawLayers = json['layers'];
-    final layers = rawLayers is List
-        ? {for (final entry in rawLayers) ?SheetPaintLayer.fromJson(entry)}
-        : defaultLayers;
-    return EnvelopeExportSpec(
-      // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
-      paperMode: json['paperMode'] == null
-          ? CutEnvelopePaperMode.cut
-          : CutEnvelopePaperMode.fromJson(json['paperMode']),
-      scope: ExportScopeKind.fromJson(json['scope']),
-      sheetScale: SheetImageScale.fromJson(json['sheetScale']),
-      // An empty list would leave nothing to draw; a file that says so is
-      // saying "default", not "blank page".
-      layers: layers.isEmpty ? defaultLayers : layers,
-      separateLayerFiles: json['separateLayerFiles'] == true,
-    );
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is EnvelopeExportSpec &&
-      other.paperMode == paperMode &&
-      other.scope == scope &&
-      other.sheetScale == sheetScale &&
-      setEquals(other.layers, layers) &&
-      other.separateLayerFiles == separateLayerFiles;
-
-  @override
-  int get hashCode => Object.hash(
-    paperMode,
-    scope,
-    sheetScale,
-    Object.hashAllUnordered(layers),
-    separateLayerFiles,
-  );
+  int get hashCode => Object.hash(format, image);
 }
 
 /// The dialog's last-used spec per tab (app state, persisted with the
@@ -787,59 +676,45 @@ class ExportTabSpecs {
     this.sequence = const SequenceExportSpec(),
     this.image = const ImageExportSpec(),
     this.cels = const CelsExportSpec(),
-    this.timesheet = const TimesheetExportSpec(),
     this.conte = const ConteExportSpec(),
-    this.envelope = const EnvelopeExportSpec(),
   });
 
   final SequenceExportSpec sequence;
   final ImageExportSpec image;
   final CelsExportSpec cels;
-  final TimesheetExportSpec timesheet;
   final ConteExportSpec conte;
-  final EnvelopeExportSpec envelope;
 
   ExportTabSpec specFor(ExportTab tab) => switch (tab) {
     ExportTab.sequence => sequence,
     ExportTab.image => image,
     ExportTab.cels => cels,
-    ExportTab.timesheet => timesheet,
     ExportTab.conte => conte,
-    ExportTab.envelope => envelope,
   };
 
   ExportTabSpecs withSpec(ExportTabSpec spec) => switch (spec) {
     SequenceExportSpec() => copyWith(sequence: spec),
     ImageExportSpec() => copyWith(image: spec),
     CelsExportSpec() => copyWith(cels: spec),
-    TimesheetExportSpec() => copyWith(timesheet: spec),
     ConteExportSpec() => copyWith(conte: spec),
-    EnvelopeExportSpec() => copyWith(envelope: spec),
   };
 
   ExportTabSpecs copyWith({
     SequenceExportSpec? sequence,
     ImageExportSpec? image,
     CelsExportSpec? cels,
-    TimesheetExportSpec? timesheet,
     ConteExportSpec? conte,
-    EnvelopeExportSpec? envelope,
   }) => ExportTabSpecs(
     sequence: sequence ?? this.sequence,
     image: image ?? this.image,
     cels: cels ?? this.cels,
-    timesheet: timesheet ?? this.timesheet,
     conte: conte ?? this.conte,
-    envelope: envelope ?? this.envelope,
   );
 
   Map<String, dynamic> toJson() => {
     'sequence': sequence.toJson(),
     'image': image.toJson(),
     'cels': cels.toJson(),
-    'timesheet': timesheet.toJson(),
     'conte': conte.toJson(),
-    'envelope': envelope.toJson(),
   };
 
   static ExportTabSpecs fromJson(Map<String, dynamic> json) => ExportTabSpecs(
@@ -852,17 +727,9 @@ class ExportTabSpecs {
     cels: json['cels'] == null
         ? const CelsExportSpec()
         : CelsExportSpec.fromJson(json['cels'] as Map<String, dynamic>),
-    timesheet: json['timesheet'] == null
-        ? const TimesheetExportSpec()
-        : TimesheetExportSpec.fromJson(
-            json['timesheet'] as Map<String, dynamic>,
-          ),
     conte: json['conte'] == null
         ? const ConteExportSpec()
         : ConteExportSpec.fromJson(json['conte'] as Map<String, dynamic>),
-    envelope: json['envelope'] == null
-        ? const EnvelopeExportSpec()
-        : EnvelopeExportSpec.fromJson(json['envelope'] as Map<String, dynamic>),
   );
 
   @override
@@ -872,11 +739,8 @@ class ExportTabSpecs {
           other.sequence == sequence &&
           other.image == image &&
           other.cels == cels &&
-          other.timesheet == timesheet &&
-          other.conte == conte &&
-          other.envelope == envelope;
+          other.conte == conte;
 
   @override
-  int get hashCode =>
-      Object.hash(sequence, image, cels, timesheet, conte, envelope);
+  int get hashCode => Object.hash(sequence, image, cels, conte);
 }

@@ -73,9 +73,16 @@ void main() {
     await tester.pump();
     expectNoNote(tester, 'the sequence tab under the project scope');
 
-    for (final tab in const ['timesheet', 'conte', 'envelope']) {
-      await switchTab(tester, tab);
-      expectNoNote(tester, 'the $tab tab');
-    }
+    // The timesheet's and the cut envelope's modules stand in the Cels
+    // tab now (F-289), open.
+    await switchTab(tester, 'cels');
+    expect(
+      find.byKey(const ValueKey<String>('export-tsformat-xdts')),
+      findsOneWidget,
+      reason: 'LIVENESS — the modules whose notes these were are on screen',
+    );
+    expectNoNote(tester, 'the cels tab');
+    await switchTab(tester, 'conte');
+    expectNoNote(tester, 'the conte tab');
   });
 }

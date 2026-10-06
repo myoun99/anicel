@@ -1,7 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
 import '../../models/cut.dart';
 import '../../models/export_spec.dart';
-import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -10,6 +9,7 @@ import '../widgets/boolean_dot.dart';
 import 'export_cel_group_plan.dart';
 import 'export_cels_board.dart';
 import 'export_cels_selection.dart';
+import 'export_settings_modules.dart' show exportCelKindLabel;
 
 /// THE CUT THE CELS LIST SHOWS, read under the tab's rules: which of its
 /// rows the list holds, what a folder row stands for, and the rows
@@ -31,13 +31,48 @@ class ExportCelsListing {
       if (!layer.kind.groupsLayers && lists(layer)) layer,
   ];
 
-  /// The list's rows, top to bottom as the TIMELINE draws the stack: the
+  /// The list's rows: the cut's ([layerRows]), and under them the
+  /// documents the plan lists for it ([documentRows]).
+  List<ExportCelsBoardRow> rows({
+    required ExportCelsSelection selection,
+    required ExportCelGroupPlan plan,
+    Set<LayerId> shut = const {},
+  }) => [
+    ...layerRows(
+      selection: selection,
+      sheets: plan.sheets.where((sheet) => sheet.cut.id == cut.id),
+      shut: shut,
+    ),
+    ...documentRows(
+      plan.documents.where((sheet) => sheet.listedIn.id == cut.id),
+    ),
+  ];
+
+  /// One row a kind of document in [sheets], in the order the kinds are
+  /// declared — the timesheet, then the cut envelope: on while its files
+  /// are answered for, off while its switch refuses them, and mixed where a
+  /// 겸용 group's cuts disagree.
+  List<ExportCelsDocumentRow> documentRows(
+    Iterable<ExportDocumentSheet> sheets,
+  ) => [
+    for (final kind in ExportCelKind.values)
+      if (sheets.where((sheet) => sheet.kind == kind).toList()
+          case final files when files.isNotEmpty)
+        ExportCelsDocumentRow(
+          kind: kind,
+          name: exportCelKindLabel(kind),
+          state: BooleanMix.of(files.map((sheet) => sheet.planned)),
+          sheets: files,
+        ),
+  ];
+
+  /// The cut's rows, top to bottom as the TIMELINE draws the stack: the
   /// rows the list holds, less whatever a shut twirl folds away ([shut]).
   ///
   /// Each row's switch reads what [selection] says of it — a folder's, what
   /// the rows listed under it say together — and its drawings are [sheets],
   /// the plan's answers for the cut.
-  List<ExportCelsBoardRow> rows({
+  List<ExportCelsLayerRow> layerRows({
     required ExportCelsSelection selection,
     required Iterable<ExportCelSheet> sheets,
     Set<LayerId> shut = const {},
@@ -56,14 +91,14 @@ class ExportCelsListing {
       for (final layer in horizontalLayerDisplayOrder(layers))
         if (lists(layer) && !folded(layer))
           if (layer.kind.groupsLayers)
-            ExportCelsBoardRow(
+            ExportCelsLayerRow(
               layer: layer,
               state: BooleanMix.of(leavesOf(layer).map(selection.includes)),
               sheets: const [],
               open: !shut.contains(layer.id),
             )
           else
-            ExportCelsBoardRow(
+            ExportCelsLayerRow(
               layer: layer,
               state: selection.includes(layer)
                   ? BooleanMix.on
@@ -91,11 +126,12 @@ class ExportCelsListing {
 class ExportCelsStanding {
   const ExportCelsStanding({this.row, this.shown, this.place = 0});
 
-  /// The row stood on; null stands on the first row that holds a drawing.
-  final LayerId? row;
+  /// The row stood on ([ExportCelsBoardRow.idValue]); null stands on the
+  /// first row that holds a file.
+  final String? row;
 
-  /// The drawing of [row] the preview shows.
-  final FrameId? shown;
+  /// The file of [row] the preview shows ([ExportListSheet.idValue]).
+  final String? shown;
 
   /// Where in its row the drawing last CHOSEN stands. Standing on another
   /// row shows that row's drawing at the same place when it has one to
@@ -111,7 +147,7 @@ class ExportCelsStanding {
       if (each.sheets.isEmpty) {
         continue;
       }
-      if (each.layer.id == row) {
+      if (each.idValue == row) {
         return each;
       }
       first ??= each;
@@ -121,13 +157,13 @@ class ExportCelsStanding {
 
   /// The drawing of [rows] the preview shows, or null when the row stood on
   /// has none to show.
-  ExportCelSheet? sheetIn(List<ExportCelsBoardRow> rows) {
+  ExportListSheet? sheetIn(List<ExportCelsBoardRow> rows) {
     final stood = rowIn(rows);
     if (stood == null) {
       return null;
     }
     for (final sheet in exportCelsPages(stood)) {
-      if (sheet.frame.id == shown) {
+      if (sheet.idValue == shown) {
         return sheet;
       }
     }
@@ -137,9 +173,9 @@ class ExportCelsStanding {
   /// Standing on [rowId]: its drawing at the remembered [place] when that
   /// one is among what it shows, its first otherwise. A row the list does
   /// not show with a drawing on it is not stood on.
-  ExportCelsStanding standingOn(LayerId rowId, List<ExportCelsBoardRow> rows) {
+  ExportCelsStanding standingOn(String rowId, List<ExportCelsBoardRow> rows) {
     final target = ExportCelsStanding(row: rowId, place: place).rowIn(rows);
-    if (target == null || target.layer.id != rowId) {
+    if (target == null || target.idValue != rowId) {
       return this;
     }
     final pages = exportCelsPages(target);
@@ -151,7 +187,7 @@ class ExportCelsStanding {
         : pages.isEmpty
         ? null
         : pages.first;
-    return ExportCelsStanding(row: rowId, shown: show?.frame.id, place: place);
+    return ExportCelsStanding(row: rowId, shown: show?.idValue, place: place);
   }
 
   /// [steps] drawings on from the one shown, held to what the row shows —
@@ -162,14 +198,14 @@ class ExportCelsStanding {
       return this;
     }
     final pages = exportCelsPages(stood);
-    final at = pages.indexWhere((sheet) => sheet.frame.id == shown);
+    final at = pages.indexWhere((sheet) => sheet.idValue == shown);
     if (pages.isEmpty || at < 0) {
       return this;
     }
     final next = pages[(at + steps).clamp(0, pages.length - 1)];
     return ExportCelsStanding(
-      row: stood.layer.id,
-      shown: next.frame.id,
+      row: stood.idValue,
+      shown: next.idValue,
       place: stood.sheets.indexOf(next),
     );
   }
@@ -186,17 +222,17 @@ class ExportCelsStanding {
     if (stood == null) {
       return ExportCelsStanding(place: place);
     }
-    if (stood.layer.id != row) {
-      return ExportCelsStanding(place: place).standingOn(stood.layer.id, rows);
+    if (stood.idValue != row) {
+      return ExportCelsStanding(place: place).standingOn(stood.idValue, rows);
     }
     final pages = exportCelsPages(stood);
-    if (pages.any((sheet) => sheet.frame.id == shown)) {
+    if (pages.any((sheet) => sheet.idValue == shown)) {
       return this;
     }
     if (pages.isEmpty) {
       return ExportCelsStanding(row: row, place: place);
     }
-    final was = stood.sheets.indexWhere((sheet) => sheet.frame.id == shown);
+    final was = stood.sheets.indexWhere((sheet) => sheet.idValue == shown);
     final from = was < 0 ? place : was;
     var nearest = pages.first;
     var gap = (stood.sheets.indexOf(nearest) - from).abs();
@@ -210,7 +246,7 @@ class ExportCelsStanding {
     }
     return ExportCelsStanding(
       row: row,
-      shown: nearest.frame.id,
+      shown: nearest.idValue,
       place: stood.sheets.indexOf(nearest),
     );
   }
@@ -233,7 +269,7 @@ class ExportCelsStanding {
 /// 🗣️유저 2026-10-06: 「미리보기는 활성화된 것만 보여줌 … 1,3비활성화하면
 /// 미리보기창에서 1,3만 리스트에 보이는거지. 그 상태에서 콘티행 off해도 1,3
 /// 활성화되있으니까 서서 보여줄수있게」.
-List<ExportCelSheet> exportCelsPages(ExportCelsBoardRow row) {
+List<ExportListSheet> exportCelsPages(ExportCelsBoardRow row) {
   final kept = [
     for (final sheet in row.sheets)
       if (!sheet.skipped) sheet,

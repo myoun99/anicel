@@ -104,8 +104,10 @@ class AppExportSettings {
     final rawPresets = json['presets'] as List<dynamic>? ?? const [];
     return AppExportSettings(
       presets: [
+        // A preset of a tab that is one no longer is dropped (F-289: the
+        // timesheet and the cut envelope are kinds of the Cels tab now).
         for (final preset in rawPresets)
-          ExportPreset.fromJson(preset as Map<String, dynamic>),
+          ?ExportPreset.fromJson(preset as Map<String, dynamic>),
       ],
       lastSpecs: json['lastSpecs'] == null
           ? const ExportTabSpecs()

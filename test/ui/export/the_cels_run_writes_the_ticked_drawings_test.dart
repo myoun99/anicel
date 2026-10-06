@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
+import '../../helpers/export_cels_alone.dart';
+import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
 
 /// The Cels tab's RUN, down to the files on disk — the plan and the list
@@ -42,7 +44,7 @@ import '../../helpers/project_scratch_folder.dart';
 /// 🗣️F-289 (유저 2026-10-05): 「디렉션레이어 출력시, 그림이 디렉션레이어의
 /// 지시인데, 그게아니라 그림 그릴수있는 레이어니 거기 있는 그림 출력하도록」.
 void main() {
-  setUp(() => AppExport.settings.value = AppExportSettings());
+  setUp(() => AppExport.settings.value = exportSettingsWritingCelsAlone());
   tearDown(() => AppExport.settings.value = AppExportSettings());
 
   const size = CanvasSize(width: 8, height: 8);
@@ -174,11 +176,6 @@ void main() {
     await tester.pump();
   }
 
-  List<String> filesIn(Directory directory) => [
-    for (final file in directory.listSync(recursive: true).whereType<File>())
-      file.path.substring(directory.path.length + 1).replaceAll('\\', '/'),
-  ]..sort();
-
   /// The pixel of the written [png] at ([x], [y]).
   Future<(int, int, int, int)> pixelOf(File png, int x, int y) async {
     final codec = await ui.instantiateImageCodec(png.readAsBytesSync());
@@ -210,7 +207,7 @@ void main() {
     await tester.pump();
 
     expect(
-      filesIn(temp),
+      filesWrittenUnder(temp),
       ['A2.png', 'B1.png'],
       reason: 'A 1 was written with its block turned off',
     );
@@ -229,7 +226,7 @@ void main() {
     await tester.runAsync(state.export);
     await tester.pump();
 
-    expect(filesIn(temp), ['A1.png', 'A2.png', 'B1.png']);
+    expect(filesWrittenUnder(temp), ['A1.png', 'A2.png', 'B1.png']);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -247,7 +244,7 @@ void main() {
     await tester.pump();
 
     expect(
-      filesIn(temp),
+      filesWrittenUnder(temp),
       ['A1.png', 'A2.png', 'B1.png', '_Camera_PAN.png'],
     );
     final written = File('${temp.path}/_Camera_PAN.png');
@@ -288,7 +285,7 @@ void main() {
     await tester.pump();
 
     expect(
-      filesIn(temp),
+      filesWrittenUnder(temp),
       ['A1.png', 'A2.png', 'B1.png'],
       reason: 'the direction KIND is off: no file of its own',
     );

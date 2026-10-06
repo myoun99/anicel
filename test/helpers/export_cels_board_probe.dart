@@ -71,12 +71,12 @@ extension ExportCelsBoardProbe on WidgetTester {
   /// whether it is bright (its file is written).
   List<(String, bool)> celsBoardBlocksOf(String rowId) => [
     for (final row in celsBoard.rows)
-      if (row.layer.id.value == rowId)
+      if (row.idValue == rowId)
         for (final sheet in row.sheets)
           (
             widget<TimelineBlockText>(
               find.descendant(
-                of: celsBoardBlock(rowId, sheet.frame.id.value),
+                of: celsBoardBlock(rowId, sheet.idValue),
                 matching: find.byType(TimelineBlockText),
               ),
             ).text,

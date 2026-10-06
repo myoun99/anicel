@@ -9,7 +9,9 @@
 /// 내보낼 종류로」. So a kind that is off is not in the window's list at all,
 /// where a row a FILTER turns off stays in it, off.
 ///
-/// Which kind a row is: `exportCelKindOf`.
+/// Which kind a row is: `exportCelKindOf`. The last two are no row's: they
+/// are the cut's own documents, written beside its cels (유저 2026-10-05:
+/// 「타임시트 탭을 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 내부로 편입」).
 ///
 /// ↩️Art and direction were two switches that ADDED rows on top of the
 /// label's pick (`addArt` · `addDirection`), and a conte row went out only
@@ -27,7 +29,18 @@ enum ExportCelKind {
   art(defaultPrefix: '_'),
 
   /// The direction rows.
-  direction(defaultPrefix: '_');
+  direction(defaultPrefix: '_'),
+
+  /// The cut's timesheet — its pages, or its digital sheet file.
+  timesheet(defaultPrefix: '_'),
+
+  /// The cut envelope (컷 봉투).
+  envelope(defaultPrefix: '_');
+
+  /// Whether this kind is a document of the cut rather than a kind of its
+  /// rows.
+  bool get isDocument =>
+      this == ExportCelKind.timesheet || this == ExportCelKind.envelope;
 
   const ExportCelKind({required this.defaultPrefix});
 

@@ -1103,7 +1103,6 @@ enum AppStrings {
   String get exImage => _s('exImage');
   String get exVideo => _s('exVideo');
   String get exCels => _s('exCels');
-  String get exSheetPng => _s('exSheetPng');
   String get exFormat => _s('exFormat');
   String get exOptions => _s('exOptions');
   String get exNaming => _s('exNaming');
@@ -1124,6 +1123,9 @@ enum AppStrings {
 
   /// The Cels list's band: what is laid over the drawing shown (F-289).
   String get exLayDirection => _s('exLayDirection');
+  String get exCelFormat => _s('exCelFormat');
+  String get exTimesheetFormat => _s('exTimesheetFormat');
+  String get exEnvelopeFormat => _s('exEnvelopeFormat');
 
   /// Why a drawing of the Cels list is no file as things stand — said at
   /// the pointer when its block is pressed (유저 2026-10-06: 「나갈 수 없는
@@ -1170,18 +1172,10 @@ enum AppStrings {
   String get exQueue => _s('exQueue');
   String get exSize => _s('exSize');
 
-  /// The cut envelope's own words: its form (서식), the paper it prints on
-  /// and the layers it paints.
-  String get exForm => _s('exForm');
+  /// The paper a cut envelope is written on: the cut's own pixels, or the
+  /// real envelope's.
   String get exCutSize => _s('exCutSize');
   String get exRealSheet => _s('exRealSheet');
-  String get exSheetLayers => _s('exSheetLayers');
-  String get exContent => _s('exContent');
-  String get exInk => _s('exInk');
-  String get exPictureLayer => _s('exPictureLayer');
-  String get exFiles => _s('exFiles');
-  String get exOneImage => _s('exOneImage');
-  String get exOnePerLayer => _s('exOnePerLayer');
 
   /// A count said with its noun: `<key>One` at one, `<key>` otherwise — a
   /// language whose noun does not change simply says the same word twice.
@@ -1198,16 +1192,14 @@ enum AppStrings {
   String exFrameCount(int count) => _count('exFrameCount', count);
   String exPageCount(int count) => _count('exPageCount', count);
   String exFileCount(int count) => _count('exFileCount', count);
+
+  /// How many files the Cels tab writes, said over its list: a cel, a page
+  /// of a timesheet and a cut envelope are counted alike — in sheets, where
+  /// the language counts them so (장 · 枚 · 张).
+  String exWrittenCount(int count) => _count('exWrittenCount', count);
   String exLabelCount(int count) => _count('exLabelCount', count);
   String exJobCount(int count) => _count('exJobCount', count);
-  String exLayerCount(int count) => _count('exLayerCount', count);
-  String exPngCount(int count) => _count('exPngCount', count);
-  String exXdtsSheetCount(int count) => _count('exXdtsSheetCount', count);
-  String exSheetPageCount(int count) => _count('exSheetPageCount', count);
   String exContePageCount(int count) => _count('exContePageCount', count);
-  String exEnvelopeCount(int count) => _count('exEnvelopeCount', count);
-  String exEnvelopeFileCount(int count) =>
-      _count('exEnvelopeFileCount', count);
 
   /// How an export ends — the status line's sentences, each taking a count
   /// already said with its noun. ⚠️A name or a cut goes in LAST: it is the
@@ -1301,33 +1293,10 @@ enum AppStrings {
       .replaceAll('{format}', format);
   String get exTransparent => _s('exTransparent');
   String get exOpaque => _s('exOpaque');
-  String exSheetImageHeadline({
-    required String pages,
-    required String paper,
-  }) => _s('exSheetImageHeadlineTemplate')
-      .replaceAll('{pages}', pages)
-      .replaceAll('{paper}', paper);
-  String exXdtsHeadline(String sheets) =>
-      _s('exXdtsHeadlineTemplate').replaceAll('{sheets}', sheets);
   String exContePdfHeadline(String pages) =>
       _s('exContePdfHeadlineTemplate').replaceAll('{pages}', pages);
   String exContePngHeadline(String pages) =>
       _s('exContePngHeadlineTemplate').replaceAll('{pages}', pages);
-  String exEnvelopeHeadline({
-    required String sheets,
-    required String files,
-    required String paper,
-    required String layered,
-  }) => _s('exEnvelopeHeadlineTemplate')
-      .replaceAll('{sheets}', sheets)
-      .replaceAll('{files}', files)
-      .replaceAll('{layered}', layered)
-      .replaceAll('{paper}', paper);
-  String get exEnvelopePaperCut => _s('exEnvelopePaperCut');
-  String exEnvelopePaperSheet(int width) =>
-      _s('exEnvelopePaperSheetTemplate').replaceAll('{w}', '$width');
-  String exEnvelopeLayered(int count) =>
-      _s('exEnvelopeLayeredTemplate').replaceAll('{n}', '$count');
 
   /// The file bar's words and the modules' one-line summaries.
   String get exFileLabel => _s('exFileLabel');
@@ -1337,22 +1306,14 @@ enum AppStrings {
   String exSeMuxed(String codec) =>
       _s('exSeMuxedTemplate').replaceAll('{codec}', codec);
   String get exVectorPdf => _s('exVectorPdf');
-  String get exPagePng => _s('exPagePng');
   String get exFxOn => _s('exFxOn');
   String get exFxOff => _s('exFxOff');
-  String exSheetWidth(int width) =>
-      _s('exSheetWidthTemplate').replaceAll('{w}', '$width');
-  String exSeparatePngs(int count) =>
-      _s('exSeparatePngsTemplate').replaceAll('{n}', '$count');
-  String exFlatLayers(int count) =>
-      _s('exFlatLayersTemplate').replaceAll('{n}', '$count');
 
   /// The rails: the tab names the presets say, the render queue and its jobs,
   /// the cut grid, and why a format cannot be picked here.
   String get exTabSequence => _s('exTabSequence');
   String get exSizeCamera => _s('exSizeCamera');
   String get exSizeCanvas => _s('exSizeCanvas');
-  String get exSheetImage => _s('exSheetImage');
   String get exPageImage => _s('exPageImage');
   String get exSaveCurrent => _s('exSaveCurrent');
   String get exRenderQueue => _s('exRenderQueue');
@@ -2293,7 +2254,7 @@ enum AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
     'panelConte': 'Conte Sheet',
-    'panelEnvelope': 'Envelope',
+    'panelEnvelope': 'Cut envelope',
     'commonRegister': 'Register',
     'commonNameField': 'Name',
     'tipRegisterTitle': 'Register as Tip',
@@ -2339,7 +2300,6 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Video',
     'exCels': 'Cels',
-    'exSheetPng': 'Sheet PNG',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Naming',
@@ -2358,6 +2318,11 @@ enum AppStrings {
     'exSuffix': 'Suffix',
     'exPrefix': 'Prefix',
     'exLayDirection': 'Lay direction on this drawing',
+    'exCelFormat': 'Cel format',
+    'exTimesheetFormat': 'Timesheet format',
+    'exEnvelopeFormat': 'Cut envelope format',
+    'exWrittenCount': '{n} files',
+    'exWrittenCountOne': '{n} file',
     'noticeExportRowOff': 'This row is off',
     'noticeExportNoPicture': 'No row that is on holds a picture for this cel',
     'noticeExportNotPlaced': 'This drawing is not on the timeline',
@@ -2397,16 +2362,8 @@ enum AppStrings {
     'exPresets': 'Presets',
     'exQueue': 'Queue',
     'exSize': 'Size',
-    'exForm': 'Form',
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
-    'exSheetLayers': 'Layers',
-    'exContent': 'Content',
-    'exInk': 'Ink',
-    'exPictureLayer': 'Pictures',
-    'exFiles': 'Files',
-    'exOneImage': 'One image',
-    'exOnePerLayer': 'One per layer',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
@@ -2423,20 +2380,8 @@ enum AppStrings {
     'exLabelCountOne': '{n} label',
     'exJobCount': '{n} jobs',
     'exJobCountOne': '{n} job',
-    'exLayerCount': '{n} layers',
-    'exLayerCountOne': '{n} layer',
-    'exPngCount': '{n} PNGs',
-    'exPngCountOne': '{n} PNG',
-    'exXdtsSheetCount': '{n} XDTS sheets',
-    'exXdtsSheetCountOne': '{n} XDTS sheet',
-    'exSheetPageCount': '{n} sheet pages',
-    'exSheetPageCountOne': '{n} sheet page',
     'exContePageCount': '{n} conte pages',
     'exContePageCountOne': '{n} conte page',
-    'exEnvelopeCount': '{n} envelopes',
-    'exEnvelopeCountOne': '{n} envelope',
-    'exEnvelopeFileCount': '{n} envelope files',
-    'exEnvelopeFileCountOne': '{n} envelope file',
     'exCancelledAfterTemplate': 'Export cancelled after {count}.',
     'exCancelledVideoTemplate':
         'Export cancelled after {count} (partial video kept).',
@@ -2465,34 +2410,21 @@ enum AppStrings {
         '{labels} · {files} as {background} {format} (base + attaches composited per cel).',
     'exTransparent': 'transparent',
     'exOpaque': 'opaque',
-    'exSheetImageHeadlineTemplate':
-        '{pages} as {paper} PNG — the panel\'s own paper, offscreen.',
-    'exXdtsHeadlineTemplate': '{sheets} (cels + serifu + camerawork columns).',
     'exContePdfHeadlineTemplate':
         '{pages} as ONE vector PDF — rules and text as vectors, pictures embedded.',
     'exContePngHeadlineTemplate':
         '{pages} as A4 PNG — the panel\'s own paper, offscreen.',
-    'exEnvelopeHeadlineTemplate': '{sheets} as {files} at {paper}{layered}.',
-    'exEnvelopePaperCut':
-        'the CUT\'s own pixels — drops into a working file as a layer',
-    'exEnvelopePaperSheetTemplate': '{w}px wide — the real 봉투, for printing',
-    'exEnvelopeLayeredTemplate': ' · one PNG per layer ({n})',
     'exFileLabel': 'File',
     'exPatternLabel': 'Pattern',
     'exLocationLabel': 'Location',
     'exChooseFolder': 'Choose a folder…',
     'exSeMuxedTemplate': 'SE muxed · {codec}',
     'exVectorPdf': 'Vector PDF',
-    'exPagePng': 'Page PNG',
     'exFxOn': 'FX on',
     'exFxOff': 'FX off',
-    'exSheetWidthTemplate': 'Sheet · {w}px',
-    'exSeparatePngsTemplate': '{n} separate PNGs',
-    'exFlatLayersTemplate': '{n} of 4, flat',
     'exTabSequence': 'Sequence',
     'exSizeCamera': 'Camera',
     'exSizeCanvas': 'Canvas',
-    'exSheetImage': 'Sheet image',
     'exPageImage': 'Page image',
     'exSaveCurrent': '+ Save current…',
     'exRenderQueue': 'Render queue',
@@ -3548,7 +3480,7 @@ enum AppStrings {
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
     'panelConte': 'コンテ用紙',
-    'panelEnvelope': 'エンベロープ',
+    'panelEnvelope': 'カット袋',
     'commonRegister': '登録',
     'commonNameField': '名前',
     'tipRegisterTitle': '先端として登録',
@@ -3594,7 +3526,6 @@ enum AppStrings {
     'exImage': '画像',
     'exVideo': '動画',
     'exCels': 'セル',
-    'exSheetPng': 'シートPNG',
     'exFormat': '形式',
     'exOptions': 'オプション',
     'exNaming': '命名',
@@ -3613,6 +3544,11 @@ enum AppStrings {
     'exSuffix': '接尾辞',
     'exPrefix': '接頭辞',
     'exLayDirection': 'この絵にディレクションを適用',
+    'exCelFormat': 'セル形式',
+    'exTimesheetFormat': 'タイムシート形式',
+    'exEnvelopeFormat': 'カット袋形式',
+    'exWrittenCount': '{n}枚',
+    'exWrittenCountOne': '{n}枚',
     'noticeExportRowOff': 'この行はオフです',
     'noticeExportNoPicture': 'このセルにはオンの行の絵がありません',
     'noticeExportNotPlaced': 'タイムラインに置かれていない絵です',
@@ -3651,16 +3587,8 @@ enum AppStrings {
     'exPresets': 'プリセット',
     'exQueue': 'キュー',
     'exSize': 'サイズ',
-    'exForm': '書式',
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
-    'exSheetLayers': 'レイヤー',
-    'exContent': '内容',
-    'exInk': '線画',
-    'exPictureLayer': '絵',
-    'exFiles': 'ファイル',
-    'exOneImage': '画像1枚',
-    'exOnePerLayer': 'レイヤーごとに1枚',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
@@ -3706,20 +3634,8 @@ enum AppStrings {
     'exLabelCountOne': 'ラベル{n}個',
     'exJobCount': 'ジョブ{n}件',
     'exJobCountOne': 'ジョブ{n}件',
-    'exLayerCount': 'レイヤー{n}枚',
-    'exLayerCountOne': 'レイヤー{n}枚',
-    'exPngCount': 'PNG{n}枚',
-    'exPngCountOne': 'PNG{n}枚',
-    'exXdtsSheetCount': 'XDTSシート{n}枚',
-    'exXdtsSheetCountOne': 'XDTSシート{n}枚',
-    'exSheetPageCount': 'シート{n}ページ',
-    'exSheetPageCountOne': 'シート{n}ページ',
     'exContePageCount': 'コンテ{n}ページ',
     'exContePageCountOne': 'コンテ{n}ページ',
-    'exEnvelopeCount': 'エンベロープ{n}枚',
-    'exEnvelopeCountOne': 'エンベロープ{n}枚',
-    'exEnvelopeFileCount': 'エンベロープ{n}ファイル',
-    'exEnvelopeFileCountOne': 'エンベロープ{n}ファイル',
     'exCancelledAfterTemplate': '{count}を書き出したところで中止しました。',
     'exCancelledVideoTemplate': '{count}を書き出したところで中止しました（途中までの動画は残しています）。',
     'exCancelled': '書き出しを中止しました。',
@@ -3746,31 +3662,19 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+アタッチを合成）。',
     'exTransparent': '透過',
     'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate':
-        '{pages}を{paper} PNGで — パネルの用紙のまま、画面外で描画。',
-    'exXdtsHeadlineTemplate': '{sheets}（セル + セリフ + カメラワーク列）。',
     'exContePdfHeadlineTemplate': '{pages}を1つのベクターPDFに — 罫線と文字はベクター、絵は埋め込み。',
     'exContePngHeadlineTemplate': '{pages}をA4 PNGで — パネルの用紙のまま、画面外で描画。',
-    'exEnvelopeHeadlineTemplate': '{sheets}を{files}で、{paper}{layered}。',
-    'exEnvelopePaperCut': 'カットそのままの画素 — 作業ファイルにレイヤーとして置ける',
-    'exEnvelopePaperSheetTemplate': '幅{w}px — 印刷用の実寸エンベロープ',
-    'exEnvelopeLayeredTemplate': ' · レイヤーごとにPNG1枚（{n}）',
     'exFileLabel': 'ファイル',
     'exPatternLabel': 'パターン',
     'exLocationLabel': '保存先',
     'exChooseFolder': 'フォルダを選択…',
     'exSeMuxedTemplate': 'SE多重化 · {codec}',
     'exVectorPdf': 'ベクターPDF',
-    'exPagePng': 'ページPNG',
     'exFxOn': 'FXオン',
     'exFxOff': 'FXオフ',
-    'exSheetWidthTemplate': '用紙 · {w}px',
-    'exSeparatePngsTemplate': '個別PNG {n}枚',
-    'exFlatLayersTemplate': '4枚中{n}枚、統合',
     'exTabSequence': '連番',
     'exSizeCamera': 'カメラ',
     'exSizeCanvas': 'キャンバス',
-    'exSheetImage': 'シート画像',
     'exPageImage': 'ページ画像',
     'exSaveCurrent': '+ 現在の設定を保存…',
     'exRenderQueue': 'レンダーキュー',
@@ -4927,7 +4831,7 @@ enum AppStrings {
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
     'panelConte': '콘티 용지',
-    'panelEnvelope': '엔벨로프',
+    'panelEnvelope': '컷 봉투',
     'commonRegister': '등록',
     'commonNameField': '이름',
     'tipRegisterTitle': '팁으로 등록',
@@ -4971,7 +4875,6 @@ enum AppStrings {
     'exImage': '이미지',
     'exVideo': '동영상',
     'exCels': '셀',
-    'exSheetPng': '시트 PNG',
     'exFormat': '형식',
     'exOptions': '옵션',
     'exNaming': '이름 규칙',
@@ -4990,6 +4893,11 @@ enum AppStrings {
     'exSuffix': '접미사',
     'exPrefix': '접두사',
     'exLayDirection': '이 그림에 디렉션 적용',
+    'exCelFormat': '셀 형식',
+    'exTimesheetFormat': '타임시트 형식',
+    'exEnvelopeFormat': '컷 봉투 형식',
+    'exWrittenCount': '{n}장',
+    'exWrittenCountOne': '{n}장',
     'noticeExportRowOff': '꺼져 있는 줄입니다',
     'noticeExportNoPicture': '이 셀에 켜진 그림이 존재하지 않습니다',
     'noticeExportNotPlaced': '타임라인에 놓이지 않은 그림입니다',
@@ -5028,16 +4936,8 @@ enum AppStrings {
     'exPresets': '프리셋',
     'exQueue': '대기열',
     'exSize': '크기',
-    'exForm': '서식',
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
-    'exSheetLayers': '레이어',
-    'exContent': '내용',
-    'exInk': '선화',
-    'exPictureLayer': '그림',
-    'exFiles': '파일',
-    'exOneImage': '이미지 한 장',
-    'exOnePerLayer': '레이어마다 한 장',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
@@ -5083,20 +4983,8 @@ enum AppStrings {
     'exLabelCountOne': '라벨 {n}개',
     'exJobCount': '작업 {n}개',
     'exJobCountOne': '작업 {n}개',
-    'exLayerCount': '레이어 {n}개',
-    'exLayerCountOne': '레이어 {n}개',
-    'exPngCount': 'PNG {n}장',
-    'exPngCountOne': 'PNG {n}장',
-    'exXdtsSheetCount': 'XDTS 시트 {n}장',
-    'exXdtsSheetCountOne': 'XDTS 시트 {n}장',
-    'exSheetPageCount': '시트 {n}페이지',
-    'exSheetPageCountOne': '시트 {n}페이지',
     'exContePageCount': '콘티 {n}페이지',
     'exContePageCountOne': '콘티 {n}페이지',
-    'exEnvelopeCount': '엔벨로프 {n}장',
-    'exEnvelopeCountOne': '엔벨로프 {n}장',
-    'exEnvelopeFileCount': '엔벨로프 파일 {n}개',
-    'exEnvelopeFileCountOne': '엔벨로프 파일 {n}개',
     'exCancelledAfterTemplate': '{count} 내보낸 뒤 취소했습니다.',
     'exCancelledVideoTemplate': '{count} 내보낸 뒤 취소했습니다(중간까지의 영상은 남겼습니다).',
     'exCancelled': '내보내기를 취소했습니다.',
@@ -5123,31 +5011,19 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+어태치 합성).',
     'exTransparent': '투명',
     'exOpaque': '불투명',
-    'exSheetImageHeadlineTemplate':
-        '{pages}를 {paper} PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
-    'exXdtsHeadlineTemplate': '{sheets}(셀 + 대사 + 카메라워크 열).',
     'exContePdfHeadlineTemplate': '{pages}를 벡터 PDF 하나로 — 선과 글자는 벡터, 그림은 포함.',
     'exContePngHeadlineTemplate': '{pages}를 A4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
-    'exEnvelopeHeadlineTemplate': '{sheets}를 {files}로, {paper}{layered}.',
-    'exEnvelopePaperCut': '컷 그대로의 픽셀 — 작업 파일에 레이어로 넣을 수 있음',
-    'exEnvelopePaperSheetTemplate': '너비 {w}px — 인쇄용 실제 봉투',
-    'exEnvelopeLayeredTemplate': ' · 레이어마다 PNG 한 장({n})',
     'exFileLabel': '파일',
     'exPatternLabel': '패턴',
     'exLocationLabel': '위치',
     'exChooseFolder': '폴더 선택…',
     'exSeMuxedTemplate': 'SE 먹싱 · {codec}',
     'exVectorPdf': '벡터 PDF',
-    'exPagePng': '페이지 PNG',
     'exFxOn': 'FX 켬',
     'exFxOff': 'FX 끔',
-    'exSheetWidthTemplate': '용지 · {w}px',
-    'exSeparatePngsTemplate': '개별 PNG {n}장',
-    'exFlatLayersTemplate': '4개 중 {n}개, 합침',
     'exTabSequence': '시퀀스',
     'exSizeCamera': '카메라',
     'exSizeCanvas': '캔버스',
-    'exSheetImage': '시트 이미지',
     'exPageImage': '페이지 이미지',
     'exSaveCurrent': '+ 현재 설정 저장…',
     'exRenderQueue': '렌더 대기열',
@@ -6344,7 +6220,7 @@ enum AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
     'panelConte': 'Feuille de conte',
-    'panelEnvelope': 'Enveloppe',
+    'panelEnvelope': 'Enveloppe de plan',
     'commonRegister': 'Enregistrer',
     'commonNameField': 'Nom',
     'tipRegisterTitle': 'Enregistrer comme pointe',
@@ -6391,7 +6267,6 @@ enum AppStrings {
     'exImage': 'Image',
     'exVideo': 'Vidéo',
     'exCels': 'Cellulos',
-    'exSheetPng': 'Feuille PNG',
     'exFormat': 'Format',
     'exOptions': 'Options',
     'exNaming': 'Nommage',
@@ -6410,6 +6285,11 @@ enum AppStrings {
     'exSuffix': 'Suffixe',
     'exPrefix': 'Préfixe',
     'exLayDirection': 'Poser une direction sur ce dessin',
+    'exCelFormat': 'Format des cellulos',
+    'exTimesheetFormat': 'Format de la feuille de temps',
+    'exEnvelopeFormat': 'Format de l\'enveloppe de plan',
+    'exWrittenCount': '{n} fichiers',
+    'exWrittenCountOne': '{n} fichier',
     'noticeExportRowOff': 'Cette ligne est désactivée',
     'noticeExportNoPicture':
         'Aucune ligne active n\'a de dessin pour ce cellulo',
@@ -6451,16 +6331,8 @@ enum AppStrings {
     'exPresets': 'Préréglages',
     'exQueue': 'File d\'attente',
     'exSize': 'Taille',
-    'exForm': 'Formulaire',
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
-    'exSheetLayers': 'Calques',
-    'exContent': 'Contenu',
-    'exInk': 'Encre',
-    'exPictureLayer': 'Images',
-    'exFiles': 'Fichiers',
-    'exOneImage': 'Une image',
-    'exOnePerLayer': 'Une par calque',
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
@@ -6539,20 +6411,8 @@ enum AppStrings {
     'exLabelCountOne': '{n} étiquette',
     'exJobCount': '{n} tâches',
     'exJobCountOne': '{n} tâche',
-    'exLayerCount': '{n} calques',
-    'exLayerCountOne': '{n} calque',
-    'exPngCount': '{n} PNG',
-    'exPngCountOne': '{n} PNG',
-    'exXdtsSheetCount': '{n} feuilles XDTS',
-    'exXdtsSheetCountOne': '{n} feuille XDTS',
-    'exSheetPageCount': '{n} pages de feuille',
-    'exSheetPageCountOne': '{n} page de feuille',
     'exContePageCount': '{n} pages de conte',
     'exContePageCountOne': '{n} page de conte',
-    'exEnvelopeCount': '{n} enveloppes',
-    'exEnvelopeCountOne': '{n} enveloppe',
-    'exEnvelopeFileCount': '{n} fichiers d\'enveloppe',
-    'exEnvelopeFileCountOne': '{n} fichier d\'enveloppe',
     'exCancelledAfterTemplate': 'Export annulé après {count}.',
     'exCancelledVideoTemplate': 'Export annulé après {count} (vidéo partielle conservée).',
     'exCancelled': 'Export annulé.',
@@ -6579,31 +6439,19 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · {files} en {format} {background} (base + attaches composées par cellulo).',
     'exTransparent': 'transparent',
     'exOpaque': 'opaque',
-    'exSheetImageHeadlineTemplate':
-        '{pages} en PNG {paper} — le papier du panneau, rendu hors écran.',
-    'exXdtsHeadlineTemplate': '{sheets} (colonnes cellulos + dialogues + caméra).',
     'exContePdfHeadlineTemplate': '{pages} en UN seul PDF vectoriel — traits et texte vectoriels, images intégrées.',
     'exContePngHeadlineTemplate': '{pages} en PNG A4 — le papier du panneau, rendu hors écran.',
-    'exEnvelopeHeadlineTemplate': '{sheets} en {files} à {paper}{layered}.',
-    'exEnvelopePaperCut': 'les pixels du plan — se dépose dans un fichier de travail comme calque',
-    'exEnvelopePaperSheetTemplate': '{w} px de large — la vraie enveloppe, pour l\'impression',
-    'exEnvelopeLayeredTemplate': ' · un PNG par calque ({n})',
     'exFileLabel': 'Fichier',
     'exPatternLabel': 'Modèle',
     'exLocationLabel': 'Emplacement',
     'exChooseFolder': 'Choisir un dossier…',
     'exSeMuxedTemplate': 'SE intégré · {codec}',
     'exVectorPdf': 'PDF vectoriel',
-    'exPagePng': 'Page PNG',
     'exFxOn': 'FX activés',
     'exFxOff': 'FX désactivés',
-    'exSheetWidthTemplate': 'Feuille · {w} px',
-    'exSeparatePngsTemplate': '{n} PNG séparés',
-    'exFlatLayersTemplate': '{n} sur 4, fusionnés',
     'exTabSequence': 'Séquence',
     'exSizeCamera': 'Caméra',
     'exSizeCanvas': 'Canevas',
-    'exSheetImage': 'Image de feuille',
     'exPageImage': 'Image de page',
     'exSaveCurrent': '+ Enregistrer l\'actuel…',
     'exRenderQueue': 'File de rendu',
@@ -7711,7 +7559,7 @@ enum AppStrings {
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
     'panelConte': '分镜用纸',
-    'panelEnvelope': '包络',
+    'panelEnvelope': '卡袋',
     'commonRegister': '注册',
     'commonNameField': '名称',
     'tipRegisterTitle': '注册为笔尖',
@@ -7755,7 +7603,6 @@ enum AppStrings {
     'exImage': '图像',
     'exVideo': '视频',
     'exCels': '赛璐珞',
-    'exSheetPng': '摄影表 PNG',
     'exFormat': '格式',
     'exOptions': '选项',
     'exNaming': '命名',
@@ -7774,6 +7621,11 @@ enum AppStrings {
     'exSuffix': '后缀',
     'exPrefix': '前缀',
     'exLayDirection': '在此画上应用指示',
+    'exCelFormat': '赛璐珞格式',
+    'exTimesheetFormat': '摄影表格式',
+    'exEnvelopeFormat': '卡袋格式',
+    'exWrittenCount': '{n}张',
+    'exWrittenCountOne': '{n}张',
     'noticeExportRowOff': '该行已关闭',
     'noticeExportNoPicture': '此赛璐珞没有已开启的画',
     'noticeExportNotPlaced': '此画未放在时间轴上',
@@ -7812,16 +7664,8 @@ enum AppStrings {
     'exPresets': '预设',
     'exQueue': '队列',
     'exSize': '尺寸',
-    'exForm': '表单',
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
-    'exSheetLayers': '图层',
-    'exContent': '内容',
-    'exInk': '线稿',
-    'exPictureLayer': '画面',
-    'exFiles': '文件',
-    'exOneImage': '单张图片',
-    'exOnePerLayer': '每图层一张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
@@ -7867,20 +7711,8 @@ enum AppStrings {
     'exLabelCountOne': '{n}个标签',
     'exJobCount': '{n}个任务',
     'exJobCountOne': '{n}个任务',
-    'exLayerCount': '{n}个图层',
-    'exLayerCountOne': '{n}个图层',
-    'exPngCount': '{n}张 PNG',
-    'exPngCountOne': '{n}张 PNG',
-    'exXdtsSheetCount': '{n}张 XDTS 摄影表',
-    'exXdtsSheetCountOne': '{n}张 XDTS 摄影表',
-    'exSheetPageCount': '摄影表{n}页',
-    'exSheetPageCountOne': '摄影表{n}页',
     'exContePageCount': '分镜稿{n}页',
     'exContePageCountOne': '分镜稿{n}页',
-    'exEnvelopeCount': '{n}个包络',
-    'exEnvelopeCountOne': '{n}个包络',
-    'exEnvelopeFileCount': '{n}个包络文件',
-    'exEnvelopeFileCountOne': '{n}个包络文件',
     'exCancelledAfterTemplate': '导出{count}后已取消。',
     'exCancelledVideoTemplate': '导出{count}后已取消（已保留部分视频）。',
     'exCancelled': '导出已取消。',
@@ -7907,30 +7739,19 @@ enum AppStrings {
     'exCelsHeadlineTemplate': '{labels} · 以{background} {format} 输出{files}（每张赛璐珞合成基准+附属）。',
     'exTransparent': '透明',
     'exOpaque': '不透明',
-    'exSheetImageHeadlineTemplate': '{pages}，{paper} PNG——使用面板自身的纸张，离屏渲染。',
-    'exXdtsHeadlineTemplate': '{sheets}（赛璐珞 + 台词 + 摄影栏）。',
     'exContePdfHeadlineTemplate': '{pages}合成一个矢量 PDF——线条与文字为矢量，图片嵌入。',
     'exContePngHeadlineTemplate': '{pages}，A4 PNG——使用面板自身的纸张，离屏渲染。',
-    'exEnvelopeHeadlineTemplate': '{sheets}输出为{files}，{paper}{layered}。',
-    'exEnvelopePaperCut': '镜头自身的像素——可作为图层放入工作文件',
-    'exEnvelopePaperSheetTemplate': '宽 {w}px——用于打印的实际包络',
-    'exEnvelopeLayeredTemplate': ' · 每图层一张 PNG（{n}）',
     'exFileLabel': '文件',
     'exPatternLabel': '命名模式',
     'exLocationLabel': '位置',
     'exChooseFolder': '选择文件夹…',
     'exSeMuxedTemplate': 'SE 已封装 · {codec}',
     'exVectorPdf': '矢量 PDF',
-    'exPagePng': '页面 PNG',
     'exFxOn': 'FX 开',
     'exFxOff': 'FX 关',
-    'exSheetWidthTemplate': '纸张 · {w}px',
-    'exSeparatePngsTemplate': '{n}张独立 PNG',
-    'exFlatLayersTemplate': '4 层中 {n} 层，合并',
     'exTabSequence': '序列',
     'exSizeCamera': '摄影机',
     'exSizeCanvas': '画布',
-    'exSheetImage': '摄影表图像',
     'exPageImage': '页面图像',
     'exSaveCurrent': '+ 保存当前设置…',
     'exRenderQueue': '渲染队列',

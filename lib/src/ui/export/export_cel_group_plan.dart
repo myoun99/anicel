@@ -16,9 +16,15 @@ import '../../models/project.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/commands/link_mirror.dart'
     show linkCounterpartIn, linkedCutGroupInTrackOrder;
+import '../../services/project_lookup.dart' show cutPositionOf;
 import '../envelope/cut_envelope_builder.dart' show cutEnvelopeInkOwner;
 import 'export_cels_selection.dart';
+import 'export_document_sheet.dart';
+import 'export_list_sheet.dart';
 import 'export_plan.dart';
+
+export 'export_document_sheet.dart' show ExportDocumentSheet;
+export 'export_list_sheet.dart' show ExportCelRefusal, ExportListSheet;
 
 /// The Cels unit: one BUNDLE (a base drawing layer and the parts riding
 /// it) × one cel number → ONE composited file. A delivery cel is the stack,
@@ -118,37 +124,14 @@ class ExportCelGroupTask {
 /// direction rows are.
 typedef ExportCelOverlay = ({Cut cut, Layer layer, Frame frame});
 
-/// Why a drawing of a listed row is no file as things stand — what its
-/// block says when it is pressed (F-289, 유저 2026-10-06: 「나갈 수 없는
-/// 그림은 작동하려하면 이유 띄우자」).
-enum ExportCelRefusal {
-  /// Its row is off, and so is everything riding it.
-  rowOff,
-
-  /// The rows of its cel that are on hold no picture for it (「그림이
-  /// 존재하는 영역만 출력」).
-  noPicture,
-
-  /// No cut places it on the timeline (「애초에 타임라인에 안놓은 셀은 출력에
-  /// 포함하지않음」).
-  notPlaced,
-
-  /// A row of the same name files its unnamed picture first (「순서상 첫
-  /// 블록만」).
-  sameName,
-
-  /// It rides its base's cels: a free attach row that is not the bundle's
-  /// only picture ([_bundleAxis]).
-  ridesBase,
-}
-
 /// ONE DRAWING of a listed row, as the plan answers for it: the cel it
-/// writes, or why it writes none. The window's list is these, a block each.
+/// writes, or why it writes none. The window's list is these, a block each
+/// ([ExportListSheet]) — beside the cut's documents ([ExportDocumentSheet]).
 ///
 /// ⛔The plan answers for EVERY drawing — the list does not ask again. A
 /// list that worked out for itself which drawings go would be the planner
 /// written twice, and the second copy is the one that drifts.
-class ExportCelSheet {
+class ExportCelSheet extends ExportListSheet {
   const ExportCelSheet({
     required this.cut,
     required this.row,
@@ -179,12 +162,13 @@ class ExportCelSheet {
   /// block is one cell wide (drawn so in the F-289 mock, and of the band's
   /// buttons 유저 2026-10-06: 「버튼엔 지시이름만 넣자. T.U 이렇게하고
   /// 툴팁으로 T.U_A-B 이렇게」).
+  @override
   final String word;
 
-  /// Its whole name, for where there is the room to say it.
+  @override
   String get fullName => celName.isEmpty ? row.name : celName;
 
-  /// Why it is no file as things stand, or null for a PLANNED drawing.
+  @override
   final ExportCelRefusal? refused;
 
   /// The picture: the cel that is written, for a planned drawing — or, for
@@ -192,15 +176,23 @@ class ExportCelSheet {
   /// which is what the preview shows of a row that is off.
   final ExportCelGroupTask look;
 
-  /// The user turned it off — its picture's own answer, so the list and the
-  /// run cannot say two things. Kept while it is [refused] too: a row turned
-  /// back on lights the drawings that were left on, and no others.
+  /// Its picture's own answer, so the list and the run cannot say two
+  /// things.
+  @override
   bool get skipped => look.skipped;
 
-  bool get planned => refused == null;
+  @override
+  String get fileName => look.fileName;
 
-  /// Whether a file is written for it.
-  bool get written => planned && !skipped;
+  @override
+  bool get laid => look.overlays.isNotEmpty;
+
+  @override
+  String get idValue => frame.id.value;
+
+  /// What the hand did to a drawing is kept with the cut that lists it.
+  @override
+  CutId get deltaCut => cut.id;
 
   ExportCelRef get ref => (row: row.id, cel: frame.id);
 }
@@ -234,7 +226,7 @@ String celGroupPreviewKey(
 }
 
 class ExportCelGroupPlan {
-  ExportCelGroupPlan({required this.sheets})
+  ExportCelGroupPlan({required this.sheets, this.documents = const []})
     : cels = [
         for (final sheet in sheets)
           if (sheet.planned) sheet.look,
@@ -243,6 +235,11 @@ class ExportCelGroupPlan {
   /// Every drawing of every listed row, in the order the walk meets them —
   /// what the window lists.
   final List<ExportCelSheet> sheets;
+
+  /// Every file of the documents the export writes beside the cels — each
+  /// cut's timesheet, its cut envelope — in the order the walk meets them:
+  /// what the window lists under the rows ([_documentsOf]).
+  final List<ExportDocumentSheet> documents;
 
   /// Every planned cel, on or turned off, in WRITE order — the namer's
   /// de-dup suffix rides on it.
@@ -254,8 +251,21 @@ class ExportCelGroupPlan {
       if (!task.skipped) task,
   ];
 
+  /// The documents' files that will be written.
+  List<ExportDocumentSheet> get writtenDocuments => [
+    for (final sheet in documents)
+      if (sheet.written) sheet,
+  ];
+
+  /// The files the export writes, in WRITE order: the cels, then the
+  /// documents.
+  List<String> get writtenFileNames => [
+    for (final task in writtenCels) task.fileName,
+    for (final sheet in writtenDocuments) sheet.fileName,
+  ];
+
   /// How many files the export writes.
-  int get length => writtenCels.length;
+  int get length => writtenCels.length + writtenDocuments.length;
 }
 
 /// The frame [member] contributes to the cel numbered by [baseFrame] of
@@ -942,6 +952,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   required CelsExportSpec spec,
   ExportProjectOverrides? overrides,
   String fileExtension = 'png',
+  int Function(Cut cut)? sheetPagesOf,
 }) {
   final run = (
     project: project,
@@ -953,6 +964,7 @@ ExportCelGroupPlan buildExportCelGroupPlan({
   );
   final projectScope = spec.scope == ExportScopeKind.project;
   final sheets = <ExportCelSheet>[];
+  final documents = <ExportDocumentSheet>[];
   for (final cut in exportCutsInScope(
     project: project,
     activeCutId: activeCutId,
@@ -968,15 +980,109 @@ ExportCelGroupPlan buildExportCelGroupPlan({
       spec: spec,
       delta: delta,
     );
-    final cutName = celGroupCutName(project, cut);
-    sheets.addAll(
-      _celSheetsFor(
-        (cut: cut, cutName: cutName, run: run, delta: delta),
-        selection,
-      ),
+    final entry = (
+      cut: cut,
+      cutName: celGroupCutName(project, cut),
+      run: run,
+      delta: delta,
+    );
+    sheets.addAll(_celSheetsFor(entry, selection));
+    documents.addAll(
+      _documentsOf(entry, overrides, sheetPagesOf ?? (cut) => 1),
     );
   }
-  return ExportCelGroupPlan(sheets: sheets);
+  return ExportCelGroupPlan(sheets: sheets, documents: documents);
+}
+
+/// One of a cut's documents before its files are counted: which, the cut it
+/// is of, and how many files it is written as.
+typedef _Document = ({ExportCelKind kind, Cut of, int pages});
+
+/// The documents the export writes beside the cels of [entry]'s cut
+/// (F-289, 유저 2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
+/// 컷봉투탭도 셀 내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」): the
+/// timesheet of every cut the entry stands for, and the cut envelope — ONE
+/// for a 겸용 group, which shares it ([cutEnvelopeInkOwner]).
+///
+/// A timesheet is a file a page ([sheetPagesOf]) as pictures, and one file
+/// as the digital sheet.
+Iterable<ExportDocumentSheet> _documentsOf(
+  _CutRun entry,
+  ExportProjectOverrides? overrides,
+  int Function(Cut cut) sheetPagesOf,
+) sync* {
+  final (:project, :spec, namer: _) = entry.run;
+  if (spec.kinds.contains(ExportCelKind.timesheet)) {
+    final oneFile = spec.sheetFormat == ExportTimesheetFormat.xdts;
+    for (final of in _cutsOf(entry)) {
+      yield* _filesOf(
+        (
+          kind: ExportCelKind.timesheet,
+          of: of,
+          pages: oneFile ? 1 : sheetPagesOf(of),
+        ),
+        entry,
+        overrides,
+      );
+    }
+  }
+  if (spec.kinds.contains(ExportCelKind.envelope)) {
+    final owner = cutEnvelopeInkOwner(project, entry.cut.id);
+    yield* _filesOf(
+      (
+        kind: ExportCelKind.envelope,
+        of: cutPositionOf(project, owner)?.cut ?? entry.cut,
+        pages: 1,
+      ),
+      entry,
+      overrides,
+    );
+  }
+}
+
+/// The cuts [entry] stands for: its own under the cut scope — and under the
+/// project scope every cut of its 겸용 group, in track order (the group is
+/// walked once, from its owner, and each of its cuts keeps a timesheet of
+/// its own).
+List<Cut> _cutsOf(_CutRun entry) =>
+    entry.run.spec.scope == ExportScopeKind.project
+    ? linkedCutGroupInTrackOrder(entry.run.project, cutId: entry.cut.id)
+    : [entry.cut];
+
+/// The files of [document], listed in [entry]'s cut. Each answers to the
+/// delta of the cut the document is OF: its row switched off there, or the
+/// file itself turned off.
+Iterable<ExportDocumentSheet> _filesOf(
+  _Document document,
+  _CutRun entry,
+  ExportProjectOverrides? overrides,
+) sync* {
+  final (:kind, :of, :pages) = document;
+  final delta = overrides?.deltaFor(of.id);
+  final off = delta?.documentsOff.contains(kind) ?? false;
+  for (var page = 0; page < pages; page += 1) {
+    yield ExportDocumentSheet(
+      kind: kind,
+      listedIn: entry.cut,
+      of: of,
+      page: page,
+      pageCount: pages,
+      skipped:
+          delta?.skippedPages.contains((document: kind, page: page)) ?? false,
+      refused: off ? ExportCelRefusal.rowOff : null,
+      // A file that is not written takes no name from the run.
+      fileName: off
+          ? ''
+          : entry.run.namer.uniqueDocumentName(
+              projectName: entry.run.project.name,
+              cutName: entry.cutName,
+              base:
+                  '${entry.run.spec.naming.prefixOf(kind)}'
+                  '${exportDocumentBase(kind, of, page, pages)}',
+              extension: exportDocumentExtension(kind, entry.run.spec),
+            ),
+    );
+  }
 }
 
 /// `[prefix][proj_][cut_]<label><cel>[suffix]` — the bundle reading of the

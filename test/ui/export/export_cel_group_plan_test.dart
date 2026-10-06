@@ -5,6 +5,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/exposure_instruction.dart';
@@ -25,6 +26,8 @@ import 'package:anicel/src/models/timeline_run_behavior.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
+
+import '../../helpers/export_cels_alone.dart';
 
 void main() {
   const key = LayerMark(process: LayerProcess.key);
@@ -118,7 +121,7 @@ void main() {
 
   ExportCelGroupPlan plan(
     List<Layer> layers, {
-    CelsExportSpec spec = const CelsExportSpec(),
+    CelsExportSpec spec = celsAlone,
     ExportProjectOverrides? overrides,
   }) => buildExportCelGroupPlan(
     project: projectWith(layers),
@@ -1719,6 +1722,268 @@ void main() {
       );
       expect(built.cels, hasLength(3));
       expect([for (final task in built.cels) task.overlays], [[], [], []]);
+    });
+  });
+  group('the cut\'s documents are written beside its cels (F-289, 유저 '
+      '2026-10-05: 「타임시트 탭을 그냥 셀 탭의 내부로 편입. 컷봉투탭도 셀 '
+      '내부로 편입 … 기존의 범위는 셀의 범위 규칙 따라가고」)', () {
+    const documents = CelsExportSpec(
+      kinds: {ExportCelKind.timesheet, ExportCelKind.envelope},
+    );
+    final one = [
+      base('a', 'A', [frame('f1')]),
+    ];
+
+    /// The fixture's one cut, its timesheet [pages] pages long.
+    ExportCelGroupPlan paged(
+      int pages, {
+      CelsExportSpec spec = documents,
+      ExportProjectOverrides? overrides,
+    }) => buildExportCelGroupPlan(
+      project: projectWith(one),
+      activeCutId: const CutId('cut'),
+      spec: spec,
+      overrides: overrides,
+      sheetPagesOf: (cut) => pages,
+    );
+
+    List<String> documentFiles(ExportCelGroupPlan built) => [
+      for (final sheet in built.documents) sheet.fileName,
+    ];
+
+    test('a kind that is off lists no document — and by default the '
+        'timesheet is written and the envelope is not', () {
+      expect(
+        plan(one, spec: const CelsExportSpec(kinds: {ExportCelKind.cel}))
+            .documents,
+        isEmpty,
+      );
+      final byDefault = plan(one, spec: const CelsExportSpec());
+      expect(documentFiles(byDefault), ['_TSCUT1.png']);
+      expect(byDefault.writtenFileNames, ['A1.png', '_TSCUT1.png']);
+      expect(byDefault.length, 2);
+    });
+
+    test('🗣️a timesheet is `TS` and its cut — and its page, from 1, once it '
+        'has more than one (유저: 「TS+컷번호 이런식. 페이지가 2개이상 '
+        '있다면 TS301_1 , TS301_2 이런식」) — or ONE digital sheet whatever '
+        'its pages; an envelope keeps its name', () {
+      expect(documentFiles(paged(1)), [
+        '_TSCUT1.png',
+        '_CUTCUT1_envelope.png',
+      ]);
+      expect(documentFiles(paged(3)), [
+        '_TSCUT1_1.png',
+        '_TSCUT1_2.png',
+        '_TSCUT1_3.png',
+        '_CUTCUT1_envelope.png',
+      ]);
+      final digital = paged(
+        3,
+        spec: documents.copyWith(sheetFormat: ExportTimesheetFormat.xdts),
+      );
+      expect(documentFiles(digital), [
+        '_TSCUT1.xdts',
+        '_CUTCUT1_envelope.png',
+      ]);
+    });
+
+    test('what its block reads: a page its number — and a document that is '
+        'one file, its cut; its whole name is its file\'s, less the prefix',
+        () {
+      expect(
+        [for (final sheet in paged(2).documents) (sheet.word, sheet.fullName)],
+        [
+          ('1', 'TSCUT1_1'),
+          ('2', 'TSCUT1_2'),
+          ('CUT1', 'CUTCUT1_envelope'),
+        ],
+      );
+      expect(paged(1).documents.first.word, 'CUT1');
+      // No two blocks of the list answer to one id.
+      final ids = [for (final sheet in paged(3).documents) sheet.idValue];
+      expect(ids.toSet(), hasLength(ids.length));
+    });
+
+    test('each document is written in its OWN format, behind its own prefix '
+        'and the folders the naming rule makes for its cut — a document is '
+        'no layer\'s', () {
+      final jpg = paperDocumentFormat.copyWith(
+        stillFormat: ExportStillFormat.jpg,
+      );
+      final built = plan(
+        one,
+        spec: CelsExportSpec(
+          kinds: const {
+            ExportCelKind.cel,
+            ExportCelKind.timesheet,
+            ExportCelKind.envelope,
+          },
+          sheetImage: jpg,
+          naming: const ExportCelNaming(
+            projectFolder: true,
+            cutFolder: true,
+            layerFolder: true,
+          )
+              .withPrefix(ExportCelKind.timesheet, 'x-')
+              .withPrefix(ExportCelKind.envelope, ''),
+        ),
+      );
+      expect(built.writtenFileNames, [
+        'Project/CUT1/A/A1.png',
+        'Project/CUT1/x-TSCUT1.jpg',
+        'Project/CUT1/CUTCUT1_envelope.png',
+      ]);
+      final envelopeJpg = paged(
+        1,
+        spec: documents.copyWith(envelopeImage: jpg),
+      );
+      expect(documentFiles(envelopeJpg), [
+        '_TSCUT1.png',
+        '_CUTCUT1_envelope.jpg',
+      ]);
+    });
+
+    test('a document\'s row switched off refuses its files — and a file '
+        'turned off stays planned and is not written', () {
+      final hand = ExportProjectOverrides().withCelsDelta(
+        const CutId('cut'),
+        ExportCelsCutDelta()
+            .withDocumentOff(ExportCelKind.timesheet, true)
+            .withPageSkipped(
+              (document: ExportCelKind.envelope, page: 0),
+              true,
+            ),
+      );
+      final built = paged(2, overrides: hand);
+      expect(
+        [
+          for (final sheet in built.documents)
+            (sheet.kind, sheet.refused, sheet.skipped, sheet.fileName),
+        ],
+        [
+          (ExportCelKind.timesheet, ExportCelRefusal.rowOff, false, ''),
+          (ExportCelKind.timesheet, ExportCelRefusal.rowOff, false, ''),
+          (ExportCelKind.envelope, null, true, '_CUTCUT1_envelope.png'),
+        ],
+      );
+      expect(built.writtenDocuments, isEmpty);
+      expect(built.length, 0);
+
+      // One page of two turned off: the other is written, under the name
+      // it had.
+      final onePage = paged(
+        2,
+        overrides: ExportProjectOverrides().withCelsDelta(
+          const CutId('cut'),
+          ExportCelsCutDelta().withPageSkipped(
+            (document: ExportCelKind.timesheet, page: 0),
+            true,
+          ),
+        ),
+      );
+      expect(
+        [for (final sheet in onePage.writtenDocuments) sheet.fileName],
+        ['_TSCUT1_2.png', '_CUTCUT1_envelope.png'],
+      );
+    });
+
+    test('a document\'s file never takes a name a cel of the run has', () {
+      final built = plan(
+        [
+          base('ts', '_TSCUT', [frame('f1')]),
+        ],
+        spec: const CelsExportSpec(
+          kinds: {ExportCelKind.cel, ExportCelKind.timesheet},
+        ),
+      );
+      expect(built.writtenFileNames, ['_TSCUT1.png', '_TSCUT1_2.png']);
+    });
+
+    test('겸용: under the project scope a group is ONE entry — a timesheet '
+        'for EACH of its cuts, and one envelope, its owner\'s; under the cut '
+        'scope the cut stood on has its own sheet', () {
+      final project = Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        tracks: [
+          Track(
+            id: const TrackId('track'),
+            name: 'Track',
+            cuts: [
+              for (final id in ['c1', 'c2', 'c3'])
+                Cut(
+                  id: CutId(id),
+                  name: id.toUpperCase(),
+                  duration: 2,
+                  canvasSize: const CanvasSize(width: 8, height: 8),
+                  layers: [
+                    base('$id-a', 'A', [frame('$id-f1', name: '1')]),
+                    createCameraLayer(cutId: CutId(id)),
+                  ],
+                ),
+            ],
+          ),
+        ],
+        linkRegistry: LayerLinkRegistry(
+          groups: [
+            LayerLinkGroup(
+              id: 'group-1',
+              members: const [
+                LayerLinkMember(
+                  trackId: TrackId('track'),
+                  cutId: CutId('c1'),
+                  layerId: LayerId('c1-a'),
+                ),
+                LayerLinkMember(
+                  trackId: TrackId('track'),
+                  cutId: CutId('c2'),
+                  layerId: LayerId('c2-a'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        createdAt: DateTime.utc(2026),
+      );
+      ExportCelGroupPlan built(ExportScopeKind scope, String standingOn) =>
+          buildExportCelGroupPlan(
+            project: project,
+            activeCutId: CutId(standingOn),
+            spec: documents.copyWith(scope: scope),
+          );
+
+      final whole = built(ExportScopeKind.project, 'c2');
+      expect(
+        [
+          for (final sheet in whole.documents)
+            (sheet.listedIn.id.value, sheet.of.id.value, sheet.fileName),
+        ],
+        [
+          ('c1', 'c1', '_TSC1.png'),
+          ('c1', 'c2', '_TSC2.png'),
+          ('c1', 'c1', '_CUTC1_envelope.png'),
+          ('c3', 'c3', '_TSC3.png'),
+          ('c3', 'c3', '_CUTC3_envelope.png'),
+        ],
+      );
+      // Each answers to the delta of the cut it is OF.
+      expect(
+        {for (final sheet in whole.documents) sheet.deltaCut.value},
+        {'c1', 'c2', 'c3'},
+      );
+
+      final fromSibling = built(ExportScopeKind.cut, 'c2');
+      expect(
+        [
+          for (final sheet in fromSibling.documents)
+            (sheet.listedIn.id.value, sheet.of.id.value, sheet.fileName),
+        ],
+        [
+          ('c2', 'c2', '_TSC2.png'),
+          ('c2', 'c1', '_CUTC1_envelope.png'),
+        ],
+      );
     });
   });
 }

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_cel_kind.dart';
 import 'package:anicel/src/models/export_overrides.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -105,7 +106,7 @@ void main() {
           .withCelSkipped(ref('a', 'f1'), true)
           .withDirectionOver(ref('a', 'f2'), ref('dir', 'd1'), true);
 
-      final refiltered = delta.withoutLayerOverrides();
+      final refiltered = delta.withoutRowExceptions();
       expect(refiltered.layerOverrides, isEmpty);
       expect(refiltered.skippedCels, {ref('a', 'f1')});
       expect(refiltered.directionsOver(ref('a', 'f2')), {ref('dir', 'd1')});
@@ -151,6 +152,104 @@ void main() {
         ['layerOverrides'],
         reason: 'an empty set is not written',
       );
+    });
+
+    group('the cut\'s documents (F-289)', () {
+      const page0 = (document: ExportCelKind.timesheet, page: 0);
+      const page2 = (document: ExportCelKind.timesheet, page: 2);
+      const envelope = (document: ExportCelKind.envelope, page: 0);
+
+      test('a document\'s row is switched off and back on, one document at '
+          'a time — a row exception, as a layer\'s is', () {
+        final off = ExportCelsCutDelta().withDocumentOff(
+          ExportCelKind.timesheet,
+          true,
+        );
+        expect(off.documentsOff, {ExportCelKind.timesheet});
+        expect(off.isEmpty, isFalse);
+        expect(off.hasRowExceptions, isTrue);
+        expect(off.leavesTheRules, isTrue);
+        expect(
+          off.withDocumentOff(ExportCelKind.envelope, true).documentsOff,
+          {ExportCelKind.timesheet, ExportCelKind.envelope},
+        );
+        final back = off.withDocumentOff(ExportCelKind.timesheet, false);
+        expect(back.documentsOff, isEmpty);
+        expect(back.isEmpty, isTrue);
+      });
+
+      test('a file of a document is turned off and back on, one at a time — '
+          'no row exception: the label does not read 「커스텀」 for it', () {
+        final skipped = ExportCelsCutDelta()
+            .withPageSkipped(page0, true)
+            .withPageSkipped(envelope, true);
+        expect(skipped.skippedPages, {page0, envelope});
+        expect(skipped.isEmpty, isFalse);
+        expect(skipped.hasRowExceptions, isFalse);
+        expect(skipped.leavesTheRules, isTrue, reason: 'Reset has work to do');
+        expect(
+          skipped.withPageSkipped(page0, false).skippedPages,
+          {envelope},
+        );
+      });
+
+      test('a filter press drops the document rows\' answers with the '
+          'layers\', and leaves the files turned off; Reset drops both', () {
+        final delta = ExportCelsCutDelta()
+            .withLayerOverride(const LayerId('l1'), true)
+            .withDocumentOff(ExportCelKind.envelope, true)
+            .withPageSkipped(page2, true);
+
+        final refiltered = delta.withoutRowExceptions();
+        expect(refiltered.layerOverrides, isEmpty);
+        expect(refiltered.documentsOff, isEmpty);
+        expect(refiltered.skippedPages, {page2});
+        expect(refiltered.hasRowExceptions, isFalse);
+
+        final reset = delta.backOnTheRules();
+        expect(reset.documentsOff, isEmpty);
+        expect(reset.skippedPages, isEmpty);
+        expect(reset.isEmpty, isTrue);
+      });
+
+      test('they round-trip, written in one order whatever order the hand '
+          'worked in — and a kind the file names wrongly is left out', () {
+        final a = ExportCelsCutDelta()
+            .withDocumentOff(ExportCelKind.envelope, true)
+            .withDocumentOff(ExportCelKind.timesheet, true)
+            .withPageSkipped(envelope, true)
+            .withPageSkipped(page2, true)
+            .withPageSkipped(page0, true);
+        final b = ExportCelsCutDelta()
+            .withPageSkipped(page0, true)
+            .withPageSkipped(page2, true)
+            .withPageSkipped(envelope, true)
+            .withDocumentOff(ExportCelKind.timesheet, true)
+            .withDocumentOff(ExportCelKind.envelope, true);
+        expect(a, b);
+        expect(a.hashCode, b.hashCode);
+        expect(a.toJson().toString(), b.toJson().toString());
+        expect(a.toJson()['documentsOff'], ['timesheet', 'envelope']);
+        expect(a.toJson()['skippedPages'], [
+          {'document': 'timesheet', 'page': 0},
+          {'document': 'timesheet', 'page': 2},
+          {'document': 'envelope', 'page': 0},
+        ]);
+        expect(ExportCelsCutDelta.fromJson(a.toJson()), a);
+        expect(a, isNot(a.withPageSkipped(page2, false)));
+        expect(a, isNot(a.withDocumentOff(ExportCelKind.envelope, false)));
+        expect(ExportCelsCutDelta().toJson().keys, ['layerOverrides']);
+
+        final strange = ExportCelsCutDelta.fromJson(const {
+          'documentsOff': ['timesheet', 'ledger'],
+          'skippedPages': [
+            {'document': 'ledger', 'page': 1},
+            {'document': 'envelope', 'page': 0},
+          ],
+        });
+        expect(strange.documentsOff, {ExportCelKind.timesheet});
+        expect(strange.skippedPages, {envelope});
+      });
     });
   });
 
