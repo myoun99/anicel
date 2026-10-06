@@ -17,6 +17,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/font_library_service.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -157,13 +158,22 @@ Future<void> pumpTextToolApp(
   Project? project,
   bool engine = false,
   Size size = const Size(1600, 900),
+
+  /// The fonts this device was brought; null leaves the workspace to its
+  /// own library — the test sandbox, which is empty.
+  FontLibraryService? fonts,
 }) async {
   debugCelTextBaker = engine ? null : boxFillingBake;
   addTearDown(() => debugCelTextBaker = null);
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: project ?? textToolProject())),
+    MaterialApp(
+      home: HomePage(
+        initialProject: project ?? textToolProject(),
+        fontLibraryService: fonts,
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 }

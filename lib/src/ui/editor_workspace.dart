@@ -27,6 +27,7 @@ import '../models/brush_hand_settings.dart' show brushHandSettingsRecalled;
 import '../services/brush_hand_overlay.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
+import '../services/font_library_service.dart';
 import '../services/canvas_read_source.dart';
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -154,6 +155,7 @@ import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
 import 'text/app_strings.dart';
+import 'text/imported_fonts.dart';
 import 'text/place_lines.dart' show mediaAssetUseLine;
 import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
@@ -191,6 +193,7 @@ class EditorWorkspace extends StatefulWidget {
     required this.session,
     this.presetFileService,
     this.tipLibraryService,
+    this.fontLibraryService,
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
@@ -284,6 +287,10 @@ class EditorWorkspace extends StatefulWidget {
 
   /// Injectable tip-library storage; defaults to the app-data tip folder.
   final BrushTipLibraryService? tipLibraryService;
+
+  /// Injectable storage of the fonts this device was brought; defaults to
+  /// the app-data font folder (its own sandbox under a test).
+  final FontLibraryService? fontLibraryService;
 
   /// Injectable workspace-layout persistence; defaults to the app-data
   /// layout file outside tests (`FLUTTER_TEST` disables it so widget tests
@@ -785,6 +792,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final BrushPresetLibrary _presetLibrary;
   late final BrushTipLibrary _tipLibrary;
 
+  /// The fonts this device was brought — the text tool's faces beside the
+  /// app's own. It stands as the run's faces from here
+  /// (`CanvasLetterFaces.current`), so it is made before any canvas is.
+  late final ImportedFonts _fonts;
+
   final ValueNotifier<TimelineOrientation> _timelineOrientation = ValueNotifier(
     TimelineOrientation.horizontal,
   );
@@ -1022,6 +1034,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void initState() {
     super.initState();
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
+    // Only the index is read here — which families there are. A face is
+    // read when letters are first asked for in it.
+    _fonts = ImportedFonts(service: widget.fontLibraryService);
+    unawaited(_fonts.load());
     // H25: what the hand last set on each brush, from the last session — and
     // H36: a painting tool taken up holding no brush opens on one.
     _brushTool.addListener(_brushPresets.followBrushTool);
@@ -1511,6 +1527,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     _presetLibrary.dispose();
     _tipLibrary.dispose();
+    _fonts.dispose();
     _cutPieceSlot
       ..removeListener(_brushPresets.armStampOnFreshCut)
       // Its bytes are counted while it lives (CutPieceSlot.allPieceBytes),

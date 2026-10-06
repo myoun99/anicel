@@ -14,6 +14,7 @@ import '../models/working_panel.dart';
 import '../native/qa_native_engine.dart';
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
+import '../services/font_library_service.dart';
 import '../services/last_stroke_slot.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/failed_save_copies.dart';
@@ -103,6 +104,7 @@ class HomePage extends StatefulWidget {
     this.layoutStore,
     this.presetFileService,
     this.tipLibraryService,
+    this.fontLibraryService,
     this.languageSettingsStore,
   });
 
@@ -125,6 +127,10 @@ class HomePage extends StatefulWidget {
   /// tips by id and load after them, so a test that seeds presets seeds
   /// this too, on its own directory.
   final BrushTipLibraryService? tipLibraryService;
+
+  /// Where the fonts this device was brought are kept — a test that brings
+  /// one hands in a library on its own directory.
+  final FontLibraryService? fontLibraryService;
 
   /// Where the program language is restored from, beside the two services
   /// above. Null reads the saved file outside tests and nothing inside them.
@@ -1285,6 +1291,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     layoutStore: widget.layoutStore,
                                     presetFileService: widget.presetFileService,
                                     tipLibraryService: widget.tipLibraryService,
+                                    fontLibraryService:
+                                        widget.fontLibraryService,
                                     panelsMenu: _panelsMenu,
                                     brushTool: _brushTool,
                                     transformOptions: _transformOptions,

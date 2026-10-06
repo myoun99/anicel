@@ -32,6 +32,7 @@ import '../../services/cut_piece_slot.dart';
 import 'brush_stroke_live_preview.dart';
 import 'cut_piece_preview.dart';
 import '../text/app_strings.dart';
+import '../text/imported_fonts.dart';
 import '../text/model_vocabulary.dart';
 import '../text/trimmed_decimal.dart';
 import '../widgets/empty_state_text.dart';
@@ -58,6 +59,7 @@ class ToolSettingsPanel extends StatelessWidget {
     this.selectionCommands,
     this.textOptions,
     this.textCommands,
+    this.textFonts,
     this.canvasSize,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasReadSource.display,
@@ -126,6 +128,10 @@ class ToolSettingsPanel extends StatelessWidget {
   /// to the text the canvas holds. Null in a host that owns neither.
   final ValueNotifier<TextToolOptions>? textOptions;
   final CelTextCommands? textCommands;
+
+  /// The fonts this device was brought, for the text tool's faces. Null in
+  /// a host that keeps none.
+  final ImportedFonts? textFonts;
 
   /// The canvas on screen, whose pasteboard wall the selection tool's
   /// 선택 반전 inverts out to (I-23). Null = no canvas to take a wall from,
@@ -278,6 +284,7 @@ class ToolSettingsPanel extends StatelessWidget {
           commands: textCommands,
           // The brush's colour, for the colour window's 「현재 색 반영」.
           currentColorOf: () => state.color,
+          fonts: textFonts,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.

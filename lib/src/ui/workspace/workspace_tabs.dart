@@ -630,6 +630,7 @@ class _WorkspaceTabs {
                                               _state._views._textToolOptions,
                                           textCommands:
                                               _state.widget.canvasTextCommands,
+                                          textFonts: _state._fonts,
                                           // The wall 선택 반전 inverts out
                                           // to (I-23): the cut on screen.
                                           canvasSize: _state

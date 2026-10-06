@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
+import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
 import '../text/app_strings.dart';
+import '../text/canvas_letter_faces.dart';
+import '../text/imported_fonts.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/color_swatch_button.dart';
@@ -34,7 +39,13 @@ class TextToolSettings extends StatelessWidget {
     required this.options,
     required this.commands,
     this.currentColorOf,
+    this.fonts,
   });
+
+  /// The fonts this device was brought, which the face is picked from
+  /// beside the app's own. Null in a host that keeps none: the list is the
+  /// app's faces, and nothing is brought from it.
+  final ImportedFonts? fonts;
 
   /// The next text's values. Null in a host that does not own them: the
   /// section shows the defaults and changes nothing.
@@ -50,6 +61,8 @@ class TextToolSettings extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
+    // ⚠️Not the fonts: the list of faces is made when it OPENS, and nothing
+    // on the row itself is read from them.
     listenable: Listenable.merge([?options, ?commands]),
     builder: (context, _) {
       final values = TextToolSettingsValues(
@@ -64,7 +77,11 @@ class TextToolSettings extends StatelessWidget {
           const SizedBox(height: 8),
           _TextInHandRow(commands: commands),
           ToolSettingsGroupHeader(strings.textToolLetters),
-          _LetterRows(values: values, currentColorOf: currentColorOf),
+          _LetterRows(
+            values: values,
+            currentColorOf: currentColorOf,
+            fonts: fonts,
+          ),
           ToolSettingsGroupHeader(strings.textToolBox),
           _BoxRows(values: values, currentColorOf: currentColorOf),
         ],
@@ -167,10 +184,15 @@ typedef _LetterBar = ({
 /// The rows of the 글자 group — every one a setting of LETTERS, which
 /// reaches the selected ones or, with none selected, the whole text.
 class _LetterRows extends StatelessWidget {
-  const _LetterRows({required this.values, required this.currentColorOf});
+  const _LetterRows({
+    required this.values,
+    required this.currentColorOf,
+    required this.fonts,
+  });
 
   final TextToolSettingsValues values;
   final int Function()? currentColorOf;
+  final ImportedFonts? fonts;
 
   /// The largest a letter is set at from here, in canvas pixels. (The
   /// smallest is the law's own, [celTextMinFontSize].)
@@ -190,7 +212,7 @@ class _LetterRows extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _face(),
+        _FaceRow(values: values, fonts: fonts),
         _gap,
         _bar(_LetterNumber.size),
         _gap,
@@ -213,31 +235,6 @@ class _LetterRows extends StatelessWidget {
           _LetterNumber.outlineWidth,
           live: outlined.mixed || outlined.value,
         ),
-      ],
-    );
-  }
-
-  /// The face: the app's own, in the order it reads them.
-  Widget _face() {
-    final face = values.letter((style) => style.fontFamily);
-    const faces = <String?>[null, ...AppTypography.bundledFallback];
-    String nameOf(String? family) => family ?? AppTypography.bundledFamily;
-    return PanelFlyoutButton(
-      key: const ValueKey<String>('text-tool-font'),
-      label: face.mixed ? _mixed : nameOf(face.value),
-      tooltip: AppText.strings.textToolFont,
-      expand: true,
-      enabled: values.writable,
-      entriesBuilder: () => [
-        for (final family in faces)
-          PanelFlyoutItem(
-            keyValue: 'text-tool-font-${nameOf(family)}',
-            label: nameOf(family),
-            selected: !face.mixed && family == face.value,
-            onSelected: () => values.setLetters(
-              (style) => style.copyWith(fontFamily: family),
-            ),
-          ),
       ],
     );
   }
@@ -341,6 +338,143 @@ class _LetterRows extends StatelessWidget {
         onSettled: values.settle,
       ),
     );
+  }
+}
+
+/// THE FACE: the app's own two, in the order it reads them, and under them
+/// the ones this device was brought — picked, brought and taken away from
+/// one list (유저 2026-10-06, the drawing taken: 「글꼴 ＋」 over the faces,
+/// a delete on each one brought).
+///
+/// 🗣️유저 2026-10-06: 「유저가 알아서 자기가 가지고있는 글꼴 넣는게
+/// 아니야?」 — the ＋ picks a FILE.
+class _FaceRow extends StatelessWidget {
+  const _FaceRow({required this.values, required this.fonts});
+
+  final TextToolSettingsValues values;
+  final ImportedFonts? fonts;
+
+  static const List<String?> _appFaces = [
+    null,
+    ...AppTypography.bundledFallback,
+  ];
+
+  static String _nameOf(String? family) =>
+      family ?? AppTypography.bundledFamily;
+
+  @override
+  Widget build(BuildContext context) {
+    final face = values.letter((style) => style.fontFamily);
+    return PanelFlyoutButton(
+      key: const ValueKey<String>('text-tool-font'),
+      label: face.mixed ? _mixed : _nameOf(face.value),
+      tooltip: AppText.strings.textToolFont,
+      expand: true,
+      enabled: values.writable,
+      entriesBuilder: () => _faces(context, inUse: face),
+    );
+  }
+
+  /// The list, as it is when it OPENS.
+  List<PanelFlyoutEntry> _faces(
+    BuildContext context, {
+    required ({String? value, bool mixed}) inUse,
+  }) {
+    final strings = AppText.strings;
+    final fonts = this.fonts;
+    final brought = fonts?.families ?? const <ImportedFontFamily>[];
+    bool isInUse(String? family) => !inUse.mixed && family == inUse.value;
+    return [
+      PanelFlyoutHeader(
+        strings.textToolFont,
+        action: fonts == null
+            ? null
+            : PanelFlyoutRowAction(
+                keyValue: 'text-tool-font-import',
+                icon: Icons.add,
+                tooltip: strings.textToolFontImport,
+                does: PanelFlyoutActionDoes.adds,
+                onPressed: () => unawaited(_bring(context, fonts)),
+              ),
+      ),
+      for (final family in _appFaces)
+        PanelFlyoutItem(
+          keyValue: 'text-tool-font-${_nameOf(family)}',
+          label: _nameOf(family),
+          selected: isInUse(family),
+          onSelected: () => _pick(family),
+        ),
+      // The face in use is not on this device: it is named, as the one in
+      // use, and says what that means. There is nothing of it to pick.
+      if (!inUse.mixed &&
+          !CanvasLetterFaces.isAppFace(inUse.value) &&
+          !brought.any((family) => family.name == inUse.value))
+        PanelFlyoutItem(
+          keyValue: 'text-tool-font-${inUse.value}',
+          label: inUse.value!,
+          selected: true,
+          warning: strings.textToolFontNotOnThisDevice,
+        ),
+      if (brought.isNotEmpty) const PanelFlyoutDivider(),
+      for (final family in brought)
+        PanelFlyoutItem(
+          keyValue: 'text-tool-font-${family.name}',
+          label: family.name,
+          selected: isInUse(family.name),
+          warning: family.ridesInEditedDocuments
+              ? null
+              : strings.textToolFontStaysOnThisDevice,
+          onSelected: () => _pick(family.name),
+          action: PanelFlyoutRowAction(
+            keyValue: 'text-tool-font-${family.name}-delete',
+            icon: Icons.delete_outline,
+            tooltip: strings.textToolFontDelete,
+            does: PanelFlyoutActionDoes.deletes,
+            onPressed: () => unawaited(fonts!.delete(family.name)),
+          ),
+        ),
+    ];
+  }
+
+  /// Sets the letters in [family] — and has it READ now, where it is one
+  /// this device holds and the engine has not been handed
+  /// ([CanvasLetterFaces.sendFor]).
+  ///
+  /// A face is read when letters are first asked for in it, and with no
+  /// text in hand nothing asks until a press begins one: the press would
+  /// find its caret measured in another face, and its first letters
+  /// waiting. Picked is when it is known to be wanted.
+  void _pick(String? family) {
+    CanvasLetterFaces.current.sendFor(family);
+    values.setLetters((style) => style.copyWith(fontFamily: family));
+  }
+
+  /// The ＋: picks a file and brings it as a font — and the face brought is
+  /// the face picked, for the ＋ stands in the list a face is picked from.
+  ///
+  /// A file that is not taken says why. So does one that IS taken and may
+  /// not ride in a project (유저 2026-10-06: 「글꼴을 등록할때? 사용할때든
+  /// 뭐든 글꼴 고를때든 … 적어두자」 — when it is registered is the first of
+  /// those, and its row in the list says it from then on).
+  Future<void> _bring(BuildContext context, ImportedFonts fonts) async {
+    final outcome = await fonts.importFromFile();
+    final family = outcome.family;
+    if (family != null) {
+      _pick(family);
+    }
+    final rides = family == null
+        ? null
+        : fonts.familyNamed(family)?.ridesInEditedDocuments;
+    final notice =
+        outcome.refusal ??
+        (rides == false ? AppText.strings.textToolFontStaysOnThisDevice : null);
+    if (notice != null && context.mounted) {
+      await showAppNotice(
+        context,
+        title: AppText.strings.commonNotice,
+        message: notice,
+      );
+    }
   }
 }
 
