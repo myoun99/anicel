@@ -2,6 +2,8 @@ import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -322,6 +324,27 @@ void main() {
         reason: 'the timeline\'s buttons ask the timeline\'s cursor — the '
             'storyboard\'s stands on the cut here, and would light them',
       );
+    });
+
+    test('a synced attach row shows its base\'s blocks and owns none: dark, '
+        'and nothing is written', () {
+      final base = celAtZero();
+      session.folders.addAttachedLayer(AttachedPlacement.above);
+      final shown = session.activeLayer!;
+      expect(isSyncedAttachedLayer(shown), isTrue, reason: 'fixture');
+      session.selectFrameIndex(0);
+      expect(
+        coveringDrawingBlockAt(shown.timeline, 0)?.entry.ghost,
+        isFalse,
+        reason: 'premise: the mirror under the cursor is a block and no '
+            'ghost, so only whose timing it is turns the press away',
+      );
+
+      expect(cursorOf(session).canSetCommaForTimelineCursor, isFalse);
+      commaOf(session).setCommaForTimelineCursor(3);
+
+      expect(blocksOf(session.layerById(base)!), [(0, 1)]);
+      expect(session.layerById(shown.id)!.timeline, shown.timeline);
     });
 
     test('standing on a lane, the press is the lane\'s, and a lane has no '

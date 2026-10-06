@@ -206,12 +206,19 @@ void main() {
   test('and a band over that sound takes the comma in the gap as well', () {
     final s = standingAt(10);
     s.storyboardCursor.createSeEntryAtStoryboardCursor();
+    // Off the sound, so the press is the band's alone.
+    s.selectGlobalFrame(9);
     s.rangeSelections.updateTrackRowRangeSelectionByFrame(
       layerId: seLayerId,
       anchorGlobalFrame: 10,
       headGlobalFrame: 10,
     );
     expect(s.activeCutOrNull, isNull, reason: 'premise: still parked');
+    expect(
+      storyboardCursorOf(s).storyboardCursorBlockOrNull(),
+      isNull,
+      reason: 'premise: the cursor itself stands on nothing',
+    );
 
     s.edgeDrag.setCommaForStoryboardCursor(3);
 
