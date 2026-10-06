@@ -2,15 +2,18 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/independent_clip_mint.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 
 /// 🚨F-275 (유저 2026-10-04): 「기준레이어 링크된상태에서 독립시킬때, 어태치
@@ -105,6 +108,15 @@ void main() {
     expect(mirrorOfCopy, isNotNull, reason: 'the new cel is mirrored');
     expect(mirrorOfCopy, isNot(mirrorOfA), reason: 'by a cel of its own');
     expect(
+      mirrorOfCopy,
+      attachedMirrorCelId(attach, copy),
+      reason: 'under the id the settle gives a mirror — nothing minted twice',
+    );
+    expect(
+      rowOf(s, attach).frames.where((frame) => frame.id == mirrorOfCopy),
+      hasLength(1),
+    );
+    expect(
       shadeOf(s, attach, mirrorOfCopy!),
       90,
       reason: '「어태치 싱크 레이어 그림도 남아있도록」',
@@ -127,6 +139,50 @@ void main() {
     expect(
       rowOf(s, attach).frames.any((frame) => frame.id == mirrorOfCopy),
       isFalse,
+    );
+  });
+
+  test('the mirrors are minted under the row the settle mints under — a '
+      'linked row\'s group — and a base cel the row never mirrored is left '
+      'to the settle', () {
+    const mirrored = FrameId('a');
+    const unmirrored = FrameId('b');
+    const mirror = FrameId('attach-mirror-row-a');
+    final attached = Layer(
+      id: const LayerId('row'),
+      name: 'A+1',
+      frames: [Frame(id: mirror, duration: 1, strokes: const [])],
+      timeline: const {},
+      baseFrameLinks: {mirrored: mirror},
+    );
+
+    final copies = mirrorCopiesFor(
+      attachedRows: [attached],
+      baseMinted: {
+        mirrored: const FrameId('a-copy'),
+        unmirrored: const FrameId('b-copy'),
+      },
+      mintedUnder: (_) => const LayerId('canonical'),
+    );
+
+    final born = attachedMirrorCelId(
+      const LayerId('canonical'),
+      const FrameId('a-copy'),
+    );
+    expect(copies, hasLength(1));
+    expect(copies.single.layerId, attached.id);
+    expect(copies.single.born.map((frame) => frame.id), [born]);
+    expect(copies.single.baseLinks, {const FrameId('a-copy'): born});
+    expect(copies.single.minted, {mirror: born});
+
+    expect(
+      mirrorCopiesFor(
+        attachedRows: [attached],
+        baseMinted: {unmirrored: const FrameId('b-copy')},
+        mintedUnder: (row) => row.id,
+      ),
+      isEmpty,
+      reason: 'a row that gains nothing is no rider',
     );
   });
 
