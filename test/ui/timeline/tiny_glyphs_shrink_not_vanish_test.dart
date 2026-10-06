@@ -112,8 +112,12 @@ void main() {
     final source = _squash(
       File('lib/src/ui/text/word_bake.dart').readAsStringSync(),
     );
+    // ↩️One scale for both axes until F-297; each axis has its own now, and
+    // the bake is the raster itself only where NEITHER is oversampled.
+    // (What that buys is measured, not scanned:
+    // `text/a_baked_word_stands_where_the_word_does_test.dart`.)
     expect(
-      source.contains('bakeScale==1?big'),
+      source.contains('timesAlong==1&&timesDown==1?big'),
       isTrue,
       reason:
           'and at scale 1 the alpha is the bake itself, not a filtered '

@@ -43,11 +43,34 @@ class BakedWordCoverage {
 /// the grid, and a blotch tinted with cell ink reads as nothing. A word
 /// keeps its type now (B, 2026-09-24) but NARROWS, and a narrow stroke
 /// blotches the same way — so the size this asks about is the type times
-/// the tighter narrowing ([fontSize]).
+/// the narrowing ([fontSize]).
 ///
 /// ⛔ABOVE THE FLOOR NOTHING CHANGES. [wordBakeScale] is 1 for any glyph
 /// the rasteriser can already draw well, so zoom-in keeps the pixels it
 /// has always had — 유저: 「줌인하면 텍스트는 선명하게 보고싶다」.
+///
+/// 🚨★★★EACH AXIS IS OVERSAMPLED BY ITS OWN NARROWING, A WHOLE NUMBER OF
+/// TIMES (F-297, 유저 2026-10-05): 「3a로 글자가 폭이 부족해서 가로
+/// 짧아진다거나 할때, 글자의 세로길이나 세로 중앙정렬이 이상해짐. 3a만
+/// 이상하게 중앙에서 위에존재하고. 게다가 약간 흐려지는? 이런 문제
+/// 원천적으로 해결하고싶음」.
+///
+/// A name narrowed ALONG its line is as tall as it ever was, and the
+/// rasteriser draws that height well — so down the line it is rasterised
+/// once, exactly as the un-narrowed names beside it are, and only along the
+/// line is it rasterised big and averaged. 🧪2026-10-07, every type (9–13px)
+/// × ratio (1–2) × narrowing tried: the ink then stands on the very rows
+/// the word drawn straight stands on, to the thousandth of a pixel.
+///
+/// ↩️Both axes took ONE scale, the tighter narrowing's, and three things
+/// followed. The rows were averaged too, which is the blur and the
+/// 「세로길이」. The scale was the exact ratio (12 / 8.4 = 1.43 …), so the
+/// big raster was no whole multiple of the box and the average's windows
+/// did not tile it — 12 rows of ink came out over 14. And the margin was
+/// one pixel of the BIG raster, 1/scale of a final one, so the ink sat up
+/// and left of the box it is blitted by: a 12px name narrowed to 0.7 stood
+/// 0.76px high and 0.42px left, beside neighbours baked at 1 that stood
+/// where they should (the 「3a만 … 위에」).
 ///
 /// The coverage is the painted ink's ALPHA, whatever colour [painter]
 /// paints in: a caller that tints it draws the colour's own alpha twice
@@ -63,15 +86,19 @@ Future<BakedWordCoverage?> bakeWordCoverage(
   }
   final width = (painter.width * fit.x * dpr).ceil() + 2;
   final height = (painter.height * fit.y * dpr).ceil() + 2;
-  final bakeScale = wordBakeScale(_narrowedType(fontSize, fit));
+  final type = fontSize ?? legibleBakeSize;
+  final timesAlong = wordBakeScale(type * fit.x).toInt();
+  final timesDown = wordBakeScale(type * fit.y).toInt();
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)
-    ..translate(1, 1)
-    ..scale(dpr * bakeScale * fit.x, dpr * bakeScale * fit.y);
+    // The big raster is the final box that many times over, margin and
+    // all: one final pixel of margin is that many of its own.
+    ..translate(timesAlong.toDouble(), timesDown.toDouble())
+    ..scale(dpr * timesAlong * fit.x, dpr * timesDown * fit.y);
   painter.paint(canvas, Offset.zero);
   final picture = recorder.endRecording();
-  final bigWidth = (width * bakeScale).ceil();
-  final bigHeight = (height * bakeScale).ceil();
+  final bigWidth = width * timesAlong;
+  final bigHeight = height * timesDown;
   // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
   // survive a failed bake; and `toByteData` is awaited, so the image used to
   // survive a failed read. Both are given back by structure now.
@@ -99,24 +126,29 @@ Future<BakedWordCoverage?> bakeWordCoverage(
     height: height,
     logicalWidth: painter.width * fit.x,
     logicalHeight: painter.height * fit.y,
-    alpha: bakeScale == 1
+    alpha: timesAlong == 1 && timesDown == 1
         ? big
         : boxFilterA8(big, bigWidth, bigHeight, width, height),
   );
 }
 
 /// How much bigger than its final box to rasterise a glyph that ends up
-/// [fontSize] tall (its type times its tighter narrowing).
+/// [fontSize] tall (its type times one axis's narrowing).
 ///
 /// ⛔1 for anything the rasteriser draws well already, which is what
-/// keeps zoom-in byte-identical. Below that, enough to land the bake
-/// near [legibleBakeSize] — past which more oversampling buys nothing,
-/// because the box it is being averaged into is the limit.
+/// keeps zoom-in byte-identical. Below that, enough to land the bake at
+/// [legibleBakeSize] or past it — past which more oversampling buys
+/// nothing, because the box it is being averaged into is the limit.
+///
+/// 🚨A WHOLE NUMBER, always (F-297): the average takes that many pixels
+/// for each one it leaves ([boxFilterA8]), and only a whole number of them
+/// tile the raster. ↩️It was the exact ratio, which is one of the three
+/// ways a narrowed word's ink went astray ([bakeWordCoverage]).
 double wordBakeScale(double fontSize) {
   if (fontSize >= legibleBakeSize) {
     return 1;
   }
-  return legibleBakeSize / fontSize;
+  return (legibleBakeSize / fontSize).ceilToDouble();
 }
 
 /// The size at which a digit's strokes land on enough pixels for the
