@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
@@ -31,8 +32,12 @@ void main() {
   /// run past its end and the settings group — the last of them — is half
   /// out of the rail's view: its rows are laid out and cannot be pressed
   /// (measured 2026-10-06: every row under the first hit the canvas).
-  Future<void> pumpWithSettings(WidgetTester tester) async {
-    await pumpTextToolApp(tester, size: const Size(1600, 1500));
+  Future<void> pumpWithSettings(WidgetTester tester, {Project? project}) async {
+    await pumpTextToolApp(
+      tester,
+      size: const Size(1600, 1500),
+      project: project,
+    );
     await takeTextTool(tester);
     final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
     await tester.tap(find.byKey(ValueKey<String>('rail-group-$settingsGroup')));
@@ -42,8 +47,8 @@ void main() {
   }
 
   /// 「hi」 on the cel at the pixel in view, in hand by its box.
-  Future<Offset> hiInHand(WidgetTester tester) async {
-    await pumpWithSettings(tester);
+  Future<Offset> hiInHand(WidgetTester tester, {Project? project}) async {
+    await pumpWithSettings(tester, project: project);
     final c = canvasPixelInView(tester);
     await clickAt(tester, c.dx, c.dy);
     await typeText(tester, 'hi');
@@ -283,6 +288,33 @@ void main() {
       expect(field().enabled, isFalse);
 
       history.redo();
+      await pumpFrames(tester);
+
+      expect(field().enabled, isTrue);
+    });
+
+    testWidgets('🚨it follows the FRAME under the playhead: on a frame whose '
+        'cel carries no text it is shut, and back on the first it opens', (
+      tester,
+    ) async {
+      await hiInHand(tester, project: textToolProject(drawings: 2));
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      PanelFlyoutButton field() =>
+          tester.widget<PanelFlyoutButton>(row('selected-text'));
+      expect(field().enabled, isTrue, reason: '⛔fixture');
+
+      sessionOf(tester).selectFrameIndex(1);
+      await pumpFrames(tester);
+
+      expect(
+        celOf(tester, textToolSecondKey).texts,
+        isEmpty,
+        reason: '⛔fixture',
+      );
+      expect(field().enabled, isFalse);
+
+      sessionOf(tester).selectFrameIndex(0);
       await pumpFrames(tester);
 
       expect(field().enabled, isTrue);

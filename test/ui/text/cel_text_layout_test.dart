@@ -358,6 +358,33 @@ void main() {
       expect(pixel(bytes, 48, 11, 20), [0, 0, 0, 255]);
     });
 
+    test('🚨a text set to the RIGHT is drawn — letters and outline both — '
+        'from where its letters\' own box begins, to the pixel', () async {
+      // The engine is handed a pixel of room to align in, and its box of
+      // the letters begins that room before the block: drawn from the
+      // block's own corner, letters or outline would stand a pixel out.
+      // 「a」 at 20 ends on the anchor at 30, so its letter runs from 10.
+      final bytes = await drawn(
+        set(
+          [run('a', outline: 0xFFFF0000, outlineWidth: 4)],
+          x: 30,
+          y: 10,
+          align: TextCelAlign.right,
+        ),
+        48,
+        48,
+      );
+
+      expect(pixel(bytes, 48, 7, 20), [0, 0, 0, 0], reason: 'past the stroke');
+      expect(pixel(bytes, 48, 8, 20), [255, 0, 0, 255]);
+      expect(pixel(bytes, 48, 9, 20), [255, 0, 0, 255]);
+      expect(pixel(bytes, 48, 10, 20), [0, 0, 0, 255], reason: 'the letter');
+      expect(pixel(bytes, 48, 29, 20), [0, 0, 0, 255], reason: 'the letter');
+      expect(pixel(bytes, 48, 30, 20), [255, 0, 0, 255]);
+      expect(pixel(bytes, 48, 31, 20), [255, 0, 0, 255]);
+      expect(pixel(bytes, 48, 32, 20), [0, 0, 0, 0], reason: 'past the stroke');
+    });
+
     test('the outline turns its corners ROUND', () async {
       final bytes = await drawn(
         set([run('a', outline: 0xFFFF0000, outlineWidth: 4)], x: 10, y: 10),

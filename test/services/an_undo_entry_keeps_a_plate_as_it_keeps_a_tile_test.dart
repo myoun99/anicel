@@ -105,6 +105,31 @@ void main() {
       expect(pair.residentBytes(undone: true), 2 * tileBytes);
     });
 
+    test('🚨hands whoever visits its tiles the DRAWING\'s alone: the plates '
+        'it bills are not drawing tiles to ask the store about', () {
+      final drawn = tile(1);
+      final pair = UndoSurfacePair(
+        key: celTextTestKey,
+        before: drawingOf({a: drawn}).withTexts([
+          textOf(1, plate: {a: tile(2), b: tile(3)}),
+        ]),
+        after: drawingOf({a: tile(5)}).withTexts([
+          textOf(1, plate: {a: tile(6), b: tile(7)}),
+        ]),
+      );
+
+      final visited = <(TileCoord, BitmapTile)>[];
+      pair.visitHeldTiles(
+        (coord, tile) => visited.add((coord, tile)),
+        undone: false,
+      );
+
+      expect(pair.residentBytes(undone: false), 3 * tileBytes);
+      expect(visited, hasLength(1));
+      expect(visited.single.$1, a);
+      expect(visited.single.$2, same(drawn));
+    });
+
     test('a stroke on a cel that carries texts owes nothing for them: both '
         'pictures hold the same plates', () {
       final text = textOf(1, plate: {b: tile(2), c: tile(3)});

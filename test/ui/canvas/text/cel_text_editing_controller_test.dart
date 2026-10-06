@@ -64,6 +64,43 @@ void main() {
   void commit(CelTextEditingController letters) =>
       leave(letters, letters.text, caret: letters.selection.extentOffset);
 
+  group('what the keyboard cannot say, the caret does', () {
+    test('🚨a letter typed after two runs that say the SAME letter joins '
+        'the run it was typed after — the caret says which letter is new', () {
+      // 「a」「a」 and one more 「a」: the keyboard leaves 「aaa」 wherever it
+      // was typed. Only the caret, standing after it, says it is the last.
+      final letters = on([run('a', red), run('a')]);
+
+      leave(letters, 'aaa');
+
+      expect(letters.content, said([run('a', red), run('aa')]));
+    });
+
+    test('and one typed BETWEEN them joins the run before the caret', () {
+      final letters = on([run('a', red), run('a')]);
+      caretTo(letters, 1);
+
+      leave(letters, 'aaa', caret: 2);
+
+      expect(letters.content, said([run('aa', red), run('a')]));
+    });
+  });
+
+  group('a letter already set, taken back into what an IME composes', () {
+    test('🚨begins a step of its own: it began BEFORE where the typing '
+        'ended, so it is not more of that typing', () {
+      final letters = on([run('x')]);
+      type(letters, 'ab');
+      // The keyboard reopens 「b」 and composes 「c」 over it.
+      leave(letters, 'xac', composing: const TextRange(start: 2, end: 3));
+
+      letters.undo();
+
+      expect(letters.text, 'xab');
+      expect(letters.canUndo, isTrue, reason: 'the typing is a step before it');
+    });
+  });
+
   group('the field\'s letters are the text\'s runs', () {
     test('it starts as the text, the caret at its end', () {
       final letters = on([run('ab', red), run('cd')]);

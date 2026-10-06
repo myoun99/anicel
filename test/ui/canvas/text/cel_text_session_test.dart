@@ -361,6 +361,33 @@ void main() {
       expect(session.landing(coordinator: editingStackOn(cel)), isNotNull);
     });
 
+    test('🚨a text SET DIFFERENTLY whose pixels came out as they were is '
+        'not the text the cel carries: what it says is another thing, and '
+        'that lands', () async {
+      final standing = carried(4, says('ab'));
+      final cel = picture([standing]);
+      final (:session, :baker) = holding(standing);
+      // A setting that draws nothing by itself: an outline's width, on
+      // letters that wear no outline.
+      final reset = CelTextContent(
+        spans: [
+          CelTextSpan(text: 'ab', style: letters.copyWith(outlineWidth: 3)),
+        ],
+        anchor: standing.content.anchor,
+      );
+
+      session.set(reset);
+      await baker.pending.answer();
+
+      expect(
+        session.shown.plate,
+        standing.plate,
+        reason: '⛔fixture: the very pixels it had',
+      );
+      expect(session.shownOver(cel).texts.single.content, reset);
+      expect(session.landing(coordinator: editingStackOn(cel)), isNotNull);
+    });
+
     test('told the cel no longer carries it, it is a text that would be '
         'new: laid on top, and what was drawn of it in its place forgotten', () async {
       final standing = carried(4, says('ab'));

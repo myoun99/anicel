@@ -701,6 +701,45 @@ void main() {
       expect(pictureOf(cel).texts.single.content.align, TextCelAlign.right);
     });
 
+    test('a value still being dragged is shown and does not land; the one '
+        'it comes to rest on lands them as ONE step', () async {
+      final (:tool, :host, :baker, :cel) = hand(
+        texts: [carried(4, said([run('ab')]))],
+      );
+      tool.takeText(cel, pictureOf(cel).texts.single);
+      double pitchOf(BitmapSurface surface) =>
+          surface.texts.single.content.lineHeight;
+      final before = pitchOf(pictureOf(cel));
+
+      tool.changeBox(
+        (content) => content.copyWith(lineHeight: 2),
+        settled: false,
+      );
+      await baker.pending.answer();
+      tool.changeBox(
+        (content) => content.copyWith(lineHeight: 2.5),
+        settled: false,
+      );
+      await baker.pending.answer();
+
+      expect(host.ran, isEmpty);
+      expect(pitchOf(shownFor(tool, cel)!), 2.5);
+      expect(pitchOf(pictureOf(cel)), before);
+
+      tool.changeBox((content) => content.copyWith(lineHeight: 3));
+
+      expect(host.ran, isEmpty, reason: 'not baked yet');
+
+      await baker.pending.answer();
+
+      expect(host.ran, hasLength(1));
+      expect(pitchOf(pictureOf(cel)), 3);
+
+      host.history.undo();
+
+      expect(pitchOf(pictureOf(cel)), before);
+    });
+
     test('while the letters are held it is set on what is being TYPED, and '
         'lands with it', () async {
       final (:tool, :host, :baker, :cel) = hand(
