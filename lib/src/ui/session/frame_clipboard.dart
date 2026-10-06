@@ -711,17 +711,15 @@ class FrameClipboard implements BringsMedia {
       // holds ONE picture takes the clip's first, as one comma. The write
       // lays that as the row's held block; a second cel minted beside it
       // would sit in the bank with nothing showing it.
-      final taken = target.kind.holdsSingleCel
-          ? _firstPictureOf(mine, mineCels)
-          : (clip: mine, cels: mineCels);
+      final taken = target.kind.holdsSingleCel ? _firstPictureOf(mine) : mine;
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
       final placed = placedClipFor(
         layer: target,
         row: (
-          clip: _respelled(taken.clip, arrival.respell),
-          cels: taken.cels,
+          clip: _respelled(taken, arrival.respell),
+          cels: mineCels,
           sounds: mineSounds,
         ),
         independent: independent,
@@ -785,26 +783,20 @@ class FrameClipboard implements BringsMedia {
     _changes.notifyChanged();
   }
 
-  /// The first drawing [clip] shows, as ONE comma, with the cel it shows out
-  /// of [cels] — what a row that holds a single picture takes of a clip.
-  /// A clip showing no drawing comes back as it is.
-  static ({TimelineClipRow clip, List<Frame> cels}) _firstPictureOf(
-    TimelineClipRow clip,
-    List<Frame> cels,
-  ) {
+  /// The first drawing [clip] shows, as ONE comma — what a row that holds a
+  /// single picture takes of a clip. A clip showing no drawing comes back as
+  /// it is.
+  ///
+  /// The cels stay the board's: a cel is minted per drawing the clip SHOWS
+  /// ([placedClipFor]), so the ones this leaves out mint nothing.
+  static TimelineClipRow _firstPictureOf(TimelineClipRow clip) {
     for (final exposure in clip.exposures.values) {
       final id = exposure.frameId;
       if (exposure.isDrawing && id != null) {
-        return (
-          clip: _oneCellOf(id),
-          cels: [
-            for (final cel in cels)
-              if (cel.id == id) cel,
-          ],
-        );
+        return _oneCellOf(id);
       }
     }
-    return (clip: clip, cels: cels);
+    return clip;
   }
 
   /// [clip] with every block's term spelled as [respell] says — a copy from
