@@ -168,9 +168,9 @@ abstract interface class TimelineTileRasterSource {
   );
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
-  /// and how large it is. The tile emitter bakes the mark exactly here, in
+  /// and the box it fills. The tile emitter bakes the mark exactly here, in
   /// the cell's [foregroundInkFor].
-  ({Offset center, double radius}) inbetweenMarkLayoutFor(int frameIndex);
+  ({Offset center, Size size}) inbetweenMarkLayoutFor(int frameIndex);
 
   /// The nearest cell before [frameIndex] that writes a WORD, or null — the
   /// word that may grow into [frameIndex]'s cell from before it (F-96). A

@@ -13,6 +13,7 @@
 // lays down: the same circle for both, one size per surface. (A storyboard
 // panel draws no mark at all since 2026-09-26 — 「콘티레이어는 이름 없으면
 // 진짜 이름 없도록」 — pinned in `storyboard_cut_block_bands_test`.)
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -38,6 +39,7 @@ import 'package:anicel/src/ui/timeline/inbetween_mark_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
     show timelineFrameEdge;
+import 'package:anicel/src/ui/text/word_condensation.dart' show WordFit;
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
@@ -101,11 +103,7 @@ void main() {
       ? Size(cell * frames, rowExtent)
       : Size(rowExtent, cell * frames);
 
-  final roomy = timelineInbetweenMarkRadius(
-    font,
-    cellExtent: 100,
-    crossExtent: 100,
-  );
+  final roomy = timelineInbetweenMarkSize(font, cell: const Size(100, 100));
 
   for (final axis in Axis.values) {
     test('the row draws an unnamed head and a block\'s dot as ONE circle — '
@@ -114,14 +112,15 @@ void main() {
       final laid = _Laid();
       painter.paint(laid, rowSize(axis));
 
-      expect(laid.circles, hasLength(2));
-      final [head, dot] = laid.circles;
+      expect(laid.marks, hasLength(2));
+      final [head, dot] = laid.marks;
       expect(head.center, painter.paperRectFor(0).center);
       expect(dot.center, painter.paperRectFor(2).center);
-      expect(head.radius, dot.radius, reason: 'one mark, one size');
+      expect(head.size, _sizeNear(dot.size), reason: 'one mark, one size');
       expect(head.color, dot.color, reason: 'one mark, one ink');
+      expect(head.size, _sizeNear(roomy), reason: 'a disc, not narrowed');
       expect(
-        head.radius * 2,
+        head.size.width,
         closeTo(font * 0.45, 1e-9),
         reason:
             '🗣️「지금의 절반?」 — half the ● a 14px cell word inked '
@@ -188,10 +187,16 @@ void main() {
     expect(dot.glyph, isEmpty);
   });
 
-  test('the mark shrinks with a tight cell or a squeezed row as every mark '
-      'does (D39-2), and never leaves its cell — the tile that holds the '
+  // 🚨F-297 (유저 2026-10-05): 「점 지금 줌 낮아지면 크기 자체가 작아지는데
+  // 그게아니라 글자랑 똑같이 법 통일해서 가로가 작아지도록」. ↩️This pinned
+  // 「the mark shrinks with a tight cell or a squeezed row as every mark
+  // does (D39-2)」: under every cell narrower than 14px the dot was smaller
+  // on BOTH axes, long before the cell was narrower than the dot.
+  test('the mark keeps its size and narrows as a word does — along the '
+      'frames by a cell narrower than it, across by a row lower than it, '
+      'each on its own — and never leaves its cell: the tile that holds the '
       'cell is the only one that draws it', () {
-    for (final crossExtent in [rowExtent, 12.0, 8.0]) {
+    for (final crossExtent in [rowExtent, 12.0, 8.0, 5.0]) {
       for (
         var cell = TimelineZoomLimits.minPixelsPerFrameAt(24);
         cell <= TimelineZoomLimits.maxPixelsPerFrame;
@@ -205,9 +210,10 @@ void main() {
           );
           for (final frame in [0, 2]) {
             final place = painter.inbetweenMarkLayoutFor(frame);
-            final disc = Rect.fromCircle(
+            final disc = Rect.fromCenter(
               center: place.center,
-              radius: place.radius,
+              width: place.size.width,
+              height: place.size.height,
             );
             final paper = painter.paperRectFor(frame);
             final where = 'cell $cell, row $crossExtent, $axis, frame $frame';
@@ -217,16 +223,21 @@ void main() {
               isTrue,
               reason: '$where: $disc leaves $paper',
             );
-            // The cell the law laid (F-220): at a zoom just under 14 the
-            // first cell is already 14 whole pixels.
+            // The cell the law laid (F-220), and the paper across it.
             final laid =
                 timelineFrameEdge(frame + 1, cell) -
                 timelineFrameEdge(frame, cell);
-            final roomyCell = laid >= 14 && crossExtent == rowExtent;
+            final horizontal = axis == Axis.horizontal;
+            final across = horizontal ? paper.height : paper.width;
             expect(
-              place.radius,
-              roomyCell ? roomy : lessThan(roomy),
-              reason: where,
+              horizontal ? place.size.width : place.size.height,
+              closeTo(math.min(roomy.width, laid), 1e-9),
+              reason: '$where: along the frames, the cell\'s own narrowing',
+            );
+            expect(
+              horizontal ? place.size.height : place.size.width,
+              closeTo(math.min(roomy.width, across), 1e-9),
+              reason: '$where: across them, untouched by the zoom',
             );
           }
         }
@@ -237,7 +248,9 @@ void main() {
   test('a tile bakes each mark where the row draws it — a disc in the '
       'cell\'s ink, in the tile\'s own pixels — and no glyph for it', () async {
     for (final axis in Axis.values) {
-      final painter = rowPainter(axis);
+     // A roomy cell, and one narrower than the dot: the stadium.
+     for (final cell in [24.0, 3.0]) {
+      final painter = rowPainter(axis, cell: cell);
       for (final dpr in [1.0, 1.5, 2.0]) {
         for (final (start, end) in [(0, 4), (1, 4)]) {
           final ops = await TimelineGridTileStore.instance.debugForegroundOps(
@@ -257,16 +270,19 @@ void main() {
               continue;
             }
             final place = painter.inbetweenMarkLayoutFor(frame);
-            final disc = Rect.fromCircle(
+            // The box as the painter lays it, in the tile's own pixels — and
+            // as round as it is narrow, said here and not asked of the code.
+            final disc = Rect.fromCenter(
               center: (place.center - origin) * dpr,
-              radius: place.radius * dpr,
+              width: place.size.width * dpr,
+              height: place.size.height * dpr,
             );
             expected.rrectFill(
               disc.left,
               disc.top,
               disc.width,
               disc.height,
-              disc.width / 2,
+              disc.shortestSide / 2,
               TimelineGridTileOp.cornerTopLeft |
                   TimelineGridTileOp.cornerTopRight |
                   TimelineGridTileOp.cornerBottomLeft |
@@ -279,10 +295,89 @@ void main() {
           expect(
             ops,
             expected.build(),
-            reason: '$axis, span [$start, $end) at $dpr',
+            reason: '$axis, cell $cell, span [$start, $end) at $dpr',
           );
         }
       }
+     }
+    }
+  });
+
+  test('a narrowed mark is the stadium of its box — as round as it is '
+      'narrow, whichever way it was narrowed — and a disc in a square one',
+      () {
+    for (final size in const [Size(2, 6.3), Size(6.3, 2), Size(6.3, 6.3)]) {
+      final shape = inbetweenMarkShape((
+        center: const Offset(10, 20),
+        size: size,
+      ));
+      expect(shape.center, const Offset(10, 20));
+      expect(shape.width, closeTo(size.width, 1e-9));
+      expect(shape.height, closeTo(size.height, 1e-9));
+      for (final radius in [
+        shape.tlRadius,
+        shape.trRadius,
+        shape.blRadius,
+        shape.brRadius,
+      ]) {
+        expect(
+          radius,
+          Radius.circular(size.shortestSide / 2),
+          reason: '$size: the one shape a tile bakes it as',
+        );
+      }
+    }
+  });
+
+  test('a mark is a letter of its block: a name wider than its cell '
+      'narrows before the dot beside it, where it used to be written over '
+      'the dot', () {
+    Layer named({required List<int> dots}) => Layer(
+      id: const LayerId('row'),
+      name: 'A',
+      frames: cels,
+      timeline: {
+        4: TimelineExposure.drawing(
+          const FrameId('named'),
+          length: 4,
+          breakdownOffsets: dots,
+        ),
+      },
+    );
+    const style = TextStyle(fontSize: font);
+    for (final axis in Axis.values) {
+      // 8px cells: the two letters of 「A1」 want more than one of them.
+      final open = rowPainter(axis, cell: 8, row: named(dots: const []));
+      final dotted = rowPainter(axis, cell: 8, row: named(dots: const [1]));
+      expect(
+        dotted.cellModelAt(5).mark,
+        isNotNull,
+        reason: '⛔전제: the cell after the head wears the dot',
+      );
+      final free = open.cellWordSetFor(4, 'A1', style);
+      final kept = dotted.cellWordSetFor(4, 'A1', style);
+      final horizontal = axis == Axis.horizontal;
+      double along(WordFit fit) => horizontal ? fit.x : fit.y;
+      expect(
+        along(kept.fit),
+        lessThan(along(free.fit)),
+        reason: '$axis: 「중간나누기 점도 하나의 글자로 인식해서 헤드의 '
+            '프레임이름 작아진다거나 할것」',
+      );
+      final head = dotted.cellRectFor(4);
+      final dot = dotted.cellRectFor(5);
+      expect(
+        horizontal ? kept.origin.dx : kept.origin.dy,
+        greaterThanOrEqualTo((horizontal ? head.left : head.top) - 1e-9),
+      );
+      // The room it was narrowed into ends where the dot's cell begins.
+      expect(
+        along(kept.fit) * (horizontal ? font * 2 : font),
+        lessThanOrEqualTo(
+          (horizontal ? dot.left - head.left : dot.top - head.top) + 1e-9,
+        ),
+        reason: '$axis: the name keeps to the cells before the dot',
+      );
     }
   });
 
@@ -316,12 +411,12 @@ void main() {
     final named = _Laid();
     flipWindow('A1').paint(named, size);
 
-    expect(named.circles, isEmpty, reason: 'a name is written, not marked');
-    expect(unnamed.circles, hasLength(1));
-    final mark = unnamed.circles.single;
+    expect(named.marks, isEmpty, reason: 'a name is written, not marked');
+    expect(unnamed.marks, hasLength(1));
+    final mark = unnamed.marks.single;
     expect(
-      mark.radius,
-      roomy,
+      mark.size,
+      _sizeNear(roomy),
       reason: 'the head word\'s 14px, the row\'s mark at the row\'s type',
     );
     final name = named.paragraphs.where(
@@ -376,18 +471,18 @@ void main() {
   testWidgets('the folded row\'s strip wears the mark on an unnamed block, '
       'in its first cell, at the size of the strip\'s type', (tester) async {
     final named = await foldedStrip(tester, 'A1');
-    expect(named.circles, isEmpty, reason: 'a name is written, not marked');
+    expect(named.marks, isEmpty, reason: 'a name is written, not marked');
 
     final unnamed = await foldedStrip(tester, '');
-    expect(unnamed.circles, hasLength(1));
-    final mark = unnamed.circles.single;
+    expect(unnamed.marks, hasLength(1));
+    final mark = unnamed.marks.single;
     // The block's room: frames 0-1 at 12px, inset 1 along and 4 across.
     final room = Rect.fromLTRB(1, 4, 24 - 1, unnamed.size!.height - 4);
     expect(mark.center, Offset(room.left + 12 / 2, room.center.dy));
     expect(
-      mark.radius,
-      timelineInbetweenMarkRadius(9.5, cellExtent: 12, crossExtent: room.height),
-      reason: 'the strip\'s 9.5px type, fitted to its 12px cell',
+      mark.size,
+      _sizeNear(timelineInbetweenMarkSize(9.5, cell: Size(12, room.height))),
+      reason: 'the strip\'s 9.5px type, in its 12px cell',
     );
   });
 
@@ -411,7 +506,7 @@ void main() {
         painter.paint(laid, rowSize(axis));
 
         expect(
-          laid.circles.map((circle) => circle.center),
+          laid.marks.map((mark) => mark.center),
           [painter.paperRectFor(2).center],
           reason: 'the dot at 2 is the only circle',
         );
@@ -428,7 +523,7 @@ void main() {
       final size = FlipHudMetrics.sizeFor(FlipHudAxis.frame);
       final unnamed = _Laid();
       flipWindow('', kind: LayerKind.image).paint(unnamed, size);
-      expect(unnamed.circles, isEmpty);
+      expect(unnamed.marks, isEmpty);
       final named = _Laid();
       flipWindow('BG1', kind: LayerKind.image).paint(named, size);
       expect(
@@ -444,7 +539,7 @@ void main() {
 
     testWidgets('on the folded row\'s strip', (tester) async {
       final unnamed = await foldedStrip(tester, '', kind: LayerKind.image);
-      expect(unnamed.circles, isEmpty);
+      expect(unnamed.marks, isEmpty);
       // The block holds frames 0-1 at 12px: no word of any width there.
       expect(
         unnamed.paragraphs.where((box) => box.center.dx < 24),
@@ -499,7 +594,7 @@ void main() {
       width,
       TimesheetDocumentLayout.rowHeight,
     );
-    final marks = laid.circles
+    final marks = laid.marks
         .where((circle) => cellAt(0).contains(circle.center) ||
             cellAt(1).contains(circle.center))
         .toList();
@@ -507,8 +602,12 @@ void main() {
     final [head, dot] = marks;
     expect(head.center, cellAt(0).center);
     expect(dot.center, cellAt(1).center);
-    expect(head.radius, 2.8, reason: 'the small one — the sheet\'s dot');
-    expect(dot.radius, head.radius);
+    expect(
+      head.size,
+      _sizeNear(const Size.square(5.6)),
+      reason: 'the small one — the sheet\'s dot',
+    );
+    expect(dot.size, _sizeNear(head.size));
     expect(
       laid.paragraphs.where((box) => box.overlaps(cellAt(0))),
       isEmpty,
@@ -517,10 +616,14 @@ void main() {
   });
 }
 
-/// What a painter lays down — its circles, and the boxes of its paragraphs
-/// — following the transforms.
+/// What a painter lays down — its marks, and the boxes of its paragraphs —
+/// following the transforms.
+///
+/// A mark is drawn as the rounded rect that is as round as it is narrow
+/// ([inbetweenMarkShape]): a disc, or a disc narrowed. No paper is that
+/// round, so that is how one is told from the other here.
 class _Laid implements Canvas {
-  final circles = <({Offset center, double radius, Color color})>[];
+  final marks = <({Offset center, Size size, Color color})>[];
   final paragraphs = <Rect>[];
   Size? size;
   final _saved = <Matrix4>[];
@@ -549,11 +652,16 @@ class _Laid implements Canvas {
   );
 
   @override
-  void drawCircle(Offset c, double radius, Paint paint) => circles.add((
-    center: MatrixUtils.transformPoint(_transform, c),
-    radius: radius,
-    color: paint.color,
-  ));
+  void drawRRect(RRect rrect, Paint paint) {
+    if ((rrect.tlRadiusX * 2 - rrect.shortestSide).abs() > 1e-9) {
+      return;
+    }
+    marks.add((
+      center: MatrixUtils.transformPoint(_transform, rrect.center),
+      size: Size(rrect.width, rrect.height),
+      color: paint.color,
+    ));
+  }
 
   @override
   void drawParagraph(ui.Paragraph paragraph, Offset offset) => paragraphs.add(
@@ -569,3 +677,9 @@ class _Laid implements Canvas {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+/// [expected] to the billionth of a pixel: a mark's box is read back off
+/// the shape it was drawn as, which is laid about its centre.
+Matcher _sizeNear(Size expected) => isA<Size>()
+    .having((size) => size.width, 'width', closeTo(expected.width, 1e-9))
+    .having((size) => size.height, 'height', closeTo(expected.height, 1e-9));

@@ -775,11 +775,7 @@ class FlipHudPainter extends CustomPainter
     if (mark != null) {
       paintInbetweenMark(canvas, mark, (
         center: rect.center,
-        radius: timelineInbetweenMarkRadius(
-          _headWordSize,
-          cellExtent: rect.width,
-          crossExtent: rect.height,
-        ),
+        size: timelineInbetweenMarkSize(_headWordSize, cell: rect.size),
       ), timelineDrawingInkColor);
       return;
     }

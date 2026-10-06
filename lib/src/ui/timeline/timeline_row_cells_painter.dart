@@ -984,8 +984,8 @@ class TimelineRowCellsPainter extends CustomPainter
   }
 
   /// Where the in-between mark of the cell at [frameIndex] stands, row-local,
-  /// and how large it is: centred on the cell's paper, at the size of the
-  /// cell's word ([timelineInbetweenMarkRadius]). PUBLIC: the tile emitter
+  /// and the box it fills: centred on the cell's paper, at the size of the
+  /// cell's word ([timelineInbetweenMarkSize]). PUBLIC: the tile emitter
   /// bakes the mark exactly here.
   ///
   /// It keeps to its cell, so the tile that holds the cell is the only one
@@ -993,22 +993,30 @@ class TimelineRowCellsPainter extends CustomPainter
   @override
   InbetweenMarkPlace inbetweenMarkLayoutFor(int frameIndex) {
     final paper = paperRectFor(frameIndex);
+    // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and 2,
+    // and a mark sized from 1.3 left the 1px ones.
+    final cell = cellRectFor(frameIndex).size;
     return (
       center: paper.center,
-      radius: timelineInbetweenMarkRadius(
+      size: timelineInbetweenMarkSize(
         baseTextStyle.fontSize ?? 12,
-        // The cell the law laid (F-220): a 1.3px zoom lays cells of 1 and
-        // 2, and a mark sized from 1.3 left the 1px ones.
-        cellExtent: extentAlong(axis, cellRectFor(frameIndex).size),
-        crossExtent: axis == Axis.horizontal ? paper.height : paper.width,
+        cell: axis == Axis.horizontal
+            ? Size(cell.width, paper.height)
+            : Size(paper.width, cell.height),
       ),
     );
   }
 
   /// Where the room the word at [frameIndex] may grow into ENDS along the
-  /// frame axis: the end of its block, looked up only as far as a word of
-  /// [extent] could reach. A word on no block — an empty stretch's `x` —
-  /// has its own cell.
+  /// frame axis: the end of its block or the cell before the block's next
+  /// in-between mark, looked up only as far as a word of [extent] could
+  /// reach. A word on no block — an empty stretch's `x` — has its own cell.
+  ///
+  /// 🚨A MARK IS A LETTER OF ITS BLOCK (F-297, 유저 2026-10-05): 「중간나누기
+  /// 점도 하나의 글자로 인식해서 헤드의 프레임이름 작아진다거나 할것」. ↩️A
+  /// name's room ran to the end of its block whatever stood in it, so a
+  /// name wider than its cell was written over the dot beside it; it narrows
+  /// before the dot now, as it would before a letter.
   ///
   /// The block is the EXPOSURE's ([_stateAt]), not the chrome's: a repeat
   /// ghost wears no paper (UI-R10 #11) but it is still a run of one drawing,
@@ -1028,7 +1036,8 @@ class TimelineRowCellsPainter extends CustomPainter
         timelineExposureBlockSegmentAt(
           frameIndex: index,
           stateAt: _stateAt,
-        ).continuesToNext) {
+        ).continuesToNext &&
+        cellModelAt(index + 1).mark == null) {
       index += 1;
       end = endOf(index);
     }
@@ -1041,8 +1050,9 @@ class TimelineRowCellsPainter extends CustomPainter
   /// classic pass lays it at the start of what it paints, the tile emitter
   /// at the start of a tile.
   ///
-  /// A mark is no word: it keeps to its own cell, so it neither grows into
-  /// [frameIndex] nor stands in the way of a word before it that does.
+  /// A mark is no word: it keeps to its own cell and grows into no other.
+  /// The word before it stops at it ([_wordRoomEnd]), so a word found past
+  /// a mark reaches [frameIndex] no more than its own room lets it.
   ///
   /// Walked back by stretch (I-22): a stretch whose first cell writes no
   /// word is passed in one step.

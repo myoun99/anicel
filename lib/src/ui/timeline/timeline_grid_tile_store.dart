@@ -633,7 +633,11 @@ class TimelineGridTileStore {
         _emitInbetweenMark(
           writer,
           mark,
-          Rect.fromCircle(center: center * dpr, radius: place.radius * dpr),
+          Rect.fromCenter(
+            center: center * dpr,
+            width: place.size.width * dpr,
+            height: place.size.height * dpr,
+          ),
           timelineGridPackRgba(painter.foregroundInkFor(model)),
         );
         continue;
@@ -771,8 +775,8 @@ class TimelineGridTileStore {
   }
 
   /// An in-between mark as tile ops over [disc], its box in tile pixels —
-  /// the shape [paintInbetweenMark] draws on the classic pass, where the
-  /// painter lays it.
+  /// the shape [paintInbetweenMark] draws on the classic pass
+  /// ([inbetweenMarkShape]), where the painter lays it.
   static void _emitInbetweenMark(
     TimelineGridTileOpWriter writer,
     InbetweenMark mark,
@@ -781,13 +785,14 @@ class TimelineGridTileStore {
   ) {
     switch (mark) {
       case InbetweenMark.one:
-        // A rounded rect as round as it is large is the disc.
+        // A rounded rect as round as it is narrow: the disc, and the
+        // stadium a narrowed one is.
         writer.rrectFill(
           disc.left,
           disc.top,
           disc.width,
           disc.height,
-          disc.width / 2,
+          disc.shortestSide / 2,
           15,
           rgba,
         );
