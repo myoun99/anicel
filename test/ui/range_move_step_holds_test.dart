@@ -66,8 +66,21 @@ void main() {
     expect(layerOf(s, bId).timeline[0]!.frameId, aFrameId);
   });
 
-  test('an ILLEGAL slide step HOLDS the last valid slide, and the drop '
-      'commits that one', () {
+  // ↩️This pinned the opposite until 2026-10-07: 「into the wall … the step
+  // changes nothing — not the outline, not the preview, not what the drop
+  // will commit」. That left the group a frame RIGHT of where it started
+  // with the hand a thousand frames left of it, and the release committed
+  // that frame. The wall read as a refused landing only because the planner
+  // answers null for 「the run is where it started」 — the conflation R28 #5
+  // named for a zero delta (유저: 「더 이상 왼쪽으로 이동이 안먹혀버리고 그
+  // 자리에서 멈춰버린다」). A group that can go no further that way than
+  // where it started IS where it started.
+  //
+  // The law this file is for — a step that cannot land holds the one
+  // before it — is pinned with a step that truly cannot land, the keys
+  // riding a slide: `session/a_slide_of_several_rows_stops_as_one_test.dart`.
+  test('a slide into the wall the group started at is HOME, and the drop '
+      'commits nothing', () {
     final (s, aId, bId, _) = threeRows();
     s.selectLayer(aId);
     s.updateFrameRangeSelectionDrag(
@@ -79,18 +92,15 @@ void main() {
     expect(s.rangeMove.beginFrameRangeMoveDrag(), isTrue);
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 1);
     expect(s.frameRangeSelection.value!.startIndex, 1);
-    final held = s.dragPreview.value;
-    expect(held, isNotNull);
+    expect(s.dragPreview.value, isNotNull);
 
-    // Into the wall: the run clamps to frame 0, where it already was, so no
-    // plan lands and the step changes nothing — not the outline, not the
-    // preview, not what the drop will commit.
+    // Into the wall: neither run can go in front of frame 0.
     s.rangeMove.updateFrameRangeMoveDrag(frameDelta: -1000);
-    expect(s.frameRangeSelection.value!.startIndex, 1);
-    expect(s.dragPreview.value, same(held));
+    expect(s.frameRangeSelection.value!.startIndex, 0);
+    expect(s.dragPreview.value, isNull);
 
     s.rangeMove.endFrameRangeMoveDrag();
-    expect(layerOf(s, aId).timeline.containsKey(1), isTrue);
-    expect(layerOf(s, bId).timeline.containsKey(1), isTrue);
+    expect(layerOf(s, aId).timeline.keys, [0]);
+    expect(layerOf(s, bId).timeline.keys, [0]);
   });
 }

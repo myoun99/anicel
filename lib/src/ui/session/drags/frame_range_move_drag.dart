@@ -1309,19 +1309,11 @@ class FrameRangeMoveDrag {
     for (final layer in _instructionSources ?? const <Layer>[]) {
       // A direction row's spans are its blocks (R27): they ride as the
       // drawing rows' own slide, drawings and all.
-      final plan = planDrawingRangeMove(
-        source: layer,
-        target: layer,
-        rangeStartIndex: selection.startIndex,
-        rangeEndIndexExclusive: selection.endIndexExclusive,
-        frameDelta: frameDelta,
-        sourceBank: _controllers.timelineController.bankLanesOf(layer.id),
-        cutFrameCount: _project.activeCutFrameCount,
-      );
-      if (plan == null) {
+      final slid = _slideOnOwnRow(layer, selection, frameDelta);
+      if (slid == null || slid.went != frameDelta) {
         return null;
       }
-      directionShifted[layer.id] = plan.sourceAfter;
+      directionShifted[layer.id] = slid.plan.sourceAfter;
     }
     for (final (:row, :starts) in _transitionRiders) {
       final shifted = shiftInstructionEventsAt(
@@ -1677,24 +1669,22 @@ class FrameRangeMoveDrag {
         _updateMultiRow(frameDelta, targetLayerId)) {
       return;
     }
-    // Falling to the plain slide: any prior row-change / multi-row plan
-    // is stale now (the slide, not the row change, is last valid).
-    _seRowChange = null;
-    _directionRowChange = null;
-    _multiRowPlan = null;
-    _multiSeRowChanges = null;
-    // …and the rigid step's RIDER shifts die WITH its plans: a stale
-    // shift surviving here commits alone when the slide step holds —
-    // the rigid group torn in one silent undo step (transition spans
-    // moving while the blocks stay home). A valid slide step re-derives
-    // them fresh below.
-    _cameraShifted = null;
-    _instructionShifted = null;
-    _directionShifted = null;
-    final plans = _planSlide(multiSources, selection, frameDelta);
+    _forgetTheRowHop();
+    final went = _rigidSlideDelta(
+      _slidingRows(multiSources),
+      selection,
+      frameDelta,
+    );
+    if (went == 0) {
+      // Nowhere to go this way — or asked to go nowhere: the group is
+      // where it started (R28 #5: the origin is no refused landing).
+      _resetPreviewToOrigin();
+      return;
+    }
+    final plans = _planSlide(multiSources, selection, went);
     final riders = plans == null
         ? null
-        : _shiftFrameAxisRiders(selection, frameDelta);
+        : _shiftFrameAxisRiders(selection, went);
     if (plans == null || riders == null) {
       // UI-R23 #10: a blocked landing HOLDS the last valid preview,
       // outline and stored plans — no snap-back to the origin.
@@ -1711,44 +1701,164 @@ class FrameRangeMoveDrag {
     _slideSelectionOutline(
       selection,
       landedLayerId: selection.layerId,
-      shift: frameDelta,
+      shift: went,
       layerIds: selection.layerIds,
     );
   }
 
+  /// What a step that falls to the plain slide leaves behind it: any prior
+  /// row-change / multi-row plan is stale now (the slide, not the row
+  /// change, is last valid).
+  void _forgetTheRowHop() {
+    final aRowHopWasLast = _multiRowPlan != null || _multiSeRowChanges != null;
+    _seRowChange = null;
+    _directionRowChange = null;
+    _multiRowPlan = null;
+    _multiSeRowChanges = null;
+    // …and the rigid step's RIDER shifts die WITH its plans: a stale
+    // shift surviving here commits alone when the slide step holds —
+    // the rigid group torn in one silent undo step (transition spans
+    // moving while the blocks stay home). A valid slide step re-derives
+    // them fresh.
+    //
+    // 🚨WITH ITS PLANS, and only then. They were dropped before every
+    // slide step, so a slide that HELD kept the last slide's blocks
+    // ([_multiPlans]) and lost its riders: released there, the blocks
+    // landed and the camera's keys stayed home — the same group torn the
+    // other way (🧪2026-10-07: a row and the camera row slid +3, then a
+    // step the keys could not take; the block went to 3 and the keys
+    // stayed at 2 and 9).
+    if (aRowHopWasLast) {
+      _cameraShifted = null;
+      _instructionShifted = null;
+      _directionShifted = null;
+    }
+  }
+
   /// Cross-layer slide (UI-R18 #1): every spanned layer plans the SAME
-  /// frame delta on itself; any illegal landing HOLDS the last valid
-  /// preview (all-or-nothing, the single-layer discipline). KEY
-  /// sources (P3b-2) join the same contract: camera keys and
-  /// instruction spans shift by the same delta or the whole move
-  /// voids.
+  /// frame delta on itself — the one the group goes ([_rigidSlideDelta]);
+  /// any illegal landing HOLDS the last valid preview (all-or-nothing, the
+  /// single-layer discipline). KEY sources (P3b-2) join the same contract:
+  /// camera keys and instruction spans shift by the same delta or the
+  /// whole move voids.
   List<DrawingBlockMovePlan>? _planSlide(
     List<({Layer commit, int offset})> multiSources,
     TimelineFrameRangeSelection selection,
     int frameDelta,
   ) {
-    if (multiSources.isEmpty && frameDelta == 0) {
-      return null;
-    }
     final plans = <DrawingBlockMovePlan>[];
     for (final source in multiSources) {
-      final plan = planDrawingRangeMove(
-        source: source.commit,
-        target: source.commit,
-        rangeStartIndex: selection.startIndex + source.offset,
-        rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
-        frameDelta: frameDelta,
-        sourceBank: _controllers.timelineController.bankLanesOf(
-          source.commit.id,
-        ),
-        cutFrameCount: _project.activeCutFrameCount,
+      final slid = _slideOnOwnRow(
+        source.commit,
+        selection,
+        frameDelta,
+        offset: source.offset,
       );
-      if (plan == null) {
+      if (slid == null || slid.went != frameDelta) {
         return null;
       }
-      plans.add(plan);
+      plans.add(slid.plan);
     }
     return plans;
+  }
+
+  /// [row]'s blocks in [selection] slid along their own row when asked for
+  /// [frameDelta] — the row they leave, and how far they WENT. Null when
+  /// they do not move. [offset] is the display→commit offset of a row keyed
+  /// on another axis ([_commitOffsetFor]).
+  ///
+  /// A same-row slide stops at contact with a neighbour and takes the seat
+  /// beyond it only once it reaches it ([planDrawingRangeMove]), so `went`
+  /// can fall short of what was asked. One row alone shows that as it is;
+  /// several agree on it first ([_rigidSlideDelta]).
+  ({DrawingBlockMovePlan plan, int went})? _slideOnOwnRow(
+    Layer row,
+    TimelineFrameRangeSelection selection,
+    int frameDelta, {
+    int offset = 0,
+  }) {
+    final start = selection.startIndex + offset;
+    final endExclusive = selection.endIndexExclusive + offset;
+    final plan = planDrawingRangeMove(
+      source: row,
+      target: row,
+      rangeStartIndex: start,
+      rangeEndIndexExclusive: endExclusive,
+      frameDelta: frameDelta,
+      sourceBank: _controllers.timelineController.bankLanesOf(row.id),
+      cutFrameCount: _project.activeCutFrameCount,
+    );
+    if (plan == null) {
+      return null;
+    }
+    final first = drawingBlocks(
+      row.timeline,
+    ).firstWhere((block) => _wholeBlockIn(block, start, endExclusive));
+    return (plan: plan, went: plan.destinationStartIndex - first.startIndex);
+  }
+
+  /// Every row whose BLOCKS a slide carries along its own row: the sources
+  /// and the direction rows, which ride as the blocks their spans are.
+  Iterable<({Layer commit, int offset})> _slidingRows(
+    List<({Layer commit, int offset})> multiSources,
+  ) => [
+    ...multiSources,
+    for (final rider in _instructionSources ?? const <Layer>[])
+      (commit: rider, offset: 0),
+  ];
+
+  /// The frames [rows] go as ONE group when asked for [frameDelta]: that
+  /// far when every row lands there, else as far as the row that stops
+  /// first lets them all go. Zero when the group stays where it is.
+  ///
+  /// 🚨A rigid group has one delta, and each row used to be planned with
+  /// the delta the hand asked for and left to land where it could. That
+  /// was all-or-nothing while a blocked row answered null; since the frame
+  /// axis took the cut's move rule (2026-07-27, `planBlockRunMove`) a
+  /// blocked row answers with where it STOPPED — so in the frames between
+  /// touching a neighbour and reaching the seat beyond it, that row stayed
+  /// at contact while the others went on, and the outline went with the
+  /// hand (🧪2026-10-07: two rows asked for +5, one landed at +4 and one at
+  /// +5). The group stops where its first row does, the way one row stops,
+  /// and takes the step again once every row can.
+  int _rigidSlideDelta(
+    Iterable<({Layer commit, int offset})> rows,
+    TimelineFrameRangeSelection selection,
+    int frameDelta,
+  ) {
+    var delta = frameDelta;
+    while (delta != 0) {
+      var reach = delta;
+      for (final row in rows) {
+        final went =
+            _slideOnOwnRow(
+              row.commit,
+              selection,
+              delta,
+              offset: row.offset,
+            )?.went ??
+            0;
+        if (went == delta) {
+          continue;
+        }
+        // Short of what was asked: zero when the row does not move at all
+        // — it will not for less — else where it stopped. Should a rule
+        // ever land a row PAST what was asked, or behind where it began,
+        // the walk goes one frame nearer; either way nearer home, so it
+        // ends.
+        final short =
+            went == 0 || went.sign == delta.sign && went.abs() < delta.abs();
+        final nearer = short ? went : delta - delta.sign;
+        if (nearer.abs() < reach.abs()) {
+          reach = nearer;
+        }
+      }
+      if (reach == delta) {
+        return delta;
+      }
+      delta = reach;
+    }
+    return 0;
   }
 
   /// Publishes a valid slide step: every plan's commit form (windowed for
