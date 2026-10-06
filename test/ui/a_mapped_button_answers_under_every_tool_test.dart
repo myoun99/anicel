@@ -537,14 +537,19 @@ void main() {
 
       raw.debugInjectState(const QaPenRawState(flags: 0, sequence: 1));
       await shell.hover(tester, const Offset(20, 20), buttons: 0);
-      // The barrel, as the driver reports it.
+      // The barrel, as the driver reports it — and the flip in the SAME
+      // frame. ⚠️That is the whole case: a frame later the eyedropper's own
+      // layer lies over the drawing view, which then hears no hover and
+      // reads no tail at all (the first form of this pin pumped between
+      // the two, and passed with the guard taken out — measured).
       raw.debugInjectState(const QaPenRawState(flags: 0x02, sequence: 2));
       await shell.hover(
         tester,
         const Offset(20, 20),
         buttons: kPrimaryStylusButton,
+        settle: false,
       );
-      expect(shell.tool, CanvasTool.eyedropper, reason: '⛔premise: the pick');
+      expect(shell.holds, [CanvasTool.eyedropper], reason: '⛔premise: held');
 
       // Turned over with the barrel still held.
       raw.debugInjectState(
@@ -709,10 +714,13 @@ class _Shell {
       ) +
       onCanvas;
 
+  /// [settle] false = no frame after it: the next event arrives while the
+  /// tree is still the one this event found.
   Future<void> hover(
     WidgetTester tester,
     Offset onCanvas, {
     required int buttons,
+    bool settle = true,
   }) async {
     tester.binding.handlePointerEvent(
       PointerHoverEvent(
@@ -721,7 +729,9 @@ class _Shell {
         buttons: buttons,
       ),
     );
-    await tester.pump();
+    if (settle) {
+      await tester.pump();
+    }
   }
 
   /// The pen's one contact, event by event — its buttons can change while
