@@ -9,7 +9,7 @@ import '../../services/selection_affine.dart';
 import '../brush/transform_tool_options.dart';
 import 'canvas_viewport_offset.dart';
 import 'float_warp.dart';
-import 'box_chrome.dart' show SelectionTransformChrome;
+import 'box_chrome.dart' show SelectionTransformChrome, boxHandleFootprint;
 import 'box_press.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
@@ -44,16 +44,16 @@ class BoxOnScreen {
   /// The open box over the float — where 퍼스 puts its quad corners.
   final FloatWarp warp;
 
-  /// Screen-space hit slack around a handle (≥ touch-friendly).
-  static const double handleHitRadius = boxHandleHitRadius;
-
+  /// Which of [points] — a quad's corners, a mesh's grid — a press at
+  /// [local] lands on: the square the chrome draws for it, as every handle
+  /// is taken ([boxHandleFootprint], F-262).
   int? hitTestPlacedPoint(Offset local, List<CanvasPoint>? points) {
     if (points == null) {
       return null;
     }
     for (var i = 0; i < points.length; i += 1) {
       final mapped = viewport.canvasToViewportOffset(points[i]);
-      if ((local - mapped).distance <= handleHitRadius) {
+      if (boxHandleFootprint(mapped).contains(local)) {
         return i;
       }
     }

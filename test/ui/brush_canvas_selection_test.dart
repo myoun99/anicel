@@ -69,14 +69,14 @@ void main() {
   /// it is 40% of this fixture's 50×50 box, which is why so many pins had
   /// to move their thumb.
   ///
-  /// 🚨★★★**THIS EXACT POINT, and it is the ONLY one worth having.** Nine
-  /// grab targets sit on a 50×50 box — four corners, four edge middles and
-  /// the cross — each claiming a 16px radius, so the free floor is four
-  /// small diamonds. (32.5,32.5) is the middle of one: it is 17.68px from
-  /// the TL corner, the two nearest edge middles AND the cross, all four at
-  /// once, which is the largest clearance the box has to offer. ⛔Nudging
-  /// it "somewhere inside" lands on a handle — that is how this constant
-  /// was born.
+  /// ↩️**THIS EXACT POINT was the only one worth having** while each of the
+  /// nine grab targets on a 50×50 box — four corners, four edge middles and
+  /// the cross — claimed a 16px radius: the free floor was four small
+  /// diamonds, and (32.5,32.5) is the middle of one, 17.68px from the TL
+  /// corner, the two nearest edge middles and the cross alike. A handle is
+  /// taken on the square drawn for it now (F-262, 유저 2026-10-02: 「보이는
+  /// 만큼 존재하도록」), so most of the box is floor again; the point stays
+  /// because it is still as far from all of them as a point can be.
   const insideOffTheCross = Offset(32.5, 32.5);
 
   BrushDab dab(double x, double y) => BrushDab(
@@ -459,18 +459,18 @@ void main() {
   /// A move drag on a box too small to be grabbed at zoom 1, stated in
   /// CANVAS pixels so the pin keeps asserting the landing it always did.
   ///
-  /// 🚨★★★**NINE 16px TARGETS DO NOT FIT ON A SMALL BOX.** Four corners,
-  /// four edge middles and now the anchor cross each claim a 16px SCREEN
-  /// radius. The free floor is the four quadrant midpoints, each
-  /// `side·√2/4` from the corner, the two near edge middles and the cross
-  /// alike — so a box needs to be **wider than ~46 screen px** before any
-  /// of it can start a move. The fixture's implicit whole-picture box is 34
-  /// canvas px; at zoom 1 its centre was the last free pixel, and R5's
-  /// cross took it.
+  /// ↩️**NINE 16px TARGETS DID NOT FIT ON A SMALL BOX.** Four corners,
+  /// four edge middles and the anchor cross each claimed a 16px SCREEN
+  /// radius, so a box had to be wider than ~46 screen px before any of it
+  /// could start a move; the fixture's implicit whole-picture box is 34
+  /// canvas px, and at zoom 1 R5's cross took its last free pixel. Zooming
+  /// in bought the room back, which is what this helper does.
   ///
-  /// ⛔The answer is not to shrink a radius. Those are touch targets and
-  /// the crowding is real for the user too — but the radii are SCREEN
-  /// space, so zooming in buys the room back, which is what the user does.
+  /// ↩️「The answer is not to shrink a radius — those are touch targets」
+  /// stood here, and it was this session's reasoning, not the user's. 유저
+  /// 2026-10-02 (F-262): 「작동박스가 보이는것보다 큰거같음 … 보이는 만큼
+  /// 존재하도록」 — a handle is the square drawn for it. The pins below keep
+  /// their zoom; they are about the landing, and it is the same one.
   Future<void> moveAtZoom(
     WidgetTester tester, {
     required double zoom,
@@ -2123,8 +2123,8 @@ void main() {
 
     final region = env.commands.region!;
     // The press point: inside the box, OUTSIDE the triangle (the half the
-    // hypotenuse cuts off) — and clear of every handle, whose hit radius
-    // is 16 screen px and which would otherwise open a SCALE instead.
+    // hypotenuse cuts off) — and clear of every handle, which would
+    // otherwise open a SCALE instead.
     final inBoxOutsideOutline = CanvasPoint(x: 40, y: 90);
     expect(
       region.containsPoint(inBoxOutsideOutline),
@@ -3298,8 +3298,9 @@ void main() {
   });
 
   group('a transform handle is where the hand and the quad say (F-127, F-42)', () {
-    testWidgets('🚨F-127: a pen pressed just off a scale handle and moved one '
-        'pixel moves the handle about one pixel — it never jumps to the pen', (
+    testWidgets('🚨F-127: a pen pressed off a scale handle\'s middle and moved '
+        'one pixel moves the handle about one pixel — it never jumps to the '
+        'pen', (
       tester,
     ) async {
       // 유저 2026-09-13: 「펜만 변형툴 사용하려고 꼭짓점 클릭시작하면 그 순간
@@ -3312,8 +3313,9 @@ void main() {
       await tester.pump();
       final before = chromeOnScreen(tester)!;
 
-      // The bottom-right handle, pressed 8px further down and right — inside
-      // the grab radius, off the handle itself.
+      // The bottom-right handle, pressed 4px further down and right — on
+      // the square, off its middle. ↩️It pressed 8px off, inside a 16px
+      // grab radius that is gone (F-262): out there is the turn now.
       var index = 0;
       for (var i = 1; i < before.handles.length; i += 1) {
         final candidate = before.handles[i];
@@ -3325,7 +3327,7 @@ void main() {
       final handle = before.handles[index];
       final origin = tester.getTopLeft(find.byKey(layerKey));
       final gesture = await tester.startGesture(
-        origin + handle + const Offset(8, 8),
+        origin + handle + const Offset(4, 4),
         kind: PointerDeviceKind.stylus,
       );
       await tester.pump();
@@ -3334,9 +3336,14 @@ void main() {
 
       final after = chromeOnScreen(tester)!;
       expect(
+        env.commands.transformValues!.sx,
+        isNot(1),
+        reason: '⛔전제: the press took the handle — the box scaled',
+      );
+      expect(
         (after.handles[index] - handle).distance,
         lessThan(2),
-        reason: 'a one-pixel move is a one-pixel move, however far off the '
+        reason: 'a one-pixel move is a one-pixel move, wherever on the '
             'handle the pen came down',
       );
       await gesture.up();
@@ -3895,6 +3902,58 @@ void main() {
       expect(values.sx, closeTo(1.8, 1e-9));
       expect(values.sy, closeTo(1.2, 1e-9));
     });
+  });
+
+  /// 🚨★★★**A HANDLE AND THE CROSS ARE TAKEN WHERE THEY ARE DRAWN** (F-262),
+  /// through the layer's own press.
+  ///
+  /// 🗣️유저 2026-10-02: 「변형도구의 사각형 공통ui, 꼭짓점이나 십자가 등
+  /// 작동박스가 보이는것보다 큰거같음. **박스 외 부분 조작하는데도 크기가
+  /// 줄어든다거나 십자가가 움직인다거나.** 보이는 만큼 존재하도록」.
+  ///
+  /// ↩️Each was taken within 16px of its centre. Every press below is
+  /// inside that disc and off what is drawn: it scaled the box, or carried
+  /// the cross, where the user meant the turn or the move that lives there.
+  testWidgets('🚨a press beside a corner or beside the cross is the box\'s own '
+      '— the turn outside it, the move inside — and on them it is theirs', (
+    tester,
+  ) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.commands.beginTransform();
+    await tester.pump();
+
+    Future<TransformValues> dragged(Offset from, Offset by) async {
+      env.commands.resetTransform();
+      await tester.pump();
+      await dragOnLayer(tester, from, from + by);
+      return env.commands.transformValues!;
+    }
+
+    // 6px out from the top-left corner (20,20), on the diagonal: outside the
+    // box, so the turn.
+    final outside = await dragged(const Offset(14, 14), const Offset(0, 12));
+    expect(outside.sx, 1, reason: '유저: 「크기가 줄어든다거나」');
+    expect(outside.sy, 1);
+    expect(outside.rotationDegrees, isNot(0), reason: '상자 밖은 회전이다');
+
+    // 6px in from the same corner: inside the box, so the move.
+    final inside = await dragged(const Offset(26, 26), const Offset(5, 0));
+    expect(inside, const TransformValues(tx: 5));
+
+    // 10px right of the cross at the centre (45,45): past the box its arms
+    // span, so the move again.
+    final beside = await dragged(const Offset(55, 45), const Offset(0, 5));
+    expect(beside, const TransformValues(ty: 5), reason: '「십자가가 움직인다」');
+
+    // ⛔And ON them, they are still theirs — the corner scales, the cross
+    // is carried, the corner of the cross's box included.
+    final corner = await dragged(const Offset(22, 22), const Offset(-5, -5));
+    expect(corner.sx, closeTo(1.2, 1e-9));
+    expect(corner.sy, closeTo(1.2, 1e-9));
+    final cross = await dragged(const Offset(50, 50), const Offset(3, 0));
+    expect(cross, const TransformValues(anchorX: 3));
   });
 
   /// 🚨★★★**WHATEVER ENDS AN OPEN TRANSFORM LANDS WHAT 확정 LANDS** (F-280).
@@ -6503,9 +6562,8 @@ void main() {
     // ↩️It was a (+2,0) arrow-key nudge until the nudge went (F-86, 유저
     // 2026-09-12: 「기능부터 잔존코드 싹 삭제」).
     await env.setTool(CanvasTool.move);
-    // ⚠️(30,30) and not (40,40): the lasso's bounds are 10..90, so its
-    // centre (50,50) is where the anchor cross sits (R5) and (40,40) is
-    // inside its grab radius. The DELTA is what this pin is about.
+    // ⚠️(30,30), well clear of the anchor cross at the lasso's centre
+    // (50,50; R5). The DELTA is what this pin is about.
     await dragOnLayer(tester, const Offset(30, 30), const Offset(50, 30));
     env.commands.confirmPendingMove();
     await tester.pump();

@@ -216,9 +216,10 @@ void main() {
         reason: '⛔전제: the grab opened it',
       );
       final moved = commands.transformValues!;
-      // ⚠️WHICHEVER grip the press found. The box frames a stroke about 50
-      // screen px across, and nine 16px targets do not fit on that — so this
-      // asks 「it is no longer as it opened」 rather than naming one channel.
+      // ⚠️WHICHEVER part of the box the press found — a grip, the inside,
+      // the turn outside it. The box frames a stroke about 50 screen px
+      // across, so this asks 「it is no longer as it opened」 rather than
+      // naming one channel.
       expect(
         moved.isIdentity,
         isFalse,
