@@ -337,30 +337,12 @@ void main() {
     );
   });
 
-  test('잘라내기 stands down on the image row too — COPY stays lit, since '
-      'it never claims to remove the picture', () {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    s.layerStack.addLayerOfKind(LayerKind.image);
-
-    for (final frameIndex in [0, 5]) {
-      s.selectFrameIndex(frameIndex);
-      expect(
-        s.clipboard.canCutRunAtCurrentFrame,
-        isFalse,
-        // ↩️The reason was the delete gate's — 「the lift is rebuilt by the
-        // same write」. The delete is lit since F-98; the cut still waits.
-        reason:
-            'at index $frameIndex: what is cut has to be able to come '
-            'back, and no paste lands on an image row',
-      );
-      expect(
-        s.canCopyFrameAtCurrentFrame,
-        isTrue,
-        reason: 'copy is honest on a picture row',
-      );
-    }
-  });
+  // ↩️A pin stood here: 「잘라내기 stands down on the image row too — COPY
+  // stays lit, since it never claims to remove the picture」, dark at 0 and
+  // at 5 because 「what is cut has to be able to come back, and no paste
+  // lands on an image row」. One lands now on a row standing empty
+  // (image-row-cut-paste, 유저 2026-10-04), so the cut is lit — pinned with
+  // the pastes in `session/a_picture_rows_picture_is_cut_and_pasted_test.dart`.
 
   test('the WHOLE shared-pill family reads the band\'s claim, not just '
       'Delete: Edit Instance and the storyboard comma answer with it', () {

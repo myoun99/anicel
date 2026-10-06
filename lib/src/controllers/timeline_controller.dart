@@ -334,6 +334,8 @@ class TimelineController {
 
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) =>
       _delete.canDeleteCellAt(layer: layer, frameIndex: frameIndex);
+  bool blockStandsAtPlayheadOn(LayerId layerId) =>
+      _delete.blockStandsAtPlayheadOn(layerId);
   void deleteCellForLayer({required LayerId layerId}) =>
       _delete.deleteCellForLayer(layerId: layerId);
   void deleteBlocksForLayer({

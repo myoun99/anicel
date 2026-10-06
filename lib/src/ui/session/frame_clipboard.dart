@@ -15,6 +15,7 @@ import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
+import 'frame_verbs.dart' show rowTakesNewCels;
 import 'independent_clip_mint.dart';
 import 'session_roles.dart';
 import 'what_a_copy_brings.dart';
@@ -119,9 +120,12 @@ class FrameClipboard implements BringsMedia {
         !identical(copiedFrame.from, this) ||
         layer.id != copiedFrame.layerId ||
         !rowHoldsLinks(layer) ||
-        // An IMAGE row holds ONE block: a second exposure has no place on
-        // it ([canPasteIndependentFrameAtCurrentFrame]'s stand-down).
-        layer.kind.holdsSingleCel) {
+        // An IMAGE row holds ONE block: once it stands, a second exposure
+        // has no place on it ([canPasteIndependentFrameAtCurrentFrame]'s
+        // stand-down). ↩️Every image row was turned away, by kind; one
+        // standing EMPTY takes its picture back (image-row-cut-paste, 유저
+        // 2026-10-04 — the cut's other half, [canCutRunAtCurrentFrame]).
+        (layer.kind.holdsSingleCel && !pictureRowStandsEmpty(layer))) {
       return false;
     }
 
@@ -260,18 +264,22 @@ class FrameClipboard implements BringsMedia {
   /// 왼쪽. 복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」.
   ///
   /// ★It is literally copy followed by the lift half of `spliceTimeline`,
-  /// which is why it needs no rules of its own — with ONE exception: what
-  /// is cut has to be able to come BACK (the paste's T3 note). On a
-  /// SINGLE-CEL (image) row it cannot: both pastes stand down there, so the
-  /// picture would leave for a clipboard no image row takes it from. COPY
-  /// stays lit: it takes the cel to the clipboard without claiming to
-  /// remove it, which is honest here.
+  /// which is why it needs no rules of its own. What is cut has to be able
+  /// to come BACK (the paste's T3 note), and on every row that holds
+  /// drawings it can.
   ///
-  /// ↩️The reason used to be the delete gate's (D22): the covering
-  /// normalization rebuilt the block from the same write, so the press cost
-  /// a phantom undo entry. F-98 gave the image row its empty state and the
-  /// DELETE is lit now; the cut waits for a paste that can land on an image
-  /// row.
+  /// ↩️A SINGLE-CEL (image) row was the ONE exception, for two reasons in
+  /// turn:
+  /// · the delete gate's (D22) — the covering normalization rebuilt the
+  ///   block from the same write, so the press cost a phantom undo entry.
+  ///   F-98 gave the image row its empty state and the DELETE was lit;
+  /// · then that both pastes stood down there — 「the picture would leave
+  ///   for a clipboard no image row takes it from … the cut waits for a
+  ///   paste that can land on an image row」.
+  /// That paste lands now (image-row-cut-paste, 유저 2026-10-04: a row
+  /// standing empty takes the clip's first picture — 「첫장만」,
+  /// [_pasteRun]), so the picture row's block is cut by the law every
+  /// drawing row's is.
   bool get canCutRunAtCurrentFrame {
     // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
     // other rows it lifts a block the user never swept — and being the
@@ -282,11 +290,24 @@ class FrameClipboard implements BringsMedia {
     if (_selection.bandNamesRowsThisPressWouldMiss) {
       return false;
     }
+    // 🚨F-107 (유저 2026-09-12: 「불가능한 버튼 비활성화 … 그 외도 있나
+    // 확인」) — made STANDING, a cut lifts the block under the playhead, the
+    // one Delete takes from the same press. Where none stands — the hold
+    // past a block, a synced mirror's borrowed cell — it lifted nothing:
+    // the button sat lit, and its press left the row as it was with the
+    // drawing copied to the board and the undo stack one step heavier.
+    // Measured on a picture row's hold cell, where opening the cut
+    // (image-row-cut-paste) would have put that press on every frame but
+    // the first. A copy is lit there, and is what that press was.
+    //
+    // ⚠️Asked AFTER the copy's gate: that one answering yes is what says the
+    // active row is a row the controller edits — it throws on any other.
     final layer = _selection.activeLayer;
-    if (layer != null && layer.kind.holdsSingleCel) {
+    if (layer == null || !canCopyFrameAtCurrentFrame) {
       return false;
     }
-    return canCopyFrameAtCurrentFrame;
+    return _selection.frameRangeSelection.value != null ||
+        _controllers.timelineController.blockStandsAtPlayheadOn(layer.id);
   }
 
   void cutRunAtCurrentFrame() {
@@ -486,6 +507,13 @@ class FrameClipboard implements BringsMedia {
   /// [FrameVerbs.canCreateDrawingAtCurrentFrame] deliberately; what is NOT shared is
   /// its block-start refusal, which exists because there is nothing there
   /// to divide — a paste inserts rather than divides.
+  ///
+  /// ↩️"Shared" was four conditions spelled a second time here, and the
+  /// copy had gone stale: F-98 let a picture row standing EMPTY be authored
+  /// into ([rowTakesNewCels]) while this door kept turning every image row
+  /// away by kind. It asks the one answer now, which is what opens
+  /// image-row-cut-paste (유저 2026-10-04): an empty picture row takes a
+  /// paste — the clip's first picture ([_pasteRun]).
   bool get canPasteIndependentFrameAtCurrentFrame {
     // The paste lands on the ACTIVE row, and its band rung serves only a
     // band that covers that row (`replacing` in [_pasteRun] — 「복붙은
@@ -499,15 +527,12 @@ class FrameClipboard implements BringsMedia {
     if (layer == null || _copiedFrame == null) {
       return false;
     }
-    // A direction row pastes blocks like every cel row: its span rides the
-    // block it is (R27).
-    if (!layer.kind.takesAuthoredCels ||
-        // SYNCED attach rows own no timeline of their own.
-        isSyncedAttachedLayer(layer) ||
-        // A reference row's picture comes from the library.
-        layer.mediaReference != null ||
-        // An IMAGE row holds ONE cel by definition.
-        layer.kind.holdsSingleCel) {
+    // The row's half of every door that makes a cel ([rowTakesNewCels]): a
+    // direction row pastes blocks like every cel row (its span rides the
+    // block it is, R27); a SYNCED attach row owns no timeline of its own; a
+    // reference row's picture comes from the library; an IMAGE row holds
+    // ONE cel, and takes one only while it stands empty.
+    if (!rowTakesNewCels(layer)) {
       return false;
     }
     return _controllers.timelineController.currentFrameIndex >= 0;
@@ -559,6 +584,16 @@ class FrameClipboard implements BringsMedia {
   /// collector's」 while that collector passed image rows over; the delete
   /// takes an image row's block now (F-98), and a paste still has no second
   /// place on one.
+  ///
+  /// ⚠️NOT the gate's any more, for one row: the press with no band lands
+  /// on a picture row standing EMPTY (image-row-cut-paste), and a band
+  /// still passes every picture row over, empty or not. That is kept on
+  /// purpose, undecided rather than decided: these are also the rows a
+  /// copy TAKES ([_copiedRowsBesides]), the board pairs its rows with the
+  /// targets IN ORDER ([_pasteRun]), and a filter that changed with what a
+  /// row holds would pair a clip with another row's seat the moment the
+  /// row was emptied between the copy and the paste. What a band does with
+  /// a picture row is asked on the board (image-row-cut-paste-Q1).
   List<Layer> _pasteTargetRowsBesides(Layer anchor) {
     final selection = _selection.frameRangeSelection.value;
     if (selection == null || !selection.coversLayer(anchor.id)) {
@@ -672,14 +707,21 @@ class FrameClipboard implements BringsMedia {
       } else {
         continue;
       }
+      // 🗣️image-row-cut-paste (유저 2026-10-04): 「첫장만」 — a row that
+      // holds ONE picture takes the clip's first, as one comma. The write
+      // lays that as the row's held block; a second cel minted beside it
+      // would sit in the bank with nothing showing it.
+      final taken = target.kind.holdsSingleCel
+          ? _firstPictureOf(mine, mineCels)
+          : (clip: mine, cels: mineCels);
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
       // the layer would carry orphans nothing points at.
       final placed = placedClipFor(
         layer: target,
         row: (
-          clip: _respelled(mine, arrival.respell),
-          cels: mineCels,
+          clip: _respelled(taken.clip, arrival.respell),
+          cels: taken.cels,
           sounds: mineSounds,
         ),
         independent: independent,
@@ -741,6 +783,28 @@ class FrameClipboard implements BringsMedia {
       _selection.clearFrameRangeSelection();
     }
     _changes.notifyChanged();
+  }
+
+  /// The first drawing [clip] shows, as ONE comma, with the cel it shows out
+  /// of [cels] — what a row that holds a single picture takes of a clip.
+  /// A clip showing no drawing comes back as it is.
+  static ({TimelineClipRow clip, List<Frame> cels}) _firstPictureOf(
+    TimelineClipRow clip,
+    List<Frame> cels,
+  ) {
+    for (final exposure in clip.exposures.values) {
+      final id = exposure.frameId;
+      if (exposure.isDrawing && id != null) {
+        return (
+          clip: _oneCellOf(id),
+          cels: [
+            for (final cel in cels)
+              if (cel.id == id) cel,
+          ],
+        );
+      }
+    }
+    return (clip: clip, cels: cels);
   }
 
   /// [clip] with every block's term spelled as [respell] says — a copy from
