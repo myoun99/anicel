@@ -427,7 +427,13 @@ enum LayerKind {
   final bool acceptsBrushInput;
 
   /// Whether this kind's rows can ghost (onion skin): the kinds the brush
-  /// lands on — a ghost is the row's own hand-drawn frames.
+  /// lands on — a ghost is the row's own hand-drawn frames — that hold more
+  /// than one.
+  ///
+  /// ↩️F-290 (유저 2026-10-05): 「이미지레이어는 어니언스킨 기능 있어봤자이니
+  /// 깔끔하게 삭제」. A picture row holds ONE picture over its whole cut
+  /// ([holdsSingleCel]) — there is no frame before it or after it to ghost.
+  /// It answered with every kind the brush lands on.
   ///
   /// 🚨F-145 (유저 2026-09-17): 「폴더등 어니언스킨 활성화 불가능한 곳에
   /// 서있는데 왼쪽띠의 어니언스킨버튼이 활성화되있고 조작마저가능함.
@@ -435,7 +441,7 @@ enum LayerKind {
   /// for this and three doors — the rail button, the `O` key and the toggle
   /// itself — did not ask at all. One name answers every one of them now, and
   /// the toggle refuses on its own, so a door added later cannot forget.
-  bool get takesOnionSkin => acceptsBrushInput;
+  bool get takesOnionSkin => acceptsBrushInput && !holdsSingleCel;
 
   /// Whether this kind's exposures leave NO GAPS: every block runs to the
   /// next one's start and the last runs to the cut's end (design E).

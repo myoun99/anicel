@@ -16,6 +16,22 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 /// the toggle did not. ⛔So the pin is EVERY kind a row can be — a folder was
 /// the case the user met, and a kind added later is the case nobody would.
 void main() {
+  // 🚨F-290 (유저 2026-10-05): 「이미지레이어는 어니언스킨 기능 있어봤자이니
+  // 깔끔하게 삭제」. WHICH kinds ghost, said once — every door below follows
+  // this answer, so the picture row's button, key, sweep and ghosts go with
+  // it.
+  test('a row ghosts when the brush lands on it and it holds more than one '
+      'picture — a picture row does not', () {
+    expect(
+      {
+        for (final kind in LayerKind.values)
+          if (kind.takesOnionSkin) kind,
+      },
+      {LayerKind.animation, LayerKind.storyboard, LayerKind.instruction},
+    );
+    expect(LayerKind.image.acceptsBrushInput, isTrue, reason: '⛔전제');
+  });
+
   test('on every kind of row, the onion toggle is lit exactly where the row '
       'can ghost, and does nothing anywhere else', () {
     final session = EditorSessionManager(initialProject: createDefaultProject());
