@@ -218,7 +218,11 @@ void main() {
   /// Edit and To Start — the shared pill's Edit and the sill's 「처음으로」,
   /// which wore table strings until they became actions with keys. Each is
   /// answered in the other four languages by id; the same shape again.
-  const untranslatedElsewhere = 90;
+  ///
+  /// 91 (R9-rest, 2026-10-06): the English row of the text tool's registry
+  /// action, Text Tool — answered in the other four languages by id
+  /// (`shortcutAction.tool-text`). The same shape once more.
+  const untranslatedElsewhere = 91;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
