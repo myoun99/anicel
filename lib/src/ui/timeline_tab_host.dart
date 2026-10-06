@@ -1209,42 +1209,47 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     // it belongs — in the token comparison below: a crossed frame costs one
     // derivation (measured 15.6µs in debug for seventeen gates) and
     // rebuilds nothing unless an ANSWER changed.
-    widget.session.playheadMoved.addListener(_handleExternalSignal);
+    for (final signal in _signalsOf(widget)) {
+      signal.addListener(_handleExternalSignal);
+    }
+  }
+
+  /// Every signal that can move a gate WITHOUT a host rebuild.
+  ///
+  /// ↩️Each was hung, unhung and re-hung by hand in three places, and the
+  /// fifth was the one that was missing: the band swept on the STORYBOARD,
+  /// which the comma's gate has read all along and the clipboard's reads now
+  /// (F-281). One list, the storyboard bar's shape.
+  static List<Listenable> _signalsOf(_SeekGatedTimelineToolbar widget) => [
+    widget.session.playheadMoved,
     // A language switch moves its own notifier and fires NO session notify,
     // so nothing else would ever re-derive the tokens for it.
-    widget.session.languageSettings.addListener(_handleExternalSignal);
+    widget.session.languageSettings,
     // Same story for the row you are STANDING on: it publishes on its own
     // notifier, and Edit Instance's enablement now reads it.
-    widget.session.standing.currentRowListenable.addListener(
-      _handleExternalSignal,
-    );
+    widget.session.standing.currentRowListenable,
     // …and for the cut-local BAND, which grows per pointer move on its own
     // notifier. Seven gates read it now (the active-row verbs stand down
     // when it names other rows), so without this the enforcement lands
     // while the buttons stay lit — a dead lit control, which is the exact
     // defect the standdowns exist to remove. The storyboard toolbar has
     // listed it for the same reason.
-    widget.session.frameRangeSelection.addListener(_handleExternalSignal);
-  }
+    widget.session.frameRangeSelection,
+    // …and the TRACK's band, the same selection stated on the other axis:
+    // a band is a subject claim whichever panel it was swept in.
+    widget.session.trackFrameRangeSelection,
+  ];
 
   @override
   void didUpdateWidget(covariant _SeekGatedTimelineToolbar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.session, widget.session)) {
-      oldWidget.session.playheadMoved.removeListener(_handleExternalSignal);
-      oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
-      oldWidget.session.standing.currentRowListenable.removeListener(
-        _handleExternalSignal,
-      );
-      oldWidget.session.frameRangeSelection.removeListener(
-        _handleExternalSignal,
-      );
-      widget.session.playheadMoved.addListener(_handleExternalSignal);
-      widget.session.languageSettings.addListener(_handleExternalSignal);
-      widget.session.standing.currentRowListenable.addListener(
-        _handleExternalSignal,
-      );
-      widget.session.frameRangeSelection.addListener(_handleExternalSignal);
+      for (final signal in _signalsOf(oldWidget)) {
+        signal.removeListener(_handleExternalSignal);
+      }
+      for (final signal in _signalsOf(widget)) {
+        signal.addListener(_handleExternalSignal);
+      }
       _cachedActions = null;
     }
     _tokenOrSectionsChanged(oldWidget.hiddenSections);
@@ -1252,12 +1257,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
 
   @override
   void dispose() {
-    widget.session.playheadMoved.removeListener(_handleExternalSignal);
-    widget.session.languageSettings.removeListener(_handleExternalSignal);
-    widget.session.standing.currentRowListenable.removeListener(
-      _handleExternalSignal,
-    );
-    widget.session.frameRangeSelection.removeListener(_handleExternalSignal);
+    for (final signal in _signalsOf(widget)) {
+      signal.removeListener(_handleExternalSignal);
+    }
     super.dispose();
   }
 

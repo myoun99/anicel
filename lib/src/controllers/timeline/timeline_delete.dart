@@ -17,13 +17,18 @@ class _TimelineDelete {
     return block != null && !block.entry.ghost;
   }
 
-  /// Whether a block stands under the playhead on [layerId]'s OWN row, in
-  /// its edit keys — what [deleteCellForLayer] takes, and what a 잘라내기
-  /// made standing lifts (`FrameClipboard.canCutRunAtCurrentFrame`).
-  bool blockStandsAtPlayheadOn(LayerId layerId) => canDeleteCellAt(
+  /// Whether a block stands at [at] on [layerId]'s OWN row, in its edit
+  /// keys — what a 잘라내기 made standing lifts, wherever its press stands
+  /// (`FrameClipboard.canCutAt`: the cut's playhead, or the track's while
+  /// the storyboard is parked in a gap — F-281).
+  bool blockStandsOn(LayerId layerId, {required int at}) => canDeleteCellAt(
     layer: _controller._requireLayer(layerId),
-    frameIndex: _controller._editFrameIndexFor(layerId),
+    frameIndex: at,
   );
+
+  /// [blockStandsOn] under the playhead — what [deleteCellForLayer] takes.
+  bool blockStandsAtPlayheadOn(LayerId layerId) =>
+      blockStandsOn(layerId, at: _controller._editFrameIndexFor(layerId));
 
   void deleteCellForLayer({required LayerId layerId}) {
     final before = _controller._requireLayer(layerId);

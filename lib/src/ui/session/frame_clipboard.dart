@@ -7,8 +7,9 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_link_registry.dart';
+import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/timeline_exposure.dart';
-import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_row_address.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_splice.dart';
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
@@ -86,33 +87,123 @@ class FrameClipboard implements BringsMedia {
     for (final row in _copiedFrame?.rows ?? const <_CopiedRow>[]) row.layerId,
   ];
 
-  bool get canCopyFrameAtCurrentFrame {
+  // --- WHERE a press acts (F-281) -----------------------------------------
+  //
+  // Every verb below is said of a PLACE — a row, the cursor on that row's
+  // own axis, THE selection — and each panel answers only where its press
+  // stands. The `…AtCurrentFrame` members are the timeline's doors.
+
+  /// The TIMELINE's place: the cut's active row, at the cut's playhead.
+  ClipboardPlace? get timelinePlace {
+    final row = _selection.activeLayer;
+    return row == null
+        ? null
+        : ClipboardPlace._(
+            row: row,
+            cel: _selection.selectedFrame,
+            index:
+                _controllers.timelineController.currentFrameIndex +
+                _project.rowAxisOffset(row.id),
+            band: _band,
+          );
+  }
+
+  /// The STORYBOARD's place: the track's S row its rail stands on, at the
+  /// track's playhead — the row and the frame as the row itself keys them,
+  /// so it answers inside a cut and parked in a gap alike (H11, 유저
+  /// 2026-08-22: 「각 행들은 독립적인 글로벌행이라 뭐든 가능해야함」). Null
+  /// where that rail stands on a row that holds no cels: the V row, the
+  /// transition row, a lane.
+  ClipboardPlace? get storyboardPlace {
+    final standing = _selection.storyboardStandingRow;
+    final row = standing is LayerRowAddress
+        ? _project.trackSeGlobalLayerById(standing.layerId)
+        : null;
+    final index = _selection.editingGlobalFrame;
+    if (row == null || index < 0) {
+      return null;
+    }
+    final shown = coveringDrawingBlockAt(row.timeline, index)?.frameId;
+    return ClipboardPlace._(
+      row: row,
+      cel: shown == null ? null : row.frameById(shown),
+      index: index,
+      band: _band,
+    );
+  }
+
+  /// THE selection as a press reads it, whichever axis it was swept on (the
+  /// two are mutually exclusive, so at most one answers) — the rows it
+  /// names, and where it starts on each row's OWN axis.
+  ///
+  /// The cut's band is a run of CELLS — 「the range means exactly its
+  /// cells」 — so it moves by the row's axis offset. ⛔Not
+  /// `TrackSeDisplay.commitBlockStart`: that names the BLOCK a display start
+  /// stands for, and at 0 over a block spilling in from an earlier cut it
+  /// answered that block's start there (F-115). The track's band is stated
+  /// on the track's axis, which is the axis its rows key.
+  ///
+  /// ↩️Only the cut's band was read. One swept on the storyboard's S rows
+  /// was no selection to this board at all: a copy there banked the one
+  /// cell under the cursor, and a paste went in beside the band instead of
+  /// replacing it (F-281).
+  _ClipboardBand? get _band {
+    final inCut = _selection.frameRangeSelection.value;
+    if (inCut != null) {
+      return _ClipboardBand(
+        rows: inCut.spanLayerIds,
+        length: inCut.lengthFrames,
+        startOn: (row) => inCut.startIndex + _project.rowAxisOffset(row),
+        clear: _selection.clearFrameRangeSelection,
+      );
+    }
+    final onTrack = _selection.trackFrameRangeSelection.value;
+    if (onTrack == null) {
+      return null;
+    }
+    return _ClipboardBand(
+      rows: [
+        for (final row in onTrack.spanRows)
+          if (row is LayerRowAddress) row.layerId,
+      ],
+      length: onTrack.lengthFrames,
+      startOn: (_) => onTrack.startFrame,
+      clear: _selection.clearStoryboardCutSelection,
+    );
+  }
+
+  bool get canCopyFrameAtCurrentFrame => canCopyAt(timelinePlace);
+
+  bool canCopyAt(ClipboardPlace? place) {
     // 복사 and 잘라내기 are ONE pair by the user's own definition
     // (「복사=원본 남기고 클립 저장 · 잘라내기=원본 지우고 클립 저장」) and
-    // share a resolver — [cutRunAtCurrentFrame] literally calls this one.
-    // So they must agree about the subject.
+    // share a resolver — [cutAt] literally calls this one. So they must
+    // agree about the subject.
     //
     // ⛔The exemption written next to the cut standdown, "COPY is left lit:
     // it only reads", does not survive contact with what copy does: it
     // WRITES the clipboard, which is user state, and under a band naming
     // other rows it wrote the wrong row's run — the same wrong subject
     // that standdown was added for, banked for a later paste.
-    if (_selection.bandNamesRowsThisPressWouldMiss) {
+    if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    return _selection.selectedFrame != null;
+    return place._cel != null;
   }
 
-  bool get canPasteLinkedFrameAtCurrentFrame {
-    // Same law as its independent twin: this lands on the ACTIVE row and
-    // serves only a band that covers it ([_pasteRun]'s `replacing`).
-    if (_selection.bandNamesRowsThisPressWouldMiss) {
+  bool get canPasteLinkedFrameAtCurrentFrame =>
+      canPasteLinkedAt(timelinePlace);
+
+  bool canPasteLinkedAt(ClipboardPlace? place) {
+    // Same law as its independent twin: this lands on the row the press
+    // stands on and serves only a band that covers it ([_pasteRun]'s
+    // `replacing`).
+    if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    final layer = _selection.activeLayer;
+    final layer = place._row;
     final copiedFrame = _copiedFrame;
-    if (layer == null ||
-        copiedFrame == null ||
+    if (copiedFrame == null ||
         // 🚨I-7 — a link is 「the same cel」, and no cel of another project
         // is a cel of this one: its ids were minted THERE, so the same
         // spelling here names another drawing, or nothing (유저 2026-09-26:
@@ -132,8 +223,7 @@ class FrameClipboard implements BringsMedia {
     // ([_keepsNamesOn]). ↩️Every other row was turned away here: 「is that
     // cel in THIS row」 was the whole of what a link could mean.
     if (layer.id != copiedFrame.layerId) {
-      return _keepsNamesOn(layer, copiedFrame) &&
-          _controllers.timelineController.currentFrameIndex >= 0;
+      return _keepsNamesOn(layer, copiedFrame) && place._index >= 0;
     }
 
     // 🚨T3 — the clipboard may be holding cels the layer no longer has: a
@@ -142,12 +232,12 @@ class FrameClipboard implements BringsMedia {
     // still has it" would have made cut-then-paste-back impossible while
     // the button sat lit.
     if (copiedFrame.cels.any((cel) => cel.id == copiedFrame.frameId)) {
-      return _controllers.timelineController.currentFrameIndex >= 0;
+      return place._index >= 0;
     }
 
     return _controllers.timelineController.canPasteLinkedFrameAt(
       layer: layer,
-      frameIndex: _controllers.timelineController.currentFrameIndex,
+      frameIndex: place._index,
       copiedFrameId: copiedFrame.frameId,
     );
   }
@@ -187,17 +277,17 @@ class FrameClipboard implements BringsMedia {
   /// ⚠️Same rows a paste would accept ([_pasteTargetRowsBesides]): a row
   /// that cannot receive a clip has no business putting one on the board,
   /// and a cut must not lift what a paste could never put back.
-  List<_CopiedRow> _copiedRowsBesides(Layer anchor) {
-    final selection = _selection.frameRangeSelection.value;
-    if (selection == null || !selection.coversLayer(anchor.id)) {
+  List<_CopiedRow> _copiedRowsBesides(ClipboardPlace place) {
+    final band = place._band;
+    if (band == null || !band.covers(place._row.id)) {
       return const [];
     }
     final entries = <_CopiedRow>[];
-    for (final row in _pasteTargetRowsBesides(anchor)) {
+    for (final row in _pasteTargetRowsBesides(place)) {
       final clip = _controllers.timelineController.copyRunForLayer(
         layerId: row.id,
-        index: _rangeStartOn(row.id, selection),
-        count: selection.lengthFrames,
+        index: band.startOn(row.id),
+        count: band.length,
       );
       entries.add(_copiedRowFor(row, clip));
     }
@@ -342,14 +432,16 @@ class FrameClipboard implements BringsMedia {
   /// standing empty takes the clip's first picture — 「첫장만」,
   /// [_pasteRun]), so the picture row's block is cut by the law every
   /// drawing row's is.
-  bool get canCutRunAtCurrentFrame {
-    // 잘라내기 resolves its run on the ACTIVE row, so under a band naming
-    // other rows it lifts a block the user never swept — and being the
-    // destructive half of the clipboard pair, it did so while Delete sat
+  bool get canCutRunAtCurrentFrame => canCutAt(timelinePlace);
+
+  bool canCutAt(ClipboardPlace? place) {
+    // 잘라내기 resolves its run on the row it stands on, so under a band
+    // naming other rows it lifts a block the user never swept — and being
+    // the destructive half of the clipboard pair, it did so while Delete sat
     // dark one button away on the same pill. No band rung to serve, so
     // the band ends the ladder — and so does COPY, its documented twin:
     // "it only reads" was wrong, since it writes the clipboard.
-    if (_selection.bandNamesRowsThisPressWouldMiss) {
+    if (place == null || place._bandMissesTheRow) {
       return false;
     }
     // 🚨F-107 (유저 2026-09-12: 「불가능한 버튼 비활성화 … 그 외도 있나
@@ -363,9 +455,9 @@ class FrameClipboard implements BringsMedia {
     // the first. A copy is lit there, and is what that press was.
     //
     // ⚠️Asked AFTER the copy's gate: that one answering yes is what says the
-    // active row is a row the controller edits — it throws on any other.
-    final layer = _selection.activeLayer;
-    if (layer == null || !canCopyFrameAtCurrentFrame) {
+    // row is a row the controller edits — it throws on any other.
+    final layer = place._row;
+    if (!canCopyAt(place)) {
       return false;
     }
     // A SYNCED attach row's blocks are its BASE's, shown again — it has none
@@ -377,20 +469,22 @@ class FrameClipboard implements BringsMedia {
     if (isSyncedAttachedLayer(layer)) {
       return false;
     }
-    return _selection.frameRangeSelection.value != null ||
-        _controllers.timelineController.blockStandsAtPlayheadOn(layer.id);
+    return place._band != null ||
+        _controllers.timelineController.blockStandsOn(
+          layer.id,
+          at: place._index,
+        );
   }
 
-  void cutRunAtCurrentFrame() {
-    final layer = _selection.activeLayer;
-    final frame = _selection.selectedFrame;
-    if (layer == null || frame == null || !canCutRunAtCurrentFrame) {
+  void cutRunAtCurrentFrame() => cutAt(timelinePlace);
+
+  void cutAt(ClipboardPlace? place) {
+    final frame = place?._cel;
+    if (place == null || frame == null || !canCutAt(place)) {
       return;
     }
-    final run = spliceRunOnActiveRow();
-    if (run == null) {
-      return;
-    }
+    final layer = place._row;
+    final run = _runAt(place);
     // ↩️F-277 (유저 2026-10-04): 「프레임 복사 붙여넣기시, 선택하지 않은채로
     // 그냥 블록에 선 채로 복사하면 붙여넣을때 1코마로 붙여넣는거처럼, 잘라내기도
     // 선택안하고 동일한 상황에서 잘라내면 1코마로 붙여넣도록」 — the cut banks
@@ -404,14 +498,14 @@ class FrameClipboard implements BringsMedia {
     // every ROW lifted is banked (below), and the DRAWING a standing cut
     // lifts is on the board, to come back. What stays behind is the block's
     // commas — as they do when the same block is copied.
-    _bank(layer: layer, frame: frame, clip: _clipToBank(layer, frame));
+    _bank(place: place, frame: frame, clip: _clipToBank(place, frame));
     // 🚨결정 14 ②ⓐ — the lift takes every row the copy just banked, in ONE
     // undo. ⛔It reads the CLIPBOARD's rows rather than re-resolving the
     // band: the two must not be able to disagree about which rows were
     // taken, because a row lifted but not banked is work that cannot come
     // back — 「클립보드가 담지 않은 것을 들어내면 그건 삭제지 잘라내기가
     // 아니다」.
-    final selection = _selection.frameRangeSelection.value;
+    final band = place._band;
     final banked = bankedRowLayerIds;
     _controllers.timelineController.spliceRunsForLayers(
       runs: [
@@ -420,10 +514,8 @@ class FrameClipboard implements BringsMedia {
             layerId: bankedLayerId,
             index: bankedLayerId == layer.id
                 ? run.index
-                : _rangeStartOn(bankedLayerId, selection!),
-            liftCount: bankedLayerId == layer.id
-                ? run.count
-                : selection!.lengthFrames,
+                : band!.startOn(bankedLayerId),
+            liftCount: bankedLayerId == layer.id ? run.count : band!.length,
             clip: null,
             bornFrames: const <Frame>[],
             bornSounds: const <AudioClip>[],
@@ -446,17 +538,18 @@ class FrameClipboard implements BringsMedia {
       ],
       description: 'Cut frames',
     );
-    _selection.clearFrameRangeSelection();
+    band?.clear();
     _changes.notifyChanged();
   }
 
-  void copyFrameAtCurrentFrame() {
-    final layer = _selection.activeLayer;
-    final frame = _selection.selectedFrame;
-    if (layer == null || frame == null || !canCopyFrameAtCurrentFrame) {
+  void copyFrameAtCurrentFrame() => copyAt(timelinePlace);
+
+  void copyAt(ClipboardPlace? place) {
+    final frame = place?._cel;
+    if (place == null || frame == null || !canCopyAt(place)) {
       return;
     }
-    _bank(layer: layer, frame: frame, clip: _clipToBank(layer, frame));
+    _bank(place: place, frame: frame, clip: _clipToBank(place, frame));
   }
 
   /// The clip a copy — or a 잘라내기 (F-277) — of [frame] on [layer] banks.
@@ -484,14 +577,12 @@ class FrameClipboard implements BringsMedia {
   /// along would ghost the paste past the one comma it was asked to be.
   ///
   /// ⛔The gate leaves no third case: a selection that misses this row
-  /// stood the press down ([canCopyFrameAtCurrentFrame]).
-  TimelineClipRow _clipToBank(Layer layer, Frame frame) {
-    final run = _selection.frameRangeSelection.value == null
-        ? null
-        : spliceRunOnActiveRow();
+  /// stood the press down ([canCopyAt]).
+  TimelineClipRow _clipToBank(ClipboardPlace place, Frame frame) {
+    final run = place._band == null ? null : _runAt(place);
     return run == null
         ? _oneCellOf(frame.id)
-        : _runCopiedOff(layer, index: run.index, count: run.count);
+        : _runCopiedOff(place._row, index: run.index, count: run.count);
   }
 
   /// One comma of [frameId] — the whole clip a copy or a cut with nothing
@@ -506,13 +597,14 @@ class FrameClipboard implements BringsMedia {
   /// 아니다」) where a standing copy banked one comma. F-277 made the two one
   /// ([cutRunAtCurrentFrame]).
   void _bank({
-    required Layer layer,
+    required ClipboardPlace place,
     required Frame frame,
     required TimelineClipRow clip,
   }) {
+    final layer = place._row;
     final cels = _celsCarriedBy(layer, clip);
     // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
-    final rows = [_copiedRowFor(layer, clip), ..._copiedRowsBesides(layer)];
+    final rows = [_copiedRowFor(layer, clip), ..._copiedRowsBesides(place)];
     _board._copy = _CopiedFrameReference(
       from: this,
       layerId: layer.id,
@@ -581,17 +673,20 @@ class FrameClipboard implements BringsMedia {
   /// away by kind. It asks the one answer now, which is what opens
   /// image-row-cut-paste (유저 2026-10-04): an empty picture row takes a
   /// paste — the clip's first picture ([_pasteRun]).
-  bool get canPasteIndependentFrameAtCurrentFrame {
-    // The paste lands on the ACTIVE row, and its band rung serves only a
-    // band that covers that row (`replacing` in [_pasteRun] — 「복붙은
-    // 선택하고 붙여넣기가 기본」). A band naming other rows makes it a
-    // plain insert on a row the user never swept, and the highlight then
+  bool get canPasteIndependentFrameAtCurrentFrame =>
+      canPasteIndependentAt(timelinePlace);
+
+  bool canPasteIndependentAt(ClipboardPlace? place) {
+    // The paste lands on the row the press stands on, and its band rung
+    // serves only a band that covers that row (`replacing` in [_pasteRun] —
+    // 「복붙은 선택하고 붙여넣기가 기본」). A band naming other rows makes it
+    // a plain insert on a row the user never swept, and the highlight then
     // stays put, because the clear runs on the replacing path alone.
-    if (_selection.bandNamesRowsThisPressWouldMiss) {
+    if (place == null || place._bandMissesTheRow) {
       return false;
     }
-    final layer = _selection.activeLayer;
-    if (layer == null || _copiedFrame == null) {
+    final layer = place._row;
+    if (_copiedFrame == null) {
       return false;
     }
     // The row's half of every door that makes a cel ([rowTakesNewCels]): a
@@ -602,18 +697,20 @@ class FrameClipboard implements BringsMedia {
     if (!rowTakesNewCels(layer)) {
       return false;
     }
-    return _controllers.timelineController.currentFrameIndex >= 0;
+    return place._index >= 0;
   }
 
-  void pasteIndependentFrameAtCurrentFrame() {
-    final layer = _selection.activeLayer;
+  void pasteIndependentFrameAtCurrentFrame() =>
+      pasteIndependentAt(timelinePlace);
+
+  void pasteIndependentAt(ClipboardPlace? place) {
     final copiedFrame = _copiedFrame;
-    if (layer == null ||
+    if (place == null ||
         copiedFrame == null ||
-        !canPasteIndependentFrameAtCurrentFrame) {
+        !canPasteIndependentAt(place)) {
       return;
     }
-    _pasteRun(layer: layer, copied: copiedFrame, independent: true);
+    _pasteRun(place: place, copied: copiedFrame, independent: true);
   }
 
   /// 링크 붙여넣기. Null when it pasted, or had nothing to do.
@@ -629,21 +726,23 @@ class FrameClipboard implements BringsMedia {
   /// link instead」).
   LinkedPasteJoins? pasteLinkedFrameAtCurrentFrame({
     bool joinTakenNames = false,
+  }) => pasteLinkedAt(timelinePlace, joinTakenNames: joinTakenNames);
+
+  LinkedPasteJoins? pasteLinkedAt(
+    ClipboardPlace? place, {
+    bool joinTakenNames = false,
   }) {
-    final layer = _selection.activeLayer;
     final copiedFrame = _copiedFrame;
-    if (layer == null ||
-        copiedFrame == null ||
-        !canPasteLinkedFrameAtCurrentFrame) {
+    if (place == null || copiedFrame == null || !canPasteLinkedAt(place)) {
       return null;
     }
     if (!joinTakenNames) {
-      final joins = _joinsOf(_landingsOn(layer, copiedFrame));
+      final joins = _joinsOf(_landingsOn(place, copiedFrame));
       if (joins.isNotEmpty) {
         return joins;
       }
     }
-    _pasteRun(layer: layer, copied: copiedFrame, independent: false);
+    _pasteRun(place: place, copied: copiedFrame, independent: false);
     return null;
   }
 
@@ -670,12 +769,15 @@ class FrameClipboard implements BringsMedia {
   /// is no other reading that preserves what was copied — and the pairing
   /// stops when the board runs out, because a target with no row to receive
   /// has nothing to be given.
-  List<_PasteLanding> _landingsOn(Layer layer, _CopiedFrameReference copied) {
+  List<_PasteLanding> _landingsOn(
+    ClipboardPlace place,
+    _CopiedFrameReference copied,
+  ) {
     final board = copied.rows;
     final landings = <_PasteLanding>[];
     for (final (i, target) in [
-      layer,
-      ..._pasteTargetRowsBesides(layer),
+      place._row,
+      ..._pasteTargetRowsBesides(place),
     ].indexed) {
       if (board.length > 1 && i >= board.length) {
         break;
@@ -760,13 +862,14 @@ class FrameClipboard implements BringsMedia {
   /// row holds would pair a clip with another row's seat the moment the
   /// row was emptied between the copy and the paste. What a band does with
   /// a picture row is asked on the board (image-row-cut-paste-Q1).
-  List<Layer> _pasteTargetRowsBesides(Layer anchor) {
-    final selection = _selection.frameRangeSelection.value;
-    if (selection == null || !selection.coversLayer(anchor.id)) {
+  List<Layer> _pasteTargetRowsBesides(ClipboardPlace place) {
+    final band = place._band;
+    final anchor = place._row;
+    if (band == null || !band.covers(anchor.id)) {
       return const [];
     }
     final rows = <Layer>[];
-    for (final id in selection.spanLayerIds) {
+    for (final id in band.rows) {
       if (id == anchor.id) {
         continue;
       }
@@ -783,7 +886,7 @@ class FrameClipboard implements BringsMedia {
   }
 
   void _pasteRun({
-    required Layer layer,
+    required ClipboardPlace place,
     required _CopiedFrameReference copied,
     required bool independent,
   }) {
@@ -795,19 +898,17 @@ class FrameClipboard implements BringsMedia {
       copied,
       _project.repository.requireProject(),
     );
-    final run = spliceRunOnActiveRow();
+    final layer = place._row;
+    final run = _runAt(place);
     // ⛔A selection REPLACES what it covers; with none, nothing comes out.
     // 「뭘 선택하든 덮어써버리면 선택범위를 조절하는 의미가 통째로 사라지잖아」
-    final selection = _selection.frameRangeSelection.value;
-    final replacing = selection != null && selection.coversLayer(layer.id);
-    // F-115: with nothing selected the clip goes in at the playhead ON THE
-    // ROW'S OWN AXIS — a track-owned SE row keys the track's frames, and the
-    // cut-local index landed it on an earlier cut's.
-    final index = replacing
-        ? run!.index
-        : _controllers.timelineController.currentFrameIndex +
-              _project.rowAxisOffset(layer.id);
-    final liftCount = replacing ? run!.count : 0;
+    final band = place._band;
+    final replacing = band != null && band.covers(layer.id);
+    // F-115: with nothing selected the clip goes in at the cursor ON THE
+    // ROW'S OWN AXIS ([ClipboardPlace]) — a track-owned SE row keys the
+    // track's frames, and the cut-local index landed it on an earlier cut's.
+    final index = replacing ? run.index : place._index;
+    final liftCount = replacing ? run.count : 0;
 
     // 🚨결정 14 ③ⓐ (유저 확정 2026-08-22) — **THE CLIP LANDS ON EVERY SWEPT
     // ROW.**
@@ -840,7 +941,7 @@ class FrameClipboard implements BringsMedia {
     // linked or not, a block writes on the conte for itself.
     final handwritten =
         <(Map<String, String>, Map<String, BitmapSurface>)>[];
-    for (final landing in _landingsOn(layer, copied)) {
+    for (final landing in _landingsOn(place, copied)) {
       final target = landing.target;
       // ⚠️ONCE per row. The independent branch MINTS inside here, so asking
       // twice would coin two sets of cels and reference only one of them —
@@ -865,10 +966,10 @@ class FrameClipboard implements BringsMedia {
       }
       runs.add((
         layerId: target.id,
-        // Each row places the band's start on ITS OWN axis ([_rangeStartOn]):
-        // two rows swept together need not key the same frames — a
-        // track-owned SE row keys the track's.
-        index: replacing ? _rangeStartOn(target.id, selection) : index,
+        // Each row places the band's start on ITS OWN axis ([_band]): two
+        // rows swept together need not key the same frames — a track-owned
+        // SE row keys the track's.
+        index: replacing ? band.startOn(target.id) : index,
         liftCount: liftCount,
         clip: placed.clip,
         bornFrames: placed.born,
@@ -910,7 +1011,7 @@ class FrameClipboard implements BringsMedia {
       );
     }
     if (replacing) {
-      _selection.clearFrameRangeSelection();
+      band.clear();
     }
     _changes.notifyChanged();
   }
@@ -947,17 +1048,17 @@ class FrameClipboard implements BringsMedia {
     });
   }
 
-  /// WHERE a copy, cut or paste acts on the active row, in COMMIT keys.
+  /// WHERE a copy, cut or paste acts on [place]'s row, in COMMIT keys.
   ///
   /// ★The one place the two halves of 「N칸을 들어내고 클립을 넣는다」 get
   /// their N: a live selection says its own range, and with none the verb
-  /// means the block under the playhead. Copy, cut and paste all ask this,
+  /// means the block under the cursor. Copy, cut and paste all ask this,
   /// so they cannot disagree about what "the run" is — except that with
   /// nothing selected the BANK no longer asks: it holds one comma, a copy's
   /// (F-152) and a cut's (F-277) alike. The cut still asks it for what it
   /// LIFTS.
   ///
-  /// ⚠️The ROW is the active layer's alone. T3's multi-row anchoring
+  /// ⚠️The ROW is the place's alone. T3's multi-row anchoring
   /// (「선택의 첫 행을 현재 행에 맞춘다」) needs a rail-display-order source
   /// the session does not have — [TimelineController.spliceRunsForLayers]
   /// already takes a list so the extension is additive, but nothing here
@@ -965,34 +1066,20 @@ class FrameClipboard implements BringsMedia {
   ///
   /// 🚨F-115 — BOTH halves answer on the ROW'S OWN axis (유저 2026-09-12:
   /// 「지금 붙여넣기하면 기존 블럭이 이상하게 움직일뿐 붙여넣어지지않음」). A
-  /// selection's cells move by the row's axis offset ([_rangeStartOn]); with
-  /// nothing selected the controller answers from the row it edits
-  /// ([TimelineController.runAtPlayheadForLayer] — the block Delete takes from
-  /// the same press). The unselected half used to come off the cut-local
+  /// selection's cells start where the band says on that row ([_band]);
+  /// with nothing selected the controller answers from the row it edits
+  /// ([TimelineController.runAtForLayer] — the block Delete takes from the
+  /// same press). The unselected half used to come off the cut-local
   /// display clone, which on a track-owned SE row past the first cut read,
   /// lifted and inserted on an earlier cut's frames.
-  ({int index, int count})? spliceRunOnActiveRow() {
-    final layer = _selection.activeLayer;
-    if (layer == null) {
-      return null;
+  ({int index, int count}) _runAt(ClipboardPlace place) {
+    final row = place._row.id;
+    final band = place._band;
+    if (band != null && band.covers(row)) {
+      return (index: band.startOn(row), count: band.length);
     }
-    final selection = _selection.frameRangeSelection.value;
-    if (selection != null && selection.coversLayer(layer.id)) {
-      return (
-        index: _rangeStartOn(layer.id, selection),
-        count: selection.lengthFrames,
-      );
-    }
-    return _controllers.timelineController.runAtPlayheadForLayer(layer.id);
+    return _controllers.timelineController.runAtForLayer(row, place._index);
   }
-
-  /// Where [selection] starts on [layerId]'s own row. A selection is a run of
-  /// CELLS — 「the range means exactly its cells」 — so it moves by the row's
-  /// axis offset. ⛔Not `TrackSeDisplay.commitBlockStart`: that names the
-  /// BLOCK a display start stands for, and at 0 over a block spilling in from
-  /// an earlier cut it answered that block's start there (F-115).
-  int _rangeStartOn(LayerId layerId, TimelineFrameRangeSelection selection) =>
-      selection.startIndex + _project.rowAxisOffset(layerId);
 
   // --- 링크 독립 (I-45): the frame-axis rung ------------------------------
 
@@ -1218,6 +1305,78 @@ typedef _PasteLanding = ({
 ///   돌아가는것」).
 bool rowHoldsLinks(Layer layer) =>
     layer.kind.isDrawingCel && !isSyncedAttachedLayer(layer);
+
+/// WHERE a clipboard press acts: the row a panel's cursor stands on, where
+/// on that row's OWN axis, and THE selection.
+///
+/// 🗣️F-281 (유저 2026-10-04): 「se행의 복사,붙여넣기, 타임라인패널에선 되는데
+/// 콘티패널에선 se블록을 복사가 안됨. 로컬이든 글로벌이든 가능하도록 통일.
+/// 다른 로컬/글로벌 트랙 존재하는 행도 마찬가지 법 통일」.
+///
+/// ↩️The board read its place off the CUT's view — the active layer, the
+/// cut's playhead, the cut's band — so the timeline was the only panel that
+/// could press it. The storyboard stood on the very same sound, at the same
+/// frame, and every button of the four was dark; parked in a gap, with no
+/// cut to have an active layer, both panels' were (🧪measured 2026-10-06).
+/// The verbs take the place now, and a panel answers only where it stands
+/// ([FrameClipboard.timelinePlace] · [FrameClipboard.storyboardPlace]) — the
+/// comma's shape (F-283).
+///
+/// Opaque outside this file: a panel hands one on, it does not read it.
+class ClipboardPlace {
+  const ClipboardPlace._({
+    required Layer row,
+    required Frame? cel,
+    required int index,
+    required _ClipboardBand? band,
+  }) : _row = row,
+       _cel = cel,
+       _index = index,
+       _band = band;
+
+  final Layer _row;
+
+  /// The drawing the cursor's cell SHOWS — a hold's ghost included (F-140).
+  /// Null on an empty cell.
+  final Frame? _cel;
+
+  /// The cursor on [_row]'s own axis, in the keys its commit form stores.
+  final int _index;
+
+  final _ClipboardBand? _band;
+
+  /// Whether THE selection names rows this press would MISS — the law
+  /// [SelectionAccess.bandNamesRowsThisPressWouldMiss] states for the cut's
+  /// band, asked of whichever band is up.
+  bool get _bandMissesTheRow {
+    final band = _band;
+    return band != null && !band.covers(_row.id);
+  }
+}
+
+/// THE selection as the clipboard reads it ([FrameClipboard._band]).
+class _ClipboardBand {
+  const _ClipboardBand({
+    required this.rows,
+    required this.length,
+    required this.startOn,
+    required this.clear,
+  });
+
+  /// The cel rows it names, in the span's own order.
+  final List<LayerId> rows;
+
+  /// How many cells it covers on each.
+  final int length;
+
+  /// Where it starts on a row, on that row's OWN axis.
+  final int Function(LayerId row) startOn;
+
+  /// Lets the selection go — a cut's and a replacing paste's last step.
+  final void Function() clear;
+
+  bool covers(LayerId row) => rows.contains(row);
+}
 
 /// 🚨결정 14 ②ⓐ (유저 확정 2026-08-22) — ONE ROW OF THE CLIPBOARD.
 ///

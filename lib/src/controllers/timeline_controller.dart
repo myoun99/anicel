@@ -334,8 +334,8 @@ class TimelineController {
 
   bool canDeleteCellAt({required Layer layer, required int frameIndex}) =>
       _delete.canDeleteCellAt(layer: layer, frameIndex: frameIndex);
-  bool blockStandsAtPlayheadOn(LayerId layerId) =>
-      _delete.blockStandsAtPlayheadOn(layerId);
+  bool blockStandsOn(LayerId layerId, {required int at}) =>
+      _delete.blockStandsOn(layerId, at: at);
   void deleteCellForLayer({required LayerId layerId}) =>
       _delete.deleteCellForLayer(layerId: layerId);
   void deleteBlocksForLayer({
@@ -528,6 +528,8 @@ class TimelineController {
   }) => _paste.copyRunForLayer(layerId: layerId, index: index, count: count);
   ({int index, int count}) runAtPlayheadForLayer(LayerId layerId) =>
       _paste.runAtPlayheadForLayer(layerId);
+  ({int index, int count}) runAtForLayer(LayerId layerId, int index) =>
+      _paste.runAtForLayer(layerId, index);
 
   // --- The one splice ----------------------------------------------------------
 

@@ -2847,10 +2847,10 @@ class EditorSessionManager extends ChangeNotifier
   ///
   /// The ACTIVE-ROW verbs — X-here, the ● mark, the cell rename and
   /// 잘라내기 — all resolve against the active layer. A band covering that
-  /// row is served: 잘라내기 splices exactly the swept span
-  /// ([FrameClipboard.spliceRunOnActiveRow]), and the playhead verbs act on the row the
-  /// user highlighted. A band naming only OTHER rows is a different
-  /// statement, and acting on the active row then edits something the
+  /// row is served: 잘라내기 splices exactly the swept span (the clipboard
+  /// asks this of its own place — [ClipboardPlace]), and the playhead verbs
+  /// act on the row the user highlighted. A band naming only OTHER rows is a
+  /// different statement, and acting on the active row then edits something the
   /// user never swept while the highlight sits elsewhere explaining
   /// nothing — which for 잘라내기 means silently lifting a whole block.
   ///

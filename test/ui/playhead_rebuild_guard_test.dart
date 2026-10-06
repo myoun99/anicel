@@ -331,6 +331,45 @@ void main() {
     await drainWarming(tester);
   });
 
+  testWidgets('a band swept on the STORYBOARD refreshes it too — the same '
+      'claim on the track\'s axis, on a notifier of its own (F-281)', (
+    tester,
+  ) async {
+    final session = await pumpNotifyWrappedHost(tester);
+    Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
+
+    final row = session.layers
+        .firstWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(row);
+    session.selectFrameIndex(0);
+    session.createDrawingAtCurrentFrame();
+    await tester.pump();
+    expect(session.clipboard.canCutRunAtCurrentFrame, isTrue, reason: 'sanity');
+    final beforeBand = toolbar();
+
+    session.rangeSelections.updateTrackRowRangeSelectionByFrame(
+      layerId: session.activeTrack.seLayers.first.id,
+      anchorGlobalFrame: 0,
+      headGlobalFrame: 1,
+    );
+    await tester.pump();
+
+    expect(
+      session.clipboard.canCutRunAtCurrentFrame,
+      isFalse,
+      reason: 'sanity: the band names an S row, which this press would miss',
+    );
+    expect(
+      identical(toolbar(), beforeBand),
+      isFalse,
+      reason: 'the gates went dark with no seek, no stand and no notify — '
+          'only the track band\'s own notifier says so',
+    );
+
+    await drainWarming(tester);
+  });
+
   testWidgets('a section fold refreshes the toolbar (its flyout checkmarks '
       'read hiddenSections)', (tester) async {
     final session = EditorSessionManager(initialProject: createDefaultProject());

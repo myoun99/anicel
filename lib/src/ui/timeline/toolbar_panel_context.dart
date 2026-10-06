@@ -16,6 +16,7 @@ import '../editor_session_manager.dart';
 import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
+import '../session/frame_clipboard.dart' show ClipboardPlace;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 
@@ -177,19 +178,103 @@ extension ToolbarSharedPresses on ToolbarPanelContext {
       };
 }
 
-/// The cut timeline's context: the session's own verbs, verbatim. Every
-/// member is a one-line delegation on purpose — this panel's dispatch is
-/// the baseline B8 pins, so the wrapper must add nothing to it.
-class TimelineToolbarPanelContext implements ToolbarPanelContext {
-  const TimelineToolbarPanelContext(this.session, {this.waitIn});
-
-  final EditorSessionManager session;
+/// The clipboard's four buttons, said ONCE for both panels: a panel answers
+/// only WHERE its press stands ([clipboardPlace]), and the board's verbs
+/// take it from there ([ClipboardPlace]).
+///
+/// 🗣️F-281 (유저 2026-10-04): 「se행의 복사,붙여넣기, 타임라인패널에선 되는데
+/// 콘티패널에선 se블록을 복사가 안됨. 로컬이든 글로벌이든 가능하도록 통일」.
+/// ↩️The timeline pressed the session's cut-local verbs and the storyboard
+/// had none of its own — 「no global-axis clipboard exists to dispatch
+/// instead」 — so there the four sat dark over the very block the timeline
+/// copied.
+mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
+  EditorSessionManager get session;
 
   /// Where a paste that brings media from another project puts up its wait
   /// window ([pasteWithItsMedia]) — the widget the press came through.
   /// Without one (a test's context) the paste lands at once, recording no
   /// carried medium it has not held.
+  BuildContext? get waitIn;
+
+  /// Where this panel's clipboard press stands — null where it stands on
+  /// nothing the board serves.
+  ClipboardPlace? get clipboardPlace;
+
+  @override
+  bool get canCutRun => session.clipboard.canCutAt(clipboardPlace);
+
+  @override
+  void cutRun() => session.clipboard.cutAt(clipboardPlace);
+
+  @override
+  bool get canCopyFrame => session.clipboard.canCopyAt(clipboardPlace);
+
+  @override
+  void copyFrame() => session.clipboard.copyAt(clipboardPlace);
+
+  @override
+  bool get canPasteIndependentFrame =>
+      session.clipboard.canPasteIndependentAt(clipboardPlace);
+
+  @override
+  void pasteIndependentFrame() {
+    // The place is asked when the paste LANDS — after the wait, where one
+    // is held.
+    void paste() => session.clipboard.pasteIndependentAt(clipboardPlace);
+    final context = waitIn;
+    if (context == null) {
+      paste();
+      return;
+    }
+    unawaited(
+      pasteWithItsMedia(
+        context,
+        title: editorActionLabel(EditorActionIds.editPasteIndependent),
+        board: session.clipboard,
+        paste: paste,
+      ),
+    );
+  }
+
+  @override
+  bool get canPasteLinkedFrame =>
+      session.clipboard.canPasteLinkedAt(clipboardPlace);
+
+  /// On a row the copy was not taken from it links by NAME, and asks before
+  /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
+  /// With no window to ask in, such a paste stands down — the verb writes
+  /// nothing until it is told to join.
+  @override
+  void pasteLinkedFrame() {
+    final context = waitIn;
+    if (context == null) {
+      session.clipboard.pasteLinkedAt(clipboardPlace);
+      return;
+    }
+    unawaited(
+      pasteLinkedAskingFirst(context, session, place: () => clipboardPlace),
+    );
+  }
+}
+
+/// The cut timeline's context: the session's own verbs, verbatim. Every
+/// member is a one-line delegation on purpose — this panel's dispatch is
+/// the baseline B8 pins, so the wrapper must add nothing to it.
+class TimelineToolbarPanelContext
+    with _ClipboardAtThePanelsPlace
+    implements ToolbarPanelContext {
+  const TimelineToolbarPanelContext(this.session, {this.waitIn});
+
+  @override
+  final EditorSessionManager session;
+
+  @override
   final BuildContext? waitIn;
+
+  /// The cut's active row at the cut's playhead.
+  @override
+  ClipboardPlace? get clipboardPlace => session.clipboard.timelinePlace;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -253,56 +338,6 @@ class TimelineToolbarPanelContext implements ToolbarPanelContext {
   bool get canEditInstance =>
       session.cellInstances.editInstanceSubjectFor(cutsAreThisPanels: false) !=
       PillSubject.nothing;
-
-  @override
-  bool get canCutRun => session.clipboard.canCutRunAtCurrentFrame;
-
-  @override
-  void cutRun() => session.clipboard.cutRunAtCurrentFrame();
-
-  @override
-  bool get canCopyFrame => session.canCopyFrameAtCurrentFrame;
-
-  @override
-  void copyFrame() => session.copyFrameAtCurrentFrame();
-
-  @override
-  bool get canPasteIndependentFrame =>
-      session.canPasteIndependentFrameAtCurrentFrame;
-
-  @override
-  void pasteIndependentFrame() {
-    final context = waitIn;
-    if (context == null) {
-      session.pasteIndependentFrameAtCurrentFrame();
-      return;
-    }
-    unawaited(
-      pasteWithItsMedia(
-        context,
-        title: editorActionLabel(EditorActionIds.editPasteIndependent),
-        board: session.clipboard,
-        paste: session.pasteIndependentFrameAtCurrentFrame,
-      ),
-    );
-  }
-
-  @override
-  bool get canPasteLinkedFrame => session.canPasteLinkedFrameAtCurrentFrame;
-
-  /// On a row the copy was not taken from it links by NAME, and asks before
-  /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
-  /// With no window to ask in, such a paste stands down — the verb writes
-  /// nothing until it is told to join.
-  @override
-  void pasteLinkedFrame() {
-    final context = waitIn;
-    if (context == null) {
-      session.pasteLinkedFrameAtCurrentFrame();
-      return;
-    }
-    unawaited(pasteLinkedAskingFirst(context, session));
-  }
 
   @override
   PillSubject get deleteSubject =>
@@ -372,13 +407,15 @@ class StoryboardEditCellBand extends StoryboardEditTarget {
 /// ladders — and the selections this panel writes (the cut range, the S-row
 /// range, the strip's cut-local range, lane spans) are the same session
 /// objects, so those rungs delegate.
-class StoryboardToolbarPanelContext implements ToolbarPanelContext {
+class StoryboardToolbarPanelContext
+    with _ClipboardAtThePanelsPlace
+    implements ToolbarPanelContext {
   const StoryboardToolbarPanelContext(this.session, {this.waitIn});
 
+  @override
   final EditorSessionManager session;
 
-  /// Where a cell band's paste puts up its wait window — the timeline's own
-  /// ([TimelineToolbarPanelContext.waitIn]), handed on with the band.
+  @override
   final BuildContext? waitIn;
 
   /// The rail's ONE addable kind: an S row (track-owned SE). V tracks and
@@ -658,34 +695,20 @@ class StoryboardToolbarPanelContext implements ToolbarPanelContext {
   @override
   bool get canEditInstance => editTarget != null;
 
-  // The cell clipboard (cut / copy / the two pastes) addresses the active
-  // layer at the cut-local playhead — the timeline panel's noun; no
-  // global-axis clipboard exists to dispatch instead. ↩️A cell band is on
-  // that axis, so the timeline's clipboard answers it (F-186, [_cellBand]).
+  /// Where this panel's clipboard press stands: under a CELL band the
+  /// timeline's own place — the band is the timeline's, on its axis (F-186,
+  /// [_cellBand]) — and with none, the S row this rail stands on at the
+  /// track's playhead ([FrameClipboard.storyboardPlace], F-281).
+  ///
+  /// ↩️It read: 「The cell clipboard (cut / copy / the two pastes) addresses
+  /// the active layer at the cut-local playhead — the timeline panel's noun;
+  /// no global-axis clipboard exists to dispatch instead」, and with no cell
+  /// band the four answered false outright.
   @override
-  bool get canCutRun => _cellBand?.canCutRun ?? false;
-
-  @override
-  void cutRun() => _cellBand?.cutRun();
-
-  @override
-  bool get canCopyFrame => _cellBand?.canCopyFrame ?? false;
-
-  @override
-  void copyFrame() => _cellBand?.copyFrame();
-
-  @override
-  bool get canPasteIndependentFrame =>
-      _cellBand?.canPasteIndependentFrame ?? false;
-
-  @override
-  void pasteIndependentFrame() => _cellBand?.pasteIndependentFrame();
-
-  @override
-  bool get canPasteLinkedFrame => _cellBand?.canPasteLinkedFrame ?? false;
-
-  @override
-  void pasteLinkedFrame() => _cellBand?.pasteLinkedFrame();
+  ClipboardPlace? get clipboardPlace =>
+      session.cells.cellSelectionClaimsSubject
+      ? session.clipboard.timelinePlace
+      : session.clipboard.storyboardPlace;
 
   /// Delete's ladder, said of this panel: the cut selection (the session's
   /// own cuts rung), the selection-borne cell rungs (lane keys, selected

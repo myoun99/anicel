@@ -2,7 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'editor_session_manager.dart';
-import 'session/frame_clipboard.dart' show LinkedPasteJoins;
+import 'session/frame_clipboard.dart' show ClipboardPlace, LinkedPasteJoins;
 import 'text/app_strings.dart';
 import 'text/place_lines.dart' show drawingPlaceLines;
 
@@ -19,11 +19,15 @@ import 'text/place_lines.dart' show drawingPlaceLines;
 /// row's own frames the pasted blocks would show ([offerLink] — the
 /// rename's own guard). Link pastes joined to them, as one undo; Cancel
 /// writes nothing.
+///
+/// [place] is where the pressing panel stands ([ClipboardPlace]) — asked
+/// again when the answer comes, as the press itself would be.
 Future<void> pasteLinkedAskingFirst(
   BuildContext context,
-  EditorSessionManager session,
-) async {
-  final joins = session.clipboard.pasteLinkedFrameAtCurrentFrame();
+  EditorSessionManager session, {
+  required ClipboardPlace? Function() place,
+}) async {
+  final joins = session.clipboard.pasteLinkedAt(place());
   if (joins == null) {
     return;
   }
@@ -40,9 +44,8 @@ Future<void> pasteLinkedAskingFirst(
             row.held,
           ),
       ],
-      join: (_) => session.clipboard.pasteLinkedFrameAtCurrentFrame(
-        joinTakenNames: true,
-      ),
+      join: (_) =>
+          session.clipboard.pasteLinkedAt(place(), joinTakenNames: true),
       decline: null,
     ),
   );
