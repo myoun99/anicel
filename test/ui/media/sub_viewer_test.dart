@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
+import 'package:anicel/src/ui/media/viewer_sound.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -128,6 +129,33 @@ void main() {
     // And it is BESIDE the drawing, not instead of it — which is the
     // whole reason it exists.
     expect(_mainViewer(), findsNothing, reason: 'the floor still draws');
+  });
+
+  testWidgets('a viewer\'s level is held above its panel: folding the rail '
+      'away and back finds it where it was left (F-289)', (tester) async {
+    MediaViewerTabHost host() => tester.widget<MediaViewerTabHost>(
+      find.ancestor(
+        of: _subViewer(),
+        matching: find.byType(MediaViewerTabHost),
+      ),
+    );
+    await _pumpEditor(tester);
+    await _openSubViewer(tester);
+    final held = host().loudness;
+    expect(held, isNotNull, reason: 'the workspace hands the slot\'s level');
+    held!.value = const ViewerLoudness(level: 0.3, muted: true);
+
+    // The rail group folds away — the panel inside it is unmounted — and
+    // comes back as a new one.
+    await _openSubViewer(tester);
+    expect(_subViewer(), findsNothing, reason: 'fixture: folded away');
+    await _openSubViewer(tester);
+
+    expect(host().loudness, same(held));
+    expect(
+      host().loudness!.value,
+      const ViewerLoudness(level: 0.3, muted: true),
+    );
   });
 
   testWidgets('the row menu opens each viewer, and the two never share a '
