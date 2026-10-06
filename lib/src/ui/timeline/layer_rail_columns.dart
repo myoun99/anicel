@@ -101,6 +101,49 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
 IconData layerRailTwirlIcon({required bool expanded}) =>
     expanded ? Icons.arrow_drop_down : Icons.arrow_right;
 
+/// THE FOLD TWIRL of a row that holds rows under it — a folder's members,
+/// an attach base's attach rows (UI-R20 #9) — at the far edge of the row's
+/// name (F-29, 유저 2026-08-24: 「위치는 항상 고정으로 두고싶기때문에 레이어
+/// 이름영역의 오른쪽정렬로 고정」).
+///
+/// One button for every surface that lists the stack: the timeline's rail
+/// and the export window's list (F-289, 유저 2026-10-06: 「타임라인처럼
+/// 어태치레이어 펼치는 버튼 똑같이 통일해서 넣어서」).
+class LayerFoldTwirl extends StatelessWidget {
+  const LayerFoldTwirl({
+    super.key,
+    required this.keyValue,
+    required this.expanded,
+    required this.onToggle,
+    this.axis = Axis.horizontal,
+  });
+
+  final String keyValue;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Axis axis;
+
+  @override
+  Widget build(BuildContext context) => ControlPressClaim(
+    onPressed: onToggle,
+    child: InkWell(
+      key: ValueKey<String>(keyValue),
+      onTap: silentPress(onToggle),
+      // R26 #28
+      customBorder: const CircleBorder(),
+      child: alongBox(
+        axis,
+        layerLaneToggleSlotWidth,
+        child: acrossBox(
+          axis,
+          24,
+          child: Icon(layerRailTwirlIcon(expanded: expanded), size: 16),
+        ),
+      ),
+    ),
+  );
+}
+
 /// [depth] is the folder nesting level: it spends [depth] blank cells and
 /// then ONE more holding the ↳, so the row's whole leading cluster shifts
 /// by whole columns.

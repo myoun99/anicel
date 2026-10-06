@@ -751,26 +751,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   Widget? _foldTwirl() {
     if (!hasGroupFold || onToggleGroupFold == null) return null;
     final kind = layer.kind.groupsLayers ? 'folder' : 'attach';
-    return ControlPressClaim(
-      onPressed: () => onToggleGroupFold!(layer.id),
-      child: InkWell(
-        key: ValueKey<String>('$keyPrefix-$kind-twirl-${layer.id}'),
-        onTap: silentPress(() => onToggleGroupFold!(layer.id)),
-        // R26 #28
-        customBorder: const CircleBorder(),
-        child: alongBox(
-          axis,
-          layerLaneToggleSlotWidth,
-          child: acrossBox(
-            axis,
-            24,
-            child: Icon(
-              layerRailTwirlIcon(expanded: groupFoldExpanded),
-              size: 16,
-            ),
-          ),
-        ),
-      ),
+    return LayerFoldTwirl(
+      keyValue: '$keyPrefix-$kind-twirl-${layer.id}',
+      axis: axis,
+      expanded: groupFoldExpanded,
+      onToggle: () => onToggleGroupFold!(layer.id),
     );
   }
 

@@ -104,6 +104,7 @@ class BooleanDotButton extends StatelessWidget {
     required this.onChanged,
     required this.tooltip,
     this.inPickOneGroup = false,
+    this.size = AppIconButtonSize.bar,
   });
 
   final String keyValue;
@@ -117,16 +118,19 @@ class BooleanDotButton extends StatelessWidget {
   /// See [BooleanDot.inPickOneGroup].
   final bool inPickOneGroup;
 
+  /// 「크기는 알아서」 — the bar's size, unless the slot the button stands in
+  /// was promised a box of its own (a rail row's cell: [AppIconButtonBox]).
+  /// The dense one left with the export window's ring-only rows, which are
+  /// settings rows now (유저 09-24, 「설정 줄 하나로」).
+  final AppIconButtonMetrics size;
+
   @override
   Widget build(BuildContext context) {
     final changed = onChanged;
     return AppIconButton(
       keyValue: keyValue,
       tooltip: tooltip,
-      // 「크기는 알아서」 — the bar's size. The dense one left with the export
-      // window's ring-only rows, which are settings rows now (유저 09-24,
-      // 「설정 줄 하나로」).
-      size: AppIconButtonSize.bar,
+      size: size,
       icon: BooleanDot(
         value: value,
         inPickOneGroup: inPickOneGroup,
@@ -265,6 +269,7 @@ class BooleanMixDotButton extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.tooltip,
+    this.size = AppIconButtonSize.bar,
   });
 
   final String keyValue;
@@ -275,13 +280,16 @@ class BooleanMixDotButton extends StatelessWidget {
 
   final String tooltip;
 
+  /// See [BooleanDotButton.size].
+  final AppIconButtonMetrics size;
+
   @override
   Widget build(BuildContext context) {
     final changed = onChanged;
     return AppIconButton(
       keyValue: keyValue,
       tooltip: tooltip,
-      size: AppIconButtonSize.bar,
+      size: size,
       icon: BooleanMixDot(value: value, enabled: changed != null),
       onPressed: changed == null ? null : () => changed(value.pressTurnsOn),
     );
