@@ -65,6 +65,13 @@ class CutUnderPlayhead {
   /// The id of the cut [resolve] names, published when it changes.
   ValueListenable<CutId?> get listenable => _cutId;
 
+  final ValueNotifier<String> _cutName = ValueNotifier<String>('');
+
+  /// The NAME of the cut [resolve] names, empty where it names none (a gap),
+  /// published when it changes: at a crossing, played or scrubbed over, and
+  /// at a rename.
+  ValueListenable<String> get cutName => _cutName;
+
   CutUnderPlayheadPosition? resolve() {
     if (_playing) {
       final position = _playbackRig.playback.position;
@@ -153,9 +160,13 @@ class CutUnderPlayhead {
     _start = at?.startFrame ?? 0;
     _end = at == null ? -1 : at.startFrame + at.cut.duration;
     _cutId.value = at?.cut.id;
+    _cutName.value = at?.cut.name ?? '';
   }
 
-  void dispose() => _cutId.dispose();
+  void dispose() {
+    _cutId.dispose();
+    _cutName.dispose();
+  }
 
   bool get _playing =>
       _playbackRig.playback.globalFrameIndexListenable.value != null;

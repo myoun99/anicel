@@ -446,7 +446,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-          cutName: _session.activeCutOrNull?.name ?? '',
+          cutName: _session.cutUnderPlayhead.cutName,
           trailing: null,
         ),
         () => TimelineViewCluster(
@@ -454,7 +454,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           // Global · cut-local pair (UI-R9 #6) — the channel already
           // follows scrubs, gap parking and playback ticks.
           globalFrame: _session.playheadCursors.trackFrame,
-          cutName: _session.activeCutOrNull?.name ?? '',
+          cutName: _session.cutUnderPlayhead.cutName,
           projectFrameRate: _session.projectSettings.projectFrameRate,
           showSeconds: widget.showSeconds,
           pixelsPerFrame: widget.pixelsPerFrame,

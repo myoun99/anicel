@@ -537,7 +537,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
-            cutName: _session.activeCutOrNull?.name ?? '',
+            cutName: _session.cutUnderPlayhead.cutName,
             // #29: the (project, cut) world the rows' resolvers answer
             // from. Travels WITH the rebuild that carries the new cut's
             // rows — a setter could skew from what is on screen; a build

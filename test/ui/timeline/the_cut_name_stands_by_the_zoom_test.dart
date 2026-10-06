@@ -84,5 +84,82 @@ void main() {
       await tester.pumpAndSettle();
       expect(shown(), 'Chase', reason: 'the name follows the cut');
     });
+
+    // 🗣️I-57, after seeing it (유저 2026-10-01): 「스크럽중에도 통일해서
+    // 컷이름 갱신되게. 컷 실제로 바뀔때 한번」. ↩️The name was the ACTIVE
+    // cut's, and a scrub leaves the active cut alone on purpose (UI-R7 #9) —
+    // so it named the cut being left until the release. It names the cut
+    // UNDER THE PLAYHEAD now, the answer the sheet turns over by (F-90).
+    testWidgets('a scrub over another cut names it — once, at the crossing '
+        '— on the ${storyboard ? 'storyboard' : 'timeline'}', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: HomePage(initialProject: project()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      if (storyboard) {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+        );
+        await tester.pumpAndSettle();
+      }
+      final session = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      String shown() => tester.widget<Text>(find.byKey(name)).data!;
+      session.selectCut(const CutId('cut-a'));
+      await tester.pumpAndSettle();
+      expect(shown(), 'Opening', reason: '⛔전제');
+      var told = 0;
+      void count() => told += 1;
+      session.cutUnderPlayhead.cutName.addListener(count);
+      addTearDown(
+        () => session.cutUnderPlayhead.cutName.removeListener(count),
+      );
+
+      // Cut A is frames [0, 24) of the track; these are all inside cut B.
+      for (final frame in [26, 27, 30, 31]) {
+        session.frameScrub.scrubGlobalFrame(frame);
+        await tester.pump();
+      }
+      expect(session.frameScrub.active.value, isTrue, reason: '⛔전제: live');
+      expect(
+        session.activeCutId,
+        const CutId('cut-a'),
+        reason: '⛔전제: the scrub left the active cut alone',
+      );
+      expect(shown(), 'Chase');
+      expect(told, 1, reason: '「컷 실제로 바뀔때 한번」 — not once per frame');
+
+      session.frameScrub.commitFrameScrub();
+      await tester.pumpAndSettle();
+      expect(shown(), 'Chase', reason: 'the release lands where it showed');
+    });
   }
+
+  testWidgets('a rename of the cut reaches the name', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: HomePage(initialProject: project()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.selectCut(const CutId('cut-a'));
+    await tester.pumpAndSettle();
+
+    session.cutVerbs.renameCuts({const CutId('cut-a'): 'Prologue'});
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<Text>(find.byKey(name)).data, 'Prologue');
+  });
 }

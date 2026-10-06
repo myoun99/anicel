@@ -29,7 +29,7 @@ typedef TimelineViewClusterFacts = ({
   bool showSeconds,
   double pixelsPerFrame,
   ValueChanged<double>? onPixelsPerFrameChanged,
-  String cutName,
+  ValueListenable<String> cutName,
   Object? trailing,
 });
 
@@ -54,7 +54,7 @@ class TimelineViewCluster extends StatelessWidget {
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.globalFrame,
-    this.cutName = '',
+    this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.trailing = const <Widget>[],
   });
 
@@ -75,7 +75,7 @@ class TimelineViewCluster extends StatelessWidget {
   /// 동일하게. 타임라인 줌의 마이너스버튼 왼쪽. 즉 로컬/글로벌 인덱스를
   /// 왼쪽에 두고, 그 사이에 컷이름」) — between the counter and the zoom's −
   /// button, on both panels, because both mount this one bar.
-  final String cutName;
+  final ValueListenable<String> cutName;
 
   /// How wide the cut's name may grow before it is cut short, at 1×.
   static const double _cutNameMaxWidth = 160;
@@ -211,15 +211,18 @@ class TimelineViewCluster extends StatelessWidget {
         // what changes.
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: _cutNameMaxWidth),
-          child: Text(
-            cutName,
-            key: const ValueKey<String>('timeline-cut-name'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface,
+          child: ValueListenableBuilder<String>(
+            valueListenable: cutName,
+            builder: (context, name, _) => Text(
+              name,
+              key: const ValueKey<String>('timeline-cut-name'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ),
