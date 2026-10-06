@@ -5,9 +5,11 @@ import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/input/raw_pen_input_service.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart' show LayerPlacement;
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -20,6 +22,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/device_viewport.dart';
+import '../helpers/placement_reading.dart';
 
 /// 🚨★★★**WHAT A MAPPED BUTTON DOES THAT IS NOT DRAWING ANSWERS UNDER
 /// EVERY TOOL, WITH OR WITHOUT A CEL** (F-299, 유저 2026-10-05: 「어떤 도구
@@ -410,6 +413,169 @@ void main() {
       await shell.contactLifts(tester, const Offset(20, 60));
       expect(shell.tool, CanvasTool.select);
     });
+
+    testWidgets('🚨the door is for a press that ERASES: a plain press of the '
+        'eyedropper in hand picks, and nothing is drawn under it', (
+      tester,
+    ) async {
+      final shell = await _Shell.pump(tester, tool: CanvasTool.eyedropper);
+      const mouse = PointerDeviceKind.mouse;
+      await shell.contact(
+        tester,
+        const Offset(20, 30),
+        buttons: kPrimaryButton,
+        kind: mouse,
+      );
+      await shell.contactMoves(
+        tester,
+        const Offset(60, 30),
+        buttons: kPrimaryButton,
+        kind: mouse,
+      );
+      await shell.contactLifts(tester, const Offset(60, 30), kind: mouse);
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(shell.picked, isNotEmpty, reason: '⛔premise: the pick');
+      expect(shell.drewSomething, isFalse);
+      expect(shell.holds, isEmpty);
+    });
+
+    testWidgets('🚨a handed press lands where the pointer is on a row that '
+        'is POSED: it comes into the view through the wrap its own presses '
+        'come through', (tester) async {
+      AppInput.settings.value = eraserOnTheBarrel;
+      const size = BrushCanvasFixture.canvasSize;
+      // The row is shown 40 right and 20 down of where it is drawn.
+      final shell = await _Shell.pump(
+        tester,
+        tool: CanvasTool.brush,
+        pose: placedBy(
+          TransformPose(
+            center: CanvasPoint(
+              x: size.width / 2 + 40,
+              y: size.height / 2 + 20,
+            ),
+          ),
+          size,
+        ),
+      );
+      const mouse = PointerDeviceKind.mouse;
+      // A line on screen at (80…120, 60): the artwork's (40…80, 40).
+      await shell.contact(
+        tester,
+        const Offset(80, 60),
+        buttons: kPrimaryButton,
+        kind: mouse,
+      );
+      await shell.contactMoves(
+        tester,
+        const Offset(120, 60),
+        buttons: kPrimaryButton,
+        kind: mouse,
+      );
+      await shell.contactLifts(tester, const Offset(120, 60), kind: mouse);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(shell.inkAt(60, 40), 255, reason: '⛔premise: drawn posed');
+      expect(shell.inkAt(100, 60), 0, reason: '⛔premise: and not unposed');
+      shell.take(CanvasTool.select);
+      await tester.pump();
+
+      final right = await tester.startGesture(
+        shell.at(const Offset(80, 60)),
+        kind: mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await tester.pump();
+      await right.moveTo(shell.at(const Offset(120, 60)));
+      await tester.pump();
+      await right.up();
+      await tester.pump();
+
+      expect(shell.inkAt(60, 40), 0, reason: 'erased where the hand was');
+    });
+
+    testWidgets('🚨a pen turned over under a held ERASER button does not '
+        'take the tool from under it', (tester) async {
+      AppInput.settings.value = eraserOnTheBarrel;
+      final shell = await _Shell.inked(tester, tool: CanvasTool.brush);
+
+      final right = await tester.startGesture(
+        shell.at(const Offset(20, 30)),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await tester.pump();
+      expect(shell.holds, [CanvasTool.eraser], reason: '⛔premise: the button');
+
+      // A pen comes over the canvas turned tail-down while the mouse erases.
+      final raw = _rawPen();
+      raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+      await shell.hover(tester, const Offset(80, 80), buttons: 0);
+      expect(shell.holds, [CanvasTool.eraser], reason: 'no second hold');
+
+      await right.up();
+      await tester.pump();
+      expect(shell.releases, [false]);
+      raw.debugReset();
+    });
+
+    testWidgets('🚨once the eraser button lets go, the tail takes the tool '
+        'again', (tester) async {
+      AppInput.settings.value = eraserOnTheBarrel;
+      final shell = await _Shell.inked(tester, tool: CanvasTool.brush);
+
+      final right = await tester.startGesture(
+        shell.at(const Offset(20, 30)),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryMouseButton,
+      );
+      await tester.pump();
+      await right.up();
+      await tester.pump();
+      expect(shell.releases, [false], reason: '⛔premise: it let go');
+
+      final raw = _rawPen();
+      raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+      await shell.hover(tester, const Offset(40, 60), buttons: 0);
+      expect(shell.tool, CanvasTool.eraser, reason: 'the flip');
+      expect(shell.holds, [CanvasTool.eraser, CanvasTool.eraser]);
+      raw.debugReset();
+    });
+
+    for (final tool in [CanvasTool.brush, CanvasTool.select]) {
+      testWidgets('🚨a tail mapped to the PICK picks, and erases nothing '
+          '(with the ${tool.name} in hand)', (tester) async {
+        AppInput.settings.value = const AppInputSettings(
+          canvasPenTail: CanvasPointerMapping(
+            action: CanvasPointerAction.eyedropper,
+          ),
+        );
+        final shell = await _Shell.inked(tester, tool: tool);
+        final raw = _rawPen();
+
+        raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+        await shell.hover(tester, const Offset(20, 30), buttons: 0);
+        expect(shell.tool, CanvasTool.eyedropper, reason: 'the flip');
+        raw.debugInjectState(
+          const QaPenRawState(flags: 0x08 | 0x04, sequence: 2),
+        );
+        await shell.contact(
+          tester,
+          const Offset(20, 30),
+          buttons: kPrimaryButton,
+        );
+        await shell.contactMoves(
+          tester,
+          const Offset(60, 30),
+          buttons: kPrimaryButton,
+        );
+        await shell.contactLifts(tester, const Offset(60, 30));
+
+        expect(shell.inkAt(40, 30), 255, reason: 'nothing erased');
+        expect(shell.picked, isNotEmpty, reason: 'it picked');
+        raw.debugReset();
+      });
+    }
 
     testWidgets('🚨a marquee being dragged is not taken from under the hand '
         'by a barrel that goes down in the middle of it', (tester) async {
@@ -1160,6 +1326,7 @@ class _Shell {
     required CanvasTool tool,
     _Ground ground = _Ground.cel,
     bool toolInput = true,
+    LayerPlacement? pose,
     Widget Function(BuildContext context, CanvasViewport viewport)? controls,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
@@ -1191,6 +1358,7 @@ class _Shell {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             brushToolState: brush,
             selectionCommands: shell.selection,
+            interactiveContentPose: pose,
             onPressNeedsCel: () {
               shell.cellAsks += 1;
               return false;
