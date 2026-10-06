@@ -12,8 +12,9 @@ import 'dart:io';
 /// 🚨**IT IS NOT ONLY SETTINGS, and this doc used to claim「never project
 /// data」.** What actually lives here today:
 ///
-/// • `Settings/` — fifteen settings files and `brush_tips/`, the user's
-///   own tip images. See [appSettingsFilePath].
+/// • `Settings/` — fifteen settings files, `brush_tips/`, the user's
+///   own tip images, and `fonts/`, the font files they brought. See
+///   [appSettingsFilePath].
 /// • `Sessions/<run>/` — **one room per RUN of the app**, holding staged
 ///   media and conforms on their way into the next save, and volatile
 ///   payloads that die with the run. See [SessionScratch].
@@ -98,6 +99,7 @@ const List<String> appSettingsEntries = <String>[
   'brush_tips',
   'color_palette.json',
   'export_settings.json',
+  'fonts',
   'frame_count_settings.json',
   'frame_grid_settings.json',
   'input_settings.json',
