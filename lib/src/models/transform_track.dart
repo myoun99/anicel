@@ -212,14 +212,9 @@ class TransformTrack {
         json['position'] as List?,
         (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
       ),
-      // ↩️One number through format 5 — the same scale along both axes,
-      // which is what it still means when a file holds one.
       scale: PropertyTrack.fromJson(
         json['scale'] as List?,
-        (value) => switch (value) {
-          final num both => uniformScale(both.toDouble()),
-          _ => CanvasPoint.fromJson(value! as Map<String, dynamic>),
-        },
+        (value) => CanvasPoint.fromJson(value! as Map<String, dynamic>),
       ),
       rotation: PropertyTrack.fromJson(
         json['rotation'] as List?,

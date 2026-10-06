@@ -71,9 +71,14 @@ String projectDisplayName(String path) {
 /// (`TransformTrack.toJson` — a layer's `transform`, a cut's `camera`). A
 /// v5 build casts that value to a number and fails the open on the cast,
 /// naming nothing a person could act on, so the bump refuses the file up
-/// front instead, as a newer Anicel's ([decodeAnicelProjectDocument]). v5
-/// files open here unchanged: one number is read as that scale along both
-/// axes (`TransformTrack.fromJson`).
+/// front instead, as a newer Anicel's ([decodeAnicelProjectDocument]).
+///
+/// ⛔An older file whose tracks key a scale is NOT read here (🗣️유저
+/// 2026-10-06: 「옛파일 읽는코드는 필요없다고 확신했어」 — the save law). One
+/// that has to open is carried over by hand when it is asked for, and this
+/// is what to carry: each scale key's number `n` becomes `{x: n, y: n}`.
+/// ↩️The round's first commit read the one number as both axes; that reader
+/// went the same day, with the pin beside it.
 ///
 /// v5 (2026-10-06, the text tool — R9-rest): a cel's entry carries the
 /// TEXTS set on its picture after its tiles (cel stream v3,

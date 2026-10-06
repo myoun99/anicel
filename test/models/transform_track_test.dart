@@ -263,20 +263,6 @@ void main() {
       expect(TransformTrack.fromJson(json), track);
     });
 
-    // ↩️Until format 6 a file held one number: the same scale along both.
-    test('ONE number in a file is that scale along both axes', () {
-      final track = TransformTrack.fromJson({
-        'scale': [
-          {'index': 4, 'value': 1.5, 'interpolation': 'hold', 'name': 'A'},
-        ],
-      });
-
-      final key = track.scale.keyAt(4)!;
-      expect(key.value, uniformScale(1.5));
-      expect(key.interpolation, PropertyKeyInterpolation.hold);
-      expect(key.name, 'A');
-    });
-
     test('pose-facade writes stay synchronized (camera compatibility)', () {
       final track = TransformTrack.empty()
           .withKeyframe(4, _pose(10, zoom: 2, rotation: 30))
