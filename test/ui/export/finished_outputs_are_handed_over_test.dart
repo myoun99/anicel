@@ -29,6 +29,7 @@ import 'package:anicel/src/ui/export/video_export_service.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 import 'fake_ffmpeg_process.dart';
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -509,6 +510,16 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
       await tester.pump();
+      expect(orderLine(tester), AppText.strings.exOrderAsksAfter);
+    });
+
+    testWidgets('the COUNT decides, not the format: stills trimmed to one '
+        'frame are one file, and Android asks afterwards', (tester) async {
+      await open(tester, 'android');
+      await pickPngSequence(tester);
+      expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
+
+      await tester.typeExportRange(inFrame: '2');
       expect(orderLine(tester), AppText.strings.exOrderAsksAfter);
     });
   });

@@ -24,6 +24,7 @@ const _panels = <String, List<String>>{
   // left is the real empty state, the one that says nothing is held yet.
   'lib/src/ui/brush/tool_settings_panel.dart': ['list'],
   'lib/src/ui/export/export_preset_rail.dart': ['list'],
+  'lib/src/ui/export/export_preview_panel.dart': ['stage'],
   'lib/src/ui/export/export_queue_column.dart': ['list'],
   'lib/src/ui/media/media_pool_panel.dart': ['list'],
   'lib/src/ui/media/media_viewer_tab_host.dart': ['stage'],

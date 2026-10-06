@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,13 +27,25 @@ import '../../helpers/export_preview_probe.dart';
 /// The panel alone, over documents made here: what it wears, the pixels it
 /// asks a page at, the picture it keeps up while another is on its way, and
 /// its run.
+///
+/// ⚠️A page lands when the TEST says so ([land]): a render left to the
+/// raster's own timing lands between two pumps or does not, and every
+/// 「still the last picture」 below would be measuring that.
 void main() {
   late EditorSessionManager session;
   late ValueNotifier<int> at;
 
+  /// Every ask made of the documents below, in order.
+  final asks = <(int page, CanvasSize size)>[];
+
+  /// The asks nothing has answered yet.
+  final pending = <({int page, CanvasSize size, Completer<ui.Image?> answer})>[];
+
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
     at = ValueNotifier<int>(0);
+    asks.clear();
+    pending.clear();
   });
   tearDown(() {
     at.dispose();
@@ -43,8 +56,7 @@ void main() {
   const transport = ValueKey<String>('canvas-transport');
   const strip = ValueKey<String>('canvas-page-strip');
 
-  /// A document of [pages] pages, each a flat picture of its own grey —
-  /// every ask of it written down in [asks].
+  /// A document of [pages] pages whose renders wait for [land].
   ExportPreviewDocument document({
     Object subject = 'file',
     Object look = 'plain',
@@ -52,7 +64,6 @@ void main() {
     int pages = 4,
     CanvasSize size = small,
     bool opensAlpha = false,
-    List<(int page, CanvasSize size)>? asks,
   }) => ExportPreviewDocument(
     subject: subject,
     look: look,
@@ -61,16 +72,11 @@ void main() {
     framesPerSecond: shape == ExportPreviewShape.runs ? 24 : null,
     opensAlpha: opensAlpha,
     sizeOf: (_) => size,
-    renderAt: (page, at) {
-      asks?.add((page, at));
-      return rasterizeOffscreen(
-        width: at.width,
-        height: at.height,
-        paint: (canvas) => canvas.drawColor(
-          Color.fromARGB(255, 40 + page * 40, 0, 0),
-          BlendMode.src,
-        ),
-      );
+    renderAt: (page, size) {
+      asks.add((page, size));
+      final answer = Completer<ui.Image?>();
+      pending.add((page: page, size: size, answer: answer));
+      return answer.future;
     },
   );
 
@@ -113,13 +119,36 @@ void main() {
     await tester.pump();
   }
 
-  /// Stands on [page] and waits for its picture.
+  /// Answers what is out, oldest first, each with a picture of its own, and
+  /// draws what lands — until nothing is out.
+  Future<void> land(WidgetTester tester) async {
+    while (pending.isNotEmpty) {
+      final ask = pending.removeAt(0);
+      final picture = await tester.runAsync(
+        () => rasterizeOffscreen(
+          width: ask.size.width,
+          height: ask.size.height,
+          paint: (canvas) => canvas.drawColor(
+            Color.fromARGB(255, 40 + ask.page * 40, 0, 0),
+            BlendMode.src,
+          ),
+        ),
+      );
+      ask.answer.complete(picture);
+      await tester.pump();
+      await tester.pump();
+    }
+  }
+
+  /// Stands on [page] and lands its picture.
   Future<ui.Image> landed(WidgetTester tester, int page) async {
     at.value = page;
     await tester.pump();
-    await tester.settleExportPreview();
+    await land(tester);
     return tester.exportPreviewImage!;
   }
+
+  List<int> pagesAsked() => [for (final (page, _) in asks) page];
 
   ViewportPagesPainter painter(WidgetTester tester) =>
       tester
@@ -210,7 +239,8 @@ void main() {
         findsNothing,
       );
       expect(
-        tester.widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+        tester
+            .widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
             .hasContentToView,
         isFalse,
       );
@@ -228,8 +258,7 @@ void main() {
   group('the pixels a page is asked at', () {
     testWidgets('🚨never more than the file has: a small file fitted large is '
         'asked at its own pixels', (tester) async {
-      final asks = <(int, CanvasSize)>[];
-      await pump(tester, document(asks: asks));
+      await pump(tester, document());
       expect(
         painter(tester).viewport.zoom * painter(tester).effectiveRatio,
         greaterThan(1),
@@ -242,8 +271,7 @@ void main() {
         'pixels the view draws — the viewer\'s ladder, never less than is '
         'drawn', (tester) async {
       const large = CanvasSize(width: 4000, height: 3000);
-      final asks = <(int, CanvasSize)>[];
-      await pump(tester, document(size: large, asks: asks));
+      await pump(tester, document(size: large));
       final shown = painter(tester);
       final coverage = shown.viewport.zoom * shown.effectiveRatio;
       expect(coverage, lessThan(0.5), reason: 'LIVENESS — the fit reduces it');
@@ -271,20 +299,19 @@ void main() {
   group('the picture that is up', () {
     testWidgets('one ask is out at a time, and it is the latest: frames a '
         'hand passes are not rendered', (tester) async {
-      final asks = <(int, CanvasSize)>[];
-      await pump(tester, document(asks: asks));
+      await pump(tester, document());
       for (final page in [1, 2, 3]) {
         at.value = page;
         await tester.pump();
       }
       expect(
-        [for (final (page, _) in asks) page],
+        pagesAsked(),
         [0],
         reason: 'the first ask has not answered, and nothing queues behind it',
       );
 
-      await tester.settleExportPreview();
-      expect([for (final (page, _) in asks) page], [0, 3]);
+      await land(tester);
+      expect(pagesAsked(), [0, 3]);
     });
 
     testWidgets('🚨a hand on the track: the last picture drawn stays up until '
@@ -301,39 +328,56 @@ void main() {
         reason: 'it went blank between frames',
       );
 
-      await tester.settleExportPreview();
+      await land(tester);
       expect(identical(tester.exportPreviewImage, first), isFalse);
       // A frame already drawn is there the moment it is turned back to.
       at.value = 0;
       await tester.pump();
       expect(identical(tester.exportPreviewImage, first), isTrue);
+      expect(pending, isEmpty, reason: 'and nothing is asked for it again');
     });
 
     testWidgets('🚨a setting that changes the LOOK keeps the picture up until '
         'the new one lands — through a second change too', (tester) async {
-      final asks = <(int, CanvasSize)>[];
-      await pump(tester, document(look: 'a', asks: asks));
+      await pump(tester, document(look: 'a'));
       final first = await landed(tester, 0);
       asks.clear();
 
-      await pump(tester, document(look: 'b', asks: asks));
+      await pump(tester, document(look: 'b'));
       expect(identical(tester.exportPreviewImage, first), isTrue);
       expect(asks, hasLength(1), reason: 'the page is owed a new render');
 
-      await pump(tester, document(look: 'c', asks: asks));
+      await pump(tester, document(look: 'c'));
       expect(identical(tester.exportPreviewImage, first), isTrue);
 
-      await tester.settleExportPreview();
+      await land(tester);
       expect(identical(tester.exportPreviewImage, first), isFalse);
       expect(tester.exportPreviewImage, isNotNull);
     });
 
+    testWidgets('after a change of look every page is owed a new render — a '
+        'page drawn in the old look is not what a turn to it shows', (
+      tester,
+    ) async {
+      await pump(tester, document(look: 'a'));
+      final second = await landed(tester, 1);
+      await landed(tester, 0);
+
+      await pump(tester, document(look: 'b'));
+      await land(tester);
+      asks.clear();
+      at.value = 1;
+      await tester.pump();
+
+      expect(identical(tester.exportPreviewImage, second), isFalse);
+      expect(pagesAsked(), [1]);
+    });
+
     testWidgets('a look kept is nothing asked again', (tester) async {
-      final asks = <(int, CanvasSize)>[];
-      await pump(tester, document(look: ('a', 1), asks: asks));
+      await pump(tester, document(look: ('a', 1)));
       await landed(tester, 0);
       asks.clear();
-      await pump(tester, document(look: ('a', 1), asks: asks));
+      await pump(tester, document(look: ('a', 1)));
       expect(asks, isEmpty);
     });
 
@@ -344,7 +388,7 @@ void main() {
 
       await pump(tester, document(subject: 'image'));
       expect(tester.exportPreviewImage, isNull);
-      await tester.settleExportPreview();
+      await land(tester);
       expect(tester.exportPreviewImage, isNotNull);
 
       await pump(
@@ -404,6 +448,20 @@ void main() {
       expect(tester.exportTransport.playing, isTrue);
       expect(at.value, 0, reason: 'it walked past a frame that is not there');
       await pressPlay(tester);
+      expect(tester.exportTransport.playing, isFalse);
+    });
+
+    testWidgets('a run stops when the document becomes another', (
+      tester,
+    ) async {
+      await pump(tester, document(pages: 3));
+      for (final page in [1, 0]) {
+        await landed(tester, page);
+      }
+      await pressPlay(tester);
+      expect(tester.exportTransport.playing, isTrue);
+
+      await pump(tester, document(subject: 'another', pages: 3));
       expect(tester.exportTransport.playing, isFalse);
     });
 

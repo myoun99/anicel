@@ -18,17 +18,18 @@ void main() {
     return recorder.endRecording().toImage(side, side);
   }
 
-  /// What the painter draws on a 16×16 box, as straight RGBA.
+  /// What the painter draws of one page on a 16×16 box, as straight RGBA.
   Future<Uint8List> painted(
     WidgetTester tester, {
     required ViewportPageGround ground,
+    Rect page = const Rect.fromLTWH(0, 0, 12, 12),
     ui.Image? image,
     double zoom = 1,
   }) async {
     final bytes = await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       ViewportPagesPainter(
-        pages: [(rect: const Rect.fromLTWH(0, 0, 4, 4), image: image)],
+        pages: [(rect: page, image: image)],
         ground: ground,
         viewport: CanvasViewport(zoom: zoom),
         effectiveRatio: 1,
@@ -53,16 +54,15 @@ void main() {
 
     final paper = await painted(tester, ground: ViewportPageGround.paper);
     expect(pixel(paper, 1, 1), [255, 255, 255, 255]);
-    expect(pixel(paper, 8, 8), [0, 0, 0, 0], reason: 'outside the page');
+    expect(pixel(paper, 9, 1), [255, 255, 255, 255]);
+    expect(pixel(paper, 14, 14), [0, 0, 0, 0], reason: 'outside the page');
 
+    // The canvas's own checker: cells of eight, white and grey.
     final checker = await painted(tester, ground: ViewportPageGround.checker);
-    expect(pixel(checker, 1, 1)[3], 255, reason: 'the checker is opaque');
-    expect(pixel(checker, 8, 8), [0, 0, 0, 0], reason: 'outside the page');
-    expect(
-      checker,
-      isNot(paper),
-      reason: 'a checker, not a sheet of white paper',
-    );
+    expect(pixel(checker, 1, 1), [255, 255, 255, 255]);
+    expect(pixel(checker, 9, 1), [204, 204, 204, 255]);
+    expect(pixel(checker, 9, 9), [255, 255, 255, 255]);
+    expect(pixel(checker, 14, 14), [0, 0, 0, 0], reason: 'outside the page');
   });
 
   testWidgets('a raster is drawn INTO its page\'s rect, through the view', (
@@ -71,9 +71,11 @@ void main() {
     final red = await tester.runAsync(() => flat(const Color(0xFFFF0000), 2));
     addTearDown(red!.dispose);
 
+    const page = Rect.fromLTWH(0, 0, 4, 4);
     final atOne = await painted(
       tester,
       ground: ViewportPageGround.none,
+      page: page,
       image: red,
     );
     expect(pixel(atOne, 2, 2), [255, 0, 0, 255]);
@@ -82,6 +84,7 @@ void main() {
     final atTwo = await painted(
       tester,
       ground: ViewportPageGround.none,
+      page: page,
       image: red,
       zoom: 2,
     );

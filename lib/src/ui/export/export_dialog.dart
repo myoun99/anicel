@@ -81,6 +81,7 @@ import '../timesheet/timesheet_document_painter.dart'
 import '../timesheet/cut_sheet_document.dart';
 import '../timesheet/timesheet_ink_layer.dart' show timesheetInkWindows;
 import '../timesheet/timesheet_words_in.dart';
+import '../widgets/app_tooltip.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/folder_pick_flow.dart';
@@ -2724,31 +2725,55 @@ class ExportDialogState extends State<ExportDialog> {
   Widget _footerBetween(ThemeData theme) {
     final strings = AppText.strings;
     final progress = _progress;
-    return Row(
-      children: [
-        Expanded(
-          child: _isExporting
-              ? LinearProgressIndicator(
-                  key: const ValueKey<String>('export-progress'),
-                  value: progress != null && progress.$2 > 0
-                      ? progress.$1 / progress.$2
-                      : null,
-                  minHeight: 4,
-                )
-              : _statusNote(theme),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          _asksWhereFirst ? strings.exOrderAsksFirst : strings.exOrderAsksAfter,
-          key: const ValueKey<String>('export-order-line'),
-          maxLines: 1,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+    final order = _asksWhereFirst
+        ? strings.exOrderAsksFirst
+        : strings.exOrderAsksAfter;
+    return LayoutBuilder(
+      builder: (context, room) => Row(
+        children: [
+          Expanded(
+            child: _isExporting
+                ? LinearProgressIndicator(
+                    key: const ValueKey<String>('export-progress'),
+                    value: progress != null && progress.$2 > 0
+                        ? progress.$1 / progress.$2
+                        : null,
+                    minHeight: 4,
+                  )
+                : _statusNote(theme),
           ),
-        ),
-      ],
+          const SizedBox(width: _footerGap),
+          // The words give way before the bar does: in a narrow window the
+          // line is cut short, its whole sentence a hover away.
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: math.max(
+                0,
+                room.maxWidth - _footerGap - _progressLeastWidth,
+              ),
+            ),
+            child: AppTooltip(
+              message: order,
+              child: Text(
+                order,
+                key: const ValueKey<String>('export-order-line'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
+
+  static const double _footerGap = 12;
+
+  /// The least the footer's bar is given — drawn so in the F-289 mock.
+  static const double _progressLeastWidth = 24;
 
   Widget _statusNote(ThemeData theme) => Text(
     _statusMessage ?? '',

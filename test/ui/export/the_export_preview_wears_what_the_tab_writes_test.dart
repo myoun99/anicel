@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import 'package:anicel/src/ui/export/export_preview_document.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
@@ -181,8 +182,18 @@ void main() {
     expect(tester.exportPreviewPageSize, const Size(8, 8));
 
     await openTab(tester, 'cels');
+    expect(
+      tester.exportPreviewCheckered,
+      isTrue,
+      reason: 'a cel is open where its format says',
+    );
     await press(tester, 'export-cels-stand-document-timesheet');
     expect(tester.exportPreviewPageSize, const Size(1754, 2480));
+    expect(
+      tester.exportPreviewCheckered,
+      isFalse,
+      reason: 'a document is its paper',
+    );
     session.playbackRig.prerenderScheduler.cancel();
   });
 
@@ -212,6 +223,12 @@ void main() {
     final before = tester.exportPreviewImage;
     expect(before, isNotNull);
 
+    // The options module is folded: its head opens it.
+    final options = find.textContaining(AppText.strings.exOptions);
+    await tester.ensureVisible(options);
+    await tester.pump();
+    await tester.tap(options);
+    await tester.pump();
     await press(tester, 'export-apply-fx-toggle');
     expect(identical(tester.exportPreviewImage, before), isTrue);
     await tester.settleExportPreview();

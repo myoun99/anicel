@@ -212,6 +212,9 @@ void main() {
       await tester.enterText(keyed('export-file-name-field'), 'board');
       await tester.pump();
       expect(tester.exportPreviewName, 'board.pdf');
+      await tester.runAsync(state.export);
+      await tester.pump();
+      expect(filesWrittenUnder(temp), ['board.pdf']);
 
       await press(tester, 'export-conteformat-png');
       expect(
@@ -226,12 +229,31 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
       expect(
-        filesWrittenUnder(temp).first,
-        'board_p1.png',
+        filesWrittenUnder(temp),
+        contains('board_p1.png'),
         reason: 'the pages are written under the name typed',
       );
       session.playbackRig.prerenderScheduler.cancel();
     });
+  });
+
+  testWidgets('a queued job brought back to the window brings its NAME '
+      'back — the field does not take the extension in', (tester) async {
+    final session = film();
+    addTearDown(session.dispose);
+    await pumpWindow(tester, session);
+    await tester.enterText(keyed('export-file-name-field'), 'take2');
+    await tester.pump();
+    await press(tester, 'export-queue-add-button');
+    await tester.pump();
+    await tester.enterText(keyed('export-file-name-field'), 'other');
+    await tester.pump();
+
+    await press(tester, 'export-queue-job-1');
+
+    expect(nameTyped(tester), 'take2');
+    expect(tester.exportFirstFileName, 'take2.mp4');
+    session.playbackRig.prerenderScheduler.cancel();
   });
 
   group('the footer spreads', () {
@@ -246,8 +268,14 @@ void main() {
       final export = tester.getRect(keyed('export-run-button'));
       final order = tester.getRect(keyed('export-order-line'));
 
-      expect(queue.left - window.left, lessThan(24));
-      expect(window.right - export.right, lessThan(24));
+      // Each holds its end: the two stand as far in from the window's
+      // edges as each other, and nothing of the footer stands outside them.
+      expect(
+        queue.left - window.left,
+        moreOrLessEquals(window.right - export.right, epsilon: 0.5),
+      );
+      expect(queue.left, lessThan(order.left));
+      expect(queue.left - window.left, lessThan(window.width / 10));
       expect(queue.width, lessThan(window.width / 4), reason: 'its own width');
       expect(export.width, lessThan(window.width / 4));
       expect(order.right, lessThanOrEqualTo(export.left));
