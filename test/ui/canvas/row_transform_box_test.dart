@@ -349,6 +349,90 @@ void main() {
       expect(cancels, 1);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets('F-195: the grabbed edge stays under the pointer while the '
+        'host hands the stretched box back per move — its travel is read '
+        'against the box as it was grabbed', (tester) async {
+      final shown = ValueNotifier<double>(1);
+      addTearDown(shown.dispose);
+      await pumpBox(
+        tester,
+        ValueListenableBuilder<double>(
+          valueListenable: shown,
+          builder: (context, across, _) => RowTransformBox(
+            // The corners ride the scale the host hands back.
+            corners: [
+              for (final corner in corners)
+                CanvasPoint(x: 200 + (corner.x - 200) * across, y: corner.y),
+            ],
+            pose: TransformPose(center: anchor, scaleX: across),
+            canvasSize: canvasSize,
+            viewport: CanvasViewport(),
+            claimsCanvas: true,
+            onCancelled: () {},
+            scale: RowBoxTwoScales((
+              changed: (next) => shown.value = next.x,
+              committed: (_) {},
+            )),
+          ),
+        ),
+      );
+      const start = Offset(300, 150);
+      final gesture = await tester.startGesture(
+        start,
+        kind: PointerDeviceKind.mouse,
+      );
+      var pointer = start;
+      for (var step = 0; step < 4; step += 1) {
+        await gesture.moveBy(const Offset(25, 0));
+        pointer += const Offset(25, 0);
+        await tester.pump();
+      }
+
+      expect(
+        200 + 100 * shown.value,
+        closeTo(pointer.dx, 1e-6),
+        reason: 'read against the box handed back, each move would compound '
+            'and the edge would run away from the hand',
+      );
+      await gesture.up();
+    });
+
+    testWidgets('the middles are DRAWN where they are grabbed: a box of two '
+        'scales wears eight squares, a box of one its four corners', (
+      tester,
+    ) async {
+      Finder chrome() => find.descendant(
+        of: find.byKey(const ValueKey<String>('row-transform-box')),
+        matching: find.byType(CustomPaint),
+      );
+      PaintPattern drawsASquareAt(Offset at) => paints
+        ..something(
+          (method, arguments) =>
+              method == #drawRect && (arguments[0] as Rect).center == at,
+        );
+      const middles = [
+        Offset(200, 50),
+        Offset(300, 150),
+        Offset(200, 250),
+        Offset(100, 150),
+      ];
+
+      await pumpBox(tester, box(scales: []));
+      for (final middle in middles) {
+        expect(chrome(), drawsASquareAt(middle), reason: '$middle');
+      }
+
+      await pumpBox(tester, box(zooms: []));
+      expect(
+        chrome(),
+        drawsASquareAt(const Offset(300, 250)),
+        reason: 'LIVENESS — its corners are drawn',
+      );
+      for (final middle in middles) {
+        expect(chrome(), isNot(drawsASquareAt(middle)), reason: '$middle');
+      }
+    });
   });
 
   group('a box of ONE scale — the camera\'s frame', () {
@@ -365,6 +449,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(zooms, [closeTo(1, 0.01)]);
+    });
+
+    testWidgets('a grab that comes back to where it began writes nothing', (
+      tester,
+    ) async {
+      final zooms = <double>[];
+      var cancels = 0;
+      await pumpBox(
+        tester,
+        box(
+          pose: TransformPose.uniform(center: anchor, zoom: 0.5),
+          zooms: zooms,
+          onCancelled: () => cancels += 1,
+        ),
+      );
+      final gesture = await tester.startGesture(
+        const Offset(300, 250),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(40, 40));
+      await tester.pump();
+      await gesture.moveBy(const Offset(-40, -40));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(zooms, isEmpty);
+      expect(cancels, 1);
     });
 
     testWidgets('it wears its corners ALONE: where an edge\'s middle would '
@@ -413,14 +525,15 @@ void main() {
               CanvasPoint(x: onCanvas.x / 2, y: onCanvas.y),
         ),
       );
-      // To the upper right, as far across as up: 45° on the canvas, and in
-      // the folder half as far across — atan(65 / 130).
-      await tester.dragFrom(above, const Offset(130, 0));
+      // From the upper right — as far across as up, 45° off the vertical on
+      // the canvas — straight down to the pivot's right. In the folder the
+      // press stood half as far across: atan(130 / 65) off the horizontal.
+      await tester.dragFrom(const Offset(330, 20), const Offset(0, 130));
       await tester.pumpAndSettle();
 
       expect(
         turns.single,
-        closeTo(math.atan2(65, 130) * 180 / math.pi, 0.01),
+        closeTo(math.atan2(130, 65) * 180 / math.pi, 0.01),
         reason: '↩️measured on the canvas it read 45',
       );
     });
