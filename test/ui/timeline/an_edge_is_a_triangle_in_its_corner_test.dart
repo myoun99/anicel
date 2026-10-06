@@ -156,6 +156,25 @@ void main() {
     }
   });
 
+  test('a block of another length is another placement — a grip laid out '
+      'as a widget is laid out again when its block grows to hold it', () {
+    TimelineFrameSpanPlacement placed(int length) =>
+        timelineBlockEdgeGripPlacement(
+          edge: TimelineBlockEdge.start,
+          block: (startIndex: start, endIndexExclusive: start + length),
+          crossAxisExtent: paper,
+        );
+
+    expect(placed(5), placed(5));
+    expect(
+      placed(1),
+      isNot(placed(5)),
+      reason: 'the start edge\'s anchor and size are the same for both: '
+          'what differs is how much of that size the block has (F-295), '
+          'and a placement that compared equal would keep the old box',
+    );
+  });
+
   test('the drawn triangle never leaves its box and fills its corner half — '
       'the mark IS the grip, so it cannot overhang it (B5②/B6)', () {
     for (final cell in cells) {
