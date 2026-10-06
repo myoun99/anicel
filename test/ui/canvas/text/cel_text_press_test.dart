@@ -359,10 +359,11 @@ void main() {
       press(scene, 12, 12);
 
       // A hand never comes up exactly where it went down: under its slop it
-      // is still a click.
-      final inside = press(scene, 17, 13)!;
-      move(scene, inside, 17.1, 13);
-      up(scene, inside, 17.1, 13);
+      // is still a click. ⚠️Beside the cross in the middle (16, 13), whose
+      // arms reach 1.75 canvas pixels here: ON it the press is the cross's.
+      final inside = press(scene, 19, 13)!;
+      move(scene, inside, 19.1, 13);
+      up(scene, inside, 19.1, 13);
 
       expect(tool.hold, CelTextHold.letters);
       expect(tool.letters!.selection.extentOffset, 1);
@@ -467,6 +468,328 @@ void main() {
 
       expect(down, isNull);
       expect(tool.session, isNull);
+    });
+  });
+
+  // 🗣️유저 2026-10-07 (R9-rest-Q2 「끌어서 중심을 옮긴다」): 「앵커포인트? 랑
+  // 같은 개념인거같은데 최대한 같은 법 쓰면서」. The anchor point's law is
+  // 유저's of 2026-09-20 (`the_anchor_turns_rotation_not_scale_test`):
+  // 「기본값은 중심인데, 그걸 유저가 드래그해서 움직이는방식 … 앵커포인트는
+  // 회전시 앵커를 기준으로 회전해」, and 확대/축소 is 「항상 상자의 중심」.
+  //
+  // 「ab」 stands from (8, 8) to (24, 18): its middle, and its cross until
+  // a hand carries it, at (16, 13). At four screen pixels a canvas pixel the
+  // cross's arms reach 1.75 canvas pixels from it.
+  group('the cross of a text in hand by its box', () {
+    /// Takes 「ab」 by its box — a click on it, off the cross.
+    void take(CelTextScene scene) {
+      final down = press(scene, 10, 10)!;
+      up(scene, down, 10, 10);
+    }
+
+    /// Where the cross of the text in hand stands on the canvas.
+    Offset crossOf(CelTextTool tool) =>
+        celTextCrossOf(tool, tool.session!.shown.layout);
+
+    /// A hand takes the cross where it stands and carries it [dx], [dy] on.
+    void carry(CelTextTool tool, CelTextScene scene, double dx, double dy) {
+      final at = crossOf(tool);
+      final down = press(scene, at.dx, at.dy)!;
+      move(scene, down, at.dx + dx, at.dy + dy);
+      up(scene, down, at.dx + dx, at.dy + dy);
+    }
+
+    test('🚨a press on the cross carries it as far as the hand goes — by '
+        'the hand\'s TRAVEL, never onto the hand — and nothing else moves', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      final history = (tool.host as _Host).history;
+      expect(tool.crossOffCentre, Offset.zero, reason: '⛔fixture');
+      expect(crossOf(tool), const Offset(16, 13), reason: '⛔fixture');
+
+      // (17, 14) is on the cross, a pixel off its middle each way: put
+      // under the hand it would stand at (22, 20).
+      final down = press(scene, 17, 14)!;
+      move(scene, down, 22, 20);
+
+      expect(tool.crossOffCentre, const Offset(5, 6));
+      expect(crossOf(tool), const Offset(21, 19));
+
+      up(scene, down, 22, 20);
+
+      expect(tool.crossOffCentre, const Offset(5, 6));
+      expect(tool.session!.textId, 4, reason: 'still in hand');
+      expect(tool.hold, CelTextHold.box);
+      expect(tool.session!.content, says('ab'));
+      expect(textOf(scene, 4).content, says('ab'));
+      expect(history.undoCount, 0, reason: 'the cross is the hold\'s');
+    });
+
+    test('however little the hand goes, the cross goes that far: there is '
+        'no slop to cross first, as there is none on a corner', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+
+      // A tenth of a canvas pixel is under half a screen pixel here: a
+      // click, to a press that asks whether it was one.
+      final down = press(scene, 16, 13)!;
+      move(scene, down, 16.1, 13);
+
+      expect(down.dragged, isFalse, reason: '⛔fixture: under the slop');
+      expect(tool.crossOffCentre.dx, closeTo(0.1, 1e-9));
+      expect(tool.crossOffCentre.dy, closeTo(0, 1e-9));
+    });
+
+    test('🚨on a TURNED text the cross still goes where the hand does, and '
+        'no letter moves', () {
+      // A box 16 wide turned a quarter: it stands from (6, 4) to (16, 20),
+      // its line running DOWN from (16, 4) and its middle at (11, 12).
+      final turned = CelTextContent(
+        spans: const [CelTextSpan(text: 'ab', style: letters)],
+        anchor: CanvasPoint(x: 16, y: 4),
+        wrapWidth: 16,
+        rotationDegrees: 90,
+      );
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, turned)],
+      );
+      final taken = press(scene, 8, 6)!;
+      up(scene, taken, 8, 6);
+      expect(tool.session!.textId, 4, reason: '⛔fixture');
+      expect(crossOf(tool).dx, closeTo(11, 1e-9), reason: '⛔fixture');
+      expect(crossOf(tool).dy, closeTo(12, 1e-9), reason: '⛔fixture');
+
+      carry(tool, scene, 3, 4);
+
+      expect(crossOf(tool).dx, closeTo(14, 1e-9));
+      expect(crossOf(tool).dy, closeTo(16, 1e-9));
+      // Three across and four down on the canvas are four ALONG the text's
+      // line and three back across it.
+      expect(tool.crossOffCentre.dx, closeTo(4, 1e-9));
+      expect(tool.crossOffCentre.dy, closeTo(-3, 1e-9));
+      expect(tool.session!.content, turned);
+      expect((tool.host as _Host).history.undoCount, 0);
+    });
+
+    test('🚨a TURN goes round the cross where it was carried: the cross '
+        'stands, and the box goes round it', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      // Six down: a pixel past the box's own edge. Nothing clamps it.
+      carry(tool, scene, 0, 6);
+      expect(crossOf(tool), const Offset(16, 19), reason: '⛔fixture');
+
+      // From due right of the cross to due below it: a quarter turn, the
+      // way a clock's hand goes.
+      final turn = press(scene, 26, 19)!;
+      move(scene, turn, 16, 29);
+      up(scene, turn, 16, 29);
+      await baker.pending.answer();
+
+      final landed = textOf(scene, 4).content;
+      expect(landed.rotationDegrees, closeTo(90, 1e-9));
+      // The anchor stood (−8, −11) from the cross; it stands (11, −8) now.
+      expect(landed.anchor.x, closeTo(27, 1e-9));
+      expect(landed.anchor.y, closeTo(11, 1e-9));
+      // And the middle of the box, which stood six above it, six to its
+      // right.
+      final middle = tool.session!.shown.layout.onCanvas.centre;
+      expect(middle.dx, closeTo(22, 1e-9));
+      expect(middle.dy, closeTo(19, 1e-9));
+      expect(crossOf(tool).dx, closeTo(16, 1e-9));
+      expect(crossOf(tool).dy, closeTo(19, 1e-9));
+      expect(tool.crossOffCentre, const Offset(0, 6));
+      expect((tool.host as _Host).history.undoCount, 1);
+    });
+
+    test('🚨a CORNER sizes the text about the middle of its BOX, wherever '
+        'the cross was carried — and the cross stands as far off the middle '
+        'as it did', () async {
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      carry(tool, scene, -6, 3);
+      expect(crossOf(tool), const Offset(10, 16), reason: '⛔fixture');
+
+      // The corner taken twice as far from the middle (16, 13): everything
+      // doubles — about the cross it would have left the anchor at (6, 0).
+      final corner = press(scene, 24, 18)!;
+      move(scene, corner, 32, 23);
+      up(scene, corner, 32, 23);
+      await baker.pending.answer();
+
+      final landed = textOf(scene, 4).content;
+      expect(landed.spans.single.style.fontSize, closeTo(16, 1e-9));
+      expect(landed.anchor.x, closeTo(0, 1e-9));
+      expect(landed.anchor.y, closeTo(3, 1e-9));
+      expect(crossOf(tool).dx, closeTo(10, 1e-9));
+      expect(crossOf(tool).dy, closeTo(16, 1e-9));
+      expect(tool.crossOffCentre, const Offset(-6, 3));
+    });
+
+    test('a MOVE carries the cross with the box', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      carry(tool, scene, 4, -2);
+      expect(crossOf(tool), const Offset(20, 11), reason: '⛔fixture');
+
+      final inside = press(scene, 10, 10)!;
+      move(scene, inside, 15, 17);
+      up(scene, inside, 15, 17);
+
+      expect(textOf(scene, 4).content.anchor, CanvasPoint(x: 13, y: 15));
+      expect(crossOf(tool), const Offset(25, 18));
+      expect(tool.crossOffCentre, const Offset(4, -2));
+    });
+
+    test('🚨the cross is taken where it is DRAWN, whatever is under it: '
+        'carried onto another text, a press there carries it on and takes '
+        'no text', () {
+      // 「cd」 stands from (8, 22) to (24, 32), its middle at (16, 27).
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [
+          carried(4, says('ab')),
+          carried(5, says('cd', y: 22)),
+        ],
+      );
+      take(scene);
+      expect(tool.session!.textId, 4, reason: '⛔fixture');
+      carry(tool, scene, 0, 14);
+      expect(crossOf(tool), const Offset(16, 27), reason: '⛔fixture');
+
+      carry(tool, scene, 1, 0);
+
+      expect(tool.session!.textId, 4);
+      expect(tool.crossOffCentre, const Offset(1, 14));
+
+      // ⛔CONTROL: beside the cross that text is there to be taken — and
+      // the cross it then has is its own, in its middle.
+      final beside = press(scene, 10, 27)!;
+      up(scene, beside, 10, 27);
+
+      expect(tool.session!.textId, 5);
+      expect(tool.crossOffCentre, Offset.zero);
+      expect(crossOf(tool), const Offset(16, 27));
+    });
+
+    test('let go where it went down, a press on the cross has done nothing: '
+        'the letters under it stay shut, and the text stays in hand', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+
+      final down = press(scene, 16, 13)!;
+      up(scene, down, 16, 13);
+
+      expect(tool.hold, CelTextHold.box);
+      expect(tool.session!.textId, 4);
+      expect(tool.crossOffCentre, Offset.zero);
+    });
+
+    test('a press on the cross that goes away puts it back where it '
+        'stood', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      carry(tool, scene, 3, 0);
+
+      final down = press(scene, 19, 13)!;
+      move(scene, down, 24, 18);
+      expect(tool.crossOffCentre, const Offset(8, 5), reason: '⛔fixture');
+      down.cancel(scene);
+
+      expect(tool.crossOffCentre, const Offset(3, 0));
+    });
+
+    test('🚨the cross is the HOLD\'S: a text let go of and taken again has '
+        'it in the middle', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      carry(tool, scene, 5, 6);
+      expect(tool.crossOffCentre, const Offset(5, 6), reason: '⛔fixture');
+
+      tool.confirm();
+
+      expect(tool.crossOffCentre, Offset.zero, reason: 'nothing in hand');
+
+      take(scene);
+
+      expect(tool.session!.textId, 4, reason: '⛔fixture');
+      expect(tool.crossOffCentre, Offset.zero);
+      expect(crossOf(tool), const Offset(16, 13));
+    });
+
+    test('held by its letters and then by its box again, in the one hold, '
+        'the cross is where it was carried', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      carry(tool, scene, 5, 6);
+
+      tool.typeAt(const TextSelection.collapsed(offset: 0));
+      expect(tool.hold, CelTextHold.letters, reason: '⛔fixture');
+      tool.stopTyping();
+
+      expect(tool.hold, CelTextHold.box);
+      expect(tool.crossOffCentre, const Offset(5, 6));
+    });
+
+    test('🚨carrying the cross tells whoever DRAWS it and nobody else: the '
+        'hand\'s own listeners are not woken, and the canvas is not drawn '
+        'again', () {
+      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      take(scene);
+      final host = tool.host as _Host;
+      var hand = 0;
+      var cross = 0;
+      tool.addListener(() => hand += 1);
+      tool.crossCarried.addListener(() => cross += 1);
+      host.shown = 0;
+
+      final down = press(scene, 16, 13)!;
+      move(scene, down, 18, 13);
+      move(scene, down, 21, 15);
+
+      expect(cross, 2);
+      expect(hand, 0);
+      expect(host.shown, 0);
+
+      // The hand held still is no news to anybody.
+      move(scene, down, 21, 15);
+      up(scene, down, 21, 15);
+
+      expect(cross, 2);
+      expect(hand, 0);
+      expect(host.shown, 0);
+    });
+
+    test('with nothing in hand there is no cross to carry', () {
+      final (:tool, scene: _, baker: _, begun: _, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      var cross = 0;
+      tool.crossCarried.addListener(() => cross += 1);
+
+      tool.carryCross(const Offset(3, 4));
+
+      expect(tool.crossOffCentre, Offset.zero);
+      expect(cross, 0);
     });
   });
 
@@ -615,6 +938,9 @@ class _Host implements CelTextToolHost {
     Set<String> setIn = const {},
   }) => history.execute(command);
 
+  /// How often the hand asked for the cel to be drawn again.
+  int shown = 0;
+
   @override
-  void shownChanged() {}
+  void shownChanged() => shown += 1;
 }

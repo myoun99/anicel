@@ -19,8 +19,8 @@ import 'cel_text_tool.dart';
 /// · NOT IN HAND — a dashed box, on every text of the cel (유저 2026-10-02:
 ///   「텍스트 툴을 선택했을때만 텍스트별로 박스가 떠서」);
 /// · HELD BY ITS BOX — the box in the host's colour (「선택된지 알수있도록 ui
-///   필요」), its handles, and a cross at the centre it is turned and sized
-///   about;
+///   필요」), its handles, and the cross it is turned about: in the middle
+///   of the box until a hand carries it ([celTextCrossOf]);
 /// · HELD BY ITS LETTERS — the box, and in it the caret, the selected
 ///   letters and the line under the ones being composed.
 ///
@@ -29,8 +29,10 @@ import 'cel_text_tool.dart';
 /// The held box is the one every box on the canvas wears ([paintBoxChrome],
 /// F-222). ↩️It wore no cross until 2026-10-06 — 「a text has no anchor of
 /// its own to carry about」 was this file's reasoning, and not the user's:
-/// the drawing they took has one. ⚠️It MARKS the centre and is not taken by
-/// a press, which the press table has no row for (`celTextPressAt`).
+/// the drawing they took has one. ↩️And until 2026-10-07 the cross only
+/// MARKED the centre, the press table having no row for it: 유저 gave it
+/// one (R9-rest-Q2 「끌어서 중심을 옮긴다」), so it is drawn where the hand
+/// carried it and taken there (`celTextPressAt`).
 ///
 /// 🚨EVERYTHING HERE IS READ OFF THE TEXT AS IT IS SHOWN — the layout its
 /// plate was baked from — never off what the field holds, which can be a
@@ -44,7 +46,9 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
     required this.tracedBox,
     required this.caretLit,
     required this.color,
-  }) : super(repaint: Listenable.merge([tool, caretLit]));
+    // ⚠️The cross is told of on a line of its own: carrying it draws this
+    // again and wakes nobody else (`CelTextTool.carryCross`).
+  }) : super(repaint: Listenable.merge([tool, tool.crossCarried, caretLit]));
 
   final CelTextTool tool;
   final CelTextStage stage;
@@ -97,23 +101,23 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
       canvas,
       layout.boxCorners,
       handles: byBox ? celTextHandlesOf(layout) : const [],
-      centre: byBox ? layout.onCanvas.centre : null,
+      cross: byBox ? celTextCrossOf(tool, layout) : null,
     );
   }
 
-  /// A box on the artwork, with [handles] and the cross at [centre], as the
-  /// panel shows it.
+  /// A box on the artwork, with [handles] and its [cross], as the panel
+  /// shows it.
   void _paintBox(
     Canvas canvas,
     List<Offset> corners, {
     List<Offset> handles = const [],
-    Offset? centre,
+    Offset? cross,
   }) => paintBoxChrome(
     canvas,
     (
       box: [for (final corner in corners) stage.onPanel(corner)],
       handles: [for (final handle in handles) stage.onPanel(handle)],
-      anchor: centre == null ? null : stage.onPanel(centre),
+      anchor: cross == null ? null : stage.onPanel(cross),
     ),
     color: color,
   );

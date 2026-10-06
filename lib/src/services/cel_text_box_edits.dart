@@ -7,11 +7,13 @@ import '../models/cel_text.dart';
 /// its corner, outside it or on its edge does — as values: a content in, a
 /// content out. The letters' own edits are `cel_text_edits.dart`.
 ///
-/// ⚠️A text turns about its ANCHOR (`CelTextContent.anchor`), and a box is
-/// turned and scaled by hand about its CENTRE — the one law every box on
-/// the canvas keeps (F-222, 유저 2026-09-22: 「확대/축소의 기준점은 항상
-/// 상자의 중심」). So each of these moves the anchor as well, to where the
-/// centre standing still puts it.
+/// ⚠️A text turns about its ANCHOR (`CelTextContent.anchor`), and a hand on
+/// its box keeps another point still — the one law every box on the canvas
+/// keeps (F-222): a scale, the box's CENTRE (유저 2026-09-22: 「확대/축소의
+/// 기준점은 항상 상자의 중심」); a turn, the box's CROSS, which is the centre
+/// until a hand carries it (유저 2026-09-20: 「앵커포인트는 회전시 앵커를
+/// 기준으로 회전해」 — `celTextCrossOf`). So each of these moves the anchor
+/// as well, to where that point standing still puts it.
 
 /// The smallest a letter is set at, in canvas pixels. A scale stops there
 /// and so does the size setting: the engine sets nothing at a size of none,

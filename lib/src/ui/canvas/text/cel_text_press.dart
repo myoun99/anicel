@@ -64,10 +64,17 @@ BitmapSurface _pictureOf(CelTextCel cel) =>
 ///   · on another text → confirm, take that one · on nothing → confirm and
 ///   let go.
 /// · A text by its BOX — the one order every box on the canvas keeps
-///   ([boxPressAt], F-222): a corner → scale · a side edge (a box only) →
-///   its width · inside → move, or let go where it went down, its letters
-///   · outside → another text if one is there, else the turn, or let go
-///   where it went down.
+///   ([boxPressAt], F-222): its cross → the cross is carried · a corner →
+///   scale · a side edge (a box only) → its width · inside → move, or let
+///   go where it went down, its letters · outside → another text if one is
+///   there, else the turn, or let go where it went down.
+///
+/// 🗣️The cross's row is 유저's of 2026-10-07 (R9-rest-Q2 「끌어서 중심을
+/// 옮긴다」 — 「앵커포인트? 랑 같은 개념인거같은데 최대한 같은 법 쓰면서」):
+/// it is the anchor point a box on the canvas wears, taken first because it
+/// is drawn on top, and what a turn goes round ([celTextCrossOf]).
+/// ↩️Until then the table had no row for it and the cross only marked the
+/// middle: a press on it was a press inside the box.
 CelTextPress? celTextPressAt(
   CelTextScene scene,
   PointerDownEvent event,
@@ -125,9 +132,10 @@ CelTextPress? _pressWhileTyping(_Pressed pressed, CelTextSession session) {
 CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
   final (:scene, :cel, :event, :artwork) = pressed;
   final layout = session.shown.layout;
+  final cross = celTextCrossOf(scene.tool, layout);
   final hit = boxPressAt(
     event.localPosition,
-    anchor: null,
+    anchor: scene.stage.onPanel(cross),
     handles: [
       for (final handle in celTextHandlesOf(layout))
         scene.stage.onPanel(handle),
@@ -138,8 +146,17 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
     },
     onStage: scene.stage.onStage,
   );
+  // 🚨THE TWO CENTRES ARE TWO QUESTIONS (유저 2026-09-20, the anchor
+  // point's law — `SelectionAffine`): a corner sizes the text about the
+  // middle of its BOX, 「항상 상자의 중심」, wherever the cross was carried;
+  // the turn goes round the CROSS.
   final centre = layout.onCanvas.centre;
   return switch (hit?.press) {
+    BoxPress.anchor => _CrossPress(
+      event,
+      artwork,
+      start: scene.tool.crossOffCentre,
+    ),
     BoxPress.handle when hit!.handle < _leftEdgeHandle => _ScalePress(
       event,
       start: session.content,
@@ -155,20 +172,26 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
     BoxPress.inside => _InsidePress(event, artwork, cel: cel, held: true),
     // Outside the box: another text if one is there. Else on stage it is
     // the turn — and off it nothing to turn about, so the press lets go.
-    BoxPress.anchor || BoxPress.turn || null => _takeOr(pressed, () {
+    BoxPress.turn || null => _takeOr(pressed, () {
       if (hit == null) {
         scene.tool.confirm();
         return null;
       }
-      return _TurnPress(
-        event,
-        artwork,
-        start: session.content,
-        centre: centre,
-      );
+      return _TurnPress(event, artwork, start: session.content, about: cross);
     }),
   };
 }
+
+/// Where the cross of the text [tool] holds by its box stands on the
+/// artwork, [layout] being that text as it is shown: the middle of the box,
+/// or as far off it as a hand has carried the cross
+/// ([CelTextTool.crossOffCentre]).
+///
+/// ⛔ONE DERIVATION (as `SelectionAffine.anchorCanvas` is the transform
+/// tool's): the chrome draws the cross here, a press is asked of it here,
+/// and the turn goes round it here.
+Offset celTextCrossOf(CelTextTool tool, CelTextLayout layout) =>
+    layout.onCanvas.crossAt(tool.crossOffCentre);
 
 /// How far [local] is from [centre] on the panel — never zero: a press on
 /// the centre itself would make every ratio endless.
@@ -336,6 +359,49 @@ final class _InsidePress extends CelTextPress {
   }
 }
 
+/// On the cross of a text held by its box: the cross is carried as far as
+/// the hand has gone since the press — and nothing else is. No letter of
+/// the text moves, whichever way it is turned, and nothing lands: the cross
+/// is the hold's ([CelTextTool.crossOffCentre]).
+///
+/// 🚨THE ANCHOR POINT'S OWN LAW, as the transform tool's box keeps it
+/// (`TransformHandle.anchor`): it travels by the hand's DELTA, so a press
+/// that lands off the middle of the cross does not snap it under the pen
+/// (F-127); it is not set on whole pixels as a move is, because that box's
+/// anchor is not; and NOTHING CLAMPS IT to the box (유저 2026-09-20: 「그건
+/// 유저가 그렇게 하고싶지않으면 생각해서 할일」).
+///
+/// ⚠️Let go where it went down, it has done nothing: the cross is drawn on
+/// top, so it is the cross that was pressed (`boxPressAt`) and not the
+/// letters under it.
+final class _CrossPress extends CelTextPress {
+  _CrossPress(super.event, this.artwork, {required this.start});
+
+  final Offset artwork;
+
+  /// How far the cross stood off the middle of the box when the press went
+  /// down — the carry is one sum from here, never a chain of moves.
+  final Offset start;
+
+  @override
+  void _move(CelTextScene scene, Offset local, Offset artwork) {
+    final session = scene.tool.session;
+    if (session == null) {
+      return;
+    }
+    scene.tool.carryCross(
+      start +
+          session.shown.layout.onCanvas.alongItsLines(artwork - this.artwork),
+    );
+  }
+
+  @override
+  void up(CelTextScene scene, Offset local) {}
+
+  @override
+  void cancel(CelTextScene scene) => scene.tool.carryCross(start);
+}
+
 /// A press that shows the text set differently as the hand moves and lands
 /// it when the hand comes up — the scale, the width and the turn.
 sealed class _BoxEditPress extends CelTextPress {
@@ -409,24 +475,30 @@ final class _WidthPress extends _BoxEditPress {
   }
 }
 
-/// Outside the box, on stage: dragged, the text turns about [centre]; let
-/// go where it went down, the tool lets go of the text.
+/// Outside the box, on stage: dragged, the text turns about its cross
+/// ([celTextCrossOf] — the middle of the box until a hand carries it), which
+/// the turn leaves where it is; let go where it went down, the tool lets go
+/// of the text.
 final class _TurnPress extends _BoxEditPress {
   _TurnPress(
     super.event,
     Offset artwork, {
     required super.start,
-    required Offset centre,
-  }) : _centre = CanvasPoint(x: centre.dx, y: centre.dy) {
+    required Offset about,
+  }) : _cross = CanvasPoint(x: about.dx, y: about.dy) {
     _angle = TransformBoxLaw.angleAbout(
-      _centre,
+      _cross,
       CanvasPoint(x: artwork.dx, y: artwork.dy),
     );
   }
 
-  final CanvasPoint _centre;
+  /// Where the cross stood when the press went down. ⚠️The turn's fixed
+  /// point, so it is read once: the box's middle goes round it, and a turn
+  /// measured against that would chase a centre its own last move carried
+  /// off (the transform tool's `_turnCentreOf`, 2026-09-25).
+  final CanvasPoint _cross;
 
-  /// The hand's angle about the centre at the last move, and the turn so
+  /// The hand's angle about the cross at the last move, and the turn so
   /// far ([TransformBoxLaw.turn] — canvas angles, folded at the seam).
   late double _angle;
   double _turned = 0;
@@ -437,13 +509,13 @@ final class _TurnPress extends _BoxEditPress {
       return;
     }
     final step = TransformBoxLaw.turn(
-      centre: _centre,
+      centre: _cross,
       pointer: CanvasPoint(x: artwork.dx, y: artwork.dy),
       lastAngle: _angle,
     );
     _angle = step.angle;
     _turned += step.turned;
-    scene.tool.showEdit(celTextTurnedAbout(start, _turned, _centre));
+    scene.tool.showEdit(celTextTurnedAbout(start, _turned, _cross));
   }
 
   @override

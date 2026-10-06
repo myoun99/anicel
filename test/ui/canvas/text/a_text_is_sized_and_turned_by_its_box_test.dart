@@ -157,13 +157,14 @@ void main() {
       final before = celOf(tester);
       final tool = textToolOf(tester);
 
+      // Inside the box, off the cross in its middle.
       final first = await tester.startGesture(
-        onScreen(tester, c.dx + 48, c.dy + 30),
+        onScreen(tester, c.dx + 20, c.dy + 12),
         kind: PointerDeviceKind.touch,
         pointer: 7,
       );
       await tester.pump();
-      await first.moveTo(onScreen(tester, c.dx + 148, c.dy + 130));
+      await first.moveTo(onScreen(tester, c.dx + 120, c.dy + 112));
       await tester.pump();
       expect(
         tool.session!.shown.content.anchor,
@@ -237,6 +238,155 @@ void main() {
     });
   });
 
+  /// Where the chrome draws the cross now, on the layer: the middle of its
+  /// four arms, each fourteen long — which have to agree.
+  ///
+  /// ⚠️To a millionth of a pixel: a turn is made of sines, and a carry of a
+  /// press taken back through the view.
+  Offset crossDrawn(WidgetTester tester) {
+    final arms = <(Offset, Offset)>[];
+    expect(
+      tester.renderObject(textChrome()),
+      paints..something((method, arguments) {
+        if (method == #drawLine) {
+          arms.add((arguments[0] as Offset, arguments[1] as Offset));
+        }
+        return arms.length == 4;
+      }),
+    );
+    final middle = (arms.first.$1 + arms.first.$2) / 2;
+    for (final (from, to) in arms) {
+      expect(((from + to) / 2 - middle).distance, lessThan(1e-6));
+      expect((to - from).distance, closeTo(14, 1e-6));
+    }
+    return middle;
+  }
+
+  // 🗣️유저 2026-10-07 (R9-rest-Q2 「끌어서 중심을 옮긴다」): 「앵커포인트? 랑
+  // 같은 개념인거같은데 최대한 같은 법 쓰면서」 — the anchor point's law,
+  // 유저's of 2026-09-20: it is in the middle until a hand drags it, the
+  // turn goes round it, and 확대/축소 is 「항상 상자의 중심」.
+  group('its cross', () {
+    /// 「hi」 in hand by its box, its cross carried from the middle of the
+    /// box to `c + (8, 40)` — forty back along the line and ten down.
+    Future<Offset> crossCarried(WidgetTester tester) async {
+      final c = await hiInHandByItsBox(tester);
+      await dragFrom(
+        tester,
+        Offset(c.dx + 48, c.dy + 30),
+        Offset(c.dx + 8, c.dy + 40),
+      );
+      return c;
+    }
+
+    testWidgets('🚨a drag ON the cross carries it — it is drawn where the '
+        'hand left it — and no letter moves, nothing lands, the text stays '
+        'in hand', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final before = celOf(tester);
+      expect(
+        (crossDrawn(tester) - onLayer(tester, c.dx + 48, c.dy + 30)).distance,
+        lessThan(1e-6),
+        reason: '⛔fixture: in the middle',
+      );
+
+      await dragFrom(
+        tester,
+        Offset(c.dx + 48, c.dy + 30),
+        Offset(c.dx + 8, c.dy + 40),
+      );
+
+      expect(
+        (crossDrawn(tester) - onLayer(tester, c.dx + 8, c.dy + 40)).distance,
+        lessThan(1e-6),
+      );
+      expect(celOf(tester), same(before));
+      expect(history.undoCount, steps);
+      final tool = textToolOf(tester);
+      expect(tool.session, isNotNull, reason: 'in hand');
+      expect(tool.hold, CelTextHold.box);
+      expect(tool.session!.shown.content.anchor, CanvasPoint(x: c.dx, y: c.dy));
+    });
+
+    testWidgets('🚨the TURN goes round the cross where it was carried: the '
+        'cross stands, the text goes round it — one step', (tester) async {
+      final c = await crossCarried(tester);
+      final cross = onLayer(tester, c.dx + 8, c.dy + 40);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+
+      // From due right of the cross to due below it: a quarter turn.
+      await dragFrom(
+        tester,
+        Offset(c.dx + 188, c.dy + 40),
+        Offset(c.dx + 8, c.dy + 220),
+      );
+
+      final turned = celOf(tester).texts.single.content;
+      expect(turned.rotationDegrees, closeTo(90, 1e-6));
+      // The anchor stood (−8, −40) from the cross; it stands (40, −8) now —
+      // about the middle of the box it would be at `c + (78, −18)`.
+      expect(turned.anchor.x, closeTo(c.dx + 48, 1e-6));
+      expect(turned.anchor.y, closeTo(c.dy + 32, 1e-6));
+      expect((crossDrawn(tester) - cross).distance, lessThan(1e-6));
+      expect(history.undoCount, steps + 1);
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
+    });
+
+    testWidgets('🚨a CORNER still sizes the text about the middle of its '
+        'BOX, and the cross stands where it was', (tester) async {
+      final c = await crossCarried(tester);
+      final cross = onLayer(tester, c.dx + 8, c.dy + 40);
+
+      // The corner taken twice as far from the middle of the box.
+      await dragFrom(
+        tester,
+        Offset(c.dx + 96, c.dy + 60),
+        Offset(c.dx + 144, c.dy + 90),
+      );
+
+      final scaled = celOf(tester).texts.single.content;
+      expect(scaled.spans.single.style.fontSize, closeTo(96, 1e-6));
+      expect(scaled.anchor.x, closeTo(c.dx - 48, 1e-6));
+      expect(scaled.anchor.y, closeTo(c.dy - 30, 1e-6));
+      expect((crossDrawn(tester) - cross).distance, lessThan(1e-6));
+    });
+
+    testWidgets('a click on the cross is the cross\'s — the letters under '
+        'it stay shut — and beside it, the box\'s', (tester) async {
+      final c = await hiInHandByItsBox(tester);
+
+      await clickAt(tester, c.dx + 48, c.dy + 30);
+
+      final tool = textToolOf(tester);
+      expect(tool.letters, isNull);
+      expect(tool.session, isNotNull, reason: 'in hand');
+
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+
+      expect(tool.letters, isNotNull);
+    });
+
+    testWidgets('🚨the cross is the HOLD\'S: let go of and taken again, the '
+        'text has it in the middle', (tester) async {
+      final c = await crossCarried(tester);
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+      expect(textToolOf(tester).session, isNull, reason: '⛔fixture');
+
+      await clickAt(tester, c.dx + 20, c.dy + 12);
+
+      expect(textToolOf(tester).hold, CelTextHold.box, reason: '⛔fixture');
+      expect(textToolOf(tester).session, isNotNull, reason: '⛔fixture');
+      expect(
+        (crossDrawn(tester) - onLayer(tester, c.dx + 48, c.dy + 30)).distance,
+        lessThan(1e-6),
+      );
+    });
+  });
+
   // The three boxes of the drawing 유저 took on 2026-10-06: dashed on a text
   // nobody is holding; the host's colour, handles and a cross at the centre
   // on one held by its box; the box and the caret on one held by its
@@ -298,30 +448,16 @@ void main() {
         reason: '⛔fixture',
       );
 
-      // ⚠️To a millionth of a pixel: the turn is made of sines.
-      final arms = <(Offset, Offset)>[];
-      expect(
-        tester.renderObject(textChrome()),
-        paints..something((method, arguments) {
-          if (method == #drawLine) {
-            arms.add((arguments[0] as Offset, arguments[1] as Offset));
-          }
-          return arms.length == 4;
-        }),
-      );
-      for (final (from, to) in arms) {
-        expect(((from + to) / 2 - centre).distance, lessThan(1e-6));
-        expect((to - from).distance, closeTo(14, 1e-6));
-      }
+      expect((crossDrawn(tester) - centre).distance, lessThan(1e-6));
     });
 
     testWidgets('🚨held by its LETTERS: the box and the caret — no handle '
         'and no cross', (tester) async {
       final c = await hiInHandByItsBox(tester);
 
-      // ⚠️On the cross itself: it marks the centre and takes no press, so
-      // this is a click INSIDE the box — the letters open.
-      await clickAt(tester, c.dx + 48, c.dy + 30);
+      // A click inside the box, off the cross in its middle: the letters
+      // open.
+      await clickAt(tester, c.dx + 20, c.dy + 12);
       expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
 
       final chrome = tester.renderObject(textChrome());

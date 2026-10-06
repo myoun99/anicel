@@ -148,8 +148,10 @@ void main() {
       expect(tool.hold, CelTextHold.box);
       expect(textField(), findsNothing);
 
-      // Just past the seam between 「h」 and 「i」, which is at 48.
-      await clickAt(tester, c.dx + 50, c.dy + 30);
+      // Nearer the seam between 「h」 and 「i」, which is at 48, than the
+      // text's start — and below the cross in the middle of the box, which
+      // a press ON takes instead (R9-rest-Q2).
+      await clickAt(tester, c.dx + 30, c.dy + 55);
 
       expect(tool.hold, CelTextHold.letters);
       expect(tool.letters!.selection, const TextSelection.collapsed(offset: 1));
@@ -239,8 +241,9 @@ void main() {
     testWidgets('a drag across them selects them, from where the press '
         'went down', (tester) async {
       final c = await hiOnTheCel(tester);
+      // Taken by its box, and by its letters: two clicks, off the cross.
       await clickAt(tester, c.dx + 10, c.dy + 30);
-      await clickAt(tester, c.dx + 50, c.dy + 30);
+      await clickAt(tester, c.dx + 10, c.dy + 30);
       final tool = textToolOf(tester);
       expect(tool.hold, CelTextHold.letters, reason: '⛔fixture');
 

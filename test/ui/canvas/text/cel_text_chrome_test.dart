@@ -93,6 +93,42 @@ void main() {
     );
   });
 
+  // ⚠️What the HAND holds is not one of the inputs above: the painter reads
+  // it as it paints, and is asked to paint again by whoever told it. The
+  // cross is told of on a line of its own (`CelTextTool.carryCross`), so
+  // that line has to be one the painter hears.
+  test('🚨a cross carried is drawn again: the painter hears the cross\'s '
+      'own line — and the caret\'s, and the hand\'s', () {
+    final held = textHand(
+      bake: bakesAtOnce,
+      text: CelTextContent(
+        spans: const [
+          CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+        ],
+        anchor: CanvasPoint(x: 8, y: 8),
+      ),
+    );
+    final painter = CelTextChromePainter(
+      tool: held.tool,
+      stage: stageAt(1),
+      restingBoxes: const [],
+      tracedBox: null,
+      caretLit: caretLit,
+      color: const Color(0xFF4488FF),
+    );
+    var asked = 0;
+    painter.addListener(() => asked += 1);
+
+    held.tool.carryCross(const Offset(3, 0));
+    expect(asked, 1);
+
+    caretLit.value = false;
+    expect(asked, 2);
+
+    held.tool.celTextsChanged();
+    expect(asked, 3);
+  });
+
   test('and another hand: a painter is its tool\'s', () {
     final other = textHand(bake: bakesAtOnce);
     final painter = CelTextChromePainter(

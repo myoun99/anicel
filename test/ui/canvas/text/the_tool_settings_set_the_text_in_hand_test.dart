@@ -107,9 +107,10 @@ void main() {
 
   testWidgets('🚨with letters SELECTED it reaches those alone', (tester) async {
     final c = await hiInHand(tester);
-    // Into the letters, and across the second one: 「i」 stands from 48 to
-    // 96 along the line.
-    await clickAt(tester, c.dx + 48, c.dy + 30);
+    // Into the letters — a click inside the box, beside the cross in its
+    // middle — and across the second one: 「i」 stands from 48 to 96 along
+    // the line.
+    await clickAt(tester, c.dx + 20, c.dy + 12);
     await dragFrom(
       tester,
       Offset(c.dx + 50, c.dy + 30),

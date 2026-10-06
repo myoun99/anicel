@@ -214,8 +214,28 @@ class CelTextBox {
   /// they turn with it.
   List<ui.Offset> get corners => _cornersOf(_rect, _frame.toCanvas);
 
-  /// The middle of the box — what a hand on it turns and sizes it about.
+  /// The middle of the box — what a hand on a corner sizes it about, and
+  /// where its cross stands until a hand carries it ([crossAt]).
   ui.Offset get centre => _frame.toCanvas(_rect.center);
+
+  /// Where the box's CROSS stands, carried [offCentre] from its middle: the
+  /// point a hand outside the box turns the text about.
+  ///
+  /// 🚨[offCentre] IS ALONG THE TEXT'S OWN LINES, in canvas pixels — a
+  /// displacement, and zero is the middle, so a cross nobody carried needs
+  /// no case of its own (the anchor point's law, `TransformValues.anchorX`:
+  /// 「기본값 상자안의 자리에서 **얼마나 이동됬나**」). Kept that way it rides
+  /// every edit the box takes: a move and a scale leave it as far from the
+  /// middle as it was, and a turn about it carries the middle round it — the
+  /// cross does not orbit itself.
+  ui.Offset crossAt(ui.Offset offCentre) =>
+      _frame.toCanvas(_rect.center + offCentre);
+
+  /// [travel], a hand's travel on the canvas, along the text's own lines —
+  /// what carrying the cross that far adds to how far it stands off the
+  /// middle ([crossAt]).
+  ui.Offset alongItsLines(ui.Offset travel) =>
+      _turned(travel, -_frame.radians);
 
   /// Whether [point], on the canvas, is inside the box.
   bool contains(ui.Offset point) => _rect.contains(_frame.toLocal(point));

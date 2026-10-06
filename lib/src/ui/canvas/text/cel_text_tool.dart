@@ -86,6 +86,18 @@ class _Holding {
   /// typed, and the cel keeps the step of its own a tap leaves it
   /// (`AutoFrameForStroke.flushAutoFrameForStroke`).
   HistoryMark? celMadeSince;
+
+  /// How far a hand has carried the box's cross off its middle
+  /// ([CelTextTool.crossOffCentre]).
+  ///
+  /// ⛔THE HOLD'S, AND SO GONE WITH IT: a text let go of and taken again
+  /// has its cross in the middle, with nothing anywhere to put back.
+  Offset crossOffCentre = Offset.zero;
+}
+
+/// Tells of one thing, and holds nothing.
+class _Telling extends ChangeNotifier {
+  void tell() => notifyListeners();
 }
 
 /// THE TEXT TOOL'S HAND (R9-rest): the one text it holds, how it holds it,
@@ -116,6 +128,46 @@ class CelTextTool extends ChangeNotifier {
   /// The field's side of the text while its letters are held.
   CelTextEditingController? get letters => _letters;
   CelTextEditingController? _letters;
+
+  // ── the cross ───────────────────────────────────────────────────────
+
+  /// THE CROSS of the text in hand: how far it stands off the middle of the
+  /// text's box, along the text's own lines, in canvas pixels
+  /// (`CelTextBox.crossAt`). In the middle until a hand carries it
+  /// ([carryCross]), and in the middle again for the next text taken.
+  ///
+  /// 🗣️유저 2026-10-07 (R9-rest-Q2 「끌어서 중심을 옮긴다」): 「**앵커포인트?
+  /// 랑 같은 개념**인거같은데 **최대한 같은 법 쓰면서**」. The anchor point's
+  /// law is 유저's of 2026-09-20, written on `TransformValues.anchorX`:
+  /// 「기본값은 중심인데, 그걸 유저가 드래그해서 움직이는방식 … **앵커포인트는
+  /// 회전시 앵커를 기준으로 회전**해」 while 확대/축소 is 「**항상 상자의
+  /// 중심**」. So it is here: a turn goes round the cross, a corner sizes the
+  /// text about the middle of its box whatever the cross was carried to.
+  ///
+  /// ⚠️IT IS THE HOLD'S, NOT THE TEXT'S: nothing of it is on the cel, a
+  /// step of history neither takes it nor puts it back, and letting go of
+  /// the text is the end of it — as closing the transform tool's box is the
+  /// end of that box's anchor.
+  Offset get crossOffCentre => _held?.crossOffCentre ?? Offset.zero;
+
+  /// Carries the cross of the text in hand to [offCentre] off the middle of
+  /// its box.
+  ///
+  /// ⛔TOLD ON ITS OWN LINE ([crossCarried]), to whoever draws the cross and
+  /// to nobody else: no letter of the text is another, so neither the cel
+  /// is drawn again nor the settings built again at every move of the hand.
+  void carryCross(Offset offCentre) {
+    final held = _held;
+    if (held == null || held.crossOffCentre == offCentre) {
+      return;
+    }
+    held.crossOffCentre = offCentre;
+    _crossCarried.tell();
+  }
+
+  /// Told when the cross is carried ([carryCross]).
+  Listenable get crossCarried => _crossCarried;
+  final _Telling _crossCarried = _Telling();
 
   /// Texts let go of whose last want was still being set: shown until it
   /// is, landed then, and gone.
@@ -617,6 +669,7 @@ class CelTextTool extends ChangeNotifier {
     // ⚠️Told nobody: the panel this would redraw is the one going away.
     _disposed = true;
     _landAll();
+    _crossCarried.dispose();
     super.dispose();
   }
 }
