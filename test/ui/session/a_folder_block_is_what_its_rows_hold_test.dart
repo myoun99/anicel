@@ -525,6 +525,12 @@ void main() {
       // touching it. b has nothing in its way.
       s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 5);
 
+      expect(
+        s.dragPreview.value,
+        isA<BlockMoveDragPreview>(),
+        reason: 'the group goes as far as every row can — a step that asks '
+            'for more is still a step',
+      );
       final shown =
           (s.dragPreview.value! as BlockMoveDragPreview).previewLayers;
       expect(_blocks(shown[const LayerId('a')]!), {4: 4, 8: 2});

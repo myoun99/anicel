@@ -112,6 +112,42 @@ EditorSessionManager _twoRows() {
 Map<int, int> _blocks(EditorSessionManager s, String id) =>
     _blocksOf(s.layerById(LayerId(id))!);
 
+/// The default cut with one block at frame 4 of its drawing row and the
+/// camera's Position keyed at frame 2 — the session, that row, the camera's.
+(EditorSessionManager, LayerId row, LayerId camera) _aBlockAndACameraKey() {
+  final base = createDefaultProject();
+  final cut = base.tracks.first.cuts.first;
+  final empty = CutCamera().track;
+  final s = EditorSessionManager(
+    initialProject: base.copyWith(
+      tracks: [
+        base.tracks.first.copyWith(
+          cuts: [
+            cut.copyWith(
+              camera: CutCamera.fromTrack(
+                empty.copyWith(
+                  position: empty.position.withKey(
+                    2,
+                    CanvasPoint(x: 10, y: 10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+  addTearDown(s.dispose);
+  s.selectFrameIndex(4);
+  s.createDrawingAtCurrentFrame();
+  return (
+    s,
+    s.activeLayer!.id,
+    s.layers.firstWhere((l) => l.kind == LayerKind.camera).id,
+  );
+}
+
 /// Sweeps both rows over the blocks under frame 1 and picks them up by a.
 void _pickUpBothRows(EditorSessionManager s) {
   s.updateFrameRangeSelectionDrag(
@@ -206,34 +242,7 @@ void main() {
 
   test('a step the keys riding cannot take leaves the step before it '
       'whole: released there, the blocks AND the keys land', () {
-    final base = createDefaultProject();
-    final cut = base.tracks.first.cuts.first;
-    final empty = CutCamera().track;
-    final s = EditorSessionManager(
-      initialProject: base.copyWith(
-        tracks: [
-          base.tracks.first.copyWith(
-            cuts: [
-              cut.copyWith(
-                camera: CutCamera.fromTrack(
-                  empty.copyWith(
-                    position: empty.position.withKey(
-                      2,
-                      CanvasPoint(x: 10, y: 10),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-    addTearDown(s.dispose);
-    s.selectFrameIndex(4);
-    s.createDrawingAtCurrentFrame();
-    final row = s.activeLayer!.id;
-    final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera).id;
+    final (s, row, camera) = _aBlockAndACameraKey();
     List<int> cameraKeys() =>
         s.requireActiveCut.camera.track.position.keys.keys.toList();
     Map<int, int> blocks() => _blocksOf(s.layerById(row)!);
@@ -258,6 +267,46 @@ void main() {
       [0],
       reason: 'the held step had dropped the keys\' shift and kept the '
           'block\'s: the block went to 2 and the key stayed at 2',
+    );
+  });
+
+  test('the keys that rode a row hop die with it: a slide that cannot land '
+      'after it commits nothing, not the keys alone', () {
+    final (s, row, camera) = _aBlockAndACameraKey();
+    // A second row for the block to hop to.
+    s.layerStack.addLayer();
+    final other = s.activeLayer!.id;
+    List<int> cameraKeys() =>
+        s.requireActiveCut.camera.track.position.keys.keys.toList();
+    Map<int, int> blocks(LayerId id) => _blocksOf(s.layerById(id)!);
+
+    s.updateFrameRangeSelectionDrag(
+      layerId: row,
+      anchorIndex: 2,
+      headIndex: 4,
+      headLayerId: camera,
+    );
+    expect(moveOf(s).beginFrameRangeMoveDrag(row), isTrue);
+    // The block hops to the other row, two frames back; the key rides.
+    moveOf(s).updateFrameRangeMoveDrag(frameDelta: -2, targetLayerId: other);
+    expect(
+      shownBlocks(s, other.value),
+      {2: 1},
+      reason: 'the premise: the hop landed, and the key rode it',
+    );
+    // Home on its own row, three frames back: the block could, the key
+    // would stand in front of the axis. The hop is no longer what the hand
+    // asks for, and this step has no landing.
+    moveOf(s).updateFrameRangeMoveDrag(frameDelta: -3, targetLayerId: row);
+    moveOf(s).endFrameRangeMoveDrag();
+
+    expect(blocks(row), {4: 1});
+    expect(blocks(other), isEmpty);
+    expect(
+      cameraKeys(),
+      [2],
+      reason: 'a shift left over from the hop lands alone: the key moved '
+          'and the block it rode with stayed home',
     );
   });
 }
