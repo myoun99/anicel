@@ -33,6 +33,7 @@ import '../../models/timesheet_ink_keys.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_frame_store.dart';
+import '../../services/cel_text_laying.dart';
 import '../../services/cut_frame_composite_plan.dart'
     show resolveExposedFrameAt;
 import '../../services/playback/editor_cache_invalidation_hub.dart';
@@ -258,7 +259,13 @@ class RenderCaches {
     if (frame == null) {
       return null;
     }
-    final surface = brushSurfaceForLayerFrame(layer, frame);
+    // The LAYER's picture — its texts with it: the box this frames moves
+    // the whole row, and a text is part of what the row shows (유저
+    // 2026-10-06: 「셀의 그림이랑 정확히 동일」). ⚠️The transform TOOL's own box
+    // frames the drawing alone — it never takes a text (「변형도구로 잡히지도
+    // 아무 영향도 없음」) — and does not ask here.
+    final drawn = brushSurfaceForLayerFrame(layer, frame);
+    final surface = drawn == null ? null : celSurfaceWithTextsLaid(drawn);
     if (surface == null) {
       return null;
     }

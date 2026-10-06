@@ -14,6 +14,7 @@ import '../../models/tile_coord.dart';
 import '../../services/brush_frame_display_cache_service.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/cel_source_effect_pass.dart';
+import '../../services/cel_surface_as_shown.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../../core/dev_profile.dart';
 import '../canvas/deferred_image_disposal.dart';
@@ -258,8 +259,9 @@ class LayerFrameImageCache {
     // cache for an image by frame key. Both call the SAME function, so the
     // two routes cannot mean different things by "keyed"; missing this one
     // is what would have made a color key visible in playback and invisible
-    // on the canvas you draw on.
-    final preview = celSurfaceWithSourceEffects(
+    // on the canvas you draw on. The cel's texts are laid in the same call,
+    // for the same reason ([celSurfaceAsShown]).
+    final preview = celSurfaceAsShown(
       previewCache.previewSurface,
       sourceEffects,
     );
@@ -439,7 +441,7 @@ class LayerFrameImageCache {
     // The sync twin keys too — see the async path. A handoff that skipped
     // this would flash the unkeyed cel for exactly one layer switch, which
     // is the hardest kind of wrong to catch.
-    final preview = celSurfaceWithSourceEffects(
+    final preview = celSurfaceAsShown(
       previewCache.previewSurface,
       sourceEffects,
     );

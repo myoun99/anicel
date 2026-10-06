@@ -16,6 +16,7 @@ import 'composite_effect_paint.dart'
 import 'layer_pose_matrix.dart' show canvasToArtwork;
 import 'canvas_read_source.dart';
 import 'cel_source_effect_pass.dart';
+import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 
 /// The default blend base when the caller does not thread the project
@@ -231,10 +232,13 @@ int sampleCompositeColor({
     if (read != null && !read.contains(entry.layer.id)) {
       continue;
     }
-    final surface = surfaceResolver(entry.layer, entry.frame);
-    if (surface == null) {
+    final drawing = surfaceResolver(entry.layer, entry.frame);
+    if (drawing == null) {
       continue;
     }
+    // The cel as it SHOWS — a letter's colour is picked as a drawn line's
+    // is (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+    final surface = celSurfaceWithTextsLaid(drawing);
     final artworkPoint = _artworkPointFor(entry, cut.canvasSize, point);
     if (artworkPoint == null) {
       continue;

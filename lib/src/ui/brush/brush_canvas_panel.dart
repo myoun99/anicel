@@ -10,6 +10,7 @@ import '../canvas/shown_cels.dart';
 import '../debug/repaint_cause.dart';
 import '../../services/command.dart';
 import '../../services/cel_source_effect_pass.dart';
+import '../../services/cel_surface_as_shown.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
@@ -1067,22 +1068,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return _memoActiveSurfacePainter;
     }
     _activeSurfacePainterToken = token;
-    // The canvas says which cel it is drawing, and THROUGH what: the
-    // colour keys make the tiles it paints other objects than the cel's
-    // own, so a picture made ahead for the cel's own would go unused.
+    // The canvas says which cel it is drawing, and THROUGH what: the texts
+    // laid over it and the colour keys make the tiles it paints other
+    // objects than the cel's own, so a picture made ahead for the cel's own
+    // would go unused.
     ShownCels.instance.show(
       this,
       (token.key.layerId, token.key.frameId),
       painted: (surface) =>
-          celSurfaceWithSourceEffects(surface, widget.activeSourceEffects),
+          celSurfaceAsShown(surface, widget.activeSourceEffects),
     );
     return _memoActiveSurfacePainter = BitmapSurfacePainter(
-      // ★DRAWN THROUGH THE KEYS. Cached per TILE, so a dab re-keys the one
-      // tile it changed and the rest of the cel answers from memory.
-      surface: celSurfaceWithSourceEffects(
-        token.surface,
-        widget.activeSourceEffects,
-      ),
+      // ★DRAWN THROUGH THE SEAM — the texts laid, then the keys. Both are
+      // cached per TILE, so a dab re-lays and re-keys the one tile it
+      // changed and the rest of the cel answers from memory.
+      surface: celSurfaceAsShown(token.surface, widget.activeSourceEffects),
       overlayModel: overlay,
       // The stack painter applies the viewport itself, so the surface
       // painter draws in canvas space.

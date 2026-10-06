@@ -5,8 +5,7 @@ import '../../models/bitmap_surface.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart' show PasteboardBounds;
 import '../../models/sheet_marks.dart';
-import '../../services/cel_source_effect_pass.dart'
-    show celSurfaceWithSourceEffects;
+import '../../services/cel_surface_as_shown.dart';
 import '../../services/viewport_transform_matrix.dart';
 import '../canvas/bitmap_surface_painter.dart';
 import '../canvas/canvas_layer_stack_view.dart';
@@ -111,7 +110,7 @@ class ContePictureLive extends StatelessWidget {
                 // The view the print is laid by too (F-215).
                 viewport: pictureCanvasViewport(viewport, window.canvasToPaper),
                 activeSurfacePainter: BitmapSurfacePainter(
-                  surface: celSurfaceWithSourceEffects(
+                  surface: celSurfaceAsShown(
                     surfaceOf(picture),
                     drawn.activeSourceEffects,
                   ),

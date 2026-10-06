@@ -16,6 +16,7 @@ import '../models/timeline_coverage.dart';
 import '../models/transform_track.dart';
 import 'layer_pose_paint.dart';
 import 'cel_source_effect_pass.dart';
+import 'cel_surface_as_shown.dart';
 
 /// One paintable layer of a composited cut frame, bottom → top order.
 class CutFrameCompositeLayer {
@@ -33,6 +34,10 @@ class CutFrameCompositeLayer {
   /// The pass is cached on the source surface's identity and returns it
   /// unchanged when the chain has no keys, so the overwhelmingly common
   /// layer pays a list walk and nothing else.
+  ///
+  /// ★The cel's TEXTS are laid over its drawing in the same step, before
+  /// the keys ([celSurfaceAsShown]) — they are part of the picture a key
+  /// filters, and this constructor is where no route forgets them either.
   CutFrameCompositeLayer({
     required BitmapSurface surface,
     required this.opacity,
@@ -40,11 +45,11 @@ class CutFrameCompositeLayer {
     this.pose,
     this.anchorPoint,
     List<ResolvedLayerEffect> effects = const [],
-  }) : surface = celSurfaceWithSourceEffects(surface, effects),
+  }) : surface = celSurfaceAsShown(surface, effects),
        effects = splitSourceEffects(effects).paint;
 
   /// The pixels this layer draws — the cel's own surface, or the derived
-  /// one the color keys produced from it.
+  /// one its texts and the color keys produced from it.
   final BitmapSurface surface;
 
   /// The layer's composite blend against everything below (R26 #30).

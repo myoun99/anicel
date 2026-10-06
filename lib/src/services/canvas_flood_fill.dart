@@ -24,6 +24,7 @@ import 'canvas_color_sampler.dart';
 import 'canvas_read_source.dart';
 import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
+import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
 import 'brush_stroke_blend.dart' show bitmapSurfaceRegionPixels;
 import 'guide_geometry.dart';
@@ -243,7 +244,9 @@ class LazyCanvasRasterRgb {
       final surface = surfaceResolver(entry.layer, entry.frame);
       if (carry.shows && surface != null) {
         _layers.add((
-          surface: surface,
+          // The cel as it SHOWS: a letter bounds a fill as a drawn line
+          // does (유저 2026-10-06: 「셀의 그림이랑 정확히 동일」).
+          surface: celSurfaceWithTextsLaid(surface),
           opacity: entry.opacity,
           toArtwork: carry.toArtwork,
         ));

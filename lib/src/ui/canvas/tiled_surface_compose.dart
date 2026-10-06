@@ -5,7 +5,9 @@ import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
+import '../../models/tile_coord.dart';
 import '../../core/dev_profile.dart';
+import '../../services/cel_text_laying.dart';
 import '../../services/straight_rgba_image.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'display_resample.dart';
@@ -31,11 +33,27 @@ class PositionedSurfaceImage {
       worldRect == surface.canvasSize.canvasRect;
 }
 
+/// The tiles a compose DRAWS for [surface], and the tiles every rect here
+/// is measured from: the picture as shown — its drawing with the texts it
+/// carries laid over it (`celSurfaceWithTextsLaid`).
+///
+/// 🚨★★★A COMPOSE CANNOT BE HANDED A PICTURE'S DRAWING WITHOUT ITS TEXTS
+/// (R9-rest, 유저 2026-10-06: 「셀의 그림이랑 정확히 동일」). Every function in
+/// this file reads its tiles through here, so no caller is the one that
+/// forgot — and a text that reaches past the drawing grows the rect a
+/// compose rasters exactly as a stroke there would. A surface that carries
+/// no text comes back as the object it was.
+Map<TileCoord, BitmapTile> _tilesShownBy(BitmapSurface surface) =>
+    celSurfaceWithTextsLaid(surface).tiles;
+
 /// The canvas rect UNIONED with every stored tile's rect — the extent a
 /// positioned compose rasters. Integer-aligned by construction.
 ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
   final canvas = surface.canvasSize.canvasRect;
-  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  final tiles = tileCoordsWorldRect(
+    _tilesShownBy(surface).keys,
+    surface.tileSize,
+  );
   return tiles == null ? canvas : canvas.expandToInclude(tiles);
 }
 
@@ -49,7 +67,10 @@ ui.Rect surfaceContentWorldRect(BitmapSurface surface) {
 /// the part of that level it covers can be cut out as it is.
 ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
   final content = surfaceContentWorldRect(surface);
-  final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+  final tiles = tileCoordsWorldRect(
+    _tilesShownBy(surface).keys,
+    surface.tileSize,
+  );
   if (tiles == null) {
     return content;
   }
@@ -125,7 +146,7 @@ Future<ui.Image?> _composeAsync(
   var recorderClosed = false;
 
   try {
-    for (final entry in surface.tiles.entries) {
+    for (final entry in _tilesShownBy(surface).entries) {
       final tile = entry.value;
       var image = reuse?.imageFor(tile);
       if (image == null) {
@@ -206,7 +227,7 @@ Future<ui.Image?> _composeAsync(
   canvas.translate(-over.left, -over.top);
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
 
-  for (final entry in surface.tiles.entries) {
+  for (final entry in _tilesShownBy(surface).entries) {
     final tile = entry.value;
     final image = makePictures ? reuse.pictureFor(tile) : reuse.imageFor(tile);
     if (image == null) {
@@ -316,7 +337,10 @@ ui.Rect _composedOver(BitmapSurface surface, ui.Rect? over) {
     return surfaceContentWorldRect(surface);
   }
   assert(() {
-    final tiles = tileCoordsWorldRect(surface.tiles.keys, surface.tileSize);
+    final tiles = tileCoordsWorldRect(
+      _tilesShownBy(surface).keys,
+      surface.tileSize,
+    );
     return tiles == null || over.expandToInclude(tiles) == over;
   }(), 'a part of the content composed on its own must hold every tile');
   return over;
