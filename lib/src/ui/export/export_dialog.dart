@@ -1666,13 +1666,9 @@ class ExportDialogState extends State<ExportDialog> {
         // The file exactly as the naming rule will write it, extension
         // included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸 그대로 …
         // A0001.png 이런식으로 확장자까지」) — and a drawing that is no file
-        // by the name its block wears.
+        // by its whole name.
         final file = sheet.look.fileName;
-        final name = file.isNotEmpty
-            ? file
-            : sheet.celName.isEmpty
-            ? row.layer.name
-            : sheet.celName;
+        final name = file.isNotEmpty ? file : sheet.fullName;
         return '$name · ${pages.indexOf(sheet) + 1} / ${pages.length}';
       case ExportTab.timesheet:
         final plan = _timesheetPagePlan();

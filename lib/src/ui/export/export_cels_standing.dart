@@ -77,7 +77,7 @@ class ExportCelsListing {
   }
 }
 
-// WHERE THE CELS LIST STANDS: a row, the drawing of it the preview shows,
+/// WHERE THE CELS LIST STANDS: a row, the drawing of it the preview shows,
 /// and the place in its row that was last chosen.
 ///
 /// 🗣️유저 2026-10-06: 「서있는걸 일단 레이어별로 서있도록 하고싶어.

@@ -58,6 +58,11 @@ void main() {
     'X',
     'Y', // the transform axes
     'V', // the storyboard's V column, a sheet letter
+    // The export window's Cels list, in the user's own marks (2026-10-06):
+    // 「거기에 CAM버튼도 넣자」 — the camera row, as a sheet writes it — and
+    // 「블록에 디렉션적용시 빨간점말고 D라는 텍스트가 더 맞을듯」.
+    'CAM',
+    'D',
   };
 
   /// Every shape in which a literal reaches the screen from these files.

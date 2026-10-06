@@ -20,6 +20,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -183,6 +184,52 @@ void main() {
     );
     expect(tester.celsBoardBlockOf('e', 'e-f1').sheet.written, isFalse);
     expect(tester.celsBoardSwitchState('d'), BooleanMix.off);
+  });
+
+  testWidgets('🚨「커스텀」 and the filters answer for the PICKED cut: its '
+      'rows leaving the rule turn the label, and a filter press puts ITS '
+      'rows back — the other cut\'s stay as the hand left them', (
+    tester,
+  ) async {
+    final session = twoCuts();
+    addTearDown(session.dispose);
+    await pumpCels(tester, session, scope: ExportScopeKind.project);
+    String label() => tester
+        .widget<Text>(
+          find.byKey(const ValueKey<String>('export-cels-label-text')),
+        )
+        .data!;
+    Map<LayerId, bool> byHand(CutId cut) =>
+        session.repository
+            .requireProject()
+            .exportOverrides
+            .deltaFor(cut)
+            ?.layerOverrides ??
+        const {};
+    final custom = AppText.strings.exSelCustom;
+
+    // A row of the anchor cut answers by hand.
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
+    expect(label(), custom);
+
+    await pick(tester, second);
+    expect(label(), isNot(custom), reason: '002 is on its rules');
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('d'));
+    expect(label(), custom);
+
+    await tester.pressInCelsBoard(
+      find.byKey(const ValueKey<String>('export-cels-select-sheet')),
+    );
+    expect(byHand(second), isEmpty, reason: 'the filter put 002 back');
+    expect(label(), isNot(custom));
+    expect(
+      byHand(first),
+      {const LayerId('a'): false},
+      reason: 'the press was made in 002',
+    );
+
+    await pick(tester, first);
+    expect(label(), custom);
   });
 
   testWidgets('under the cut scope the button is there, shut, naming the '

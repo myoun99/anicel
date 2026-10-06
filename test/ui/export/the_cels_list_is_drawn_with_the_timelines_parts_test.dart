@@ -640,6 +640,11 @@ void main() {
         tester.widget<Text>(keyed('export-cels-block-d-b-b-1')).style!.color,
         exportLaidDirectionInk,
       );
+      // The mark is on the drawing a direction is laid over, and on no
+      // other.
+      for (final other in ['b-b-2', 'b-b-3', 'a-a-1', 'l-l-1']) {
+        expect(keyed('export-cels-block-d-$other'), findsNothing);
+      }
       expect(tester.widget<Pill>(keyed('export-cels-cam')).tone, isNull);
     });
 

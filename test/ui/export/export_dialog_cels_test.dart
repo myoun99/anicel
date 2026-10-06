@@ -733,6 +733,71 @@ void main() {
     expect(pill(tester, 'export-cels-cam').onTap, isNull);
   });
 
+  testWidgets('nothing is laid over a direction row\'s OWN drawing: stood '
+      'on it the pills keep their place and take no press', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    final direction = session
+        .cutById(cut1)!
+        .layers
+        .singleWhere((layer) => layer.kind == LayerKind.instruction);
+    final pillKey =
+        'export-cels-direction-inst-${direction.frames.single.id.value}';
+
+    await tapKey(tester, 'export-cels-kind-direction');
+    await standOn(tester, 'inst');
+    expect('${tester.celsBoard.standing}', contains('inst'));
+    expect(pill(tester, pillKey).onTap, isNull);
+    await tapKey(tester, pillKey);
+    expect(deltaOf(session), isNull);
+
+    // On a drawing of another row the same pill is live.
+    await standOn(tester, 'a');
+    expect(pill(tester, pillKey).onTap, isNotNull);
+  });
+
+  testWidgets('초기화 is dead while the cut is on its rules, and live once a '
+      'row or a drawing has left them', (tester) async {
+    await pumpCels(tester, celsSession());
+    bool live() => tester
+        .widget<ExportResetChip>(
+          find.byKey(const ValueKey<String>('export-cels-reset')),
+        )
+        .enabled;
+    expect(live(), isFalse);
+
+    await pressBlock(tester, 'a', 'f1');
+    expect(live(), isTrue, reason: 'a drawing was turned off');
+    await tapKey(tester, 'export-cels-reset');
+    expect(live(), isFalse);
+
+    await tapKey(tester, 'export-cels-switch-b');
+    expect(live(), isTrue, reason: 'a row answers by hand');
+    await tapKey(tester, 'export-cels-reset');
+    expect(live(), isFalse);
+  });
+
+  testWidgets('a drawing turned off hands the preview to the nearest one '
+      'left — and that one is STOOD ON: turned back on, the first does not '
+      'take the preview back (유저 2026-10-06: 「서있는 상태나 마찬가지지」)', (
+    tester,
+  ) async {
+    await pumpCels(tester, celsSession());
+    await standOn(tester, 'a');
+    String shown() => '${tester.celsBoard.shown}';
+    expect(shown(), contains('f1'));
+
+    await pressBlock(tester, 'a', 'f1');
+    expect(shown(), contains('f2'));
+
+    await pressBlock(tester, 'a', 'f1');
+    expect(
+      shown(),
+      contains('f2'),
+      reason: 'the list stood on the second drawing when the first went',
+    );
+  });
+
   testWidgets('the first file the window names is the first one WRITTEN — a '
       'drawing turned off is not it', (tester) async {
     await pumpCels(tester, celsSession());

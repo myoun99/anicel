@@ -180,6 +180,32 @@ void main() {
     expect(given['a long long word'], closeTo(own['cd']! - 1, 0.01));
   });
 
+  testWidgets('across, a press on a pill is THAT pill\'s', (tester) async {
+    final pressed = <String>[];
+    await pump(
+      tester,
+      300,
+      Align(
+        alignment: Alignment.centerLeft,
+        child: PillStrip(
+          items: [
+            for (final label in ['One', 'Two', 'Three'])
+              PillItem(
+                keyValue: label,
+                label: label,
+                selected: false,
+                onTap: () => pressed.add(label),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('Two')));
+    await tester.tap(find.byKey(const ValueKey<String>('Three')));
+    expect(pressed, ['Two', 'Three']);
+  });
+
   testWidgets('across, the line between two pills runs down the left of the '
       'second', (tester) async {
     await pump(

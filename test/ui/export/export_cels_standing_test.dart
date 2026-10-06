@@ -183,6 +183,38 @@ void main() {
       );
     });
 
+    test('a folder says what the rows under it say at ANY depth — a row in '
+        'a folder of its own, inside it, counts', () {
+      // F holds B, and a folder G that holds D.
+      final nested = Cut(
+        id: cutId,
+        name: '301',
+        duration: 8,
+        canvasSize: const CanvasSize(width: 8, height: 8),
+        layers: [
+          row('b', 'B', ['1'], folder: 'f'),
+          row('d', 'D', ['1'], folder: 'g'),
+          createFolderLayer(
+            id: const LayerId('g'),
+            name: 'G',
+            parentId: const LayerId('f'),
+          ),
+          createFolderLayer(id: const LayerId('f'), name: 'F'),
+          createCameraLayer(cutId: cutId),
+        ],
+      );
+      final rows = board(
+        nested,
+        delta: ExportCelsCutDelta().withLayerOverride(
+          const LayerId('d'),
+          false,
+        ),
+      ).rows;
+      expect(of(rows, 'g').state, BooleanMix.off);
+      expect(of(rows, 'b').state, BooleanMix.on);
+      expect(of(rows, 'f').state, BooleanMix.mixed);
+    });
+
     test('a row of a kind that is off is not a row of the list', () {
       final rows = board(film(), spec: const CelsExportSpec(kinds: {})).rows;
       expect(rows, isEmpty);
