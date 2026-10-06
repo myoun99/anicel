@@ -305,9 +305,13 @@ class PlaybackTransportControls extends StatelessWidget {
   AppIconButton _loopToggle() {
     return AppIconButton(
       keyValue: 'playback-loop-toggle',
+      // The state it is in, in the program's language — the play button's
+      // law below. ↩️`'Loop (click for play once)'` and its twin stood here
+      // in English for everyone; `transportLoop` sat in the table in five
+      // languages, read by nobody.
       tooltip: controller.loopMode == PlaybackLoopMode.loop
-          ? 'Loop (click for play once)'
-          : 'Play once (click for loop)',
+          ? AppText.strings.transportLoop
+          : AppText.strings.transportOnce,
       isSelected: controller.loopMode == PlaybackLoopMode.loop,
       icon: const Icon(Icons.repeat),
       onPressed: () {
@@ -322,7 +326,14 @@ class PlaybackTransportControls extends StatelessWidget {
   AppIconButton _playButton(bool isPlayingHere) {
     return AppIconButton(
       keyValue: 'playback-play-button',
-      tooltip: isPlayingHere ? 'Stop' : 'Play',
+      // 🗣️play-button-tooltip-untranslated (2026-10-02): the two arms were
+      // English literals, so the sill said 「Play」 in every language — and a
+      // ternary is exactly what the translation ratchet cannot read (F-37:
+      // 「the first literal after the colon or nothing at all」). Both arms
+      // read the table; ⛔a literal here is invisible to the scan.
+      tooltip: isPlayingHere
+          ? AppText.strings.playbackStop
+          : AppText.strings.menuPlay,
       shortcuts: const [EditorActionIds.playbackToggle],
       isSelected: isPlayingHere,
       icon: Icon(isPlayingHere ? Icons.stop : Icons.play_arrow),

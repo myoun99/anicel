@@ -441,6 +441,8 @@ void main() {
     'transportOut': (s) => s.transportOut,
     'transportToStart': (s) => s.transportToStart,
     'transportToEnd': (s) => s.transportToEnd,
+    'transportLoop': (s) => s.transportLoop,
+    'transportOnce': (s) => s.transportOnce,
     'transportPrevFrame': (s) => s.transportPrevFrame,
     'transportNextFrame': (s) => s.transportNextFrame,
     'colorRecent': (s) => s.colorRecent,

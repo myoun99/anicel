@@ -1018,6 +1018,8 @@ enum AppStrings {
   String get transportOut => _s('transportOut');
   String get transportToStart => _s('transportToStart');
   String get transportToEnd => _s('transportToEnd');
+  String get transportLoop => _s('transportLoop');
+  String get transportOnce => _s('transportOnce');
   String get transportPrevFrame => _s('transportPrevFrame');
   String get transportNextFrame => _s('transportNextFrame');
   String get colorRecent => _s('colorRecent');
@@ -2258,6 +2260,8 @@ enum AppStrings {
     'transportOut': 'Out',
     'transportToStart': 'To start',
     'transportToEnd': 'To end',
+    'transportLoop': 'Loop',
+    'transportOnce': 'Play once',
     'transportPrevFrame': 'Previous frame',
     'transportNextFrame': 'Next frame',
     'colorRecent': 'Recent',
@@ -3506,6 +3510,8 @@ enum AppStrings {
     'transportOut': 'アウト',
     'transportToStart': '先頭へ',
     'transportToEnd': '末尾へ',
+    'transportLoop': 'ループ',
+    'transportOnce': '1回再生',
     'transportPrevFrame': '前のフレーム',
     'transportNextFrame': '次のフレーム',
     'colorRecent': '最近',
@@ -4878,6 +4884,8 @@ enum AppStrings {
     'transportOut': '아웃',
     'transportToStart': '처음으로',
     'transportToEnd': '끝으로',
+    'transportLoop': '루프',
+    'transportOnce': '한 번 재생',
     'transportPrevFrame': '이전 프레임',
     'transportNextFrame': '다음 프레임',
     'colorRecent': '최근',
@@ -6287,6 +6295,8 @@ enum AppStrings {
     'transportOut': 'Sortie',
     'transportToStart': 'Au début',
     'transportToEnd': 'À la fin',
+    'transportLoop': 'Boucle',
+    'transportOnce': 'Lire une fois',
     'transportPrevFrame': 'Image précédente',
     'transportNextFrame': 'Image suivante',
     'colorRecent': 'Récentes',
@@ -7649,6 +7659,8 @@ enum AppStrings {
     'transportOut': '出点',
     'transportToStart': '回到开头',
     'transportToEnd': '跳到结尾',
+    'transportLoop': '循环',
+    'transportOnce': '播放一次',
     'transportPrevFrame': '上一帧',
     'transportNextFrame': '下一帧',
     'colorRecent': '最近',
