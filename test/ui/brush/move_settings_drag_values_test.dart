@@ -476,6 +476,26 @@ void main() {
     expect(applied.last, past.copyWith(sy: 2));
   });
 
+  /// The shell keeps the tool's options on a notifier, and a notifier says
+  /// nothing for a value equal to the one it holds.
+  test('the link is part of what the options ARE: whoever holds them hears '
+      'the switch', () {
+    final held = ValueNotifier(TransformToolOptions.defaults);
+    addTearDown(held.dispose);
+    var heard = 0;
+    held.addListener(() => heard += 1);
+
+    held.value = held.value.copyWith(scaleLinked: false);
+
+    expect(heard, 1);
+    expect(held.value.scaleLinked, isFalse);
+    expect(
+      held.value.copyWith(meshRows: 5).scaleLinked,
+      isFalse,
+      reason: 'and another knob turned leaves the link as it was',
+    );
+  });
+
   testWidgets('the link switch reaches the tool\'s options, and reads back '
       'from them', (tester) async {
     final chosen = <TransformToolOptions>[];
