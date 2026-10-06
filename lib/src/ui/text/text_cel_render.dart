@@ -4,13 +4,15 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
-import '../theme/app_theme.dart' show AppTypography;
+import 'canvas_letter_style.dart';
 
 /// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
 /// over the picture. ↩️The TEXT LAYER baked it into cels until F-154
 /// removed the kind — the text tool the user plans for ordinary layers
-/// writes with this same machinery. Engine text in the app's BUNDLED faces
-/// ([AppTypography.bundledFamily], 유저 2026-09-25: 「글꼴 앱에서 정한거
+/// writes with this same machinery. ✅It does, since 2026-10-06: the
+/// letters' recipe is `canvasLetterTextStyle`, which a text on a cel
+/// (`layoutCelText`) is set with too. Engine text in the app's BUNDLED
+/// faces (`AppTypography.bundledFamily`, 유저 2026-09-25: 「글꼴 앱에서 정한거
 /// 통일」) — declared in `pubspec.yaml`, so the engine has them from the
 /// first frame and a picture prints the same letters on every machine.
 /// ↩️A text with no chosen face used to print in the OS's, with the conte's
@@ -82,6 +84,9 @@ class TextCelLayout {
   }
 }
 
+/// A tag line's pitch, as a multiple of its letters' size.
+const double _tagLineHeight = 1.25;
+
 /// Lays [content] out against [canvas]'s geometry. Cheap enough to call
 /// per frame from a painter; dispose the result when done.
 ///
@@ -99,57 +104,35 @@ TextCelLayout layoutTextCel({
 }) {
   final style = content.style;
 
-  TextPainter build(Color color, {Paint? foreground, double? fontSize}) =>
-      TextPainter(
-        text: TextSpan(
-          text: content.text,
-          style: TextStyle(
-            color: foreground == null ? color : null,
-            foreground: foreground,
-            fontSize: fontSize ?? style.fontSize,
-            fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
-            letterSpacing: style.letterSpacing == 0
-                ? null
-                : style.letterSpacing,
-            fontFamily: style.fontFamily ?? AppTypography.bundledFamily,
-            // CJK safety on every family choice: the app's bundled faces
-            // catch what a chosen face misses, in the app's own order.
-            fontFamilyFallback: const [
-              AppTypography.bundledFamily,
-              ...AppTypography.bundledFallback,
-            ],
-            height: 1.25,
-          ),
-        ),
-        textAlign: switch (style.align) {
-          TextCelAlign.left => TextAlign.left,
-          TextCelAlign.center => TextAlign.center,
-          TextCelAlign.right => TextAlign.right,
-        },
-        textDirection: TextDirection.ltr,
-      )..layout();
+  // The letters' recipe is [canvasLetterTextStyle] — the one a text on a
+  // cel is set with too (R9-rest, 2026-10-06).
+  TextPainter build({ui.Paint? foreground, double? fontSize}) => TextPainter(
+    text: TextSpan(
+      text: content.text,
+      style: canvasLetterTextStyle(
+        style,
+        lineHeight: _tagLineHeight,
+        fontSize: fontSize,
+        foreground: foreground,
+      ),
+    ),
+    textAlign: canvasTextAlign(style.align),
+    textDirection: TextDirection.ltr,
+  )..layout();
 
-  var fill = build(style.colorValue);
+  var fill = build();
   var drawnSize = style.fontSize;
   if (maxWidth != null && maxWidth > 0 && fill.width > maxWidth) {
     // ONE re-measure at the scale that fits — the tag stays a single
     // line, so the stacked rows keep their pitch.
     drawnSize = style.fontSize * (maxWidth / fill.width);
     fill.dispose();
-    fill = build(style.colorValue, fontSize: drawnSize);
+    fill = build(fontSize: drawnSize);
   }
-  final outlineColor = style.outlineColorValue;
-  final stroke = outlineColor != null && style.outlineWidth > 0
-      ? build(
-          outlineColor,
-          fontSize: drawnSize,
-          foreground: ui.Paint()
-            ..style = ui.PaintingStyle.stroke
-            ..strokeWidth = style.outlineWidth
-            ..strokeJoin = ui.StrokeJoin.round
-            ..color = outlineColor,
-        )
-      : null;
+  final outline = canvasLetterOutlinePaint(style);
+  final stroke = outline == null
+      ? null
+      : build(fontSize: drawnSize, foreground: outline);
 
   final anchor =
       content.position ??
