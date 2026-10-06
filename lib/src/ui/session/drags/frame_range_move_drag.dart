@@ -1535,7 +1535,7 @@ class FrameRangeMoveDrag {
     // move), so only same-row zero deltas reset.
     if (frameDelta == 0 &&
         (pointedAt == null ||
-            pointedAt == _seatRowOf(_project, selection.layerId) ||
+            pointedAt == selection.layerId ||
             pointedAt == _grabLayerId)) {
       _resetPreviewToOrigin();
       return;

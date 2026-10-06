@@ -189,6 +189,34 @@ void main() {
     );
   });
 
+  test('carried off by its mirror and brought back to it, the block is home '
+      '— the drop moves nothing', () {
+    final (:s, :base, :mirror, :other) = baseWithAMirror(
+      AttachedPlacement.below,
+    );
+    final cel = stored(s, base).timeline[3]!.frameId!;
+    // Swept from the mirror up: the mirror is the row the selection names.
+    s.updateFrameRangeSelectionDrag(
+      layerId: mirror,
+      anchorIndex: 3,
+      headIndex: 3,
+      headLayerId: base,
+    );
+    expect(s.frameRangeSelection.value!.layerId, mirror, reason: '⛔전제');
+    final steps = s.historyManager.undoCount;
+
+    expect(s.rangeMove.beginFrameRangeMoveDrag(mirror), isTrue);
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: other);
+    expect(s.dragPreview.value, isNotNull, reason: '⛔전제: it was on its way');
+    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: mirror);
+    expect(s.dragPreview.value, isNull, reason: 'R28 #5: back at the start');
+    s.rangeMove.endFrameRangeMoveDrag();
+
+    expect(stored(s, base).timeline[3]?.frameId, cel);
+    expect(stored(s, other).timeline[3], isNull);
+    expect(s.historyManager.undoCount, steps);
+  });
+
   test('the hand over a mirror is over its base: a block dropped on another '
       'row\'s mirror lands on that row', () {
     final (:s, :base, :mirror, :other) = baseWithAMirror(
@@ -231,41 +259,53 @@ void main() {
     expect(stored(s, base).timeline[5]?.frameId, cel);
   });
 
-  test('two rows travel together past a mirror that sits between them', () {
-    final s = EditorSessionManager(initialProject: createDefaultProject());
-    addTearDown(s.dispose);
-    final bottom = s.activeLayer!.id;
-    final middle = addedRow(s, LayerKind.animation);
-    s.selectFrameIndex(3);
-    s.createDrawingAtCurrentFrame();
-    final top = addedRow(s, LayerKind.animation);
-    s.selectFrameIndex(3);
-    s.createDrawingAtCurrentFrame();
-    s.folders.addAttachedLayer(AttachedPlacement.below);
-    final mirror = s.activeLayer!.id;
-    final topCel = stored(s, top).timeline[3]!.frameId!;
-    final middleCel = stored(s, middle).timeline[3]!.frameId!;
-    s.selectLayer(top);
-    s.updateFrameRangeSelectionDrag(
-      layerId: top,
-      anchorIndex: 3,
-      headIndex: 3,
-      headLayerId: middle,
-    );
-    expect(
-      s.frameRangeSelection.value!.spanLayerIds,
-      [middle, mirror, top],
-      reason: '⛔전제: the mirror is BETWEEN the two rows that travel',
-    );
+  // The two rows that travel, and the hand that carries them: by the lower
+  // row onto the row under it, or by the upper row's mirror onto the lower
+  // row — one row down either way, the mirror no step of it.
+  for (final byTheMirror in [false, true]) {
+    test('two rows travel together past a mirror that sits between them — '
+        'carried by ${byTheMirror ? 'that mirror' : 'the lower row'}', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final bottom = s.activeLayer!.id;
+      final middle = addedRow(s, LayerKind.animation);
+      s.selectFrameIndex(3);
+      s.createDrawingAtCurrentFrame();
+      final top = addedRow(s, LayerKind.animation);
+      s.selectFrameIndex(3);
+      s.createDrawingAtCurrentFrame();
+      s.folders.addAttachedLayer(AttachedPlacement.below);
+      final mirror = s.activeLayer!.id;
+      final topCel = stored(s, top).timeline[3]!.frameId!;
+      final middleCel = stored(s, middle).timeline[3]!.frameId!;
+      s.selectLayer(top);
+      s.updateFrameRangeSelectionDrag(
+        layerId: top,
+        anchorIndex: 3,
+        headIndex: 3,
+        headLayerId: middle,
+      );
+      expect(
+        s.frameRangeSelection.value!.spanLayerIds,
+        [middle, mirror, top],
+        reason: '⛔전제: the mirror is BETWEEN the two rows that travel',
+      );
 
-    expect(s.rangeMove.beginFrameRangeMoveDrag(middle), isTrue);
-    s.rangeMove.updateFrameRangeMoveDrag(frameDelta: 0, targetLayerId: bottom);
-    s.rangeMove.endFrameRangeMoveDrag();
+      expect(
+        s.rangeMove.beginFrameRangeMoveDrag(byTheMirror ? mirror : middle),
+        isTrue,
+      );
+      s.rangeMove.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: byTheMirror ? middle : bottom,
+      );
+      s.rangeMove.endFrameRangeMoveDrag();
 
-    expect(stored(s, middle).timeline[3]?.frameId, topCel);
-    expect(stored(s, bottom).timeline[3]?.frameId, middleCel);
-    expect(stored(s, top).timeline[3], isNull);
-  });
+      expect(stored(s, middle).timeline[3]?.frameId, topCel);
+      expect(stored(s, bottom).timeline[3]?.frameId, middleCel);
+      expect(stored(s, top).timeline[3], isNull);
+    });
+  }
 
   test('a picture row in the span keeps no other row from changing rows — '
       'and its own cel stays', () {
