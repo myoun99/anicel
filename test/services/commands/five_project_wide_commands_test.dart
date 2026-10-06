@@ -3,12 +3,14 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/font_face_facts.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/models/project_font_file.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/models/track.dart';
@@ -18,10 +20,14 @@ import 'package:anicel/src/services/commands/update_camera_instruction_set_comma
 import 'package:anicel/src/services/commands/update_media_assets_command.dart';
 import 'package:anicel/src/services/commands/update_project_audio_sample_rate_command.dart';
 import 'package:anicel/src/services/commands/update_project_background_command.dart';
+import 'package:anicel/src/services/commands/update_project_fonts_command.dart';
 import 'package:anicel/src/services/commands/update_timesheet_info_command.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 /// 🚨FIVE PROJECT-WIDE COMMANDS, SAME THREE PROMISES.
+///
+/// (Six since 2026-10-06: the fonts registered with the project — R9-rest,
+/// the text tool's faces — joined the table as the same shape.)
 ///
 /// Each writes one project-level field and each had nothing naming it (the
 /// audit's untested-file pass, 2026-09-05). They share a shape, so they
@@ -102,6 +108,24 @@ void main() {
           read: (project) => project.mediaAssets.length,
           written: 1,
         ),
+        'the fonts registered with the project': (
+          build: (repository) => UpdateProjectFontsCommand(
+            repository: repository,
+            fonts: const [
+              ProjectFontFile(
+                carriedAs: 'ab12-cd34-font-1.ttf',
+                facts: FontFaceFacts(
+                  family: 'Probe Sans',
+                  weight: 400,
+                  italic: false,
+                  fsType: 0,
+                ),
+              ),
+            ],
+          ),
+          read: (project) => [for (final font in project.fonts) font.carriedAs],
+          written: ['ab12-cd34-font-1.ttf'],
+        ),
         'the instruction set': (
           build: (repository) => UpdateCameraInstructionSetCommand(
             repository: repository,
@@ -163,6 +187,19 @@ void main() {
         expect(row.build(repository).description, isNotEmpty);
       });
     });
+  });
+
+  test('the fonts take the CALLER\'s description too — a font registered '
+      'and a font taken out each say which', () {
+    final repository = ProjectRepository(initialProject: blank());
+    expect(
+      UpdateProjectFontsCommand(
+        repository: repository,
+        fonts: const [],
+        description: 'Remove font',
+      ).description,
+      'Remove font',
+    );
   });
 
   test('the media pool takes the CALLER\'s description — import, rename and '
