@@ -16,6 +16,8 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_se_row_visual.dart'
+    show SeSpanVisual;
 
 Cut _cut(String id, int duration) {
   return Cut(
@@ -226,6 +228,16 @@ void main() {
       spanTwoRect.width,
       moreOrLessEquals(2 * pixelsPerFrame, epsilon: 0.01),
     );
+
+    // …and each block tells its writing the frames it runs: the name's
+    // ground reads the block's corner off them (F-270).
+    int framesOf(Finder span) => tester
+        .widget<SeSpanVisual>(
+          find.descendant(of: span, matching: find.byType(SeSpanVisual)),
+        )
+        .frames;
+    expect(framesOf(spanCross), 4);
+    expect(framesOf(spanTwo), 2);
 
     // …and NO ~ continuation mark here (UI-R7 #6): the storyboard shows
     // the whole flow — the cut-scoped timeline view carries the marks.

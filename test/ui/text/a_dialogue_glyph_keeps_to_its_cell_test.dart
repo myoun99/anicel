@@ -74,7 +74,7 @@ Future<List<Rect>> _paintedGlyphs(
           alignment: Alignment.topLeft,
           child: SizedBox.fromSize(
             size: size,
-            child: SeSpanVisual(axis: axis, dialogue: dialogue),
+            child: SeSpanVisual(axis: axis, frames: 1, dialogue: dialogue),
           ),
         ),
       ),

@@ -4082,6 +4082,7 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
     ),
     child: SeSpanVisual(
       axis: Axis.horizontal,
+      frames: block.length,
       dialogue: dialogue ?? '',
       seName: seName,
     ),

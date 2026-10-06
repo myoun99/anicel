@@ -36,6 +36,7 @@ void main() {
               height: axis == Axis.horizontal ? 28 : 200,
               child: SeSpanVisual(
                 axis: axis,
+                frames: 10,
                 dialogue: 'ガチャ',
                 seName: 'ドア',
               ),

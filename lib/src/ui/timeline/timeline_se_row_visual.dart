@@ -73,6 +73,7 @@ List<Widget> timelineRowSeLabelOverlays({
           ),
           child: SeSpanVisual(
             axis: axis,
+            frames: block.length,
             dialogue: dialogue ?? '',
             seName: seName,
           ),
@@ -328,40 +329,21 @@ class _WarningBarPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final horizontal = axis == Axis.horizontal;
-    final along = extentAlong(axis, size);
-    final across = extentAcross(axis, size);
-    // The PAPER's corner (I-44): the block stops short of the row seam, and
-    // its corner is measured on what it covers.
-    final corner = frameCount <= 0
-        ? Radius.zero
-        : timelineBlockCornerRadiusAt(
-            cellExtent: along / frameCount,
-            crossExtent: timelineRowPaperExtent(crossAxisExtent),
-          );
     // The line follows the paper's own rounding at both ends: the block's
-    // corners, a full corner deep across, clip it.
-    final depth = math.max(corner.x, across);
-    final paper = horizontal
-        ? RRect.fromLTRBAndCorners(
-            0,
-            0,
-            size.width,
-            depth,
-            topLeft: corner,
-            topRight: corner,
-          )
-        : RRect.fromLTRBAndCorners(
-            0,
-            0,
-            depth,
-            size.height,
-            topLeft: corner,
-            bottomLeft: corner,
-          );
+    // PAPER clips it (I-44: the block stops short of the row seam, and its
+    // corner is measured on what it covers). ↩️It built the two near corners
+    // again in a box of its own, a corner deep; the paper's whole shape says
+    // the same on this line and cannot say otherwise (F-270).
     canvas
       ..save()
-      ..clipRRect(paper)
+      ..clipRRect(
+        timelineBlockPaperShapeOver(
+          axis: axis,
+          along: extentAlong(axis, size),
+          rowExtent: crossAxisExtent,
+          frames: frameCount,
+        ),
+      )
       ..drawRect(Offset.zero & size, Paint()..color = color)
       ..restore();
   }
@@ -515,11 +497,17 @@ class SeSpanVisual extends StatelessWidget {
   const SeSpanVisual({
     super.key,
     required this.axis,
+    required this.frames,
     required this.dialogue,
     this.seName,
   });
 
   final Axis axis;
+
+  /// How many frames the block runs. The box over this is the live cell —
+  /// what the block's corner reads — so the name's ground is cut to the
+  /// PAPER it lies on at every zoom ([_SeNameGroundPainter], F-270).
+  final int frames;
   final String dialogue;
   final String? seName;
 
@@ -552,24 +540,90 @@ class SeSpanVisual extends StatelessWidget {
                 : constraints.maxWidth,
           ),
         );
-        return Flex(
-          direction: axis,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (seName.isNotEmpty)
-              _SeNameBox(axis: axis, name: seName, extent: nameExtent),
-            Expanded(
-              child: DialogueFitText(
-                text: dialogue,
-                axis: axis,
-                color: timelineDrawingInkColor,
+        return CustomPaint(
+          painter: seName.isEmpty
+              ? null
+              : _SeNameGroundPainter(
+                  axis: axis,
+                  frames: frames,
+                  extent: nameExtent,
+                ),
+          child: Flex(
+            direction: axis,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (seName.isNotEmpty)
+                _SeNameBox(axis: axis, name: seName, extent: nameExtent),
+              Expanded(
+                child: DialogueFitText(
+                  text: dialogue,
+                  axis: axis,
+                  color: timelineDrawingInkColor,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
   }
+}
+
+/// The name chip's GROUND: the block's own paper, tinted over the chip's
+/// stretch — never a box of its own.
+///
+/// 🗣️F-270 (유저 2026-10-03): 「se블록의 이름칸의 강조색으로 되어있는 바탕색,
+/// 바탕색 실루엣이 블록이랑 딱 맞춰서 꼭짓점이 동그랗게 되지않아서 바탕색
+/// 오버레이만 사각형 실루엣임. 근본/구조적으로 해결」. ↩️The chip was a
+/// `ColoredBox` over the block's start: square where the paper under it is
+/// round, and a seam's width past the paper across the row. It is painted in
+/// the BLOCK's box now and the paper's shape clips it
+/// ([timelineBlockPaperShape]) — so a short block the chip takes whole is
+/// round at its far end too, with nobody having to think of that case.
+class _SeNameGroundPainter extends CustomPainter with RepaintOnProps {
+  const _SeNameGroundPainter({
+    required this.axis,
+    required this.frames,
+    required this.extent,
+  });
+
+  final Axis axis;
+
+  /// The block's length in frames: the box over this is the live cell.
+  final int frames;
+
+  /// How far the chip runs ALONG the block ([seNameBoxExtentIn]).
+  final double extent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final across = extentAcross(axis, size);
+    canvas
+      ..save()
+      ..clipRRect(
+        timelineBlockPaperShapeOver(
+          axis: axis,
+          along: extentAlong(axis, size),
+          rowExtent: across,
+          frames: frames,
+        ),
+      )
+      ..drawRect(
+        Rect.fromPoints(
+          Offset.zero,
+          offsetAlong(axis, along: extent, across: across),
+        ),
+        // R6-②: soft accent tint (the full-strength accent read too loud);
+        // dark ink writing carries the contrast — matches the sheet.
+        Paint()..color = AppColors.accent.withValues(alpha: 0.3),
+      )
+      ..restore();
+  }
+
+  /// The accent is LIVE (UI-R22 #5): read here rather than taken, so it is
+  /// named here for a change of it to repaint.
+  @override
+  Object get props => (axis, frames, extent, AppColors.accent);
 }
 
 class _SeNameBox extends StatelessWidget {
@@ -593,17 +647,15 @@ class _SeNameBox extends StatelessWidget {
     // dark ink writing carrying the contrast. Writing follows the strip:
     // upright glyph stack on the row strip, horizontal on the X-sheet
     // band. Same tint on the printed sheet.
+    //
+    // The tint itself is the BLOCK's to lay ([_SeNameGroundPainter], F-270):
+    // this box is the chip's room and its name.
     final box = Semantics(
       label: 'SE name $name',
       // Own node even where an ancestor would merge labels (the dialog
       // preview) — tests and screen readers address the box directly.
       container: true,
-      child: ColoredBox(
-        // R6-②: soft accent tint (the full-strength accent read too loud);
-        // dark ink writing carries the contrast — matches the sheet.
-        color: AppColors.accent.withValues(alpha: 0.3),
-        child: _word(),
-      ),
+      child: _word(),
     );
     return alongBox(axis, extent, child: box);
   }
@@ -732,20 +784,16 @@ class _SePaperPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cross = timelineRowPaperExtent(extentAcross(axis, size));
-    final box = axis == Axis.horizontal
-        ? Rect.fromLTWH(0, 0, size.width, cross)
-        : Rect.fromLTWH(0, 0, cross, size.height);
     // THE block corner (F-79's one function) — this span is "visually the
     // drawing rows' block", and it rounded by a 4px of its own since the
     // first SE paper (07-09), so it never matched the blocks it mirrors.
-    final rrect = RRect.fromRectAndRadius(
-      box,
-      timelineBlockCornerRadiusAt(
-        cellExtent: frameCellExtent,
-        crossExtent: cross,
-      ),
+    final rrect = timelineBlockPaperShape(
+      axis: axis,
+      along: extentAlong(axis, size),
+      rowExtent: extentAcross(axis, size),
+      frameCellExtent: frameCellExtent,
     );
+    final cross = extentAcross(axis, rrect.outerRect.size);
     canvas.drawRRect(rrect, Paint()..color = paper);
     final seen = timelineGridGroundOver(under: ground, painted: paper);
     if (blockFrameLines && seen != null && frameCellExtent > 0) {

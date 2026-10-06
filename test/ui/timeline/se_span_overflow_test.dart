@@ -24,6 +24,7 @@ void main() {
             height: height,
             child: SeSpanVisual(
               axis: axis,
+              frames: 1,
               dialogue: 'せりふのテキスト',
               seName: name,
             ),

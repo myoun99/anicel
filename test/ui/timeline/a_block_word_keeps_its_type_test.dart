@@ -610,6 +610,7 @@ void main() {
               height: rowExtent,
               child: SeSpanVisual(
                 axis: Axis.horizontal,
+                frames: 1,
                 dialogue: '',
                 seName: 'ドアー',
               ),
