@@ -181,7 +181,7 @@ void main() {
   });
 
   test('group helpers: attach rows adjacent to the base, insertion past the '
-      'group, numbered names', () {
+      'group', () {
     final below = attached.copyWith(
       id: const LayerId('attach-below'),
       attachedPlacement: AttachedPlacement.below,
@@ -199,15 +199,50 @@ void main() {
       0,
       reason: 'the group slice starts at the below side',
     );
-    // Signed, per-side numbering (UI-R20 #11) on the BASE's name
-    // (R26 #29): one above and one below exist, so the next of each side
-    // is A+2 / A-2.
-    expect(nextAttachedLayerName(base, layers, AttachedPlacement.above), 'A+2');
-    expect(nextAttachedLayerName(base, layers, AttachedPlacement.below), 'A-2');
+  });
+
+  test('a fresh attach row takes the first name of its side no row of the '
+      'cut wears', () {
+    Layer rider(String name, AttachedPlacement placement) => attached.copyWith(
+      id: LayerId('rider-$name'),
+      name: name,
+      attachedPlacement: placement,
+    );
+    const above = AttachedPlacement.above;
+    const below = AttachedPlacement.below;
+
+    // Signed, per-side numbering (UI-R20 #11) on the BASE's name (R26 #29).
+    expect(nextAttachedLayerName(base, [base], above), 'A+1');
+    expect(nextAttachedLayerName(base, [base], below), 'A-1');
+    final oneEachSide = [rider('A-1', below), base, rider('A+1', above)];
+    expect(nextAttachedLayerName(base, oneEachSide, above), 'A+2');
     expect(
-      nextAttachedLayerName(base, [base], AttachedPlacement.below),
+      nextAttachedLayerName(base, oneEachSide, below),
+      'A-2',
+      reason: 'each side numbers its own',
+    );
+
+    // 🚨F-292 (유저 2026-10-05): 「A랑 A-2만 있을때 추가하면 A-2가 만들어짐」.
+    expect(
+      nextAttachedLayerName(base, [rider('A-2', below), base], below),
       'A-1',
-      reason: 'each side numbers its own count',
+      reason: 'the name still worn is passed by, the one let go is taken',
+    );
+    expect(
+      nextAttachedLayerName(base, [
+        rider('A-2', below),
+        rider('A-1', below),
+        base,
+      ], below),
+      'A-3',
+    );
+    expect(
+      nextAttachedLayerName(base, [
+        base,
+        base.copyWith(id: const LayerId('renamed'), name: 'A+1'),
+      ], above),
+      'A+2',
+      reason: 'whoever wears the name — the cels\' rule, on the cut\'s rows',
     );
   });
 
