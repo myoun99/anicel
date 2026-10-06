@@ -164,6 +164,20 @@ void main() {
     });
   });
 
+  test('each axis is oversampled by its own narrowing — along the line for '
+      'a word narrowed along it, down it for one narrowed down it', () {
+    expect(wordBakeTimes(12, (x: 0.7, y: 1.0)), (x: 2, y: 1));
+    expect(wordBakeTimes(12, (x: 1.0, y: 0.5)), (x: 1, y: 2));
+    expect(wordBakeTimes(12, (x: 0.25, y: 0.5)), (x: 4, y: 2));
+    expect(wordBakeTimes(12, (x: 1.0, y: 1.0)), wordBakedAsItIs);
+    expect(
+      wordBakeTimes(9, (x: 1.0, y: 1.0)),
+      (x: 2, y: 2),
+      reason: 'a type under the legible size is small on both axes',
+    );
+    expect(wordBakeTimes(null, (x: 1.0, y: 1.0)), wordBakedAsItIs);
+  });
+
   test('an axis is oversampled a whole number of times, and only below '
       'the legible size', () {
     for (var type = 1.0; type < 24; type += 0.37) {

@@ -86,19 +86,17 @@ Future<BakedWordCoverage?> bakeWordCoverage(
   }
   final width = (painter.width * fit.x * dpr).ceil() + 2;
   final height = (painter.height * fit.y * dpr).ceil() + 2;
-  final type = fontSize ?? legibleBakeSize;
-  final timesAlong = wordBakeScale(type * fit.x).toInt();
-  final timesDown = wordBakeScale(type * fit.y).toInt();
+  final times = wordBakeTimes(fontSize, fit);
   final recorder = ui.PictureRecorder();
   final canvas = Canvas(recorder)
     // The big raster is the final box that many times over, margin and
     // all: one final pixel of margin is that many of its own.
-    ..translate(timesAlong.toDouble(), timesDown.toDouble())
-    ..scale(dpr * timesAlong * fit.x, dpr * timesDown * fit.y);
+    ..translate(times.x.toDouble(), times.y.toDouble())
+    ..scale(dpr * times.x * fit.x, dpr * times.y * fit.y);
   painter.paint(canvas, Offset.zero);
   final picture = recorder.endRecording();
-  final bigWidth = width * timesAlong;
-  final bigHeight = height * timesDown;
+  final bigWidth = width * times.x;
+  final bigHeight = height * times.y;
   // ⚠️TWO holdings, two arms. `toImageSync` throws, so the picture used to
   // survive a failed bake; and `toByteData` is awaited, so the image used to
   // survive a failed read. Both are given back by structure now.
@@ -126,11 +124,27 @@ Future<BakedWordCoverage?> bakeWordCoverage(
     height: height,
     logicalWidth: painter.width * fit.x,
     logicalHeight: painter.height * fit.y,
-    alpha: timesAlong == 1 && timesDown == 1
+    alpha: times == wordBakedAsItIs
         ? big
         : boxFilterA8(big, bigWidth, bigHeight, width, height),
   );
 }
+
+/// How many times over each screen axis of a word narrowed by [fit] is
+/// rasterised for its bake ([bakeWordCoverage]): each by its OWN narrowing
+/// ([wordBakeScale] of the type times it), so a word narrowed along its
+/// line is rasterised down the line as an un-narrowed one is (F-297).
+({int x, int y}) wordBakeTimes(double? fontSize, ({double x, double y}) fit) {
+  final type = fontSize ?? legibleBakeSize;
+  return (
+    x: wordBakeScale(type * fit.x).toInt(),
+    y: wordBakeScale(type * fit.y).toInt(),
+  );
+}
+
+/// [wordBakeTimes] of a word the rasteriser draws well as it is: its bake
+/// would be the word drawn straight, so none is made of it.
+const ({int x, int y}) wordBakedAsItIs = (x: 1, y: 1);
 
 /// How much bigger than its final box to rasterise a glyph that ends up
 /// [fontSize] tall (its type times one axis's narrowing).
@@ -224,7 +238,7 @@ bool paintBakedWord(
   final views = RendererBinding.instance.renderViews;
   if (span == null ||
       views.isEmpty ||
-      wordBakeScale(_narrowedType(fontSize, fit)) == 1) {
+      wordBakeTimes(fontSize, fit) == wordBakedAsItIs) {
     return false;
   }
   // The root transform's ratio carries the app's UI scale — the view's own
@@ -266,11 +280,6 @@ bool paintBakedWord(
   );
   return true;
 }
-
-/// How tall a word of [fontSize] ends up narrowed by [fit] — its type times
-/// its tighter narrowing: the size [wordBakeScale] asks about.
-double _narrowedType(double? fontSize, ({double x, double y}) fit) =>
-    (fontSize ?? legibleBakeSize) * (fit.x < fit.y ? fit.x : fit.y);
 
 /// A painter that may set a narrowed word ([paintBakedWord]) — it paints
 /// again when a bake lands ([BakedWords.landed]), on top of whatever else

@@ -117,7 +117,7 @@ void main() {
     // (What that buys is measured, not scanned:
     // `text/a_baked_word_stands_where_the_word_does_test.dart`.)
     expect(
-      source.contains('timesAlong==1&&timesDown==1?big'),
+      source.contains('times==wordBakedAsItIs?big'),
       isTrue,
       reason:
           'and at scale 1 the alpha is the bake itself, not a filtered '
