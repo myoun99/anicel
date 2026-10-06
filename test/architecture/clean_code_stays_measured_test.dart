@@ -279,7 +279,15 @@ void main() {
   /// read a row, the cut and the landing in one body — is `pieceLandings`
   /// and a reader of its selection, each under the line. 🔬The lane's scan
   /// against master (`0b620fa9a`, at 420) named that one and nothing added.
-  const longBodies = 419;
+  ///
+  /// ⚠️419 → 418 on 2026-10-06, lowered as the rule asks (F-299, the mapped
+  /// buttons): the canvas tap's `toolTapHandler` — a tap per tool, with the
+  /// stamp's landing and the eyedropper's pick written out in its cases —
+  /// handed the stamp to `_stampAt` (F-293) and the pick to
+  /// `eyedropperPick`, which a held button asks too. 🔬The lane's scan
+  /// against master (`0b620fa9a`, at 420) named that one and the paste's,
+  /// and nothing added.
+  const longBodies = 418;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///
