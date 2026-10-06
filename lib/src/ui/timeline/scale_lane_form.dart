@@ -39,6 +39,10 @@ sealed class ScaleLaneForm {
   /// [label] with [dragDelta] scrubbed into it, in the text form [typed]
   /// reads — null when [label] is not this form's.
   String? scrubbed(String label, Offset dragDelta);
+
+  /// Whether this form has two numbers a chain can link — the lane wears
+  /// the chain when it does (`PropertyLaneRow.linkable`).
+  bool get links;
 }
 
 /// The form [row]'s Scale takes: a camera's one zoom, every other row's
@@ -80,6 +84,9 @@ final class OneZoom extends ScaleLaneForm {
         ? null
         : '${formatTrimmedDecimal(percent + dragDelta.dx * _percentPerPixel)}%';
   }
+
+  @override
+  bool get links => false;
 }
 
 /// A LAYER's scale: across and down — `150, 80%`, After Effects' own print.
@@ -160,4 +167,7 @@ final class TwoScales extends ScaleLaneForm {
     return '${formatTrimmedDecimal(across + dx * _percentPerPixel)}, '
         '${formatTrimmedDecimal(down + dy * _percentPerPixel)}%';
   }
+
+  @override
+  bool get links => true;
 }

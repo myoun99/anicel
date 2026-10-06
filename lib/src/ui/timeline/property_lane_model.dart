@@ -1,5 +1,7 @@
 import 'dart:ui' show Offset, VoidCallback;
 
+import 'package:flutter/foundation.dart' show Listenable;
+
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -150,6 +152,7 @@ class PropertyLaneRow {
     this.valueKind = PropertyLaneValueKind.number,
     this.colorCanBeNone = false,
     this.scrubValue,
+    this.linkable = false,
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
     this.groupExpanded = false,
@@ -235,6 +238,14 @@ class PropertyLaneRow {
   /// Generic like [valueLabel] — each lane provider decides which drag axis
   /// drives which component. Null (or a null return) disables scrubbing.
   final String? Function(String currentLabel, Offset dragDelta)? scrubValue;
+
+  /// Whether this lane's value is two numbers a CHAIN can link — a layer's
+  /// Scale. The label cell wears the chain beside the value when the rail
+  /// hands it one ([PropertyLaneEditCallbacks.valueLink]).
+  ///
+  /// ⛔The lane carries it, as it carries [colorCanBeNone]: nothing
+  /// downstream switches on a lane id to find out.
+  final bool linkable;
 
   /// Whether the label cell shows the keyframe navigator (◀ ◆ ▶). Lanes
   /// without key semantics (the SE audio lane) hide it.
@@ -366,6 +377,16 @@ int indexOfDisplayRow(
       : indexOfLayerRow(rows, activeLayerId);
 }
 
+/// THE CHAIN a [PropertyLaneRow.linkable] lane wears: whether it is on,
+/// what says so changed — the switch is flipped from elsewhere too — the
+/// press that flips it, and the name it answers to.
+typedef PropertyLaneValueLink = ({
+  Listenable changes,
+  bool Function() isOn,
+  VoidCallback toggle,
+  String tooltip,
+});
+
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them
 /// into its transform track today, and every layer (and FX property) plugs
 /// into the same signatures with the layer-transform work.
@@ -375,6 +396,7 @@ class PropertyLaneEditCallbacks {
     this.onSetValue,
     this.onPreviewValue,
     this.onEndPreview,
+    this.valueLink,
   });
 
   /// Adds a key (freezing the property's current value, AE-style) or
@@ -421,6 +443,10 @@ class PropertyLaneEditCallbacks {
   /// A scrub that went away without a release: what [onPreviewValue]
   /// showed is dropped.
   final VoidCallback? onEndPreview;
+
+  /// The chain of the lanes whose value is a linked pair — null leaves it
+  /// off their rows.
+  final PropertyLaneValueLink? valueLink;
 }
 
 /// The folder row's aggregate band (the TVP-latest display): the UNION of

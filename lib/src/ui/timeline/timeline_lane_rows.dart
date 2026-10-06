@@ -62,6 +62,10 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
+/// The stood-up chain of a linkable lane — [AppIconButtonSize.micro]'s
+/// height.
+const double _laneValueLinkExtent = 18;
+
 /// The stood-up value readout's type, and the most LINES any lane makes of
 /// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
 /// 2026-08-08), and nothing this rail formats has two commas in it.
@@ -1028,6 +1032,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           const SizedBox(width: 6),
         ],
         Expanded(child: label),
+        ?_valueLink(),
         const SizedBox(width: 4),
         SizedBox(
           width: layerLaneValueSlotWidth,
@@ -1051,6 +1056,35 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 ),
         ),
       ],
+    );
+  }
+
+  /// THE CHAIN of a lane whose value is a linked pair — a layer's Scale,
+  /// After Effects' own mark beside the two numbers. One press flips the
+  /// switch the rail handed over, and on and off are told by colour alone
+  /// ([AppIconButton.isSelected]).
+  ///
+  /// 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼 —
+  /// 변형 도구의 「배율 연동」과 한 스위치」. Always on the row that has one:
+  /// what a press changes is its colour, never whether it is there.
+  ///
+  /// Null on every lane that is not [PropertyLaneRow.linkable], and on a
+  /// rail that was handed no chain.
+  Widget? _valueLink() {
+    final link = widget.laneEdit?.valueLink;
+    if (!lane.linkable || link == null) {
+      return null;
+    }
+    return ListenableBuilder(
+      listenable: link.changes,
+      builder: (context, _) => AppIconButton(
+        keyValue: '$_keyPrefix-lane-value-link-${layer.id}-${lane.laneId}',
+        tooltip: link.tooltip,
+        size: AppIconButtonSize.micro,
+        isSelected: link.isOn(),
+        onPressed: link.toggle,
+        icon: const Icon(Icons.link),
+      ),
     );
   }
 
@@ -1084,13 +1118,26 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         final showsValue =
             valueLabel != null &&
             extent >= _laneLabelFloor + gap + _laneValueExtent;
+        final valueExtent = showsValue ? gap + _laneValueExtent : 0.0;
+        final navigatorExtent = lane.showsKeyNavigator
+            ? gap + _laneNavigatorExtent
+            : 0.0;
         final showsNavigator =
             lane.showsKeyNavigator &&
+            extent >= _laneLabelFloor + navigatorExtent + valueExtent;
+        // The chain is paid LAST, once everything the column already showed
+        // has its room: it links the value, so it is never there without
+        // it, and no key button is shed to make it room. Asked of the
+        // navigator the LANE has, not of whether it is showing — or the
+        // chain would come and go and come again as the column grew.
+        final link = showsValue ? _valueLink() : null;
+        final showsLink =
+            link != null &&
             extent >=
                 _laneLabelFloor +
-                    gap +
-                    _laneNavigatorExtent +
-                    (showsValue ? gap + _laneValueExtent : 0);
+                    navigatorExtent +
+                    valueExtent +
+                    _laneValueLinkExtent;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1099,6 +1146,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               const SizedBox(height: gap),
             ],
             Expanded(child: label),
+            if (showsLink)
+              SizedBox(
+                height: _laneValueLinkExtent,
+                child: Center(child: link),
+              ),
             if (showsValue) ...[
               const SizedBox(height: gap),
               // A fixed slot, so a long readout ellipsises inside it instead

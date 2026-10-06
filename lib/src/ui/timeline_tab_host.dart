@@ -162,8 +162,9 @@ class TimelineTabHost extends StatefulWidget {
   final VoidCallback? onRevealOnionSkinPanel;
 
   /// The transform tool's options: a layer's Scale lane links by its
-  /// 「배율 연동」 ([sessionLaneEditCallbacks]). Null reads the tool's
-  /// defaults.
+  /// 「배율 연동」, and the chain on that row flips it
+  /// ([sessionLaneEditCallbacks]). Null reads the tool's defaults, with no
+  /// chain to show.
   final ValueNotifier<TransformToolOptions>? transformOptions;
 
   @override

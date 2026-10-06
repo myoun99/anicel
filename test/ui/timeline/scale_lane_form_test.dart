@@ -3,8 +3,10 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
-import 'package:anicel/src/models/transform_pose.dart' show uniformScale;
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/timeline/scale_lane_form.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformPropertyLanes;
 
 /// WHAT A ROW'S SCALE LANE HOLDS (`transform-fx-scale-x-y`, stage three).
 ///
@@ -34,6 +36,25 @@ void main() {
           reason: kind.name,
         );
       }
+    });
+
+    // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼
+    // — 변형 도구의 「배율 연동」과 한 스위치」.
+    test('🔗two scales can be linked and one zoom cannot — and on the rail '
+        'the Scale lane alone says so', () {
+      expect(const TwoScales().links, isTrue);
+      expect(const OneZoom().links, isFalse);
+
+      List<String> linkable(ScaleLaneForm form) => [
+        for (final lane in transformPropertyLanes(
+          TransformTrack.empty(),
+          scaleForm: form,
+          includeAnchorAndOpacity: true,
+        ))
+          if (lane.linkable) lane.laneId,
+      ];
+      expect(linkable(const TwoScales()), ['scale']);
+      expect(linkable(const OneZoom()), isEmpty);
     });
   });
 

@@ -21,6 +21,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
@@ -36,6 +37,7 @@ import 'package:anicel/src/ui/widgets/instant_tap_region.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import '../../helpers/app_icon_button_probe.dart';
 import '../../helpers/scrollable_of.dart';
 import 'timeline_cell_probe.dart';
 
@@ -458,6 +460,96 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await tester.pumpAndSettle();
       expect(drawLayer().transformTrack.isEmpty, isTrue);
+    });
+
+    // 🗣️`transform-fx-scale-x-y-Q1` (유저 2026-10-07): 「Scale 행에 사슬 버튼
+    // — 변형 도구의 「배율 연동」과 한 스위치」. The app's half: the switch
+    // the row's chain flips is the one the transform tool's settings show.
+    testWidgets("🔗a layer's Scale row wears the chain, and it is the "
+        "transform tool's own switch — the camera's one zoom wears none", (
+      tester,
+    ) async {
+      await _pump(tester, _project());
+      for (final twirl in const [
+        ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+        _laneToggleKey,
+      ]) {
+        await tester.tap(find.byKey(twirl));
+        await tester.pumpAndSettle();
+      }
+      await _expandTransformGroup(tester, 'lane-draw-layer');
+
+      Finder draw(String cell) => find.byKey(
+        ValueKey<String>('timeline-lane-$cell-lane-draw-layer-scale'),
+      );
+      final workspace = tester.widget<EditorWorkspace>(
+        find.byType(EditorWorkspace),
+      );
+      final tool = workspace.transformOptions!;
+      CanvasPoint? scaleKey() => workspace.session.requireActiveCut.layers
+          .firstWhere((layer) => layer.id == const LayerId('lane-draw-layer'))
+          .transformTrack
+          .scale
+          .keyAt(0)
+          ?.value;
+
+      /// Types [across] into the first of the Scale lane's two boxes and
+      /// leaves the second as it is shown.
+      Future<void> typeAcross(String across) async {
+        await tester.tap(draw('value'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const ValueKey<String>(
+              'timeline-lane-value-field-lane-draw-layer-scale-1',
+            ),
+          ),
+          findsOneWidget,
+          reason: 'two boxes: across, and down',
+        );
+        await tester.enterText(draw('value-field'), across);
+        await tester.testTextInput.receiveAction(TextInputAction.done);
+        await tester.pumpAndSettle();
+      }
+
+      expect(draw('value-link'), findsOneWidget);
+      expect(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-value-lane-cam-layer-scale'),
+        ),
+        findsOneWidget,
+        reason: "LIVENESS — the camera's Scale row is on the rail",
+      );
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-value-link-lane-cam-layer-scale',
+          ),
+        ),
+        findsNothing,
+        reason: 'one zoom has nothing to link',
+      );
+      expect(tool.value.scaleLinked, isTrue);
+      expect(tester.appIconButton(draw('value-link')).isSelected, isTrue);
+
+      // Linked: one box typed, and the other follows it.
+      await typeAcross('200');
+      expect(scaleKey(), uniformScale(2));
+
+      // The chain's press is the tool's switch…
+      await tester.tap(draw('value-link'));
+      await tester.pumpAndSettle();
+      expect(tool.value.scaleLinked, isFalse);
+      expect(tester.appIconButton(draw('value-link')).isSelected, isFalse);
+      await typeAcross('100');
+      expect(scaleKey(), CanvasPoint(x: 1, y: 2));
+
+      // …and the tool's switch, flipped from its own side, is the chain's.
+      tool.value = tool.value.copyWith(scaleLinked: true);
+      await tester.pump();
+      expect(tester.appIconButton(draw('value-link')).isSelected, isTrue);
+      await typeAcross('300');
+      expect(scaleKey(), CanvasPoint(x: 3, y: 6));
     });
   });
 

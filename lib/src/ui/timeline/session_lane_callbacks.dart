@@ -1,7 +1,8 @@
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueNotifier;
 
 import '../brush/transform_tool_options.dart';
 import '../editor_session_manager.dart';
+import '../text/app_strings.dart' show AppText;
 import 'property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 
@@ -11,18 +12,28 @@ import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 /// ones, and the verbs put either on the row the project holds (F-102).
 ///
 /// [transformOptions] is the transform tool's: a layer's Scale lane links
-/// by its 「배율 연동」, read at the moment a value lands — the ONE switch
-/// (`transform-fx-scale-x-y-Q1`, 유저 2026-10-07: 「Scale 행에 사슬 버튼 — 변형
-/// 도구의 「배율 연동」과 한 스위치」). A rail with no tool beside it reads the
-/// tool's own defaults.
+/// by its 「배율 연동」, read at the moment a value lands, and the chain on
+/// the Scale row flips that same field — the ONE switch, shown in two
+/// places (`transform-fx-scale-x-y-Q1`, 유저 2026-10-07: 「Scale 행에 사슬
+/// 버튼 — 변형 도구의 「배율 연동」과 한 스위치」). A rail with no tool beside
+/// it reads the tool's own defaults and has no chain to show.
 PropertyLaneEditCallbacks sessionLaneEditCallbacks(
   EditorSessionManager session, {
   required bool frameIsGlobal,
-  required ValueListenable<TransformToolOptions>? transformOptions,
+  required ValueNotifier<TransformToolOptions>? transformOptions,
 }) {
   bool scaleLinked() =>
       (transformOptions?.value ?? TransformToolOptions.defaults).scaleLinked;
   return PropertyLaneEditCallbacks(
+    valueLink: transformOptions == null
+        ? null
+        : (
+            changes: transformOptions,
+            isOn: scaleLinked,
+            toggle: () => transformOptions.value = transformOptions.value
+                .copyWith(scaleLinked: !scaleLinked()),
+            tooltip: AppText.strings.trScaleLink,
+          ),
     // The navigator toggles at the playhead, freezing the property's
     // CURRENT resolved value there (AE behavior).
     onToggleKeyAt: (layer, lane, frameIndex) =>

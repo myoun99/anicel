@@ -154,6 +154,7 @@ List<PropertyLaneRow> transformPropertyLanes(
           ? null
           : (frame) => scaleForm.label(poseAt(frame).scale),
       scrubValue: scaleForm.scrubbed,
+      linkable: scaleForm.links,
     ),
     _lane(
       'rotation',
@@ -341,6 +342,7 @@ PropertyLaneRow _lane<T>(
   PropertyTrack<T> track, {
   String Function(int frameIndex)? valueLabel,
   String? Function(String currentLabel, Offset dragDelta)? scrubValue,
+  bool linkable = false,
 }) {
   return PropertyLaneRow(
     laneId: id,
@@ -354,5 +356,6 @@ PropertyLaneRow _lane<T>(
     keyNames: track.namedKeysByFrame,
     valueLabel: valueLabel,
     scrubValue: scrubValue,
+    linkable: linkable,
   );
 }

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/lane_verbs.dart';
+import 'package:anicel/src/ui/text/app_strings.dart' show AppText;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/session_lane_callbacks.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
@@ -98,6 +99,23 @@ void main() {
       set(session, row, '150, -80%', linked: false);
 
       expect(scaleLaneOf(session, row).valueLabel!(0), '150, -80%');
+    });
+
+    test('and scrubs each in the form it prints', () {
+      final session = open();
+      const drag = Offset(20, 0);
+
+      expect(
+        scaleLaneOf(session, session.activeLayer!).scrubValue!(
+          '100, 100%',
+          drag,
+        ),
+        '110, 100%',
+      );
+      expect(
+        scaleLaneOf(session, cameraOf(session)).scrubValue!('100%', drag),
+        '110%',
+      );
     });
   });
 
@@ -236,6 +254,59 @@ void main() {
             ? uniformScale(2)
             : CanvasPoint(x: 2, y: 1),
       );
+    });
+  });
+
+  group('the chain the rail hands its rows', () {
+    test("is the transform tool's switch: it reads it, flips it alone, and "
+        'says when it changed', () {
+      final options = ValueNotifier(const TransformToolOptions(meshColumns: 5));
+      addTearDown(options.dispose);
+      final link = sessionLaneEditCallbacks(
+        open(),
+        frameIsGlobal: false,
+        transformOptions: options,
+      ).valueLink!;
+      var changes = 0;
+      link.changes.addListener(() => changes += 1);
+
+      expect(link.isOn(), isTrue);
+      expect(link.tooltip, AppText.strings.trScaleLink);
+
+      link.toggle();
+      expect(link.isOn(), isFalse);
+      expect(
+        options.value,
+        const TransformToolOptions(meshColumns: 5, scaleLinked: false),
+        reason: "its own field, and none of the tool's others",
+      );
+      expect(changes, 1);
+
+      link.toggle();
+      expect(options.value.scaleLinked, isTrue);
+      expect(changes, 2);
+
+      // Flipped from the tool's side, the chain reads the same field.
+      options.value = options.value.copyWith(scaleLinked: false);
+      expect(link.isOn(), isFalse);
+    });
+
+    test('a rail with no tool beside it has no chain to show', () {
+      expect(
+        sessionLaneEditCallbacks(
+          open(),
+          frameIsGlobal: false,
+          transformOptions: null,
+        ).valueLink,
+        isNull,
+      );
+    });
+
+    test("a layer's Scale lane wears it and the camera's does not", () {
+      final session = open();
+
+      expect(scaleLaneOf(session, session.activeLayer!).linkable, isTrue);
+      expect(scaleLaneOf(session, cameraOf(session)).linkable, isFalse);
     });
   });
 }
