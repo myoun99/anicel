@@ -805,6 +805,22 @@ class _MoveSettingsState extends State<_MoveSettings> {
     return kept.abs() > _scaleCeiling ? _scaleCeiling * kept.sign : kept;
   }
 
+  /// What a scale row's write leaves in the box: linked, the write carried
+  /// the other axis along, and what it was carried to is held to
+  /// [_scaleWithin] like any scale the box keeps.
+  ///
+  /// ⛔Unlinked, the other axis is NOT restated — not even to clamp it. A
+  /// row names its own value and no other ([_write]); a handle can leave a
+  /// scale past this panel's ceiling, and a number typed beside it must not
+  /// pull it back.
+  TransformValues _linkedWithin(TransformValues written) =>
+      widget.options.scaleLinked
+      ? written.copyWith(
+          sx: _scaleWithin(written.sx),
+          sy: _scaleWithin(written.sy),
+        )
+      : written;
+
   /// One of the box's values as a channel: a scrub adds to what the box
   /// holds now, a typed number replaces it, and neither names another value.
   Widget _valueChannel({
@@ -967,13 +983,20 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // held two; this row showed the horizontal one as 「배율」 and wrote
         // it to both. An edge middle's stretch reads on its own row now, and
         // a mirror reads as the minus it is.
+        //
+        // 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한
+        // 칸을 바꿀 때 다른 칸도 같은 비율로」. Each row still names its own
+        // axis; linked, the write carries the other along by the same ratio
+        // and leaves its sign alone (`TransformValues.withScaleX`).
         const SizedBox(height: 4),
         _valueChannel(
           keyValue: 'move-scale-x-field',
           label: AppText.strings.trScaleX,
           value: _BoxValue(
             read: (values) => values.sx,
-            write: (now, sx) => now.copyWith(sx: _scaleWithin(sx)),
+            write: (now, sx) => _linkedWithin(
+              now.withScaleX(_scaleWithin(sx), linked: options.scaleLinked),
+            ),
             unit: '%',
             perUnit: 0.01,
           ),
@@ -984,10 +1007,20 @@ class _MoveSettingsState extends State<_MoveSettings> {
           label: AppText.strings.trScaleY,
           value: _BoxValue(
             read: (values) => values.sy,
-            write: (now, sy) => now.copyWith(sy: _scaleWithin(sy)),
+            write: (now, sy) => _linkedWithin(
+              now.withScaleY(_scaleWithin(sy), linked: options.scaleLinked),
+            ),
             unit: '%',
             perUnit: 0.01,
           ),
+        ),
+        SettingsSwitchRow(
+          tileKey: const ValueKey<String>('move-scale-link-switch'),
+          label: AppText.strings.trScaleLink,
+          value: options.scaleLinked,
+          onChanged: onOptions == null
+              ? null
+              : (value) => onOptions(options.copyWith(scaleLinked: value)),
         ),
         // 🗣️유저 2026-09-20: 「앵커포인트 … **툴설정에도 존재하겟고**」 —
         // beside the other digits, and written the way they are: each row

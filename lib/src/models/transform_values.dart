@@ -119,6 +119,37 @@ class TransformValues {
     );
   }
 
+  /// This with the scale along X set to [sx] — and, [linked], the scale
+  /// along Y carried by the same ratio ([withScaleY] is its mirror).
+  ///
+  /// 🗣️F-256-Q2 (유저 2026-10-06): 「**연동 스위치(AE 의 사슬)** — 켜면 한
+  /// 칸을 바꿀 때 다른 칸도 같은 비율로」, of the option that read 「지금의
+  /// 가로 · 세로 비율과 반전은 지킨다」 — and 「이걸 트랜스폼등 fx에도
+  /// 적용하고싶음」, which is why the rule is here and not in a panel: every
+  /// place that links two scales asks this.
+  ///
+  /// ⚠️The other axis keeps the RATIO the two had and its OWN SIGN: a minus
+  /// typed into one field mirrors that axis and no other (a mirror is the
+  /// sign of one scale, F-265 — linked, 200 × −100 taken to 300 is
+  /// 300 × −150, and taken to −200 is −200 × −100).
+  TransformValues withScaleX(double sx, {required bool linked}) => copyWith(
+    sx: sx,
+    sy: linked ? _carried(sy, from: this.sx, to: sx) : null,
+  );
+
+  TransformValues withScaleY(double sy, {required bool linked}) => copyWith(
+    sx: linked ? _carried(sx, from: this.sy, to: sy) : null,
+    sy: sy,
+  );
+
+  /// [other] by the size of the step [from] → [to], its sign kept. A scale
+  /// standing on zero has no ratio to carry: [other] stays as it is.
+  static double _carried(
+    double other, {
+    required double from,
+    required double to,
+  }) => from == 0 ? other : other * (to / from).abs();
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

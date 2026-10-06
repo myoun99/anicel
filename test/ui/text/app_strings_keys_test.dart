@@ -764,6 +764,7 @@ void main() {
     'trFlipVertical': (s) => s.trFlipVertical,
     'trScaleX': (s) => s.trScaleX,
     'trScaleY': (s) => s.trScaleY,
+    'trScaleLink': (s) => s.trScaleLink,
     'trAnchorPointX': (s) => s.trAnchorPointX,
     'trAnchorPointY': (s) => s.trAnchorPointY,
     'trMeshColumns': (s) => s.trMeshColumns,

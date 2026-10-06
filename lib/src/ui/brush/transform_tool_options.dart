@@ -48,7 +48,7 @@ enum TransformMode {
 }
 
 /// Everything the transform tool remembers between drags: the mode, the
-/// resampler, and the mesh grid.
+/// resampler, the mesh grid, and whether its two scale fields are linked.
 ///
 /// One object rather than four notifiers threaded through five widgets:
 /// the canvas layer reads all of it and the tool settings panel writes all
@@ -60,6 +60,7 @@ class TransformToolOptions {
     this.resampleMode = ResampleMode.blend,
     this.meshColumns = defaultMeshCells,
     this.meshRows = defaultMeshCells,
+    this.scaleLinked = true,
   });
 
   static const TransformToolOptions defaults = TransformToolOptions();
@@ -85,6 +86,19 @@ class TransformToolOptions {
   final int meshColumns;
   final int meshRows;
 
+  /// Whether the two scale fields move together — AE's chain.
+  ///
+  /// 🗣️F-256-Q2 (유저 2026-10-06): 「연동 스위치(AE 의 사슬) — 켜면 한 칸을
+  /// 바꿀 때 다른 칸도 같은 비율로」. The fields became two so that each
+  /// could say its own axis (F-256 · F-265); this is the way to say BOTH
+  /// in one number again, by choice (`TransformValues.withScaleX`).
+  ///
+  /// ⚠️ON to begin with: that is how AE's chain stands, and 유저 named the
+  /// chain. It is the FIELDS' rule — a typed or scrubbed number. A handle
+  /// dragged on the canvas keeps the law it had: a corner keeps the
+  /// proportions, an edge's middle moves its one axis.
+  final bool scaleLinked;
+
   /// True when the mode pins every offset at zero — the box is a pure
   /// affine, and a corner keeps the proportions it has.
   bool get isUniform => mode == TransformMode.normal;
@@ -94,12 +108,14 @@ class TransformToolOptions {
     ResampleMode? resampleMode,
     int? meshColumns,
     int? meshRows,
+    bool? scaleLinked,
   }) {
     return TransformToolOptions(
       mode: mode ?? this.mode,
       resampleMode: resampleMode ?? this.resampleMode,
       meshColumns: clampMeshCells(meshColumns ?? this.meshColumns),
       meshRows: clampMeshCells(meshRows ?? this.meshRows),
+      scaleLinked: scaleLinked ?? this.scaleLinked,
     );
   }
 
@@ -113,10 +129,12 @@ class TransformToolOptions {
           other.mode == mode &&
           other.resampleMode == resampleMode &&
           other.meshColumns == meshColumns &&
-          other.meshRows == meshRows;
+          other.meshRows == meshRows &&
+          other.scaleLinked == scaleLinked;
 
   @override
-  int get hashCode => Object.hash(mode, resampleMode, meshColumns, meshRows);
+  int get hashCode =>
+      Object.hash(mode, resampleMode, meshColumns, meshRows, scaleLinked);
 }
 
 /// The last committed transform, replayed by 재현.
