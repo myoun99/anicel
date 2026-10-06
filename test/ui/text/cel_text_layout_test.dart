@@ -156,6 +156,94 @@ void main() {
     });
   });
 
+  group('🚨a text that grows, TRACKED: every line stands where the alignment '
+      'puts it — the longest too', () {
+    // 🔬Measured 2026-10-06: the engine aligns a line only in a width WIDER
+    // than the line, and one that fills its width is left where a
+    // left-aligned line stands — half its tracking in. A text that grows
+    // is as wide as its longest line, so that line stood half its tracking
+    // to the right of the rest. It is set with a pixel of room now.
+    //
+    // 「abc」 at 20 tracked by 10 is 90 wide; 「de」 untracked is 40.
+    CelTextLayout tracked(TextCelAlign align) => set([
+      run('abc\n', tracking: 10),
+      run('de'),
+    ], align: align);
+
+    ({double left, double right}) line(CelTextLayout layout, int from, int to) {
+      final boxes = layout.selectionRects(from, to);
+      return (left: boxes.first.left, right: boxes.last.right);
+    }
+
+    test('centred: each line has its middle on the anchor', () {
+      final layout = tracked(TextCelAlign.center);
+
+      expect(layout.block, const ui.Rect.fromLTWH(-45, 0, 90, 40));
+      final longest = line(layout, 0, 3);
+      final shorter = line(layout, 4, 6);
+      expect(longest.left, closeTo(-45, 1e-3));
+      expect(longest.right, closeTo(45, 1e-3));
+      expect(shorter.left, closeTo(-20, 1e-3));
+      expect(shorter.right, closeTo(20, 1e-3));
+    });
+
+    test('set to the right: each line ends on the anchor', () {
+      final layout = tracked(TextCelAlign.right);
+
+      expect(layout.block, const ui.Rect.fromLTWH(-90, 0, 90, 40));
+      expect(line(layout, 0, 3).right, closeTo(0, 1e-3));
+      expect(line(layout, 0, 3).left, closeTo(-90, 1e-3));
+      expect(line(layout, 4, 6).right, closeTo(0, 1e-3));
+    });
+
+    test('the room is the engine\'s to align in and no part of the text: '
+        'the block is as wide as the longest line, to the pixel', () {
+      for (final align in TextCelAlign.values) {
+        expect(tracked(align).block.width, 90, reason: align.name);
+      }
+    });
+
+    test('the caret and a press are measured where the letters are', () {
+      final layout = tracked(TextCelAlign.right);
+
+      // After 「abc」, on the first line: at the anchor.
+      expect(
+        layout.caretRect(const TextPosition(offset: 3)).left,
+        closeTo(0, 1e-3),
+      );
+      // A press in the middle of 「b」 — from -60 to -30 — is nearest its
+      // near edge.
+      expect(layout.positionAt(const ui.Offset(-50, 10)).offset, 1);
+      expect(layout.positionAt(const ui.Offset(-40, 10)).offset, 2);
+    });
+
+    test('it is DRAWN there: the longest line ends at the anchor by its '
+        'last letter\'s box, as the shorter line does', () async {
+      final bytes = await drawn(
+        set(
+          [run('abc\n', tracking: 10), run('de')],
+          x: 100,
+          align: TextCelAlign.right,
+        ),
+        110,
+        40,
+      );
+      const ink = [0, 0, 0, 255];
+      const none = [0, 0, 0, 0];
+
+      // A letter's tracking is set after it, in its own box: 「c」's box
+      // runs from 70 to the anchor at 100, its ink from 70 to 90. (Left
+      // half its tracking out, the ink ran from 75 to 95.) 「e」, untracked,
+      // runs to the anchor itself.
+      expect(pixel(bytes, 110, 72, 10), ink);
+      expect(pixel(bytes, 110, 88, 10), ink);
+      expect(pixel(bytes, 110, 93, 10), none);
+      expect(pixel(bytes, 110, 102, 10), none);
+      expect(pixel(bytes, 110, 98, 30), ink);
+      expect(pixel(bytes, 110, 102, 30), none);
+    });
+  });
+
   group('a text in a box', () {
     test('is as wide as the box, hangs from its anchor and wraps at its '
         'width', () {
