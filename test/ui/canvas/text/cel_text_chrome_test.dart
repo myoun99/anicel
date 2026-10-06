@@ -2,6 +2,8 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/models/transform_pose.dart';
+import 'package:anicel/src/services/layer_pose_matrix.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_chrome.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
 import 'package:anicel/src/ui/text/cel_text_layout.dart';
@@ -10,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../../helpers/cel_text_fixture.dart';
 import '../../../helpers/cel_text_hand.dart';
+import '../../../helpers/placement_reading.dart';
 
 /// R9-rest (the text tool): WHEN ITS CHROME IS DRAWN AGAIN.
 ///
@@ -31,11 +34,12 @@ void main() {
     ),
   );
 
-  CelTextStage stageAt(double zoom) => CelTextStage(
-    viewport: CanvasViewport(zoom: zoom),
-    canvasSize: celTextTestCanvas,
-    placement: null,
-  );
+  CelTextStage stageAt(double zoom, {LayerPlacement? placement}) =>
+      CelTextStage(
+        viewport: CanvasViewport(zoom: zoom),
+        canvasSize: celTextTestCanvas,
+        placement: placement,
+      );
 
   late TextHand hand;
   late ValueNotifier<bool> caretLit;
@@ -50,10 +54,11 @@ void main() {
     List<CelTextBox> resting = const [],
     Rect? traced,
     double zoom = 1,
+    LayerPlacement? placement,
     Color color = const Color(0xFF4488FF),
   }) => CelTextChromePainter(
     tool: hand.tool,
-    stage: stageAt(zoom),
+    stage: stageAt(zoom, placement: placement),
     restingBoxes: resting,
     tracedBox: traced,
     caretLit: caretLit,
@@ -90,6 +95,26 @@ void main() {
     expect(
       chrome(color: const Color(0xFFFF0000)).shouldRepaint(chrome()),
       isTrue,
+    );
+  });
+
+  test('🚨and another PLACEMENT of the row: a row that moves under its '
+      'texts — a keyed transform, scrubbed — takes their boxes with it', () {
+    /// The row shown with the middle of its artwork at ([x], 16).
+    LayerPlacement at(double x) => placedBy(
+      TransformPose.uniform(center: CanvasPoint(x: x, y: 16)),
+      celTextTestCanvas,
+    );
+
+    expect(chrome(placement: at(20)).shouldRepaint(chrome()), isTrue);
+    expect(
+      chrome(placement: at(24)).shouldRepaint(chrome(placement: at(20))),
+      isTrue,
+    );
+    // ⛔CONTROL: the same placement, made again, is the same picture.
+    expect(
+      chrome(placement: at(20)).shouldRepaint(chrome(placement: at(20))),
+      isFalse,
     );
   });
 

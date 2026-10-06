@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 🗣️R9-rest, 유저 2026-10-06 of the text tool's 「선택된 텍스트」 list:
@@ -216,6 +219,31 @@ void main() {
     expect(name.overflow, TextOverflow.ellipsis);
     expect(tester.getSize(key('row-a')).height, flyoutRowHeight);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('🚨and it is cut where the ROW ends, not after the last word '
+      'that fits: a name of several words fills its row', (tester) async {
+    // A short word, and then one longer than any row. Let to wrap, the
+    // line would end after the first and show two letters of the name.
+    final long = 'ab ${'c' * 400}';
+    await pumpList(
+      tester,
+      () => [PanelFlyoutItem(keyValue: 'row-a', label: long)],
+    );
+
+    final name = tester.renderObject<RenderParagraph>(
+      find.descendant(of: find.text(long), matching: find.byType(RichText)),
+    );
+    final reach = name
+        .getBoxesForSelection(
+          TextSelection(baseOffset: 0, extentOffset: long.length),
+        )
+        .map((box) => box.right)
+        .reduce(math.max);
+    // In the test font a letter is as wide as its size, twelve: the name
+    // runs to within a letter and the ellipsis of where the row ends.
+    expect(reach, greaterThan(name.size.width - 3 * 12));
+    expect(name.size.width, greaterThan(10 * 12), reason: '⛔fixture');
   });
 
   testWidgets('⛔a list with nothing in it does not open — a press is '
