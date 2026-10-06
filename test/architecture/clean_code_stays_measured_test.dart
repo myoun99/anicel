@@ -171,7 +171,14 @@ void main() {
   /// string `exInOut` (five) with the line under the picture that said it.
   /// 🔬The lane's scan against the tabs lane (`3eebdddec`, at 383) named
   /// those two gone and nothing added.
-  const wideSignatures = 381;
+  ///
+  /// ⚠️381 → 380 on 2026-10-07, lowered as the rule asks (F-309, the camera
+  /// row's keys move on their lanes): `shiftKeysInRange` (five) went with
+  /// its last caller — the camera's keys shift by the lanes' own range move
+  /// now, and the instruction rows' spans enter the shared walk by the keys
+  /// they hold (`shiftKeysAt`). 🔬The lane's scan against master
+  /// (`6cd83353a`, at 381) named that one gone and nothing added.
+  const wideSignatures = 380;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
