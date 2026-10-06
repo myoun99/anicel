@@ -9,10 +9,17 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/services/guide_geometry.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/services/layer_pose_paint.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/device_viewport.dart';
 
 /// Guides stand on the CANVAS, but a layer carrying a transform is drawn
 /// through its placement and its strokes record in the layer's own ARTWORK
@@ -163,12 +170,15 @@ void main() {
 
   /// The view on a row placed by [placed], wrapped in exactly the matrix the
   /// panel uses and handed exactly what the panel hands it; the dabs of one
-  /// drag from [from] to [to] on the SCREEN, as the canvas shows them.
+  /// drag from [from] — by way of [via] — to [to] on the SCREEN, as the
+  /// canvas shows them.
   Future<List<Offset>> dragOnAPlacedRow(
     WidgetTester tester,
     LayerPoseSample placed, {
     required Offset from,
     required Offset to,
+    List<Offset> via = const [],
+    CutGuides? guides,
   }) async {
     final commits = <BrushStrokeCommitData>[];
     final viewport = CanvasViewport();
@@ -193,7 +203,7 @@ void main() {
                     color: 0xFFFF0000,
                   ),
                   viewport: viewport,
-                  guides: verticalMirror(),
+                  guides: guides ?? verticalMirror(),
                   guideSpace: guideSpaceOf(placement),
                   onSourceStrokeCommitted: commits.add,
                 ),
@@ -211,8 +221,10 @@ void main() {
     // with the viewport at rest, so screen and canvas coordinates coincide.
     final gesture = await tester.startGesture(from);
     await tester.pump();
-    await gesture.moveTo(to);
-    await tester.pump();
+    for (final point in [...via, to]) {
+      await gesture.moveTo(point);
+      await tester.pump();
+    }
     await gesture.up();
     await tester.pump();
     // R25-④: the pen-up commit lands one frame AFTER pen-up.
@@ -276,5 +288,131 @@ void main() {
         reason: 'the dab at $point has no mirror image at $image',
       );
     }
+  });
+
+  testWidgets('a wobbly stroke on a POSED layer is flattened onto the ray '
+      'the screen shows', (tester) async {
+    // One family of rays running across the picture: on the screen a snapped
+    // stroke is level. In the quarter-turned row's own pixels that same
+    // stroke runs straight down.
+    final across = CutGuides(
+      guides: [
+        DrawingGuide(
+          id: const GuideId('persp'),
+          name: 'Perspective',
+          shape: PerspectiveShape(
+            vanishingPoints: [VanishingPointTowards(dx: 1, dy: 0)],
+            eyeLevel: GuideAxis(
+              origin: CanvasPoint(x: 0, y: 100),
+              angleDegrees: 0,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    final onCanvas = await dragOnAPlacedRow(
+      tester,
+      quarterTurn,
+      guides: across,
+      from: const Offset(20, 100),
+      via: const [Offset(60, 118), Offset(100, 84)],
+      to: const Offset(150, 112),
+    );
+
+    expect(onCanvas.last.dx - onCanvas.first.dx, greaterThan(100));
+    for (final point in onCanvas) {
+      expect(
+        point.dy,
+        closeTo(100, 1e-6),
+        reason: 'the wobble should not survive the snap — measured in the '
+            'row\'s own pixels the stroke comes out upright on the screen',
+      );
+    }
+  });
+
+  // 🚨Every case above hands the view its space with the test's own hand.
+  // In the app the PANEL does — the placement it wraps the view in — and
+  // this is that hand.
+  testWidgets('the PANEL reads its guides through the placement it wraps '
+      'the view in: a stroke on a quarter-turned row is mirrored across the '
+      'axis the screen shows', (tester) async {
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: canvasSize,
+    );
+    final placement = placementOf(quarterTurn, canvasSize);
+    final brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(tool: CanvasTool.brush),
+    );
+    addTearDown(brush.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BrushCanvasPanel(
+            coordinator: coordinator,
+            canvasSize: canvasSize,
+            availableFrameKeys: frameKeys,
+            cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            brushToolState: brush,
+            guides: verticalMirror(),
+            interactiveContentPose: placement,
+            // One screen pixel is one canvas pixel, so the drag below is in
+            // canvas coordinates from the canvas's corner.
+            viewport: seedFromRender(tester, CanvasViewport()),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final corner = tester.getTopLeft(
+      find.byKey(const ValueKey<String>('brush-canvas-editor-viewport')),
+    );
+    // Drawn to the RIGHT of the screen-vertical axis at x = 100.
+    final pen = await tester.startGesture(
+      corner + const Offset(150, 60),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await pen.moveTo(corner + const Offset(170, 80));
+    await tester.pump();
+    await pen.up();
+    await tester.pump();
+    // R25-④: the pen-up commit lands one frame AFTER pen-up.
+    await tester.pump();
+
+    // The ink is recorded in the row's ARTWORK; taken through the placement
+    // it is where the canvas shows it.
+    final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final size = surface.tileSize;
+    final shownAtX = <double>[];
+    for (final MapEntry(key: at, value: tile) in surface.tiles.entries) {
+      final pixels = tile.pixels;
+      for (var pixel = 0; pixel < size * size; pixel += 1) {
+        if (pixels[pixel * 4 + 3] == 0) {
+          continue;
+        }
+        final inked = CanvasPoint(
+          x: at.x * size + pixel % size + 0.5,
+          y: at.y * size + pixel ~/ size + 0.5,
+        );
+        shownAtX.add(placement.apply(inked).x);
+      }
+    }
+
+    expect(
+      shownAtX.any((x) => x > 100.5),
+      isTrue,
+      reason: 'the drawn half should be right of the axis on screen',
+    );
+    expect(
+      shownAtX.any((x) => x < 99.5),
+      isTrue,
+      reason: 'the mirrored half must land LEFT of the axis on screen — read '
+          'in the artwork as it stands on the canvas it comes out below',
+    );
   });
 }
