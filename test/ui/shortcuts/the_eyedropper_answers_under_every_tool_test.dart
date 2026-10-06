@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 
 import '../../helpers/dart_sources.dart';
+import '../../helpers/panel_finders.dart';
 
 /// 🚨★★★**THE EYEDROPPER ANSWERS UNDER EVERY TOOL** (F-299).
 ///
@@ -29,14 +31,17 @@ import '../../helpers/dart_sources.dart';
 /// never the part that differed by tool: the hold asked which tool was in
 /// hand, and took only over the three the drawing view presses for.
 ///
-/// ⚠️The KEYS only. A pen or mouse button mapped to the eyedropper is the
-/// same law and still stops at those three tools (measured 2026-10-06, on
-/// the card); it is read inside the drawing view, and moves next.
+/// ↩️A pen or mouse button mapped to the eyedropper is the same law, and
+/// stopped at those three tools too — and at none on a frame with no cel
+/// (measured 2026-10-06): it was read inside the drawing view. The panel
+/// reads it now, and the two button roads are pinned here beside the keys.
 void main() {
   const frameId = FrameId('pe-frame');
   const layerId = LayerId('pe-layer');
 
-  Project oneCel() => Project(
+  /// A one-row project standing on a cel — or, with [cel] false, on a
+  /// frame that has none.
+  Project project({bool cel = true}) => Project(
     id: const ProjectId('pe-project'),
     name: 'Eyedropper',
     createdAt: DateTime.utc(2026),
@@ -55,10 +60,17 @@ void main() {
                 id: layerId,
                 name: 'pe-layer',
                 frames: [
-                  Frame(id: frameId, name: 'A', duration: 1, strokes: const []),
+                  if (cel)
+                    Frame(
+                      id: frameId,
+                      name: 'A',
+                      duration: 1,
+                      strokes: const [],
+                    ),
                 ],
                 timeline: {
-                  0: const TimelineExposure.drawing(frameId, length: 1),
+                  if (cel)
+                    0: const TimelineExposure.drawing(frameId, length: 1),
                 },
               ),
             ],
@@ -68,11 +80,14 @@ void main() {
     ],
   );
 
-  Future<ValueNotifier<BrushToolState>> pumpShell(WidgetTester tester) async {
+  Future<ValueNotifier<BrushToolState>> pumpShell(
+    WidgetTester tester, {
+    bool cel = true,
+  }) async {
     await tester.binding.setSurfaceSize(const Size(1500, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: oneCel())),
+      MaterialApp(home: HomePage(initialProject: project(cel: cel))),
     );
     await tester.pumpAndSettle();
     return tester
@@ -121,6 +136,74 @@ void main() {
       expect(brush.value.tool, tool, reason: '${tool.name}, Alt let go');
     }
   });
+
+  // 🚨The BUTTONS, through the real shell: every tool's own layer is
+  // mounted over the canvas when the press comes, and goes away under the
+  // pointer when the hold takes the tool.
+  for (final cel in [true, false]) {
+    final where = cel ? 'on a cel' : 'on a frame with no cel';
+
+    testWidgets('🚨a held RIGHT button is the eyedropper under every tool, '
+        '$where — and letting go gives the tool back', (tester) async {
+      final brush = await pumpShell(tester, cel: cel);
+      final at = visibleCanvasPoint(tester);
+      for (final tool in CanvasTool.values) {
+        await take(tester, brush, tool);
+
+        final right = await tester.startGesture(
+          at,
+          kind: PointerDeviceKind.mouse,
+          buttons: kSecondaryMouseButton,
+        );
+        await tester.pump();
+        expect(
+          brush.value.tool,
+          CanvasTool.eyedropper,
+          reason: '${tool.name}, held',
+        );
+        // The tool's layer is gone from under a pointer still down.
+        await right.moveTo(at + const Offset(30, 10));
+        await tester.pump();
+        await right.up();
+        await tester.pump();
+
+        expect(brush.value.tool, tool, reason: '${tool.name}, let go');
+        expect(tester.takeException(), isNull, reason: tool.name);
+      }
+    });
+
+    testWidgets('🚨a pen\'s barrel pressed in hover is the eyedropper under '
+        'every tool, $where', (tester) async {
+      final brush = await pumpShell(tester, cel: cel);
+      final at = visibleCanvasPoint(tester);
+      Future<void> hover(int buttons) async {
+        tester.binding.handlePointerEvent(
+          PointerHoverEvent(
+            kind: PointerDeviceKind.stylus,
+            position: at,
+            buttons: buttons,
+          ),
+        );
+        await tester.pump();
+      }
+
+      for (final tool in CanvasTool.values) {
+        await take(tester, brush, tool);
+        await hover(0);
+
+        await hover(kPrimaryStylusButton);
+        expect(
+          brush.value.tool,
+          CanvasTool.eyedropper,
+          reason: '${tool.name}, barrel down',
+        );
+
+        await hover(0);
+        expect(brush.value.tool, tool, reason: '${tool.name}, barrel up');
+        expect(tester.takeException(), isNull, reason: tool.name);
+      }
+    });
+  }
 
   test('the tools that keep their Alt are the two whose drag reads it', () {
     expect(
