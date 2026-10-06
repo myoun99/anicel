@@ -180,29 +180,39 @@ void main() {
         isTrue,
         reason: 'PREMISE: the row shows the ghost of the hold at 4',
       );
+      // A run swept INSIDE the hold — cells the row shows a ghost on, and
+      // none of its blocks. Cut out of the ghost, a piece of it came out a
+      // real block (F-134), and the paste laid it.
       s.selectLayer(mirror);
-      s.selectFrameIndex(0);
+      s.selectFrameIndex(4);
       s.updateFrameRangeSelectionDrag(
         layerId: mirror,
-        anchorIndex: 0,
-        headIndex: 4,
+        anchorIndex: 4,
+        headIndex: 5,
       );
+      expect(
+        s.frameRangeSelection.value?.startIndex,
+        4,
+        reason: 'PREMISE: a ghost does not pull the range onto its block',
+      );
+      expect(clipboardOf(s).canCopyFrameAtCurrentFrame, isTrue, reason: '⛔전제');
       clipboardOf(s).copyFrameAtCurrentFrame();
+      expect(clipboardOf(s).bankedRowLayerIds, [mirror], reason: '⛔전제');
 
       standOn(s, other, 0);
+      expect(
+        clipboardOf(s).canPasteIndependentFrameAtCurrentFrame,
+        isTrue,
+        reason: '⛔전제: the press is made',
+      );
       clipboardOf(s).pasteIndependentFrameAtCurrentFrame();
 
-      expect(blocksOf(s, other), {0: (null, 31), 2: (null, 32)});
-      // The hold is its BLOCK's and rode it here, so what stands past the
-      // block is this row's own ghost of it — not a piece of the copied one.
       expect(
-        [
-          for (final MapEntry(key: frame, value: exposure)
-              in rowOf(s, other).timeline.entries)
-            if (exposure.ghost) frame,
-        ],
-        [3],
+        rowOf(s, other).timeline,
+        isEmpty,
+        reason: 'a ghost is not material',
       );
+      expect(rowOf(s, other).frames, isEmpty);
     });
 
     test('stood on, one comma of the drawing shown', () {
