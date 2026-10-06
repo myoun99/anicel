@@ -97,9 +97,11 @@ typedef PieceLanding = ({BrushDab dab, Command landing});
 ///   붙여넣기 가능」), and no cel is made (C6);
 /// - **one landing per PHYSICAL cel** (C5: 「같은게 두개인곳에 붙여넣으면
 ///   한번만 발리도록」) — keyed the way everything that lands on cels keys
-///   them, `frameStore.canonicalKeyOf`, which resolves links. The FIRST key
-///   that names a cel answers for it, whether or not anything of the piece
-///   survives there;
+///   them, `frameStore.canonicalKeyOf`, which resolves links: a linked row
+///   is a window onto another's cel, so a range can name one cel under two
+///   keys. The first row whose reading leaves something of the piece
+///   answers for the cel — stack order is the tiebreak, as it is for a
+///   transform's landings;
 /// - **through the selection when there is one**, each cel reading it on its
 ///   own row and at its softness;
 /// - **one undo**: the caller folds what comes back into one step. Each cel
@@ -121,11 +123,19 @@ Map<BrushFrameKey, PieceLanding> pieceLandings({
     // Every surface the coordinator writes is this size.
     coordinator.sessionStore.canvasSize,
   );
-  final asked = <BrushFrameKey>{};
   final landed = <BrushFrameKey, PieceLanding>{};
   for (final key in ground.cels) {
     final cel = store.canonicalKeyOf(key);
-    if (!asked.add(cel)) {
+    // 🚨ONE LANDING PER PHYSICAL CEL, AND THE MAP IS WHAT SAYS SO — the
+    // form a transform's landings keep (`_landingsPerCel`); 유저's word for
+    // this door is 「변형도구처럼」.
+    //
+    // ↩️A set of the cels ASKED stood beside the map (the paste's older
+    // form: the first key answered for its cel whether or not it landed
+    // anything). Two mechanisms for one invariant: a mutant deleted the
+    // set's skip with every pin green, the map folding the cel anyway
+    // (2026-10-06).
+    if (landed.containsKey(cel)) {
       continue;
     }
     final placement = ground.placementOf(key);

@@ -6,9 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/device_viewport.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_piece.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
@@ -23,6 +25,7 @@ import 'package:anicel/src/services/cut_piece_stamp.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/layer_pose_matrix.dart'
     show LayerPoseSample;
+import 'package:anicel/src/services/piece_landing.dart';
 import 'package:anicel/src/models/transform_track.dart' show TransformPose;
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -76,6 +79,9 @@ void main() {
     LayerPoseSample? placement,
     // The selection's softness, as the tool settings would set it.
     SelectionMaskOptions maskOptions = SelectionMaskOptions.none,
+    // Where a stamp lands, as the session would read it. Null = the cel
+    // the panel stands on.
+    PieceGround Function()? pieceGround,
   }) async {
     final softness = ValueNotifier(maskOptions);
     addTearDown(softness.dispose);
@@ -115,6 +121,7 @@ void main() {
               )),
               selectionCommands: commands,
               selectionMaskOptions: softness,
+              pieceGround: pieceGround,
               cutPieceSlot: slot,
               rowAcceptsStrokes: rowTakesStrokes,
               interactiveContentPose: placement,
@@ -554,6 +561,108 @@ void main() {
       reason: 'just inside the edge it lands in part — the feather',
     );
     expect(alphaAt(60), 0, reason: 'past the outline nothing lands');
+  });
+
+  /// 🗣️유저 08-12 (C5): 「같은게 두개인곳에 붙여넣으면 한번만 발리도록」 — the
+  /// same picture in two places is a LINK: a second row that is a window
+  /// onto the first one's cel. ⛔A cel held across frames is one KEY named
+  /// twice, which any map folds; only a link asks the store which cel a key
+  /// means.
+  group('a second row that is a window onto the SAME cel', () {
+    final standing = BrushCanvasFixture.createFrameKeys().first;
+    final window = BrushFrameKey(
+      projectId: standing.projectId,
+      trackId: standing.trackId,
+      cutId: standing.cutId,
+      layerId: const LayerId('a-window-onto-the-standing-row'),
+      frameId: standing.frameId,
+    );
+
+    /// A panel holding a cut piece, whose stamps land on [cels].
+    Future<BrushFrameEditingCoordinator> pumpLinked(
+      WidgetTester tester, {
+      required List<BrushFrameKey> cels,
+      LayerPoseSample? Function(BrushFrameKey key)? placementOf,
+      double stampOpacity = 1,
+    }) async {
+      final env = await pumpPanel(
+        tester,
+        tool: CanvasTool.cut,
+        pieceGround: () => PieceGround(
+          cels: cels,
+          placementOf: placementOf ?? (_) => null,
+        ),
+      );
+      env.coordinator.frameStore.setLinkResolver(
+        (key) => key == window ? standing : key,
+      );
+      await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+      expect(env.slot.isNotEmpty, isTrue, reason: '⛔premise: a piece is held');
+      await env.setTool(CanvasTool.cutStamp, stampOpacity: stampOpacity);
+      return env.coordinator;
+    }
+
+    int alphaAt(BrushFrameEditingCoordinator coordinator, int x, int y) =>
+        (surfacePixelRgba(
+              coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+              x,
+              y,
+            ) ??
+            0) &
+        0xFF;
+
+    testWidgets('🚨the piece lands on it ONCE', (tester) async {
+      // The window is named first: its key is not the cel's own, so a
+      // landing filed under the key it was asked by would not be found
+      // when the cel's own row asks.
+      final coordinator = await pumpLinked(
+        tester,
+        cels: [window, standing],
+        // Half-pressed, so a second landing on the cel would show.
+        stampOpacity: 0.5,
+      );
+
+      final canvas = find.byType(BrushCanvasPanel);
+      await tester.tapAt(tester.getTopLeft(canvas) + const Offset(50, 140));
+      await tester.pump();
+
+      expect(
+        alphaAt(coordinator, 50, 140),
+        closeTo(128, 2),
+        reason: 'twice would have laid half over half — 191',
+      );
+    });
+
+    testWidgets('🚨…through the FIRST row\'s reading — stack order is the '
+        'tiebreak', (tester) async {
+      // The window stands 100 to the right, so the one press means another
+      // place of the cel through it.
+      final coordinator = await pumpLinked(
+        tester,
+        cels: [standing, window],
+        placementOf: (key) => key == window
+            ? (
+                pose: TransformPose(center: CanvasPoint(x: 100, y: 0)),
+                anchorPoint: CanvasPoint(x: 0, y: 0),
+              )
+            : null,
+      );
+
+      final canvas = find.byType(BrushCanvasPanel);
+      await tester.tapAt(tester.getTopLeft(canvas) + const Offset(150, 140));
+      await tester.pump();
+
+      expect(
+        alphaAt(coordinator, 150, 140),
+        isNot(0),
+        reason: 'where the standing row — named first — shows the press',
+      );
+      expect(
+        alphaAt(coordinator, 50, 140),
+        0,
+        reason: 'where the window shows it; the cel was already landed on',
+      );
+    });
   });
 
   testWidgets('paste at origin lands nothing on a row that takes no strokes', (
