@@ -19,7 +19,6 @@ import '../widgets/app_tooltip.dart';
 import '../widgets/boolean_dot.dart';
 import '../widgets/pill_strip.dart';
 import 'export_cel_group_plan.dart';
-import 'export_nav_bar.dart' show ExportStepButton;
 
 /// ONE ROW of the Cels tab's list: what its switch says, whether it folds
 /// what is under it, and the files that stand on it, a block each — a row
@@ -835,6 +834,51 @@ class _LayDirectionCaption extends StatelessWidget {
             style: style,
           );
         },
+      ),
+    );
+  }
+}
+
+/// One step along the drawings a row turns through — ◀ or ▶ in a hairline
+/// box, the band's pair (F-289, 유저 2026-10-06: 「좌우 버튼 만들어서 넣자.
+/// 컴팩트하게」).
+///
+/// ↩️It was the nav bar's pair first: the bar that scrubbed every tab's
+/// preview stood under the picture, and the preview's own panel turns it
+/// now (`ExportPreviewPanel`).
+class ExportStepButton extends StatelessWidget {
+  const ExportStepButton({
+    super.key,
+    required this.keyValue,
+    required this.glyph,
+    required this.onPressed,
+  });
+
+  final String keyValue;
+  final String glyph;
+
+  /// Null = nowhere to step: the button keeps its place and takes no press.
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ControlPressClaim(
+      onPressed: onPressed,
+      child: InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: silentPress(onPressed),
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: ShapeDecoration(
+            shape: AppShapes.container(
+              AppShapes.wellRadius,
+              side: BorderSide(color: theme.dividerColor),
+            ),
+          ),
+          child: Text(glyph, style: theme.textTheme.labelSmall),
+        ),
       ),
     );
   }

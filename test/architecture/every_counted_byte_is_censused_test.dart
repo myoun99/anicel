@@ -250,9 +250,6 @@ const _imageHolders = <String, String>{
       'a handful of decoded logos, cover pictures and stamps, decoded once '
       'for the life of the workspace; its own doc says it needs an eviction '
       'the day it holds cels',
-  'lib/src/ui/export/export_preview_engine.dart → _cache':
-      'the export window preview: an LRU of at most `capacity` frames, owned '
-      'by the window State and gone when the window closes',
   'lib/src/ui/playback/canvas_track_stack_view.dart → _heldFrames':
       'clones of the composites on screen, one per covered cut; each is '
       'pinned in the composite cache (`_heldPins`), which the census reads '

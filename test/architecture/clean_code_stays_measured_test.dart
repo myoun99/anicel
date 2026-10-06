@@ -163,7 +163,15 @@ void main() {
   /// cross, handles, an inside, a stage) and whether it turns; a box with
   /// fewer passes fewer. 🔬The lane's scan against master (`25fdf5106`, at
   /// 385).
-  const wideSignatures = 383;
+  ///
+  /// ⚠️383 → 381 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// preview as a canvas-base panel): the window's
+  /// `_requestCompositePreview` (five) went with the preview loop it fed —
+  /// a tab's file is a document the panel asks a page of now — and the
+  /// string `exInOut` (five) with the line under the picture that said it.
+  /// 🔬The lane's scan against the tabs lane (`3eebdddec`, at 383) named
+  /// those two gone and nothing added.
+  const wideSignatures = 381;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -309,7 +317,13 @@ void main() {
   /// timesheet's arms of `_transportLine` and `_navBar`. 🔬The lane's scan
   /// against the list lane (`4084bf788`, at 417) named those three gone and
   /// nothing added.
-  const longBodies = 412;
+  ///
+  /// ⚠️412 → 411 on 2026-10-06, lowered as the rule asks (F-289, the export
+  /// preview as a canvas-base panel): the scrub bar's painter
+  /// (`_ExportScrubPainter.paint`) went with the bar — the preview's own
+  /// transport turns the picture. 🔬The lane's scan against the tabs lane
+  /// (`3eebdddec`, at 414) named that one gone and nothing added.
+  const longBodies = 411;
   /// ⚠️52 → 53 on 2026-09-09, and the offender is named because the rule
   /// above says a session that pushes one up reads what it added.
   ///

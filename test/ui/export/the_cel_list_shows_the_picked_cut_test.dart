@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_preview_probe.dart';
 
 /// F-177 (유저 2026-09-22): 「범위를 프로젝트로 설정시 미리보기 셀 출력
 /// 리스트가 모든 컷 합쳐서 레이어들 보여주는데, 그게아니라 컷 리스트가 있고,
@@ -113,9 +114,7 @@ void main() {
         find.byKey(const ValueKey<String>('export-cels-cut-picker')),
       );
 
-  String transportLine(WidgetTester tester) => tester
-      .widget<Text>(find.byKey(const ValueKey<String>('export-transport-line')))
-      .data!;
+  String transportLine(WidgetTester tester) => tester.exportPreviewLine;
 
   Future<void> pick(WidgetTester tester, CutId cut) async {
     await tester.tap(

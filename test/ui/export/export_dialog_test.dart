@@ -44,6 +44,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/app_faces.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_preview_probe.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/project_scratch_folder.dart' show deleteAfterSessionEnds;
 import 'fake_ffmpeg_process.dart';
@@ -231,7 +232,7 @@ void main() {
     required String family,
     EditorSessionManager? session,
   }) async {
-    final state = await pumpDialog(
+    await pumpDialog(
       tester,
       session ?? exportSession(),
       face: TextStyle(fontFamily: family),
@@ -242,13 +243,8 @@ void main() {
       ),
     );
     await switchTab(tester, tab);
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    final image = tester
-        .widget<RawImage>(
-          find.byKey(const ValueKey<String>('export-preview-image')),
-        )
-        .image!;
+    await tester.settleExportPreview();
+    final image = tester.exportPreviewImage!;
     final bytes = await tester.runAsync(
       () => image.toByteData(format: ui.ImageByteFormat.rawRgba),
     );
@@ -328,14 +324,13 @@ void main() {
       expect(exportEnabled(tester), isTrue);
     });
 
-    testWidgets('plan headline covers the active cut by default',
-        (tester) async {
+    testWidgets('the preview covers the active cut by default: its frames '
+        'under the transport, at the pixels they are written at', (
+      tester,
+    ) async {
       await pumpDialog(tester, exportSession());
-      final headline = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-plan-headline')),
-      );
-      expect(headline.data, contains('2 frames'));
-      expect(headline.data, contains('32×18'));
+      expect(tester.exportTransport.frameCount, 2);
+      expect(tester.exportPreviewPageSize, const Size(32, 18));
     });
 
     testWidgets('drawers collapse to strips and reopen', (tester) async {
@@ -401,8 +396,8 @@ void main() {
       expect(filesWrittenUnder(temp), ['shot_0001.png', 'shot_0002.png']);
     });
 
-    testWidgets('in/out trims the cut scope; a reversed range disables',
-        (tester) async {
+    testWidgets('IN trims the cut scope — and the stills are numbered '
+        'through what is kept', (tester) async {
       final state = await pumpDialog(
         tester,
         exportSession(),
@@ -410,25 +405,27 @@ void main() {
       );
       await browseTo(tester);
       await pickStillPng(tester);
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-start-field')),
-        '2',
+      await tester.typeExportRange(inFrame: '2');
+      expect(state.debugSpecs.sequence.inFrame, 1);
+      expect(
+        state.debugSpecs.sequence.outFrame,
+        isNull,
+        reason: 'an end left at its end of the axis is no trim',
       );
-      await tester.pump();
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), ['frame_0001.png']);
+    });
 
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-start-field')),
-        '2',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-end-field')),
-        '1',
-      );
-      await tester.pump();
-      expect(exportEnabled(tester), isFalse);
+    testWidgets('IN and OUT cannot cross: the span that is kept is always '
+        'one the export can run', (tester) async {
+      final state = await pumpDialog(tester, exportSession());
+      await pickStillPng(tester);
+      await tester.typeExportRange(inFrame: '2');
+      await tester.typeExportRange(outFrame: '1');
+      final range = tester.exportTransport.range!;
+      expect((range.inFrame, range.outFrame), (1, 1));
+      expect(state.debugSpecs.sequence.inFrame, 1);
     });
 
     testWidgets(
@@ -570,10 +567,6 @@ void main() {
       expect(find.text('위치'), findsOneWidget);
       expect(find.text('폴더 선택…'), findsOneWidget);
       expect(find.text('프리셋 · 시퀀스'), findsOneWidget);
-      final headline = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-plan-headline')),
-      );
-      expect(headline.data, '카메라를 거쳐 32×18로 2프레임.');
 
       await browseTo(tester);
       await pickStillPng(tester);
@@ -856,8 +849,8 @@ void main() {
     });
   });
 
-  group('preview & nav (EX3)', () {
-    testWidgets('the image tab exports the frame the nav points at',
+  group('preview & transport', () {
+    testWidgets('the image tab exports the frame the transport stands on',
         (tester) async {
       final state = await pumpDialog(
         tester,
@@ -866,13 +859,14 @@ void main() {
       );
       await switchTab(tester, 'image');
       expect(state.debugImageFrame, 0);
-      await tester.tap(find.byKey(const ValueKey<String>('export-nav-next')));
+      expect(tester.exportTransport.range, isNull, reason: 'one frame is written');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-transport-step-forward')),
+      );
       await tester.pump();
       expect(state.debugImageFrame, 1);
-      final transport = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-transport-line')),
-      );
-      expect(transport.data, 'F2 / 2 · Cut');
+      expect(tester.exportTransport.currentFrame, 1);
+      expect(tester.exportPreviewName, 'Project.png');
 
       await browseTo(tester);
       await tester.runAsync(state.export);
@@ -890,15 +884,7 @@ void main() {
       await browseTo(tester);
       await pickStillPng(tester);
       await tester.pickExportProjectScope();
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-start-field')),
-        '2',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-end-field')),
-        '4',
-      );
-      await tester.pump();
+      await tester.typeExportRange(inFrame: '2', outFrame: '4');
       await tester.runAsync(state.export);
       await tester.pump();
       expect(filesWrittenUnder(temp), [
@@ -908,61 +894,78 @@ void main() {
       ]);
     });
 
-    testWidgets('sequence scrub moves the playhead caption', (tester) async {
+    testWidgets('a press on the sequence\'s track moves the playhead — and '
+        'the plate names the still that frame is', (tester) async {
       await pumpDialog(tester, exportSession());
-      final scrub = find.byKey(const ValueKey<String>('export-nav-scrub'));
-      final rect = tester.getRect(scrub);
+      await pickStillPng(tester);
+      expect(tester.exportPreviewName, 'frame_0001.png');
+      final track = find.byKey(
+        const ValueKey<String>('export-transport-track'),
+      );
+      final rect = tester.getRect(track);
       await tester.tapAt(Offset(rect.right - 2, rect.center.dy));
       await tester.pump();
-      final transport = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-transport-line')),
-      );
-      expect(transport.data, contains('F2 · Cut'));
+      expect(tester.exportTransport.currentFrame, 1);
+      expect(tester.exportPreviewName, 'frame_0002.png');
+      expect(tester.exportPreviewNameAbsent, isFalse);
     });
 
-    testWidgets('an OUT typed past the axis reads as the axis end — the '
-        'label says the span the export runs', (tester) async {
+    testWidgets('a frame IN and OUT leave out is no file: the plate says '
+        'which frame it is, in the ink of what is off — and the stills are '
+        'numbered through the frames that are kept', (tester) async {
       await pumpDialog(tester, exportSession());
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-start-field')),
-        '1',
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('export-range-end-field')),
-        '9',
-      );
-      await tester.pump();
+      await pickStillPng(tester);
+      await tester.typeExportRange(inFrame: '2');
 
-      final transport = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-transport-line')),
-      );
-      expect(transport.data, 'in 1 – out 2 (2f) · F1 · Cut');
-      final headline = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-plan-headline')),
-      );
-      expect(headline.data, contains('2 frames'));
+      expect(tester.exportTransport.currentFrame, 0);
+      expect(tester.exportPreviewName, 'F1');
+      expect(tester.exportPreviewNameAbsent, isTrue);
+
+      await tester.seekExportPreview(1);
+      expect(tester.exportPreviewName, 'frame_0001.png');
+      expect(tester.exportPreviewNameAbsent, isFalse);
+    });
+
+    testWidgets('an OUT typed past the axis lands on the axis end — the '
+        'span the export runs', (tester) async {
+      final state = await pumpDialog(tester, exportSession());
+      await tester.typeExportRange(inFrame: '1', outFrame: '9');
+
+      final range = tester.exportTransport.range!;
+      expect((range.inFrame, range.outFrame), (0, 1));
+      expect(state.debugSpecs.sequence.outFrame, isNull);
+      expect(tester.exportTransport.frameCount, 2);
+    });
+
+    testWidgets('a video is one file: the plate names it whatever frame is '
+        'stood on', (tester) async {
+      await pumpDialog(tester, exportSession());
+      expect(tester.exportPreviewName, 'Project.mp4');
+      await tester.seekExportPreview(1);
+      expect(tester.exportPreviewName, 'Project.mp4');
     });
 
     testWidgets('the timesheet stands in the Cels list — its row, a block a '
-        'page — and the line under the preview says its file', (
+        'page — and the preview is one picture, named as its file', (
       tester,
     ) async {
       await pumpDialog(tester, exportSession());
       await switchTab(tester, 'timesheet');
       expect(
-        find.byKey(const ValueKey<String>('export-nav-scrub')),
+        tester.exportTransportBar,
         findsNothing,
-        reason: 'the list\'s band turns the pages',
+        reason: 'a cel is one picture: the list\'s band turns the pages',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-page-strip')),
+        findsNothing,
       );
       expect(tester.celsBoardRowIds, ['document-timesheet']);
       expect(tester.celsBoardBlocksOf('document-timesheet'), [('Cut', true)]);
-      final transport = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-transport-line')),
-      );
-      expect(transport.data, '_TSCut.png · 1 / 1');
+      expect(tester.exportPreviewName, '_TSCut.png');
     });
 
-    /// 🚨THE FILE-BAR PREVIEW AND THE OUTPUT LINE ARE ONE ANSWER.
+    /// 🚨THE FILE-BAR PREVIEW AND THE PREVIEW'S PLATE ARE ONE ANSWER.
     ///
     /// They used to work out 「what comes out」 separately, and the copies had
     /// drifted: the preview printed a hardcoded `CUT1.xdts` for every
@@ -970,8 +973,8 @@ void main() {
     /// measured it — the whole branch could be deleted and the suite stayed
     /// green. This pins the NAME, so a second implementation cannot come
     /// back and lie again.
-    testWidgets('the XDTS name reads the cut, and the output line says the '
-        'same thing', (tester) async {
+    testWidgets('the XDTS name reads the cut, and the preview\'s plate says '
+        'the same thing', (tester) async {
       await pumpDialog(
         tester,
         exportSession(),
@@ -992,27 +995,15 @@ void main() {
           )
           .data;
       expect(pattern, '_TSCut.xdts');
-      final line = tester
-          .widget<Text>(
-            find.byKey(const ValueKey<String>('export-output-line')),
-          )
-          .data;
-      expect(line, contains('_TSCut.xdts'));
+      expect(tester.exportPreviewName, '_TSCut.xdts');
     });
 
-    testWidgets('a flushed preview shows the rendered picture',
+    testWidgets('the preview shows the rendered picture once it lands',
         (tester) async {
-      final state = await pumpDialog(tester, exportSession());
-      expect(
-        find.byKey(const ValueKey<String>('export-preview-image')),
-        findsNothing,
-      );
-      await tester.runAsync(state.debugFlushPreview);
-      await tester.pump();
-      expect(
-        find.byKey(const ValueKey<String>('export-preview-image')),
-        findsOneWidget,
-      );
+      await pumpDialog(tester, exportSession());
+      expect(tester.exportPreviewImage, isNull);
+      await tester.settleExportPreview();
+      expect(tester.exportPreviewImage, isNotNull);
     });
   });
 
@@ -1188,10 +1179,7 @@ void main() {
       expect(find.textContaining('frame_0001.png …'), findsNothing);
       await tester.tap(find.text('납품 PNG'));
       await tester.pump();
-      final output = tester.widget<Text>(
-        find.byKey(const ValueKey<String>('export-output-line')),
-      );
-      expect(output.data, contains('frame_0001.png'));
+      expect(tester.exportPreviewName, 'frame_0001.png');
     });
 
     testWidgets('presets persist through the injected store', (tester) async {

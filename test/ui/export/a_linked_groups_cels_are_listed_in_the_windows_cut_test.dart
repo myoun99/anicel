@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/export/export_format_availability.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_preview_probe.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 🚨F-300 (유저 2026-10-05): 「출력창은 현재컷을 기준으로 생각하긴한다만
@@ -143,13 +144,7 @@ void main() {
         find.byKey(const ValueKey<String>('export-cels-cut-picker')),
       );
 
-  String transportLine(WidgetTester tester) => tester
-      .widget<Text>(find.byKey(const ValueKey<String>('export-transport-line')))
-      .data!;
-
-  String headline(WidgetTester tester) => tester
-      .widget<Text>(find.byKey(const ValueKey<String>('export-plan-headline')))
-      .data!;
+  String transportLine(WidgetTester tester) => tester.exportPreviewLine;
 
   /// Stands on a row: a press on its name.
   Future<void> tapRow(WidgetTester tester, String layerId) =>
@@ -176,10 +171,14 @@ void main() {
       expect(picker(tester).label, 'C1-C2');
       expect(picker(tester).enabled, isFalse);
       expect(
-        headline(tester),
-        startsWith('2 labels · 4 files'),
-        reason: 'a label is a ROW of the list, not a row per cut its cels '
-            'are composited in',
+        tester
+            .widget<Text>(
+              find.byKey(const ValueKey<String>('export-cels-count')),
+            )
+            .data,
+        '4 files',
+        reason: 'a row of the list is written once, not once per cut its '
+            'cels are composited in',
       );
 
       for (final row in ['a', 'b']) {

@@ -24,12 +24,12 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
-import 'package:anicel/src/ui/canvas/paper_background.dart'
-    show AlphaCheckerboardPainter;
+import 'package:anicel/src/ui/canvas/viewport_pages_painter.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cels_board.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
+import 'package:anicel/src/ui/export/export_preview_panel.dart';
 import 'package:anicel/src/ui/export/export_settings_modules.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 
 import '../../helpers/export_cels_alone.dart';
 import '../../helpers/export_cels_board_probe.dart';
+import '../../helpers/export_preview_probe.dart';
 
 /// The Cels tab (F-289): the rules that pick the rows — the kinds, one
 /// label picked through the timeline's own flyout, a take picker with
@@ -310,12 +311,8 @@ void main() {
     // The board stands under the preview.
     expect(
       tester.getTopLeft(find.byType(ExportCelsBoard)).dy,
-      greaterThan(
-        tester
-            .getBottomLeft(
-              find.byKey(const ValueKey<String>('export-plan-headline')),
-            )
-            .dy,
+      greaterThanOrEqualTo(
+        tester.getBottomLeft(find.byType(ExportPreviewPanel)).dy,
       ),
     );
   });
@@ -466,7 +463,7 @@ void main() {
     expect(celCount(tester), AppText.strings.exWrittenCount(2));
     expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
     await standOn(tester, 'a');
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 
   testWidgets('디렉션 is a KIND: off, its row is not in the list at all; its '
@@ -496,31 +493,31 @@ void main() {
     // The Image tab: its composite resolves even for an ink-less fixture
     // (a cel with no ink renders nothing on the Cels tab), and its default
     // PNG is RGBA.
-    final state = await pumpCels(tester, celsSession());
+    await pumpCels(tester, celsSession());
     await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
     await tester.pump();
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
+    await tester.settleExportPreview();
+    expect(tester.exportPreviewImage, isNotNull);
+    ViewportPageGround ground() =>
+        (tester
+                    .widget<CustomPaint>(
+                      find.byKey(
+                        const ValueKey<String>('export-preview-page'),
+                      ),
+                    )
+                    .painter!
+                as ViewportPagesPainter)
+            .ground;
     expect(
-      find.byKey(const ValueKey<String>('export-preview-image')),
-      findsOneWidget,
-    );
-    final checker = find.byKey(const ValueKey<String>('export-preview-checker'));
-    expect(checker, findsOneWidget);
-    expect(
-      tester.widget<CustomPaint>(checker).painter,
-      isA<AlphaCheckerboardPainter>(),
+      ground(),
+      ViewportPageGround.checker,
       reason: 'the canvas\'s own alpha checker, not a second one',
     );
 
     await tapKey(tester, 'export-format-channels-rgb');
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('export-preview-image')),
-      findsOneWidget,
-    );
-    expect(checker, findsNothing);
+    await tester.settleExportPreview();
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(ground(), ViewportPageGround.none);
   });
 
   test('the preset rail reads the filters that are on', () {
@@ -618,22 +615,22 @@ void main() {
     await pumpCels(tester, celsSession());
 
     await standOn(tester, 'c');
-    expect(textOf(tester, 'export-transport-line'), 'C1.png · 1 / 1');
+    expect(tester.exportPreviewLine, 'C1.png · 1 / 1');
     await standOn(tester, 'a');
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
     expect(tester.celsBoardBlockOf('a', 'f1').shown, isTrue);
 
     await tapKey(tester, 'export-cels-next');
-    expect(textOf(tester, 'export-transport-line'), 'A2.png · 2 / 2');
+    expect(tester.exportPreviewLine, 'A2.png · 2 / 2');
     expect(tester.celsBoardBlockOf('a', 'f2').shown, isTrue);
     await tapKey(tester, 'export-cels-next');
     expect(
-      textOf(tester, 'export-transport-line'),
+      tester.exportPreviewLine,
       'A2.png · 2 / 2',
       reason: 'there is nowhere further to step',
     );
     await tapKey(tester, 'export-cels-prev');
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 
   testWidgets('the drawing shown is turned off: the nearest one left is '
@@ -644,12 +641,12 @@ void main() {
 
     await standOn(tester, 'a');
     await pressBlock(tester, 'a', 'f1');
-    expect(textOf(tester, 'export-transport-line'), 'A2.png · 1 / 1');
+    expect(tester.exportPreviewLine, 'A2.png · 1 / 1');
 
     // B's row is off: its one drawing is what the preview shows of it, by
     // the name its block wears.
     await standOn(tester, 'b');
-    expect(textOf(tester, 'export-transport-line'), '1 · 1 / 1');
+    expect(tester.exportPreviewLine, '1 · 1 / 1');
   });
 
   testWidgets('a twirl folds what the row holds under it — the window\'s '
@@ -980,7 +977,7 @@ void main() {
     await tester.enterText(field(ExportCelKind.cel), 'k_');
     await tester.pump();
     expect(state.debugSpecs.cels.naming.prefixOf(ExportCelKind.cel), 'k_');
-    expect(textOf(tester, 'export-transport-line'), 'k_A1.png · 1 / 2');
+    expect(tester.exportPreviewLine, 'k_A1.png · 1 / 2');
 
     await tester.enterText(field(ExportCelKind.art), '');
     await tester.pump();
@@ -998,7 +995,7 @@ void main() {
     expect(state.debugSpecs.cels.naming, const ExportCelNaming());
     expect(typedIn(ExportCelKind.cel), '');
     expect(typedIn(ExportCelKind.art), '_');
-    expect(textOf(tester, 'export-transport-line'), 'A1.png · 1 / 2');
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 
   testWidgets('the project-scope grid shows a 겸용 pair as ONE cell and '

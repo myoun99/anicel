@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/export_preview_probe.dart';
 
 void main() {
   late Directory temp;
@@ -220,10 +221,7 @@ void main() {
       find.byKey(const ValueKey<String>('export-queue-job-1')),
       findsNothing,
     );
-    final output = tester.widget<Text>(
-      find.byKey(const ValueKey<String>('export-output-line')),
-    );
-    expect(output.data, contains('frame_0001.png'));
+    expect(tester.exportPreviewName, 'frame_0001.png');
     expect(state.debugImageFrame, isNotNull);
   });
 }

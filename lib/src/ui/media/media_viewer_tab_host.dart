@@ -26,6 +26,7 @@ import '../../services/persistence/file_type_groups.dart';
 import '../../services/project_lookup.dart' show mediaKindCanCarrySound;
 import '../canvas/canvas_zoom_scale.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import '../canvas/viewport_pages_painter.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/canvas_book.dart';
@@ -54,7 +55,6 @@ import '../widgets/cursor_notice.dart' show cursorNotices;
 import '../listenable_rebind.dart';
 import '../sliced_value_listenable_builder.dart';
 import '../repaint_props.dart';
-import '../timeline/memo_token.dart' show ByList;
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -1371,7 +1371,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                   debugLabel: _key('page'),
                   child: CustomPaint(
                     key: ValueKey<String>(_key('page')),
-                    painter: _MediaPagePainter(
+                    painter: ViewportPagesPainter(
                       pages: _pagesShown(
                         context,
                         viewport,
@@ -1381,7 +1381,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
                       // PDF paper is opaque white; a transparent image
                       // shows the checker-free paper too — the viewer is
                       // a light table, not a compositor.
-                      paperFill: document != null,
+                      ground: document != null
+                          ? ViewportPageGround.paper
+                          : ViewportPageGround.none,
                       viewport: viewport,
                       effectiveRatio: EffectiveDevicePixelRatio.of(context),
                     ),
@@ -1462,55 +1464,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       ],
     );
   }
-}
-
-class _MediaPagePainter extends CustomPainter with RepaintOnProps {
-  const _MediaPagePainter({
-    required this.pages,
-    required this.paperFill,
-    required this.viewport,
-    required this.effectiveRatio,
-  });
-
-  /// The pages on screen, each where it lies in document space with its
-  /// raster — null draws the paper alone (a page still rendering). A
-  /// raster draws scaled INTO its rect, so a higher-tier render stays
-  /// sharp under zoom.
-  final List<({Rect rect, ui.Image? image})> pages;
-
-  final bool paperFill;
-  final CanvasViewport viewport;
-
-  /// The view's DPR, for [applyViewportTransform]'s pan-phase snap.
-  final double effectiveRatio;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    // P8's ONE transform. ⛔The snap already happened at the host, so the
-    // ratio here keeps the helper's own snap idempotent.
-    applyViewportTransform(canvas, viewport, devicePixelRatio: effectiveRatio);
-    for (final (:rect, :image) in pages) {
-      if (paperFill) {
-        canvas.drawRect(rect, Paint()..color = const Color(0xFFFFFFFF));
-      }
-      if (image != null) {
-        canvas.drawImageRect(
-          image,
-          Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-          rect,
-          Paint()
-            ..filterQuality = FilterQuality.high
-            ..isAntiAlias = true,
-        );
-      }
-    }
-    canvas.restore();
-  }
-
-  /// ⚠️The pages by their CONTENTS: the list is built afresh every build.
-  @override
-  Object get props => (ByList(pages), paperFill, viewport, effectiveRatio);
 }
 
 /// The line that says where in the sound you are.

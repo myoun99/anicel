@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/color/color_wheel_panel.dart';
-import 'package:anicel/src/ui/export/export_nav_bar.dart';
 import 'package:anicel/src/ui/widgets/transport_bar.dart';
 
 /// 🗣️F-200 (유저 2026-09-27): 「띠에 여러 패널 열려있어서 스크롤바
@@ -119,32 +118,6 @@ void main() {
         reason: 'the winning move is applied, not only the press',
       );
     });
-  });
-
-  testWidgets('the export scrub bar keeps its drag', (tester) async {
-    final positions = <int>[];
-    final controller = await inAScrollingList(
-      tester,
-      SizedBox(
-        width: 400,
-        child: ExportNavBar(
-          axis: const ExportNavAxis(length: 100),
-          position: 0,
-          onChanged: positions.add,
-          enabled: true,
-        ),
-      ),
-    );
-    final scrub = find.byKey(const ValueKey<String>('export-nav-scrub'));
-    await tester.dragFrom(tester.getCenter(scrub), const Offset(0, -80));
-    await tester.pump();
-    expect(
-      controller.offset,
-      0,
-      reason: 'the pull started on the scrub bar, so the list gets nothing',
-    );
-    expect(positions, isNotEmpty, reason: 'the bar was the one dragged');
-    expect(positions.toSet(), {50}, reason: 'a pull straight up stays put');
   });
 
   testWidgets('the transport track keeps its drag', (tester) async {

@@ -40,7 +40,6 @@ import '../envelope/cut_envelope_ink.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
-import '../widgets/checkered_picture.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_picture_ink.dart' show contePicturesOverInkIn;
 import '../conte/conte_sheet_builder.dart';
@@ -66,10 +65,10 @@ import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
 import 'export_job.dart';
-import 'export_nav_bar.dart';
 import 'export_plan.dart';
 import 'export_preset_rail.dart';
-import 'export_preview_engine.dart';
+import 'export_preview_document.dart';
+import 'export_preview_panel.dart';
 import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
 import 'export_timesheet_render.dart';
@@ -92,6 +91,7 @@ import '../input/control_press_claim.dart';
 import '../theme/app_theme.dart' show AppShapes;
 import '../widgets/cursor_notice.dart';
 import '../widgets/pill_strip.dart';
+import '../widgets/transport_bar.dart' show TransportRange;
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -178,8 +178,6 @@ class ExportDialogState extends State<ExportDialog> {
 
   late final TextEditingController _sequenceFileController;
   late final TextEditingController _imageFileController;
-  late final TextEditingController _inController = TextEditingController();
-  late final TextEditingController _outController = TextEditingController();
   late final TextEditingController _namingBaseController;
   late final TextEditingController _celSuffixController;
 
@@ -193,9 +191,8 @@ class ExportDialogState extends State<ExportDialog> {
   String? _statusMessage;
   (int completed, int total)? _progress;
 
-  // EX3: the preview loop — one controller; renderers key on (FX,
-  // background) since EX4 made both change what a frame looks like.
-  final ExportPreviewController _preview = ExportPreviewController();
+  // The preview's renderers key on (FX, ground): both change what a frame
+  // looks like (EX4).
   final Map<(bool, int), ExportFrameRenderer> _previewRenderers = {};
   late ExportFormatAvailability _availability;
   bool _ownsAvailability = false;
@@ -223,8 +220,6 @@ class ExportDialogState extends State<ExportDialog> {
   // The conte sheet reads the WHOLE project — memoized on its identity
   // (the film cannot change under an open dialog).
   (Object, ConteSheetSource, List<ContePageLayout>)? _conteSheetCache;
-  static const int _previewMaxWidth = 316;
-  static const int _previewMaxHeight = 300;
 
   EditorSessionManager get _session => widget.session;
 
@@ -270,11 +265,6 @@ class ExportDialogState extends State<ExportDialog> {
           .withSpec(_specs.cels.copyWith(scope: ExportScopeKind.project));
     }
     _syncControllersFromSpecs();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _refreshPreview();
-      }
-    });
     unawaited(_restoreFromStore());
   }
 
@@ -336,8 +326,6 @@ class ExportDialogState extends State<ExportDialog> {
   void dispose() {
     _sequenceFileController.dispose();
     _imageFileController.dispose();
-    _inController.dispose();
-    _outController.dispose();
     _namingBaseController.dispose();
     _celSuffixController.dispose();
     for (final controller in _celPrefixControllers.values) {
@@ -345,7 +333,6 @@ class ExportDialogState extends State<ExportDialog> {
     }
     _queue.dispose();
     _notices.dispose();
-    _preview.dispose();
     _availability.removeListener(_onAvailabilityChanged);
     if (_ownsAvailability) {
       _availability.dispose();
@@ -363,8 +350,7 @@ class ExportDialogState extends State<ExportDialog> {
     required bool applyLayerFx,
     required ExportFormatSelection format,
   }) {
-    // -1 keys the transparent background (RGBA outputs).
-    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
+    final bgKey = _groundKeyOf(format);
     return _previewRenderers.putIfAbsent(
       (applyLayerFx, bgKey),
       () => ExportFrameRenderer(
@@ -374,6 +360,11 @@ class ExportDialogState extends State<ExportDialog> {
       ),
     );
   }
+
+  /// What stands under a picture written in [format], as one number: its
+  /// background, or -1 for one whose alpha stays open (RGBA outputs).
+  static int _groundKeyOf(ExportFormatSelection format) =>
+      format.wantsAlpha ? -1 : format.backgroundArgb;
 
   // --- state plumbing -------------------------------------------------------
 
@@ -394,19 +385,13 @@ class ExportDialogState extends State<ExportDialog> {
   void _updateSpec(ExportTabSpec spec) {
     setState(() => _specs = _specs.withSpec(spec));
     _persist();
-    _refreshPreview();
+    _settleStanding();
   }
 
   void _syncControllersFromSpecs() {
     _namingBaseController.text = _specs.sequence.naming.baseName;
     _celSuffixController.text = _specs.cels.naming.suffix;
     _syncCelPrefixFields();
-    _inController.text = _specs.sequence.inFrame == null
-        ? ''
-        : '${_specs.sequence.inFrame! + 1}';
-    _outController.text = _specs.sequence.outFrame == null
-        ? ''
-        : '${_specs.sequence.outFrame! + 1}';
   }
 
   /// The prefix fields read what the spec says — a restore, a preset, a
@@ -459,65 +444,6 @@ class ExportDialogState extends State<ExportDialog> {
     onTap: _isExporting ? null : onPick,
   );
 
-  /// The preview picture — the cropped result alone (v10: 오버레이 없음), or
-  /// the plan headline while nothing has resolved.
-  Widget _previewWell(ThemeData theme) => Container(
-    decoration: ShapeDecoration(
-      shape: AppShapes.container(
-        AppShapes.wellRadius,
-        side: BorderSide(color: theme.dividerColor),
-      ),
-    ),
-    alignment: Alignment.center,
-    padding: const EdgeInsets.all(8),
-    child: AnimatedBuilder(
-      animation: _preview,
-      builder: (context, _) {
-        final image = _preview.image;
-        if (image == null) {
-          return Text(
-            _planHeadline(),
-            key: const ValueKey<String>('export-plan-headline'),
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          );
-        }
-        final picture = RawImage(
-          key: const ValueKey<String>('export-preview-image'),
-          image: image,
-          fit: BoxFit.contain,
-          filterQuality: FilterQuality.medium,
-        );
-        if (!_previewShowsAlpha()) {
-          return picture;
-        }
-        // Open alpha reads as the checkerboard, not as nothing — the same
-        // checker the canvas's alpha preview paints (유저 2026-09-09: 「투명
-        // 이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」). It sits under
-        // the picture's own box, so it shows exactly where the file is open.
-        return CheckeredPicture(
-          image: image,
-          checkerKey: const ValueKey<String>('export-preview-checker'),
-          imageKey: const ValueKey<String>('export-preview-image'),
-        );
-      },
-    ),
-  );
-
-  /// Whether the picture under preview is written with open alpha: the
-  /// still formats' channels, or the envelope without its paper. One
-  /// answer for every tab's preview, so the checker appears wherever a
-  /// file would be open.
-  bool _previewShowsAlpha() => switch (_tab) {
-    ExportTab.sequence => _specs.sequence.format.wantsAlpha,
-    ExportTab.image => _specs.image.format.wantsAlpha,
-    // A cel is open where its format says; a document is its paper.
-    ExportTab.cels =>
-      _specs.cels.format.wantsAlpha &&
-          _celStanding.sheetIn(_celsList().rows) is! ExportDocumentSheet,
-    ExportTab.conte => false,
-  };
-
   /// The Cels list as it stands now: the plan, the cut the list shows, its
   /// rows, and where the list stands on them — settled, so a row that left
   /// the list or a drawing that was turned off is not what is stood on.
@@ -558,10 +484,7 @@ class ExportDialogState extends State<ExportDialog> {
   Widget _celsBoard() {
     final (:plan, :cut, :rows, :standing) = _celsList();
     final row = standing.rowIn(rows);
-    final pages = row == null
-        ? const <ExportListSheet>[]
-        : exportCelsPages(row);
-    final at = pages.indexWhere((sheet) => sheet.idValue == standing.shown);
+    final (cut: _, :pages, :at) = _celPages();
     return ExportCelsBoard(
       rules: _celRules(cut),
       band: ExportCelsBand(
@@ -605,7 +528,7 @@ class ExportDialogState extends State<ExportDialog> {
   ) {
     final (plan: _, cut: _, :rows, :standing) = _celsList();
     setState(() => _celStanding = move(standing, rows));
-    _refreshPreview();
+    _settleStanding();
   }
 
   void _stepCel(int steps) =>
@@ -623,7 +546,7 @@ class ExportDialogState extends State<ExportDialog> {
         _celShut.add(row.layer.id);
       }
     });
-    _refreshPreview();
+    _settleStanding();
   }
 
   /// A block, pressed: a file the export would write is turned off, or
@@ -670,7 +593,7 @@ class ExportDialogState extends State<ExportDialog> {
       return next;
     });
     setState(() {});
-    _refreshPreview();
+    _settleStanding();
   }
 
   /// The direction drawings of [cut] the band offers to lay over [shown],
@@ -739,7 +662,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         onPicked: (cut) {
           setState(() => _celListCut = cut.id);
-          _refreshPreview();
+          _settleStanding();
         },
       ),
     );
@@ -779,54 +702,39 @@ class ExportDialogState extends State<ExportDialog> {
 
   Cut get _activeCut => _anchorCut!;
 
-  /// The 0-based in/out marks on the SEQUENCE AXIS (cut-local frames
-  /// under the cut scope, whole-track positions under the project scope);
-  /// `null` = the fields don't form a valid range right now.
-  (int?, int?)? _sequenceInOut() {
-    int? parse(TextEditingController controller) {
-      final raw = controller.text.trim();
-      if (raw.isEmpty) {
-        return null;
-      }
-      final value = int.tryParse(raw);
-      return (value == null || value < 1) ? -1 : value - 1;
-    }
-
-    final inFrame = parse(_inController);
-    final outFrame = parse(_outController);
-    if (inFrame == -1 || outFrame == -1) {
-      return null;
-    }
-    if (inFrame != null && outFrame != null && inFrame > outFrame) {
-      return null;
-    }
-    return (inFrame, outFrame);
-  }
-
-  /// The FULL sequence axis (untrimmed, gapless): what the nav bar scrubs
-  /// and the in/out marks live on.
+  /// The FULL sequence axis (untrimmed, gapless): what the transport runs
+  /// over and the in/out marks live on (cut-local frames under the cut
+  /// scope, whole-track positions under the project scope).
+  ///
+  /// Memoized on what it reads — the project and the scope: the preview's
+  /// document, its range and its name plate each ask for it every build,
+  /// and a preview that runs builds a frame at a time.
   List<ExportFrameTask> _sequenceAxisPlan() {
-    final spec = _specs.sequence;
-    return buildExportFramePlan(
-      project: _session.repository.requireProject(),
+    final project = _session.repository.requireProject();
+    final scope = _specs.sequence.scope;
+    final cached = _sequenceAxisCache;
+    if (cached != null && identical(cached.$1, project) && cached.$2 == scope) {
+      return cached.$3;
+    }
+    final plan = buildExportFramePlan(
+      project: project,
       activeCutId: _activeCut.id,
-      range: spec.scope == ExportScopeKind.project
+      range: scope == ExportScopeKind.project
           ? ExportRange.allCuts
           : ExportRange.activeCut,
     );
+    _sequenceAxisCache = (project, scope, plan);
+    return plan;
   }
 
-  /// The frames an export actually renders: the axis sliced by in/out.
-  /// `null` while the fields are invalid. An UNTRIMMED project-scope video
-  /// keeps the gap black frames (full-track sync, the old behavior); a
-  /// trimmed range is content-only.
-  List<ExportFrameTask>? _sequencePlanForRun({required bool video}) {
+  (Object, ExportScopeKind, List<ExportFrameTask>)? _sequenceAxisCache;
+
+  /// The frames an export actually renders: the axis sliced by in/out. An
+  /// UNTRIMMED project-scope video keeps the gap black frames (full-track
+  /// sync, the old behavior); a trimmed range is content-only.
+  List<ExportFrameTask> _sequencePlanForRun({required bool video}) {
     final spec = _specs.sequence;
-    final inOut = _sequenceInOut();
-    if (inOut == null) {
-      return null;
-    }
-    final (inFrame, outFrame) = inOut;
+    final SequenceExportSpec(:inFrame, :outFrame) = spec;
     final untrimmed = inFrame == null && outFrame == null;
     if (video && untrimmed && spec.scope == ExportScopeKind.project) {
       return buildExportFramePlan(
@@ -1230,7 +1138,7 @@ class ExportDialogState extends State<ExportDialog> {
     ).map((cut) => cut.canvasSize).toSet();
   }
 
-  /// The Image tab's frame: the nav bar owns it (seeded from the editing
+  /// The Image tab's frame: the transport owns it (seeded from the editing
   /// playhead on open) — what the preview shows IS what exports.
   int _currentImageFrame() {
     final duration = math.max(1, _activeCut.duration);
@@ -1243,11 +1151,6 @@ class ExportDialogState extends State<ExportDialog> {
   /// Test seam: the live tab specs (scope defaults, formats).
   @visibleForTesting
   ExportTabSpecs get debugSpecs => _specs;
-
-  /// Test seam: awaits the debounced preview render (call inside
-  /// `tester.runAsync` so the raster completes).
-  @visibleForTesting
-  Future<void> debugFlushPreview() => _preview.debugFlushPending();
 
   /// Test seam: the size the conte's cell pictures were last rendered at —
   /// what a page-image run asks, which its PNG files cannot tell a test.
@@ -1285,406 +1188,361 @@ class ExportDialogState extends State<ExportDialog> {
       ? AppText.strings.exDoneSkipped(written, skipped)
       : AppText.strings.exDone(written);
 
-  // --- preview (EX3) --------------------------------------------------------
+  // --- preview: the file each tab would write, as a document ----------------
 
-  ExportNavAxis _sequenceAxis(List<ExportFrameTask> plan) =>
-      ExportNavAxis.grouped(
-        entries: plan,
-        groupOf: (task) => task.cut.id,
-        captionOf: (position) => 'F${position + 1}',
-      );
-
-  ExportNavAxis _imageAxis() => ExportNavAxis(
-    length: math.max(1, _activeCut.duration),
-    captionOf: (position) => 'F${position + 1}',
-  );
-
-  /// The size the preview renders at: [width]×[height] fitted into the
-  /// panel's budget, or null when it already fits (render at full size).
+  /// The file the tab stood on would write, as the document its preview
+  /// shows ([ExportPreviewPanel]) — or null while it has nothing to write.
   ///
-  /// ⚠️ONE budget for every tab. Four call sites spelled the same
-  /// four-argument call and the same null-or-[CanvasSize] line after it,
-  /// each rounding its own pair of doubles — a preview that fits on one tab
-  /// and overflows on another is the drift that shape invites.
-  CanvasSize? _previewFit(num width, num height) {
-    final fitted = previewOutputSize(
-      sourceWidth: width.round(),
-      sourceHeight: height.round(),
-      maxWidth: _previewMaxWidth,
-      maxHeight: _previewMaxHeight,
-    );
-    return fitted == null
-        ? null
-        : CanvasSize(width: fitted.width, height: fitted.height);
-  }
+  /// ⚠️THE SWITCH STAYS A SWITCH. Several questions in this window dispatch
+  /// on [_tab] and a tab-shaped object would gather them — but the set of
+  /// tabs is the product's closed list, and Dart's exhaustive switch already
+  /// refuses to compile until a new one is answered EVERYWHERE.
+  ExportPreviewDocument? _previewDocument() => switch (_tab) {
+    ExportTab.sequence => _sequencePreview(),
+    ExportTab.image => _imagePreview(),
+    ExportTab.cels => _celsPreview(),
+    ExportTab.conte => _contePreview(),
+  };
 
-  /// The entry the preview is parked on: [position] clamped into [plan] and
-  /// written back through [park]. Null — with the well CLEARED — when the
-  /// plan holds nothing.
-  ///
-  /// 🚨ONE ANSWER TO 「보여줄 게 없다」. Four tabs spelled the empty-check,
-  /// the clamp and the write-back themselves, and the sequence tab spelled
-  /// it WITHOUT the clear — a fifth answer to the same question, which
-  /// would have left a stale picture in the well the day a project with no
-  /// frames reached it.
-  T? _parkedPreviewEntry<T>(
-    List<T> plan,
-    int position,
-    void Function(int) park,
-  ) {
-    if (plan.isEmpty) {
-      _preview.clear();
-      return null;
-    }
-    final index = position.clamp(0, plan.length - 1);
-    park(index);
-    return plan[index];
-  }
+  /// The page of it the window stands on.
+  int _previewPage() => switch (_tab) {
+    ExportTab.sequence => _sequencePosition,
+    ExportTab.image => _currentImageFrame(),
+    ExportTab.cels => math.max(0, _celPages().at),
+    ExportTab.conte => _contePosition,
+  };
 
-  /// Re-aims the preview at whatever the tab currently points at. Called
-  /// after every spec/nav/tab change; requests coalesce in the controller.
-  ///
-  /// ⚠️THE SWITCH STAYS A SWITCH. Nine questions in this window dispatch on
-  /// [_tab] and a tab-shaped object would gather them — but the set of tabs
-  /// is the product's closed list, and Dart's exhaustive switch already
-  /// refuses to compile until a new one is answered EVERYWHERE. What the
-  /// cases must not hold is a second copy of a shared step; that is what
-  /// [_previewFit] and [_parkedPreviewEntry] above are.
-  void _refreshPreview() {
+  /// The preview moved to [page] — a hand on its transport or its page
+  /// cluster, or its run. (A row's drawings are turned by the list's band:
+  /// [_stepCel].)
+  void _turnPreviewTo(int page) => setState(() {
     switch (_tab) {
       case ExportTab.sequence:
-        _refreshSequencePreview();
+        _sequencePosition = page;
       case ExportTab.image:
-        _refreshImagePreview();
-      case ExportTab.cels:
-        _refreshCelsPreview();
+        _imageFrame = page;
       case ExportTab.conte:
-        _refreshContePreview();
+        _contePosition = page;
+      case ExportTab.cels:
+        break;
     }
-  }
+  });
 
-  void _refreshSequencePreview() {
+  /// The pixels a frame of [cut] is written at under [mode].
+  CanvasSize _frameSizeOf(Cut cut, ExportSizeMode mode) =>
+      mode == ExportSizeMode.camera
+      ? _session.camera.cameraFrameSize
+      : cut.canvasSize;
+
+  /// The project's rate, for a preview that runs.
+  double get _previewRate => _session.projectSettings.projectFps.toDouble();
+
+  ExportPreviewDocument? _sequencePreview() {
     final spec = _specs.sequence;
-    final task = _parkedPreviewEntry(
-      _sequenceAxisPlan(),
-      _sequencePosition,
-      (index) => _sequencePosition = index,
-    );
-    if (task == null) {
-      return;
+    final axis = _sequenceAxisPlan();
+    if (axis.isEmpty) {
+      return null;
     }
-    _requestCompositePreview(
-      task: task,
-      sizeMode: spec.sizeMode,
-      applyLayerFx: spec.applyLayerFx,
-      format: spec.format,
-      caption: 'F${_sequencePosition + 1}',
-    );
-  }
-
-  void _refreshImagePreview() {
-    final spec = _specs.image;
-    _requestCompositePreview(
-      task: ExportFrameTask(cut: _activeCut, frameIndex: _currentImageFrame()),
-      sizeMode: spec.sizeMode,
-      applyLayerFx: spec.applyLayerFx,
-      format: spec.format,
-      caption: 'F${_currentImageFrame() + 1}',
-    );
-  }
-
-  void _refreshCelsPreview() {
-    final (plan: _, cut: _, :rows, :standing) = _celsList();
-    // Where the list stands is settled HERE, on the way to the picture: a
-    // row that left the list or a drawing that was turned off is not kept
-    // stood on behind the board's back.
-    _celStanding = standing;
-    final sheet = standing.sheetIn(rows);
-    if (sheet is ExportCelSheet) {
-      _requestCelPreview(sheet);
-    } else if (sheet is ExportDocumentSheet) {
-      sheet.kind == ExportCelKind.envelope
-          ? _requestEnvelopePreview(sheet)
-          : _requestSheetPagePreview(sheet);
-    } else {
-      _preview.clear();
-    }
-  }
-
-  /// The cel [sheet] looks like, as its file is written.
-  void _requestCelPreview(ExportCelSheet sheet) {
-    final spec = _specs.cels;
     final format = spec.format;
     final renderer = _previewRendererFor(
-      // The preview shows what the export writes — same switch.
       applyLayerFx: spec.applyLayerFx,
       format: format,
     );
-    _preview.request(
-      key: celGroupPreviewKey(
-        sheet.look,
-        sizeMode: spec.sizeMode.jsonValue,
-        backgroundKey: format.wantsAlpha ? -1 : format.backgroundArgb,
-        applyLayerFx: spec.applyLayerFx,
-      ),
-      caption: sheet.celName,
-      render: () => renderer.renderCelGroup(sheet.look, spec.sizeMode),
-    );
-  }
-
-  /// The page of its cut's timesheet [sheet] is.
-  void _requestSheetPagePreview(ExportDocumentSheet sheet) {
-    final task = _sheetPageTask(sheet);
-    final (_, _, layout) = _sheetDocFor(task.cut);
-    final page = layout.pageRect(task.pageIndex);
-    final outputSize = _previewFit(page.width, page.height);
-    final face = _documentFace;
-    _preview.request(
-      key: 'sheet:${task.cut.id.value}:${task.pageIndex}:${face.fontFamily}',
-      caption: sheet.word,
-      render: () => _renderSheetPage(task, face: face, outputSize: outputSize),
-    );
-  }
-
-  /// The cut envelope [sheet] is.
-  void _requestEnvelopePreview(ExportDocumentSheet sheet) {
-    final task = _envelopeTask(sheet);
-    final fitted = _previewFit(
-      task.layout.paperWidth,
-      task.layout.paperHeight,
-    );
-    final face = _documentFace;
-    _preview.request(
-      // Every setting that changes the picture is in the key: two papers
-      // of the same cut must not share a cached render.
-      key:
-          'envelope:${task.owner.id.value}:${task.layout.form.id}:'
-          '${_specs.cels.envelopePaper.toJson()}:${face.fontFamily}',
-      caption: sheet.word,
-      render: () => _renderEnvelope(
-        task,
-        face: face,
-        outputSize: fitted == null
-            ? null
-            : (width: fitted.width, height: fitted.height),
-      ),
-    );
-  }
-
-  void _refreshContePreview() {
-    final (source, pages) = _conteSheet();
-    final page = _parkedPreviewEntry(
-      pages,
-      _contePosition,
-      (index) => _contePosition = index,
-    );
-    if (page == null) {
-      return;
-    }
-    final outputSize = _previewFit(
-      page.metrics.pageWidth,
-      page.metrics.pageHeight,
-    );
-    // The printed words are in the key: switching the notation language
-    // must not show the other language's cached page.
-    final language = _notationLanguage;
-    final words = conteWordsIn(language);
-    _preview.request(
-      key: 'conte:${page.pageIndex}:${language.name}',
-      caption: 'p${page.pageIndex + 1}',
-      // Preview pictures at panel resolution — fast, and the run
-      // re-renders sharper ones anyway.
-      render: () => _renderContePage(
-        page,
-        source,
-        pictureWidth: 128,
-        outputSize: outputSize,
-        words: words,
-      ),
-    );
-  }
-
-  void _requestCompositePreview({
-    required ExportFrameTask task,
-    required ExportSizeMode sizeMode,
-    required bool applyLayerFx,
-    required ExportFormatSelection format,
-    required String caption,
-  }) {
-    final renderer = _previewRendererFor(
-      applyLayerFx: applyLayerFx,
-      format: format,
-    );
-    final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
     // The video run burns the SE name tags in (renderCompositeForVideo);
     // stills stay clean because they are compositing sources. The preview
     // has to answer the same question, or it shows a frame the export
     // will not produce.
     final withNameTags = format.kind == ExportMediaKind.video;
-    final source = sizeMode == ExportSizeMode.camera
-        ? _session.camera.cameraFrameSize
-        : task.cut.canvasSize;
-    final outputSize = _previewFit(source.width, source.height);
-    _preview.request(
-      key:
-          'frame:${task.cut.id.value}:${task.frameIndex}:'
-          '${sizeMode.jsonValue}:$applyLayerFx:$bgKey:$withNameTags:'
-          '${outputSize?.width ?? source.width}x'
-          '${outputSize?.height ?? source.height}',
-      caption: caption,
-      render: () => task.isGap
-          ? Future<ui.Image?>.value()
-          : renderer.renderComposite(
-              task,
-              sizeMode,
-              outputSize: outputSize,
+    return ExportPreviewDocument(
+      subject: (ExportTab.sequence, spec.scope),
+      look: (
+        spec.sizeMode,
+        spec.applyLayerFx,
+        _groundKeyOf(format),
+        withNameTags,
+      ),
+      shape: ExportPreviewShape.runs,
+      framesPerSecond: _previewRate,
+      pageCount: axis.length,
+      opensAlpha: format.wantsAlpha,
+      sizeOf: (page) => _frameSizeOf(axis[page].cut, spec.sizeMode),
+      renderAt: (page, size) async => axis[page].isGap
+          ? null
+          : await renderer.renderComposite(
+              axis[page],
+              spec.sizeMode,
+              outputSize: size,
               withNameTags: withNameTags,
             ),
     );
   }
 
-  String? _transportLine() {
+  /// The Image tab's cut, frame by frame: what the transport stands on IS
+  /// the frame that is written.
+  ExportPreviewDocument _imagePreview() {
+    final spec = _specs.image;
+    final cut = _activeCut;
+    final renderer = _previewRendererFor(
+      applyLayerFx: spec.applyLayerFx,
+      format: spec.format,
+    );
+    return ExportPreviewDocument(
+      subject: ExportTab.image,
+      look: (spec.sizeMode, spec.applyLayerFx, _groundKeyOf(spec.format)),
+      shape: ExportPreviewShape.runs,
+      framesPerSecond: _previewRate,
+      pageCount: math.max(1, cut.duration),
+      opensAlpha: spec.format.wantsAlpha,
+      sizeOf: (_) => _frameSizeOf(cut, spec.sizeMode),
+      renderAt: (page, size) => renderer.renderComposite(
+        ExportFrameTask(cut: cut, frameIndex: page),
+        spec.sizeMode,
+        outputSize: size,
+      ),
+    );
+  }
+
+  /// The row the Cels list stands on, as the drawings it turns through —
+  /// each of them ONE picture ([ExportPreviewShape.single]): a cel is a file
+  /// of its own, and the list's band is what turns from one to the next.
+  ExportPreviewDocument? _celsPreview() {
+    final (:cut, :pages, at: _) = _celPages();
+    if (pages.isEmpty) {
+      return null;
+    }
+    final face = _documentFace;
+    final pictures = [for (final sheet in pages) _sheetPicture(sheet, face)];
+    return ExportPreviewDocument(
+      subject: (ExportTab.cels, cut.id),
+      // Every setting that changes a picture is in its look: two papers of
+      // the same cut must not share a render.
+      look: [for (final picture in pictures) picture.look].join('\n'),
+      shape: ExportPreviewShape.single,
+      pageCount: pages.length,
+      // A cel is open where its format says; a document is its paper.
+      opensAlpha:
+          _specs.cels.format.wantsAlpha && pages.first is ExportCelSheet,
+      sizeOf: (page) => pictures[page].size,
+      renderAt: (page, size) => pictures[page].render(size),
+    );
+  }
+
+  /// The drawings the row stood on turns through, where the one shown
+  /// stands among them (-1 while none is), and the cut the list shows.
+  ({Cut cut, List<ExportListSheet> pages, int at}) _celPages() {
+    final (plan: _, :cut, :rows, :standing) = _celsList();
+    final row = standing.rowIn(rows);
+    final pages = row == null
+        ? const <ExportListSheet>[]
+        : exportCelsPages(row);
+    return (
+      cut: cut,
+      pages: pages,
+      at: pages.indexWhere((sheet) => sheet.idValue == standing.shown),
+    );
+  }
+
+  /// [sheet] as a picture: the pixels its file is written at, what decides
+  /// how it looks, and its render at a size — the very render the run
+  /// writes it through.
+  ///
+  /// ONE place tells a cel from a timesheet's page from a cut envelope: the
+  /// three answers were each a walk over the same question.
+  ({
+    CanvasSize size,
+    String look,
+    Future<ui.Image?> Function(CanvasSize size) render,
+  })
+  _sheetPicture(ExportListSheet sheet, TextStyle face) {
+    final spec = _specs.cels;
+    if (sheet is ExportCelSheet) {
+      final renderer = _previewRendererFor(
+        // The preview shows what the export writes — same switch.
+        applyLayerFx: spec.applyLayerFx,
+        format: spec.format,
+      );
+      return (
+        size: _frameSizeOf(sheet.look.cut, spec.sizeMode),
+        look: celGroupPreviewKey(
+          sheet.look,
+          sizeMode: spec.sizeMode.jsonValue,
+          backgroundKey: _groundKeyOf(spec.format),
+          applyLayerFx: spec.applyLayerFx,
+        ),
+        render: (size) => renderer.renderCelGroup(
+          sheet.look,
+          spec.sizeMode,
+          outputSize: size,
+        ),
+      );
+    }
+    // What the list holds that is no drawing is a page of a document.
+    final page = sheet as ExportDocumentSheet;
+    final owner = page.of.id.value;
+    if (page.kind == ExportCelKind.envelope) {
+      final paper = cutEnvelopePaperSize(
+        mode: spec.envelopePaper,
+        cut: page.of,
+      );
+      final form = _session.repository
+          .requireProject()
+          .timesheetInfo
+          .envelopeFormId;
+      return (
+        size: CanvasSize(width: paper.width, height: paper.height),
+        look:
+            'envelope:$owner:$form:${spec.envelopePaper.toJson()}:'
+            '${face.fontFamily}',
+        render: (size) => _renderEnvelope(
+          _envelopeTask(page),
+          face: face,
+          outputSize: (width: size.width, height: size.height),
+        ),
+      );
+    }
+    return (
+      size: _sheetDocFor(page.of).$3.paperPixelSize,
+      look: 'sheet:$owner:${page.page}:${face.fontFamily}',
+      render: (size) =>
+          _renderSheetPage(_sheetPageTask(page), face: face, outputSize: size),
+    );
+  }
+
+  /// The conte book, a page a page.
+  ExportPreviewDocument? _contePreview() {
+    final (source, pages) = _conteSheet();
+    if (pages.isEmpty) {
+      return null;
+    }
+    // The printed words are part of the look: switching the notation
+    // language must not show the other language's page.
+    final language = _notationLanguage;
+    final words = conteWordsIn(language);
+    final camera = _session.camera.cameraFrameSize;
+    return ExportPreviewDocument(
+      subject: ExportTab.conte,
+      look: language,
+      shape: ExportPreviewShape.book,
+      pageCount: pages.length,
+      sizeOf: (page) => pages[page].metrics.paperPixelSize,
+      renderAt: (page, size) => _renderContePage(
+        pages[page],
+        source,
+        // A cell's picture at the share of its own pixels the page is drawn
+        // at — the run's are the camera's, on a page at its paper's pixels.
+        pictureWidth: math.max(
+          1,
+          (camera.width *
+                  size.width /
+                  pages[page].metrics.paperPixelSize.width)
+              .round(),
+        ),
+        outputSize: size,
+        words: words,
+      ),
+    );
+  }
+
+  /// The span IN/OUT keep on the sequence axis, as the transport's range row
+  /// holds it. An end at its own end of the axis is no trim at all — the
+  /// untrimmed run is the one that keeps a project's gaps
+  /// ([_sequencePlanForRun]).
+  TransportRange _sequenceRange() {
+    final spec = _specs.sequence;
+    final length = _sequenceAxisPlan().length;
+    final kept = KeptSpan(
+      length: math.max(1, length),
+      inFrame: spec.inFrame,
+      outFrame: spec.outFrame,
+    );
+    return TransportRange(
+      inFrame: kept.first,
+      outFrame: kept.last,
+      onChanged: length > 1 && !_isExporting
+          ? (start, end) => _updateSpec(
+              spec.copyWith(
+                inFrame: start <= 0 ? null : start,
+                outFrame: end >= length - 1 ? null : end,
+              ),
+            )
+          : null,
+    );
+  }
+
+  /// The name the page under preview is written under — and whether it
+  /// names a picture the run does NOT write, which the plate says in the
+  /// ink of what is off ([ExportPreviewPanel.fileAbsent]).
+  ({String? name, bool absent}) _previewFile() {
     switch (_tab) {
       case ExportTab.sequence:
-        final axis = _sequenceAxisPlan();
-        if (axis.isEmpty) {
-          return null;
+        final spec = _specs.sequence;
+        if (spec.format.isVideo) {
+          return (name: _firstOutputFile().name, absent: false);
         }
-        final inOut = _sequenceInOut();
-        final position = _sequencePosition.clamp(0, axis.length - 1);
-        final cutName = axis[position].cut.name;
-        if (inOut == null) {
-          return AppText.strings.exInvalidInOut(
-            frame: position + 1,
-            cut: cutName,
-          );
+        final length = _sequenceAxisPlan().length;
+        if (length == 0) {
+          return (name: null, absent: false);
         }
+        final page = _sequencePosition.clamp(0, length - 1);
         final kept = KeptSpan(
-          length: axis.length,
-          inFrame: inOut.$1,
-          outFrame: inOut.$2,
+          length: length,
+          inFrame: spec.inFrame,
+          outFrame: spec.outFrame,
         );
-        return AppText.strings.exInOut(
-          inFrame: kept.first + 1,
-          outFrame: kept.last + 1,
-          count: kept.count,
-          frame: position + 1,
-          cut: cutName,
-        );
+        // Stills are numbered through the frames IN/OUT keep. A frame
+        // outside them is no file: it says which frame it is.
+        return page < kept.first || page > kept.last
+            ? (name: 'F${page + 1}', absent: true)
+            : (name: _sequenceFileNameFor(page - kept.first), absent: false);
       case ExportTab.image:
-        return 'F${_currentImageFrame() + 1} / '
-            '${math.max(1, _activeCut.duration)} · ${_activeCut.name}';
+        return (name: _firstOutputFile().name, absent: false);
       case ExportTab.cels:
-        final (plan: _, cut: _, :rows, :standing) = _celsList();
-        final row = standing.rowIn(rows);
-        final sheet = standing.sheetIn(rows);
-        if (row == null || sheet == null) {
-          return null;
+        final (cut: _, :pages, :at) = _celPages();
+        if (at < 0) {
+          return (name: null, absent: false);
         }
-        final pages = exportCelsPages(row);
         // The file exactly as the naming rule will write it, extension
         // included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸 그대로 …
         // A0001.png 이런식으로 확장자까지」) — and one that is no file by its
         // whole name.
-        final name = sheet.fileName.isNotEmpty
-            ? sheet.fileName
-            : sheet.fullName;
-        return '$name · ${pages.indexOf(sheet) + 1} / ${pages.length}';
+        final sheet = pages[at];
+        return sheet.fileName.isNotEmpty
+            ? (name: sheet.fileName, absent: false)
+            : (name: sheet.fullName, absent: true);
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
         if (pages.isEmpty) {
-          return null;
+          return (name: null, absent: false);
         }
-        final position = _contePosition.clamp(0, pages.length - 1);
-        return 'p${position + 1} / ${pages.length} · '
-            '${AppText.strings.exPageCount(pages.length)}';
+        return (
+          name: _specs.conte.format == ExportConteFormat.pdf
+              ? _firstOutputFile().name
+              : _contePageFileName(
+                  _contePosition.clamp(0, pages.length - 1),
+                  pages.length,
+                ),
+          absent: false,
+        );
+    }
+  }
+
+  /// Settles where the window stands after a change: a row that left the
+  /// Cels list, or a drawing that was turned off, is not kept stood on
+  /// behind the board's back — the nearest one left is, and it STAYS stood
+  /// on (유저 2026-10-06: 「서있는 상태나 마찬가지지」).
+  void _settleStanding() {
+    if (_tab == ExportTab.cels) {
+      _celStanding = _celsList().standing;
     }
   }
 
   // --- summaries ------------------------------------------------------------
 
-  /// The sentence under the preview: what THIS tab would write, in the
-  /// terms that tab thinks in. One case per tab, each its own method —
-  /// every one of them ends in a sentence, and a switch that also builds
-  /// them reads as one function doing six jobs.
-  String _planHeadline() => switch (_tab) {
-    ExportTab.sequence => _sequenceHeadline(),
-    ExportTab.image => _imageHeadline(),
-    ExportTab.cels => _celsHeadline(),
-    ExportTab.conte => _conteHeadline(),
-  };
-
-  String _sequenceHeadline() {
-    final spec = _specs.sequence;
-    final plan = _sequencePlanForRun(video: spec.format.isVideo);
-    final strings = AppText.strings;
-    if (plan == null) {
-      return strings.exInvalidRange(math.max(1, _activeCut.duration));
-    }
-    final frames = strings.exFrameCount(plan.length);
-    if (spec.sizeMode == ExportSizeMode.camera) {
-      final size = _session.camera.cameraFrameSize;
-      return strings.exSequenceCamera(frames, size.width, size.height);
-    }
-    final sizes = _scopeCanvasSizes(spec.scope);
-    if (sizes.length == 1) {
-      final size = sizes.first;
-      return strings.exSequenceCanvas(frames, size.width, size.height);
-    }
-    return strings.exSequencePerCut(frames);
-  }
-
-  String _imageHeadline() {
-    final size = _specs.image.sizeMode == ExportSizeMode.camera
-        ? _session.camera.cameraFrameSize
-        : _activeCut.canvasSize;
-    return AppText.strings.exImageHeadline(
-      frame: _currentImageFrame() + 1,
-      cut: _activeCut.name,
-      width: size.width,
-      height: size.height,
-    );
-  }
-
-  String _celsHeadline() {
-    final plan = _celGroupPlan();
-    final labels = {for (final task in plan.cels) task.bundleAxis.id}.length;
-    final strings = AppText.strings;
-    return strings.exCelsHeadline(
-      labels: strings.exLabelCount(labels),
-      files: strings.exFileCount(plan.writtenCels.length),
-      background: _specs.cels.format.wantsAlpha
-          ? strings.exTransparent
-          : strings.exOpaque,
-      format: _specs.cels.format.stillFormat.label,
-    );
-  }
-
-  String _conteHeadline() {
-    final (_, pages) = _conteSheet();
-    final counted = AppText.strings.exContePageCount(pages.length);
-    if (_specs.conte.format == ExportConteFormat.pdf) {
-      return AppText.strings.exContePdfHeadline(counted);
-    }
-    return AppText.strings.exContePngHeadline(counted);
-  }
-
-  String _outputLine() {
-    if (!_hasDestination) {
-      return AppText.strings.exChooseLocation;
-    }
-    final (:name, :more) = _firstOutputFile();
-    if (name == null) {
-      return '→ ${_nothingToWriteText()}';
-    }
-    return '→ $name${more ? ' …' : ''}';
-  }
-
   /// THE FIRST FILE THIS TAB WRITES, and whether more follow.
   ///
-  /// 🚨ONE ANSWER FOR TWO SURFACES (감사 2026-09-09). The output line under
-  /// the file bar and the naming accordion's summary both say 「what comes
-  /// out」, and each used to work it out for itself — the same walk over the
+  /// 🚨ONE ANSWER FOR TWO SURFACES (감사 2026-09-09). The preview's name
+  /// plate and the naming accordion's summary both say 「what comes out」,
+  /// and each used to work it out for itself — the same walk over the
   /// same plan, written twice. They had already drifted apart in three
   /// places, and one of them was a LIE: the summary printed a hardcoded
   /// `CUT1.xdts` for every project, whatever the cut was called. (The other
@@ -1845,8 +1703,9 @@ class ExportDialogState extends State<ExportDialog> {
     }
     switch (_tab) {
       case ExportTab.sequence:
-        final plan = _sequencePlanForRun(video: _specs.sequence.format.isVideo);
-        return plan != null && plan.isNotEmpty;
+        return _sequencePlanForRun(
+          video: _specs.sequence.format.isVideo,
+        ).isNotEmpty;
       case ExportTab.image:
         return true;
       case ExportTab.cels:
@@ -2081,8 +1940,7 @@ class ExportDialogState extends State<ExportDialog> {
     _loadJobIntoForm(job);
     _queue.remove(job.id);
     _persist();
-    _preview.clear();
-    _refreshPreview();
+    _settleStanding();
   }
 
   void _removeJob(ExportJob job) {
@@ -2146,8 +2004,7 @@ class ExportDialogState extends State<ExportDialog> {
               handOverSaid ?? _queueRestSentence(succeeded, failed);
         });
         _persist();
-        _preview.clear();
-        _refreshPreview();
+        _settleStanding();
       }
     }
   }
@@ -2172,7 +2029,7 @@ class ExportDialogState extends State<ExportDialog> {
       (current) => current.copyWith(status: ExportJobStatus.running),
     );
     _loadJobIntoForm(job);
-    _refreshPreview();
+    _settleStanding();
     try {
       final ran = await _runIntoDestination(_runCurrentTabExport);
       if (ran.outbox case final outbox?) {
@@ -2371,7 +2228,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.sequence;
     final format = spec.format;
     final alphaVideo = format.wantsAlpha;
-    final plan = _sequencePlanForRun(video: true)!;
+    final plan = _sequencePlanForRun(video: true);
     final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
       format: format,
@@ -2424,7 +2281,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   Future<String> _exportPngSequence() {
     final spec = _specs.sequence;
-    final plan = _sequencePlanForRun(video: false)!;
+    final plan = _sequencePlanForRun(video: false);
     final renderer = _runRenderer(
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
@@ -2598,7 +2455,7 @@ class ExportDialogState extends State<ExportDialog> {
       _syncControllersFromSpecs();
     });
     _persist();
-    _refreshPreview();
+    _settleStanding();
   }
 
   Future<void> _saveCurrentPreset() async {
@@ -2805,10 +2662,7 @@ class ExportDialogState extends State<ExportDialog> {
         enabled: !_isExporting,
         onSelected: () {
           setState(() => _tab = tab);
-          // Tabs share the one preview slot; a stale picture from
-          // another domain must not linger under the new axis.
-          _preview.clear();
-          _refreshPreview();
+          _settleStanding();
         },
       ),
   ];
@@ -3069,91 +2923,44 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  ExportNavBar? _navBar() {
-    switch (_tab) {
-      case ExportTab.sequence:
-        final axis = _sequenceAxis(_sequenceAxisPlan());
-        final inOut = _sequenceInOut();
-        return ExportNavBar(
-          axis: axis,
-          position: _sequencePosition,
-          enabled: !_isExporting,
-          inController: _inController,
-          outController: _outController,
-          onInOutEdited: _writeInOutToSpec,
-          inMark: inOut?.$1,
-          outMark: inOut?.$2,
-          onChanged: (position) {
-            setState(() => _sequencePosition = position);
-            _refreshPreview();
-          },
-        );
-      case ExportTab.image:
-        return ExportNavBar(
-          axis: _imageAxis(),
-          position: _currentImageFrame(),
-          enabled: !_isExporting,
-          onChanged: (position) {
-            setState(() => _imageFrame = position);
-            _refreshPreview();
-          },
-        );
-      case ExportTab.cels:
-        // The list's band turns through the drawings ([ExportCelsBand]).
-        return null;
-      case ExportTab.conte:
-        final (_, pages) = _conteSheet();
-        return ExportNavBar(
-          axis: ExportNavAxis(
-            length: pages.length,
-            captionOf: (position) =>
-                'p${position.clamp(0, math.max(0, pages.length - 1)) + 1}',
-          ),
-          position: _contePosition,
-          enabled: !_isExporting,
-          onChanged: (position) {
-            setState(() => _contePosition = position);
-            _refreshPreview();
-          },
-        );
-    }
-  }
-
+  /// The preview — the file under the window's hand, in a canvas-base panel
+  /// ([ExportPreviewPanel]) — and under it, on the Cels tab, the list.
+  ///
+  /// ↩️A scrub bar, a line saying where the playhead stood and a line naming
+  /// the first file stood between the picture and the list. The panel's
+  /// transport and its page cluster turn the picture now, and the file's
+  /// name is on the picture (유저 2026-10-06: 「파일이름 위치도 심플해서
+  /// 좋아」).
   Widget _previewZone(ThemeData theme) {
     final progress = _progress;
-    final navBar = _navBar();
-    final transport = _transportLine();
+    final file = _previewFile();
+    final well = AppShapes.container(AppShapes.wellRadius);
     return Padding(
       padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: _previewWell(theme)),
-          if (navBar != null) ...[const SizedBox(height: 6), navBar],
-          if (transport != null) ...[
-            const SizedBox(height: 3),
-            Text(
-              transport,
-              key: const ValueKey<String>('export-transport-line'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                fontSize: 10.5,
-                color: theme.colorScheme.onSurfaceVariant,
+          Expanded(
+            child: Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: ShapeDecoration(shape: well),
+              foregroundDecoration: ShapeDecoration(
+                shape: well.copyWith(
+                  side: BorderSide(color: theme.dividerColor),
+                ),
               ),
-            ),
-          ],
-          const SizedBox(height: 4),
-          Text(
-            _outputLine(),
-            key: const ValueKey<String>('export-output-line'),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontFamily: 'monospace',
-              fontSize: 10.5,
-              color: theme.colorScheme.onSurfaceVariant,
+              child: ExportPreviewPanel(
+                session: _session,
+                document: _previewDocument(),
+                page: _previewPage(),
+                onPage: _turnPreviewTo,
+                nothingToShow: _nothingToWriteText(),
+                // The Sequence tab trims; no other does.
+                range: _tab == ExportTab.sequence ? _sequenceRange() : null,
+                fileName: file.name,
+                fileAbsent: file.absent,
+                enabled: !_isExporting,
+              ),
             ),
           ),
           // The Cels tab's list stands under its preview (유저 2026-10-06:
@@ -3325,22 +3132,6 @@ class ExportDialogState extends State<ExportDialog> {
     ];
   }
 
-  void _writeInOutToSpec() {
-    final spec = _specs.sequence;
-    final inOut = _sequenceInOut();
-    setState(() {
-      if (inOut != null) {
-        _specs = _specs.withSpec(
-          spec.copyWith(inFrame: inOut.$1, outFrame: inOut.$2),
-        );
-      }
-    });
-    if (inOut != null) {
-      _persist();
-    }
-    _refreshPreview();
-  }
-
   List<Widget> _imageModules() {
     final spec = _specs.image;
     return [
@@ -3394,7 +3185,7 @@ class ExportDialogState extends State<ExportDialog> {
       ),
     );
     setState(() {});
-    _refreshPreview();
+    _settleStanding();
   }
 
   /// Turns [rows] of [cut] on or off — storing null where the wish equals
@@ -3475,14 +3266,14 @@ class ExportDialogState extends State<ExportDialog> {
           return next;
         });
         setState(() {});
-        _refreshPreview();
+        _settleStanding();
       },
       onAllIncluded: () {
         _session.repository.updateExportOverrides(
           (overrides) => overrides.withAllCutsIncluded(),
         );
         setState(() {});
-        _refreshPreview();
+        _settleStanding();
       },
       onRangeSelected: (start, end) {
         _session.repository.updateExportOverrides((overrides) {
@@ -3498,7 +3289,7 @@ class ExportDialogState extends State<ExportDialog> {
           return next;
         });
         setState(() {});
-        _refreshPreview();
+        _settleStanding();
       },
     );
   }
@@ -4041,7 +3832,6 @@ class ExportDialogState extends State<ExportDialog> {
       onChanged: _isExporting
           ? null
           : (value) {
-              _preview.clear();
               onChanged(value);
             },
     ),

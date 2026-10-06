@@ -38,6 +38,7 @@ import 'package:anicel/src/ui/widgets/pill_strip.dart';
 import '../../helpers/export_cels_board_probe.dart';
 import '../../helpers/files_written_under.dart';
 import '../../helpers/project_scratch_folder.dart';
+import '../../helpers/export_preview_probe.dart';
 
 /// 🗣️F-289 (유저 2026-10-05): 「타임시트 탭을 그냥 셀 탭의 내부로 편입.
 /// 컷봉투탭도 셀 내부로 편입. 위치는 추가버튼의 미술/디렉션/시트/컷봉투
@@ -364,19 +365,16 @@ void main() {
       'over a document', (tester) async {
     final session = film();
     addTearDown(session.dispose);
-    final state = await pumpCels(tester, session, spec: everything);
+    await pumpCels(tester, session, spec: everything);
 
     await press(tester, 'export-cels-stand-document-envelope');
     expect(tester.celsBoard.standing, 'document-envelope');
     expect(
-      textOf(tester, 'export-transport-line'),
+      tester.exportPreviewLine,
       '_CUT301_envelope.png · 1 / 1',
     );
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    final envelope = tester
-        .widget<RawImage>(keyed('export-preview-image'))
-        .image!;
+    await tester.settleExportPreview();
+    final envelope = tester.exportPreviewImage!;
     expect(
       (envelope.width, envelope.height),
       (8, 8),
@@ -384,10 +382,9 @@ void main() {
     );
 
     await press(tester, 'export-cels-stand-document-timesheet');
-    expect(textOf(tester, 'export-transport-line'), '_TS301.png · 1 / 1');
-    await tester.runAsync(state.debugFlushPreview);
-    await tester.pump();
-    final sheet = tester.widget<RawImage>(keyed('export-preview-image')).image!;
+    expect(tester.exportPreviewLine, '_TS301.png · 1 / 1');
+    await tester.settleExportPreview();
+    final sheet = tester.exportPreviewImage!;
     expect(
       sheet.width / sheet.height,
       closeTo(1754 / 2480, 0.01),
@@ -580,9 +577,9 @@ void main() {
 
     // Stood on, the row walks the pages it writes.
     await press(tester, 'export-cels-stand-document-timesheet');
-    expect(textOf(tester, 'export-transport-line'), '_TS301_1.png · 1 / 2');
+    expect(tester.exportPreviewLine, '_TS301_1.png · 1 / 2');
     await press(tester, 'export-cels-next');
-    expect(textOf(tester, 'export-transport-line'), '_TS301_3.png · 2 / 2');
+    expect(tester.exportPreviewLine, '_TS301_3.png · 2 / 2');
 
     await tester.runAsync(state.export);
     await tester.pump();

@@ -251,6 +251,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.pageStrip = const <Widget>[],
     this.transport,
     this.documentName,
+    this.documentAbsent = false,
     this.bottomBarHostToken,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -518,6 +519,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// 파일이름 의미없으니까 없도록. 컷봉투패널도 똑같음」. A paper panel shows
   /// no file, so it hands none.
   final String? documentName;
+
+  /// Whether [documentName] names something that is NOT a file — the export
+  /// window's picture of a drawing its run does not write (drawn so in the
+  /// F-289 mock: the name stays in its place, in the ink of what is off).
+  final bool documentAbsent;
 
   /// Equality token for [bottomBarLeading] AND [bottomBarSettings] — the
   /// bottom bar is memoized by its inputs (R13-3) and widget instances are
@@ -2538,6 +2544,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     this.pageStrip = const <Widget>[],
     this.transport,
     this.documentName,
+    this.documentAbsent = false,
     this.bottomOverlaySpan = 0,
     this.railBand,
   });
@@ -2562,6 +2569,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   /// See [BrushCanvasPanel.documentName].
   final String? documentName;
+
+  /// See [BrushCanvasPanel.documentAbsent].
+  final bool documentAbsent;
 
   double get _transportCover => transportCover(
     transport,
@@ -2927,7 +2937,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     bottom: onFloor
         ? _floorBarBottom + AppScrollbarLane.medium + _capsuleMargin
         : _transportCover + dockedLane + _capsuleMargin,
-    child: _CanvasDocumentName(name),
+    child: _CanvasDocumentName(name, absent: documentAbsent),
   );
 
   /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
@@ -3042,9 +3052,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 /// A plate, not a control: it takes no pointer, so a press on it is the
 /// canvas's.
 class _CanvasDocumentName extends StatelessWidget {
-  const _CanvasDocumentName(this.name);
+  const _CanvasDocumentName(this.name, {required this.absent});
 
   final String name;
+
+  /// See [BrushCanvasPanel.documentAbsent].
+  final bool absent;
 
   @override
   Widget build(BuildContext context) => IgnorePointer(
@@ -3064,7 +3077,11 @@ class _CanvasDocumentName extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(
               context,
-            ).textTheme.labelSmall?.copyWith(color: AppColors.text),
+            ).textTheme.labelSmall?.copyWith(
+              color: absent
+                  ? AppColors.text.withValues(alpha: AppColors.offAlpha)
+                  : AppColors.text,
+            ),
           ),
         ),
       ),

@@ -1165,7 +1165,6 @@ enum AppStrings {
   String get exWhite => _s('exWhite');
   String get exBlack => _s('exBlack');
   String get exBackground => _s('exBackground');
-  String get exChooseLocation => _s('exChooseLocation');
   String get exNoCels => _s('exNoCels');
   String get exNoCuts => _s('exNoCuts');
   String get exPresets => _s('exPresets');
@@ -1197,7 +1196,6 @@ enum AppStrings {
   /// of a timesheet and a cut envelope are counted alike — in sheets, where
   /// the language counts them so (장 · 枚 · 张).
   String exWrittenCount(int count) => _count('exWrittenCount', count);
-  String exLabelCount(int count) => _count('exLabelCount', count);
   String exJobCount(int count) => _count('exJobCount', count);
   String exContePageCount(int count) => _count('exContePageCount', count);
 
@@ -1239,64 +1237,6 @@ enum AppStrings {
           .replaceAll('{rest}', kept ? _s('exQueueRestKept') : '')
           .replaceAll('{count}', count);
 
-  /// The preview's position line and the sentence under it: what the tab
-  /// would write, in that tab's own terms.
-  String exInvalidInOut({required int frame, required String cut}) =>
-      _s(
-        'exInvalidInOutTemplate',
-      ).replaceAll('{frame}', '$frame').replaceAll('{cut}', cut);
-  String exInOut({
-    required int inFrame,
-    required int outFrame,
-    required int count,
-    required int frame,
-    required String cut,
-  }) => _s('exInOutTemplate')
-      .replaceAll('{in}', '$inFrame')
-      .replaceAll('{out}', '$outFrame')
-      .replaceAll('{count}', '$count')
-      .replaceAll('{frame}', '$frame')
-      .replaceAll('{cut}', cut);
-  String exInvalidRange(int duration) =>
-      _s('exInvalidRangeTemplate').replaceAll('{duration}', '$duration');
-  String exSequenceCamera(String frames, int width, int height) =>
-      _s('exSequenceCameraTemplate')
-          .replaceAll('{w}', '$width')
-          .replaceAll('{h}', '$height')
-          .replaceAll('{frames}', frames);
-  String exSequenceCanvas(String frames, int width, int height) =>
-      _s('exSequenceCanvasTemplate')
-          .replaceAll('{w}', '$width')
-          .replaceAll('{h}', '$height')
-          .replaceAll('{frames}', frames);
-  String exSequencePerCut(String frames) =>
-      _s('exSequencePerCutTemplate').replaceAll('{frames}', frames);
-  String exImageHeadline({
-    required int frame,
-    required String cut,
-    required int width,
-    required int height,
-  }) => _s('exImageHeadlineTemplate')
-      .replaceAll('{frame}', '$frame')
-      .replaceAll('{w}', '$width')
-      .replaceAll('{h}', '$height')
-      .replaceAll('{cut}', cut);
-  String exCelsHeadline({
-    required String labels,
-    required String files,
-    required String background,
-    required String format,
-  }) => _s('exCelsHeadlineTemplate')
-      .replaceAll('{labels}', labels)
-      .replaceAll('{files}', files)
-      .replaceAll('{background}', background)
-      .replaceAll('{format}', format);
-  String get exTransparent => _s('exTransparent');
-  String get exOpaque => _s('exOpaque');
-  String exContePdfHeadline(String pages) =>
-      _s('exContePdfHeadlineTemplate').replaceAll('{pages}', pages);
-  String exContePngHeadline(String pages) =>
-      _s('exContePngHeadlineTemplate').replaceAll('{pages}', pages);
 
   /// The file bar's words and the modules' one-line summaries.
   String get exFileLabel => _s('exFileLabel');
@@ -2356,7 +2296,6 @@ enum AppStrings {
     'exWhite': 'White',
     'exBlack': 'Black',
     'exBackground': 'BG',
-    'exChooseLocation': 'Choose a location to enable Export.',
     'exNoCels': '(no cels)',
     'exNoCuts': '(no cuts)',
     'exPresets': 'Presets',
@@ -2376,8 +2315,6 @@ enum AppStrings {
     'exPageCountOne': '{n} page',
     'exFileCount': '{n} files',
     'exFileCountOne': '{n} file',
-    'exLabelCount': '{n} labels',
-    'exLabelCountOne': '{n} label',
     'exJobCount': '{n} jobs',
     'exJobCountOne': '{n} job',
     'exContePageCount': '{n} conte pages',
@@ -2399,21 +2336,6 @@ enum AppStrings {
     'exQueueRestTemplate': 'Queue: {count} done{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} failed',
     'exQueueRestKept': ', rest kept',
-    'exInvalidInOutTemplate': 'Invalid in/out · F{frame} · {cut}',
-    'exInOutTemplate': 'in {in} – out {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': 'Enter a valid in/out range (1–{duration}).',
-    'exSequenceCameraTemplate': '{frames} at {w}×{h} through the camera.',
-    'exSequenceCanvasTemplate': '{frames} at {w}×{h} (raw canvas).',
-    'exSequencePerCutTemplate': '{frames} at each cut\'s own canvas size.',
-    'exImageHeadlineTemplate': 'Frame {frame} of {cut} at {w}×{h}.',
-    'exCelsHeadlineTemplate':
-        '{labels} · {files} as {background} {format} (base + attaches composited per cel).',
-    'exTransparent': 'transparent',
-    'exOpaque': 'opaque',
-    'exContePdfHeadlineTemplate':
-        '{pages} as ONE vector PDF — rules and text as vectors, pictures embedded.',
-    'exContePngHeadlineTemplate':
-        '{pages} as A4 PNG — the panel\'s own paper, offscreen.',
     'exFileLabel': 'File',
     'exPatternLabel': 'Pattern',
     'exLocationLabel': 'Location',
@@ -3581,7 +3503,6 @@ enum AppStrings {
     'exWhite': '白',
     'exBlack': '黒',
     'exBackground': '背景',
-    'exChooseLocation': '保存先を選ぶと書き出せます。',
     'exNoCels': '（セルなし）',
     'exNoCuts': '（カットなし）',
     'exPresets': 'プリセット',
@@ -3630,8 +3551,6 @@ enum AppStrings {
     'exPageCountOne': '{n}ページ',
     'exFileCount': '{n}ファイル',
     'exFileCountOne': '{n}ファイル',
-    'exLabelCount': 'ラベル{n}個',
-    'exLabelCountOne': 'ラベル{n}個',
     'exJobCount': 'ジョブ{n}件',
     'exJobCountOne': 'ジョブ{n}件',
     'exContePageCount': 'コンテ{n}ページ',
@@ -3652,18 +3571,6 @@ enum AppStrings {
     'exQueueRestTemplate': 'キュー: {count}完了{failed}{rest}。',
     'exQueueFailedTemplate': '、{n}件失敗',
     'exQueueRestKept': '、残りは保持',
-    'exInvalidInOutTemplate': 'イン/アウトが不正 · F{frame} · {cut}',
-    'exInOutTemplate': 'イン {in} – アウト {out}（{count}f） · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '有効なイン/アウト範囲を入力してください（1–{duration}）。',
-    'exSequenceCameraTemplate': 'カメラを通して{w}×{h}で{frames}。',
-    'exSequenceCanvasTemplate': '{w}×{h}で{frames}（キャンバスそのまま）。',
-    'exSequencePerCutTemplate': 'カットごとのキャンバスサイズで{frames}。',
-    'exImageHeadlineTemplate': '{cut}のフレーム{frame}、{w}×{h}。',
-    'exCelsHeadlineTemplate': '{labels} · {background}の{format}で{files}（セルごとに基準+アタッチを合成）。',
-    'exTransparent': '透過',
-    'exOpaque': '不透明',
-    'exContePdfHeadlineTemplate': '{pages}を1つのベクターPDFに — 罫線と文字はベクター、絵は埋め込み。',
-    'exContePngHeadlineTemplate': '{pages}をA4 PNGで — パネルの用紙のまま、画面外で描画。',
     'exFileLabel': 'ファイル',
     'exPatternLabel': 'パターン',
     'exLocationLabel': '保存先',
@@ -4930,7 +4837,6 @@ enum AppStrings {
     'exWhite': '흰색',
     'exBlack': '검정',
     'exBackground': '배경',
-    'exChooseLocation': '위치를 고르면 내보낼 수 있습니다.',
     'exNoCels': '(셀 없음)',
     'exNoCuts': '(컷 없음)',
     'exPresets': '프리셋',
@@ -4979,8 +4885,6 @@ enum AppStrings {
     'exPageCountOne': '{n}페이지',
     'exFileCount': '파일 {n}개',
     'exFileCountOne': '파일 {n}개',
-    'exLabelCount': '라벨 {n}개',
-    'exLabelCountOne': '라벨 {n}개',
     'exJobCount': '작업 {n}개',
     'exJobCountOne': '작업 {n}개',
     'exContePageCount': '콘티 {n}페이지',
@@ -5001,18 +4905,6 @@ enum AppStrings {
     'exQueueRestTemplate': '대기열: {count} 완료{failed}{rest}.',
     'exQueueFailedTemplate': ', {n}개 실패',
     'exQueueRestKept': ', 나머지는 남겨 둠',
-    'exInvalidInOutTemplate': '인/아웃이 올바르지 않음 · F{frame} · {cut}',
-    'exInOutTemplate': '인 {in} – 아웃 {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '올바른 인/아웃 범위를 입력하세요(1–{duration}).',
-    'exSequenceCameraTemplate': '카메라를 거쳐 {w}×{h}로 {frames}.',
-    'exSequenceCanvasTemplate': '{w}×{h}로 {frames}(캔버스 그대로).',
-    'exSequencePerCutTemplate': '컷마다 제 캔버스 크기로 {frames}.',
-    'exImageHeadlineTemplate': '{cut}의 {frame}프레임, {w}×{h}.',
-    'exCelsHeadlineTemplate': '{labels} · {background} {format}로 {files}(셀마다 기준+어태치 합성).',
-    'exTransparent': '투명',
-    'exOpaque': '불투명',
-    'exContePdfHeadlineTemplate': '{pages}를 벡터 PDF 하나로 — 선과 글자는 벡터, 그림은 포함.',
-    'exContePngHeadlineTemplate': '{pages}를 A4 PNG로 — 패널의 용지 그대로, 화면 밖에서 렌더.',
     'exFileLabel': '파일',
     'exPatternLabel': '패턴',
     'exLocationLabel': '위치',
@@ -6325,7 +6217,6 @@ enum AppStrings {
     'exWhite': 'Blanc',
     'exBlack': 'Noir',
     'exBackground': 'Fond',
-    'exChooseLocation': 'Choisissez un emplacement pour exporter.',
     'exNoCels': '(aucun cellulo)',
     'exNoCuts': '(aucun plan)',
     'exPresets': 'Préréglages',
@@ -6407,8 +6298,6 @@ enum AppStrings {
     'exPageCountOne': '{n} page',
     'exFileCount': '{n} fichiers',
     'exFileCountOne': '{n} fichier',
-    'exLabelCount': '{n} étiquettes',
-    'exLabelCountOne': '{n} étiquette',
     'exJobCount': '{n} tâches',
     'exJobCountOne': '{n} tâche',
     'exContePageCount': '{n} pages de conte',
@@ -6429,18 +6318,6 @@ enum AppStrings {
     'exQueueRestTemplate': 'File : {count} terminé{failed}{rest}.',
     'exQueueFailedTemplate': ', {n} en échec',
     'exQueueRestKept': ', le reste est conservé',
-    'exInvalidInOutTemplate': 'Entrée/sortie invalide · F{frame} · {cut}',
-    'exInOutTemplate': 'entrée {in} – sortie {out} ({count}f) · F{frame} · {cut}',
-    'exInvalidRangeTemplate': 'Saisissez une plage entrée/sortie valide (1–{duration}).',
-    'exSequenceCameraTemplate': '{frames} en {w}×{h} à travers la caméra.',
-    'exSequenceCanvasTemplate': '{frames} en {w}×{h} (canevas brut).',
-    'exSequencePerCutTemplate': '{frames} à la taille de canevas de chaque plan.',
-    'exImageHeadlineTemplate': 'Image {frame} de {cut} en {w}×{h}.',
-    'exCelsHeadlineTemplate': '{labels} · {files} en {format} {background} (base + attaches composées par cellulo).',
-    'exTransparent': 'transparent',
-    'exOpaque': 'opaque',
-    'exContePdfHeadlineTemplate': '{pages} en UN seul PDF vectoriel — traits et texte vectoriels, images intégrées.',
-    'exContePngHeadlineTemplate': '{pages} en PNG A4 — le papier du panneau, rendu hors écran.',
     'exFileLabel': 'Fichier',
     'exPatternLabel': 'Modèle',
     'exLocationLabel': 'Emplacement',
@@ -7658,7 +7535,6 @@ enum AppStrings {
     'exWhite': '白色',
     'exBlack': '黑色',
     'exBackground': '背景',
-    'exChooseLocation': '选择位置后即可导出。',
     'exNoCels': '（无赛璐珞）',
     'exNoCuts': '（无镜头）',
     'exPresets': '预设',
@@ -7707,8 +7583,6 @@ enum AppStrings {
     'exPageCountOne': '{n}页',
     'exFileCount': '{n}个文件',
     'exFileCountOne': '{n}个文件',
-    'exLabelCount': '{n}个标签',
-    'exLabelCountOne': '{n}个标签',
     'exJobCount': '{n}个任务',
     'exJobCountOne': '{n}个任务',
     'exContePageCount': '分镜稿{n}页',
@@ -7729,18 +7603,6 @@ enum AppStrings {
     'exQueueRestTemplate': '队列：已完成{count}{failed}{rest}。',
     'exQueueFailedTemplate': '，{n}个失败',
     'exQueueRestKept': '，其余保留',
-    'exInvalidInOutTemplate': '入点/出点无效 · F{frame} · {cut}',
-    'exInOutTemplate': '入点 {in} – 出点 {out}（{count}f） · F{frame} · {cut}',
-    'exInvalidRangeTemplate': '请输入有效的入点/出点范围（1–{duration}）。',
-    'exSequenceCameraTemplate': '通过摄影机以 {w}×{h} 输出{frames}。',
-    'exSequenceCanvasTemplate': '以 {w}×{h} 输出{frames}（原始画布）。',
-    'exSequencePerCutTemplate': '按各镜头自身的画布尺寸输出{frames}。',
-    'exImageHeadlineTemplate': '{cut} 的第 {frame} 帧，{w}×{h}。',
-    'exCelsHeadlineTemplate': '{labels} · 以{background} {format} 输出{files}（每张赛璐珞合成基准+附属）。',
-    'exTransparent': '透明',
-    'exOpaque': '不透明',
-    'exContePdfHeadlineTemplate': '{pages}合成一个矢量 PDF——线条与文字为矢量，图片嵌入。',
-    'exContePngHeadlineTemplate': '{pages}，A4 PNG——使用面板自身的纸张，离屏渲染。',
     'exFileLabel': '文件',
     'exPatternLabel': '命名模式',
     'exLocationLabel': '位置',
