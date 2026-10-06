@@ -76,6 +76,10 @@ class UndoSurfacePair {
   }
 }
 
+/// One text of a picture as a snapshot pins it: which text, and what it
+/// says. Its plate is kept with the picture's other tiles.
+typedef _SaidText = ({int id, CelTextContent content});
+
 /// ONE surface an undo entry is holding, and its residence: in memory, or
 /// parked in the run's 휘발성 room.
 ///
@@ -88,8 +92,9 @@ class UndoSurfacePair {
 /// for the document. 유저 확정 2026-09-07 (`cold-tier`).
 ///
 /// 🚨★★★**ONLY THE TILES THIS SNAPSHOT ALONE HOLDS ARE WRITTEN.** The
-/// rest are the same OBJECTS the live surface holds ([tilesNotSharedWith]
-/// is how that is decided, and it is the same law the byte budget bills
+/// rest are the same OBJECTS the live surface holds
+/// ([BitmapSurface.keptTilesNotSharedWith] is how that is decided, and it
+/// is the same law the byte budget bills
 /// by) — writing them would copy bytes that are not going anywhere and
 /// would hand back new objects on the way in, breaking the structural
 /// sharing that makes the next snapshot cheap. OpenToonz makes exactly
@@ -145,9 +150,8 @@ class UndoSurfaceSnapshot {
     required BitmapSurface? sharedWith,
   }) : _canvasSize = snapshot.canvasSize,
        _tileSize = snapshot.tileSize,
-       _texts = snapshot.texts,
        _surface = snapshot,
-       _owned = snapshot.tilesNotSharedWith(sharedWith);
+       _owned = snapshot.keptTilesNotSharedWith(sharedWith);
 
   /// Which cel these pixels are — the blob header wants it, and a crash
   /// dump of the room can then say which drawing it was looking at.
@@ -156,16 +160,28 @@ class UndoSurfaceSnapshot {
   final CanvasSize _canvasSize;
   final int _tileSize;
 
-  /// The texts the picture carried — kept HERE through a park, with the
-  /// two sizes above, because the parked payload is the drawing's tiles and
-  /// nothing else: a picture put back together without them would undo a
-  /// stroke by deleting every letter on the cel.
+  /// What each text of the picture SAYS, bottom → top — kept HERE through
+  /// a park, with the two sizes above: a picture put back together without
+  /// its texts would undo a stroke by deleting every letter on the cel.
   ///
-  /// ⚠️They stay in RAM, plates and all, and are not billed. A plate is the
-  /// size of the letters it holds, and what parks is the drawing.
-  final List<CelText> _texts;
+  /// A text's settings are a few numbers. Its PLATE is tiles, and those
+  /// are kept — billed, parked, read back — as every other tile of the
+  /// picture is ([_owned], [_sharedPlaces]).
+  ///
+  /// ↩️The texts were kept here WHOLE, plates and all, 「not billed. A plate
+  /// is the size of the letters it holds」 — and the letters can be the size
+  /// of the canvas. An entry that held a replaced plate weighed nothing:
+  /// two hundred moves of a large title were a gigabyte the byte budget
+  /// could not see (found reading it back, 2026-10-06, before the text
+  /// tool could make one).
+  ///
+  /// ⚠️Filled in by [_releaseTiles], with [_sharedPlaces] and for its
+  /// reason: only a snapshot that has let go of its picture needs them
+  /// apart from it.
+  List<_SaidText>? _texts;
 
-  /// WHERE the tiles somebody else is holding are — coordinates only.
+  /// WHERE the tiles somebody else is holding are — places only: which
+  /// tile of the picture, never the tile.
   ///
   /// 🚨★★★**IT HELD THE TILES THEMSELVES, AND THAT QUIETLY DEFEATED
   /// PARKING.** The comment here said they「cost this snapshot nothing」
@@ -188,10 +204,11 @@ class UndoSurfaceSnapshot {
   /// A pair holds two of these, and a stroke makes a pair: 🧪two full
   /// walks of the cel per commit, spent on an answer almost none of them
   /// would be asked for. Null until the tiles are let go.
-  Set<TileCoord>? _sharedCoords;
+  Set<KeptTilePlace>? _sharedPlaces;
 
-  /// The tiles only this snapshot holds — null once they are on disk.
-  Map<TileCoord, BitmapTile>? _owned;
+  /// The tiles only this snapshot holds — the drawing's, and its texts'
+  /// plates' — null once they are on disk.
+  Map<KeptTilePlace, BitmapTile>? _owned;
 
   BitmapSurface? _surface;
 
@@ -218,12 +235,12 @@ class UndoSurfaceSnapshot {
   /// together from it.
   ///
   /// ⚠️[against] is WEAK. Held strongly it would pin the whole surface it
-  /// leaned on — the shape of the 12 MiB [_sharedCoords] records — and a
+  /// leaned on — the shape of the 12 MiB [_sharedPlaces] records — and a
   /// surface that is gone cannot be the one a step hands in anyway.
   ({
     WeakReference<BitmapSurface>? against,
     BitmapSurface surface,
-    Map<TileCoord, BitmapTile> owned,
+    Map<KeptTilePlace, BitmapTile> owned,
   })?
   _ahead;
 
@@ -237,20 +254,24 @@ class UndoSurfaceSnapshot {
       ((_owned?.length ?? 0) + (_ahead?.owned.length ?? 0)) *
       BitmapTile.bytesFor(_tileSize);
 
-  /// Every tile this snapshot alone holds IN RAM, with its coordinate — the
-  /// same tiles [residentBytes] counts: the owned half, and a read-ahead
-  /// copy's owned half too. Nothing once parked, for a parked snapshot's
-  /// tiles are a file, and a file holds no picture.
+  /// Every DRAWING tile this snapshot alone holds IN RAM, with its
+  /// coordinate — of the tiles [residentBytes] counts: the owned half, and
+  /// a read-ahead copy's owned half too. Nothing once parked, for a parked
+  /// snapshot's tiles are a file, and a file holds no picture.
+  ///
+  /// ⚠️The drawing's, and not a plate's, though [residentBytes] counts
+  /// both. Whoever visits asks the store whether a cel still holds the tile
+  /// at that coordinate (`BrushFrameStore.holdsTile`), and the store
+  /// answers for drawings: a plate handed over here would be asked about
+  /// as a drawing tile, and called nobody's while its text is on screen.
   void visitResidentOwnedTiles(
     void Function(TileCoord coord, BitmapTile tile) visit,
   ) {
-    for (final entry in (_owned ?? const <TileCoord, BitmapTile>{}).entries) {
-      visit(entry.key, entry.value);
-    }
-    final ahead = _ahead;
-    if (ahead != null) {
-      for (final entry in ahead.owned.entries) {
-        visit(entry.key, entry.value);
+    for (final owned in [_owned, _ahead?.owned]) {
+      for (final entry in (owned ?? const {}).entries) {
+        if (entry.key.text == null) {
+          visit(entry.key.coord, entry.value);
+        }
       }
     }
   }
@@ -274,7 +295,7 @@ class UndoSurfaceSnapshot {
   /// stack steps LIFO, so when entry n is undone the cel IS entry n's
   /// post-surface, and when it is redone the cel IS its pre-surface. Both
   /// are the `sharedWith` this snapshot was built with. The shared tiles
-  /// are read back out of it rather than held here — see [_sharedCoords]
+  /// are read back out of it rather than held here — see [_sharedPlaces]
   /// for the 12 MiB that cost.
   ///
   /// ⛔It REFUSES rather than guessing when [live] cannot answer for a
@@ -363,7 +384,7 @@ class UndoSurfaceSnapshot {
     ({
       WeakReference<BitmapSurface>? against,
       BitmapSurface surface,
-      Map<TileCoord, BitmapTile> owned,
+      Map<KeptTilePlace, BitmapTile> owned,
     })
     ahead,
     BitmapSurface? live,
@@ -375,7 +396,7 @@ class UndoSurfaceSnapshot {
   /// The payload put back together against [live] — the shared tiles from
   /// it, the owned ones from the file — or null when either will not
   /// answer.
-  ({BitmapSurface surface, Map<TileCoord, BitmapTile> owned})? _readBack(
+  ({BitmapSurface surface, Map<KeptTilePlace, BitmapTile> owned})? _readBack(
     BitmapSurface? live,
   ) {
     final shared = _sharedTilesFrom(live);
@@ -387,43 +408,30 @@ class UndoSurfaceSnapshot {
       // It let go without writing anything: it owned no tile, so the
       // shared ones ARE the whole picture and there are no holes in it.
       return (
-        surface: BitmapSurface(
-          canvasSize: _canvasSize,
-          tileSize: _tileSize,
-          tiles: shared,
-          texts: _texts,
-        ),
-        owned: const <TileCoord, BitmapTile>{},
+        surface: _pictureOf(shared),
+        owned: const <KeptTilePlace, BitmapTile>{},
       );
     }
     final bytes = ScratchFile.read(path);
     if (bytes == null) {
       return null;
     }
-    final Map<TileCoord, BitmapTile> owned;
+    final Map<KeptTilePlace, BitmapTile> owned;
     try {
-      owned = AnicelCelBlob(bytes).decode().toSurface().tiles;
+      owned = AnicelCelBlob(bytes).decode().toSurface().keptTiles;
     } on Object {
       return null;
     }
-    return (
-      surface: BitmapSurface(
-        canvasSize: _canvasSize,
-        tileSize: _tileSize,
-        tiles: {...shared, ...owned},
-        texts: _texts,
-      ),
-      owned: owned,
-    );
+    return (surface: _pictureOf({...shared, ...owned}), owned: owned);
   }
 
   /// The shared tiles, taken from [live] — or null when it cannot answer
-  /// for every coordinate this snapshot expects of it.
-  Map<TileCoord, BitmapTile>? _sharedTilesFrom(BitmapSurface? live) {
-    final shared = _sharedCoords;
+  /// for every place this snapshot expects of it.
+  Map<KeptTilePlace, BitmapTile>? _sharedTilesFrom(BitmapSurface? live) {
+    final shared = _sharedPlaces;
     if (shared == null) {
-      // Never let go, so nothing pinned the coordinates — and a snapshot
-      // that still HOLDS its surface never reaches here.
+      // Never let go, so nothing pinned the places — and a snapshot that
+      // still HOLDS its surface never reaches here.
       return null;
     }
     if (shared.isEmpty) {
@@ -432,15 +440,43 @@ class UndoSurfaceSnapshot {
     if (live == null) {
       return null;
     }
-    final tiles = <TileCoord, BitmapTile>{};
-    for (final coord in shared) {
-      final tile = live.tileAt(coord);
+    final tiles = <KeptTilePlace, BitmapTile>{};
+    for (final place in shared) {
+      final tile = live.keptTileAt(place);
       if (tile == null) {
         return null;
       }
-      tiles[coord] = tile;
+      tiles[place] = tile;
     }
     return tiles;
+  }
+
+  /// The picture [kept] is the tiles of: the drawing's as its tiles, and
+  /// each text — what it says pinned in [_texts] — with the plate tiles
+  /// kept for it. A text none are kept for is a text with no plate.
+  BitmapSurface _pictureOf(Map<KeptTilePlace, BitmapTile> kept) {
+    final drawing = <TileCoord, BitmapTile>{};
+    final plates = <int, Map<TileCoord, BitmapTile>>{};
+    for (final entry in kept.entries) {
+      final text = entry.key.text;
+      final tiles = text == null
+          ? drawing
+          : plates.putIfAbsent(text, () => <TileCoord, BitmapTile>{});
+      tiles[entry.key.coord] = entry.value;
+    }
+    return BitmapSurface(
+      canvasSize: _canvasSize,
+      tileSize: _tileSize,
+      tiles: drawing,
+      texts: [
+        for (final text in _texts ?? const <_SaidText>[])
+          CelText(
+            id: text.id,
+            content: text.content,
+            plate: plates[text.id] ?? const {},
+          ),
+      ],
+    );
   }
 
   /// Moves the owned tiles into the run's 휘발성 room. Answers false when
@@ -497,7 +533,7 @@ class UndoSurfaceSnapshot {
       // the WHOLE picture, and once the drawing moves past those tiles it
       // is the last one holding them. This early return kept it, so the
       // one snapshot the budget was sure cost nothing was the one that
-      // went on costing — the same mistake [_sharedCoords] records, in the
+      // went on costing — the same mistake [_sharedPlaces] records, in the
       // branch that looked too trivial to have it.
       _releaseTiles();
       _letGo = true;
@@ -507,14 +543,12 @@ class UndoSurfaceSnapshot {
     // straight into a flat buffer (no per-tile defensive copy), the
     // buffer MOVES to the worker, and the compressed bytes move back
     // — see [compressAnicelPayloadInWorker] for the measurement.
-    final body = encodeCelEntryFromSurface(
-      key,
-      BitmapSurface(
-        canvasSize: _canvasSize,
-        tileSize: _tileSize,
-        tiles: owned,
-      ),
-    );
+    //
+    // ⚠️The picture as it would be with these tiles alone: a cel's own
+    // stream, so an owned plate tile goes out under its text and comes
+    // back under it.
+    _pinTexts();
+    final body = encodeCelEntryFromSurface(key, _pictureOf(owned));
     final compressed = await compressAnicelPayloadInWorker(body);
     final blob = AnicelCelBlob.fromCompressedBody(
       key: key,
@@ -546,7 +580,7 @@ class UndoSurfaceSnapshot {
     return true;
   }
 
-  /// Lets go of the tiles — and pins [_sharedCoords] on the way out.
+  /// Lets go of the tiles — and pins [_sharedPlaces] on the way out.
   ///
   /// 🚨★★★**THE TWO ARE ONE STEP, AND THAT IS THE WHOLE REASON THIS IS A
   /// METHOD.** Which coordinates somebody else holds can only be worked
@@ -566,13 +600,27 @@ class UndoSurfaceSnapshot {
     final surface = _surface;
     if (surface != null) {
       final owned = _owned;
-      _sharedCoords = {
-        for (final coord in surface.tiles.keys)
-          if (owned == null || !owned.containsKey(coord)) coord,
+      _pinTexts();
+      _sharedPlaces = {
+        for (final place in surface.keptTiles.keys)
+          if (owned == null || !owned.containsKey(place)) place,
       };
     }
     _owned = null;
     _surface = null;
+  }
+
+  /// Pins what each text SAYS ([_texts]) while the picture is still here
+  /// to be read — once, by whichever needs it first: the park, which writes
+  /// the picture's own stream, or the letting go.
+  void _pinTexts() {
+    final surface = _surface;
+    if (surface != null) {
+      _texts ??= [
+        for (final text in surface.texts)
+          (id: text.id, content: text.content),
+      ];
+    }
   }
 
   /// The entry holding this is leaving the stack: nobody can ask for

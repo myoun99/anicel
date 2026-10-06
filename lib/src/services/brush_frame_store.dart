@@ -328,7 +328,7 @@ class BrushFrameStore {
   // surface references, budgeted separately (HistoryManager.byteBudget)
   // — and they share THESE tile objects wherever an edit did not reach,
   // which is why an undo entry's weight is only the tiles the live
-  // surface no longer holds (`BitmapSurface.tilesNotSharedWith`).
+  // surface no longer holds (`BitmapSurface.keptTilesNotSharedWith`).
   //
   // ⚠️AND THEY TIER TOO NOW, into the OTHER room. `fdd328ba` wrote the
   // line above when RAM was the only place an undo payload could be, so

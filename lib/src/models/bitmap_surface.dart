@@ -37,6 +37,10 @@ import 'tile_coord.dart';
 /// GIMP uses 128, which is where this landed.
 const int defaultCelTileSize = 128;
 
+/// Where a picture keeps one of its tiles: in the drawing ([text] null), or
+/// in the plate of the text whose id is [text].
+typedef KeptTilePlace = ({int? text, TileCoord coord});
+
 /// A cel's PICTURE: its pixels, as tiles — and the texts set above them.
 ///
 /// 🚨★★★**THE TEXTS ARE IN THE PICTURE'S OWN VALUE, AND THAT IS THE WHOLE
@@ -210,19 +214,58 @@ class BitmapSurface {
   /// pair. Deferring the second half would need the surface it was
   /// measured against held on the side and released in step with the
   /// tiles — a second nullable meaning nothing measured asks for.
-  Map<TileCoord, BitmapTile> tilesNotSharedWith(BitmapSurface? other) {
-    final live = Set<Object>.identity()
-      ..addAll(other?._tiles.values ?? const <BitmapTile>[]);
+  ///
+  /// 🚨★★★**THE TEXTS' PLATES ARE TILES OF THE PICTURE TOO** (R9-rest,
+  /// 2026-10-06). A text carries its pixels (`CelText.plate`), and an edit
+  /// of one — a letter typed, a text moved — leaves the plate it replaced
+  /// held by the undo entry and by nothing else. This asked the drawing
+  /// alone, so a text edit weighed nothing however large its letters: the
+  /// byte budget's old blind spot, open again for one kind of tile. So the
+  /// answer says WHERE each tile is kept ([KeptTilePlace]) — a drawing
+  /// tile and a plate tile can stand on one coordinate. ⚠️The timings above
+  /// are of the walk before it took the plates in; a cel's texts add a
+  /// handful of tiles to it, and that was not measured again.
+  Map<KeptTilePlace, BitmapTile> keptTilesNotSharedWith(BitmapSurface? other) {
+    final live = Set<Object>.identity();
+    if (other != null) {
+      live.addAll(other._tiles.values);
+      for (final text in other.texts) {
+        live.addAll(text.plate.values);
+      }
+    }
     return {
       for (final entry in _tiles.entries)
-        if (!live.contains(entry.value)) entry.key: entry.value,
+        if (!live.contains(entry.value))
+          (text: null, coord: entry.key): entry.value,
+      for (final text in texts)
+        for (final entry in text.plate.entries)
+          if (!live.contains(entry.value))
+            (text: text.id, coord: entry.key): entry.value,
     };
   }
 
-  /// Bytes THIS surface holds that [other] does not — [tilesNotSharedWith]
-  /// weighed.
+  /// Bytes THIS surface holds that [other] does not —
+  /// [keptTilesNotSharedWith] weighed.
   int bytesNotSharedWith(BitmapSurface? other) =>
-      tilesNotSharedWith(other).length * tileBytes;
+      keptTilesNotSharedWith(other).length * tileBytes;
+
+  /// Every tile this picture keeps — the drawing's, then each text's plate
+  /// — with where it keeps it: [keptTileCount] of them.
+  Map<KeptTilePlace, BitmapTile> get keptTiles => keptTilesNotSharedWith(null);
+
+  /// The tile kept at [place], or null where this picture keeps none.
+  BitmapTile? keptTileAt(KeptTilePlace place) {
+    final id = place.text;
+    if (id == null) {
+      return _tiles[place.coord];
+    }
+    for (final text in texts) {
+      if (text.id == id) {
+        return text.plate[place.coord];
+      }
+    }
+    return null;
+  }
 
   /// CANVAS-grid tile columns (tiles that cover the canvas rect from the
   /// origin). Pasteboard tiles live outside this grid — see

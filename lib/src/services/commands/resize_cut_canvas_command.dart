@@ -193,7 +193,8 @@ class ResizeCutCanvasCommand
     // phantom bytes (adversarial review).
     //
     // This command wrote that rule first and the rest of the stack now
-    // shares it — [BitmapSurface.tilesNotSharedWith] IS this loop, lifted.
+    // shares it — [BitmapSurface.keptTilesNotSharedWith] IS this loop,
+    // lifted.
     _previousBaked = {
       for (final cut in previousSurfaces.entries)
         cut.key: {

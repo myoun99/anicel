@@ -252,8 +252,8 @@ void main() {
   });
 
   group('an undo entry that was parked', () {
-    test('🚨puts the picture back WITH its texts — the payload it parked '
-        'was the drawing alone', () async {
+    test('🚨puts the picture back WITH its texts — what each says, and the '
+        'plate that went to the room with the drawing', () async {
       final live = drawingOf({a: ink, b: ink});
       final before = drawingOf({
         a: tileOf({
@@ -274,11 +274,14 @@ void main() {
       final back = snapshot.surfaceOver(live);
 
       expect(back, before);
-      expect(back!.texts.single.plate[b], same(letters));
+      // The cel no longer holds that plate, so the entry alone did — and
+      // let go of it (`an_undo_entry_keeps_a_plate_as_it_keeps_a_tile`).
+      expect(back!.texts.single.plate[b], letters);
+      expect(back.texts.single.plate[b], isNot(same(letters)));
     });
 
-    test('a snapshot that owned no tile — a text edit, which changes none — '
-        'comes back with its texts too', () async {
+    test('a snapshot that owned no DRAWING tile — a text edit, which changes '
+        'none — comes back with its texts too', () async {
       final live = drawingOf({a: ink}).withTexts([
         textOf(1, words: 'after'),
       ]);
