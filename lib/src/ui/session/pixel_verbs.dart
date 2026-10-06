@@ -8,24 +8,17 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/pixel_verb_subject.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
-import '../../services/canvas_selection.dart'
-    show
-        SelectionMaskOptions,
-        SelectionMaskReading,
-        selectionMaskOnPasteboard;
-import '../../services/canvas_selection_paint_clip.dart'
-    show clipStampDabToSelectionMask;
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../../services/canvas_selection_region.dart';
 import '../../services/canvas_selection_shape.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../../services/cel_pixel_region.dart';
-import '../../services/command.dart';
-import '../../services/commands/brush_lift_move_history_command.dart';
 import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart' show buildCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
+import '../../services/piece_landing.dart';
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
 import 'active_cut_controllers.dart';
@@ -324,8 +317,7 @@ class PixelVerbs {
   /// ⚠️Mapped into each layer's OWN artwork space: a posed layer draws its
   /// pixels somewhere else than the marquee was drawn, and the region has
   /// to follow. An unposed layer — the overwhelming majority — gets it
-  /// back unchanged (the same object, which the paste leans on to read one
-  /// outline once). Null when the row's pose is singular.
+  /// back unchanged. Null when the row's pose is singular.
   CanvasSelectionRegion? _onTheRow(
     BrushFrameKey key,
     CanvasSelectionRegion region,
@@ -484,69 +476,54 @@ class PixelVerbs {
   /// else the whole board (「선택도구 있으면 선택부분에만, 없으면 기억된
   /// 전체」). At 100%: a paste puts the pixels back, it does not press them.
   ///
-  /// ★The landing is the transform's multi-cel door
-  /// ([BrushLiftMoveHistoryCommand] folded by `executeAsOneStep`): one cel
-  /// or a whole range, the same code answers (절대명령 2) — one undo.
+  /// ★The landing is the piece door ([pieceLandings]) — the one the cut
+  /// tool's stamp lands through too (F-293): one cel or a whole range, the
+  /// same code answers (절대명령 2) — one undo.
   void _pastePixels(BrushBlendMode blend) {
     final coordinator = _pixelEditing.coordinator;
     final piece = _pixelBoard.piece;
     if (coordinator == null || piece == null) {
       return;
     }
+    // ONE dab for every row: the board goes back where it was read from,
+    // whichever row takes it.
+    final dab = buildCutPasteDab(piece);
+    final landed = pieceLandings(
+      coordinator: coordinator,
+      ground: pieceGround(),
+      stamp: PieceStamp(
+        onTheRow: (_) => dab,
+        blend: blend,
+        description: 'Paste pixels',
+      ),
+      // Without the hub the canvas keeps the old composite until you leave
+      // the frame (see [runPixelVerb]).
+      cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
+    );
+    _project.historyManager.executeAsOneStep('Paste pixels', [
+      for (final cel in landed.values) cel.landing,
+    ]);
+  }
+
+  /// WHERE a held picture lands, read at the press — 픽셀 붙여넣기's ground
+  /// and, handed to the canvas, the cut tool's stamp's (F-293: 「색편집의
+  /// 픽셀붙여넣기랑 법 통일」).
+  ///
+  /// ⛔ONE reading for both. The canvas could assemble the same four facts
+  /// from what it holds — and then a range, a row's placement or a marquee's
+  /// softness could come to mean two things, by which button held the
+  /// picture.
+  ///
+  /// The cels are the LADDER's, before a verb asks what is in them: a blank
+  /// cel is exactly where a paste goes ([_holdsADrawing]).
+  PieceGround pieceGround() {
+    // Read ONCE, at the moment of the press — see [PixelVerbCanvas].
     final canvas = pixelVerbCanvas?.call();
-    final selection = canvas?.region;
-    final options = canvas?.mask ?? SelectionMaskOptions.none;
-    final canvasSize = _project.requireActiveCut.canvasSize;
-    // One reading per distinct outline: an unposed row gets the selection
-    // back as the same object, so a range over plain rows reads it once.
-    final readings =
-        Map<CanvasSelectionRegion, SelectionMaskReading?>.identity();
-    final store = coordinator.frameStore;
-    final landed = <BrushFrameKey>{};
-    final landings = <Command>[];
-    for (final key in _cellsTheLadderNames()) {
-      if (!landed.add(store.canonicalKeyOf(key))) {
-        continue;
-      }
-      var dab = buildCutPasteDab(piece);
-      if (selection != null) {
-        final onTheRow = _onTheRow(key, selection);
-        final reading = onTheRow == null
-            ? null
-            : readings.putIfAbsent(
-                onTheRow,
-                () => selectionMaskOnPasteboard(
-                  onTheRow,
-                  canvasSize: canvasSize,
-                  options: options,
-                ),
-              );
-        final clipped = reading == null
-            ? null
-            : clipStampDabToSelectionMask(
-                dab,
-                mask: reading.mask,
-                box: reading.box,
-              );
-        if (clipped == null) {
-          continue;
-        }
-        dab = clipped;
-      }
-      landings.add(
-        BrushLiftMoveHistoryCommand(
-          coordinator: coordinator,
-          frameKey: key,
-          preLiftSurface: coordinator.currentSurfaceOf(key),
-          landingDabs: [dab],
-          blendMode: blend,
-          description: 'Paste pixels',
-          // Without the hub the canvas keeps the old composite until you
-          // leave the frame (see [runPixelVerb]).
-          cacheInvalidationSink: _renderCaches.cacheInvalidationHub,
-        ),
-      );
-    }
-    _project.historyManager.executeAsOneStep('Paste pixels', landings);
+    return PieceGround(
+      cels: _cellsTheLadderNames(),
+      placementOf: placementOf,
+      selection: canvas?.region,
+      options: canvas?.mask ?? SelectionMaskOptions.none,
+    );
   }
 }
