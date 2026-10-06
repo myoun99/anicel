@@ -154,13 +154,9 @@ void main() {
       SizedBox(
         width: 400,
         child: TransportTrack(
-          showRange: false,
           frameCount: 101,
           currentFrame: 0,
-          inFrame: 0,
-          outFrame: 100,
           onSeek: seeks.add,
-          onRangeChanged: (_, _) {},
         ),
       ),
     );
@@ -184,13 +180,9 @@ void main() {
       SizedBox(
         width: 400,
         child: TransportTrack(
-          showRange: false,
           frameCount: 101,
           currentFrame: 0,
-          inFrame: 0,
-          outFrame: 100,
           onSeek: seeks.add,
-          onRangeChanged: (_, _) {},
         ),
       ),
     );
@@ -212,5 +204,91 @@ void main() {
       80,
       reason: 'the winning move is applied, not only the press (at 20)',
     );
+  });
+
+  group('the transport\'s range track', () {
+    Future<(ScrollController, List<(int, int)>)> mountRange(
+      WidgetTester tester, {
+      required int inFrame,
+      required int outFrame,
+    }) async {
+      final moves = <(int, int)>[];
+      final controller = await inAScrollingList(
+        tester,
+        SizedBox(
+          width: 400,
+          child: TransportRangeTrack(
+            frameCount: 101,
+            inFrame: inFrame,
+            outFrame: outFrame,
+            onChanged: (start, end) => moves.add((start, end)),
+          ),
+        ),
+      );
+      return (controller, moves);
+    }
+
+    Offset at(WidgetTester tester, double fraction) {
+      final track = tester.getRect(
+        find.byKey(const ValueKey<String>('transport-range')),
+      );
+      return track.centerLeft + Offset(track.width * fraction, 0);
+    }
+
+    testWidgets('a handle pulled across the track scrolls nothing', (
+      tester,
+    ) async {
+      final (controller, moves) = await mountRange(
+        tester,
+        inFrame: 50,
+        outFrame: 100,
+      );
+      await tester.dragFrom(at(tester, 0.5), const Offset(0, -80));
+      await tester.pump();
+      expect(
+        controller.offset,
+        0,
+        reason: 'the pull started on a handle, so the list gets nothing',
+      );
+      expect(moves, isNotEmpty, reason: 'the handle was the one taken');
+      expect(
+        moves.toSet(),
+        {(50, 100)},
+        reason: 'a pull straight up leaves IN where it stood',
+      );
+    });
+
+    testWidgets('and neither does a pull that started between the handles', (
+      tester,
+    ) async {
+      final (controller, moves) = await mountRange(
+        tester,
+        inFrame: 10,
+        outFrame: 90,
+      );
+      await tester.dragFrom(at(tester, 0.5), const Offset(0, -80));
+      await tester.pump();
+      expect(
+        controller.offset,
+        0,
+        reason: 'the press is the track\'s wherever on it it landed',
+      );
+      expect(moves, isEmpty, reason: 'and it took no handle');
+    });
+
+    testWidgets('a flick of one move on a handle lands where it lifts', (
+      tester,
+    ) async {
+      final (_, moves) = await mountRange(tester, inFrame: 20, outFrame: 100);
+      final gesture = await tester.startGesture(at(tester, 0.2));
+      await gesture.moveBy(Offset(at(tester, 0.6).dx - at(tester, 0.2).dx, 0));
+      await gesture.up();
+      await tester.pump();
+      expect(
+        moves.last,
+        (60, 100),
+        reason: 'the winning move is applied, not only the press (at 20)',
+      );
+    });
   });
 }

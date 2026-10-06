@@ -18,7 +18,6 @@ void main() {
     required int pageIndex,
     required int pageCount,
     required ValueChanged<int>? onTurnTo,
-    List<Widget> leading = const [],
   }) => tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -28,7 +27,6 @@ void main() {
             keyPrefix: 'sheet',
             page: viewerPage(pageIndex, pageCount),
             onTurnTo: onTurnTo,
-            leading: leading,
           ),
         ),
       ),
@@ -46,27 +44,19 @@ void main() {
     expect(find.byKey(next), findsNothing);
   });
 
-  testWidgets('the chevrons turn one page and disable at the ends; leading '
-      'widgets come first, and the cluster reads downward', (tester) async {
+  testWidgets('the chevrons turn one page and disable at the ends, and the '
+      'cluster reads downward', (tester) async {
     final turns = <int>[];
-    await pump(
-      tester,
-      pageIndex: 0,
-      pageCount: 3,
-      onTurnTo: turns.add,
-      leading: const [SizedBox(key: ValueKey('lead'), height: 10)],
-    );
+    await pump(tester, pageIndex: 0, pageCount: 3, onTurnTo: turns.add);
     expect(enabled(tester, prev), isFalse);
     expect(enabled(tester, next), isTrue);
     expect(find.text('1 / 3'), findsOneWidget);
     await tester.tap(find.byKey(next));
     expect(turns, [1]);
 
-    final leadY = tester.getCenter(find.byKey(const ValueKey('lead'))).dy;
     final prevY = tester.getCenter(find.byKey(prev)).dy;
     final readoutY = tester.getCenter(find.byKey(readout)).dy;
     final nextY = tester.getCenter(find.byKey(next)).dy;
-    expect(leadY, lessThan(prevY));
     expect(prevY, lessThan(readoutY));
     expect(readoutY, lessThan(nextY));
 

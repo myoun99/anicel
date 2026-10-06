@@ -127,6 +127,19 @@ class CanvasAutoFrameRequest {
   final bool panOnly;
 }
 
+/// What stands under a canvas panel whose document runs in time — the
+/// transport's rows ([BrushCanvasPanel.transport]).
+///
+/// The [height] travels with the widget because the panel has to know it
+/// without laying anything out: its lanes stand on the band, and nothing it
+/// frames may lie under it.
+class CanvasTransportBand {
+  const CanvasTransportBand({required this.height, required this.child});
+
+  final double height;
+  final Widget child;
+}
+
 /// Reusable Brush canvas panel for the production main-canvas brush route.
 ///
 /// This widget is route-agnostic and behaves as an embedded canvas panel for
@@ -228,6 +241,8 @@ class BrushCanvasPanel extends StatefulWidget {
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.pageStrip = const <Widget>[],
+    this.transport,
+    this.documentName,
     this.bottomBarHostToken,
   }) : assert(
          coordinator != null || contentOverride != null,
@@ -450,6 +465,33 @@ class BrushCanvasPanel extends StatefulWidget {
   /// a disabled cluster on a permanent capsule is a promise the panel
   /// cannot keep.
   final List<Widget> pageStrip;
+
+  /// The transport of a document that RUNS IN TIME, under the horizontal
+  /// panbar — a docked panel's band below its lanes, the floor's capsule
+  /// below its bar.
+  ///
+  /// 🗣️F-289 (유저 2026-10-06): 「왼쪽알약말고 제대로 뷰어패널의 가로스크롤바
+  /// 아래에 재생버튼같은거 일반적인 미디어플레이어같은거 만들고싶어」, and
+  /// then how a panel knows which it wears: 「이 캔버스 베이스패널은 형식에
+  /// 따라 나누기로하자. 뷰어패널이라도 pdf면 타임시트나 콘티용지패널이랑 같은
+  /// 알약쓰고, 한장짜리면 그 알약조차 없애고, 동영상같은거면 아래에 재생ui
+  /// 넣고」. So a panel wears what its DOCUMENT is — this for one that runs,
+  /// [pageStrip] for one that turns pages, neither for a single picture —
+  /// and the host says which by what it hands over.
+  ///
+  /// It hides the artwork as a lane does, so framing keeps out from under
+  /// it (`_framingInsets`).
+  final CanvasTransportBand? transport;
+
+  /// The name of the FILE shown, written at the artwork's lower left over
+  /// the horizontal panbar. Null writes nothing.
+  ///
+  /// 🗣️F-289 (유저 2026-10-06), choosing the place: 「그냥 제안한대로
+  /// 동영상뷰어던 뭐던 해당 위치 고정으로 두자」 — one place whatever the
+  /// document is — and which panels have one: 「타임시트패널/콘티패널에는
+  /// 파일이름 의미없으니까 없도록. 컷봉투패널도 똑같음」. A paper panel shows
+  /// no file, so it hands none.
+  final String? documentName;
 
   /// Equality token for [bottomBarLeading] AND [bottomBarSettings] — the
   /// bottom bar is memoized by its inputs (R13-3) and widget instances are
@@ -2016,13 +2058,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// What is hidden from the artwork: the panels lying on the floor, a
   /// docked panel's own lanes — its panbars stand on the artwork's right and
-  /// bottom edges (F-209) — and the pill's band across the top edge
-  /// ([_CanvasEditorPanelShell.pillBandIn]). Framing keeps out from under
-  /// all of it as it keeps out from under a panel.
+  /// bottom edges (F-209) — the pill's band across the top edge
+  /// ([_CanvasEditorPanelShell.pillBandIn]), and the transport under a
+  /// document that runs ([_CanvasEditorPanelShell.transportCover]). Framing
+  /// keeps out from under all of it as it keeps out from under a panel.
   EdgeInsets get _framingInsets =>
       widget.floorCover +
       (_onFloor ? EdgeInsets.zero : _CanvasEditorPanelShell.dockedLanes) +
-      EdgeInsets.only(top: _pillBand);
+      EdgeInsets.only(
+        top: _pillBand,
+        bottom: _CanvasEditorPanelShell.transportCover(
+          widget.transport,
+          onFloor: _onFloor,
+          floorOverlay: widget.floorBottomOverlaySpan,
+        ),
+      );
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
@@ -2379,6 +2429,30 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   static double pillBandIn(BuildContext context) =>
       2 * _capsuleMargin + _CanvasViewportBottomBar.heightIn(context);
 
+  /// What [transport] hides of the artwork's bottom edge — a docked panel's
+  /// band and the rule over it; the floor's capsule, its margin on either
+  /// side, and whatever lies on that edge under it ([floorOverlay]).
+  /// Nothing with no transport.
+  ///
+  /// ⚠️The floor's overlay — the collapsed row — frames nothing by itself
+  /// ([BrushCanvasPanel.floorBottomOverlaySpan]): it is see-through, and
+  /// the picture does not move for it. The capsule standing ON it is not
+  /// see-through, so with a transport the cover reaches from the edge up.
+  static double transportCover(
+    CanvasTransportBand? transport, {
+    required bool onFloor,
+    double floorOverlay = 0,
+  }) {
+    if (transport == null) {
+      return 0;
+    }
+    return transport.height +
+        (onFloor ? floorOverlay + 2 * _capsuleMargin : _transportRule);
+  }
+
+  /// The hairline between a docked panel's lanes and the band under them.
+  static const double _transportRule = 1;
+
   const _CanvasEditorPanelShell({
     required this.child,
     required this.bottomBar,
@@ -2387,6 +2461,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.cover,
     required this.onFloor,
     this.pageStrip = const <Widget>[],
+    this.transport,
+    this.documentName,
     this.bottomOverlaySpan = 0,
     this.railBand,
   });
@@ -2405,6 +2481,18 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   /// See [BrushCanvasPanel.pageStrip] — empty means no capsule at all.
   final List<Widget> pageStrip;
+
+  /// See [BrushCanvasPanel.transport] — null means nothing under the bars.
+  final CanvasTransportBand? transport;
+
+  /// See [BrushCanvasPanel.documentName].
+  final String? documentName;
+
+  double get _transportCover => transportCover(
+    transport,
+    onFloor: onFloor,
+    floorOverlay: bottomOverlaySpan,
+  );
 
   // ⛔`strokeActive` and `contentStrokeActive` are GONE from this layout
   // (H3, 유저 2026-08-21). They existed for ONE consumer — the floor
@@ -2520,16 +2608,17 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           _floorCapsules(colorScheme)
         else
           ..._dockedLanes(colorScheme),
+        if (documentName case final name?) _documentName(context, name),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
           // and yields only on the axis that would bury it — the region
           // docked on TOP is above it, a rail beside it is not. On a docked
-          // panel it floats over what the lanes leave.
+          // panel it floats over what the lanes and the transport leave.
           left: 0,
           top: cover.top,
           right: onFloor ? 0 : dockedLane,
-          bottom: cover.bottom + (onFloor ? 0 : dockedLane),
+          bottom: cover.bottom + (onFloor ? 0 : dockedLane + _transportCover),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final window = Size(
@@ -2649,6 +2738,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         children: [
           _floorVerticalCapsule(colorScheme, panel),
           _floorHorizontalCapsule(colorScheme, panel),
+          if (transport case final transport?)
+            _floorTransportCapsule(colorScheme, transport),
         ],
       ),
     ),
@@ -2660,7 +2751,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   ) {
     final insets = cover;
     final visibleTop = insets.top;
-    final visibleBottom = math.max(visibleTop, panel.maxHeight - insets.bottom);
+    final visibleBottom = math.max(
+      visibleTop,
+      panel.maxHeight - insets.bottom - _transportCover,
+    );
     final track = _capsuleTrack(visibleBottom - visibleTop);
     final centre = (visibleTop + visibleBottom) / 2;
     final barTop = centre - track / 2;
@@ -2702,8 +2796,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     right: _capsuleMargin,
     // ⑩: …and above whatever lies ON the artwork at that edge. The
     // collapsed row frames nothing, so it is not in `cover` — but it is
-    // exactly where this bar was, which is what the user saw.
-    bottom: cover.bottom + bottomOverlaySpan + _capsuleMargin,
+    // exactly where this bar was, which is what the user saw. The transport
+    // lies under the bar ([_floorTransportCapsule]), so the bar stands on
+    // it.
+    bottom: _floorBarBottom,
     child: Align(
       alignment: Alignment.bottomCenter,
       child: _capsule(
@@ -2716,10 +2812,78 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ),
   );
 
+  /// How far up the floor's bottom edge the horizontal bar's capsule
+  /// stands: over what covers that edge, and over the transport when there
+  /// is one.
+  double get _floorBarBottom =>
+      cover.bottom +
+      bottomOverlaySpan +
+      _capsuleMargin +
+      (transport == null ? 0 : transport!.height + _capsuleMargin);
+
+  /// The floor's transport, in a capsule under the horizontal bar — as wide
+  /// as what the side panels leave.
+  ///
+  /// ⚠️It yields ALONG its edge too, where the pill and the bar hold the
+  /// window's centre: those are small and stay clear of a rail, and a band
+  /// this wide would have its ends — where the playhead reads and the sound
+  /// is — under one.
+  Positioned _floorTransportCapsule(
+    ColorScheme colorScheme,
+    CanvasTransportBand transport,
+  ) => Positioned(
+    left: cover.left + _capsuleMargin,
+    right: cover.right + _capsuleMargin,
+    bottom: cover.bottom + bottomOverlaySpan + _capsuleMargin,
+    child: _capsule(
+      colorScheme,
+      keyValue: 'canvas-transport',
+      height: transport.height,
+      child: transport.child,
+    ),
+  );
+
+  /// The file's name on a see-through plate, at the artwork's lower left
+  /// over the horizontal bar ([BrushCanvasPanel.documentName]).
+  ///
+  /// A plate, not a control: it takes no pointer, so a press on it is the
+  /// canvas's.
+  Widget _documentName(BuildContext context, String name) => Positioned(
+    left: (onFloor ? cover.left : 0) + _capsuleMargin,
+    right: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
+    bottom: onFloor
+        ? _floorBarBottom + AppScrollbarLane.medium + _capsuleMargin
+        : _transportCover + dockedLane + _capsuleMargin,
+    child: IgnorePointer(
+      child: Align(
+        alignment: Alignment.bottomLeft,
+        child: DecoratedBox(
+          key: const ValueKey<String>('canvas-document-name'),
+          decoration: ShapeDecoration(
+            color: AppColors.backdrop.withValues(alpha: 0.62),
+            shape: AppShapes.container(AppShapes.wellRadius),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(color: AppColors.text),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
   /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
   /// own, flush with its edge, and the corner between them left to neither.
   /// Each lane is ringed on its artwork side in the backdrop, for the
-  /// capsule's reason ([_capsule]).
+  /// capsule's reason ([_capsule]). The transport of a document that runs
+  /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
     const ring = BorderSide(color: AppColors.backdrop);
     Widget lane(String keyValue, Border ringed, [Widget? bar]) => DecoratedBox(
@@ -2731,7 +2895,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         top: 0,
         right: 0,
-        bottom: dockedLane,
+        bottom: dockedLane + _transportCover,
         width: dockedLane,
         child: lane(
           'canvas-panbar-vertical',
@@ -2742,7 +2906,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       Positioned(
         left: 0,
         right: dockedLane,
-        bottom: 0,
+        bottom: _transportCover,
         height: dockedLane,
         child: lane(
           'canvas-panbar-horizontal',
@@ -2752,11 +2916,26 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       ),
       Positioned(
         right: 0,
-        bottom: 0,
+        bottom: _transportCover,
         width: dockedLane,
         height: dockedLane,
         child: lane('canvas-panbar-corner', const Border()),
       ),
+      if (transport case final transport?)
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: _transportCover,
+          child: lane(
+            'canvas-transport',
+            const Border(top: ring),
+            Padding(
+              padding: const EdgeInsets.only(top: _transportRule),
+              child: transport.child,
+            ),
+          ),
+        ),
     ];
   }
 

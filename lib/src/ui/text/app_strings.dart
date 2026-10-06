@@ -1016,7 +1016,8 @@ enum AppStrings {
   String get panelColorPalette => _s('panelColorPalette');
   String get transportIn => _s('transportIn');
   String get transportOut => _s('transportOut');
-  String get transportLoop => _s('transportLoop');
+  String get transportToStart => _s('transportToStart');
+  String get transportToEnd => _s('transportToEnd');
   String get transportPrevFrame => _s('transportPrevFrame');
   String get transportNextFrame => _s('transportNextFrame');
   String get colorRecent => _s('colorRecent');
@@ -2241,7 +2242,8 @@ enum AppStrings {
     'panelColorWheel': 'Colour wheel',
     'transportIn': 'In',
     'transportOut': 'Out',
-    'transportLoop': 'Loop',
+    'transportToStart': 'To start',
+    'transportToEnd': 'To end',
     'transportPrevFrame': 'Previous frame',
     'transportNextFrame': 'Next frame',
     'colorRecent': 'Recent',
@@ -3479,7 +3481,8 @@ enum AppStrings {
     'panelColorWheel': 'カラーホイール',
     'transportIn': 'イン',
     'transportOut': 'アウト',
-    'transportLoop': 'ループ',
+    'transportToStart': '先頭へ',
+    'transportToEnd': '末尾へ',
     'transportPrevFrame': '前のフレーム',
     'transportNextFrame': '次のフレーム',
     'colorRecent': '最近',
@@ -4842,7 +4845,8 @@ enum AppStrings {
     'panelColorWheel': '컬러 휠',
     'transportIn': '인',
     'transportOut': '아웃',
-    'transportLoop': '루프',
+    'transportToStart': '처음으로',
+    'transportToEnd': '끝으로',
     'transportPrevFrame': '이전 프레임',
     'transportNextFrame': '다음 프레임',
     'colorRecent': '최근',
@@ -6242,7 +6246,8 @@ enum AppStrings {
     'panelColorWheel': 'Roue chromatique',
     'transportIn': 'Entrée',
     'transportOut': 'Sortie',
-    'transportLoop': 'Boucle',
+    'transportToStart': 'Au début',
+    'transportToEnd': 'À la fin',
     'transportPrevFrame': 'Image précédente',
     'transportNextFrame': 'Image suivante',
     'colorRecent': 'Récentes',
@@ -7593,7 +7598,8 @@ enum AppStrings {
     'panelColorWheel': '色轮',
     'transportIn': '入点',
     'transportOut': '出点',
-    'transportLoop': '循环',
+    'transportToStart': '回到开头',
+    'transportToEnd': '跳到结尾',
     'transportPrevFrame': '上一帧',
     'transportNextFrame': '下一帧',
     'colorRecent': '最近',

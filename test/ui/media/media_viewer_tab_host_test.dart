@@ -464,7 +464,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final play = find.byKey(
-      const ValueKey<String>('media-viewer-play-button'),
+      const ValueKey<String>('media-viewer-transport-play'),
     );
     expect(play, findsOneWidget);
     expect(find.text('1 / 3'), findsOneWidget);
@@ -508,7 +508,7 @@ void main() {
 
     expect(find.text('1 / 2'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
       findsNothing,
     );
   });

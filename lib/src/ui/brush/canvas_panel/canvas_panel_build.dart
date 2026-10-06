@@ -124,6 +124,8 @@ class _PanelBuild {
             .memoizedHorizontalStripBar(),
         bottomBar: _state._shellBars.memoizedBottomBar(),
         pageStrip: _state.widget.pageStrip,
+        transport: _state.widget.transport,
+        documentName: _state.widget.documentName,
         // The capsules float INSIDE what the panels left over.
         cover: _state.widget.floorCover,
         onFloor: _state._onFloor,

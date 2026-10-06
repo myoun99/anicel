@@ -117,6 +117,7 @@ class _WorkspaceTabs {
           onRequestPicked: slot.open,
           viewportController: slot.viewport,
           framedFor: slot.framedFor,
+          loudness: slot.loudness,
           onSwapViewers: () => _state._swapViewers(fromTabId: tabId),
           // I-14: the cut tool reaches the viewer, and a cut there lands in
           // the piece the canvas's cuts fill.

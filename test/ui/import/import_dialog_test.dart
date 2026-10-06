@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
@@ -839,8 +840,19 @@ void main() {
 
   /// The preview zone, and the rule that keeps its range honest.
   group('the preview', () {
-    testWidgets('a still shows no IN/OUT — a range that cannot act is a '
-        'control that lies', (tester) async {
+    /// Whether the transport's IN readout takes a hand — the row is always
+    /// there (the window trims), and off where a span would act on nothing.
+    bool rangeIsOn(WidgetTester tester) => tester
+        .widget<DragValueLabel>(
+          find.ancestor(
+            of: find.byKey(const ValueKey<String>('transport-in')),
+            matching: find.byType(DragValueLabel),
+          ),
+        )
+        .enabled;
+
+    testWidgets('a still keeps its IN/OUT row, off — a range that cannot '
+        'act is a control that lies', (tester) async {
       final s = EditorSessionManager(initialProject: createDefaultProject());
       addTearDown(s.dispose);
       final png = await tester.runAsync(() => writePng('a.png'));
@@ -859,8 +871,8 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('transport-in')),
-        findsNothing,
+        rangeIsOn(tester),
+        isFalse,
         reason: 'one frame has no span to choose',
       );
       expect(
@@ -913,7 +925,7 @@ void main() {
 
       await openOnThePool(tester, s, pdf);
 
-      expect(find.byKey(const ValueKey<String>('transport-in')), findsOneWidget);
+      expect(rangeIsOn(tester), isTrue);
     });
 
     testWidgets('⛔but not on a file the pool already holds — registering it '
@@ -929,7 +941,7 @@ void main() {
 
       await openOnThePool(tester, s, pdf);
 
-      expect(find.byKey(const ValueKey<String>('transport-in')), findsNothing);
+      expect(rangeIsOn(tester), isFalse);
       expect(
         find.byKey(const ValueKey<String>('transport-play')),
         findsOneWidget,

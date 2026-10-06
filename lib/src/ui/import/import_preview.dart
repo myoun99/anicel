@@ -116,12 +116,9 @@ class ImportPreview extends StatefulWidget {
   /// the frames its trim is counted in, not the picture that does not.
   final bool opensAsSound;
 
-  /// The narrowest this zone lays out: the transport's own minimum inside
-  /// the inset around it. The window gives the file table the rest.
-  static double get minimumWidth =>
-      2 * _transportInset + TransportBar.minimumWidth();
-
-  static const double _transportInset = 8;
+  /// The narrowest this zone lays out: the transport's own minimum. The
+  /// window gives the file table the rest.
+  static const double minimumWidth = TransportBar.minimumWidth;
 
   @override
   State<ImportPreview> createState() => _ImportPreviewState();
@@ -270,7 +267,11 @@ class _ImportPreviewState extends State<ImportPreview>
         : null;
   }
 
-  // --- What the transport counts --------------------------------------------
+  @override
+  ViewerLoudness get loudness => _loudness;
+
+  /// How loud this preview plays — the window's, for as long as it is open.
+  ViewerLoudness _loudness = const ViewerLoudness();
 
   /// A sound's picture, or null when the file is not one.
   AudioPeaks? get _sound => switch (_document) {
@@ -278,65 +279,18 @@ class _ImportPreviewState extends State<ImportPreview>
     _ => null,
   };
 
-  /// How many frames the transport runs over: a sound's in the project's
-  /// frames over its length, anything else its pages — one when there is
-  /// nothing, and the bar sits there inert.
-  int get _frameCount {
-    final sound = _sound;
-    if (sound != null) {
-      return sound.durationFrames(widget.frameRate);
-    }
-    return math.max(1, _document?.pageCount ?? 1);
-  }
-
-  /// The instant of a project frame and back, in microseconds, rounded the
-  /// way the mixer's samples are ([ProjectFrameRate.frameToSample]) so the
-  /// pair round-trips: a seek to a frame reads back as that frame.
-  static const int _micros = Duration.microsecondsPerSecond;
-
-  /// Where the playhead stands, in the transport's frames.
-  int get _frame => _sound == null
-      ? _page
-      : widget.frameRate.sampleToFrame(
-          (_run.soundSeconds * _micros).round(),
-          _micros,
-        );
-
-  /// The hand moved the playhead. A sound's seconds move with it; anything
-  /// else turns to the page. A run going picks up from there, sound and all
-  /// ([MediaRun.movedByHand]).
-  void _seek(int frame) {
-    setState(() {
-      if (_sound != null) {
-        _run.soundSeconds =
-            widget.frameRate.frameToSample(frame, _micros) / _micros;
-      } else {
-        _page = frame;
-      }
-      // TURNING A PAGE IS ASKING AGAIN — the viewer's law for a page its
-      // engine once refused ([MediaViewerTabHost]'s `_forgetRefusals`).
-      _rasters.forgetRefusals();
-    });
-    _run.movedByHand();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final frameCount = _frameCount;
+    // What the transport counts is the run's ([MediaRun.frameCount]): a
+    // sound in the project's frames over its length, anything else its
+    // pages.
+    final frameCount = _run.frameCount(widget.frameRate);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: _stage(frameCount)),
         const Divider(height: 1),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            ImportPreview._transportInset,
-            7,
-            ImportPreview._transportInset,
-            8,
-          ),
-          child: _transport(frameCount),
-        ),
+        _transport(frameCount),
       ],
     );
   }
@@ -459,17 +413,27 @@ class _ImportPreviewState extends State<ImportPreview>
     final kept = _kept(frameCount);
     return TransportBar(
       frameCount: frameCount,
-      currentFrame: _frame.clamp(0, frameCount - 1),
-      inFrame: kept.first,
-      outFrame: kept.last,
+      currentFrame: _run.frameAt(widget.frameRate).clamp(0, frameCount - 1),
       playing: _run.playing,
-      showRange: _rangeShown(frameCount),
-      onSeek: _seek,
+      onSeek: (frame) => _run.seekToFrame(frame, widget.frameRate),
       // A still or a PDF has nothing that advances by itself and no sound:
       // the button stays where it is, and says so by being off.
       onPlayPause: _run.canPlay ? _run.toggle : null,
-      onRangeChanged: (start, end) =>
-          widget.onRangeChanged(start, end >= frameCount - 1 ? null : end),
+      sound: _run.soundCell(
+        onChanged: (next) => setState(() => _loudness = next),
+      ),
+      // The window trims, so the row is always here — and off where IN/OUT
+      // would act on nothing.
+      range: TransportRange(
+        inFrame: kept.first,
+        outFrame: kept.last,
+        onChanged: _rangeShown(frameCount)
+            ? (start, end) => widget.onRangeChanged(
+                start,
+                end >= frameCount - 1 ? null : end,
+              )
+            : null,
+      ),
     );
   }
 }

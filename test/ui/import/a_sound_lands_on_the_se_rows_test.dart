@@ -226,9 +226,9 @@ void main() {
       bar().frameCount,
       peaks!.durationFrames(s.projectSettings.projectFrameRate),
     );
-    expect(bar().showRange, isTrue);
+    expect(bar().range!.onChanged, isNotNull, reason: 'the span can act');
 
-    bar().onRangeChanged(2, 5);
+    bar().range!.onChanged!(2, 5);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 60; tries += 1) {
@@ -281,7 +281,7 @@ void main() {
       await tester.pump();
     }
 
-    bar().onRangeChanged(2, 5);
+    bar().range!.onChanged!(2, 5);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     for (var tries = 0; tries < 60; tries += 1) {

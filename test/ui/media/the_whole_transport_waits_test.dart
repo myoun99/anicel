@@ -119,7 +119,7 @@ void main() {
 
   Future<void> pressPlay(WidgetTester tester) async {
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
   }
@@ -131,7 +131,7 @@ void main() {
       'through', (tester) async {
     final fake = await openMovie(tester);
 
-    expect(find.text('1 / 12'), findsOneWidget);
+    expect(find.text('01 / 12'), findsOneWidget);
     expect(
       fake.asked,
       isNotEmpty,
@@ -217,7 +217,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
   });
@@ -286,7 +286,7 @@ void main() {
     final before = sound.stops;
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('media-viewer-play-button')),
+      find.byKey(const ValueKey<String>('media-viewer-transport-play')),
     );
     await tester.pump();
 
