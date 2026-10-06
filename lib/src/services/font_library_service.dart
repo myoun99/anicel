@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../models/font_face_facts.dart';
+import '../models/media_asset.dart' show mintMediaCarry;
 import 'persistence/app_support_path.dart';
 import 'persistence/versioned_settings_file.dart';
 
@@ -46,6 +47,32 @@ class FontLibraryService {
   String get indexPath => '$directoryPath/index.json';
 
   String _pathOf(String file) => '$directoryPath/$file';
+
+  /// A name to keep a file of [facts]' face under, [extension] at its end
+  /// ([mintFontLibraryFileName]) — minted, so never one a file was kept
+  /// under before.
+  String mintFileName(FontFaceFacts facts, {required String extension}) =>
+      mintFontLibraryFileName(
+        facts,
+        extension: extension,
+        directoryPath: directoryPath,
+      );
+
+  /// Where the library keeps the file called [file] — null when it keeps
+  /// none by that name, or [file] is not a name of its own
+  /// ([isFontLibraryFileName]).
+  ///
+  /// What a project that carries the file under this name asks, to read
+  /// its bytes on the device they were brought to (`ProjectFontFile`). The
+  /// DISK is asked, not the index: the bytes are what is wanted, and a
+  /// name means one set of them for good.
+  String? pathOfFontHeld(String file) {
+    if (!isFontLibraryFileName(file)) {
+      return null;
+    }
+    final path = _pathOf(file);
+    return File(path).existsSync() ? path : null;
+  }
 
   /// The faces of the library, in the order they were brought. A missing or
   /// unreadable index is an empty library, never an error.
@@ -110,28 +137,66 @@ class FontLibraryService {
   }
 }
 
-/// The name the library keeps its [number]th font file under: a name of
-/// this app's own making, so nothing of a picked file's name — a path, a
-/// `..` — ever reaches the disk.
+/// A name for a font file the library at [directoryPath] is about to keep:
+/// of this app's own making, so nothing of a picked file's name — a path,
+/// a `..` — ever reaches the disk.
 ///
-/// A COUNT, and not the clock the brush tips' names are made of: two files
-/// brought in one millisecond are two numbers, and which name a file gets
-/// is the same on every run of a test.
-String fontLibraryFileName(int number, {required String extension}) =>
-    'font-$number.$extension';
-
-/// The number in a name this app minted ([fontLibraryFileName]) — null for
-/// any other name.
-int? fontLibraryFileNumber(String file) {
-  final minted = _minted.firstMatch(file);
-  return minted == null ? null : int.parse(minted.group(1)!);
+/// 🚨★★★**MINTED WHOLE, AS A CARRIED MEDIUM'S NAME IS** ([mintMediaCarry]:
+/// `<path hash>-<random>-<name>`), so that A NAME MEANS ONE SET OF BYTES
+/// FOR GOOD — on this device and on any other. A project that carries a
+/// font keeps it under this very name (`ProjectFontFile.carriedAs`), and
+/// that is what lets everybody ask 「are these the same bytes」 without
+/// reading one: the save, which finds the file a project registered by
+/// its name ([FontLibraryService.pathOfFontHeld]), and the engine's side,
+/// which is handed a file once whether it is read from this folder or out
+/// of a project (`CanvasLetterFaces`) — a CJK font is ten to thirty
+/// megabytes, and the engine never lets go of one.
+///
+/// ↩️It was a COUNT (`font-<n>`, 2026-10-06, so a test could say which
+/// file was which). A count means one file on ONE device: a project from
+/// another machine naming `font-3` would have been read as this machine's
+/// third font. The fake library of the tests still counts
+/// (`FontLibraryInMemory`) — it stands in for a place, not for the name.
+///
+/// The face rides in the name — its family and weight, made safe — so a
+/// person looking in the folder, or inside a project file, can tell what
+/// they are looking at.
+String mintFontLibraryFileName(
+  FontFaceFacts facts, {
+  required String extension,
+  required String directoryPath,
+}) {
+  final family = facts.family.replaceAll(_unsafeInAName, '_');
+  final kept = family.length > _familyLettersKept
+      ? family.substring(0, _familyLettersKept)
+      : family;
+  final face = '$kept-${facts.weight}${facts.italic ? 'i' : ''}';
+  return mintMediaCarry('$directoryPath/$face.$extension');
 }
 
-/// Whether [file] is a name this app mints for a library font — the only
-/// names the library reads, writes and deletes. An index is a file on a
-/// disk, and what it says is not let name a path: `deleteFont` deletes
-/// what it is handed.
-bool isFontLibraryFileName(String file) => fontLibraryFileNumber(file) != null;
+/// How much of a family's name rides in a file's: enough to tell two
+/// apart, and never enough to make a path too long to open.
+const int _familyLettersKept = 40;
 
-/// Nine digits at most: a number an index can say and an `int` can hold.
-final RegExp _minted = RegExp(r'^font-([0-9]{1,9})\.(ttf|otf|ttc)$');
+final RegExp _unsafeInAName = RegExp('[^A-Za-z0-9._-]');
+
+/// Whether [file] is a name a font file of the library can be kept under —
+/// the only names it reads, writes and deletes. An index is a file on a
+/// disk and a project is a file from anywhere, and what either says is not
+/// let name a path: `deleteFont` deletes what it is handed.
+///
+/// ONE NAME, WITH NOTHING OF A PATH IN IT: a word, a dash, and more — the
+/// shape a minted name has ([mintFontLibraryFileName]) — ending in a font's
+/// extension. The dash is in the rule and not only in the habit: a name
+/// with one before its first dot is never one the system reads as a
+/// device (`nul.ttf`, `con.ttf`).
+bool isFontLibraryFileName(String file) =>
+    file.length <= _longestName && _aNameOfTheLibrary.hasMatch(file);
+
+/// Longer than any name this app mints, shorter than what a path can hold
+/// beside its folder.
+const int _longestName = 120;
+
+final RegExp _aNameOfTheLibrary = RegExp(
+  r'^[A-Za-z0-9_]+-[A-Za-z0-9._-]+\.(ttf|otf|ttc)$',
+);

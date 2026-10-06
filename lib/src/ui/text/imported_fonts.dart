@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart';
 
 import '../../models/font_face_facts.dart';
@@ -52,10 +50,6 @@ class ImportedFonts extends ChangeNotifier {
   late final CanvasLetterFaces faces;
 
   List<FontLibraryEntry> _entries = const [];
-
-  /// The highest number a font file has been kept under, that this run
-  /// knows of ([_nextFile]).
-  int _lastNumber = 0;
   bool _disposed = false;
 
   /// The families, by name — as a person looks for one.
@@ -145,13 +139,16 @@ class ImportedFonts extends ChangeNotifier {
     if (CanvasLetterFaces.isAppFace(facts.family)) {
       return (family: null, refusal: strings.textToolFontIsTheApps);
     }
-    // The index is read before a name is minted: a file's name is one past
-    // the highest there is, and what there is, is what the index says.
+    // The index is read before the library is added to: what this face
+    // replaces, and what is written back, is what the index says.
     await load();
     if (_disposed) {
       return (family: null, refusal: null);
     }
-    final file = _nextFile(fontFileExtensionOf(bytes));
+    final file = _service.mintFileName(
+      facts,
+      extension: fontFileExtensionOf(bytes),
+    );
     try {
       await _service.writeFont(file, bytes);
     } on Object {
@@ -200,20 +197,6 @@ class ImportedFonts extends ChangeNotifier {
       _persistIndex(),
       for (final entry in gone) _service.deleteFont(entry.file),
     ]);
-  }
-
-  /// The name the next font file is kept under: one past the highest this
-  /// run has minted or the index holds — so a file brought while another
-  /// is still being written does not take its name.
-  String _nextFile(String extension) {
-    for (final entry in _entries) {
-      _lastNumber = math.max(
-        _lastNumber,
-        fontLibraryFileNumber(entry.file) ?? 0,
-      );
-    }
-    _lastNumber += 1;
-    return fontLibraryFileName(_lastNumber, extension: extension);
   }
 
   /// The files of [family], as they are now.

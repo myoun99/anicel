@@ -79,8 +79,11 @@ void main() {
       expect(fonts.faces.holds('Probe Sans'), isTrue);
       expect(CanvasLetterFaces.current, same(fonts.faces));
       // Its file is the library's own copy, under a name the app minted.
-      expect(filesKept(), ['font-1.ttf']);
-      expect(await library.readFont('font-1.ttf'), bytes);
+      final kept = filesKept();
+      expect(kept, hasLength(1));
+      expect(isFontLibraryFileName(kept.single), isTrue);
+      expect(kept.single, endsWith('-Probe_Sans-400.ttf'));
+      expect(await library.readFont(kept.single), bytes);
 
       // And the engine is handed it when letters are asked for in it.
       expect(handed, isEmpty);
@@ -193,7 +196,7 @@ void main() {
       await fonts.importBytes(bold);
 
       expect([for (final family in fonts.families) family.name], ['Probe Sans']);
-      expect(filesKept(), ['font-1.ttf', 'font-2.ttf']);
+      expect(filesKept(), hasLength(2));
       await setIn(fonts, 'Probe Sans');
       expect(
         [for (final face in handed) face.bytes],
@@ -220,8 +223,9 @@ void main() {
       );
 
       expect(fonts.families, hasLength(1));
-      expect(filesKept(), ['font-2.ttf'], reason: 'the older file is gone');
-      expect(await library.readFont('font-2.ttf'), newer);
+      final kept = filesKept();
+      expect(kept, hasLength(1), reason: 'the older file is gone');
+      expect(await library.readFont(kept.single), newer);
       await setIn(fonts, 'Probe Sans');
       final second = fonts.faces.engineFamilyOf('Probe Sans');
       expect(second, isNotNull);
@@ -360,15 +364,27 @@ void main() {
       expect(memory.indexReads, 1);
     });
 
-    test('🚨a font brought at the next launch does not take the name of '
-        'one that is there, though nobody asked for the index first', () async {
+    test('🚨a font brought at the next launch JOINS what is there, though '
+        'nobody asked for the index first: the file that was there and '
+        'its line of the index both stay', () async {
       final sans = fontFileSaying(family: 'Probe Sans');
       await fontsOf().importBytes(sans);
+      final first = filesKept().single;
 
-      await fontsOf().importBytes(fontFileSaying(family: 'Probe Serif'));
+      final next = fontsOf();
+      await next.importBytes(fontFileSaying(family: 'Probe Serif'));
 
-      expect(filesKept(), ['font-1.ttf', 'font-2.ttf']);
-      expect(await library.readFont('font-1.ttf'), sans);
+      expect(filesKept(), hasLength(2));
+      expect(await library.readFont(first), sans);
+      expect(
+        [for (final family in next.families) family.name],
+        ['Probe Sans', 'Probe Serif'],
+      );
+      expect(
+        [for (final entry in await library.loadIndex()) entry.facts.family],
+        ['Probe Sans', 'Probe Serif'],
+        reason: 'an index written from a library nobody had read',
+      );
     });
 
     test('reading it writes nothing', () async {

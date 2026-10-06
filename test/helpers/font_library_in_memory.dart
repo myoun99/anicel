@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/font_face_facts.dart';
 import 'package:anicel/src/services/font_library_service.dart';
 
 /// THE FONT LIBRARY, KEPT IN MEMORY — for a widget test, whose clock does
@@ -33,6 +35,31 @@ class FontLibraryInMemory implements FontLibraryService {
 
   /// How many times the index was read.
   int indexReads = 0;
+
+  /// The highest number a file was minted a name with ([mintFileName]).
+  int _minted = 0;
+
+  /// A COUNT, where the real library mints a name no device has seen
+  /// (`mintFontLibraryFileName`): one past the highest any file here was
+  /// kept under, so a test can say which file is which — and a file brought
+  /// while another is still being written does not take its name.
+  @override
+  String mintFileName(FontFaceFacts facts, {required String extension}) {
+    for (final file in [...files.keys, for (final entry in index) entry.file]) {
+      final counted = _counted.firstMatch(file);
+      if (counted != null) {
+        _minted = math.max(_minted, int.parse(counted.group(1)!));
+      }
+    }
+    _minted += 1;
+    return 'font-$_minted.$extension';
+  }
+
+  static final RegExp _counted = RegExp(r'^font-([0-9]{1,9})\.');
+
+  /// No path: these files are on no disk.
+  @override
+  String? pathOfFontHeld(String file) => null;
 
   @override
   String get directoryPath => 'memory://fonts';
