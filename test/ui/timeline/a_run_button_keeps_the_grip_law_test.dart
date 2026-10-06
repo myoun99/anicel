@@ -17,10 +17,16 @@ import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 /// 🗣️유저 2026-09-26 (zoom-floor-fixed-marks-Q3, 「삼각형과 같은 법」): a
 /// run's [+] and N/H/R buttons keep their size while the run holds them and
-/// take ONE CELL where it does not — the block edge triangle's law, asked
-/// through the same resolution. At I-22's ten-minute floor the 7px cluster
-/// covered 56 frames, and short runs laid their buttons over one another
-/// and over the cells a press was meant for.
+/// take ONE CELL where it does not — the block edge triangle's law as it
+/// stood that day, asked through the same resolution. At I-22's ten-minute
+/// floor the 7px cluster covered 56 frames, and short runs laid their
+/// buttons over one another and over the cells a press was meant for.
+///
+/// ⚠️The triangle takes its whole block in a short one since F-295 (유저
+/// 2026-10-05, 「최대한 크기 유지」): it stands INSIDE its block. These
+/// buttons stand beside the run, on its neighbours' cells, so the answer
+/// the user chose here — 「더 짧으면 버튼이 한 칸 폭으로 준다 … 칸 누르기를
+/// 막지 않는다」 — is still theirs.
 void main() {
   /// One glued run of [length] frames opening at frame 400.
   Layer runOf(int length) => Layer(

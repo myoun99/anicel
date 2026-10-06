@@ -49,16 +49,28 @@ enum BlockEdgeGripInk { rest, hovered, dragging }
 /// 최대한 지키게하고싶어 … 정해진 크기대로 유지하다가, 1코마처럼 공간
 /// 부족하면 … 그냥 가로 1칸 차지하도록 해도되고」 — the length along the
 /// frame axis is the third of a cell it had at 100%, kept at every zoom the
-/// way a block's name keeps its type; a block too short for it gives the
-/// grip one cell ([TimelineFrameSpanPlacement.fitsIn]). ↩️The third was of
-/// the CURRENT cell until then, so at 10% the wedge was under a pixel wide.
-/// Across it is still half the paper.
+/// way a block's name keeps its type. ↩️The third was of the CURRENT cell
+/// until then, so at 10% the wedge was under a pixel wide. Across it is
+/// still half the paper.
+///
+/// 🚨★★★AS MUCH OF THAT SIZE AS THE BLOCK HAS (F-295, 유저 2026-10-05):
+/// 「콘티블록 엣지, 왜 이렇게 작은건지? 프레임이름/코마텍스트 겹쳐도 아무
+/// 문제 없으니까 지금 엄청 작은거있는데 최대한 크기 유지하도록. 띠의
+/// 앞부분/끝부분 닿아도 아무문제없으니 그냥 닿게해서 최대한 크기
+/// 유지하도록. 이는 프레임블록도 똑같이 법 통일」 — a block shorter than the
+/// grip gives it its whole length ([TimelineFrameSpanPlacement.atMost]),
+/// and the two wedges, each in its own corner, reach each other's edge.
+/// ↩️It gave the grip ONE CELL, read off the 09-26 answer's own example
+/// (「1코마처럼 공간 부족하면 … 그냥 가로 1칸 차지하도록 해도되고」): right
+/// for the one-cell block that answer named, and a cell where three would
+/// fit for every other short block.
 const double _gripMainExtent = TimelineZoomLimits.defaultPixelsPerFrame / 3;
 const double _gripCrossShare = 1 / 2;
 
 /// Where a block-edge grip sits, as a frame-span placement: a box 100%'s
-/// third of a cell along the frame axis — one cell in a block shorter than
-/// that — and half the block's PAPER across it, in the paper's corner.
+/// third of a cell along the frame axis — the block's whole length in a
+/// block shorter than that — and half the block's PAPER across it, in the
+/// paper's corner.
 ///
 /// ★THE BOX IS THE GRIP (유저 답 2026-09-23: 「(가) 삼각형 상자 — 보이는 것 =
 /// 잡는 것」): the triangle fills half of it, and a press anywhere in it takes
@@ -67,7 +79,7 @@ const double _gripCrossShare = 1 / 2;
 /// than the strip it answered in, and B5②/B6 (2026-08-17) was that bar
 /// overhanging its strip at the storyboard's zoom. A mark that IS its box
 /// cannot overhang it. (The 09-26 size is not a floor under a proportion —
-/// it IS the size, and the one-cell answer is the block's, not a cap's.)
+/// it IS the size, and the shorter answer is the block's, not a cap's.)
 ///
 /// 🚨I-44: [crossAxisExtent] is the PAPER's — the box the block's paper
 /// fills across its host. A timeline row's paper stops short of the row
@@ -101,7 +113,7 @@ TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   return TimelineFrameSpanPlacement(
     startIndex: start ? block.startIndex : block.endIndexExclusive,
     mainExtent: _gripMainExtent,
-    fitsIn: block,
+    atMost: block,
     anchorAtTrailingEdge: !start,
     crossInset: start ? crossAxisExtent - across : 0,
     crossExtent: across,

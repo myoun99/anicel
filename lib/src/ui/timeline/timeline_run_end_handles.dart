@@ -333,8 +333,14 @@ Map<FrameId, List<int>> _startsByFrameId(Layer layer) {
 /// I-22's ten-minute floor the 7px cluster covered 56 frames, and a row of
 /// short runs laid its buttons over one another and over the cells a press
 /// was meant for. It keeps its size while its run holds it and takes one
-/// cell where it does not — the block edge's law
+/// cell where it does not — the block edge's law as it stood that day
 /// (`timelineBlockEdgeGripPlacement`), asked through the same resolution.
+///
+/// ⚠️The edge's own answer for a short block has moved on since: the whole
+/// block (F-295, 유저 2026-10-05, 「최대한 크기 유지」). That is an answer
+/// about a mark INSIDE its block, where there is nothing else to stand on.
+/// These buttons stand BESIDE the run, on its neighbours' cells — the very
+/// overlap this rule was asked for — so they keep the one cell.
 Rect timelineRunClusterRect({
   required TimelineRunEdgeCluster cluster,
   required TimelineFrameGeometry geometry,
