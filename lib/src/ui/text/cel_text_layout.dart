@@ -5,6 +5,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
+import 'canvas_letter_faces.dart';
 import 'canvas_letter_style.dart';
 
 /// A text of a cel, SET: its letters as the engine lays them out, where that
@@ -228,12 +229,42 @@ class CelTextBox {
 /// and asked on every press. Setting their letters each time would be
 /// setting type to draw four lines.
 ///
-/// ⚠️It is the box the letters have ON THIS MACHINE, in the fonts it has
-/// when first asked.
-CelTextBox celTextBoxOf(CelTextContent content) =>
-    _boxes[content] ??= _boxSetFor(content);
+/// ⚠️It is the box the letters have ON THIS MACHINE, in the faces it has
+/// NOW: a box kept from before a face arrived, or left, was measured in
+/// other letters, and is set again ([CanvasLetterFaces.generation]).
+CelTextBox celTextBoxOf(CelTextContent content) {
+  final faces = CanvasLetterFaces.current.generation;
+  final kept = _boxes[content];
+  if (kept != null && kept.faces == faces) {
+    return kept.box;
+  }
+  final box = _boxSetFor(content);
+  _boxes[content] = (faces: faces, box: box);
+  return box;
+}
 
-final Expando<CelTextBox> _boxes = Expando<CelTextBox>('cel text box');
+final Expando<({int faces, CelTextBox box})> _boxes = Expando('cel text box');
+
+/// Whether a face [content]'s letters are written in is still ON ITS WAY to
+/// the engine ([CanvasLetterFaces]) — and it is sent for, if nobody had.
+/// Until it is here those letters would be set in another face, so nothing
+/// measures them and no plate is made of them.
+bool celTextAwaitsAFace(CelTextContent content) {
+  final faces = CanvasLetterFaces.current;
+  return content.spans.any((span) => faces.isOnItsWay(span.style.fontFamily));
+}
+
+/// Completes when every face [content] is set in has reached the engine —
+/// null when none is on its way, so that whoever asks goes on at once.
+/// [nextLetterStyle] is read for a content with no letters, which is
+/// measured by it ([layoutCelText]).
+Future<void>? celTextFacesArriving(
+  CelTextContent content, {
+  TextLetterStyle nextLetterStyle = const TextLetterStyle(),
+}) => CanvasLetterFaces.current.whenHere([
+  for (final span in content.spans) span.style.fontFamily,
+  if (content.isEmpty) nextLetterStyle.fontFamily,
+]);
 
 CelTextBox _boxSetFor(CelTextContent content) {
   final layout = layoutCelText(content);

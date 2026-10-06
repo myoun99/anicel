@@ -767,10 +767,20 @@ void main() {
         reason: 'the test font sets every letter a whole size wide',
       );
       expect(bold.block.width, isNot(plain.block.width));
+      final other = set([run('illicit', family: 'Nanum Gothic')]);
+      expect(
+        other.block.width,
+        isNot(plain.block.width),
+        reason: 'a run in a chosen face is set in THAT face',
+      );
+      expect(other.block.width, lessThan(7 * 20));
+      // ↩️This asked for 「FlutterTest」, the test engine's own font, and
+      // got it. A family this device does not hold is set in the app's own
+      // now (`CanvasLetterFaces`, the text tool's faces) — not in whatever
+      // the engine would make of its name.
       expect(
         set([run('illicit', family: 'FlutterTest')]).block.width,
-        7 * 20,
-        reason: 'a run in a chosen face is set in THAT face',
+        plain.block.width,
       );
     });
   });

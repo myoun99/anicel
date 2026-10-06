@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/text_cel_style.dart';
 import '../theme/app_theme.dart' show AppTypography;
+import 'canvas_letter_faces.dart';
 
 /// THE ENGINE STYLE A LETTER OF CANVAS TEXT IS SET IN — the one recipe the
 /// SE name tag (`layoutTextCel`) and a text on a cel (`layoutCelText`) both
@@ -21,6 +22,13 @@ import '../theme/app_theme.dart' show AppTypography;
 /// runs are nested in the style of its last one (`layoutCelText`), so a run
 /// left with no tracking would be set with the last run's.
 ///
+/// 🚨THE FACE IS THE ONE THIS DEVICE HAS FOR THE STYLE'S FAMILY, by the
+/// engine's own name for it ([CanvasLetterFaces.engineFamilyOf]) — the
+/// app's own where the device has none: a face a person brought is handed
+/// to the engine under a name minted for it, and a family this device does
+/// not hold (a project from another machine, a face since deleted) is not
+/// left to whatever the engine would make of its name.
+///
 /// [foreground] paints the letters in place of the style's own colour — the
 /// outline pass ([canvasLetterOutlinePaint]). ⚠️For the same reason a style
 /// that runs are nested in is never painted by one: the engine keeps a
@@ -36,7 +44,9 @@ TextStyle canvasLetterTextStyle(
   fontSize: fontSize ?? style.fontSize,
   fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
   letterSpacing: style.letterSpacing,
-  fontFamily: style.fontFamily ?? AppTypography.bundledFamily,
+  fontFamily:
+      CanvasLetterFaces.current.engineFamilyOf(style.fontFamily) ??
+      AppTypography.bundledFamily,
   // CJK safety on every family choice: the app's bundled faces catch what
   // a chosen face misses, in the app's own order.
   fontFamilyFallback: const [
