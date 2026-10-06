@@ -295,7 +295,7 @@ class _MoveSession {
     required this.token,
     required this.stamp,
     required this.startShape,
-  });
+  }) : _lifted = stamp;
 
   /// The lift command owning this selection's pixels (R15-④).
   final int token;
@@ -303,6 +303,19 @@ class _MoveSession {
   /// The stamp dab currently FLOATING — removed from the command so the
   /// base never shows it (no double image).
   BrushDab stamp;
+
+  /// The float as it was lifted, to ask [holdsAChange] of.
+  final BrushDab _lifted;
+
+  /// Whether the float is anything but the pixels that were lifted — a
+  /// session that holds none lands nothing
+  /// ([_CanvasSelectionLayerState._endLanded]).
+  ///
+  /// ⛔Asked of the float itself. [landedAffine] is written by the same
+  /// fold and would read the same today, but it answers another question —
+  /// what the range's other cels are to be put through — and one flag
+  /// answering two is how a third writer breaks one of them.
+  bool get holdsAChange => !identical(stamp, _lifted);
 
   /// The region as the session found it — the revert restores it, and the
   /// transform draws it as the green 「before」 outline (I-38).
@@ -655,10 +668,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// hook) handed that undo an entry of nothing to consume (measured
   /// 2026-10-06, an untouched box under each ending).
   ///
-  /// ⚠️[_MoveSession.landedAffine] is what says so: only the fold writes
-  /// it, and only when it replaced the stamp.
   _MoveSession? _endLanded() => _endSession(
-    _session?.landedAffine == null ? _SessionEnd.letGo : _SessionEnd.confirm,
+    _session?.holdsAChange ?? false ? _SessionEnd.confirm : _SessionEnd.letGo,
   );
 
   /// The drag running right now, or null — the ONE field that says which

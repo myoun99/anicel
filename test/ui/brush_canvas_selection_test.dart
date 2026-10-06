@@ -3914,7 +3914,9 @@ void main() {
   ///   a scaled or turned picture went through its transform TWICE;
   /// · Ctrl+D landed raw: the same unwarped quad, no record, and NO undo
   ///   entry — one undo brought the outline back over a picture that stayed
-  ///   transformed.
+  ///   transformed;
+  /// · a new selection arriving (전체 선택, 선택 반전) confirmed through the
+  ///   affine-only fold: the unwarped quad again.
   ///
   /// ⛔Compared against 확정's own landing rather than a number, because
   /// 「the same as Enter」 is the law — the pixels, the record 재현 replays,
@@ -4013,6 +4015,18 @@ void main() {
               await env.setTool(CanvasTool.select);
             case 'Ctrl+D':
               env.commands.deselect();
+            case 'a new selection':
+              // What 전체 선택 · 선택 반전 hand the layer.
+              env.commands.applyRegion(
+                CanvasSelectionRegion.shape(
+                  CanvasSelectionShape.rect(
+                    left: 0,
+                    top: 0,
+                    right: 100,
+                    bottom: 100,
+                  ),
+                ),
+              );
           }
           // The unmount lands a frame later — history never runs in a build.
           await tester.pump();
@@ -4052,6 +4066,7 @@ void main() {
           'a painting tool',
           'another selection tool',
           'Ctrl+D',
+          'a new selection',
         ]) {
           final ended = await endedBy(ending);
           expect(
@@ -4081,7 +4096,12 @@ void main() {
           );
           expect(
             ended.outline,
-            ending == 'Ctrl+D' ? 'null' : confirmed.outline,
+            switch (ending) {
+              'Ctrl+D' => 'null',
+              'a new selection' =>
+                '(bottom: 100.0, left: 0.0, right: 100.0, top: 0.0)',
+              _ => confirmed.outline,
+            },
             reason: '$ending: the outline went where the picture went',
           );
           expect(
