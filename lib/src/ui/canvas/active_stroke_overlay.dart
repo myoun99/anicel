@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/rgba_premultiply.dart';
 import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_dab.dart';
 import '../../models/canvas_size.dart';
@@ -21,6 +22,7 @@ import '../../services/brush_live_stroke_rasterizer.dart'
         PromotedStrokeTile;
 import '../../services/brush_stroke_blend.dart'
     show bitmapSurfaceRegionPixels, preBlendStrokeOverlayPixels;
+import '../../services/cel_text_laying.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'deferred_image_disposal.dart';
 
@@ -137,10 +139,44 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     for (final entry in tiles) {
       _install(
         entry.coord,
-        BitmapTileImageCache.pictureOfTile(entry.tile),
+        BitmapTileImageCache.pictureOfTile(
+          tileShownFor(entry.coord, entry.tile),
+        ),
         revision: entry.revision,
       );
     }
+  }
+
+  /// The plates of the texts the cel under this stroke carries that stand
+  /// over [coord], bottom → top — null where none does, which is nearly
+  /// everywhere.
+  ///
+  /// 🚨★★★A COORDINATE THE OVERLAY REPLACES SHOWS THE OVERLAY'S PICTURE AND
+  /// NOTHING ELSE, so that picture has to hold the cel's texts too (R9-rest,
+  /// the text tool). The stroke's result is the DRAWING — what the commit
+  /// will store — and a text is laid over the drawing when a cel is shown
+  /// (`celSurfaceWithTextsLaid`). Shown bare, a stroke passing under a text
+  /// would wipe the letters off every tile it touched for as long as the
+  /// pen was down, and pen-up would put them back: 유저 절대규칙 2026-09-17,
+  /// 「보이는 중이랑 결과랑 절대로 다르면 안 되」.
+  ///
+  /// Read off [preBlendBase] — the cel as the stroke found it — rather than
+  /// set beside it, so there is no second thing for a stroke's start to
+  /// forget.
+  List<BitmapTile>? _platesOver(TileCoord coord) {
+    final base = preBlendBase;
+    return base == null ? null : celTextPlatesOver(base)?[coord];
+  }
+
+  /// The tile [coord] SHOWS when the cel holds [tile] there: [tile] itself,
+  /// or it with the cel's texts laid over it — the tile the painter draws
+  /// once the stroke has landed, and so the one a picture made for this
+  /// coordinate belongs to ([takeTileImageAt]'s caller hands it over).
+  BitmapTile tileShownFor(TileCoord coord, BitmapTile tile) {
+    final plates = _platesOver(coord);
+    return plates == null
+        ? tile
+        : celTileWithPlatesLaid(tile, plates, tileSize)!;
   }
 
   /// Snapshots the overlay tiles that [region] touches from the live
@@ -212,7 +248,8 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
         : math.min(tileSize, sourceCanvasSize.pasteboardBottomExclusive - top);
     _install(
       coord,
-      pictureOf(
+      _pictureOfResult(
+        coord,
         _SnapshotBytes(
           source: source,
           coord: coord,
@@ -260,10 +297,38 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// recorded beside it. The tile's staging is released read or not.
   void _showPreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
     try {
-      _install(coord, pictureOf(blended), revision: blended.revision);
+      _install(
+        coord,
+        _pictureOfResult(coord, blended),
+        revision: blended.revision,
+      );
     } finally {
       blended.free();
     }
+  }
+
+  /// The picture [coord] shows for [result] — a live stroke's bytes there,
+  /// pre-blended against the cel: the result's own picture, or, where the
+  /// cel's texts stand over the coordinate ([_platesOver]), the result with
+  /// them laid over it.
+  ///
+  /// Those are the bytes the committed tile will show there, made by the
+  /// laying that will show them (`layPlatesOverStraight`, which ends in the
+  /// same stamp as a tile's own laying) — so pen-up hands this very picture
+  /// to that tile ([tileShownFor]) and not a byte on screen moves.
+  ///
+  /// ⚠️A COPY of the result first: the laying writes in place, and those
+  /// bytes are the rasterizer's resident result — the commit's own.
+  ui.Image _pictureOfResult(TileCoord coord, PictureBytes result) {
+    final plates = _platesOver(coord);
+    if (plates == null) {
+      return pictureOf(result);
+    }
+    final laid = result.readStraight(Uint8List.fromList);
+    layPlatesOverStraight(laid, plates, tileSize);
+    return BitmapTileImageCache.pictureOfTile(
+      BitmapTile(size: tileSize, pixels: laid),
+    );
   }
 
   /// [image] becomes [coord]'s picture — the one it showed before retired

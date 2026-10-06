@@ -417,14 +417,21 @@ class _BrushEditStroke {
   ) {
     final overlay = _state._overlay._overlayModel;
     for (final entry in promoted) {
+      // ★The tile the coordinate SHOWS once this lands — the committed tile,
+      // or it with the cel's texts laid over (R9-rest): the overlay has
+      // been showing exactly that tile's pixels, so that is the tile its
+      // picture belongs to. Handed to the committed tile instead, a picture
+      // holding letters would stand for the bare drawing — and go on
+      // showing them after the text was moved or deleted.
+      final shown = overlay.tileShownFor(entry.coord, entry.tile);
       final image = overlay.takeTileImageAt(
         entry.coord,
         revision: entry.revision,
       );
       if (image != null) {
-        BitmapTileImageCache.instance.adoptDecoded(entry.tile, image);
+        BitmapTileImageCache.instance.adoptDecoded(shown, image);
       } else {
-        BitmapTileImageCache.instance.pictureFor(entry.tile);
+        BitmapTileImageCache.instance.pictureFor(shown);
       }
     }
     _state.widget.onSourceStrokeCommitted(data);
