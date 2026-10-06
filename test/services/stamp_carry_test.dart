@@ -187,16 +187,24 @@ void main() {
       expect(apart(inkNear(carried, sent), sent), lessThan(1.5));
     });
 
-    test('a quad dragged whole carries every stamp by its step, byte for '
+    test('🚨a quad dragged whole carries every stamp by its step, byte for '
         'byte', () {
-      final dragged = QuadCarry(
-        base: base,
-        corners: [
-          for (final corner in base)
-            CanvasPoint(x: corner.x + 7, y: corner.y - 3),
-        ],
-        mode: mode,
-      );
+      // ⚠️NOT the 100×100 float: a homography solved for a whole drag of
+      // THAT rect is exact, and one solved for this one is not (measured
+      // 2026-10-06) — which is the case the carry's own check is for.
+      final rest = stampCornersOf(
+        stampOver(
+          left: 23,
+          top: 41,
+          width: 57,
+          height: 33,
+          ink: [CanvasPoint(x: 50, y: 55)],
+        ),
+      )!;
+      final gone = [
+        for (final corner in rest)
+          CanvasPoint(x: corner.x + 7, y: corner.y - 3),
+      ];
       final other = stampOver(
         left: 10,
         top: 20,
@@ -204,8 +212,21 @@ void main() {
         height: 30,
         ink: [CanvasPoint(x: 30, y: 35)],
       );
+      final solved = solveHomography(rest, gone)!;
+      expect(
+        {
+          for (final corner in stampCornersOf(other)!)
+            applyHomography(solved, corner).y - corner.y,
+        },
+        hasLength(greaterThan(1)),
+        reason: '⛔premise: solved again, the drag is not ONE delta any more',
+      );
 
-      final carried = dragged.through(other);
+      final carried = QuadCarry(
+        base: rest,
+        corners: gone,
+        mode: mode,
+      ).through(other);
 
       expect(carried.center, CanvasPoint(x: 37, y: 32));
       expect(identical(carried.stamp!.rgba, other.stamp!.rgba), isTrue);
@@ -347,10 +368,24 @@ void main() {
       }
     });
 
-    test('a grid dragged whole carries every stamp by its step, byte for '
-        'byte', () {
-      final dragged = meshWhere(
-        (node) => CanvasPoint(x: node.x - 9, y: node.y + 4),
+    test('🚨a grid dragged whole carries every stamp by its step, byte for '
+        'byte — the default 3×3 too', () {
+      // ⚠️Three cells across a hundred: a cell is a third, and the grid
+      // grown past its box for a stamp out here restates the drag with a
+      // residue (measured 2026-10-06 — sixteen deltas for the one). On the
+      // 2×2 the other cases use, every number is whole and nothing shows.
+      final rest = meshRestGrid(base, columns: 3, rows: 3);
+      final dragged = MeshCarry(
+        (
+          base: base,
+          columns: 3,
+          rows: 3,
+          points: [
+            for (final node in rest)
+              CanvasPoint(x: node.x - 9, y: node.y + 4),
+          ],
+        ),
+        mode: mode,
       );
       final other = stampOver(
         left: 300,
@@ -364,6 +399,22 @@ void main() {
 
       expect(carried.center, CanvasPoint(x: 316, y: 39));
       expect(identical(carried.stamp!.rgba, other.stamp!.rgba), isTrue);
+    });
+
+    test('a grid left at rest hands the stamp back as it is', () {
+      final standing = float();
+
+      final still = MeshCarry(
+        (
+          base: base,
+          columns: 3,
+          rows: 3,
+          points: meshRestGrid(base, columns: 3, rows: 3),
+        ),
+        mode: mode,
+      ).through(standing);
+
+      expect(identical(still, standing), isTrue);
     });
   });
 

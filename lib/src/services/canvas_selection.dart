@@ -72,6 +72,33 @@ StampRect? stampRectOf(BrushDab stampDab) {
   );
 }
 
+/// A MESH AT REST: the nodes of a `columns × rows` grid laid evenly over
+/// [base], row-major — a mesh's BASE, as [stampCornersOf] is a quad's.
+/// Points left where these are make the mesh transform exactly the
+/// identity, and points all moved from them by one delta are a whole drag.
+///
+/// ⛔ONE SPELLING. The layer's handles, the transform's source triangles
+/// and the carry's whole-drag check each laid this grid out, and two of the
+/// three multiplied before dividing where the third divided first — a last
+/// bit apart on the default 3×3, which is all it takes for 「moved by one
+/// delta」 to read false (2026-10-06).
+List<CanvasPoint> meshRestGrid(
+  StampRect base, {
+  required int columns,
+  required int rows,
+}) {
+  final cellWidth = base.width / columns;
+  final cellHeight = base.height / rows;
+  return [
+    for (var row = 0; row <= rows; row += 1)
+      for (var column = 0; column <= columns; column += 1)
+        CanvasPoint(
+          x: base.left + column * cellWidth,
+          y: base.top + row * cellHeight,
+        ),
+  ];
+}
+
 /// That rect's corners, TL · TR · BR · BL — a quad's BASE: corners left
 /// where these are make the quad transform exactly the identity.
 List<CanvasPoint>? stampCornersOf(BrushDab stampDab) {
@@ -475,19 +502,13 @@ BrushDab transformStampDabMesh(
   assert(points.length == (columns + 1) * (rows + 1));
   final srcLeft = stampDab.center.x - stamp.width / 2;
   final srcTop = stampDab.center.y - stamp.height / 2;
-  final gridLeft = base?.left ?? srcLeft;
-  final gridTop = base?.top ?? srcTop;
-  final cellWidth = (base?.width ?? stamp.width) / columns;
-  final cellHeight = (base?.height ?? stamp.height) / rows;
-  CanvasPoint baseAt(int column, int row) => CanvasPoint(
-    x: gridLeft + column * cellWidth,
-    y: gridTop + row * cellHeight,
+  final baseGrid = meshRestGrid(
+    base ?? stampRectOf(stampDab)!,
+    columns: columns,
+    rows: rows,
   );
-
-  final baseGrid = [
-    for (var row = 0; row <= rows; row += 1)
-      for (var column = 0; column <= columns; column += 1) baseAt(column, row),
-  ];
+  CanvasPoint baseAt(int column, int row) =>
+      baseGrid[row * (columns + 1) + column];
   final moved = stampDabMovedWholesale(stampDab, baseGrid, points);
   if (moved != null) {
     return moved;

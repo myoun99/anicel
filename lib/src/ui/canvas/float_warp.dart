@@ -85,22 +85,11 @@ class FloatWarp {
     required int columns,
     required int rows,
   }) {
-    final base = stampRectCorners();
-    if (base == null) {
-      return null;
-    }
-    final left = base[0].x;
-    final top = base[0].y;
-    final width = base[1].x - base[0].x;
-    final height = base[3].y - base[0].y;
-    return [
-      for (var row = 0; row <= rows; row += 1)
-        for (var column = 0; column <= columns; column += 1)
-          CanvasPoint(
-            x: left + column * width / columns,
-            y: top + row * height / rows,
-          ),
-    ];
+    final pending = float;
+    final base = pending == null ? null : stampRectOf(pending);
+    return base == null
+        ? null
+        : meshRestGrid(base, columns: columns, rows: rows);
   }
 
   /// Base points + offsets through the affine — the control points as they

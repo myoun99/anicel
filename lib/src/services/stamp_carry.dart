@@ -123,6 +123,20 @@ final class MeshCarry extends StampCarry {
 
   @override
   BrushDab through(BrushDab stamp, {SelectionVisibleRect? visible}) {
+    // The whole grid dragged by one delta carries every stamp by it, byte
+    // for byte — asked of the box's OWN grid, as the quad asks it of its
+    // own corners. ⛔Not left to the transform: a grid carried on past its
+    // box ([_over]) restates the drag with a residue of its own (measured
+    // on the default 3×3: sixteen different deltas where there was one),
+    // and another cel's picture was resampled for a move.
+    final moved = stampDabMovedWholesale(
+      stamp,
+      meshRestGrid(base, columns: columns, rows: rows),
+      points,
+    );
+    if (moved != null) {
+      return moved;
+    }
     final over = _over(stamp);
     return transformStampDabMesh(
       stamp,
