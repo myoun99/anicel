@@ -310,9 +310,8 @@ class SessionRowButtonPresses {
   /// organizer folders, whose strength is their own value as their eye is.
   /// Unfolded, every row keeps its own slider.
   List<LayerId> _sliderRowsOf(LayerId id) => [
-    if (_hasOwnSlider(_row(id))) id,
-    for (final rider in _foldedRidersOf(id))
-      if (_hasOwnSlider(rider)) rider.id,
+    for (final row in [?_row(id), ..._foldedRidersOf(id)])
+      if (_hasOwnSlider(row)) row.id,
   ];
 
   static bool _hasOwnSlider(Layer? layer) =>
