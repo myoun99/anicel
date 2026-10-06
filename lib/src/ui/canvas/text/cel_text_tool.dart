@@ -54,7 +54,16 @@ abstract interface class CelTextToolHost {
   /// step, as a stroke and the cel made for it are (I-10, 유저 2026-08-30:
   /// 「답은 추천대로」 = merged) — while the two are still all that history
   /// has filed since.
-  void run(Command command, {HistoryMark? withCelMadeSince});
+  ///
+  /// [setIn] is the families the letters of a text being SET are written
+  /// in — none for a text taken off its cel: whoever keeps the project's
+  /// fonts takes the ones the text was set with into the same step
+  /// (`ProjectFonts.landingWith`).
+  void run(
+    Command command, {
+    HistoryMark? withCelMadeSince,
+    Set<String> setIn = const {},
+  });
 
   /// Where history stands now — null where there is none to stand in.
   HistoryMark? get historyMark;
@@ -570,7 +579,15 @@ class CelTextTool extends ChangeNotifier {
     // with it; every later one is a step of its own.
     final celMadeSince = holding.celMadeSince;
     holding.celMadeSince = null;
-    host.run(command, withCelMadeSince: celMadeSince);
+    host.run(
+      command,
+      withCelMadeSince: celMadeSince,
+      // What is shown is what lands ([CelTextSession.landing]) — and a
+      // text with no letters is in no face.
+      setIn: {
+        for (final span in session.shown.content.spans) ?span.style.fontFamily,
+      },
+    );
     final id = command.textId;
     final texts = cel.coordinator.currentSurfaceOf(cel.key).texts;
     session.standOn(

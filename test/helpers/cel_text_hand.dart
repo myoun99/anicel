@@ -96,7 +96,11 @@ class TextHandHost implements CelTextToolHost {
   HistoryMark? get historyMark => history.gestures.mark;
 
   @override
-  void run(Command command, {HistoryMark? withCelMadeSince}) {
+  void run(
+    Command command, {
+    HistoryMark? withCelMadeSince,
+    Set<String> setIn = const {},
+  }) {
     ran.add(command);
     history.execute(command);
   }

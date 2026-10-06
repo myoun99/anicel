@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/font_face_facts.dart';
 import 'package:anicel/src/services/font_file_reader.dart';
 import 'package:anicel/src/services/font_library_service.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
@@ -9,6 +10,7 @@ import 'package:anicel/src/ui/brush/picked_file.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
 import 'package:anicel/src/ui/text/imported_fonts.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/font_file_fixture.dart';
@@ -313,6 +315,280 @@ void main() {
       expect(told, 0);
       expect(fonts.families, hasLength(1));
       expect(filesKept(), hasLength(1));
+    });
+  });
+
+  group('🚨the project on screen: its fonts are laid over this device\'s', () {
+    const regular = FontFaceFacts(
+      family: 'Probe Sans',
+      weight: 400,
+      italic: false,
+      fsType: 0,
+    );
+    const bold = FontFaceFacts(
+      family: 'Probe Sans',
+      weight: 700,
+      italic: false,
+      fsType: 0,
+    );
+
+    /// A font file a project carries under [name], whose bytes are [seed]
+    /// thrice — and a note of every time it is read.
+    final read = <String>[];
+    LetterFaceFile carried(String name, FontFaceFacts facts, int seed) => (
+      name: name,
+      facts: facts,
+      read: () async {
+        read.add(name);
+        return Uint8List.fromList([seed, seed, seed]);
+      },
+    );
+
+    setUp(read.clear);
+
+    /// Stands a project on screen that carries [files], and nothing a list
+    /// would ask of it.
+    void show(ImportedFonts fonts, List<LetterFaceFile> Function() files) =>
+        fonts.showCarried((
+          files: files,
+          families: () => const [],
+          takeOut: (family) {},
+        ));
+
+    List<String> namesSetWith(ImportedFonts fonts, String family) => [
+      for (final file in fonts.filesSetWith(family)) file.name,
+    ];
+
+    test('a family the project carries and this device was never brought '
+        'is one letters can be set in — read from the project when they '
+        'are asked for, and not before', () async {
+      final fonts = fontsOf();
+      await fonts.load();
+      var told = 0;
+      fonts.addListener(() => told += 1);
+
+      show(fonts, () => [carried('ab12-cd34-Probe.ttf', regular, 5)]);
+
+      expect(told, 1);
+      expect(fonts.faces.holds('Probe Sans'), isTrue);
+      expect(fonts.families, isEmpty, reason: 'this device holds none');
+      expect(namesSetWith(fonts, 'Probe Sans'), ['ab12-cd34-Probe.ttf']);
+      expect(read, isEmpty);
+
+      await setIn(fonts, 'Probe Sans');
+
+      expect(read, ['ab12-cd34-Probe.ttf']);
+      expect([for (final face in handed) face.bytes], [
+        [5, 5, 5],
+      ]);
+    });
+
+    test('🚨the project\'s file of a face is what that face is set with, '
+        'though this device holds one of its own — and a face only the '
+        'device holds joins the family', () async {
+      final fonts = fontsOf();
+      final devicesRegular = fontFileSaying(family: 'Probe Sans');
+      final devicesBold = fontFileSaying(family: 'Probe Sans', weight: 700);
+      await fonts.importBytes(devicesRegular);
+      await fonts.importBytes(devicesBold);
+      final ofTheDevice = namesSetWith(fonts, 'Probe Sans');
+      expect(ofTheDevice, hasLength(2), reason: '⛔fixture');
+
+      show(fonts, () => [carried('ab12-cd34-Probe.ttf', regular, 5)]);
+
+      expect(namesSetWith(fonts, 'Probe Sans'), [
+        'ab12-cd34-Probe.ttf',
+        ofTheDevice.last,
+      ]);
+      await setIn(fonts, 'Probe Sans');
+      expect(
+        [for (final face in handed) face.bytes],
+        unorderedEquals([
+          [5, 5, 5],
+          devicesBold,
+        ]),
+        reason: 'the device\'s own regular is not what this project is set in',
+      );
+    });
+
+    test('🚨⛔THE SAME FILE, held by the device and carried by the project '
+        'under the one name it has, is one set of files: registering a '
+        'font with a project reads nothing, hands the engine nothing, and '
+        'sets no letter again', () async {
+      final fonts = fontsOf();
+      await fonts.importBytes(fontFileSaying(family: 'Probe Sans'));
+      await setIn(fonts, 'Probe Sans');
+      final name = namesSetWith(fonts, 'Probe Sans').single;
+      final engine = fonts.faces.engineFamilyOf('Probe Sans');
+      final generation = fonts.faces.generation;
+      final handedBefore = handed.length;
+
+      show(fonts, () => [carried(name, regular, 5)]);
+
+      expect(fonts.faces.engineFamilyOf('Probe Sans'), engine);
+      expect(fonts.faces.generation, generation);
+      expect(fonts.faces.isOnItsWay('Probe Sans'), isFalse);
+      expect(handed, hasLength(handedBefore));
+      expect(read, isEmpty);
+    });
+
+    test('🚨another project on screen, and back: a family is set with '
+        'each one\'s files in turn, and the files it had before are not '
+        'read again', () async {
+      final fonts = fontsOf();
+      await fonts.load();
+      List<LetterFaceFile> one() => [carried('ab12-0001-P.ttf', regular, 1)];
+      List<LetterFaceFile> two() => [carried('ab12-0002-P.ttf', regular, 2)];
+
+      show(fonts, one);
+      await setIn(fonts, 'Probe Sans');
+      final inOne = fonts.faces.engineFamilyOf('Probe Sans');
+      show(fonts, two);
+      await setIn(fonts, 'Probe Sans');
+      final inTwo = fonts.faces.engineFamilyOf('Probe Sans');
+      expect(inTwo, isNot(inOne));
+      read.clear();
+
+      show(fonts, one);
+
+      expect(fonts.faces.engineFamilyOf('Probe Sans'), inOne);
+      show(fonts, two);
+      expect(fonts.faces.engineFamilyOf('Probe Sans'), inTwo);
+      expect(read, isEmpty);
+      expect(handed, hasLength(2));
+    });
+
+    test('with no project on screen any more, the families are this '
+        'device\'s alone', () async {
+      final fonts = fontsOf();
+      await fonts.load();
+      show(fonts, () => [carried('ab12-cd34-Probe.ttf', regular, 5)]);
+      expect(fonts.faces.holds('Probe Sans'), isTrue, reason: '⛔fixture');
+
+      fonts.showCarried(null);
+
+      expect(fonts.faces.holds('Probe Sans'), isFalse);
+      expect(fonts.filesSetWith('Probe Sans'), isEmpty);
+    });
+
+    test('🚨which of a project\'s fonts can be read is asked AGAIN whenever '
+        'this device\'s library changes: a font registered from here lives '
+        'in this library until the project is saved', () async {
+      final fonts = fontsOf();
+      await fonts.load();
+      var readable = <LetterFaceFile>[];
+      var asked = 0;
+      show(fonts, () {
+        asked += 1;
+        return readable;
+      });
+      expect(fonts.faces.holds('Probe Sans'), isFalse);
+      final askedBefore = asked;
+
+      readable = [carried('ab12-cd34-Probe.ttf', bold, 5)];
+      await fonts.importBytes(fontFileSaying(family: 'Probe Serif'));
+
+      expect(asked, greaterThan(askedBefore));
+      expect(namesSetWith(fonts, 'Probe Sans'), ['ab12-cd34-Probe.ttf']);
+    });
+
+    test('⛔a file a project names for one of the APP\'S OWN families is '
+        'nobody\'s face: the interface is written in those', () async {
+      final fonts = fontsOf();
+      await fonts.load();
+      const apps = FontFaceFacts(
+        family: AppTypography.bundledFamily,
+        weight: 400,
+        italic: false,
+        fsType: 0,
+      );
+
+      show(fonts, () => [carried('ab12-cd34-Apps.ttf', apps, 5)]);
+
+      expect(fonts.filesSetWith(AppTypography.bundledFamily), isEmpty);
+      expect(
+        fonts.faces.engineFamilyOf(AppTypography.bundledFamily),
+        AppTypography.bundledFamily,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(read, isEmpty);
+    });
+
+  });
+
+  group('🚨before a file is taken off this device, whoever still needs its '
+      'bytes is asked — and has them', () {
+    /// Every asking: the files named, and whether each was on the disk
+    /// when it was asked about — and still there once the one asked had
+    /// taken its time.
+    late List<({Set<String> files, bool there, bool stillThere})> asked;
+
+    bool onDisk(Set<String> files) =>
+        files.every((file) => library.pathOfFontHeld(file) != null);
+
+    ImportedFonts askingFonts() {
+      asked = [];
+      final fonts = ImportedFonts(
+        service: library,
+        register: register,
+        beforeLettingGo: (files) async {
+          final there = onDisk(files);
+          // Whoever takes the bytes takes a while over tens of megabytes.
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          asked.add((files: files, there: there, stillThere: onDisk(files)));
+        },
+      );
+      addTearDown(fonts.dispose);
+      return fonts;
+    }
+
+    test('a family deleted: asked once, for every file of it, each on the '
+        'disk until the one asked is done — and gone after', () async {
+      final fonts = askingFonts();
+      for (final file in [
+        fontFileSaying(family: 'Probe Sans'),
+        fontFileSaying(family: 'Probe Sans', weight: 700),
+        fontFileSaying(family: 'Probe Serif'),
+      ]) {
+        await fonts.importBytes(file);
+      }
+      final ofSans = filesKept().where((file) => file.contains('Probe_Sans'));
+      expect(ofSans, hasLength(2), reason: '⛔fixture');
+      expect(asked, isEmpty, reason: 'nothing has left yet');
+
+      await fonts.delete('Probe Sans');
+
+      expect(asked, hasLength(1));
+      expect(asked.single.files, ofSans.toSet());
+      expect(asked.single.there, isTrue);
+      expect(asked.single.stillThere, isTrue, reason: 'it did not wait');
+      expect(filesKept(), hasLength(1));
+      expect(onDisk(ofSans.toSet()), isFalse);
+    });
+
+    test('a face brought again: asked for the file it takes the place '
+        'of', () async {
+      final fonts = askingFonts();
+      await fonts.importBytes(fontFileSaying(family: 'Probe Sans', fsType: 0));
+      final older = filesKept().single;
+
+      await fonts.importBytes(fontFileSaying(family: 'Probe Sans', fsType: 8));
+
+      expect(asked, hasLength(1));
+      expect(asked.single.files, {older});
+      expect(asked.single.there, isTrue);
+      expect(asked.single.stillThere, isTrue, reason: 'it did not wait');
+      expect(filesKept(), isNot(contains(older)));
+    });
+
+    test('nobody is asked when nothing leaves — and deleting a family this '
+        'device does not hold asks nobody', () async {
+      final fonts = askingFonts();
+
+      await fonts.importBytes(fontFileSaying(family: 'Probe Sans'));
+      await fonts.delete('Probe Mono');
+
+      expect(asked, isEmpty);
     });
   });
 

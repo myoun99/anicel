@@ -11,15 +11,23 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show Uint8List, visibleForTesting;
 
 import '../../models/media_asset.dart' show MediaCarry;
 import '../../models/project.dart';
+import '../../models/project_font_file.dart';
 import '../../services/audio/audio_conform_pipeline.dart'
     show ConformCacheLayout;
 import '../../services/media/media_byte_source.dart';
 import '../../services/media/project_font_sources.dart'
-    show ProjectFontsToStore, projectFontSources;
+    show
+        ProjectFileAsRead,
+        ProjectFontsToStore,
+        projectFileAsRead,
+        projectFontSources,
+        projectFontsKept,
+        readStoredFontBytes,
+        storedFontBytesFor;
 import '../../services/media/project_media_sources.dart'
     show
         MediaBytesAt,
@@ -36,6 +44,7 @@ import '../../services/persistence/anicel_incremental_writer.dart'
 import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
+        anicelFontEntryName,
         anicelMediaEntryName,
         anicelMediaEntryPrefix;
 import '../../services/persistence/media_blob_codec.dart';
@@ -669,6 +678,98 @@ class ProjectFile {
     staging: _staging,
     deviceFontFile: _deviceFontFile,
   );
+
+  /// Where [font]'s bytes are right now, in the one order the save looks
+  /// in too (`storedFontBytesFor`) — null when they are nowhere this
+  /// machine can reach. [projectFile] is the bound file as it reads now,
+  /// asked for only when the file holds this font ([fontsInFile]): one
+  /// registered and not saved yet has nothing in there to find.
+  MediaByteSource? _whereTheFontIs(
+    ProjectFontFile font,
+    ProjectFileAsRead? Function() projectFile,
+  ) => storedFontBytesFor(
+    font.carriedAs,
+    projectFile: _fontsInFile.contains(anicelFontEntryName(font.carriedAs))
+        ? projectFile()
+        : null,
+    staging: _staging,
+    deviceFontFile: _deviceFontFile,
+  );
+
+  /// The fonts [project] carries whose bytes are somewhere this machine can
+  /// read right now — what its families are set with while it is on screen
+  /// (`ProjectFonts.letterFaceFiles`).
+  ///
+  /// ⚠️Cheap by construction — a stat a font, and the file's directory
+  /// read once when it holds any of them — because it is asked whenever
+  /// the faces are reckoned, not when one is read.
+  List<ProjectFontFile> fontsWithBytes(Project project) {
+    late final projectFile = projectFileAsRead(_projectFilePath);
+    return [
+      for (final font in projectFontsKept(project))
+        if (_whereTheFontIs(font, () => projectFile) != null) font,
+    ];
+  }
+
+  /// The bytes of [font], a font this project carries, read from wherever
+  /// they are now — null when they are nowhere this machine can reach, or
+  /// will not read.
+  ///
+  /// What the engine is handed when letters are first asked for in the
+  /// font's family while this project is on screen.
+  ///
+  /// 🚨LOOKED FOR AGAIN WHEN AN ENTRY OF THE FILE READS WRONG. A range into
+  /// the project file is of one layout, and a save may pack the file under
+  /// this very read (`readStoredFontBytes` — it checks the entry's CRC).
+  /// The font is then somewhere else in the file, and whole: it is
+  /// resolved afresh and read from there. Bytes that were never moved and
+  /// still read wrong are a broken file, and this gives up on them.
+  Future<Uint8List?> fontBytes(ProjectFontFile font) async {
+    for (var attempt = 0; attempt < _fontReadAttempts; attempt += 1) {
+      final source = _whereTheFontIs(
+        font,
+        () => projectFileAsRead(_projectFilePath),
+      );
+      if (source == null) {
+        return null;
+      }
+      final bytes = await readStoredFontBytes(source);
+      if (bytes != null || source is! MediaArchiveBytes) {
+        return bytes;
+      }
+    }
+    return null;
+  }
+
+  /// Takes into this run's room the bytes of every one of [fonts] that this
+  /// session has NOWHERE BUT IN THE DEVICE'S LIBRARY — a font registered
+  /// with the project and not saved into its file yet.
+  ///
+  /// Asked when the library is about to let go of those files
+  /// (`ImportedFonts`, where the law this keeps is written): from then on
+  /// the room holds them as it holds a font a save took out of the file,
+  /// under the same name ([MediaStagingStore.keepLeftBehind] — the whole
+  /// file is the range it keeps), and the next save puts them in the file.
+  ///
+  /// ⛔Nothing, for a font the bound file or the room already holds: one
+  /// name is one set of bytes, and a second copy of them is a copy for
+  /// nothing.
+  Future<void> holdFontBytes(Iterable<ProjectFontFile> fonts) async {
+    late final projectFile = projectFileAsRead(_projectFilePath);
+    for (final font in fonts) {
+      final onDevice = _whereTheFontIs(font, () => projectFile);
+      if (onDevice is! MediaFileBytes) {
+        continue;
+      }
+      await _staging.keepLeftBehind(onDevice.path, [
+        (name: font.carriedAs, offset: 0, length: onDevice.lengthSync()),
+      ]);
+    }
+  }
+
+  /// One read, and two more for a file that was being packed: a save packs
+  /// once, and the read after it finds the font where it came to rest.
+  static const int _fontReadAttempts = 3;
 
   /// The conform this project CARRIES for [sourcePath], as a range inside
   /// the `.anicel`, or null when it carries none.

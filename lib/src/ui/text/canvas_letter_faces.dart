@@ -9,12 +9,13 @@ import '../theme/app_theme.dart' show AppTypography;
 typedef FontFaceRegistrar =
     Future<void> Function(Uint8List bytes, {required String engineFamily});
 
-/// The files of one family on this device — none when they cannot be read.
+/// The files a family is set with now — none when they cannot be read.
 typedef FontFaceFiles = Future<List<Uint8List>> Function(String family);
 
 /// THE FACES A CANVAS LETTER CAN BE SET IN BESIDE THE APP'S OWN (R9-rest,
-/// the text tool's faces): which families this device holds, and what the
-/// engine calls each one it has been handed.
+/// the text tool's faces): which families are held — by this device, or by
+/// the project on screen — and what the engine calls each set of files it
+/// has been handed.
 ///
 /// 🚨A FACE IS HANDED TO THE ENGINE WHEN LETTERS ARE FIRST ASKED FOR IN IT,
 /// and not at launch. A CJK font is ten to thirty megabytes and the engine
@@ -24,28 +25,33 @@ typedef FontFaceFiles = Future<List<Uint8List>> Function(String family);
 /// it (the save · memory session's note of 2026-10-06, under 유저's standing
 /// rule that an old tablet is not made to carry what it does not use).
 ///
-/// So a family is in one of three states, and only this knows which:
-/// NOT ON THE DEVICE (letters in it are set in the app's own face — a
-/// project from another machine, a face since deleted), ON ITS WAY (asked
-/// for and still being read), and IN THE ENGINE. Whoever keeps something
-/// measured in letters hears of every change through [changes], or keeps
-/// the [generation] it was measured at.
+/// So a family is in one of three states, and only this knows which: NOT
+/// HELD (letters in it are set in the app's own face — a project from
+/// another machine that does not carry it, a face since deleted), ON ITS
+/// WAY (asked for and still being read), and IN THE ENGINE. Whoever keeps
+/// something measured in letters hears of every change through [changes],
+/// or keeps the [generation] it was measured at.
 ///
 /// ⚠️The engine cannot let go of a face, and a second file handed to it
 /// under a name it knows JOINS the first. So the engine never hears a
-/// family's own name: each time a family is handed over it gets a name
-/// minted here, and a family deleted, or brought again as other bytes,
-/// simply stops being called by the old one. (What the old name held stays
-/// in the engine until the app closes — the price of a face replaced, paid
-/// once per replacement.)
+/// family's own name: each SET OF FILES handed over gets a name minted
+/// here.
+///
+/// 🚨★★★**AND A SET OF FILES IS HANDED OVER ONCE, WHOEVER HOLDS IT**
+/// ([setHeld]). Which files a family is set with moves — a face brought
+/// again as other bytes, another project on screen that carries its own —
+/// and moves BACK: two projects in two tabs. Kept by the family, each move
+/// read the files again and handed the engine one more copy it never lets
+/// go of. Kept by the set, the files a family had before are still called
+/// what they were called, and coming back to them reads nothing.
 class CanvasLetterFaces {
   CanvasLetterFaces({FontFaceFiles? files, FontFaceRegistrar? register})
     : _files = files ?? _noFiles,
       _register = register ?? _handToEngine;
 
   /// The faces of this run. Whoever owns the device's fonts stands its own
-  /// here (`ImportedFonts`); until then no family is on the device, and
-  /// every letter is set in the app's own face.
+  /// here (`ImportedFonts`); until then no family is held, and every letter
+  /// is set in the app's own face.
   static CanvasLetterFaces get current => _current;
   static CanvasLetterFaces _current = CanvasLetterFaces();
   static set current(CanvasLetterFaces faces) {
@@ -54,7 +60,7 @@ class CanvasLetterFaces {
   }
 
   /// Tells of every change in what letters would be set in: a face arriving
-  /// in the engine, a family leaving the device, other faces standing as
+  /// in the engine, a family no longer held, other faces standing as
   /// [current].
   static Listenable get changes => _changes;
   static final _FaceChanges _changes = _FaceChanges();
@@ -78,13 +84,21 @@ class CanvasLetterFaces {
   final FontFaceFiles _files;
   final FontFaceRegistrar _register;
 
-  Set<String> _onDevice = const {};
+  /// The families held now, each with the name its set of files is known
+  /// by ([setHeld]).
+  Map<String, String> _held = const {};
+
+  /// What the engine calls each set of files it has been handed, by the
+  /// set's name — kept for as long as the engine keeps the files, which is
+  /// for good.
   final Map<String, String> _inEngine = {};
+
+  /// The sets being read now, by name.
   final Map<String, Future<void>> _onTheirWay = {};
 
-  /// How many times each family's files have been said to be others — what
-  /// a read that was under way when they changed finds out by.
-  final Map<String, int> _renewals = {};
+  /// The sets that could not be had after all — their files gone, or not
+  /// ones the engine takes — until what is held is said again ([setHeld]).
+  final Set<String> _notHad = {};
   int _generation = _generations += 1;
   bool _disposed = false;
 
@@ -99,15 +113,18 @@ class CanvasLetterFaces {
   /// from an earlier count is a layout in other faces.
   int get generation => _generation;
 
-  /// Whether this device holds [family] — in the engine or not yet.
-  bool holds(String family) => _onDevice.contains(family);
+  /// Whether [family] is held — in the engine or not yet.
+  bool holds(String family) {
+    final files = _held[family];
+    return files != null && !_notHad.contains(files);
+  }
 
   /// What the engine calls [family] — null when letters in it are set in
-  /// the app's own face: the family is not on this device, or is on its way.
+  /// the app's own face: the family is not held, or is on its way.
   ///
-  /// 🚨Asking for a family that is on the device and not in the engine yet
-  /// SENDS FOR IT ([sendFor]). Whoever lays letters out is thereby whoever
-  /// causes their face to be read, and nobody has to remember to.
+  /// 🚨Asking for a family that is held and not in the engine yet SENDS FOR
+  /// IT ([sendFor]). Whoever lays letters out is thereby whoever causes
+  /// their face to be read, and nobody has to remember to.
   String? engineFamilyOf(String? family) {
     if (family == null) {
       return null;
@@ -116,14 +133,14 @@ class CanvasLetterFaces {
       return family;
     }
     sendFor(family);
-    return _inEngine[family];
+    return _inEngine[_held[family]];
   }
 
-  /// Whether [family] is on this device and not in the engine yet — sent
-  /// for, if nobody had.
+  /// Whether [family] is held and not in the engine yet — sent for, if
+  /// nobody had.
   bool isOnItsWay(String? family) {
     sendFor(family);
-    return _onTheirWay.containsKey(family);
+    return _onTheirWay.containsKey(_held[family]);
   }
 
   /// Completes when none of [families] is on its way any more — null when
@@ -131,31 +148,40 @@ class CanvasLetterFaces {
   Future<void>? whenHere(Iterable<String?> families) {
     final waits = [
       for (final family in families)
-        if (isOnItsWay(family)) _onTheirWay[family]!,
+        if (isOnItsWay(family)) _onTheirWay[_held[family]]!,
     ];
     return waits.isEmpty ? null : Future.wait(waits);
   }
 
-  /// Has [family] read and handed to the engine, if this device holds it
-  /// and that has not been done or begun. Nothing, for any other.
+  /// Has [family]'s files read and handed to the engine, if it is held and
+  /// that has not been done or begun. Nothing, for any other.
   void sendFor(String? family) {
+    final files = _held[family];
     if (_disposed ||
         family == null ||
-        !_onDevice.contains(family) ||
-        _inEngine.containsKey(family) ||
-        _onTheirWay.containsKey(family)) {
+        files == null ||
+        _notHad.contains(files) ||
+        _inEngine.containsKey(files) ||
+        _onTheirWay.containsKey(files)) {
       return;
     }
-    _onTheirWay[family] = _fetch(family).whenComplete(() {
+    _onTheirWay[files] = _fetch(family, files).whenComplete(() {
       // What is taken off is this very future, done as of now.
-      unawaited(_onTheirWay.remove(family));
+      unawaited(_onTheirWay.remove(files));
       _changed();
     });
   }
 
-  Future<void> _fetch(String family) async {
+  /// Reads [family]'s files — the set called [files], as it stands at this
+  /// call — and hands them to the engine under one fresh name.
+  ///
+  /// What is kept is kept for the SET: a family said to be set with other
+  /// files while these were being read is simply not called by this name,
+  /// and is read again when next asked for — while these are in the engine
+  /// all the same, and are what the family is called if it comes back to
+  /// them.
+  Future<void> _fetch(String family, String files) async {
     final engineFamily = 'anicel-face-${_minted += 1}';
-    final renewal = _renewals[family];
     var handed = 0;
     try {
       for (final bytes in await _files(family)) {
@@ -163,40 +189,36 @@ class CanvasLetterFaces {
         handed += 1;
       }
     } on Object {
-      // A face the engine would not take is a face this device does not
-      // have, as one whose file is gone is.
+      // A face the engine would not take is a face nobody holds, as one
+      // whose file is gone is.
       handed = 0;
     }
-    if (_disposed ||
-        !_onDevice.contains(family) ||
-        _renewals[family] != renewal) {
-      // Gone, or other files now: what was read is not the family any more,
-      // and the next to ask for it sends again.
+    if (_disposed) {
       return;
     }
     if (handed == 0) {
-      _onDevice = {..._onDevice}..remove(family);
+      _notHad.add(files);
     } else {
-      _inEngine[family] = engineFamily;
+      _inEngine[files] = engineFamily;
     }
   }
 
-  /// Says which families this device holds now. One that has left is no
-  /// longer drawn with; one whose FILES changed is named in [renewed] and
-  /// is read again when next asked for.
-  void setOnDevice(Set<String> families, {Set<String> renewed = const {}}) {
-    final gone = [
-      for (final family in _inEngine.keys)
-        if (!families.contains(family) || renewed.contains(family)) family,
-    ];
-    if (gone.isEmpty && renewed.isEmpty && setEquals(families, _onDevice)) {
+  /// Says which families are held now, and — for each — the name its SET OF
+  /// FILES is known by: the same name for the same files, another for any
+  /// other (`ImportedFonts` makes it of the names the files are kept
+  /// under, and one of those means one set of bytes for good).
+  ///
+  /// A family that is not in [held] is no longer drawn with. One whose set
+  /// is another now is drawn with the app's face until that set is in the
+  /// engine — read when next asked for, unless it was handed over before.
+  void setHeld(Map<String, String> held) {
+    if (_notHad.isEmpty && mapEquals(held, _held)) {
       return;
     }
-    gone.forEach(_inEngine.remove);
-    for (final family in renewed) {
-      _renewals[family] = (_renewals[family] ?? 0) + 1;
-    }
-    _onDevice = Set.of(families);
+    // Said again, what could not be had is asked for once more: its files
+    // may be somewhere they were not.
+    _notHad.clear();
+    _held = Map.of(held);
     _changed();
   }
 

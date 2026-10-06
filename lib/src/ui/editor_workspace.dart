@@ -20,6 +20,8 @@ import '../models/cut_id.dart';
 import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show Project, defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
+import '../models/project_font_file.dart';
+import '../services/command.dart' show Command;
 import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset, mediaFileName;
@@ -194,6 +196,7 @@ class EditorWorkspace extends StatefulWidget {
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
+    this.keepFontFiles,
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
@@ -291,6 +294,12 @@ class EditorWorkspace extends StatefulWidget {
   /// Injectable storage of the fonts this device was brought; defaults to
   /// the app-data font folder (its own sandbox under a test).
   final FontLibraryService? fontLibraryService;
+
+  /// Waited for before this device's font library lets go of files (named
+  /// by the names they are kept under): the shell has every open project
+  /// that carries one take its bytes first (`ProjectFonts.holdBytesOf`).
+  /// Null where no project is open beside this window's.
+  final Future<void> Function(Set<String> files)? keepFontFiles;
 
   /// Injectable workspace-layout persistence; defaults to the app-data
   /// layout file outside tests (`FLUTTER_TEST` disables it so widget tests
@@ -1036,8 +1045,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
     // Only the index is read here — which families there are. A face is
     // read when letters are first asked for in it.
-    _fonts = ImportedFonts(service: widget.fontLibraryService);
+    _fonts = ImportedFonts(
+      service: widget.fontLibraryService,
+      beforeLettingGo: (files) async => widget.keepFontFiles?.call(files),
+    );
     unawaited(_fonts.load());
+    // R9-rest: a text lands WITH the faces it is set in — whoever lands
+    // one asks here, where the fonts and the project on screen are both
+    // in hand ([ProjectFonts.landingWith]).
+    widget.canvasTextCommands?.landingWith = _landingWithItsFaces;
     // H25: what the hand last set on each brush, from the last session — and
     // H36: a painting tool taken up holding no brush opens on one.
     _brushTool.addListener(_brushPresets.followBrushTool);
@@ -1196,7 +1212,52 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _followTimelineZoomToCut();
     session.addListener(_followTimelineZoomToCut);
     session.addListener(_syncViewersWithProject);
+    _showFontsOf(session);
   }
+
+  /// R9-rest: the fonts THIS project carries are what its families are set
+  /// with while it is on screen. Stands [session]'s over this device's now
+  /// — it is the project coming on screen — and again whenever its list of
+  /// them is another ([_followProjectFonts]).
+  void _showFontsOf(EditorSessionManager session) {
+    _projectFontsShown = null;
+    _followProjectFonts();
+    session.addListener(_followProjectFonts);
+  }
+
+  /// The project on screen's list of fonts as the faces were last told of
+  /// it ([_followProjectFonts]) — the list itself: a project swaps it for
+  /// another whenever it changes, and never otherwise.
+  List<ProjectFontFile>? _projectFontsShown;
+
+  /// Stands the fonts the project on screen carries over this device's
+  /// ([ImportedFonts.showCarried]) when its list of them is another than
+  /// the one last said. A step of history that registers a font, or takes
+  /// one back out, is such a change; so is another project coming on
+  /// screen ([_bindSession]).
+  void _followProjectFonts() {
+    final session = widget.session;
+    final fonts = session.repository.requireProject().fonts;
+    if (identical(fonts, _projectFontsShown)) {
+      return;
+    }
+    _projectFontsShown = fonts;
+    final ofTheProject = session.projectFonts;
+    _fonts.showCarried((
+      files: () => ofTheProject.letterFaceFiles,
+      families: () => ofTheProject.families,
+      takeOut: ofTheProject.takeOut,
+    ));
+  }
+
+  /// [landing] — a text set on a cel — with the registering of the faces
+  /// its letters are written in ([families]), as one step: the files each
+  /// family is set with now, handed to the project on screen
+  /// ([ProjectFonts.landingWith]).
+  Command _landingWithItsFaces(Command landing, Set<String> families) =>
+      widget.session.projectFonts.landingWith(landing, [
+        for (final family in families) ..._fonts.filesSetWith(family),
+      ]);
 
   /// The panel pictures [session]'s storyboard and conte draw — rendered
   /// through its camera, never past the camera frame's own size.
@@ -1256,6 +1317,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     session.workingPanelListenable.removeListener(_flipHud.syncFlipAxis);
     session.removeListener(_syncViewersWithProject);
     session.removeListener(_followTimelineZoomToCut);
+    session.removeListener(_followProjectFonts);
   }
 
   // ── the flip HUD: its own object, in its own file ───────────────────
@@ -1527,6 +1589,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     _presetLibrary.dispose();
     _tipLibrary.dispose();
+    if (widget.canvasTextCommands?.landingWith == _landingWithItsFaces) {
+      widget.canvasTextCommands?.landingWith = null;
+    }
     _fonts.dispose();
     _cutPieceSlot
       ..removeListener(_brushPresets.armStampOnFreshCut)

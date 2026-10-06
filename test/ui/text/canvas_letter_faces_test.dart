@@ -29,6 +29,9 @@ void main() {
     CanvasLetterFaces.current = CanvasLetterFaces();
   });
 
+  /// Two families held, each with the name of its set of files.
+  const both = {'Probe Sans': 'sans', 'Probe Serif': 'serif'};
+
   /// Lets every read and every hand-over that is under way come to its end.
   Future<void> arrive() => Future<void>.delayed(Duration.zero);
 
@@ -72,7 +75,7 @@ void main() {
     setUp(() {
       device.files['Probe Sans'] = [_bytes(1), _bytes(2)];
       device.files['Probe Serif'] = [_bytes(3)];
-      faces.setOnDevice({'Probe Sans', 'Probe Serif'});
+      faces.setHeld(both);
       told = 0;
     });
 
@@ -248,7 +251,7 @@ void main() {
         final before = faces.generation;
         told = 0;
 
-        faces.setOnDevice({'Probe Serif'});
+        faces.setHeld({'Probe Serif': 'serif'});
 
         expect(faces.holds('Probe Sans'), isFalse);
         expect(faces.engineFamilyOf('Probe Sans'), isNull);
@@ -260,7 +263,7 @@ void main() {
       test('the same families said again change nothing, and tell nobody', () {
         final before = faces.generation;
 
-        faces.setOnDevice({'Probe Serif', 'Probe Sans'});
+        faces.setHeld({'Probe Serif': 'serif', 'Probe Sans': 'sans'});
 
         expect(faces.generation, before);
         expect(told, 0);
@@ -269,7 +272,7 @@ void main() {
       test('one that came is held, and read when asked for', () async {
         device.files['Probe Mono'] = [_bytes(9)];
 
-        faces.setOnDevice({'Probe Sans', 'Probe Serif', 'Probe Mono'});
+        faces.setHeld({...both, 'Probe Mono': 'mono'});
 
         expect(told, 1);
         expect(faces.holds('Probe Mono'), isTrue);
@@ -283,7 +286,7 @@ void main() {
         faces.sendFor('Probe Sans');
         await arrive();
 
-        faces.setOnDevice({'Probe Serif'});
+        faces.setHeld({'Probe Serif': 'serif'});
         device.gate!.complete();
         await arrive();
 
@@ -301,7 +304,7 @@ void main() {
         device.files['Probe Sans'] = [_bytes(7)];
         told = 0;
 
-        faces.setOnDevice({'Probe Sans', 'Probe Serif'}, renewed: {'Probe Sans'});
+        faces.setHeld({...both, 'Probe Sans': 'sans, as other files'});
 
         expect(told, 1);
         expect(faces.engineFamilyOf('Probe Sans'), isNull);
@@ -327,7 +330,7 @@ void main() {
         await arrive();
 
         device.files['Probe Sans'] = [_bytes(7)];
-        faces.setOnDevice({'Probe Sans', 'Probe Serif'}, renewed: {'Probe Sans'});
+        faces.setHeld({...both, 'Probe Sans': 'sans, as other files'});
         device.gate!.complete();
         device.gate = null;
         await arrive();
@@ -347,6 +350,111 @@ void main() {
           [_bytes(7)],
         );
       });
+    });
+
+    group('🚨a set of files is handed to the engine ONCE, whoever holds '
+        'it', () {
+      test('a family said to be set with the files it HAD is called what '
+          'it was called then — at once, and nothing is read', () async {
+        faces.sendFor('Probe Sans');
+        await arrive();
+        final first = faces.engineFamilyOf('Probe Sans')!;
+        device.files['Probe Sans'] = [_bytes(7)];
+        faces.setHeld({...both, 'Probe Sans': 'sans, as other files'});
+        faces.sendFor('Probe Sans');
+        await arrive();
+        final second = faces.engineFamilyOf('Probe Sans')!;
+        expect(second, isNot(first), reason: '⛔fixture: other files');
+        final handed = device.handed.length;
+        final asked = device.asked.length;
+        told = 0;
+
+        faces.setHeld(both);
+
+        expect(told, 1, reason: 'its letters are set in other files again');
+        expect(faces.engineFamilyOf('Probe Sans'), first);
+        expect(faces.isOnItsWay('Probe Sans'), isFalse);
+        expect(faces.whenHere(['Probe Sans']), isNull);
+        await arrive();
+        expect(device.asked, hasLength(asked), reason: 'read again');
+        expect(
+          device.handed,
+          hasLength(handed),
+          reason:
+              'the engine never lets go of a file: handing it the same ones '
+              'at every change of project is a font kept twice, then thrice',
+        );
+
+        // And back again, to the other files: those too are still there.
+        faces.setHeld({...both, 'Probe Sans': 'sans, as other files'});
+        expect(faces.engineFamilyOf('Probe Sans'), second);
+        await arrive();
+        expect(device.handed, hasLength(handed));
+      });
+
+      test('what was being read when a family\'s files became others is '
+          'kept for the files it WAS: coming back to them finds them in '
+          'the engine', () async {
+        device.gate = Completer<void>();
+        faces.sendFor('Probe Sans');
+        await arrive();
+
+        faces.setHeld({...both, 'Probe Sans': 'sans, as other files'});
+        device.gate!.complete();
+        device.gate = null;
+        await arrive();
+        expect(
+          faces.engineFamilyOf('Probe Sans'),
+          isNull,
+          reason: 'what arrived is not the files it is set with now',
+        );
+        await arrive();
+        final other = faces.engineFamilyOf('Probe Sans');
+        expect(other, isNotNull, reason: '⛔fixture: the other files arrived');
+        final asked = device.asked.length;
+
+        faces.setHeld(both);
+
+        final first = faces.engineFamilyOf('Probe Sans');
+        expect(first, isNotNull);
+        expect(first, isNot(other));
+        await arrive();
+        expect(device.asked, hasLength(asked));
+      });
+
+      test('two families never share a name in the engine, though each is '
+          'kept by its files', () async {
+        faces
+          ..sendFor('Probe Sans')
+          ..sendFor('Probe Serif');
+        await arrive();
+
+        faces.setHeld({'Probe Sans': 'serif', 'Probe Serif': 'sans'});
+
+        expect(
+          faces.engineFamilyOf('Probe Sans'),
+          isNot(faces.engineFamilyOf('Probe Serif')),
+        );
+      });
+    });
+
+    test('🚨what could not be had is asked for AGAIN once what is held is '
+        'said again — its files may be somewhere they were not', () async {
+      device.files['Probe Sans'] = [];
+      faces.sendFor('Probe Sans');
+      await arrive();
+      expect(faces.holds('Probe Sans'), isFalse, reason: '⛔fixture');
+      device.files['Probe Sans'] = [_bytes(1)];
+      told = 0;
+
+      faces.setHeld(both);
+
+      expect(told, 1);
+      expect(faces.holds('Probe Sans'), isTrue);
+      faces.sendFor('Probe Sans');
+      await arrive();
+      expect(faces.engineFamilyOf('Probe Sans'), isNotNull);
+      expect(device.asked, ['Probe Sans', 'Probe Sans']);
     });
 
     test('faces that are let go of read nothing more', () async {
@@ -370,7 +478,7 @@ void main() {
       );
 
       aside
-        ..setOnDevice({'Probe Sans'})
+        ..setHeld({'Probe Sans': 'sans'})
         ..sendFor('Probe Sans');
       await arrive();
 
@@ -389,7 +497,7 @@ void main() {
 
       expect(other.generation, isNot(faces.generation));
       final before = other.generation;
-      other.setOnDevice({'Probe Sans'});
+      other.setHeld({'Probe Sans': 'sans'});
       expect(other.generation, isNot(before));
       expect(other.generation, isNot(faces.generation));
     });
@@ -397,14 +505,14 @@ void main() {
     test('a name minted for one is never minted for another', () async {
       device.files['Probe Sans'] = [_bytes(1)];
       faces
-        ..setOnDevice({'Probe Sans'})
+        ..setHeld({'Probe Sans': 'sans'})
         ..sendFor('Probe Sans');
       final other = _Device()..files['Probe Sans'] = [_bytes(1)];
       final aside = CanvasLetterFaces(
         files: other.filesOf,
         register: other.register,
       )
-        ..setOnDevice({'Probe Sans'})
+        ..setHeld({'Probe Sans': 'sans'})
         ..sendFor('Probe Sans');
       await arrive();
 

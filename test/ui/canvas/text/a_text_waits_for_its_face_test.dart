@@ -42,7 +42,7 @@ void main() {
         return [Uint8List(4)];
       },
       register: (bytes, {required engineFamily}) async {},
-    )..setOnDevice({'Probe Sans'});
+    )..setHeld({'Probe Sans': 'sans'});
   });
   tearDown(() => CanvasLetterFaces.current = CanvasLetterFaces());
 

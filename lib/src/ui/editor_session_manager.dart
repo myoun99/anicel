@@ -98,6 +98,7 @@ import 'session/tvpp_import_door.dart';
 import 'session/audio_clips.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
+import 'session/project_fonts.dart';
 import 'session/project_audio.dart';
 import 'session/movie_cel_hydrator.dart';
 import 'session/playback_rig.dart';
@@ -3231,6 +3232,16 @@ class EditorSessionManager extends ChangeNotifier
     staging: mediaStagingStore,
     conforms: audioConformStore,
     fingerprints: mediaFingerprints,
+  );
+
+  // ── the fonts registered with the project: their own object ─────────
+  //
+  // A collaborator (session/project_fonts.dart). The list is the project's
+  // and the bytes are [projectFile]'s; this is the registering and the
+  // taking out.
+  late final ProjectFonts projectFonts = ProjectFonts(
+    project: this,
+    file: projectFile,
   );
 
   late final ProjectFileDoor projectDoor = ProjectFileDoor(

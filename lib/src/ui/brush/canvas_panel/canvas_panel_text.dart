@@ -49,13 +49,22 @@ class _CanvasPanelText implements CelTextToolHost {
       _state.widget.historyManager?.gestures.mark;
 
   @override
-  void run(Command command, {HistoryMark? withCelMadeSince}) {
+  void run(
+    Command command, {
+    HistoryMark? withCelMadeSince,
+    Set<String> setIn = const {},
+  }) {
     final history = _state.widget.historyManager;
+    // ONE entry of history either way: the registering of a face rides
+    // INSIDE the text's step, so the fold below still counts two.
+    final step =
+        _state.widget.textCommands?.landingWith?.call(command, setIn) ??
+        command;
     if (history == null) {
-      command.execute();
+      step.execute();
       return;
     }
-    history.execute(command);
+    history.execute(step);
     if (withCelMadeSince != null) {
       _foldWithItsCel(history, withCelMadeSince);
     }

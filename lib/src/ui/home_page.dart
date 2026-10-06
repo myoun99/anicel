@@ -454,6 +454,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // too (2026-09-16).
   }
 
+  /// R9-rest: this device's font library is about to let go of [files].
+  /// Every open project that carries one of them — in front or behind —
+  /// takes its bytes first ([ProjectFonts.holdBytesOf]): a font registered
+  /// with a project stays the project's, whatever the device's list does.
+  Future<void> _keepFontFiles(Set<String> files) => Future.wait([
+    for (final session in _projects.sessions)
+      session.projectFonts.holdBytesOf(files),
+  ]);
+
   /// Makes a session for [project] and hangs this shell's hooks on it — the
   /// one way a project comes to be open ([OpenProjects.open] and
   /// [OpenProjects.prepare] call it).
@@ -1296,6 +1305,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     tipLibraryService: widget.tipLibraryService,
                                     fontLibraryService:
                                         widget.fontLibraryService,
+                                    keepFontFiles: _keepFontFiles,
                                     panelsMenu: _panelsMenu,
                                     brushTool: _brushTool,
                                     transformOptions: _transformOptions,

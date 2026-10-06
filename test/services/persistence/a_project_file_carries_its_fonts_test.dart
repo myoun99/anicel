@@ -619,8 +619,7 @@ void main() {
         expect(
           storedFontBytesFor(
             name,
-            layout: layout,
-            archivePath: s.path,
+            projectFile: (path: s.path, layout: layout),
             staging: null,
             deviceFontFile: (file) => fail('never made a path of'),
           ),
@@ -708,7 +707,7 @@ void main() {
     });
 
     test('🚨⛔never an entry under a name that is not one of the library\'s '
-        '— what comes back is WRITTEN, under that name, into the room', () async {
+        '— what comes back is WRITTEN, under that name, in the room', () async {
       final s = saving();
       const crafted = [
         'fonts/../outside-1.ttf',
@@ -758,6 +757,104 @@ void main() {
 
       expect(fontNamesStored(stored), unorderedEquals([sansName, serifName]));
       expect(fontNamesStored(const ProjectFontsToStore.none()), isEmpty);
+    });
+  });
+
+  group('reading a font\'s bytes from where they were found', () {
+    Future<(String, AnicelZipEntry)> fileWithTheFont() async {
+      final s = saving();
+      await s.service.save(
+        project: carrying([registered(sansName)]),
+        brushFrameStore: s.store,
+        filePath: s.path,
+        fonts: fromDevice({sansName: deviceFont('probe.ttf', 300000, 7)}),
+      );
+      return (s.path, entryOf(s.path, sansName)!);
+    }
+
+    test('an entry of the project file, whole', () async {
+      final (path, entry) = await fileWithTheFont();
+
+      final bytes = await readStoredFontBytes(
+        MediaArchiveBytes.ofEntry(archivePath: path, entry: entry),
+      );
+
+      expect(bytes, hasLength(300000));
+      expect(bytes, everyElement(7));
+    });
+
+    test('🚨⛔NOT the bytes that lie where an entry was: a range the file '
+        'was packed under is read as nothing, never as a font', () async {
+      final (path, entry) = await fileWithTheFont();
+
+      // Every byte of this range is in the file and reads without an
+      // error — it is the entry's own, eight bytes on, as a file that was
+      // packed while the range was in hand would leave it.
+      final moved = await readStoredFontBytes(
+        MediaArchiveBytes(
+          archivePath: path,
+          dataOffset: entry.dataOffset - 8,
+          length: entry.length,
+          entryCrc32: entry.crc32,
+        ),
+      );
+
+      expect(moved, isNull);
+    });
+
+    test('nothing, of a range that runs past the end of the file — or of '
+        'a file that is gone', () async {
+      final (path, entry) = await fileWithTheFont();
+
+      expect(
+        await readStoredFontBytes(
+          MediaArchiveBytes(
+            archivePath: path,
+            dataOffset: File(path).lengthSync() - 10,
+            length: entry.length,
+            entryCrc32: entry.crc32,
+          ),
+        ),
+        isNull,
+      );
+      expect(
+        await readStoredFontBytes(
+          MediaArchiveBytes(
+            archivePath: '${directory.path}/gone.anicel',
+            dataOffset: entry.dataOffset,
+            length: entry.length,
+            entryCrc32: entry.crc32,
+          ),
+        ),
+        isNull,
+      );
+    });
+
+    test('a file — the device\'s, or the copy this run\'s room keeps — as '
+        'it is', () async {
+      final path = deviceFont('probe.ttf', 5000, 9);
+
+      expect(await readStoredFontBytes(MediaFileBytes(path)), everyElement(9));
+      expect(
+        await readStoredFontBytes(MediaAppFileBytes(path: path, framed: false)),
+        hasLength(5000),
+      );
+      expect(
+        await readStoredFontBytes(
+          MediaFileBytes('${directory.path}/gone.ttf'),
+        ),
+        isNull,
+      );
+    });
+
+    test('⛔nothing, of a copy kept FRAMED: nothing keeps a font that way, '
+        'and those bytes are not a font\'s', () async {
+      final path = deviceFont('probe.ttf.z', 5000, 9);
+
+      expect(
+        await readStoredFontBytes(MediaAppFileBytes(path: path, framed: true)),
+        isNull,
+      );
     });
   });
 

@@ -269,7 +269,7 @@ void main() {
           return [Uint8List(4)];
         },
         register: (bytes, {required engineFamily}) async {},
-      )..setOnDevice({'Probe Sans'});
+      )..setHeld({'Probe Sans': 'sans'});
       addTearDown(() => CanvasLetterFaces.current = CanvasLetterFaces());
       final brought = CelTextContent(
         spans: [
@@ -609,8 +609,11 @@ class _Host implements CelTextToolHost {
   HistoryMark? get historyMark => history.gestures.mark;
 
   @override
-  void run(Command command, {HistoryMark? withCelMadeSince}) =>
-      history.execute(command);
+  void run(
+    Command command, {
+    HistoryMark? withCelMadeSince,
+    Set<String> setIn = const {},
+  }) => history.execute(command);
 
   @override
   void shownChanged() {}

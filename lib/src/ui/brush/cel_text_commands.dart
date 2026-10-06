@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../services/command.dart';
 import '../canvas/text/cel_text_tool.dart';
 
 /// THE TEXT TOOL'S CHANNEL (R9-rest): how the rest of the app reaches the
@@ -18,6 +19,17 @@ class CelTextCommands extends ChangeNotifier {
 
   /// The hand of the canvas on screen — null with none bound.
   CelTextTool? get tool => _tool;
+
+  /// What landing a text takes WITH it, as one step of history: [landing]
+  /// — the text set on its cel — and the registering, with the project, of
+  /// the faces its letters are written in ([families]; R9-rest). Stood here
+  /// by whoever holds both the fonts and the project on screen (the
+  /// workspace); null where nobody registers, and a landing is then itself.
+  ///
+  /// It rides this channel because the channel is what already runs from
+  /// the window to the hand: a second way down would be the same four
+  /// widgets handing one more thing on.
+  Command Function(Command landing, Set<String> families)? landingWith;
 
   /// Binds [tool]: its changes are this channel's from now on.
   void bind(CelTextTool tool) {

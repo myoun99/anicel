@@ -189,6 +189,35 @@ void main() {
       expect(textsOn(cel), [(1, 'ab')]);
     });
 
+    test('🚨a landing says the FACES its letters are written in — each '
+        'once, the app\'s own left unsaid — and a text taken off its cel '
+        'says none', () async {
+      final sans = plain.copyWith(fontFamily: 'Probe Sans');
+      final serif = plain.copyWith(fontFamily: 'Probe Serif');
+      final (:tool, :host, :baker, :cel) = hand(
+        texts: [
+          carried(
+            4,
+            said([run('ab', sans), run('cd'), run('ef', serif), run('g', sans)]),
+          ),
+        ],
+      );
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      tool.changeLetters((style) => style.copyWith(fontSize: 16));
+      await baker.pending.answer();
+
+      expect(host.ran, hasLength(1), reason: '⛔fixture: it landed');
+      expect(host.setInOf, [
+        {'Probe Sans', 'Probe Serif'},
+      ]);
+
+      tool.deleteText();
+
+      expect(host.ran, hasLength(2), reason: '⛔fixture: it was deleted');
+      expect(host.setInOf.last, isEmpty);
+    });
+
     test('beginning ANOTHER text lands the one in hand first', () async {
       final (:tool, :host, :baker, :cel) = hand();
       tool.beginText(cel, at);
@@ -1297,6 +1326,9 @@ class _Host implements CelTextToolHost {
 
   final List<({Command command, HistoryMark? withCelMadeSince})> ran = [];
 
+  /// The families each step was said to be set in, in the order they ran.
+  final List<Set<String>> setInOf = [];
+
   /// How many times the canvas was told to draw again.
   int redrawn = 0;
 
@@ -1307,7 +1339,12 @@ class _Host implements CelTextToolHost {
   HistoryMark? get historyMark => history.gestures.mark;
 
   @override
-  void run(Command command, {HistoryMark? withCelMadeSince}) {
+  void run(
+    Command command, {
+    HistoryMark? withCelMadeSince,
+    Set<String> setIn = const {},
+  }) {
+    setInOf.add(setIn);
     ran.add((command: command, withCelMadeSince: withCelMadeSince));
     history.execute(command);
   }

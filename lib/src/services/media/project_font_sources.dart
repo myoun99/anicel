@@ -1,9 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 
 import '../../models/project.dart';
 import '../../models/project_font_file.dart';
 import '../font_library_service.dart' show isFontLibraryFileName;
-import '../persistence/anicel_incremental_writer.dart' show AnicelZipLayout;
+import '../persistence/anicel_incremental_writer.dart'
+    show
+        AnicelZipLayout,
+        anicelCrc32Finish,
+        anicelCrc32Start,
+        anicelCrc32Update;
 import '../persistence/anicel_project_archive.dart';
 import '../persistence/media_staging_store.dart';
 import 'media_byte_source.dart';
@@ -67,11 +74,24 @@ Set<String> projectFontEntryNames(Project project) => {
     anicelFontEntryName(font.carriedAs),
 };
 
+/// A project file as it is read NOW: where it is, and the layout its
+/// entries lie in. One thing, because neither means anything without the
+/// other — an entry's place is a place in THAT file, as it stood at THAT
+/// read.
+typedef ProjectFileAsRead = ({String path, AnicelZipLayout layout});
+
+/// The project file at [path] as it reads now — null when there is none to
+/// read ([readableAnicelLayout]).
+ProjectFileAsRead? projectFileAsRead(String? path) {
+  final layout = readableAnicelLayout(path);
+  return layout == null ? null : (path: path!, layout: layout);
+}
+
 /// Where the bytes of the font a project carries as [carriedAs] are right
 /// now, in the ONE ORDER every reader and the save look in — the order a
 /// carried medium's are looked for in (`storedMediaBytesFor`):
 ///
-/// the project file's own entry ([layout], of the file at [archivePath]);
+/// the project file's own entry ([projectFile]);
 /// the copy this run's room keeps of a font a save took out of that file
 /// ([MediaStagingStore.keepLeftBehind]); the file this device's library
 /// keeps under the same name ([deviceFontFile] —
@@ -83,17 +103,21 @@ Set<String> projectFontEntryNames(Project project) => {
 /// under ([projectFontsKept]).
 MediaByteSource? storedFontBytesFor(
   String carriedAs, {
-  required AnicelZipLayout? layout,
-  required String? archivePath,
+  required ProjectFileAsRead? projectFile,
   required MediaStagingStore? staging,
   required String? Function(String file) deviceFontFile,
 }) {
   if (!isFontLibraryFileName(carriedAs)) {
     return null;
   }
-  final inFile = layout?.entryNamed(anicelFontEntryName(carriedAs));
-  if (inFile != null && archivePath != null) {
-    return MediaArchiveBytes.ofEntry(archivePath: archivePath, entry: inFile);
+  final inFile = projectFile?.layout.entryNamed(
+    anicelFontEntryName(carriedAs),
+  );
+  if (inFile != null) {
+    return MediaArchiveBytes.ofEntry(
+      archivePath: projectFile!.path,
+      entry: inFile,
+    );
   }
   final kept = staging?.findNamed(carriedAs);
   if (kept != null) {
@@ -119,15 +143,14 @@ ProjectFontsToStore projectFontSources({
   if (fonts.isEmpty) {
     return const ProjectFontsToStore.none();
   }
-  final layout = readableAnicelLayout(projectFilePath);
+  final projectFile = projectFileAsRead(projectFilePath);
   return ProjectFontsToStore(
     held: {for (final font in fonts) anicelFontEntryName(font.carriedAs)},
     entries: {
       for (final font in fonts)
         anicelFontEntryName(font.carriedAs): ?storedFontBytesFor(
           font.carriedAs,
-          layout: layout,
-          archivePath: projectFilePath,
+          projectFile: projectFile,
           staging: staging,
           deviceFontFile: deviceFontFile,
         ),
@@ -176,3 +199,56 @@ List<MediaLeftBehind> fontsLeftBehind({
         isFontLibraryFileName(name.substring(anicelFontEntryPrefix.length)))
       name,
 });
+
+/// The bytes [source] holds — [source] being where a font a project carries
+/// was found ([storedFontBytesFor]) — read a block at a time, so that a
+/// font of tens of megabytes does not hold the UI isolate while it is read.
+/// Null when they would not read, or are not the bytes the project file
+/// says its entry holds.
+///
+/// 🚨AN ENTRY OF THE PROJECT FILE IS CHECKED AGAINST ITS OWN CRC. Its range
+/// was resolved from one layout, and a save can pack the file while this
+/// reads it: what slid into that window is whole, well-formed, and
+/// somebody else's bytes. A null from here is then a font to look for
+/// AGAIN, where it is now (`ProjectFile.fontBytes`) — the tripwire a
+/// carried sound's conform is read behind (`mediaByteSourceFor`).
+Future<Uint8List?> readStoredFontBytes(MediaByteSource source) async {
+  try {
+    return switch (source) {
+      MediaArchiveBytes() => await _readEntryChecked(source),
+      MediaFileBytes(:final path) ||
+      MediaAppFileBytes(:final path, framed: false) => await File(
+        path,
+      ).readAsBytes(),
+      // Nothing keeps a font framed: these are not a font's bytes.
+      MediaAppFileBytes() || MediaFramedBytes() => null,
+    };
+  } on Object {
+    return null;
+  }
+}
+
+Future<Uint8List?> _readEntryChecked(MediaArchiveBytes entry) async {
+  final bytes = Uint8List(entry.length);
+  var filled = 0;
+  var running = anicelCrc32Start;
+  final blocks = File(
+    entry.archivePath,
+  ).openRead(entry.dataOffset, entry.dataOffset + entry.length);
+  await for (final block in blocks) {
+    if (filled + block.length > bytes.length) {
+      return null;
+    }
+    bytes.setRange(filled, filled + block.length, block);
+    filled += block.length;
+    running = anicelCrc32Update(
+      running,
+      block is Uint8List ? block : Uint8List.fromList(block),
+    );
+  }
+  final expected = entry.entryCrc32;
+  final whole =
+      filled == bytes.length &&
+      (expected == null || anicelCrc32Finish(running) == expected);
+  return whole ? bytes : null;
+}
