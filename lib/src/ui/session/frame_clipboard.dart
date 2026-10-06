@@ -1,3 +1,4 @@
+import '../../controllers/timeline_controller.dart' show SpliceRider;
 import '../../models/attached_layer_resolve.dart';
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
@@ -10,6 +11,7 @@ import '../../models/timeline_exposure.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_splice.dart';
 import '../../services/media/media_byte_source.dart' show MediaByteSource;
+import '../../services/project_lookup.dart' show attachedMirrorGroupOf;
 import '../../services/persistence/media_staging_store.dart';
 import 'render_caches.dart';
 import 'active_cut_controllers.dart';
@@ -882,6 +884,7 @@ class FrameClipboard implements BringsMedia {
           })
         >[];
     final mintedByLayer = <(LayerId, Map<FrameId, FrameId>)>[];
+    final riders = <SpliceRider>[];
     for (final run in runs) {
       final ids = shared[run.layer.id];
       if (ids == null) {
@@ -913,10 +916,21 @@ class FrameClipboard implements BringsMedia {
         bornSounds: copies.bornSounds,
       ));
       mintedByLayer.add((run.layer.id, copies.minted));
+      // F-275: the synced attach rows riding this row keep their pictures of
+      // the cels re-cut — born in the same step, carried by the same loop.
+      for (final mirrors in _mirrorCopiesRiding(run.layer, copies.minted)) {
+        riders.add((
+          layerId: mirrors.layerId,
+          bornFrames: mirrors.born,
+          bornBaseLinks: mirrors.baseLinks,
+        ));
+        mintedByLayer.add((mirrors.layerId, mirrors.minted));
+      }
     }
     _controllers.timelineController.spliceRunsForLayers(
       runs: splices,
       description: 'Unlink frames',
+      riders: riders,
     );
     final cut = _project.activeCutOrNull;
     if (cut != null) {
@@ -935,6 +949,34 @@ class FrameClipboard implements BringsMedia {
       }
     }
     _changes.notifyChanged();
+  }
+
+  /// The mirrors [base]'s synced attach rows keep of the cels [minted]
+  /// re-cut ([mirrorCopiesFor]) — each minted under its link group's row,
+  /// as the settle mints them (F-278).
+  List<MirrorCopies> _mirrorCopiesRiding(
+    Layer base,
+    Map<FrameId, FrameId> minted,
+  ) {
+    final cut = _project.activeCutOrNull;
+    if (cut == null) {
+      return const [];
+    }
+    final project = _project.repository.requireProject();
+    return mirrorCopiesFor(
+      attachedRows: attachedLayersOf(
+        base.id,
+        cut.layers,
+      ).where(isSyncedAttachedLayer),
+      baseMinted: minted,
+      mintedUnder: (attached) =>
+          attachedMirrorGroupOf(
+            project,
+            cutId: cut.id,
+            attached: attached,
+          )?.mintedUnder ??
+          attached.id,
+    );
   }
 }
 

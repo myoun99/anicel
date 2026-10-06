@@ -36,6 +36,16 @@ part 'timeline/timeline_drawing_frames.dart';
 part 'timeline/timeline_retime.dart';
 part 'timeline/timeline_delete.dart';
 
+/// A row that RIDES a spliced row and keeps no timeline of its own: the cels
+/// it gains and the base links that name them (F-275 — a synced attach row's
+/// mirrors of its base's new cels). See
+/// [TimelineController.spliceRunsForLayers].
+typedef SpliceRider = ({
+  LayerId layerId,
+  List<Frame> bornFrames,
+  Map<FrameId, FrameId> bornBaseLinks,
+});
+
 /// Timeline queries and editing commands over the unified timeline model
 /// (drawing blocks with explicit lengths + inbetween marks; emptiness is
 /// the absence of coverage).
@@ -405,7 +415,12 @@ class TimelineController {
     >
     runs,
     required String description,
-  }) => _retime.spliceRunsForLayers(runs: runs, description: description);
+    List<SpliceRider> riders = const [],
+  }) => _retime.spliceRunsForLayers(
+    runs: runs,
+    description: description,
+    riders: riders,
+  );
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,

@@ -1,3 +1,4 @@
+import '../../models/attached_layer_resolve.dart' show attachedMirrorCelId;
 import '../../models/audio_clip.dart';
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
@@ -115,6 +116,68 @@ mintIndependentClip({
     // The caller carries the baked surfaces across it after the splice.
     minted: minted,
   );
+}
+
+/// What one synced attach row gains when its base's cels are re-cut as cels
+/// of their own: the mirror cels [born], the [baseLinks] that name them, and
+/// which mirror each came from ([minted]) — for the pictures
+/// ([carryBakedPictures]).
+typedef MirrorCopies = ({
+  LayerId layerId,
+  List<Frame> born,
+  Map<FrameId, FrameId> baseLinks,
+  Map<FrameId, FrameId> minted,
+});
+
+/// 🚨F-275 (유저 2026-10-04): 「기준레이어 링크된상태에서 독립시킬때, 어태치
+/// 싱크레이어의 그림은 사라지고 기준레이어 그림만 남아있는데, 어태치 싱크
+/// 레이어 그림도 남아있도록」 — the SYNCED attach rows riding a base whose
+/// cels [baseMinted] (source → copy) were re-cut take their MIRRORS of those
+/// cels along.
+///
+/// A mirror cel is the attach row's picture OF a base cel, found by the base
+/// cel's id ([Layer.baseFrameLinks]). A base cel given a new id had no mirror
+/// under it, so the settle minted an EMPTY one
+/// (`cutWithReconciledAttachedMirrors`): the base kept its picture and the
+/// attach row lost the one drawn there. Each copy's mirror is born here
+/// instead — a copy of its source's mirror, under the very id the settle
+/// gives it ([attachedMirrorCelId] with [mintedUnder]'s answer), so the
+/// settle finds the link already made.
+///
+/// ⚠️A base cel a row never mirrored has nothing to keep there: the settle
+/// mints its empty mirror as before. A FREE attach row authors its own cels
+/// and is not one of [attachedRows].
+List<MirrorCopies> mirrorCopiesFor({
+  required Iterable<Layer> attachedRows,
+  required Map<FrameId, FrameId> baseMinted,
+  required LayerId Function(Layer attached) mintedUnder,
+}) {
+  final copies = <MirrorCopies>[];
+  for (final attached in attachedRows) {
+    final born = <Frame>[];
+    final baseLinks = <FrameId, FrameId>{};
+    final minted = <FrameId, FrameId>{};
+    for (final MapEntry(key: source, value: copy) in baseMinted.entries) {
+      final linked = attached.baseFrameLinks[source];
+      final mirror = linked == null ? null : attached.frameById(linked);
+      if (mirror == null) {
+        continue;
+      }
+      final id = attachedMirrorCelId(mintedUnder(attached), copy);
+      born.add(duplicateFrameContent(frame: mirror, newFrameId: id));
+      baseLinks[copy] = id;
+      minted[mirror.id] = id;
+    }
+    if (born.isNotEmpty) {
+      copies.add((
+        layerId: attached.id,
+        born: born,
+        baseLinks: baseLinks,
+        minted: minted,
+      ));
+    }
+  }
+  return copies;
 }
 
 /// WHAT A CLIP BECOMES WHEN IT LANDS ON [layer] — the linked branch and
