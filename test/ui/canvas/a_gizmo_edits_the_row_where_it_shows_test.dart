@@ -258,13 +258,54 @@ void main() {
       // divided the folder's back out (3 in, 1.5 out).
       expect(box.pose.scale, uniformScale(1));
 
-      box.scale!.committed(CanvasPoint(x: 1.5, y: -0.75));
+      final scale = box.scale! as RowBoxTwoScales;
+      scale.landing.committed(CanvasPoint(x: 1.5, y: -0.75));
       await tester.pump();
       expect(
         ownPose(session).scale,
         CanvasPoint(x: 1.5, y: -0.75),
         reason: 'what the box hands back is the row\'s own two scales',
       );
+    });
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」 — a folder is a row too, so the space a row lives in can be
+  // stretched or flipped now.
+  group('in a folder stretched across and flipped', () {
+    final stretched = TransformPose(center: centre, scaleX: -2);
+
+    testWidgets("the box measures its turn in the folder's space — where the "
+        "row's rotation lives", (tester) async {
+      await standOnTheRowsTransform(tester, stretched);
+      final box = boxOf(tester);
+
+      expect(box.turnSpace, isNotNull);
+      // The folder shows a point 100 right of the centre 200 to its LEFT.
+      expectPoint(
+        box.turnSpace!(CanvasPoint(x: centre.x - 200, y: centre.y + 30)),
+        CanvasPoint(x: centre.x + 100, y: centre.y + 30),
+        'a canvas point, as the folder holds it',
+      );
+    });
+
+    testWidgets('the box is still the row\'s own: its two scales, and the '
+        'sides the folder shows them along', (tester) async {
+      final session = await standOnTheRowsTransform(tester, stretched);
+      final box = boxOf(tester);
+
+      expect(box.scale, isA<RowBoxTwoScales>());
+      expect(box.pose.scale, uniformScale(1));
+      // The picture's top edge runs right to LEFT on the canvas, twice as
+      // long: the fixture's one mark is 8 across.
+      final [topLeft, topRight, ...] = box.corners;
+      expect(topRight.x - topLeft.x, closeTo(-8 * 2, 0.001));
+
+      (box.scale! as RowBoxTwoScales).landing.committed(
+        CanvasPoint(x: 3, y: 1),
+      );
+      await tester.pump();
+      expect(ownPose(session).scale, CanvasPoint(x: 3, y: 1));
     });
   });
 }

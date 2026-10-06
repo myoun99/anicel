@@ -47,26 +47,36 @@ void main() {
       .having((point) => point.x, 'across', closeTo(scale, tolerance))
       .having((point) => point.y, 'down', closeTo(scale, tolerance));
 
+  /// [scales] makes it a box of TWO scales (a layer's), [zooms] of ONE (a
+  /// camera's); [at] stands it on other corners than the picture's.
   Widget box({
     TransformPose? pose,
+    List<CanvasPoint>? at,
     CanvasSize size = canvasSize,
     CanvasViewport? viewport,
     bool claimsCanvas = true,
     List<CanvasPoint>? moves,
     List<CanvasPoint>? scales,
+    List<double>? zooms,
     List<double>? turns,
+    CanvasPoint Function(CanvasPoint onCanvas)? turnSpace,
     List<CanvasPoint>? anchors,
     VoidCallback? onCancelled,
   }) => RowTransformBox(
-    corners: corners,
+    corners: at ?? corners,
     pose: pose ?? TransformPose(center: anchor),
     canvasSize: size,
     viewport: viewport ?? CanvasViewport(),
     claimsCanvas: claimsCanvas,
     onCancelled: onCancelled ?? () {},
     move: moves == null ? null : into(moves),
-    scale: scales == null ? null : into(scales),
+    scale: scales != null
+        ? RowBoxTwoScales(into(scales))
+        : zooms != null
+        ? RowBoxOneScale(into(zooms))
+        : null,
     turn: turns == null ? null : into(turns),
+    turnSpace: turnSpace,
     cross: anchors == null
         ? null
         : (at: anchor, value: anchor, landing: into(anchors)),
@@ -154,6 +164,284 @@ void main() {
 
     expect(scales.single.x, 0);
     expect(scales.single.y, closeTo(2, 0.02));
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06) chose 「가른다 — AE 처럼 Scale X · Y(마이너스
+  // = 반전)」, the option whose terms were 「캔버스의 트랜스폼 상자에도 변 중앙
+  // 손잡이가 생긴다. 카메라는 줌 하나 그대로」.
+  group("an EDGE's middle drives its one axis", () {
+    Matcher scaled(double across, double down) => isA<CanvasPoint>()
+        .having((point) => point.x, 'across', closeTo(across, 1e-6))
+        .having((point) => point.y, 'down', closeTo(down, 1e-6));
+
+    /// What a drag of [by] from [from] lands on a box of two scales.
+    Future<List<CanvasPoint>> dragged(
+      WidgetTester tester,
+      Offset from,
+      Offset by, {
+      TransformPose? pose,
+      List<CanvasPoint>? at,
+    }) async {
+      final scales = <CanvasPoint>[];
+      await pumpBox(tester, box(pose: pose, at: at, scales: scales));
+      await tester.dragFrom(from, by);
+      await tester.pumpAndSettle();
+      return scales;
+    }
+
+    // The picture's box is (100, 50)–(300, 250) about the pivot (200, 150):
+    // each edge stands 100 from the pivot along its own axis.
+    testWidgets('the RIGHT edge, carried out, stretches the row across and '
+        'leaves down alone', (tester) async {
+      expect(
+        await dragged(tester, const Offset(300, 150), const Offset(100, 0)),
+        [scaled(2, 1)],
+      );
+    });
+
+    testWidgets('the BOTTOM edge drives the scale down', (tester) async {
+      expect(
+        await dragged(tester, const Offset(200, 250), const Offset(0, -50)),
+        [scaled(1, 0.5)],
+      );
+    });
+
+    testWidgets('the LEFT and the TOP edges read their travel from their own '
+        'side: away from the pivot is larger', (tester) async {
+      expect(
+        await dragged(tester, const Offset(100, 150), const Offset(-50, 0)),
+        [scaled(1.5, 1)],
+      );
+      expect(
+        await dragged(tester, const Offset(200, 50), const Offset(0, -50)),
+        [scaled(1, 1.5)],
+      );
+    });
+
+    testWidgets("travel ALONG the edge is not a scale: the hand's drift up "
+        'or down a side edge changes nothing', (tester) async {
+      expect(
+        await dragged(tester, const Offset(300, 150), const Offset(100, 37)),
+        [scaled(2, 1)],
+      );
+    });
+
+    testWidgets('carried ONTO the pivot the row is shown as nothing, and past '
+        'it the axis flips', (tester) async {
+      expect(
+        await dragged(tester, const Offset(100, 150), const Offset(100, 0)),
+        [scaled(0, 1)],
+      );
+      expect(
+        await dragged(tester, const Offset(100, 150), const Offset(150, 0)),
+        [scaled(-0.5, 1)],
+      );
+    });
+
+    testWidgets("the edge multiplies the row's own scale — a flip and a "
+        'stretch it already had are kept', (tester) async {
+      expect(
+        await dragged(
+          tester,
+          const Offset(300, 150),
+          const Offset(100, 0),
+          pose: TransformPose(center: anchor, scaleX: -1.5, scaleY: 0.25),
+        ),
+        [scaled(-3, 0.25)],
+      );
+    });
+
+    testWidgets('an edge moves its ONE axis wherever the anchor stands — off '
+        "the box's centre, up and to the left", (tester) async {
+      // The pivot at (150, 100): the right edge stands 150 from it across,
+      // and its middle 50 below it — which is not its axis.
+      expect(
+        await dragged(
+          tester,
+          const Offset(300, 150),
+          const Offset(75, 20),
+          pose: TransformPose(center: CanvasPoint(x: 150, y: 100)),
+        ),
+        [scaled(1.5, 1)],
+      );
+    });
+
+    testWidgets('in a box the folders above have SHEARED, an edge reads its '
+        "travel in the box's own two sides", (tester) async {
+      // Across (200, 100), down (-50, 200), about the centre (175, 200):
+      // the right edge's middle is (275, 250), half an across from it.
+      final sheared = [
+        CanvasPoint(x: 100, y: 50),
+        CanvasPoint(x: 300, y: 150),
+        CanvasPoint(x: 250, y: 350),
+        CanvasPoint(x: 50, y: 250),
+      ];
+      final pose = TransformPose(center: CanvasPoint(x: 175, y: 200));
+
+      // A quarter of the across side further out.
+      expect(
+        await dragged(
+          tester,
+          const Offset(275, 250),
+          const Offset(50, 25),
+          pose: pose,
+          at: sheared,
+        ),
+        [scaled(1.5, 1)],
+      );
+      // Along the down side — the edge's own run — nothing is scaled.
+      expect(
+        await dragged(
+          tester,
+          const Offset(275, 250),
+          const Offset(-5, 20),
+          pose: pose,
+          at: sheared,
+        ),
+        isEmpty,
+      );
+    });
+
+    testWidgets('an edge that stands ON the pivot has no distance to take a '
+        'ratio of: nothing lands', (tester) async {
+      // The pivot on the right edge's own line.
+      expect(
+        await dragged(
+          tester,
+          const Offset(300, 100),
+          const Offset(60, 0),
+          pose: TransformPose(center: CanvasPoint(x: 300, y: 200)),
+          at: [
+            CanvasPoint(x: 100, y: 50),
+            CanvasPoint(x: 300, y: 50),
+            CanvasPoint(x: 300, y: 150),
+            CanvasPoint(x: 100, y: 150),
+          ],
+        ),
+        isEmpty,
+      );
+    });
+
+    testWidgets('a box shown as NOTHING has no side to read an edge against: '
+        'nothing lands, and what the grab showed is dropped', (tester) async {
+      final scales = <CanvasPoint>[];
+      var cancels = 0;
+      await pumpBox(
+        tester,
+        box(
+          pose: TransformPose(center: anchor, scaleX: 0),
+          // No width: the left and right edges are one line.
+          at: [
+            CanvasPoint(x: 200, y: 50),
+            CanvasPoint(x: 200, y: 50),
+            CanvasPoint(x: 200, y: 250),
+            CanvasPoint(x: 200, y: 250),
+          ],
+          scales: scales,
+          onCancelled: () => cancels += 1,
+        ),
+      );
+      // The right edge's middle — the left's stands on the same spot.
+      await tester.dragFrom(const Offset(200, 150), const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      expect(scales, isEmpty);
+      expect(cancels, 1);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('a box of ONE scale — the camera\'s frame', () {
+    testWidgets('a corner lands the one number', (tester) async {
+      final zooms = <double>[];
+      await pumpBox(
+        tester,
+        box(
+          pose: TransformPose.uniform(center: anchor, zoom: 0.5),
+          zooms: zooms,
+        ),
+      );
+      await tester.dragFrom(const Offset(300, 250), const Offset(100, 100));
+      await tester.pumpAndSettle();
+
+      expect(zooms, [closeTo(1, 0.01)]);
+    });
+
+    testWidgets('it wears its corners ALONE: where an edge\'s middle would '
+        'stand, the press is the inside\'s', (tester) async {
+      final zooms = <double>[];
+      final moves = <CanvasPoint>[];
+      await pumpBox(tester, box(zooms: zooms, moves: moves));
+      // Just inside the right edge, on the square its middle would wear.
+      await tester.dragFrom(const Offset(298, 150), const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      expect(zooms, isEmpty);
+      expect(moves, [CanvasPoint(x: 240, y: 150)]);
+    });
+
+    testWidgets('…and on a box of two scales that same press is the edge\'s', (
+      tester,
+    ) async {
+      final scales = <CanvasPoint>[];
+      final moves = <CanvasPoint>[];
+      await pumpBox(tester, box(scales: scales, moves: moves));
+      await tester.dragFrom(const Offset(298, 150), const Offset(40, 0));
+      await tester.pumpAndSettle();
+
+      expect(moves, isEmpty);
+      expect(scales, hasLength(1));
+      expect(scales.single.x, closeTo(1.4, 1e-6));
+      expect(scales.single.y, 1);
+    });
+  });
+
+  group("a TURN is measured where the row's rotation lives", () {
+    // Straight above the pivot, past the box's top edge.
+    const above = Offset(200, 20);
+
+    testWidgets('in a folder stretched across, the hand\'s angle on the '
+        'canvas is not the row\'s: the row turns by the angle its parent '
+        'sees', (tester) async {
+      final turns = <double>[];
+      await pumpBox(
+        tester,
+        box(
+          turns: turns,
+          // The folder shows everything twice as wide.
+          turnSpace: (onCanvas) =>
+              CanvasPoint(x: onCanvas.x / 2, y: onCanvas.y),
+        ),
+      );
+      // To the upper right, as far across as up: 45° on the canvas, and in
+      // the folder half as far across — atan(65 / 130).
+      await tester.dragFrom(above, const Offset(130, 0));
+      await tester.pumpAndSettle();
+
+      expect(
+        turns.single,
+        closeTo(math.atan2(65, 130) * 180 / math.pi, 0.01),
+        reason: '↩️measured on the canvas it read 45',
+      );
+    });
+
+    testWidgets('in a FLIPPED folder the row turns the other way round — '
+        'which is what brings the picture under the hand', (tester) async {
+      final turns = <double>[];
+      await pumpBox(
+        tester,
+        box(
+          turns: turns,
+          turnSpace: (onCanvas) => CanvasPoint(x: -onCanvas.x, y: onCanvas.y),
+        ),
+      );
+      final radius = (above - pivot).distance;
+      // A quarter turn clockwise on the canvas.
+      await tester.dragFrom(above, Offset(200 + radius, 150) - above);
+      await tester.pumpAndSettle();
+
+      expect(turns.single, closeTo(-90, 0.5));
+    });
   });
 
   testWidgets('the INSIDE moves the position in whole pixels, and commits '
@@ -581,10 +869,10 @@ void main() {
           claimsCanvas: true,
           onCancelled: () {},
           // The app's loop: the value in flight comes back as the pose.
-          scale: (
+          scale: RowBoxTwoScales((
             changed: (next) => shown.value = next.x,
             committed: (_) {},
-          ),
+          )),
         ),
       ),
     );

@@ -219,6 +219,16 @@ void main() {
       expect(box.cross, isNull);
       expect(box.outlined, isFalse);
     });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06), of the option they chose: 「카메라는 줌
+    // 하나 그대로」.
+    testWidgets('its scale is ONE number, so it wears its corners alone, and '
+        'it turns on the canvas itself', (tester) async {
+      await pumpBox(tester);
+      final box = tester.widget<RowTransformBox>(find.byType(RowTransformBox));
+      expect(box.scale, isA<RowBoxOneScale>());
+      expect(box.turnSpace, isNull);
+    });
   });
 }
 

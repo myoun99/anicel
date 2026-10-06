@@ -935,19 +935,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final parent = _parentSpaceOf(session, activeLayer);
     // The box draws the row as the canvas SHOWS it — its own pose under the
     // folders' — and turns and scales about the row's anchor where that
-    // shows. The scale and the turn it stands on are the ROW'S OWN: a corner
-    // scales by a ratio and outside turns by an angle, and what comes back
-    // is the value the lane keys.
+    // shows. The scale and the turn it stands on are the ROW'S OWN: a
+    // handle scales by a ratio and outside turns by an angle, and what
+    // comes back is the value the lane keys.
     //
     // ↩️It stood on the parent's zoom times the row's and the parent's turn
     // plus the row's, and each landing took the parent's back off — a
     // second fold of the folders beside the plan's, which only a parent
     // that is a similarity has a zoom and a turn to give.
     //
-    // 🚧The TURN is still measured on the canvas, which is the row's own
-    // turn while the folders above only move, turn and scale evenly. It is
-    // measured in the parent's space once a folder can stretch
-    // (`TransformPose`'s stages).
+    // The TURN is measured in the parent's space
+    // ([RowTransformBox.turnSpace]): the row's rotation lives there, and a
+    // folder may stretch or flip now.
     final pose = own.copyWith(center: parent.toCanvas(own.center));
     final name = activeLayer.name;
     final box = frame.boxGrabbable;
@@ -989,18 +988,21 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             )
           : null,
       scale: box
-          ? _handleLandings<CanvasPoint>(
-              session,
-              activeLayer.id,
-              (scale) =>
-                  (track, frameIndex) => transformTrackWithScaleDragged(
-                    track,
-                    frameIndex: frameIndex,
-                    scale: scale,
-                  ),
-              description: 'Scale $name',
+          ? RowBoxTwoScales(
+              _handleLandings<CanvasPoint>(
+                session,
+                activeLayer.id,
+                (scale) =>
+                    (track, frameIndex) => transformTrackWithScaleDragged(
+                      track,
+                      frameIndex: frameIndex,
+                      scale: scale,
+                    ),
+                description: 'Scale $name',
+              ),
             )
           : null,
+      turnSpace: parent.fromCanvas,
       turn: box
           ? _handleLandings<double>(
               session,
