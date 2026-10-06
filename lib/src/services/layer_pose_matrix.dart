@@ -94,9 +94,9 @@ Matrix4 placementMatrix(LayerPlacement placement, {double rasterScale = 1}) =>
       ..setEntry(1, 3, placement.ty * rasterScale);
 
 /// CANVAS space → a placed row's ARTWORK space: [placement] run backwards.
-/// Null when the placement is singular — a zero scale collapses the layer,
-/// and [TransformPose] refuses one on either axis, so that is a backstop
-/// rather than a path.
+/// Null when the placement has COLLAPSED its row — a scale of zero on an
+/// axis, the frame a flip passes through ([TransformPose.scaleX]): the row
+/// shows nothing, and no point of the canvas is a point of its artwork.
 ///
 /// ⛔ONE INVERSE. The eyedropper's pick (R28 #7), a region restated in a
 /// posed layer's pixels, the guides the pen draws against and the fill's

@@ -249,6 +249,46 @@ void main() {
       );
     });
 
+    // A scale of zero on an axis — the frame a flip passes through
+    // (F-256-Q1) — is the row shown as nothing: there is no pixel of it
+    // under the pointer, and what lies under it is what is picked.
+    test('a layer scaled to NOTHING on an axis is not picked: the pick reads '
+        'what lies under it', () {
+      final red = surfaceWithPixels({
+        (3, 3): [0xFF, 0x00, 0x00, 0xFF],
+      });
+      final blue = surfaceWithPixels({
+        for (var y = 0; y < 8; y += 1)
+          for (var x = 0; x < 8; x += 1) (x, y): [0x00, 0x00, 0xFF, 0xFF],
+      });
+      final flipping = cut([
+        layer('bottom'),
+        layer(
+          'top',
+          transformTrack: TransformTrack.empty().copyWith(
+            scale: PropertyTrack<CanvasPoint>.empty().withKey(
+              0,
+              CanvasPoint(x: 0, y: 1),
+            ),
+          ),
+        ),
+      ]);
+
+      for (final point in [CanvasPoint(x: 3, y: 3), CanvasPoint(x: 4, y: 6)]) {
+        expect(
+          sampleCompositeColor(
+            cut: flipping,
+            frameIndex: 0,
+            surfaceResolver: (layer, _) =>
+                layer.id.value == 'bottom' ? red : blue,
+            point: point,
+          ),
+          point.x == 3 ? 0xFFFF0000 : canvasPaperColor,
+          reason: 'at $point',
+        );
+      }
+    });
+
     test('R28 #6: the LAYER source reads the active layer alone; DISPLAY '
         'reads the whole stack', () {
       final red = surfaceWithPixels({

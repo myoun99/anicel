@@ -334,6 +334,31 @@ void main() {
           reason: 'unflipped, the stroke would have gone right',
         );
       });
+
+      // Keyed from 100 to −100, the frame halfway is a scale of zero: the
+      // picture shows nothing of the row there, and has no pixel of its cel
+      // to hand the pen.
+      testWidgets('a row scaled to NOTHING on an axis: its picture takes no '
+          'ink, and says nothing of it', (tester) async {
+        final origin = await pump(
+          tester,
+          still,
+          rowPose: TransformPose(
+            center: CanvasPoint(x: 320, y: 180),
+            scaleX: 0,
+          ),
+        );
+        final shown = picture.shown;
+        await stroke(tester, origin, [
+          shown.center,
+          shown.center + const Offset(12, 0),
+          shown.center + const Offset(24, 0),
+        ]);
+
+        expect(tester.takeException(), isNull);
+        final cel = store.bakedSurfaceOrNull(picture.window.key);
+        expect(cel == null || cel.tiles.isEmpty, isTrue);
+      });
     });
 
     testWidgets('🗣️H49: a stroke from the picture out over its cell\'s band '

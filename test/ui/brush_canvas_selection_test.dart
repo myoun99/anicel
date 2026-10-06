@@ -2002,6 +2002,61 @@ void main() {
     );
   });
 
+  // A scale of zero on an axis — the frame a flip passes through
+  // (F-256-Q1) — is the row shown as nothing: the box moved nothing of that
+  // cel, so its confirm leaves the cel as it is (「불가능하면 그냥 무시」).
+  // ↩️Only a cel read through the user's selection was turned away; one
+  // taken whole was moved as if its row lay unplaced.
+  testWidgets('🚨a cel its row shows as NOTHING is left as it is by a range '
+      'confirm — with nothing selected too', (tester) async {
+    final keys = BrushCanvasFixture.createFrameKeys();
+    final collapsed = (
+      pose: TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
+      anchorPoint: CanvasPoint(x: 0, y: 0),
+    );
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      transformTargetKeys: () => [keys[0], keys[1]],
+      cellPlacementOf: (key) => key == keys[1] ? collapsed : null,
+    );
+    env.coordinator.selectFrame(keys[1]);
+    env.coordinator.commitSourceStroke(
+      sourceDabs: [dab(45, 45), dab(120, 120)],
+    );
+    env.coordinator.selectFrame(keys.first);
+    await env.setTool(CanvasTool.move);
+    expect(env.commands.region, isNull, reason: '⛔전제: 아무것도 선택 안 함');
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues(
+      (now) => now.copyWith(
+        tx: 10,
+        ty: 5,
+        rotationDegrees: 0,
+        sx: 1,
+        sy: 1,
+      ),
+    );
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, 55, 50),
+      isNonZero,
+      reason: 'LIVENESS — the standing cel moved',
+    );
+    env.coordinator.selectFrame(keys[1]);
+    expect(inkAt(env.coordinator, 120, 120), isNonZero, reason: 'as it was');
+    expect(
+      inkAt(env.coordinator, 130, 125),
+      0,
+      reason: '⛔moved here it was moved as if its row lay unplaced',
+    );
+  });
+
   /// 🚨★★★**A WARP OVER A RANGE BENDS EVERY CEL IN IT**
   /// (`a-warp-over-a-frame-range-lands-on-one-cel`, measured 2026-10-06).
   ///

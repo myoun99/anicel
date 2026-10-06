@@ -564,4 +564,38 @@ void main() {
       cache.dispose();
     });
   });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」. Keyed from 100 to −100, the frame halfway is a scale of zero:
+  // the row is not drawn there, as After Effects does not draw one.
+  testWidgets('a row scaled to NOTHING on an axis is composited as nothing '
+      '— the frame a flip passes through', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      final flipping = cut(
+        transformTrack: TransformTrack.empty().copyWith(
+          scale: PropertyTrack<CanvasPoint>.empty()
+              .withKey(0, CanvasPoint(x: 1, y: 1))
+              .withKey(2, CanvasPoint(x: -1, y: 1)),
+        ),
+      );
+      Future<bool> inked(int frameIndex) async {
+        final image = await cache.prepareComposite(
+          cut: flipping,
+          frameIndex: frameIndex,
+          quality: PlaybackQuality.full,
+        );
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        return data!.buffer.asUint8List().any((byte) => byte != 0);
+      }
+
+      expect(await inked(0), isTrue, reason: 'fixture: the row has ink');
+      expect(await inked(1), isFalse, reason: 'halfway: nothing across');
+      expect(await inked(2), isTrue, reason: 'and flipped, it is back');
+      cache.dispose();
+    });
+  });
 }

@@ -230,15 +230,21 @@ class _CanvasPanelLift {
         continue;
       }
       final placement = placementOf(key);
+      // A row that shows this cel as NOTHING — scaled to zero on an axis,
+      // the frame a flip passes through — has put nothing of it on the
+      // canvas for the box to have moved (「불가능하면 그냥 무시」).
+      // ↩️Only a cel read through the user's selection was turned away
+      // here, by the region coming back null; a cel taken whole went on,
+      // and was moved as if its row lay unplaced.
+      if (placement != null && canvasToArtwork(placement) == null) {
+        continue;
+      }
       final userSelectionInArtwork = userSelection == null
           ? null
           : regionInArtworkSpace(
               region: userSelection,
               placement: placement,
             );
-      if (userSelection != null && userSelectionInArtwork == null) {
-        continue;
-      }
       final surface = coordinator.currentSurfaceOf(key);
       final lift = buildSelectionLiftDabs(
         region:

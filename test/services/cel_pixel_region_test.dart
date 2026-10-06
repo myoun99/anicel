@@ -174,17 +174,24 @@ void main() {
       expect(points.first.y, closeTo(100, 0.001));
     });
 
-    test('the singular-pose guard is a backstop, not a path', () {
-      // A pose cannot collapse a layer in the first place, so the null
-      // return in regionInArtworkSpace is unreachable through the model.
-      // Pinned rather than deleted: if TransformPose ever admits a zero
-      // scale — on either axis, since F-256-Q1 gave it two — this is the
-      // line that says the guard has become a real path.
+    // ↩️「the singular-pose guard is a backstop, not a path」 stood here,
+    // pinning that a pose REFUSED a zero scale — kept, it said, so that
+    // 「if TransformPose ever admits a zero scale … this is the line that
+    // says the guard has become a real path」. It has: a flip passes
+    // through zero (F-256-Q1).
+    test('a region on a row its placement has COLLAPSED names no pixel', () {
       for (final collapsed in [
-        () => TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
-        () => TransformPose(center: CanvasPoint(x: 0, y: 0), scaleY: 0),
+        TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
+        TransformPose(center: CanvasPoint(x: 0, y: 0), scaleY: 0),
       ]) {
-        expect(collapsed, throwsArgumentError);
+        expect(
+          regionInArtworkSpace(
+            region: region,
+            placement: placedBy(collapsed, canvas),
+          ),
+          isNull,
+          reason: '$collapsed',
+        );
       }
     });
   });

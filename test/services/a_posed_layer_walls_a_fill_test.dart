@@ -140,6 +140,20 @@ void main() {
     expect(height, inInclusiveRange(8, 12));
   });
 
+  // A scale of zero — the frame a flip passes through (F-256-Q1) — is the
+  // layer shown as nothing, so it walls nothing: the fill sees the picture
+  // the screen shows.
+  test('a line layer scaled to NOTHING walls nothing: the fill runs as if '
+      'it were not there', () {
+    final (width, height) = filledAt(
+      CanvasPoint(x: 16, y: 16),
+      cutOf([cel('line', scale: 0), cel('paint')]),
+      {'line': outline(12, 19)},
+      active: 'paint',
+    );
+    expect((width, height), (size.width, size.height));
+  });
+
   test('the raster lies in the space the pen is in: a HALF-SIZED paint '
       'layer fills the line art\'s inside at its own scale', () {
     // Unposed box 8..23: inside canvas 9..22 (14). The paint layer is

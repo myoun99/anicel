@@ -105,8 +105,8 @@ class _CanvasPanelSelection {
   /// as the row's own coordinates, so on a row placed 100 to the right they
   /// all acted 100 to the left of what the user drew around.
   ///
-  /// Null when the placement is singular — a backstop, since no pose the
-  /// model can hold collapses a row.
+  /// Null when the placement has collapsed the row — it shows nothing, so
+  /// there is nothing under the outline to act on.
   CanvasSelectionRegion? regionOnTheRow(CanvasSelectionRegion region) {
     final placement = _state.widget.interactiveContentPose;
     return regionInArtworkSpace(region: region, placement: placement);

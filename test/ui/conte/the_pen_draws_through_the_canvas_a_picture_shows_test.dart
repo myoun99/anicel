@@ -221,6 +221,17 @@ void main() {
       expectReadsBack(windowOf(null), toPaper);
     });
 
+    test('a row its placement has COLLAPSED shows no pixel of its cel '
+        'under the pen — where the same row unplaced shows them', () {
+      final collapsed = placementOf((
+        pose: TransformPose(center: CanvasPoint(x: 80, y: 45), scaleX: 0),
+        anchorPoint: null,
+      ), camera.frameSize);
+
+      expect(windowOf(null).shows, isNotNull, reason: 'fixture');
+      expect(windowOf(collapsed).shows, isNull);
+    });
+
     test('a picture window moved a page on keeps its row\'s placement', () {
       final placement = placementOf((
         pose: TransformPose(center: CanvasPoint(x: 80, y: 45), scaleX: -1),

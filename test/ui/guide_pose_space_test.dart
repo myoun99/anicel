@@ -97,14 +97,17 @@ void main() {
       expectNear(space.toStroke.apply(space.toCanvas.apply(artwork)), artwork);
     });
 
-    test('a zoom that would collapse the layer cannot even be built', () {
-      // The no-way-back answer in guideSpaceOf is a backstop, not a path:
-      // the pose model refuses a zero scale at construction, so the layer
-      // can never actually collapse to nothing under it.
-      expect(
-        () => TransformPose.uniform(center: centre, zoom: 0),
-        throwsArgumentError,
-      );
+    // ↩️「a zoom that would collapse the layer cannot even be built」 stood
+    // here: the pose refused a zero scale. A flip passes through one
+    // (F-256-Q1), so the no-way-back answer is a path now.
+    test('a row its placement has COLLAPSED has no space of its own: what a '
+        'guide measures there is measured on the canvas', () {
+      final collapsed = placementOf((
+        pose: TransformPose(center: centre, scaleX: 0),
+        anchorPoint: null,
+      ), canvasSize);
+
+      expect(guideSpaceOf(collapsed), GuideSpace.canvas);
     });
   });
 

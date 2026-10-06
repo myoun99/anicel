@@ -45,8 +45,11 @@ BrushDab _carried(
   if (placement == null) {
     return stamp;
   }
-  // A collapsed row shows nothing to carry — the backstop every reader of a
-  // placement keeps ([canvasToArtwork]).
+  // A collapsed row has no artwork to carry to or from, and every caller
+  // turns one away before it gets here: a lift where its region names no
+  // pixel of the row (`regionInArtworkSpace`), a range landing where the
+  // row shows nothing of the cel. So the stamp is handed back as it came
+  // rather than guessed at.
   final back = canvasToArtwork(placement);
   if (back == null) {
     return stamp;

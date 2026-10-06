@@ -53,4 +53,22 @@ void main() {
       expect(round.y, closeTo(point.y, 1e-9));
     }
   });
+
+  // A scale of zero on an axis — the frame a flip passes through — lays
+  // every point of the artwork on one line of the canvas, or on one point.
+  test('a COLLAPSED placement has no way back: there is no artwork under a '
+      'point of the canvas', () {
+    for (final collapsed in [
+      TransformPose(center: CanvasPoint(x: 40, y: 30), scaleX: 0),
+      TransformPose(
+        center: CanvasPoint(x: 40, y: 30),
+        scaleY: 0,
+        rotationDegrees: 30,
+      ),
+      TransformPose(center: CanvasPoint(x: 40, y: 30), scaleX: 0, scaleY: 0),
+    ]) {
+      final placement = placementOf((pose: collapsed, anchorPoint: null), size);
+      expect(canvasToArtwork(placement), isNull, reason: '$collapsed');
+    }
+  });
 }

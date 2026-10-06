@@ -562,6 +562,47 @@ void main() {
     });
   }
 
+  // A scale of zero on an axis — the frame a flip passes through (F-256-Q1)
+  // — is the row shown as nothing: alone, and as all a folder holds, where
+  // the folder's buffer has no extent to be made over.
+  for (final walk in [false, true]) {
+    final route = walk ? 'the direct walk' : 'the display buffer';
+    testWidgets('a row scaled to NOTHING on an axis draws nothing, alone or '
+        'in a folder — $route', (tester) async {
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      Future<Uint8List> seen(List<CompositeNode<CanvasStackRow>> nodes) async {
+        final shown = await screen(
+          tester,
+          whole: true,
+          nodes: nodes,
+          viewport: CanvasViewport(),
+          walk: walk,
+        );
+        addTearDown(shown.images.dispose);
+        return shown.bytes;
+      }
+
+      final collapsed = row(
+        'interior',
+        pose: TransformPose(center: center, scaleX: 0),
+      );
+      final bare = await seen(const []);
+      expect(await seen([row('interior')]), isNot(bare), reason: 'fixture');
+      expect(await seen([collapsed]), bare);
+      expect(
+        await seen([
+          CompositeGroup<CanvasStackRow>(
+            children: [collapsed],
+            opacity: 0.7,
+            blendMode: LayerBlendMode.multiply,
+          ),
+        ]),
+        bare,
+      );
+    });
+  }
+
   testWidgets('both arms ran: the buffer draws ink rows from their ink, the '
       'walk lays them back whole, and the advanced blends and poses keep '
       'their images whole', (tester) async {

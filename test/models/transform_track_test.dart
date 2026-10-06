@@ -209,6 +209,19 @@ void main() {
       expect(mid.scaleY, 1);
     });
 
+    test('a Scale keyed from 100 to −100 across resolves the frame between '
+        'them: nothing across, the whole way down', () {
+      final track = TransformTrack.empty().copyWith(
+        scale: PropertyTrack<CanvasPoint>.empty()
+            .withKey(0, CanvasPoint(x: 1, y: 1))
+            .withKey(2, CanvasPoint(x: -1, y: 1)),
+      );
+
+      final halfway = track.resolveAt(frameIndex: 1, orElse: () => _pose(0));
+      expect(halfway.scaleX, 0);
+      expect(halfway.scaleY, 1);
+    });
+
     test('an unkeyed scale lane takes BOTH of the default pose\'s scales', () {
       final track = TransformTrack.empty().copyWith(
         rotation: PropertyTrack<double>().withKey(0, 90),

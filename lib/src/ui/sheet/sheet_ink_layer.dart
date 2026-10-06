@@ -17,7 +17,11 @@ import '../../services/canvas_selection_shape.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../../services/layer_pose_paint.dart'
-    show LayerPlacement, placementMatrix, placementViewportWrapMatrix;
+    show
+        LayerPlacement,
+        canvasToArtwork,
+        placementMatrix,
+        placementViewportWrapMatrix;
 import '../brush/brush_tool_state.dart';
 import '../canvas/active_stroke_overlay.dart';
 import '../canvas/bitmap_surface_painter.dart';
@@ -379,12 +383,19 @@ class SheetPictureWindow extends SheetWindow {
   }
 
   /// Its [paperOutline], and nothing where that is no outline at all — a
-  /// camera framing none of the canvas.
+  /// camera framing none of the canvas — or where the row's placement has
+  /// collapsed it: a cel that shows nothing has no pixel under the pen
+  /// ([canvasToArtwork]).
   @override
-  CanvasSelectionRegion? get shows => refusal != null ||
-          paperOutline.length < 3
+  CanvasSelectionRegion? get shows =>
+      refusal != null || paperOutline.length < 3 || _collapsed
       ? null
       : CanvasSelectionRegion.shape(surfaceShapeOf(paperOutline));
+
+  bool get _collapsed => switch (placement) {
+    null => false,
+    final placement => canvasToArtwork(placement) == null,
+  };
 
   @override
   SheetPictureWindow shiftedBy(Offset by) {

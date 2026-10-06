@@ -101,11 +101,13 @@ CelPixelWalk celPixelWalkFor({
 /// region back unchanged, so the pass stays byte-identical to what a lift
 /// on the same selection would take.
 ///
-/// Null when the pose is singular. ⚠️That is a BACKSTOP rather than a path:
-/// [TransformPose] refuses a zero scale on either axis outright, so no pose
-/// the model can hold collapses a layer. `cel_pixel_region_test` pins that
-/// refusal, which is what would tell a later round the guard had become
-/// reachable.
+/// Null when the placement has collapsed the row ([canvasToArtwork]): it
+/// shows nothing, so a region drawn on the canvas names none of its
+/// pixels.
+/// ↩️This was a backstop: the pose refused a zero scale outright, and
+/// `cel_pixel_region_test` pinned that refusal to say when the guard
+/// became a path. It did with the minus of the two scales (F-256-Q1) — a
+/// flip passes through zero.
 CanvasSelectionRegion? regionInArtworkSpace({
   required CanvasSelectionRegion region,
   required LayerPlacement? placement,

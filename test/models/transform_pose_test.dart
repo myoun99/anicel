@@ -34,8 +34,17 @@ void main() {
     expect(TransformPose(center: centre).rotationDegrees, 0);
   });
 
-  test('a scale of nothing, or of no number, is refused on EITHER axis', () {
-    for (final bad in [0.0, double.nan, double.infinity]) {
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y(마이너스 =
+  // 반전)」. Keyed from 100 to −100, the frame halfway is a scale of zero.
+  // ↩️Zero was refused beside the two below, while nothing keyed a minus.
+  test('a scale of NOTHING is a scale, on either axis — the frame a flip '
+      'passes through', () {
+    expect(TransformPose(center: centre, scaleX: 0).scale.x, 0);
+    expect(TransformPose(center: centre, scaleY: 0).scale.y, 0);
+  });
+
+  test('a scale of no number is refused on EITHER axis', () {
+    for (final bad in [double.nan, double.infinity]) {
       expect(
         () => TransformPose(center: centre, scaleX: bad),
         throwsArgumentError,

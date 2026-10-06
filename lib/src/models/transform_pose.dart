@@ -28,11 +28,11 @@ CanvasPoint uniformScale(double zoom) => CanvasPoint(x: zoom, y: zoom);
 /// fill, a region and a stamp each take a stretched, a flipped or a
 /// sheared row as it is — and so does everything a guide measures, which
 /// is measured on the canvas and read through the placement
-/// (`GuideSpace`). Nothing lets the two scales differ YET, because three
+/// (`GuideSpace`) and a conte picture's pen, laid through it as the main
+/// canvas's is. Nothing lets the two scales differ YET, because two
 /// readers still work a row out as a similarity: the row's box (one
-/// scale a corner, and a turn measured on the canvas), the Scale lane's
-/// one number, and a conte picture's ink view (one brush viewport for
-/// the whole chain). The ones that take a number take [zoom], which is
+/// scale a corner, and a turn measured on the canvas) and the Scale
+/// lane's one number. The ones that take a number take [zoom], which is
 /// how they are found.
 class TransformPose {
   TransformPose({
@@ -42,11 +42,11 @@ class TransformPose {
     this.rotationDegrees = 0.0,
   }) {
     for (final (name, scale) in [('scaleX', scaleX), ('scaleY', scaleY)]) {
-      if (!scale.isFinite || scale == 0) {
+      if (!scale.isFinite) {
         throw ArgumentError.value(
           scale,
           name,
-          'A transform scale must be finite and not zero.',
+          'A transform scale must be finite.',
         );
       }
     }
@@ -85,6 +85,16 @@ class TransformPose {
   /// The scale along each of the layer's own axes, 1 being the size it has.
   /// A NEGATIVE scale is that axis mirrored (`TransformValues.sx` — a flip
   /// is a number, not a flag beside one).
+  ///
+  /// ZERO is the layer shown as NOTHING, as After Effects shows one: keyed
+  /// from 100 to −100, the frame halfway between is this. A placement made
+  /// of it has no way back to the artwork (`canvasToArtwork` — null), and
+  /// every reader of a placement answers that the one way: the row is not
+  /// there to be drawn, picked from, filled against, selected in or drawn
+  /// on.
+  /// ↩️Zero was refused here, which held while nothing could key a minus —
+  /// and a pose that cannot be zero cannot be resolved on the frame a flip
+  /// passes through.
   final double scaleX;
   final double scaleY;
 
