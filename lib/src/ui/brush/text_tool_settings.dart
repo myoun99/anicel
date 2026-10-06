@@ -140,7 +140,7 @@ class _TextInHandRow extends StatelessWidget {
           keyValue: 'text-tool-text-$index-delete',
           icon: Icons.delete_outline,
           tooltip: AppText.strings.textToolDeleteText,
-          deletes: true,
+          does: PanelFlyoutActionDoes.deletes,
           onPressed: () => tool?.list.delete(text.id),
         ),
       ),

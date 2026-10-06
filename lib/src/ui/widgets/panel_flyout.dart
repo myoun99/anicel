@@ -19,11 +19,18 @@ sealed class PanelFlyoutEntry {
   const PanelFlyoutEntry();
 }
 
-/// Non-interactive section caption.
+/// Section caption. It is not chosen — and it can carry ONE command at its
+/// end ([action]), for what is done to the list rather than to a row of it:
+/// the ＋ of a list things are brought into (the text tool's faces, 유저
+/// 2026-10-06, the drawing taken: 「글꼴 ＋」 over the list of faces).
 class PanelFlyoutHeader extends PanelFlyoutEntry {
-  const PanelFlyoutHeader(this.label);
+  const PanelFlyoutHeader(this.label, {this.action});
 
   final String label;
+
+  /// Pressed, it closes the list and runs — as a row's own command does
+  /// ([PanelFlyoutRowAction]). Top level only: a submenu draws none.
+  final PanelFlyoutRowAction? action;
 }
 
 /// Thin separator between groups.
@@ -91,7 +98,7 @@ class PanelFlyoutRowAction {
     required this.icon,
     required this.tooltip,
     required this.onPressed,
-    this.deletes = false,
+    this.does = PanelFlyoutActionDoes.other,
   });
 
   final String keyValue;
@@ -101,10 +108,24 @@ class PanelFlyoutRowAction {
   /// Runs AFTER the flyout closes.
   final VoidCallback onPressed;
 
-  /// Whether this takes the row's item away: the glyph is then the app's
-  /// delete red (`AppColors.deleteGlyph`), as a delete is everywhere.
-  final bool deletes;
+  /// What the command does to the list — which is what colours its glyph.
+  final PanelFlyoutActionDoes does;
+
+  /// The glyph's colour: the two the app keeps for these two acts wherever
+  /// they appear (`AppColors.addGlyph`, `AppColors.deleteGlyph` — 유저
+  /// 2026-08-12: 「+버튼은 강조색이라는 공통규칙있는데, 딜리트는 지금처럼
+  /// 빨간색 공통규칙두자」), and the row's own ink for any other.
+  Color? get glyphColor => switch (does) {
+    PanelFlyoutActionDoes.adds => AppColors.addGlyph(enabled: true),
+    PanelFlyoutActionDoes.deletes => AppColors.deleteGlyph(enabled: true),
+    PanelFlyoutActionDoes.other => null,
+  };
 }
+
+/// What a flyout's small command does to the list it stands in: brings one
+/// more into it, takes one away, or something else. One of the three — a
+/// command is never both a plus and a delete.
+enum PanelFlyoutActionDoes { adds, deletes, other }
 
 /// A selectable command.
 class PanelFlyoutItem extends PanelFlyoutEntry {
@@ -122,10 +143,23 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     this.submenuBuilder,
     this.shortcuts = const [],
     this.action,
+    this.warning,
   }) : assert(
          icon == null || swatch == null,
          'a row has ONE leading mark: a glyph or a colour, not both',
        );
+
+  /// What a person should know before choosing this row, written under its
+  /// name in the warning colour — the row is as tall as the sentence needs.
+  ///
+  /// 🗣️유저 2026-10-06, of a font its maker does not let ride in a project:
+  /// 「글꼴 고를때든 도구 설정에서 해당 글꼴에 이 글꼴은 편집하는 문서에
+  /// 넣도록 허용되지않아서 다른 기기에서 열면 바뀐다 이런식으로 적어두자」 —
+  /// written AT the row it is about, where the choice is made.
+  ///
+  /// ⚠️A warning, and only one: 「UI 에 설명 문구 금지 — 경고는 예외」. What
+  /// a row does is its name's to say. Top-level rows only.
+  final String? warning;
 
   /// The small command at the row's end, if it carries one
   /// ([PanelFlyoutRowAction]). Top-level rows only: a submenu draws none.
@@ -357,6 +391,11 @@ Future<void> showPanelFlyout(
   // The command at a row's end that was pressed, if one was: it closed the
   // list with no row chosen, and runs in the chosen row's place.
   PanelFlyoutRowAction? pressedAction;
+  void pressAction(PanelFlyoutRowAction action) {
+    pressedAction = action;
+    unawaited(Navigator.of(anchorContext).maybePop());
+  }
+
   final submenuEntry = OverlayEntry(
     builder: (context) => ValueListenableBuilder<List<_OpenSubmenu>>(
       valueListenable: open,
@@ -392,14 +431,36 @@ Future<void> showPanelFlyout(
     items: [
       for (final entry in entries)
         switch (entry) {
-          PanelFlyoutHeader(:final label) => PopupMenuItem<PanelFlyoutItem>(
-            enabled: false,
-            height: 24,
-            child: Text(
-              label,
-              style: const TextStyle(fontSize: 10, color: AppColors.textDim),
+          PanelFlyoutHeader(:final label, :final action) =>
+            PopupMenuItem<PanelFlyoutItem>(
+              // By its command's key, where it carries one: the seat a test
+              // — and a person — finds the ＋ in.
+              key: action == null
+                  ? null
+                  : ValueKey<String>('${action.keyValue}-header'),
+              enabled: false,
+              height: _headerHeight,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textDim,
+                      ),
+                    ),
+                  ),
+                  if (action != null)
+                    // A header is no command, so its row is disabled — and a
+                    // disabled row dims what it holds, which a button that
+                    // IS live must not be ([_ControlsAtFullStrength]).
+                    _ControlsAtFullStrength(
+                      child: _actionButton(action, onAction: pressAction),
+                    ),
+                ],
+              ),
             ),
-          ),
           PanelFlyoutDivider() =>
             const PopupMenuDivider(height: 6)
                 as PopupMenuEntry<PanelFlyoutItem>,
@@ -471,15 +532,15 @@ Future<void> showPanelFlyout(
               entry: entry,
               open: open,
               depth: 0,
-              child: flyoutRowSurface(
-                _itemBody(
-                  entry,
-                  bindings: bindings,
-                  hasSubmenu: entry.submenuBuilder != null,
-                  onAction: (action) {
-                    pressedAction = action;
-                    unawaited(Navigator.of(anchorContext).maybePop());
-                  },
+              child: _warnedBelow(
+                entry,
+                flyoutRowSurface(
+                  _itemBody(
+                    entry,
+                    bindings: bindings,
+                    hasSubmenu: entry.submenuBuilder != null,
+                    onAction: pressAction,
+                  ),
                 ),
               ),
             ),
@@ -532,11 +593,50 @@ const double flyoutRowHeight = 32;
 /// the overlay-based submenu both lay out from it, and a submenu that
 /// measured itself would drift from the list it hangs off.
 double _entryHeight(PanelFlyoutEntry entry) => switch (entry) {
-  PanelFlyoutHeader() => 24.0,
+  PanelFlyoutHeader() => _headerHeight,
   PanelFlyoutDivider() => 6.0,
   PanelFlyoutRow(:final height) => height,
-  PanelFlyoutItem() => flyoutRowHeight,
+  // ⚠️A row with a warning is as tall as its sentence turns out to need,
+  // which is not known before it is laid out: two lines of it are counted
+  // here. Only the top-level list draws one, and all that list asks of
+  // this sum is whether it opens upward.
+  PanelFlyoutItem(:final warning) =>
+    flyoutRowHeight + (warning == null ? 0 : 2 * _warningLineHeight + 6),
 };
+
+/// A caption's row — tall enough for the one small command it can carry.
+const double _headerHeight = 24;
+
+/// One line of a row's warning: 11 px letters, as every warning in the app
+/// is written (`errorStyle`).
+const double _warningLineHeight = 14;
+
+/// [row] with [entry]'s warning written under it, in the row's own gutters
+/// — [row] itself where there is none.
+Widget _warnedBelow(PanelFlyoutItem entry, Widget row) {
+  final warning = entry.warning;
+  if (warning == null) {
+    return row;
+  }
+  return Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      row,
+      Padding(
+        padding: flyoutRowPadding.copyWith(bottom: 6),
+        child: Text(
+          warning,
+          style: const TextStyle(
+            fontSize: 11,
+            height: _warningLineHeight / 11,
+            color: AppColors.danger,
+          ),
+        ),
+      ),
+    ],
+  );
+}
 const EdgeInsets flyoutRowPadding = EdgeInsets.symmetric(horizontal: 16);
 
 /// A row laid out so its ink and its hit area are the WHOLE row.
@@ -749,13 +849,20 @@ class _SubmenuLayer extends StatelessWidget {
       !request.entries.any((entry) => entry is PanelFlyoutRow),
       'a submenu cannot draw a PanelFlyoutRow — put it on the top level',
     );
-    // ⛔Nor a row's own command: it closes the ROUTE the top list is, and a
-    // level down there is none of its own to close. No caller passes one.
+    // ⛔Nor a command — a row's own or a header's: it closes the ROUTE the
+    // top list is, and a level down there is none of its own to close. Nor
+    // a row's warning: this level lays out from the table of fixed heights,
+    // and a sentence is as tall as it turns out. No caller passes either.
     assert(
       !request.entries.any(
-        (entry) => entry is PanelFlyoutItem && entry.action != null,
+        (entry) => switch (entry) {
+          PanelFlyoutItem(:final action, :final warning) =>
+            action != null || warning != null,
+          PanelFlyoutHeader(:final action) => action != null,
+          _ => false,
+        },
       ),
-      'a submenu row carries no command of its own — put it on the top level',
+      'a submenu draws no command and no warning — put them on the top level',
     );
     final height =
         request.entries.fold(16.0, (sum, entry) => sum + _entryHeight(entry));
@@ -903,16 +1010,7 @@ Widget _itemBody(
     // The row's own command, at its end: pressed INSTEAD of the row.
     if (entry.action case final action? when onAction != null) ...[
       const SizedBox(width: 8),
-      AppIconButton(
-        keyValue: action.keyValue,
-        tooltip: action.tooltip,
-        size: AppIconButtonSize.dense,
-        icon: Icon(
-          action.icon,
-          color: action.deletes ? AppColors.deleteGlyph(enabled: true) : null,
-        ),
-        onPressed: () => onAction(action),
-      ),
+      _actionButton(action, onAction: onAction),
     ],
     // The one glyph a submenu row wears: it says there is another level,
     // which the row cannot say with colour the way «selected» does.
@@ -921,6 +1019,19 @@ Widget _itemBody(
       Icon(Icons.chevron_right, size: 14, color: _inkFor(entry)),
     ],
   ],
+);
+
+/// The small command a row — or a header — carries at its end, as the
+/// button it is.
+Widget _actionButton(
+  PanelFlyoutRowAction action, {
+  required ValueChanged<PanelFlyoutRowAction> onAction,
+}) => AppIconButton(
+  keyValue: action.keyValue,
+  tooltip: action.tooltip,
+  size: AppIconButtonSize.dense,
+  icon: Icon(action.icon, color: action.glyphColor),
+  onPressed: () => onAction(action),
 );
 
 /// What a row wears before its label: its swatch, or else its glyph, and
