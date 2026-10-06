@@ -408,15 +408,21 @@ void main() {
   testWidgets('a cell whose camera moves carries the canvas it sweeps, as '
       'sharp on the paper as every window (유저 2026-09-29: 「일단 카메라 '
       '팬대로 해당 코마에서 보여주고」)', (tester) async {
-    // Cut 40's camera pans a screen right across its one cell: two screens
-    // wide, laid on the page a hair under a screen a window (the page's
-    // width stops it), so its picture is a hair under two windows wide.
+    // Cut 40's camera pans half a screen right across its one cell: a
+    // screen and a half wide, laid on the page at a screen a window, so its
+    // picture is a window and a half wide.
+    //
+    // ↩️It panned a whole screen until F-310 (유저 2026-10-06: 「초수칸말고
+    // se칸까지만 최대치로 잡도록」). Two screens wide reached into the time
+    // column at a screen a window; the picture stops where that column
+    // begins now, so that sweep is laid smaller and its raster with it —
+    // which is the layout's pin, not this one's.
     final session = EditorSessionManager(
       initialProject: project(
         camera40: CutCamera(
           keyframes: {
             0: CameraPose(center: CanvasPoint(x: 16, y: 9)),
-            6: CameraPose(center: CanvasPoint(x: 48, y: 9)),
+            6: CameraPose(center: CanvasPoint(x: 32, y: 9)),
           },
         ),
       ),
@@ -449,8 +455,8 @@ void main() {
     );
     expect(
       sizes.toSet(),
-      {(32, 18), (64, 18)},
-      reason: 'the still cells\' camera frames, and the swept 64×18 canvas',
+      {(32, 18), (48, 18)},
+      reason: 'the still cells\' camera frames, and the swept 48×18 canvas',
     );
   });
 
