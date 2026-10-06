@@ -19,9 +19,9 @@ String fileNameOfPath(String path) {
 /// in `C:` — which a window asked to open there reads as 「wherever that
 /// drive last was」.
 ///
-/// ↩️Save As spelled this out twice to find where its window opens and the
-/// conform cache once, to make the folder it writes into; they ask here
-/// now (2026-10-07).
+/// ↩️Save As spelled this out twice to find where its window opens; it asks
+/// here now (2026-10-07). The conform cache spelled it a third time, to
+/// make a folder its writer makes for itself — that line went instead.
 ///
 /// ⚠️ONE SPELLING IS LEFT, AND IT ANSWERS DIFFERENTLY:
 /// `AnicelFileService._parentDirectory`, which the save joins names onto.
