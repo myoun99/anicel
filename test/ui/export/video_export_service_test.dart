@@ -12,15 +12,33 @@ import 'fake_ffmpeg_process.dart';
 /// ffmpeg is started for a movie that size, and every frame goes down the
 /// pipe as its own raw bytes.
 void main() {
+  /// Every frame made here: a run lets go of each one it is handed,
+  /// however it ends.
+  final made = <ui.Image>[];
+
+  tearDown(() {
+    expect(
+      [
+        for (final (index, image) in made.indexed)
+          if (!image.debugDisposed) index,
+      ],
+      isEmpty,
+      reason: 'frames still held when the run was over',
+    );
+    made.clear();
+  });
+
   /// A [width]×[height] frame, all of it [color].
   Future<ui.Image?> frame({
     int width = 4,
     int height = 2,
     ui.Color color = const ui.Color(0xFF204060),
-  }) {
+  }) async {
     final recorder = ui.PictureRecorder();
     ui.Canvas(recorder).drawColor(color, ui.BlendMode.src);
-    return recorder.endRecording().toImage(width, height);
+    final image = await recorder.endRecording().toImage(width, height);
+    made.add(image);
+    return image;
   }
 
   Future<ui.Image?> noImage(int index) => Future<ui.Image?>.value();
@@ -369,8 +387,16 @@ void main() {
 
     final summary = await service.exportVideo(
       count: 4,
-      // 0 and 1 are one picture, 2 is another, 3 is the first again.
-      renderImage: (index) async => index == 2 ? other : held.clone(),
+      // 0 and 1 are one picture, 2 is another, 3 is the first again — each
+      // handed as a picture of the run's own to let go of.
+      renderImage: (index) async {
+        if (index == 2) {
+          return other;
+        }
+        final again = held.clone();
+        made.add(again);
+        return again;
+      },
       outputFilePath: 'out.mp4',
       frameRate: ProjectFrameRate.fps24,
     );

@@ -317,10 +317,15 @@ void main() {
     );
     final outputPath = '${directory.path}/held.mp4';
     final readBefore = VideoExportService.debugReadbacks;
+    final handed = <ui.Image>[];
 
     final summary = await service.exportVideo(
       count: 12,
-      renderImage: (_) async => held.clone(),
+      renderImage: (_) async {
+        final again = held.clone();
+        handed.add(again);
+        return again;
+      },
       outputFilePath: outputPath,
       frameRate: ProjectFrameRate.fps24,
     );
@@ -328,5 +333,11 @@ void main() {
     expect(summary, (written: 12, processed: 12));
     expect(VideoExportService.debugReadbacks - readBefore, 1);
     expect(looksLikeMp4(outputPath), isTrue);
+    expect(
+      handed.every((image) => image.debugDisposed),
+      isTrue,
+      reason: 'each picture handed is let go of — the one kept to tell the '
+          'next by, when the movie is finished',
+    );
   }, skip: skip);
 }

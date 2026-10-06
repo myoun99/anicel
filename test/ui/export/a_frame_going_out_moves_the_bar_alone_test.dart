@@ -112,8 +112,8 @@ void main() {
     ),
   );
 
-  testWidgets('the bar moves; the window is not built again', (tester) async {
-    final run = _HeldVideoRun();
+  /// The window over [run], and its state.
+  Future<ExportDialogState> open(WidgetTester tester, _HeldVideoRun run) async {
     final s = session();
     addTearDown(s.dispose);
     await tester.pumpWidget(
@@ -128,21 +128,52 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+    return tester.state<ExportDialogState>(find.byType(ExportDialog));
+  }
 
-    late Future<void> exporting;
+  /// Starts [run]ning through [start] and comes back once the run has the
+  /// window's progress callback — with the future of the whole of it.
+  Future<({Future<void> whole})> begun(
+    WidgetTester tester,
+    _HeldVideoRun run,
+    Future<void> Function() start,
+  ) async {
+    late Future<void> whole;
+    run.report = null;
     await tester.runAsync(() async {
-      exporting = state.export();
+      whole = start();
       while (run.report == null) {
         await Future<void>.delayed(const Duration(milliseconds: 1));
       }
     });
-    // The run is under way: the bar is up, at nothing yet.
     await tester.pump();
-    LinearProgressIndicator bar() => tester.widget<LinearProgressIndicator>(
-      find.byKey(const ValueKey<String>('export-progress')),
-    );
-    expect(bar().value, isNull);
+    return (whole: whole);
+  }
+
+  /// Lets [run] end, and [whole] with it.
+  Future<void> ended(
+    WidgetTester tester,
+    _HeldVideoRun run,
+    Future<void> whole,
+  ) async {
+    await tester.runAsync(() async {
+      run.finish();
+      await whole;
+    });
+    await tester.pump();
+  }
+
+  LinearProgressIndicator bar(WidgetTester tester) =>
+      tester.widget<LinearProgressIndicator>(
+        find.byKey(const ValueKey<String>('export-progress')),
+      );
+
+  testWidgets('the bar moves; the window is not built again', (tester) async {
+    final run = _HeldVideoRun();
+    final state = await open(tester, run);
+    final (whole: exporting) = await begun(tester, run, state.export);
+    // The run is under way: the bar is up, at nothing yet.
+    expect(bar(tester).value, isNull);
 
     /// What a frame of the run going out builds again.
     Future<List<Type>> builtBy(void Function() frameOut) async {
@@ -156,23 +187,43 @@ void main() {
     }
 
     final first = await builtBy(() => run.report!(1, 4));
-    expect(bar().value, 0.25);
+    expect(bar(tester).value, 0.25);
     expect(first, isNotEmpty, reason: 'LIVENESS: the bar was built again');
     expect(first, isNot(contains(ExportDialog)));
 
     final second = await builtBy(() => run.report!(2, 4));
-    expect(bar().value, 0.5);
+    expect(bar(tester).value, 0.5);
     expect(second, isNot(contains(ExportDialog)));
 
-    await tester.runAsync(() async {
-      run.finish();
-      await exporting;
-    });
-    await tester.pump();
+    await ended(tester, run, exporting);
     expect(
       find.byKey(const ValueKey<String>('export-progress')),
       findsNothing,
       reason: 'the run is over, and the bar with it',
     );
+
+    // The next run starts at nothing, whatever this one reached.
+    final (whole: again) = await begun(tester, run, state.export);
+    expect(bar(tester).value, isNull);
+    await ended(tester, run, again);
+  });
+
+  testWidgets('a queued run leaves nothing standing on the bar either', (
+    tester,
+  ) async {
+    final run = _HeldVideoRun();
+    final state = await open(tester, run);
+    await tester.runAsync(state.addToQueue);
+    await tester.pump();
+
+    final (whole: queued) = await begun(tester, run, state.runQueue);
+    run.report!(3, 4);
+    await tester.pump();
+    expect(bar(tester).value, 0.75, reason: 'LIVENESS: the queued run moved it');
+    await ended(tester, run, queued);
+
+    final (whole: next) = await begun(tester, run, state.export);
+    expect(bar(tester).value, isNull);
+    await ended(tester, run, next);
   });
 }
