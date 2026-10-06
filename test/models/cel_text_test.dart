@@ -73,7 +73,7 @@ void main() {
         spans: const [CelTextSpan(text: 'ab', style: big)],
       ),
       'the anchor': base.copyWith(anchor: CanvasPoint(x: 11, y: 20)),
-      'the wrap width': base.copyWith(wrapWidth: 200),
+      'the wrap width': base.copyWith(wrapWidth: 200.5),
       'the turn': base.copyWith(rotationDegrees: 30),
       'the alignment': base.copyWith(align: TextCelAlign.right),
       'the line height': base.copyWith(lineHeight: 2),
@@ -93,6 +93,12 @@ void main() {
 
     test('a content with nothing changed reads back as itself', () {
       expect(CelTextContent.fromJson(throughJson(base.toJson())), base);
+    });
+
+    // The parameter is untyped so that null can mean 「take it off」, and a
+    // whole number written with no decimal point arrives as an int.
+    test('a width written as a whole number is that width', () {
+      expect(base.copyWith(wrapWidth: 200).wrapWidth, 200.0);
     });
 
     test('a wrap width and a box can be taken off again', () {
