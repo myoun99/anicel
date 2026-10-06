@@ -435,35 +435,28 @@ class _FaceRow extends StatelessWidget {
     ImportedFonts fonts,
     List<String> carried,
     bool Function(String? family) isInUse,
-  ) {
-    final strings = AppText.strings;
-    return [
-      if (carried.isNotEmpty) ...[
-        const PanelFlyoutDivider(),
-        PanelFlyoutHeader(strings.textToolFontsOfProject),
-      ],
-      for (final family in carried)
-        PanelFlyoutItem(
-          keyValue: 'text-tool-project-font-$family',
-          label: family,
-          selected: isInUse(family),
-          // Registered, and its bytes are nowhere this device can read: it
-          // is the project's all the same, and says why its letters show
-          // in another face.
-          warning: CanvasLetterFaces.current.holds(family)
-              ? null
-              : strings.textToolFontNotOnThisDevice,
-          onSelected: () => _pick(family),
-          action: PanelFlyoutRowAction(
-            keyValue: 'text-tool-project-font-$family-take-out',
-            icon: Icons.remove,
-            tooltip: strings.textToolFontTakeOut,
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => fonts.takeOutOfProject(family),
-          ),
+  ) => _group(AppText.strings.textToolFontsOfProject, [
+    for (final family in carried)
+      PanelFlyoutItem(
+        keyValue: 'text-tool-project-font-$family',
+        label: family,
+        selected: isInUse(family),
+        // Registered, and its bytes are nowhere this device can read: it is
+        // the project's all the same, and says why its letters show in
+        // another face.
+        warning: CanvasLetterFaces.current.holds(family)
+            ? null
+            : AppText.strings.textToolFontNotOnThisDevice,
+        onSelected: () => _pick(family),
+        action: PanelFlyoutRowAction(
+          keyValue: 'text-tool-project-font-$family-take-out',
+          icon: Icons.remove,
+          tooltip: AppText.strings.textToolFontTakeOut,
+          does: PanelFlyoutActionDoes.deletes,
+          onPressed: () => fonts.takeOutOfProject(family),
         ),
-    ];
-  }
+      ),
+  ]);
 
   /// The fonts THIS DEVICE was brought, under their own heading — none of
   /// either, on a device that was brought none.
@@ -471,32 +464,39 @@ class _FaceRow extends StatelessWidget {
     ImportedFonts fonts,
     List<ImportedFontFamily> brought,
     bool Function(String? family) isInUse,
-  ) {
-    final strings = AppText.strings;
-    return [
-      if (brought.isNotEmpty) ...[
-        const PanelFlyoutDivider(),
-        PanelFlyoutHeader(strings.textToolFontsOfDevice),
-      ],
-      for (final family in brought)
-        PanelFlyoutItem(
-          keyValue: 'text-tool-font-${family.name}',
-          label: family.name,
-          selected: isInUse(family.name),
-          warning: family.ridesInEditedDocuments
-              ? null
-              : strings.textToolFontStaysOnThisDevice,
-          onSelected: () => _pick(family.name),
-          action: PanelFlyoutRowAction(
-            keyValue: 'text-tool-font-${family.name}-delete',
-            icon: Icons.delete_outline,
-            tooltip: strings.textToolFontDelete,
-            does: PanelFlyoutActionDoes.deletes,
-            onPressed: () => unawaited(fonts.delete(family.name)),
-          ),
+  ) => _group(AppText.strings.textToolFontsOfDevice, [
+    for (final family in brought)
+      PanelFlyoutItem(
+        keyValue: 'text-tool-font-${family.name}',
+        label: family.name,
+        selected: isInUse(family.name),
+        warning: family.ridesInEditedDocuments
+            ? null
+            : AppText.strings.textToolFontStaysOnThisDevice,
+        onSelected: () => _pick(family.name),
+        action: PanelFlyoutRowAction(
+          keyValue: 'text-tool-font-${family.name}-delete',
+          icon: Icons.delete_outline,
+          tooltip: AppText.strings.textToolFontDelete,
+          does: PanelFlyoutActionDoes.deletes,
+          onPressed: () => unawaited(fonts.delete(family.name)),
         ),
-    ];
-  }
+      ),
+  ]);
+
+  /// A GROUP of the list: [rows] under their own [heading], a rule above
+  /// it — and nothing at all, heading and rule included, where there are
+  /// no rows to stand under them.
+  static List<PanelFlyoutEntry> _group(
+    String heading,
+    List<PanelFlyoutItem> rows,
+  ) => [
+    if (rows.isNotEmpty) ...[
+      const PanelFlyoutDivider(),
+      PanelFlyoutHeader(heading),
+    ],
+    ...rows,
+  ];
 
   /// Sets the letters in [family] — and has it READ now, where it is one
   /// this device holds and the engine has not been handed

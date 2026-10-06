@@ -3,7 +3,6 @@ import '../../models/project_font_file.dart';
 import '../../services/command.dart';
 import '../../services/commands/update_project_fonts_command.dart';
 import '../../services/font_library_service.dart' show isFontLibraryFileName;
-import '../../services/media/project_font_sources.dart' show projectFontsKept;
 import '../text/imported_fonts.dart'
     show LetterFaceFile, compareFontFamilyNames;
 import 'project_file.dart';
@@ -23,11 +22,16 @@ import 'session_roles.dart';
 /// project, its bytes are the record's ([ProjectFile]), and this is the
 /// verbs.
 class ProjectFonts {
-  ProjectFonts({required ProjectAccess project, required ProjectFile file})
-    : _project = project,
-      _file = file;
+  ProjectFonts({
+    required ProjectAccess project,
+    required ChangeSink changes,
+    required ProjectFile file,
+  }) : _project = project,
+       _changes = changes,
+       _file = file;
 
   final ProjectAccess _project;
+  final ChangeSink _changes;
   final ProjectFile _file;
 
   Project _requireProject() => _project.repository.requireProject();
@@ -63,7 +67,7 @@ class ProjectFonts {
   /// the project is saved is the library letting go of the file, and the
   /// library asks here before it does (`ImportedFonts`).
   Future<void> holdBytesOf(Set<String> files) => _file.holdFontBytes([
-    for (final font in projectFontsKept(_requireProject()))
+    for (final font in _requireProject().fonts)
       if (files.contains(font.carriedAs)) font,
   ]);
 
@@ -146,5 +150,8 @@ class ProjectFonts {
         description: 'Take a font out of the project',
       ),
     );
+    // Whoever shows this project hears that its fonts are others: the
+    // letters of a family taken out are set in another face from this step.
+    _changes.notifyChanged();
   }
 }

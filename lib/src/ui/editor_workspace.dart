@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:desktop_drop/desktop_drop.dart';
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 
 import '../core/set_toggle.dart';
@@ -1226,8 +1226,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// The project on screen's list of fonts as the faces were last told of
-  /// it ([_followProjectFonts]) — the list itself: a project swaps it for
-  /// another whenever it changes, and never otherwise.
+  /// it ([_followProjectFonts]) — null: of no project yet.
   List<ProjectFontFile>? _projectFontsShown;
 
   /// Stands the fonts the project on screen carries over this device's
@@ -1238,7 +1237,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _followProjectFonts() {
     final session = widget.session;
     final fonts = session.repository.requireProject().fonts;
-    if (identical(fonts, _projectFontsShown)) {
+    // 🚨BY WHAT THE LIST SAYS, NOT BY WHICH LIST IT IS. A project is made
+    // anew at every edit and builds its lists anew with it (`Project`'s
+    // constructor), so 「is it the same list」 is no at every stroke — and
+    // saying the fonts again reads the project file's directory. The
+    // session tells of every edit; this hears all of them.
+    if (listEquals(fonts, _projectFontsShown)) {
       return;
     }
     _projectFontsShown = fonts;

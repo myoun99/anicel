@@ -149,6 +149,48 @@ void main() {
     expect(inRoomOf(session), isNull, reason: 'nothing was taken out');
   });
 
+  test('🚨taken out by the session that SAVED it, a font goes to the room '
+      'first all the same — though this device holds it too', () async {
+    final session = aSession(home);
+    register(session, [font]);
+    await save(session);
+    expect(inFile(projectPath), bytes, reason: '⛔fixture');
+
+    register(session, const []);
+    await save(session);
+
+    expect(inFile(projectPath), isNull);
+    expect(inRoomOf(session), bytes);
+  });
+
+  test('🚨⛔taking ONE font out leaves the others in the file: what a save '
+      'is handed about the fonts is the same before and after it has kept '
+      'what it leaves behind', () async {
+    const serifFacts = FontFaceFacts(
+      family: 'Probe Serif',
+      weight: 400,
+      italic: false,
+      fsType: 0,
+    );
+    final serifBytes = Uint8List.fromList(List<int>.filled(20 * 1024, 9));
+    final serifName = home.mintFileName(serifFacts, extension: 'otf');
+    await home.writeFont(serifName, serifBytes);
+    final serif = ProjectFontFile(carriedAs: serifName, facts: serifFacts);
+    final session = aSession(home);
+    register(session, [font, serif]);
+    await save(session);
+
+    register(session, [serif]);
+    await save(session);
+
+    expect(inFile(projectPath), isNull, reason: 'the one taken out is gone');
+    final layout = parseAnicelZipLayoutFile(projectPath);
+    final kept = layout.entryNamed(anicelFontEntryName(serifName));
+    expect(kept, isNotNull, reason: 'the other one stays');
+    expect(kept!.length, serifBytes.length);
+    expect(session.projectFile.fontsInFile, {anicelFontEntryName(serifName)});
+  });
+
   test('a font the device was never brought is not in the file — and the '
       'save is not a failed one', () async {
     final session = aSession(elsewhere);
@@ -270,6 +312,26 @@ void main() {
 
       expect(inFile(placed), bytes);
       expect(inRoomOf(session), isNull);
+    });
+
+    test('🚨a placed archive that HOLDS the font is the file it is taken '
+        'out of afterwards: its bytes go to the room then', () async {
+      final session = await openedElsewhere();
+      final door = session.projectDoor;
+      final placed = '${root.path}/placed.anicel';
+      final staged = await door.writeArchiveCopy(
+        placed,
+        asked: SaveAsked.byAPerson,
+      );
+      door.adoptPlacedArchive(placed, staged: staged);
+      expect(inFile(placed), bytes, reason: '⛔fixture: the copy carries it');
+      expect(staged.fontsInFile, {anicelFontEntryName(font.carriedAs)});
+
+      register(session, const []);
+      await save(session, placed);
+
+      expect(inFile(placed), isNull);
+      expect(inRoomOf(session), bytes);
     });
 
     test('⛔a font the project still holds is not copied to the room: a '

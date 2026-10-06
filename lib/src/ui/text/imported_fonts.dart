@@ -188,7 +188,6 @@ class ImportedFonts extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _carried = null;
     if (identical(CanvasLetterFaces.current, faces)) {
       CanvasLetterFaces.current = CanvasLetterFaces();
     }

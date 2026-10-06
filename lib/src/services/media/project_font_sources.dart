@@ -200,6 +200,38 @@ List<MediaLeftBehind> fontsLeftBehind({
       name,
 });
 
+/// What [read] makes of where [find] says a font's bytes are — and, when an
+/// entry of the project file reads WRONG, of where [find] says they are
+/// then: looked for and read again, up to [attempts] times in all.
+///
+/// 🚨WHY AGAIN. A range into the project file is of one layout, and a save
+/// may pack the file under the very read ([readStoredFontBytes] checks the
+/// entry's CRC, and answers null for bytes that are not the entry's). The
+/// font is then somewhere else in the file, and whole — a save packs once,
+/// and the look after it finds the font where it came to rest.
+///
+/// ⛔ONLY AN ENTRY OF THE FILE is looked for again. A copy in the room or
+/// in the device's library does not move: one that will not read is a font
+/// nobody has. And bytes that were never moved and still read wrong are a
+/// broken file — [attempts] is where this gives up on them.
+Future<Uint8List?> readLookingAgain({
+  required MediaByteSource? Function() find,
+  required Future<Uint8List?> Function(MediaByteSource source) read,
+  int attempts = 3,
+}) async {
+  for (var attempt = 0; attempt < attempts; attempt += 1) {
+    final source = find();
+    if (source == null) {
+      return null;
+    }
+    final bytes = await read(source);
+    if (bytes != null || source is! MediaArchiveBytes) {
+      return bytes;
+    }
+  }
+  return null;
+}
+
 /// The bytes [source] holds — [source] being where a font a project carries
 /// was found ([storedFontBytesFor]) — read a block at a time, so that a
 /// font of tens of megabytes does not hold the UI isolate while it is read.
@@ -236,9 +268,6 @@ Future<Uint8List?> _readEntryChecked(MediaArchiveBytes entry) async {
     entry.archivePath,
   ).openRead(entry.dataOffset, entry.dataOffset + entry.length);
   await for (final block in blocks) {
-    if (filled + block.length > bytes.length) {
-      return null;
-    }
     bytes.setRange(filled, filled + block.length, block);
     filled += block.length;
     running = anicelCrc32Update(

@@ -26,6 +26,7 @@ import '../../services/media/project_font_sources.dart'
         projectFileAsRead,
         projectFontSources,
         projectFontsKept,
+        readLookingAgain,
         readStoredFontBytes,
         storedFontBytesFor;
 import '../../services/media/project_media_sources.dart'
@@ -44,7 +45,6 @@ import '../../services/persistence/anicel_incremental_writer.dart'
 import '../../services/persistence/anicel_project_archive.dart'
     show
         anicelConformEntryNames,
-        anicelFontEntryName,
         anicelMediaEntryName,
         anicelMediaEntryPrefix;
 import '../../services/persistence/media_blob_codec.dart';
@@ -681,17 +681,18 @@ class ProjectFile {
 
   /// Where [font]'s bytes are right now, in the one order the save looks
   /// in too (`storedFontBytesFor`) — null when they are nowhere this
-  /// machine can reach. [projectFile] is the bound file as it reads now,
-  /// asked for only when the file holds this font ([fontsInFile]): one
-  /// registered and not saved yet has nothing in there to find.
+  /// machine can reach. [projectFile] is the bound file as it reads now.
+  ///
+  /// ⛔The FILE is asked, not the record of what it was written with
+  /// ([fontsInFile]): that record exists so a save need not read the
+  /// directory to learn it takes nothing out, and a font is looked for a
+  /// few times a run — when the faces are reckoned, when one is read.
   MediaByteSource? _whereTheFontIs(
     ProjectFontFile font,
-    ProjectFileAsRead? Function() projectFile,
+    ProjectFileAsRead? projectFile,
   ) => storedFontBytesFor(
     font.carriedAs,
-    projectFile: _fontsInFile.contains(anicelFontEntryName(font.carriedAs))
-        ? projectFile()
-        : null,
+    projectFile: projectFile,
     staging: _staging,
     deviceFontFile: _deviceFontFile,
   );
@@ -704,10 +705,14 @@ class ProjectFile {
   /// read once when it holds any of them — because it is asked whenever
   /// the faces are reckoned, not when one is read.
   List<ProjectFontFile> fontsWithBytes(Project project) {
-    late final projectFile = projectFileAsRead(_projectFilePath);
+    final fonts = projectFontsKept(project).toList();
+    if (fonts.isEmpty) {
+      return const [];
+    }
+    final projectFile = projectFileAsRead(_projectFilePath);
     return [
-      for (final font in projectFontsKept(project))
-        if (_whereTheFontIs(font, () => projectFile) != null) font,
+      for (final font in fonts)
+        if (_whereTheFontIs(font, projectFile) != null) font,
     ];
   }
 
@@ -724,22 +729,10 @@ class ProjectFile {
   /// The font is then somewhere else in the file, and whole: it is
   /// resolved afresh and read from there. Bytes that were never moved and
   /// still read wrong are a broken file, and this gives up on them.
-  Future<Uint8List?> fontBytes(ProjectFontFile font) async {
-    for (var attempt = 0; attempt < _fontReadAttempts; attempt += 1) {
-      final source = _whereTheFontIs(
-        font,
-        () => projectFileAsRead(_projectFilePath),
-      );
-      if (source == null) {
-        return null;
-      }
-      final bytes = await readStoredFontBytes(source);
-      if (bytes != null || source is! MediaArchiveBytes) {
-        return bytes;
-      }
-    }
-    return null;
-  }
+  Future<Uint8List?> fontBytes(ProjectFontFile font) => readLookingAgain(
+    find: () => _whereTheFontIs(font, projectFileAsRead(_projectFilePath)),
+    read: readStoredFontBytes,
+  );
 
   /// Takes into this run's room the bytes of every one of [fonts] that this
   /// session has NOWHERE BUT IN THE DEVICE'S LIBRARY — a font registered
@@ -755,9 +748,10 @@ class ProjectFile {
   /// name is one set of bytes, and a second copy of them is a copy for
   /// nothing.
   Future<void> holdFontBytes(Iterable<ProjectFontFile> fonts) async {
+    // Read when the first of them is looked for, and not for none.
     late final projectFile = projectFileAsRead(_projectFilePath);
     for (final font in fonts) {
-      final onDevice = _whereTheFontIs(font, () => projectFile);
+      final onDevice = _whereTheFontIs(font, projectFile);
       if (onDevice is! MediaFileBytes) {
         continue;
       }
@@ -766,10 +760,6 @@ class ProjectFile {
       ]);
     }
   }
-
-  /// One read, and two more for a file that was being packed: a save packs
-  /// once, and the read after it finds the font where it came to rest.
-  static const int _fontReadAttempts = 3;
 
   /// The conform this project CARRIES for [sourcePath], as a range inside
   /// the `.anicel`, or null when it carries none.

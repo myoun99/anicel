@@ -158,7 +158,8 @@ class FontLibraryService {
 /// third font. The fake library of the tests still counts
 /// (`FontLibraryInMemory`) — it stands in for a place, not for the name.
 ///
-/// The face rides in the name — its family and weight, made safe — so a
+/// The face rides in the name — its family and weight, made safe by the
+/// one algorithm that makes a stored name safe (`mediaNameParts`) — so a
 /// person looking in the folder, or inside a project file, can tell what
 /// they are looking at.
 String mintFontLibraryFileName(
@@ -166,7 +167,7 @@ String mintFontLibraryFileName(
   required String extension,
   required String directoryPath,
 }) {
-  final family = facts.family.replaceAll(_unsafeInAName, '_');
+  final family = facts.family;
   final kept = family.length > _familyLettersKept
       ? family.substring(0, _familyLettersKept)
       : family;
@@ -177,8 +178,6 @@ String mintFontLibraryFileName(
 /// How much of a family's name rides in a file's: enough to tell two
 /// apart, and never enough to make a path too long to open.
 const int _familyLettersKept = 40;
-
-final RegExp _unsafeInAName = RegExp('[^A-Za-z0-9._-]');
 
 /// Whether [file] is a name a font file of the library can be kept under —
 /// the only names it reads, writes and deletes. An index is a file on a

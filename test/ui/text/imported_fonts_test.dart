@@ -432,6 +432,30 @@ void main() {
       expect(read, isEmpty);
     });
 
+    test('🚨the ORDER its files are said in does not make a family another '
+        'set: a project that carries one face of two — the device\'s own '
+        'file, by its name — reads nothing', () async {
+      final fonts = fontsOf();
+      await fonts.importBytes(fontFileSaying(family: 'Probe Sans'));
+      await fonts.importBytes(
+        fontFileSaying(family: 'Probe Sans', weight: 700),
+      );
+      await setIn(fonts, 'Probe Sans');
+      final ofTheDevice = namesSetWith(fonts, 'Probe Sans');
+      final engine = fonts.faces.engineFamilyOf('Probe Sans');
+      final generation = fonts.faces.generation;
+      final handedBefore = handed.length;
+
+      // The bold, carried: it is said FIRST now, where it was second.
+      show(fonts, () => [carried(ofTheDevice.last, bold, 5)]);
+
+      expect(namesSetWith(fonts, 'Probe Sans'), ofTheDevice.reversed);
+      expect(fonts.faces.engineFamilyOf('Probe Sans'), engine);
+      expect(fonts.faces.generation, generation);
+      expect(handed, hasLength(handedBefore));
+      expect(read, isEmpty);
+    });
+
     test('🚨another project on screen, and back: a family is set with '
         'each one\'s files in turn, and the files it had before are not '
         'read again', () async {

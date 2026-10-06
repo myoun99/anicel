@@ -830,6 +830,33 @@ void main() {
       );
     });
 
+    test('an entry nobody recorded a CRC for is taken as it reads — whole, '
+        'or not at all', () async {
+      final (path, entry) = await fileWithTheFont();
+
+      expect(
+        await readStoredFontBytes(
+          MediaArchiveBytes(
+            archivePath: path,
+            dataOffset: entry.dataOffset,
+            length: entry.length,
+          ),
+        ),
+        hasLength(300000),
+      );
+      expect(
+        await readStoredFontBytes(
+          MediaArchiveBytes(
+            archivePath: path,
+            dataOffset: File(path).lengthSync() - 10,
+            length: entry.length,
+          ),
+        ),
+        isNull,
+        reason: 'ten bytes are not three hundred thousand',
+      );
+    });
+
     test('a file — the device\'s, or the copy this run\'s room keeps — as '
         'it is', () async {
       final path = deviceFont('probe.ttf', 5000, 9);

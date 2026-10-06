@@ -269,6 +269,20 @@ void main() {
         expect(told, 0);
       });
 
+      test('what was said is kept as it was SAID: the map is the caller\'s '
+          'to change afterwards, and saying it changed is a change', () {
+        final said = {...both, 'Probe Mono': 'mono'};
+        faces.setHeld(said);
+        told = 0;
+
+        said.remove('Probe Sans');
+
+        expect(faces.holds('Probe Sans'), isTrue);
+        faces.setHeld(said);
+        expect(told, 1);
+        expect(faces.holds('Probe Sans'), isFalse);
+      });
+
       test('one that came is held, and read when asked for', () async {
         device.files['Probe Mono'] = [_bytes(9)];
 

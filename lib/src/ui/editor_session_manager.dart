@@ -3241,6 +3241,7 @@ class EditorSessionManager extends ChangeNotifier
   // taking out.
   late final ProjectFonts projectFonts = ProjectFonts(
     project: this,
+    changes: this,
     file: projectFile,
   );
 
