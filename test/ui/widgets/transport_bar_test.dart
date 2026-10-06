@@ -233,6 +233,10 @@ void main() {
         [50],
         reason: 'the drag the release starts lands where the press did',
       );
+      // A press is a seek of its own: the playhead may have left that frame
+      // since the last one landed on it.
+      await tester.tapAt(along(tester, 'track', 0.5));
+      expect(seeks, [50, 50]);
     });
 
     testWidgets('and keeps seeking while the finger moves', (tester) async {
