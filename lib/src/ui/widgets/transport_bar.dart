@@ -500,6 +500,55 @@ void _paintMarker(Canvas canvas, Size size, double x, Color color) {
   );
 }
 
+/// A track's grip: the press is reported the moment it lands and every move
+/// after it, each as where along the track it is and how wide the track
+/// stands.
+///
+/// A scrub track has to move on the press itself. A stock drag recognizer
+/// would hold the first ~18px of every scrub waiting to see whether this is
+/// a drag — so the press reports from `onDown` and the drag takes the arena
+/// on its first movement.
+///
+/// F-200: and a press on the track is the track's — the grip every drag
+/// verb on a control wears (the claim, and that owning drag), so no
+/// scroller around it gets there first. ↩️It was a raw [Listener], which
+/// takes no part in the arena and so held nothing.
+///
+/// ⚠️The width is asked of the box when a pointer arrives. ↩️A
+/// [LayoutBuilder] stood here to learn it, and laid the track out again on
+/// every tick of a run.
+class _TrackGrip extends StatelessWidget {
+  const _TrackGrip({
+    required this.keyValue,
+    required this.height,
+    required this.painter,
+    required this.onPress,
+    required this.onMove,
+  });
+
+  final String keyValue;
+  final double height;
+  final CustomPainter painter;
+  final void Function(double x, double width) onPress;
+  final void Function(double x, double width) onMove;
+
+  @override
+  Widget build(BuildContext context) {
+    void at(Offset local, void Function(double x, double width) report) =>
+        report(local.dx, context.size?.width ?? 0);
+    return OwningAxisGrip(
+      key: ValueKey<String>(keyValue),
+      axis: Axis.horizontal,
+      configure: (recognizer) {
+        recognizer.onDown = (details) => at(details.localPosition, onPress);
+        recognizer.onStart = (details) => at(details.localPosition, onMove);
+        recognizer.onUpdate = (details) => at(details.localPosition, onMove);
+      },
+      child: CustomPaint(painter: painter, child: SizedBox(height: height)),
+    );
+  }
+}
+
 /// The seek track: a press seeks there, and keeps seeking while the finger
 /// moves.
 ///
@@ -540,16 +589,16 @@ class _TransportTrackState extends State<TransportTrack> {
 
   int get _lastFrame => widget.frameCount <= 1 ? 0 : widget.frameCount - 1;
 
-  void _begin(Offset local) {
+  void _begin(double x, double width) {
     _reported = null;
-    _apply(local);
+    _apply(x, width);
   }
 
-  void _apply(Offset local) {
+  void _apply(double x, double width) {
     if (_lastFrame == 0) {
       return;
     }
-    final frame = _frameAt(local.dx, context.size?.width ?? 0, _lastFrame);
+    final frame = _frameAt(x, width, _lastFrame);
     if (frame == _reported) {
       return;
     }
@@ -560,36 +609,17 @@ class _TransportTrackState extends State<TransportTrack> {
   @override
   Widget build(BuildContext context) {
     final kept = widget.kept;
-    // A scrub track has to move on the press itself. A stock drag
-    // recognizer would hold the first ~18px of every scrub waiting to see
-    // whether this is a drag — so the press seeks from `onDown` and the
-    // drag takes the arena on its first movement.
-    //
-    // F-200: and a press on the track is the track's — the grip every drag
-    // verb on a control wears (the claim, and that owning drag), so no
-    // scroller around it gets there first. ↩️It was a raw [Listener], which
-    // takes no part in the arena and so held nothing.
-    //
-    // ⚠️The width is asked of the box when a pointer arrives. ↩️A
-    // [LayoutBuilder] stood here to learn it, and laid the track out again
-    // on every tick of a run.
-    return OwningAxisGrip(
-      key: ValueKey<String>(widget.keyValue),
-      axis: Axis.horizontal,
-      configure: (recognizer) {
-        recognizer.onDown = (details) => _begin(details.localPosition);
-        recognizer.onStart = (details) => _apply(details.localPosition);
-        recognizer.onUpdate = (details) => _apply(details.localPosition);
-      },
-      child: CustomPaint(
-        painter: _SeekPainter(
-          position: _fractionOf(widget.currentFrame, _lastFrame),
-          keptStart: kept == null ? null : _fractionOf(kept.first, _lastFrame),
-          keptEnd: kept == null ? null : _fractionOf(kept.last, _lastFrame),
-          wash: TransportBar.rangeWash,
-          enabled: _lastFrame > 0,
-        ),
-        child: SizedBox(height: widget.height),
+    return _TrackGrip(
+      keyValue: widget.keyValue,
+      height: widget.height,
+      onPress: _begin,
+      onMove: _apply,
+      painter: _SeekPainter(
+        position: _fractionOf(widget.currentFrame, _lastFrame),
+        keptStart: kept == null ? null : _fractionOf(kept.first, _lastFrame),
+        keptEnd: kept == null ? null : _fractionOf(kept.last, _lastFrame),
+        wash: TransportBar.rangeWash,
+        enabled: _lastFrame > 0,
       ),
     );
   }
@@ -693,16 +723,13 @@ class _TransportRangeTrackState extends State<TransportRangeTrack> {
 
   int get _lastFrame => widget.frameCount <= 1 ? 0 : widget.frameCount - 1;
 
-  double get _width => context.size?.width ?? 0;
-
-  void _begin(Offset local) {
+  void _begin(double x, double width) {
     _reported = null;
-    _handle = _handleNear(local.dx);
-    _apply(local);
+    _handle = _handleNear(x, width);
+    _apply(x, width);
   }
 
-  _Handle? _handleNear(double x) {
-    final width = _width;
+  _Handle? _handleNear(double x, double width) {
     final toIn = (x - _fractionOf(widget.inFrame, _lastFrame) * width).abs();
     final toOut = (x - _fractionOf(widget.outFrame, _lastFrame) * width).abs();
     if (math.min(toIn, toOut) > _handleGrabPixels) {
@@ -714,12 +741,12 @@ class _TransportRangeTrackState extends State<TransportRangeTrack> {
     return toIn <= toOut ? _Handle.inHandle : _Handle.outHandle;
   }
 
-  void _apply(Offset local) {
+  void _apply(double x, double width) {
     final onChanged = widget.onChanged;
     if (onChanged == null || _handle == null) {
       return;
     }
-    final frame = _frameAt(local.dx, _width, _lastFrame);
+    final frame = _frameAt(x, width, _lastFrame);
     if (_handle == _Handle.either) {
       if (frame == widget.inFrame) {
         return;
@@ -740,23 +767,17 @@ class _TransportRangeTrackState extends State<TransportRangeTrack> {
   @override
   Widget build(BuildContext context) {
     final live = widget.onChanged != null;
-    return OwningAxisGrip(
-      key: ValueKey<String>(widget.keyValue),
-      axis: Axis.horizontal,
-      configure: (recognizer) {
-        recognizer.onDown = (details) => _begin(details.localPosition);
-        recognizer.onStart = (details) => _apply(details.localPosition);
-        recognizer.onUpdate = (details) => _apply(details.localPosition);
-      },
-      child: CustomPaint(
-        painter: _RangePainter(
-          start: _fractionOf(widget.inFrame, _lastFrame),
-          end: _lastFrame == 0 ? 1 : _fractionOf(widget.outFrame, _lastFrame),
-          wash: TransportBar.rangeWash,
-          handle: AppColors.accent,
-          enabled: live,
-        ),
-        child: SizedBox(height: widget.height),
+    return _TrackGrip(
+      keyValue: widget.keyValue,
+      height: widget.height,
+      onPress: _begin,
+      onMove: _apply,
+      painter: _RangePainter(
+        start: _fractionOf(widget.inFrame, _lastFrame),
+        end: _lastFrame == 0 ? 1 : _fractionOf(widget.outFrame, _lastFrame),
+        wash: TransportBar.rangeWash,
+        handle: AppColors.accent,
+        enabled: live,
       ),
     );
   }

@@ -2608,7 +2608,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           _floorCapsules(colorScheme)
         else
           ..._dockedLanes(colorScheme),
-        if (documentName case final name?) _documentName(context, name),
+        if (documentName case final name?) _documentName(name),
         Positioned(
           // The pill answers the same way the horizontal bar does (유저,
           // R4): it holds the window's centre across the axis it sits on,
@@ -2843,40 +2843,16 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ),
   );
 
-  /// The file's name on a see-through plate, at the artwork's lower left
-  /// over the horizontal bar ([BrushCanvasPanel.documentName]).
-  ///
-  /// A plate, not a control: it takes no pointer, so a press on it is the
-  /// canvas's.
-  Widget _documentName(BuildContext context, String name) => Positioned(
+  /// Where the file's name stands ([_CanvasDocumentName]): the artwork's
+  /// lower left, over the horizontal bar — a docked panel's lane, the
+  /// floor's capsule — and inside what the side panels leave.
+  Widget _documentName(String name) => Positioned(
     left: (onFloor ? cover.left : 0) + _capsuleMargin,
     right: (onFloor ? cover.right : dockedLane) + _capsuleMargin,
     bottom: onFloor
         ? _floorBarBottom + AppScrollbarLane.medium + _capsuleMargin
         : _transportCover + dockedLane + _capsuleMargin,
-    child: IgnorePointer(
-      child: Align(
-        alignment: Alignment.bottomLeft,
-        child: DecoratedBox(
-          key: const ValueKey<String>('canvas-document-name'),
-          decoration: ShapeDecoration(
-            color: AppColors.backdrop.withValues(alpha: 0.62),
-            shape: AppShapes.container(AppShapes.wellRadius),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.labelSmall?.copyWith(color: AppColors.text),
-            ),
-          ),
-        ),
-      ),
-    ),
+    child: _CanvasDocumentName(name),
   );
 
   /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
@@ -2983,6 +2959,42 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The file's name on a see-through plate ([BrushCanvasPanel.documentName]),
+/// at the lower left of the room it is given and never wider than it.
+///
+/// A plate, not a control: it takes no pointer, so a press on it is the
+/// canvas's.
+class _CanvasDocumentName extends StatelessWidget {
+  const _CanvasDocumentName(this.name);
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+    child: Align(
+      alignment: Alignment.bottomLeft,
+      child: DecoratedBox(
+        key: const ValueKey<String>('canvas-document-name'),
+        decoration: ShapeDecoration(
+          color: AppColors.backdrop.withValues(alpha: 0.62),
+          shape: AppShapes.container(AppShapes.wellRadius),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          child: Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: AppColors.text),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// The floor's controls, laid on the drawing.
