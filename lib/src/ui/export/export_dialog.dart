@@ -200,14 +200,21 @@ class ExportDialogState extends State<ExportDialog> {
   /// 🚨IN PIXELS, SO THAT A FRAME WHICH DOES NOT MOVE THE BAR IS NOT HEARD.
   /// A notifier says nothing when its value is the one it had, and a film
   /// of two thousand frames moves a bar of three hundred pixels three
-  /// hundred times. ↩️Counted in frames, every frame that went out drew the
-  /// whole window again to move the bar by less than can be seen (F-289,
-  /// measured 2026-10-07: 2,278 window frames in a 46 s export, 12 s of
-  /// the raster thread the export's own pictures wait on).
+  /// hundred times. ↩️Counted in frames, every frame that went out asked
+  /// the window to draw itself again, to move the bar by less than can be
+  /// seen.
   ///
   /// ↩️Before that it was the window's own state, and every frame of a run
   /// rebuilt the whole window — and wrote a sentence counting the frames
   /// into the status line, which a run keeps out of sight.
+  ///
+  /// Measured 2026-10-07 in the app's own binding, over the user's film of
+  /// 1,857 frames (F-289): the window's frames took 7.3 s of the UI thread
+  /// rebuilt whole, 2.1 s with the bar alone hearing every frame, and 1.6 s
+  /// hearing the frames that move it — 738, 749 and 546 frames drawn.
+  /// ⚠️Not under the test binding: it draws a frame after every frame it is
+  /// not pumping for, and a count of window frames taken there is the
+  /// binding's own.
   final ValueNotifier<({int end, int of})?> _progress = ValueNotifier(null);
 
   /// How many device pixels long the footer's bar was last laid out — none
