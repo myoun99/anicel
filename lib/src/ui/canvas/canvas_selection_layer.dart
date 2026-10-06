@@ -667,7 +667,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// picture, and a confirm taken just before an undo (the history's own
   /// hook) handed that undo an entry of nothing to consume (measured
   /// 2026-10-06, an untouched box under each ending).
-  ///
   _MoveSession? _endLanded() => _endSession(
     _session?.holdsAChange ?? false ? _SessionEnd.confirm : _SessionEnd.letGo,
   );
@@ -1133,7 +1132,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ⛔**BOTH HALVES.** A box that changed nothing is only closed and leaves
   /// the session pending, so the single branch Enter used to take made one
   /// confirm into two. With both, a warped box lands warped and an untouched
-  /// box closes and confirms at once.
+  /// box closes with its session in the one press.
   ///
   /// ↩️The box's ✓, wired straight to `_confirmMoveSession`, landed the
   /// UNWARPED lift: the artwork committed at its pre-transform position and
@@ -1714,6 +1713,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// 🗣️유저 2026-10-04 (F-280): 「일반변형은 도중에 도구 바꾼다거나 하는
   /// 동작하면 확정되고 바뀌는데, 자유변형은 취소되고 바뀜. 동작이 서로 다르니
   /// 변형도구는 기본적으로 확정되고 바뀌도록. 기록도 남기는거 등 법 통일도」.
+  ///
+  /// 🗣️And of the first exit that forgot to fold at all (R28 #10): 「룰러로
+  /// 다른데 갔다오면 변형된그림은 사라져있음」 — the transform was never
+  /// wrong, it was discarded on the way out. Whatever the box showed is what
+  /// lands, on every exit.
   ///
   /// ↩️There were three of these. Enter's commit knew all three shapes — a
   /// mesh, a quad, the affine — and was the only one that remembered the
