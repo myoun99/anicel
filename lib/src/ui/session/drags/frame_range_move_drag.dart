@@ -4,7 +4,6 @@ import 'dart:collection' show SplayTreeMap;
 import '../../../models/attached_layer_resolve.dart'
     show isSyncedAttachedLayer;
 import '../../../models/camera_instruction.dart';
-import '../../../models/camera_pose.dart';
 import '../../../models/cut.dart';
 import '../../../models/cut_camera.dart';
 import '../../../models/drawing_block_move.dart';
@@ -19,6 +18,7 @@ import '../../../models/timeline_frame_range.dart';
 import '../../../models/timeline_repeat.dart';
 import '../../../models/timeline_row_address.dart';
 import '../../../models/track_frame_range.dart';
+import '../../../models/transform_track.dart';
 import '../../../services/command.dart';
 import '../../../services/commands/rekey_brush_frames_command.dart';
 import '../../../services/commands/track_transition_commands.dart';
@@ -26,6 +26,10 @@ import '../../../services/commands/update_cut_camera_command.dart';
 import '../../../services/commands/update_layer_timeline_command.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../../timeline/timeline_section_policy.dart';
+import '../../timeline/transform_lane_editing.dart'
+    show transformTrackWithLaneSpanKeysShifted;
+import '../../timeline/transform_lane_policy.dart'
+    show transformLaneDisplayOrder;
 import '../active_cut_controllers.dart';
 import '../camera.dart';
 import '../drawing_block_move_drag.dart';
@@ -85,12 +89,12 @@ typedef MultiRowStep = ({
   MultiRowLattices lattices,
 });
 
-/// The frame-axis riders shifted with a move: the camera keys (null when
-/// no camera row rides), the transition's events by row, and each
-/// DIRECTION row as the row its shifted blocks make (R27 — its spans are
-/// its blocks, so they ride as blocks).
+/// The frame-axis riders shifted with a move: the camera's track with its
+/// keys shifted (null when no camera row rides), the transition's events
+/// by row, and each DIRECTION row as the row its shifted blocks make (R27 —
+/// its spans are its blocks, so they ride as blocks).
 typedef FrameAxisRiders = ({
-  Map<int, CameraPose>? camera,
+  TransformTrack? camera,
   Map<LayerId, Map<int, InstructionEvent>> instructions,
   Map<LayerId, Layer> directions,
 });
@@ -110,11 +114,11 @@ const FrameAxisRiders noRiders = (
 /// rail are not the frames the selection covers.
 typedef TransitionRider = ({Layer row, Set<int> starts});
 
-/// The KEY sources a frame-range move carries (P3b-2): the camera keys
+/// The KEY sources a frame-range move carries (P3b-2): the camera's track
 /// (with the camera row's id), the DIRECTION rows that own spans in the
 /// range, and the transition rows.
 typedef KeySources = ({
-  ({Map<int, CameraPose> before, LayerId layerId})? camera,
+  ({TransformTrack before, LayerId layerId})? camera,
   List<Layer> instructionSources,
   List<TransitionRider> transitionRiders,
 });
@@ -261,7 +265,7 @@ KeySources _castKeySources(
   required ProjectAccess project,
   required Transitions transitions,
 }) {
-  ({Map<int, CameraPose> before, LayerId layerId})? camera;
+  ({TransformTrack before, LayerId layerId})? camera;
   final instructionSources = <Layer>[];
   bool anyKeyIn(Iterable<int> keys) => keys.any(
     (key) => key >= selection.startIndex && key < selection.endIndexExclusive,
@@ -272,9 +276,9 @@ KeySources _castKeySources(
       continue;
     }
     if (layer.kind == LayerKind.camera) {
-      final keyframes = project.activeCutOrNull?.camera.keyframes;
-      if (keyframes != null && anyKeyIn(keyframes.keys)) {
-        camera = (before: Map<int, CameraPose>.of(keyframes), layerId: id);
+      final track = project.activeCutOrNull?.camera.track;
+      if (track != null && anyKeyIn(transformKeyFrameUnion(track))) {
+        camera = (before: track, layerId: id);
       }
       continue;
     }
@@ -377,7 +381,7 @@ class FrameRangeMoveDrag {
     required LayerId? grabLayerId,
     required ({Layer layer, int groupStart})? singleRow,
     required List<({Layer commit, int offset})>? multiSources,
-    required ({Map<int, CameraPose> before, LayerId layerId})? cameraKeys,
+    required ({TransformTrack before, LayerId layerId})? cameraKeys,
     required List<Layer>? instructionSources,
     required List<TransitionRider> transitionRiders,
   }) : _project = roles.project,
@@ -689,13 +693,23 @@ class FrameRangeMoveDrag {
   final List<({Layer commit, int offset})>? _multiSources;
 
   /// KEY sources riding the range move (P3b-2, #2 second half): the
-  /// camera row's keyframe snapshot WITH the row's id — their keys shift
-  /// with the same delta the blocks slide.
+  /// camera's track as it stood at begin WITH the camera row's id — its
+  /// keys shift with the same delta the blocks slide.
+  ///
+  /// 🗣️F-309 (유저 2026-10-06): 「존재하지 않는 키를 새로 만들어서 이동함.
+  /// 떼도 커밋되있음. 멋대로 키를 만들어내지 않도록, 있는 키만 움직이도록
+  /// 근본/구조적 해결」. ↩️The keys rode as the POSE FACADE's map — one
+  /// whole pose a frame that any lane keys — and landed through
+  /// `CutCamera(keyframes:)`, which rebuilds every lane from those poses:
+  /// a frame that keyed Position alone came back keyed on Scale and
+  /// Rotation too, a hold came back linear and a key's name was gone. The
+  /// track rides as it is now, and the lanes' own range move shifts it
+  /// ([_shiftFrameAxisRiders]).
   ///
   /// ⛔ONE field for the pair: the snapshot is meaningless without the row
   /// it came from, and the preview's marker layer used to reach for the id
   /// with a `!` because two fields could not say so.
-  final ({Map<int, CameraPose> before, LayerId layerId})? _cameraKeys;
+  final ({TransformTrack before, LayerId layerId})? _cameraKeys;
 
   final List<Layer>? _instructionSources;
 
@@ -711,7 +725,7 @@ class FrameRangeMoveDrag {
   /// step leaves the last valid plan in place (UI-R23 #10).
   MultiRowRangeMovePlan? _multiRowPlan;
 
-  Map<int, CameraPose>? _cameraShifted;
+  TransformTrack? _cameraShifted;
 
   Map<LayerId, Map<int, InstructionEvent>>? _instructionShifted;
 
@@ -1274,10 +1288,14 @@ class FrameRangeMoveDrag {
     int frameDelta,
   ) {
     final cameraKeys = _cameraKeys;
-    Map<int, CameraPose>? cameraShifted;
+    TransformTrack? cameraShifted;
     if (cameraKeys != null) {
-      cameraShifted = shiftCameraKeysInRange(
-        keyframes: cameraKeys.before,
+      // THE lanes' range move, over every lane of the row: the law a drag
+      // on the Transform header runs ([LaneRangeMoveDrag]). A key moves on
+      // the lane it is on and nothing is made where nothing was.
+      cameraShifted = transformTrackWithLaneSpanKeysShifted(
+        cameraKeys.before,
+        laneIds: transformLaneDisplayOrder,
         rangeStartIndex: selection.startIndex,
         rangeEndIndexExclusive: selection.endIndexExclusive,
         frameDelta: frameDelta,
@@ -1396,7 +1414,7 @@ class FrameRangeMoveDrag {
         for (final entry in sePreviews.entries) entry.key: ?entry.value.global,
       },
       cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
-      cameraKeyframes: cameraShifted,
+      cameraTrack: cameraShifted,
       // A FRESH CLONE per step (the P3b-2 contract) — the gate compares
       // identities, and the repository instance trips nothing (B4-①: the
       // multi-row rigid path was the one place still handing it over raw,
@@ -1407,7 +1425,7 @@ class FrameRangeMoveDrag {
 
   /// The camera row's marker clone for a step that shifted [cameraShifted]
   /// — null when no camera rides.
-  Layer? _cameraMarkerLayer(Map<int, CameraPose>? cameraShifted) {
+  Layer? _cameraMarkerLayer(TransformTrack? cameraShifted) {
     final cameraKeys = _cameraKeys;
     if (cameraShifted == null || cameraKeys == null) {
       return null;
@@ -1783,7 +1801,7 @@ class FrameRangeMoveDrag {
       previewLayers: previewLayers,
       previewGlobalLayers: previewGlobalLayers,
       cameraCutId: cameraShifted == null ? null : _project.activeCutOrNull?.id,
-      cameraKeyframes: cameraShifted,
+      cameraTrack: cameraShifted,
       cameraMarkerLayer: _cameraMarkerLayer(cameraShifted),
     );
   }
@@ -1903,7 +1921,7 @@ class FrameRangeMoveDrag {
         UpdateCutCameraCommand(
           repository: _project.repository,
           cutId: cut.id,
-          camera: CutCamera(keyframes: cameraShifted),
+          camera: CutCamera.fromTrack(cameraShifted),
           description: 'Move camera keys',
         ),
     ];

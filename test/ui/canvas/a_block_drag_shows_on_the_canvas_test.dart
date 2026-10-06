@@ -15,9 +15,11 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
@@ -353,19 +355,19 @@ void main() {
     CameraPose shown() =>
         tester.widget<CameraFrameOverlay>(find.byType(CameraFrameOverlay)).pose;
     final before = shown();
-    final keys = {
-      0: CameraPose(
-        center: CanvasPoint(x: before.center.x + 40, y: before.center.y),
-        zoom: before.zoom,
+    final shifted = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>.empty().withKey(
+        0,
+        CanvasPoint(x: before.center.x + 40, y: before.center.y),
       ),
-    };
+    );
 
     // The block ride's two halves, as the drag hands them over.
-    session.camera.showCameraKeysDragPreview(keys);
+    session.camera.showCameraKeysDragPreview(shifted);
     session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: const {},
       cameraCutId: cutId,
-      cameraKeyframes: keys,
+      cameraTrack: shifted,
       cameraMarkerLayer: camera.copyWith(),
     );
     await tester.pump();

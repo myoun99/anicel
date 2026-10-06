@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../models/attached_layer_resolve.dart';
-import '../../models/camera_pose.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
@@ -78,7 +77,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
     this.previewGlobalLayers = const {},
     this.previewTrackEffects,
     this.cameraCutId,
-    this.cameraKeyframes,
+    this.cameraTrack,
     this.cameraMarkerLayer,
   });
 
@@ -101,13 +100,14 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   /// preview either.
   final Map<TrackId, List<LayerEffect>>? previewTrackEffects;
 
-  /// KEY-RANGE moves (P3b-2): the previewed CAMERA keyframes for
-  /// [cameraCutId] ride along when the selection spans the camera row.
-  /// The cells resolve them through the session (exposureStateForLayer
-  /// consults the drag's preview keys); [cameraMarkerLayer] is a fresh
-  /// clone per step whose only job is tripping the camera row's gate.
+  /// KEY-RANGE moves (P3b-2): the previewed CAMERA track for
+  /// [cameraCutId] rides along when the selection spans the camera row —
+  /// the track the release lands, lane for lane. The cells resolve it
+  /// through the session (exposureStateForLayer consults the drag's
+  /// preview keys); [cameraMarkerLayer] is a fresh clone per step whose
+  /// only job is tripping the camera row's gate.
   final CutId? cameraCutId;
-  final Map<int, CameraPose>? cameraKeyframes;
+  final TransformTrack? cameraTrack;
   final Layer? cameraMarkerLayer;
 
   @override
@@ -117,7 +117,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
       mapEquals(other.previewGlobalLayers, previewGlobalLayers) &&
       mapOfListsEquals(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
-      mapEquals(other.cameraKeyframes, cameraKeyframes) &&
+      other.cameraTrack == cameraTrack &&
       identical(other.cameraMarkerLayer, cameraMarkerLayer);
 
   @override
@@ -126,7 +126,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
     mapHash(previewGlobalLayers),
     mapOfListsHash(previewTrackEffects),
     cameraCutId,
-    mapHash(cameraKeyframes),
+    cameraTrack,
     identityHashCode(cameraMarkerLayer),
   );
 }
@@ -638,10 +638,10 @@ Project projectWithTimelineDragPreview(
     case BlockMoveDragPreview(
       :final previewLayers,
       :final cameraCutId,
-      :final cameraKeyframes,
+      :final cameraTrack,
     ):
       final substituted = _projectWithLayersSubstituted(project, previewLayers);
-      if (cameraCutId == null || cameraKeyframes == null) {
+      if (cameraCutId == null || cameraTrack == null) {
         return substituted;
       }
       // The camera keys' preview reaches the project views too (the
@@ -649,8 +649,7 @@ Project projectWithTimelineDragPreview(
       return updateCutAnywhere(
             substituted,
             cameraCutId,
-            (cut) =>
-                cut.copyWith(camera: CutCamera(keyframes: cameraKeyframes)),
+            (cut) => cut.copyWith(camera: CutCamera.fromTrack(cameraTrack)),
           ) ??
           substituted;
     case MediaPlacementPreview(:final previewLayers):

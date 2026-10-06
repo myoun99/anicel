@@ -287,28 +287,6 @@ class Camera {
     return size.height <= 0 ? 16 / 9 : size.width / size.height;
   }
 
-  /// [_cameraKeysDragPreview] as a [TransformTrack], memoized by the map's
-  /// identity — the getter below is read per cell during paints, and
-  /// rebuilding a SplayTreeMap track per read would be O(cells·keys).
-  Map<int, CameraPose>? _cameraBlockPreviewTrackSource;
-
-  TransformTrack? _cameraBlockPreviewTrackMemo;
-
-  TransformTrack? get _cameraBlockPreviewTrack {
-    final keys = _cameraKeysDragPreview;
-    if (keys == null) {
-      return null;
-    }
-    if (!identical(keys, _cameraBlockPreviewTrackSource)) {
-      _cameraBlockPreviewTrackSource = keys;
-      // The pose-facade form — the exact shape the block-ride commit lands
-      // (`CutCamera(keyframes: cameraShifted)`), so the preview can never
-      // promise a landing the release won't keep.
-      _cameraBlockPreviewTrackMemo = CutCamera(keyframes: keys).track;
-    }
-    return _cameraBlockPreviewTrackMemo;
-  }
-
   /// The camera track THE DISPLAY reads — the in-flight LANE edit (a value
   /// scrubbed, the frame dragged on the canvas, a key range slid), the
   /// in-flight BLOCK-ride preview (P3b-2), or the committed track. The lane
@@ -326,16 +304,22 @@ class Camera {
     if (cut != null && edit?.cameraCutId == cut.id) {
       return edit!.cameraTrack;
     }
-    return _cameraBlockPreviewTrack ?? cut?.camera.track;
+    return _cameraKeysDragPreview ?? cut?.camera.track;
   }
 
   /// The in-flight camera-key preview the cell resolution consults
   /// (exposureStateForLayer): the camera row's cells follow the drag
   /// without the repository moving.
-  Map<int, CameraPose>? _cameraKeysDragPreview;
+  ///
+  /// The very track the block-ride commit lands, so the preview can never
+  /// promise a landing the release won't keep. ↩️It was the pose facade's
+  /// map, turned into a track here the way that commit turned it
+  /// (`CutCamera(keyframes:)`) — the form that made keys nobody set
+  /// (F-309).
+  TransformTrack? _cameraKeysDragPreview;
 
-  /// The block-ride drag hands its shifted keys in here per move and
-  /// clears them (null) on release — the one writer outside this object.
-  void showCameraKeysDragPreview(Map<int, CameraPose>? keys) =>
-      _cameraKeysDragPreview = keys;
+  /// The block-ride drag hands its shifted track in here per move and
+  /// clears it (null) on release — the one writer outside this object.
+  void showCameraKeysDragPreview(TransformTrack? shifted) =>
+      _cameraKeysDragPreview = shifted;
 }
