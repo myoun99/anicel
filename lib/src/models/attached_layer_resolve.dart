@@ -418,6 +418,23 @@ int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   return end;
 }
 
+/// Where a NEW row riding [baseId] on its [placement] side lands in
+/// [layers]. The group reads `[below…, base, above…]`: a new below goes
+/// bottommost (before the existing belows and their organizer folders), a
+/// new above topmost (past the group).
+///
+/// One answer for every door a row joins a group by — the add
+/// (`FoldersAndAttachments.addAttachedLayer`) and the copy 겸용 변경 makes
+/// of a row only one of its cuts holds. A missing base answers
+/// `layers.length` either way: the end of the stack.
+int newAttachedRowIndex(
+  LayerId baseId,
+  List<Layer> layers,
+  AttachedPlacement placement,
+) => placement == AttachedPlacement.below
+    ? attachedGroupStartIndex(baseId, layers)
+    : attachedGroupEndIndex(baseId, layers);
+
 /// The attach group [member] belongs to, named by its BASE: the row it
 /// rides, or itself when it IS the base.
 LayerId attachBaseIdOf(Layer member) => member.attachedToLayerId ?? member.id;

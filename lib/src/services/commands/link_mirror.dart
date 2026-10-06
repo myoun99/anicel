@@ -177,18 +177,11 @@ LayerId? linkCounterpartIn(
   required CutId cutId,
   required LayerId layerId,
   required CutId targetCutId,
-}) {
-  final group = project.linkRegistry.groupOf(cutId: cutId, layerId: layerId);
-  if (group == null) {
-    return null;
-  }
-  for (final member in group.members) {
-    if (member.cutId == targetCutId) {
-      return member.layerId;
-    }
-  }
-  return null;
-}
+}) => project.linkRegistry.counterpartIn(
+  cutId: cutId,
+  layerId: layerId,
+  targetCutId: targetCutId,
+);
 
 /// [sibling]'s own order after the same MOVE that produced [sourceOrder] —
 /// or null when the sibling shares none of the moved rows.
