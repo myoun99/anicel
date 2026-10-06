@@ -1,7 +1,9 @@
 import '../canvas/interactive_brush_edit_canvas_view.dart' show StrokeLander;
 
 /// Where the canvas leaves the one verb a save needs: land the stroke the
-/// pen is in the middle of.
+/// pen is in the middle of — and, since the text tool (R9-rest), the text
+/// the canvas is holding with it (`_CanvasPanelText.landerBeside`): what
+/// has not reached the cel yet, whichever tool it is in.
 ///
 /// 🚨★★★**A SIBLING, NOT A NAME ON THE SESSION.** `SessionInternals` only
 /// shrank — to nothing, and it was deleted (2026-09-28;

@@ -89,6 +89,25 @@ class _CanvasPanelText implements CelTextToolHost {
     }
   }
 
+  /// The verb a save takes to land what this canvas has IN FLIGHT
+  /// (`LiveStrokeLanding`): [stroke] — the drawing view's own, the stroke
+  /// the pen is in the middle of — and beside it the text in hand, landed
+  /// as it is shown and kept in hand ([CelTextTool.landShown]). Null while
+  /// the view that owns [stroke] is gone: there is no canvas then.
+  ///
+  /// One verb because it is one question — 「what has not reached the cel
+  /// yet」 — and the door that asks it is one
+  /// (`ProjectFileDoor._settleWorkInFlight`): a second kind of work in
+  /// flight that had its own way to the save would be the fifth call site
+  /// that door's comment says it exists to prevent.
+  StrokeLander? landerBeside(StrokeLander? stroke) => stroke == null
+      ? null
+      : () {
+          final strokeLanded = stroke();
+          final textLanded = tool.landShown();
+          return strokeLanded || textLanded;
+        };
+
   /// The cel a press sets a text on or takes one from — null where none
   /// is under the playhead, or its row takes no marks.
   CelTextCel? get cel {

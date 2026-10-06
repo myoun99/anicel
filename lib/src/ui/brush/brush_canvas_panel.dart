@@ -2044,7 +2044,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         null => null,
         final selection => _selectionSeat.regionOnTheRow(selection),
       },
-      onStrokeLanderChanged: widget.onStrokeLanderChanged,
+      // R9-rest: what a save lands is the stroke AND the text in hand.
+      onStrokeLanderChanged: (lander) =>
+          widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);

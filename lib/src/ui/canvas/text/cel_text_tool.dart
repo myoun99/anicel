@@ -294,9 +294,8 @@ class CelTextTool extends ChangeNotifier {
     if (session == null) {
       return;
     }
-    final letters = _letters;
-    final content = letters?.content ?? session.content;
-    final selection = letters?.selection;
+    final content = _contentInHand(session);
+    final selection = _letters?.selection;
     final range = celTextLettersSpokenFor(
       content,
       selectionStart: selection?.start ?? 0,
@@ -307,13 +306,24 @@ class CelTextTool extends ChangeNotifier {
       // A text with no letters has only the letter about to be typed to
       // set.
       nextLetterStyle: content.isEmpty
-          ? change(letters?.nextLetterStyle ?? session.nextLetterStyle)
+          ? change(session.nextLetterStyle)
           : null,
     );
     if (settled) {
       landEdit();
     }
   }
+
+  /// The text a setting is made on: what the FIELD holds while the letters
+  /// are held, and otherwise what the session wants.
+  ///
+  /// ⚠️The two are one text but for a bake the engine refused: the session
+  /// then takes its want back to the last text it made
+  /// ([CelTextSession.failure]) while the field still holds every letter
+  /// typed — and a setting made on the session's would be made on letters
+  /// the field no longer has.
+  CelTextContent _contentInHand(CelTextSession session) =>
+      _letters?.content ?? session.content;
 
   /// A change of a setting of the WHOLE TEXT — its alignment, its width,
   /// its line pitch, the box behind it — made on the text in hand.
@@ -325,7 +335,7 @@ class CelTextTool extends ChangeNotifier {
     if (session == null) {
       return;
     }
-    showEdit(change(_letters?.content ?? session.content));
+    showEdit(change(_contentInHand(session)));
     if (settled) {
       landEdit();
     }
@@ -374,6 +384,24 @@ class CelTextTool extends ChangeNotifier {
   void landNow() {
     _landAll();
     _changed();
+  }
+
+  /// Lands everything this tool holds AS IT IS SHOWN, now — and keeps in
+  /// hand what is in hand: what a save a PERSON asked for takes
+  /// (`ProjectFileDoor._settleWorkInFlight`; of the pen, 유저 2026-09-10:
+  /// 「그냥 스트로크 커밋시키고 저장로직 발동시키면 되는거아닌가?」). The file
+  /// then holds the text they were looking at when they asked, and the
+  /// typing goes on: what is typed after lands when the visit ends, a step
+  /// of its own.
+  ///
+  /// Answers whether anything landed. (Whoever draws the canvas hears of it
+  /// from the text itself, which then stands on what the cel carries.)
+  bool landShown() {
+    var landed = false;
+    for (final holding in [..._leaving, ?_held]) {
+      landed = _land(holding) || landed;
+    }
+    return landed;
   }
 
   void _landAll() {
@@ -442,15 +470,16 @@ class CelTextTool extends ChangeNotifier {
   }
 
   /// Puts [holding]'s text on its cel as it is shown, as one step, and
-  /// stands the session on what the cel then carries.
-  void _land(_Holding holding) {
+  /// stands the session on what the cel then carries. Whether there was
+  /// anything to put.
+  bool _land(_Holding holding) {
     final _Holding(:session, :cel) = holding;
     final command = session.landing(
       coordinator: cel.coordinator,
       cacheInvalidationSink: cel.cacheInvalidationSink,
     );
     if (command == null) {
-      return;
+      return false;
     }
     // The first landing of a text whose press made its cel takes the cel
     // with it; every later one is a step of its own.
@@ -462,6 +491,7 @@ class CelTextTool extends ChangeNotifier {
     session.standOn(
       id == null ? null : texts.where((text) => text.id == id).firstOrNull,
     );
+    return true;
   }
 
   void _retire(CelTextSession session) {

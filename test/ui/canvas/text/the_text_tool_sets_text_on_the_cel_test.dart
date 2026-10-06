@@ -354,6 +354,32 @@ void main() {
     expect(history.undoCount, steps + 1);
   });
 
+  testWidgets('🚨a save a person asked for lands the text being typed, as it '
+      'is shown — and the typing goes on', (tester) async {
+    final c = await textToolInHand(tester);
+    final history = sessionOf(tester).historyManager;
+    final steps = history.undoCount;
+    await clickAt(tester, c.dx, c.dy);
+    await typeText(tester, 'hi');
+    expect(celOf(tester).texts, isEmpty, reason: '⛔fixture: not landed');
+
+    // The verb the save's door takes before it reads the project
+    // (`ProjectFileDoor._settleWorkInFlight`).
+    expect(sessionOf(tester).liveStrokeLanding.landNow(), isTrue);
+    await pumpFrames(tester);
+
+    expect(celOf(tester).texts.single.content.text, 'hi');
+    expect(history.undoCount, steps + 1);
+    expect(textToolOf(tester).hold, CelTextHold.letters);
+    expect(textField(), findsOneWidget);
+
+    await typeText(tester, 'hi!');
+    await clickAt(tester, c.dx + 300, c.dy + 200);
+
+    expect(celOf(tester).texts.single.content.text, 'hi!');
+    expect(history.undoCount, steps + 2);
+  });
+
   testWidgets('🚨with the ENGINE itself setting the text: what is typed is '
       'on the canvas as the engine draws it, and lands as that', (
     tester,

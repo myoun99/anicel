@@ -92,6 +92,15 @@ void main() {
 
   final at = CanvasPoint(x: 8, y: 8);
 
+  /// Another cel of the same stack.
+  const elsewhere = BrushFrameKey(
+    projectId: ProjectId('p'),
+    trackId: TrackId('t'),
+    cutId: CutId('c'),
+    layerId: LayerId('l'),
+    frameId: FrameId('another'),
+  );
+
   group('a new text', () {
     test('begins in hand by its LETTERS, the caret in it — and nothing of '
         'it is on the cel or on the canvas', () {
@@ -170,9 +179,26 @@ void main() {
       tool.confirm();
 
       expect(tool.session, isNull);
+      expect(tool.letters, isNull);
       expect(tool.holdsAnything, isFalse);
       expect(host.ran, hasLength(1));
       expect(textsOn(cel), [(1, 'ab')]);
+    });
+
+    test('beginning ANOTHER text lands the one in hand first', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'ab');
+      await baker.pending.answer();
+      final there = CanvasPoint(x: 16, y: 16);
+
+      tool.beginText(cel, there);
+
+      expect(host.ran, hasLength(1));
+      expect(textsOn(cel), [(1, 'ab')]);
+      expect(tool.session!.textId, isNull, reason: 'a new one is in hand');
+      expect(tool.session!.content.anchor, there);
+      expect(tool.letters!.text, '');
     });
 
     test('let go of with NO letters, it leaves nothing — no text and no '
@@ -259,6 +285,24 @@ void main() {
       expect(tool.holdsAnything, isFalse);
     });
 
+    test('🚨DELETED while a landing of it was still owed, it stays deleted: '
+        'the engine\'s late answer lands nothing', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      typeInto(tool, 'ab');
+      tool.stopTyping();
+      expect(host.ran, isEmpty, reason: '⛔fixture: the landing is owed');
+
+      tool.deleteText();
+      await baker.pending.answer();
+
+      expect(host.ran, isEmpty);
+      expect(textsOn(cel), isEmpty);
+      expect(tool.holdsAnything, isFalse);
+    });
+
     test('the letters taken up again before it settled: the visit goes on, '
         'and lands once, when it ends', () async {
       final (:tool, :host, :baker, :cel) = hand();
@@ -316,6 +360,31 @@ void main() {
 
       expect(tool.session, same(session));
       expect(tool.hold, CelTextHold.box);
+    });
+
+    test('the same id on ANOTHER cel is another text: taking it lets go of '
+        'the one in hand', () {
+      final (:tool, host: _, baker: _, :cel) = hand(
+        texts: [carried(4, said([run('ab')]))],
+      );
+      cel.coordinator.restoreSurfaceSnapshot(
+        elsewhere,
+        drawingOf(const {}).withTexts([carried(4, said([run('zz')]))]),
+      );
+      final CelTextCel other = (
+        key: elsewhere,
+        coordinator: cel.coordinator,
+        canvasSize: cel.canvasSize,
+        cacheInvalidationSink: null,
+      );
+      tool.takeText(cel, pictureOf(cel).texts.single);
+      final first = tool.session;
+
+      tool.takeText(other, pictureOf(other).texts.single);
+
+      expect(tool.session, isNot(same(first)));
+      expect(tool.session!.key, elsewhere);
+      expect(tool.session!.content.text, 'zz');
     });
 
     test('taking ANOTHER lands the one in hand first', () async {
@@ -551,6 +620,28 @@ void main() {
       expect(tool.letters!.content.spans.single.style.fontSize, 16);
     });
 
+    test('after a bake the engine refused, a setting still reaches the '
+        'letters the FIELD holds — every one typed', () async {
+      final (:tool, host: _, :baker, :cel) = hand(
+        texts: [carried(4, said([run('ab')]))],
+      );
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'abc');
+      await baker.pending.refuse(StateError('no raster'));
+      expect(tool.session!.content.text, 'ab', reason: '⛔fixture: the want');
+
+      tool
+        ..changeLetters((style) => style.copyWith(bold: true))
+        ..changeBox((content) => content.copyWith(lineHeight: 2));
+
+      final held = tool.letters!.content;
+      expect(held.text, 'abc');
+      expect(held.spans.single.style.bold, isTrue);
+      expect(held.lineHeight, 2);
+    });
+
     test('with nothing in hand it changes nothing', () {
       final (:tool, :host, :baker, cel: _) = hand();
 
@@ -607,15 +698,15 @@ void main() {
     test('is for the cel the text is on, and no other', () async {
       final (:tool, host: _, :baker, :cel) = hand();
       tool.beginText(cel, at);
-      typeInto(tool, 'ab');
+      typeInto(tool, 'a');
       await baker.pending.answer();
-      const elsewhere = BrushFrameKey(
-        projectId: ProjectId('p'),
-        trackId: TrackId('t'),
-        cutId: CutId('c'),
-        layerId: LayerId('l'),
-        frameId: FrameId('another'),
-      );
+
+      expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
+      expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
+
+      // And the same of a text on its way out, still drawn until it lands.
+      typeInto(tool, 'ab');
+      tool.confirm();
 
       expect(shownFor(tool, cel), isNotNull, reason: '⛔fixture');
       expect(tool.shownSurfaceFor(elsewhere, pictureOf(cel)), isNull);
@@ -667,6 +758,86 @@ void main() {
       tool.confirm();
 
       expect(host.ran.single.withCelMadeSince, isNull);
+    });
+  });
+
+  group('a save a person asked for (landShown)', () {
+    test('🚨lands the text as it is shown and the typing goes on: what is '
+        'typed after is a step of its own', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'ab');
+      await baker.pending.answer();
+
+      expect(tool.landShown(), isTrue);
+
+      expect(host.ran, hasLength(1));
+      expect(textsOn(cel), [(1, 'ab')]);
+      expect(tool.hold, CelTextHold.letters, reason: 'still being typed');
+      expect(tool.letters!.text, 'ab');
+      expect(tool.session!.textId, 1);
+
+      expect(tool.landShown(), isFalse, reason: 'nothing new to land');
+      expect(host.ran, hasLength(1));
+
+      typeInto(tool, 'abc');
+      await baker.pending.answer();
+      tool.stopTyping();
+
+      expect(host.ran, hasLength(2));
+      expect(textsOn(cel), [(1, 'abc')]);
+    });
+
+    test('a want still being set is not in the file: what was last MADE is, '
+        'and the rest lands with the visit', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      typeInto(tool, 'ab');
+
+      expect(tool.landShown(), isTrue);
+
+      expect(textsOn(cel), [(1, 'a')]);
+
+      await baker.pending.answer();
+      tool.stopTyping();
+
+      expect(textsOn(cel), [(1, 'ab')]);
+      expect(host.ran, hasLength(2));
+    });
+
+    test('a text on its way out lands as shown too, and its last want '
+        'after it', () async {
+      final (:tool, :host, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      typeInto(tool, 'ab');
+      tool.confirm();
+
+      expect(tool.landShown(), isTrue);
+
+      expect(textsOn(cel), [(1, 'a')]);
+      expect(tool.holdsAnything, isTrue, reason: 'its last want is owed');
+
+      await baker.pending.answer();
+
+      expect(textsOn(cel), [(1, 'ab')]);
+      expect(tool.holdsAnything, isFalse);
+    });
+
+    test('with nothing to land it lands nothing, and says so', () {
+      final (:tool, :host, baker: _, :cel) = hand(
+        texts: [carried(4, said([run('ab')]))],
+      );
+
+      expect(tool.landShown(), isFalse);
+
+      tool.takeText(cel, pictureOf(cel).texts.single);
+
+      expect(tool.landShown(), isFalse);
+      expect(host.ran, isEmpty);
     });
   });
 
