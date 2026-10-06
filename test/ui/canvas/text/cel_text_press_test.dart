@@ -353,7 +353,7 @@ void main() {
 
     test('a click inside opens its letters where the click was; a click '
         'outside, on nothing, lets go of it', () {
-      final (:tool, :scene, baker: _, begun: _, traced: _) = table(
+      final (:tool, :scene, :baker, begun: _, traced: _) = table(
         texts: [carried(4, says('ab'))],
       );
       press(scene, 12, 12);
@@ -376,6 +376,9 @@ void main() {
       expect(tool.session, isNull);
       expect(textOf(scene, 4).content.rotationDegrees, 0);
       expect((tool.host as _Host).history.undoCount, 0);
+      // ⛔And the wander under the slop turned nothing on its way: the
+      // engine was never asked to set the text another way round.
+      expect(baker.asked, isEmpty);
     });
 
     test('🚨the text in hand is where it is SHOWN, not where the cel still '

@@ -984,11 +984,12 @@ Widget _itemBody(
     Expanded(
       child: Text(
         entry.label,
-        // ONE line, ending in an ellipsis: a row is one line tall, and a
-        // label can be a caller's own words — a text's letters (R9-rest:
-        // 「이름은 그냥 텍스트 글자대로」) — as long as they like.
+        // ONE line, ending in an ellipsis where the row ends: a row is one
+        // line tall, and a label can be a caller's own words — a text's
+        // letters (R9-rest: 「이름은 그냥 텍스트 글자대로」) — as long as
+        // they like. (No `softWrap: false` beside these two: the last line
+        // an ellipsis ends is filled to its edge either way — measured.)
         maxLines: 1,
-        softWrap: false,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 12, color: _inkFor(entry)),
       ),

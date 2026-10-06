@@ -27,7 +27,7 @@ void main() {
   /// Looks where [places] say in turn — the last of them for good — and
   /// reads [bytes] wherever [readable] says they are; a note of both.
   ({
-    Future<Uint8List?> Function({int attempts}) read,
+    Future<Uint8List?> Function({int? attempts}) read,
     List<MediaByteSource?> looked,
     List<MediaByteSource> tried,
   })
@@ -38,20 +38,26 @@ void main() {
     final looked = <MediaByteSource?>[];
     final tried = <MediaByteSource>[];
     return (
-      read: ({int attempts = 3}) => readLookingAgain(
-        find: () {
+      read: ({int? attempts}) {
+        MediaByteSource? find() {
           final place = places[looked.length < places.length
               ? looked.length
               : places.length - 1];
           looked.add(place);
           return place;
-        },
-        read: (source) async {
+        }
+
+        Future<Uint8List?> read(MediaByteSource source) async {
           tried.add(source);
           return readable(source) ? bytes : null;
-        },
-        attempts: attempts,
-      ),
+        }
+
+        // ⚠️With no number of its own a test reads by the policy's: how
+        // many looks it gives up after is the policy's to say.
+        return attempts == null
+            ? readLookingAgain(find: find, read: read)
+            : readLookingAgain(find: find, read: read, attempts: attempts);
+      },
       looked: looked,
       tried: tried,
     );

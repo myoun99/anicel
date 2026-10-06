@@ -170,6 +170,20 @@ void main() {
       expect(fonts.families.single.name, 'Picked Sans');
     });
 
+    test('🚨a PICKED file that is not a font is refused with the same '
+        'sentence — a refusal reaches whoever opened the dialog', () async {
+      final fonts = fontsOf(
+        picker: () async =>
+            (name: 'notes.txt', bytes: Uint8List.fromList(List.filled(64, 7))),
+      );
+
+      expect(await fonts.importFromFile(), (
+        family: null,
+        refusal: AppText.strings.textToolFontUnreadable,
+      ));
+      expect(fonts.families, isEmpty);
+    });
+
     test('a dialog closed without a file brings nothing and says nothing', () async {
       final fonts = fontsOf(picker: () async => null);
 
@@ -228,6 +242,12 @@ void main() {
       final kept = filesKept();
       expect(kept, hasLength(1), reason: 'the older file is gone');
       expect(await library.readFont(kept.single), newer);
+      // 🚨And the INDEX lists the face once, as the newer file says it: an
+      // entry left for the file that went would still be counted when the
+      // family is asked whether every file of it may ride in a project.
+      final listed = await library.loadIndex();
+      expect([for (final entry in listed) entry.file], kept);
+      expect(listed.single.facts.fsType, 8);
       await setIn(fonts, 'Probe Sans');
       final second = fonts.faces.engineFamilyOf('Probe Sans');
       expect(second, isNotNull);

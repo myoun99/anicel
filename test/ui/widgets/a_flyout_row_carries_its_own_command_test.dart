@@ -223,8 +223,9 @@ void main() {
 
   testWidgets('🚨and it is cut where the ROW ends, not after the last word '
       'that fits: a name of several words fills its row', (tester) async {
-    // A short word, and then one longer than any row. Let to wrap, the
-    // line would end after the first and show two letters of the name.
+    // A short word, and then one longer than any row. It is the ELLIPSIS
+    // that fills the line to the row's end: clipped instead, the line
+    // would end after the first word and show two letters of the name.
     final long = 'ab ${'c' * 400}';
     await pumpList(
       tester,
