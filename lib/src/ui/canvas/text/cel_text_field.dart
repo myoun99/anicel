@@ -74,7 +74,11 @@ class CelTextField extends StatelessWidget {
       showCursor: false,
       cursorWidth: 0,
       maxLines: null,
-      forceLine: false,
+      // A box sets its lines across its whole width, as the canvas does: a
+      // short line stands where the alignment puts it IN THE BOX, and that
+      // is where the IME is told the caret is. A text that grows is as wide
+      // as its lines (and has no width to be forced to).
+      forceLine: wrapWidth != null,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
       textAlign: canvasTextAlign(content.align),
@@ -85,6 +89,14 @@ class CelTextField extends StatelessWidget {
       smartDashesType: SmartDashesType.disabled,
       smartQuotesType: SmartQuotesType.disabled,
       stylusHandwritingEnabled: false,
+      // 🚨A PRESS OUTSIDE THIS FIELD DOES NOT TAKE THE KEYBOARD FROM IT.
+      // Every press is outside it — it is never on screen — and a stock
+      // field lets go of the keyboard on one: the click that moves the
+      // caret would hand the next key to the app's shortcuts, and 「b」
+      // would be the brush. When the letters are let go of is the text
+      // tool's to say (the press table), and it says so by unmounting this.
+      onTapOutside: _keepTheKeyboard,
+      onTapUpOutside: _keepTheKeyboard,
     );
     if (wrapWidth != null) {
       field = SizedBox(width: wrapWidth + _caretGap, child: field);
@@ -124,6 +136,8 @@ class CelTextField extends StatelessWidget {
       ..rotateZ(content.rotationDegrees * math.pi / 180)
       ..translateByDouble(shown.block.left, shown.block.top, 0, 1);
   }
+
+  static void _keepTheKeyboard(PointerEvent event) {}
 
   KeyEventResult _key(FocusNode node, KeyEvent event) {
     if (event is KeyDownEvent &&
