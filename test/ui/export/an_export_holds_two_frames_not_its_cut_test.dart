@@ -17,6 +17,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -62,7 +63,11 @@ void main() {
     );
   }
 
-  EditorSessionManager sessionOf(List<Cut> cuts, {Layer? transitions}) =>
+  EditorSessionManager sessionOf(
+    List<Cut> cuts, {
+    Layer? transitions,
+    List<Layer> seLayers = const [],
+  }) =>
       EditorSessionManager(
         initialProject: Project(
           id: const ProjectId('project'),
@@ -74,6 +79,7 @@ void main() {
               name: 'Track',
               cuts: cuts,
               transitionLayer: transitions,
+              seLayers: seLayers,
             ),
           ],
           createdAt: DateTime.utc(2026),
@@ -468,6 +474,109 @@ void main() {
         expect(after, isNot(before), reason: 'and it shows another part');
         first.dispose();
         moved.dispose();
+      });
+    });
+  });
+
+  group('what is not in the cut\'s composite is part of the frame all the '
+      'same (F-289)', () {
+    const cutId = CutId('cut');
+
+    /// One drawing held for the whole cut.
+    Cut still() => Cut(
+      id: cutId,
+      name: 'Cut',
+      duration: 4,
+      canvasSize: canvasSize,
+      layers: [
+        Layer(
+          id: const LayerId('a'),
+          name: 'A',
+          frames: [frame('a1')],
+          timeline: const {
+            0: TimelineExposure.drawing(FrameId('a1'), length: 4),
+          },
+        ),
+        createCameraLayer(cutId: cutId),
+      ],
+    );
+
+    /// An SE row whose speaker is named from frame 1 on.
+    Layer speaker() => Layer(
+      id: const LayerId('se'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: [
+        Frame(
+          id: const FrameId('line'),
+          duration: 3,
+          strokes: const [],
+          name: 'the line',
+          seName: 'who',
+        ),
+      ],
+      timeline: const {1: TimelineExposure.drawing(FrameId('line'), length: 3)},
+    );
+
+    for (final mode in ExportSizeMode.values) {
+      testWidgets('${mode.name}: a name coming up over a held drawing is '
+          'another picture', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([still()], seLayers: [speaker()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final cut = s.requireActiveCut;
+          expect(
+            [
+              for (final index in [0, 1])
+                s.seEntries.seNameTagsForCutFrame(cut, index).length,
+            ],
+            [0, 1],
+            reason: 'LIVENESS: nobody is named at 0, and somebody at 1',
+          );
+          final renderer = ExportFrameRenderer(session: s);
+          addTearDown(renderer.dispose);
+          Future<ui.Image> frameAt(int index) =>
+              renderer.renderCompositeForVideo(
+                ExportFrameTask(cut: cut, frameIndex: index),
+                mode,
+              );
+
+          final unnamed = await frameAt(0);
+          final named = await frameAt(1);
+          expect(named.isCloneOf(unnamed), isFalse);
+          final held = await frameAt(2);
+          expect(held.isCloneOf(named), isTrue, reason: 'the name stays');
+          for (final image in [unnamed, named, held]) {
+            image.dispose();
+          }
+        });
+      });
+    }
+
+    testWidgets('the same frame through the other door is another picture: '
+        'the stack\'s stands on no ground, the canvas\'s on its own', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final s = sessionOf([still()]);
+        addTearDown(s.dispose);
+        parkEvery(s);
+        final renderer = ExportFrameRenderer(session: s);
+        addTearDown(renderer.dispose);
+        final task = ExportFrameTask(cut: s.requireActiveCut, frameIndex: 0);
+
+        (await renderer.renderCompositeForVideo(
+          task,
+          ExportSizeMode.camera,
+        )).dispose();
+        final made = renderer.debugPicturesMade;
+        expect(made, 2, reason: 'LIVENESS: the cut\'s picture and the frame');
+        (await renderer.renderCompositeForVideo(
+          task,
+          ExportSizeMode.canvas,
+        )).dispose();
+        expect(renderer.debugPicturesMade, made + 1);
       });
     });
   });
