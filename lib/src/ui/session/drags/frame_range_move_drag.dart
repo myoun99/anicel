@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'dart:collection' show SplayTreeMap;
 
+import '../../../models/attached_layer_resolve.dart'
+    show isSyncedAttachedLayer;
 import '../../../models/camera_instruction.dart';
 import '../../../models/camera_pose.dart';
 import '../../../models/cut.dart';
@@ -70,15 +72,10 @@ enum HopCast {
   /// Rides along on the track-SE lattice.
   sePassenger,
 
-  /// Its keys ride the FRAME delta and the row stays put.
-  frameAxisRider,
-
-  /// Contributes nothing.
-  nothing,
-
-  /// Content on a row that is none of the above (a SYNCED attach row):
-  /// the step belongs to its base — the plain slide owns it.
-  boundToBase,
+  /// Stays on its row and keeps no other row from travelling: an empty
+  /// row, a row whose keys ride the FRAME delta, a row whose blocks are
+  /// not its own to move ([FrameRangeMoveDrag._castRowForHop]).
+  staysPut,
 }
 
 /// One rigid multi-row drag step's subjects, read once per step.
@@ -129,6 +126,26 @@ bool _wholeBlockIn(TimelineDrawingBlock block, int start, int endExclusive) =>
     !block.entry.ghost &&
     block.startIndex >= start &&
     block.endIndexExclusive <= endExclusive;
+
+/// The row whose SEAT the display row [id] shows — itself, or, for a SYNCED
+/// attach row, the base whose blocks it shows.
+///
+/// 🚨F-276 (유저 2026-10-04): 「프레임 블록은 이동가능한곳이라면 어디든
+/// 이동가능. 지금 어태치 싱크레이어를 가진 레이어의 블록을 다른 레이어로
+/// 이동하는게 불가능한데 가능하도록」. A mirror row holds no block of its own:
+/// every block it shows is its base's, shown again. So a move never reads
+/// it as a row — the row GRABBED, the row POINTED AT and the rows a span
+/// COVERS all read the base, the way a lane row reads its owning layer
+/// (`resolveBlockMoveTargetLayer`). Reading it as a row of its own is what
+/// made a base's block unmovable the moment its mirror was in the selection
+/// or under the hand: the mirror has no seat to land on, and the rigid hop
+/// counted it as one.
+LayerId _seatRowOf(ProjectAccess project, LayerId id) =>
+    switch (project.layerById(id)) {
+      final layer? when isSyncedAttachedLayer(layer) =>
+        layer.attachedToLayerId ?? id,
+      _ => id,
+    };
 
 /// The display→commit offset a move applies to [layerId]'s span. ZERO on
 /// the track axis: the span is already stated in commit keys, and
@@ -376,7 +393,9 @@ class FrameRangeMoveDrag {
        _trackSe = roles.trackSe,
        _selectionBefore = selectionBefore,
        _trackSelectionBefore = trackSelectionBefore,
-       _grabLayerId = grabLayerId,
+       _grabLayerId = grabLayerId == null
+           ? null
+           : _seatRowOf(roles.project, grabLayerId),
        _singleRow = singleRow,
        _multiSources = multiSources,
        _cameraKeys = cameraKeys,
@@ -456,16 +475,9 @@ class FrameRangeMoveDrag {
       project: roles.project,
       transitions: roles.transitions,
     );
-    // Multi-layer spans, SE rows and KEY sources route through the
-    // frame-axis slide (UI-R18 #1): per-layer plans on the COMMIT forms;
-    // row-change drops stay the single-anim path below.
-    final multiSource =
-        span.spanLayerIds.length > 1 ||
-        roles.project.isTrackSeLayerId(span.layerId) ||
-        keys.camera != null ||
-        keys.instructionSources.isNotEmpty ||
-        keys.transitionRiders.isNotEmpty;
-    final subjects = multiSource
+    final singleRowId = _singleRowOf(span, keys, roles.project);
+    final multiSource = singleRowId == null;
+    final subjects = singleRowId == null
         ? _multiSourceSubjects(
             span,
             keys,
@@ -474,10 +486,10 @@ class FrameRangeMoveDrag {
             rangeSelections: rangeSelections,
           )
         : _singleRowSubjects(
+            singleRowId,
             span,
             project: roles.project,
             rowSpans: rowSpans,
-            folders: folders,
           );
     if (subjects == null) {
       return null;
@@ -495,6 +507,36 @@ class FrameRangeMoveDrag {
           : null,
       transitionRiders: keys.transitionRiders,
     );
+  }
+
+  /// The ONE row [span] moves by the single row's law, or null when it moves
+  /// as several sources: multi-layer spans, SE rows and KEY sources route
+  /// through the frame-axis slide (UI-R18 #1) — per-layer plans on the
+  /// COMMIT forms; row-change drops stay the single-anim path.
+  ///
+  /// 🚨F-276: "multi-layer" is counted in rows of their OWN, and a mirror
+  /// is not one ([_seatRowOf]). A base selected together with its mirror is
+  /// one row selected twice, so it runs the code a selection of the base
+  /// alone runs — the two cannot come to land differently. Mirrors selected
+  /// without a base are no row at all, and have no single row either.
+  static LayerId? _singleRowOf(
+    TimelineFrameRangeSelection span,
+    KeySources keys,
+    ProjectAccess project,
+  ) {
+    final ownRows = [
+      for (final id in span.spanLayerIds)
+        if (_seatRowOf(project, id) == id) id,
+    ];
+    final carriesKeys =
+        keys.camera != null ||
+        keys.instructionSources.isNotEmpty ||
+        keys.transitionRiders.isNotEmpty;
+    return ownRows.length != 1 ||
+            carriesKeys ||
+            project.isTrackSeLayerId(ownRows.single)
+        ? null
+        : ownRows.single;
   }
 
   /// The frame-axis slide's subjects (UI-R18 #1) for a multi-layer span,
@@ -536,36 +578,35 @@ class FrameRangeMoveDrag {
         keys.camera == null &&
         keys.instructionSources.isEmpty &&
         keys.transitionRiders.isEmpty) {
-      // An all-synced span dies here — say why at the cursor, like the
-      // single-row path does.
+      // A span of nothing but SYNCED attach rows dies here. Their blocks
+      // are borrowed exposures — the move refuses with the "edit the
+      // owner" pill (the synced-block UI made the row look grabbable;
+      // before it, the all-ghost timeline fell out of the block scan on
+      // its own). One mirror or several: this is the one place that says
+      // so — a mirror is no row of its own, so a span of them never takes
+      // the single row's path ([_singleRowOf]), which used to say it too.
       folders.noticeSyncedAttachRefusal(span.layerId);
       return null;
     }
     return (singleRow: null, multiSources: sources);
   }
 
-  /// The single-row move's subject: the row's first whole block inside the
+  /// The single-row move's subject on [rowId] — the one row of its own
+  /// [span] covers ([_singleRowOf]): the row's first whole block inside the
   /// selection anchors the group; nothing but empty cells means nothing
   /// to move.
   static _MoveSubjects? _singleRowSubjects(
+    LayerId rowId,
     TimelineFrameRangeSelection span, {
     required ProjectAccess project,
     required RowSpans rowSpans,
-    required FoldersAndAttachments folders,
   }) {
-    // A SYNCED attach row's blocks are borrowed exposures — the move
-    // refuses with the "edit the owner" pill (the synced-block UI made
-    // the row look grabbable; before it, the all-ghost timeline fell out
-    // of the block scan below on its own). A SINGLE-CEL (image) row's
-    // covering block is immovable — the normalization would revert it.
-    if (folders.isSyncedAttachedLayerId(span.layerId)) {
-      folders.noticeSyncedAttachRefusal(span.layerId);
+    // A SINGLE-CEL (image) row's covering block is immovable — the
+    // normalization would revert it.
+    if (rowSpans.isSingleCelLayerId(rowId)) {
       return null;
     }
-    if (rowSpans.isSingleCelLayerId(span.layerId)) {
-      return null;
-    }
-    final layer = project.layerById(span.layerId);
+    final layer = project.layerById(rowId);
     if (layer == null) {
       return null;
     }
@@ -621,6 +662,9 @@ class FrameRangeMoveDrag {
   /// selection's anchor row is a different thing (selecting upward makes
   /// them differ), and using it made "this block lands on that row" come
   /// out shifted by however far the two were apart.
+  ///
+  /// Held as its SEAT ([_seatRowOf], F-276): a block grabbed by its mirror
+  /// is the base's block, and the hop starts where that block lives.
   final LayerId? _grabLayerId;
 
   /// The single-row subject: the row as it stood, and the start of the
@@ -884,7 +928,15 @@ class FrameRangeMoveDrag {
   /// the whole multi-row move silently died even though the selected
   /// blocks had a perfectly legal home. Each moving row translates this
   /// display hop into its own lattice below.
-  List<Layer> _rangeRowOrder() => sectionedLayerOrder(_project.layers);
+  ///
+  /// 🚨F-276: every row but a SYNCED mirror. It is its base's row shown
+  /// again ([_seatRowOf]), not a step of the walk — counted as one, a base
+  /// hopping past its own mirror "landed" on the mirror, which no block can,
+  /// and the whole move held.
+  List<Layer> _rangeRowOrder() => [
+    for (final layer in sectionedLayerOrder(_project.layers))
+      if (!isSyncedAttachedLayer(layer)) layer,
+  ];
 
   /// The one lattice hop every content-bearing row in [ids] agrees on.
   /// `blocked` when a row cannot land, or when two rows would need
@@ -939,22 +991,18 @@ class FrameRangeMoveDrag {
   /// rigidly by the same row + frame delta. Returns true when it OWNS the
   /// step — a valid rigid landing (preview published) or an illegal one
   /// that HOLDS the last valid preview (UI-R23 #10). Returns false (falls
-  /// through to the plain frame slide) for same-row steps or spans whose
-  /// NON-drawing rows carry content in range (keys ride the frame axis
-  /// only). Empty rows of any kind never block (UI-R24 #3: only the
-  /// frames inside the selection move).
+  /// through to the plain frame slide) for same-row steps and for steps
+  /// that carry nothing. No row of the span blocks the others: an empty
+  /// one (UI-R24 #3: only the frames inside the selection move), and one
+  /// that cannot change rows ([_castRowForHop]).
   bool _updateMultiRow(int frameDelta, LayerId targetLayerId) {
     final selection = _selectionBefore;
     if (selection.spanLayerIds.length <= 1) {
       return false;
     }
-    final cast = _castMultiRowSpan(selection);
-    if (cast == null) {
-      return false;
-    }
     final step = (
       selection: selection,
-      cast: cast,
+      cast: _castMultiRowSpan(selection),
       lattices: _multiRowLattices(),
     );
     final hop = _agreedRowHop(step, targetLayerId);
@@ -1034,9 +1082,7 @@ class FrameRangeMoveDrag {
     );
   }
 
-  /// The span sorted by what each row can DO with the hop, or null when a
-  /// row that cannot hop still carries content (the plain slide owns the
-  /// step then).
+  /// The span sorted by what each row can DO with the hop.
   ///
   /// R27 #8: sort the span by what each row can DO with the hop. Drawing
   /// rows and track-SE rows travel across their own lattice; the camera
@@ -1048,7 +1094,7 @@ class FrameRangeMoveDrag {
   /// is the "임시처방" the user called out: selecting a CAM row next to a
   /// sound block made the sound unmovable, even though its landing row
   /// was empty. A row that cannot change rows now simply doesn't.
-  MultiRowSpanCast? _castMultiRowSpan(TimelineFrameRangeSelection selection) {
+  MultiRowSpanCast _castMultiRowSpan(TimelineFrameRangeSelection selection) {
     bool carriesBlockInRange(Layer layer) => drawingBlocks(layer.timeline).any(
       (block) =>
           !block.entry.ghost &&
@@ -1063,9 +1109,7 @@ class FrameRangeMoveDrag {
           drawingSourceIds.add(id);
         case HopCast.sePassenger:
           sePassengerIds.add(id);
-        case HopCast.boundToBase:
-          return null;
-        case HopCast.frameAxisRider || HopCast.nothing:
+        case HopCast.staysPut:
           break;
       }
     }
@@ -1079,34 +1123,37 @@ class FrameRangeMoveDrag {
       final layer = _project.layerById(id);
       return layer != null && carriesBlockInRange(layer)
           ? HopCast.drawingSource
-          : HopCast.nothing;
+          : HopCast.staysPut;
     }
     if (_project.isTrackSeLayerId(id)) {
       final display = _project.rangeLayerById(id);
       return display != null && carriesBlockInRange(display)
           ? HopCast.sePassenger
-          : HopCast.nothing;
+          : HopCast.staysPut;
     }
-    final layer = _project.layerById(id);
-    if (layer == null) {
-      return HopCast.nothing;
-    }
-    // The camera and instruction rows (the transition included, via its
-    // display clone) are frame-axis riders — WHO rides was decided at
-    // begin ([_cameraKeys], [_instructionSources] and [_transitionRiders],
-    // the same answers the plain slide consumes). Re-deriving them here is
-    // the copy that silently dropped the TRANSITION on rigid steps (C④):
-    // its clone's kind matched no arm, so the spans snapped home the
-    // moment the pointer crossed a row.
-    if (layer.kind == LayerKind.camera ||
-        layer.kind == LayerKind.instruction ||
-        layer.kind == LayerKind.transition) {
-      return HopCast.frameAxisRider;
-    }
-    // A row that is neither move-eligible nor a known frame-axis rider
-    // (a SYNCED attach row) still routes the step to the plain slide
-    // when it carries content: its timing belongs to its base.
-    return carriesBlockInRange(layer) ? HopCast.boundToBase : HopCast.nothing;
+    // Every other row has no row axis to travel: it STAYS, whatever it
+    // carries, and keeps none of the rows above from travelling.
+    //
+    // · The camera and instruction rows (the transition included, via its
+    //   display clone) are frame-axis riders — WHO rides was decided at
+    //   begin ([_cameraKeys], [_instructionSources] and [_transitionRiders],
+    //   the same answers the plain slide consumes). Re-deriving them here is
+    //   the copy that silently dropped the TRANSITION on rigid steps (C④):
+    //   its clone's kind matched no arm, so the spans snapped home the
+    //   moment the pointer crossed a row.
+    // · ↩️F-276 (유저 2026-10-04): a SYNCED attach row and a picture row,
+    //   whose blocks are not theirs to move. These were the last veto of
+    //   the family R27 #8 retired: content on a row that was neither
+    //   move-eligible nor a known rider routed the whole step to the plain
+    //   slide ("its timing belongs to its base"), so a mirror selected
+    //   along with its base switched the base's row change off. 「프레임
+    //   블록은 이동가능한곳이라면 어디든 이동가능 … 그 경우 물론 싱크 레이어의
+    //   그림이 있다면 사라지겠지. 안내문 안띄워도됨」 — the base's block goes,
+    //   the mirror's picture of it stays behind unshown, and nothing is
+    //   said. (Its link is kept — `cutWithReconciledAttachedMirrors`
+    //   leaves an orphan link alone — so the picture is back the moment
+    //   the block is.)
+    return HopCast.staysPut;
   }
 
   /// The row orders a rigid step reads: the display rows (where the
@@ -1478,13 +1525,18 @@ class FrameRangeMoveDrag {
   /// outline riding the previewed landing.
   void update({required int frameDelta, LayerId? targetLayerId}) {
     final selection = _selectionBefore;
+    // 🚨F-276: the row pointed at is read as its SEAT — over a mirror, the
+    // hand is over its base ([_seatRowOf]). Every step below reads this.
+    final pointedAt = targetLayerId == null
+        ? null
+        : _seatRowOf(_project, targetLayerId);
     // R28 #5: back at the start = the origin, not a refusal. A row change
     // still owns the step (a delta-0 drop onto a sibling row is a real
     // move), so only same-row zero deltas reset.
     if (frameDelta == 0 &&
-        (targetLayerId == null ||
-            targetLayerId == selection.layerId ||
-            targetLayerId == _grabLayerId)) {
+        (pointedAt == null ||
+            pointedAt == _seatRowOf(_project, selection.layerId) ||
+            pointedAt == _grabLayerId)) {
       _resetPreviewToOrigin();
       return;
     }
@@ -1495,7 +1547,7 @@ class FrameRangeMoveDrag {
       // sibling SE row, an instruction selection on a sibling
       // instruction row — the handler owns the step then (an incompatible
       // hover HOLDS the last valid landing, UI-R23 #10).
-      _updateMultiSource(targetLayerId, frameDelta, multiSources);
+      _updateMultiSource(pointedAt, frameDelta, multiSources);
       return;
     }
 
@@ -1504,7 +1556,7 @@ class FrameRangeMoveDrag {
       return;
     }
     final source = singleRow.layer;
-    final target = _singleRowMoveTarget(source, targetLayerId);
+    final target = _singleRowMoveTarget(source, pointedAt);
     final plan = target == null
         ? null
         : planDrawingRangeMove(
@@ -1572,6 +1624,10 @@ class FrameRangeMoveDrag {
       _selectionBefore,
       landedLayerId: plan.isCrossLayer ? plan.targetAfter!.id : source.id,
       shift: plan.destinationStartIndex - groupStart,
+      // A slide along its own row keeps the rows it was selected on: the
+      // mirrors selected with their base (F-276) show the block where it
+      // went. A row change leaves them — they are the row it left.
+      layerIds: plan.isCrossLayer ? const [] : _selectionBefore.layerIds,
     );
   }
 

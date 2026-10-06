@@ -120,8 +120,11 @@ class _MultiRowRangeMovePlanner {
     for (final sourceId in sourceLayerIds) {
       final sourceIndex = indexById[sourceId];
       if (sourceIndex == null) {
-        continue; // Off the lattice — carries nothing (empty rows only; the
-        // caller keeps content-bearing ineligible rows out).
+        // Off the lattice — a row that holds no block, or whose blocks are
+        // not its own to move (a synced mirror, a picture row). It stays
+        // where it is and keeps the rows on the lattice from nothing
+        // (F-276).
+        continue;
       }
       if (!_gatherRow(sourceId, sourceIndex)) {
         return false;
