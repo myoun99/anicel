@@ -16,6 +16,8 @@ import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/models/composite_tree.dart';
 
+import '../helpers/placement_reading.dart';
+
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -81,7 +83,10 @@ void main() {
             opacity: 1,
             // The anchor is the canvas centre (4,4), so this translates the
             // layer +2 in x: world (-1,2) lands on (1,2).
-            pose: TransformPose(center: CanvasPoint(x: 6, y: 4)),
+            placement: placedBy(
+              TransformPose(center: CanvasPoint(x: 6, y: 4)),
+              canvasSize,
+            ),
           ),
         ],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
@@ -187,7 +192,10 @@ void main() {
             opacity: 1,
             // The layer's anchor (canvas center 4,4) lands at (6,5):
             // content translates by (+2, +1).
-            pose: TransformPose(center: CanvasPoint(x: 6, y: 5)),
+            placement: placedBy(
+              TransformPose(center: CanvasPoint(x: 6, y: 5)),
+              canvasSize,
+            ),
           ),
         ],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),

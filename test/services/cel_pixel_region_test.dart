@@ -13,6 +13,7 @@ import 'package:anicel/src/services/canvas_selection.dart'
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cel_pixel_region.dart';
 import 'package:anicel/src/services/cel_pixel_overwrite.dart';
+import '../helpers/placement_reading.dart';
 
 void main() {
   const canvas = CanvasSize(width: 1024, height: 512);
@@ -143,11 +144,7 @@ void main() {
     test('an unposed layer gets the region back unchanged', () {
       expect(
         identical(
-          regionInArtworkSpace(
-            region: region,
-            pose: null,
-            canvasSize: canvas,
-          ),
+          regionInArtworkSpace(region: region, placement: null),
           region,
         ),
         isTrue,
@@ -161,10 +158,12 @@ void main() {
       // artwork coordinates.
       final moved = regionInArtworkSpace(
         region: region,
-        pose: TransformPose(
-          center: CanvasPoint(x: canvas.width / 2 + 50, y: canvas.height / 2),
+        placement: placedBy(
+          TransformPose(
+            center: CanvasPoint(x: canvas.width / 2 + 50, y: canvas.height / 2),
+          ),
+          canvas,
         ),
-        canvasSize: canvas,
       );
 
       // ⚠️`singleShape`, not a reach into the step: a step holds the copies

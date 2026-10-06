@@ -8,7 +8,6 @@ import 'package:flutter/widgets.dart';
 import '../../core/tree_nodes.dart';
 import '../../core/collection_equality.dart';
 import '../../models/brush_frame_key.dart';
-import '../../models/canvas_point.dart';
 import '../../models/composite_tree.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
@@ -17,7 +16,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
-import '../../models/transform_track.dart';
 import '../../models/tile_coord.dart';
 import '../debug/input_inspector.dart';
 import '../../core/dev_profile.dart';
@@ -66,8 +64,7 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
     required this.opacity,
     this.frameKey,
     this.blendMode = LayerBlendMode.normal,
-    this.pose,
-    this.anchorPoint,
+    this.placement,
     this.effects = const [],
   });
 
@@ -100,8 +97,7 @@ final class CanvasActiveLayerRow extends CanvasStackRow {
   /// and the editing canvas disagreed with playback about the same frame.
   final LayerBlendMode blendMode;
 
-  final TransformPose? pose;
-  final CanvasPoint? anchorPoint;
+  final LayerPlacement? placement;
 
   /// The active row's effect chain (R6) — the layer you are DRAWING on
   /// shows its own effects, so a stroke lands in the picture you can see.
@@ -132,8 +128,7 @@ class CanvasLayerImageRequest extends CanvasStackRow {
     required this.frameKey,
     required this.opacity,
     this.blendMode = LayerBlendMode.normal,
-    this.pose,
-    this.anchorPoint,
+    this.placement,
     this.tint,
     this.effects = const [],
   });
@@ -147,13 +142,10 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   /// exactly like the composite routes.
   final LayerBlendMode blendMode;
 
-  /// The layer's transform at the shown frame; null = identity. The stack
+  /// Where the layer lies at the shown frame; null = identity. The stack
   /// paints it exactly like the composite routes — the ACTIVE layer shows
-  /// its pose too, through the interactive view's draw-through wrap.
-  final TransformPose? pose;
-
-  /// The pose's anchor point; null = canvas center.
-  final CanvasPoint? anchorPoint;
+  /// its placement too, through the interactive view's draw-through wrap.
+  final LayerPlacement? placement;
 
   /// ARGB tint MULTIPLIED over the artwork's colors (onion-skin Colors
   /// mode); null paints the artwork as-is.
@@ -184,9 +176,10 @@ class CanvasLayerImageRequest extends CanvasStackRow {
   List<ResolvedLayerEffect> get paintEffects => splitSourceEffects(effects).paint;
 
   /// Whether this row's image may be stored as its ink alone — asked of the
-  /// same pose, blend and chain the draw is handed ([inkCropDrawsTheSame]).
+  /// same placement, blend and chain the draw is handed
+  /// ([inkCropDrawsTheSame]).
   bool get inkSuffices => inkCropDrawsTheSame(
-    pose: pose,
+    placement: placement,
     blendMode: blendMode,
     effects: paintEffects,
   );
@@ -941,8 +934,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           laidBack: held.laidBack,
           opacity: request.opacity,
           blendMode: request.blendMode,
-          pose: request.pose,
-          anchorPoint: request.anchorPoint,
+          placement: request.placement,
           tint: request.tint,
           // The PAINT half only — the keys are already in the image the
           // cache handed back.
@@ -955,8 +947,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
         return _PaintActiveSurface(
           opacity: active.opacity,
           blendMode: active.blendMode,
-          pose: active.pose,
-          anchorPoint: active.anchorPoint,
+          placement: active.placement,
           // The PAINT half only — like the cached row above. A leading
           // key is already on the surface this node draws.
           effects: active.paintEffects,
@@ -1054,7 +1045,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
     // `filterQuality` lands when the buffer is DRAWN, not inside it, and
     // group rasters inside run at the buffer's own scale.
     // `BitmapSurfacePainter` reads its viewport only in the standalone
-    // `paint()`, never in `paintContentInto`; `layerPoseViewportWrapMatrix`
+    // `paint()`, never in `paintContentInto`; `placementViewportWrapMatrix`
     // belongs to the brush panel's `Transform`, not to any composite route.
     //
     // 🚨WHAT A RECORDING DOES CARRY OF THE ZOOM IS IN THE KEY (2026-09-16,
@@ -1312,8 +1303,7 @@ final class _PaintImage extends _PaintRow {
     required this.laidBack,
     required this.opacity,
     required this.blendMode,
-    required this.pose,
-    required this.anchorPoint,
+    required this.placement,
     required this.tint,
     required this.effects,
   });
@@ -1343,8 +1333,7 @@ final class _PaintImage extends _PaintRow {
   final Rect worldRect;
   final double opacity;
   final LayerBlendMode blendMode;
-  final TransformPose? pose;
-  final CanvasPoint? anchorPoint;
+  final LayerPlacement? placement;
   final int? tint;
   final List<ResolvedLayerEffect> effects;
 
@@ -1356,8 +1345,7 @@ final class _PaintImage extends _PaintRow {
       extent == other.extent &&
       opacity == other.opacity &&
       blendMode == other.blendMode &&
-      pose == other.pose &&
-      anchorPoint == other.anchorPoint &&
+      placement == other.placement &&
       tint == other.tint &&
       // R6: an effect edit changes the pixels and nothing else — leaving
       // it out here would repaint nothing (the whole tree still "matches")
@@ -1371,8 +1359,7 @@ final class _PaintImage extends _PaintRow {
     extent,
     opacity,
     blendMode,
-    pose,
-    anchorPoint,
+    placement,
     tint,
     Object.hashAll(effects),
   );
@@ -1391,8 +1378,7 @@ final class _PaintActiveSurface extends _PaintRow {
   const _PaintActiveSurface({
     required this.opacity,
     required this.blendMode,
-    required this.pose,
-    required this.anchorPoint,
+    required this.placement,
     required this.effects,
   });
 
@@ -1406,8 +1392,7 @@ final class _PaintActiveSurface extends _PaintRow {
   /// never started. See [CanvasActiveLayerNode.blendMode].
   final LayerBlendMode blendMode;
 
-  final TransformPose? pose;
-  final CanvasPoint? anchorPoint;
+  final LayerPlacement? placement;
   final List<ResolvedLayerEffect> effects;
 
   // ㊱: the alpha belongs in the repaint gate too — a slider drag changes
@@ -1419,13 +1404,12 @@ final class _PaintActiveSurface extends _PaintRow {
       other is _PaintActiveSurface &&
       opacity == other.opacity &&
       blendMode == other.blendMode &&
-      pose == other.pose &&
-      anchorPoint == other.anchorPoint &&
+      placement == other.placement &&
       listEquals(effects, other.effects);
 
   @override
   int get signature =>
-      Object.hash(opacity, blendMode, pose, anchorPoint, Object.hashAll(effects));
+      Object.hash(opacity, blendMode, placement, Object.hashAll(effects));
 }
 
 /// Whether [a] draws the same picture as [b] — the STRUCTURE compared
@@ -1501,7 +1485,8 @@ bool? debugLiveLayerRodeTheDraws;
 /// comparison could not say which it had compared. The tiles are the one
 /// draw left, so there is nothing to tell apart.
 
-/// The CANVAS-SPACE rect [node] actually covers, its own pose applied.
+/// The CANVAS-SPACE rect [node] actually covers, its own placement
+/// applied.
 ///
 /// 🚨THIS IS WHAT KEEPS THE COMPOSITE AT CANVAS RESOLUTION AT EVERY ZOOM.
 ///
@@ -1533,38 +1518,30 @@ bool? debugLiveLayerRodeTheDraws;
 /// 매칭 버퍼 rect" the composite plan rejects by name.
 Rect _paintNodeExtent(
   CompositeNode<_PaintRow> node, {
-  required CanvasSize canvasSize,
   required Rect Function() activeSurfaceExtent,
 }) {
-  Rect posed(Rect rect, TransformPose? pose, CanvasPoint? anchorPoint) {
-    if (pose == null) {
-      return rect;
-    }
-    return MatrixUtils.transformRect(
-      layerPoseMatrix(pose, canvasSize, anchorPoint: anchorPoint),
-      rect,
-    );
-  }
+  Rect placed(Rect rect, LayerPlacement? placement) => placement == null
+      ? rect
+      : MatrixUtils.transformRect(placementMatrix(placement), rect);
 
   switch (node) {
     // The rect the row stands for, not the part of it that holds the ink: a
     // folder's buffer — and so where its blur is worked out — reaches as far
     // as it did when every image was whole.
     case CompositeLeaf(
-      payload: _PaintImage(:final extent, :final pose, :final anchorPoint),
+      payload: _PaintImage(:final extent, :final placement),
     ):
-      return posed(extent, pose, anchorPoint);
+      return placed(extent, placement);
     case CompositeLeaf(
-      payload: _PaintActiveSurface(:final pose, :final anchorPoint),
+      payload: _PaintActiveSurface(:final placement),
     ):
-      return posed(activeSurfaceExtent(), pose, anchorPoint);
+      return placed(activeSurfaceExtent(), placement);
     case CompositeGroup(:final children):
     case CompositeAdjustment(:final children):
       var union = Rect.zero;
       for (final child in children) {
         final childRect = _paintNodeExtent(
           child,
-          canvasSize: canvasSize,
           activeSurfaceExtent: activeSurfaceExtent,
         );
         if (childRect.isEmpty) {
@@ -1976,7 +1953,7 @@ class _LayerStackPainter extends CustomPainter {
   ) {
     for (final node in list) {
       if (node case CompositeLeaf(payload: final _PaintActiveSurface active)) {
-        return active.pose == null &&
+        return active.placement == null &&
             !resolvedEffectsSpreadPixels(active.effects);
       }
       if (node is CompositeGroup<_PaintRow> &&

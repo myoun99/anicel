@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -195,14 +197,26 @@ void main() {
       final box = tester.widget<RowTransformBox>(
         find.byType(RowTransformBox),
       );
-      expect(box.pose.rotationDegrees, closeTo(30, 0.001));
+      // The FRAME is the picture as the canvas shows it: its top edge runs
+      // the way the folder turned it.
+      final [topLeft, topRight, ...] = box.corners;
+      expect(
+        math.atan2(topRight.y - topLeft.y, topRight.x - topLeft.x) *
+            180 /
+            math.pi,
+        closeTo(30, 0.001),
+      );
+      // …and the turn the box stands on is the row's own, which has none.
+      // ↩️It stood on the folder's turn plus the row's, and the landing took
+      // the folder's back off (50 in, 20 out).
+      expect(box.pose.rotationDegrees, 0);
 
-      box.turn!.committed(50);
+      box.turn!.committed(20);
       await tester.pump();
       expect(
         ownPose(session).rotationDegrees,
         closeTo(20, 0.001),
-        reason: 'shown at 50° under a 30° folder is 20° of its own',
+        reason: 'what the box hands back is the row\'s own turn',
       );
     });
   });
@@ -231,18 +245,25 @@ void main() {
       final box = tester.widget<RowTransformBox>(
         find.byType(RowTransformBox),
       );
+      // The FRAME is the picture as the canvas shows it — the fixture's one
+      // mark, 8 across, at twice its size.
+      final [topLeft, topRight, ...] = box.corners;
       expect(
-        box.pose.zoom,
-        closeTo(2, 0.001),
-        reason: 'the box draws the row at the zoom the canvas shows it',
+        topRight.x - topLeft.x,
+        closeTo(8 * 2, 0.001),
+        reason: 'the box draws the row at the size the canvas shows it',
       );
+      // …and the scale the box stands on is the row's own.
+      // ↩️It stood on the folder's zoom times the row's, and the landing
+      // divided the folder's back out (3 in, 1.5 out).
+      expect(box.pose.zoom, 1);
 
-      box.scale!.committed(3);
+      box.scale!.committed(1.5);
       await tester.pump();
       expect(
         ownPose(session).zoom,
         closeTo(1.5, 0.001),
-        reason: 'shown at 3x under a 2x folder is 1.5x of its own',
+        reason: 'what the box hands back is the row\'s own scale',
       );
     });
   });

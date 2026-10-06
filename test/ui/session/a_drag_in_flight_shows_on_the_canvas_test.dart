@@ -19,6 +19,8 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/transitions.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// canvas-follows-block-moves — 유저 2026-09-28: 「따라가게 — 끄는 동안
 /// 캔버스도 바뀐다」.
 ///
@@ -245,7 +247,8 @@ void main() {
       'it', () {
     final session = open();
     final row = session.activeLayer!;
-    final before = liveRowOf(session)!.pose;
+    final canvas = session.requireActiveCut.canvasSize;
+    final before = liveRowOf(session)!.placement;
 
     session.dragPreview.value = BlockMoveDragPreview(
       previewLayers: {
@@ -258,11 +261,14 @@ void main() {
       },
     );
 
-    expect(before?.center, isNot(CanvasPoint(x: 9, y: 9)));
-    expect(liveRowOf(session)!.pose!.center, CanvasPoint(x: 9, y: 9));
+    expect(before?.centreOf(canvas), isNot(CanvasPoint(x: 9, y: 9)));
     expect(
-      session.frameVerbs.layerCanvasPoseSample(row.id)!.pose.center,
-      CanvasPoint(x: 9, y: 9),
+      liveRowOf(session)!.placement!.centreOf(canvas),
+      nearPoint(CanvasPoint(x: 9, y: 9)),
+    );
+    expect(
+      session.frameVerbs.layerCanvasPoseSample(row.id)!.centreOf(canvas),
+      nearPoint(CanvasPoint(x: 9, y: 9)),
       reason: 'a stroke mid-drag lands where the picture shows',
     );
     session.dragPreview.value = null;

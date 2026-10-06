@@ -26,6 +26,9 @@ class GuideTransform {
   bool get isIdentity =>
       a == 1 && b == 0 && c == 0 && d == 1 && tx == 0 && ty == 0;
 
+  /// Nothing but a move: every direction is left as it is.
+  bool get isPureTranslation => a == 1 && b == 0 && c == 0 && d == 1;
+
   /// Whether this copy is a REFLECTION rather than a rotation — the sign of
   /// the determinant. Asymmetric brush tips read this to know they are
   /// drawing left-handed.

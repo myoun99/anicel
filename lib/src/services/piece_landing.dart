@@ -15,7 +15,7 @@ import 'canvas_selection_region.dart';
 import 'cel_pixel_region.dart' show regionInArtworkSpace;
 import 'command.dart';
 import 'commands/brush_lift_move_history_command.dart';
-import 'layer_pose_matrix.dart' show LayerPoseSample;
+import 'layer_pose_matrix.dart' show LayerPlacement;
 
 /// WHERE a held picture lands: the cels a press names, where each of their
 /// rows stands on the canvas, and the selection it lands through.
@@ -36,7 +36,7 @@ class PieceGround {
   final List<BrushFrameKey> cels;
 
   /// Where a cel's row stands on the canvas — null for an unplaced row.
-  final LayerPoseSample? Function(BrushFrameKey key) placementOf;
+  final LayerPlacement? Function(BrushFrameKey key) placementOf;
 
   /// The selection as it is drawn on the CANVAS, or null with none: the
   /// piece then lands whole (「선택 있으면 그 영역, 없으면 전체」).
@@ -62,7 +62,7 @@ class PieceStamp {
   ///
   /// ⚠️Hand back the SAME dab wherever the answer is the same: the door
   /// cuts one dab through one outline once, however many cels take it.
-  final BrushDab? Function(LayerPoseSample? placement) onTheRow;
+  final BrushDab? Function(LayerPlacement? placement) onTheRow;
 
   /// The ORDER it lands in: `color` over what the cel holds, `behind` under
   /// it (위/아래 = 합성순서, 유저 08-10) — or any other mode a stamp wears;
@@ -199,7 +199,7 @@ class _SelectionOnTheRows {
   BrushDab? cut(
     BrushDab dab, {
     required LayerId row,
-    required LayerPoseSample? placement,
+    required LayerPlacement? placement,
   }) {
     final selection = _ground.selection;
     if (selection == null) {
@@ -210,9 +210,7 @@ class _SelectionOnTheRows {
       // draws its pixels somewhere else than the marquee was drawn.
       final onTheRow = regionInArtworkSpace(
         region: selection,
-        pose: placement?.pose,
-        anchorPoint: placement?.anchorPoint,
-        canvasSize: _canvasSize,
+        placement: placement,
       );
       return onTheRow == null
           ? null

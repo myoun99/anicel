@@ -110,7 +110,7 @@ void main() {
       color: 0xFF3366CC,
       options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       activeLayerId: active == null ? null : LayerId(active),
-      space: space,
+      space: space == null ? null : placementOf(space, cut.canvasSize),
     )!;
     return (dab.stamp!.width, dab.stamp!.height);
   }

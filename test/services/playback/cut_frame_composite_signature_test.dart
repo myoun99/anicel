@@ -144,7 +144,7 @@ void main() {
 
   test('a layer transform joins the signature: edits invalidate, animated '
       'poses split held frames, identity stays null', () {
-    expect(signature().layers.single.pose, isNull);
+    expect(signature().layers.single.placement, isNull);
 
     final moved = cut(
       layers: [
@@ -206,8 +206,11 @@ void main() {
     );
     expect(signature(forCut: anchored), isNot(signature(forCut: unanchored)));
     expect(
-      signature(forCut: anchored).layers.single.anchorPoint,
-      CanvasPoint(x: 10, y: 10),
+      signature(
+        forCut: anchored,
+      ).layers.single.placement!.apply(CanvasPoint(x: 10, y: 10)),
+      CanvasPoint(x: 5, y: 5),
+      reason: 'the anchor is the point of the artwork the position takes',
     );
 
     final fading = cut(
@@ -253,8 +256,7 @@ void main() {
     );
 
     expect(applied, isNot(bypassed));
-    expect(bypassed.layers.single.pose, isNull);
-    expect(bypassed.layers.single.anchorPoint, isNull);
+    expect(bypassed.layers.single.placement, isNull);
     expect(bypassed.layers.single.opacity, closeTo(0.8, 1e-9));
     expect(applied.layers.single.opacity, closeTo(0.4, 1e-9));
   });

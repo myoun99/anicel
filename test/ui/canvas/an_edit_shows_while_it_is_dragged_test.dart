@@ -38,6 +38,8 @@ import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 
+import '../../helpers/placement_reading.dart';
+
 /// F-195 — 유저 2026-09-27: 「카메라레이어든 트랜스폼이든 fx든 다 편집이
 /// 실시간으로 화면에 보이도록. 레이어에서 값편집이든 캔버스에서 편집이든」.
 ///
@@ -189,7 +191,7 @@ void main() {
   }
 
   CanvasPoint shownCentre(EditorSessionManager session) =>
-      activeRowIn(session).pose?.center ?? centre;
+      activeRowIn(session).placement?.centreOf(canvasSize) ?? centre;
 
   String valueLabel(WidgetTester tester, LayerId layer, String laneId) =>
       tester
@@ -263,7 +265,7 @@ void main() {
     expect(session.dragPreview.value, isA<LaneEditPreview>());
     expectPoint(shownCentre(session), dragged, 'the PICTURE follows the hand');
     expectPoint(
-      session.frameVerbs.layerCanvasPoseSample(row)!.pose.center,
+      session.frameVerbs.layerCanvasPoseSample(row)!.centreOf(canvasSize),
       dragged,
       'the PEN\'s space follows it — a stroke mid-drag lands where it shows',
     );
@@ -352,7 +354,7 @@ void main() {
       await tester.pump();
     }
 
-    final shownZoom = activeRowIn(session).pose?.zoom ?? 1;
+    final shownZoom = activeRowIn(session).placement?.evenScale ?? 1;
     expect(shownZoom, greaterThan(1.01), reason: 'the PICTURE grows');
     expect(valueLabel(tester, row, 'scale'), isNot(labelBefore));
     expect(committedRow(session).transformTrack.scale.isEmpty, isTrue);
@@ -757,7 +759,7 @@ void main() {
         await tester.pump();
       }
       expectPoint(
-        mountedPanel(tester).interactiveContentPose!.pose.center,
+        mountedPanel(tester).interactiveContentPose!.centreOf(canvasSize),
         CanvasPoint(x: centre.x + 30, y: centre.y),
         'the draw-through wrap the panel is handed',
       );

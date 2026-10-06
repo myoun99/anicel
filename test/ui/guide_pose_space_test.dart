@@ -54,7 +54,7 @@ void main() {
     test('no pose leaves the guides untouched', () {
       final guides = verticalMirror();
 
-      expect(guidesInArtworkSpace(guides, null, canvasSize), same(guides));
+      expect(guidesInArtworkSpace(guides, null), same(guides));
     });
 
     test('a quarter turn takes a VERTICAL axis to a HORIZONTAL one', () {
@@ -62,8 +62,7 @@ void main() {
       // screen is horizontal in the pixels the stroke is recorded into.
       final mapped = guidesInArtworkSpace(
         verticalMirror(),
-        quarterTurn,
-        canvasSize,
+        placementOf(quarterTurn, canvasSize),
       );
 
       final axis = (mapped.guides.single.shape as SymmetryShape).axis;
@@ -85,8 +84,7 @@ void main() {
 
       final mapped = guidesInArtworkSpace(
         verticalMirror(),
-        shifted,
-        canvasSize,
+        placementOf(shifted, canvasSize),
       );
 
       // The layer was pushed 40 to the right, so in its own pixels the axis
@@ -114,7 +112,10 @@ void main() {
         ],
       );
 
-      final mapped = guidesInArtworkSpace(guides, quarterTurn, canvasSize);
+      final mapped = guidesInArtworkSpace(
+        guides,
+        placementOf(quarterTurn, canvasSize),
+      );
 
       final point =
           (mapped.guides.single.shape as PerspectiveShape).vanishingPoints
@@ -162,11 +163,9 @@ void main() {
               width: 200,
               height: 200,
               child: Transform(
-                transform: layerPoseViewportWrapMatrix(
-                  quarterTurn.pose,
-                  canvasSize,
+                transform: placementViewportWrapMatrix(
+                  placementOf(quarterTurn, canvasSize),
                   viewport,
-                  anchorPoint: quarterTurn.anchorPoint,
                 ),
                 child: InteractiveBrushEditCanvasView(
                   celNow: () => cel,
@@ -178,8 +177,7 @@ void main() {
                   viewport: viewport,
                   guides: guidesInArtworkSpace(
                     verticalMirror(),
-                    quarterTurn,
-                    canvasSize,
+                    placementOf(quarterTurn, canvasSize),
                   ),
                   onSourceStrokeCommitted: commits.add,
                 ),

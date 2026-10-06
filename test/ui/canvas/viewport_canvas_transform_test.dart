@@ -10,6 +10,8 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/layer_pose_paint.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// P8 painter-parity pins: the shared paint matrix must speak EXACTLY the
 /// viewport's coordinate mapping, and its analytic inverse must undo it —
 /// otherwise painted pixels and pointer math drift apart.
@@ -78,9 +80,8 @@ void main() {
       rotationDegrees: 0,
     );
     for (final viewport in assortedViewports) {
-      final wrap = layerPoseViewportWrapMatrix(
-        identityPose,
-        canvasSize,
+      final wrap = placementViewportWrapMatrix(
+        placedBy(identityPose, canvasSize),
         viewport,
       );
       final identity = Matrix4.identity();

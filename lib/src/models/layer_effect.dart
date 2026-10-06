@@ -350,7 +350,7 @@ class EffectParameter {
 ///
 /// R9 #24 corrected this: it used to say "after the transform", which is
 /// backwards and contradicts the code it describes — the pose wraps the
-/// draw (`canvas.save()` + `applyLayerPoseTransform`) while the effect
+/// draw (`canvas.save()` + `applyLayerPlacement`) while the effect
 /// filters ride the paint INSIDE it, so the transform is last, exactly as
 /// in AE. Anyone who implemented from the old sentence got the pipeline
 /// reversed.

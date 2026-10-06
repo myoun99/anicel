@@ -173,13 +173,59 @@ void main() {
       expect(_apply(matrix, 50, 40), _point(40, 30));
     });
 
+    test('a quarter turn is placed EXACTLY — by the table the transform '
+        'box turns by, not the library\'s sine', () {
+      final quarter = layerPoseMatrix(poseAt(50, 30, turn: 90), canvas);
+      expect(
+        [
+          quarter.entry(0, 0),
+          quarter.entry(0, 1),
+          quarter.entry(1, 0),
+          quarter.entry(1, 1),
+        ],
+        [0, -1, 1, 0],
+      );
+      final half = layerPoseMatrix(poseAt(50, 30, turn: 180), canvas);
+      expect(
+        [
+          half.entry(0, 0),
+          half.entry(0, 1),
+          half.entry(1, 0),
+          half.entry(1, 1),
+        ],
+        [-1, 0, 0, -1],
+      );
+    });
+
+    test('a placement is run backwards by ONE inverse, and a collapsed one '
+        'has no way back', () {
+      final placement = placementOf((
+        pose: TransformPose(
+          center: CanvasPoint(x: 60, y: 34),
+          scaleX: 2,
+          scaleY: -0.5,
+          rotationDegrees: 30,
+        ),
+        anchorPoint: CanvasPoint(x: 7, y: 9),
+      ), canvas);
+      final back = canvasToArtwork(placement)!;
+      for (final (x, y) in [(0.0, 0.0), (17.0, -5.0), (99.5, 59.25)]) {
+        final there = placement.apply(CanvasPoint(x: x, y: y));
+        final again = back.apply(there);
+        expect(_point(_rounded(again.x), _rounded(again.y)), _point(x, y));
+      }
+      expect(canvasToArtwork(const LayerPlacement(2, 0, 4, 0, 5, 5)), isNull);
+    });
+
     test('rasterScale restates the SAME pose in a scaled raster', () {
       // The playback quality tiers render at half size and must land the
       // same picture: every canvas-space coordinate simply halves.
       final full = layerPoseMatrix(poseAt(60, 34, zoom: 2), canvas);
-      final half = layerPoseMatrix(
-        poseAt(60, 34, zoom: 2),
-        canvas,
+      final half = placementMatrix(
+        placementOf((
+          pose: poseAt(60, 34, zoom: 2),
+          anchorPoint: null,
+        ), canvas),
         rasterScale: 0.5,
       );
       final fullPoint = _apply(full, 20, 10);

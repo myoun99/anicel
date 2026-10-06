@@ -22,15 +22,17 @@ CanvasPoint uniformScale(double zoom) => CanvasPoint(x: zoom, y: zoom);
 /// track resolves to THIS and the camera reads its own out of it
 /// ([toCameraPose]).
 ///
-/// 🚧THE ROUND IS STAGED, and this is its first stage: the VALUE has two
-/// scales, and nothing lets them differ yet. Where a layer is PLACED is
-/// still worked out as a similarity in several places — the folder chain's
-/// fold (`composeLayerPoseSamples`), the selection's way into and out of a
-/// posed row (`selection_placement.dart`), the row box and its corner
-/// (`row_transform_box.dart`), the guides carried through a pose — and a
-/// pose whose scales differed would be drawn right in one of them and
-/// wrong in another. The ones that take a number take [zoom], which is how
-/// they are found; they become a matrix next.
+/// 🚧THE ROUND IS STAGED. The VALUE has two scales (stage one), and where a
+/// row LIES is one affine — its pose under its folders', folded as their
+/// product (`LayerPlacement`, stage two) — so the painter, the pick, the
+/// fill, a region and a stamp each take a stretched, a flipped or a
+/// sheared row as it is. Nothing lets the two scales differ YET, because
+/// four readers still work a row out as a similarity: the row's box (one
+/// scale a corner, and a turn measured on the canvas), the Scale lane's one
+/// number, the guides read in a posed row's artwork (the symmetry's copies
+/// and the perspective snap are rigid there), and a conte picture's ink
+/// view (one brush viewport for the whole chain). The ones that take a
+/// number take [zoom], which is how they are found.
 class TransformPose {
   TransformPose({
     required this.center,

@@ -86,13 +86,13 @@ class FrameVerbs {
   ///
   /// It is [layerPlacementAt] — the one the stack paints the row with — so a
   /// row inside a posed folder takes the pen where it shows.
-  LayerPoseSample? layerCanvasPoseSample(LayerId layerId) =>
+  LayerPlacement? layerCanvasPoseSample(LayerId layerId) =>
       _atThePlayhead(layerId, layerPlacementAt);
 
   /// Where [layerId]'s OWN pose lives on the canvas at the playhead — the
   /// placement of the folders above it ([layerParentPlacementAt]). Null =
   /// the canvas itself. What the gizmos that edit that pose stand in.
-  LayerPoseSample? layerParentPlacement(LayerId layerId) =>
+  LayerPlacement? layerParentPlacement(LayerId layerId) =>
       _atThePlayhead(layerId, layerParentPlacementAt);
 
   /// [placement] asked of [layerId]'s row in the open cut at the playhead —
@@ -102,9 +102,9 @@ class FrameVerbs {
   /// drag in flight on this row or a folder above it — a lane value, a key
   /// range, a block carrying keys — moves the pen's space and the handles
   /// with the picture, not at the release.
-  LayerPoseSample? _atThePlayhead(
+  LayerPlacement? _atThePlayhead(
     LayerId layerId,
-    LayerPoseSample? Function({
+    LayerPlacement? Function({
       required Cut cut,
       required Layer layer,
       required int frameIndex,

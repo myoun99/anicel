@@ -33,7 +33,7 @@ class _InteractiveCanvasBuild {
   })
   _layerStack;
   late final BrushEditorSelection? _selection;
-  late final LayerPoseSample? _interactivePose;
+  late final LayerPlacement? _interactivePose;
   late final CanvasSize _canvasSize;
   late final Layer? _activeLayer;
   late final bool _canPoseActiveLayer;
@@ -43,7 +43,7 @@ class _InteractiveCanvasBuild {
   /// asked by the build and by the area's drag slice
   /// (`_EditorCanvasAreaState._panelShows`), so the two cannot disagree
   /// about what the panel is handed.
-  static ({BrushEditorSelection? selection, LayerPoseSample? pose})
+  static ({BrushEditorSelection? selection, LayerPlacement? pose})
   standingOf(
     EditorSessionManager session, {
     required bool inGap,

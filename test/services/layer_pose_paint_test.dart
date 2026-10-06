@@ -4,7 +4,11 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart'
+    show placementUnderFolders;
 import 'package:anicel/src/services/layer_pose_paint.dart';
+
+import '../helpers/placement_reading.dart';
 
 const _canvasSize = CanvasSize(width: 1280, height: 720);
 
@@ -79,13 +83,13 @@ void main() {
     });
 
     test(
-      'rasterScale adapts the same canvas-space pose to a scaled raster',
+      'rasterScale adapts the same canvas-space placement to a scaled '
+      'raster',
       () {
         const rasterScale = 0.25;
         final full = layerPoseMatrix(_pose(), _canvasSize);
-        final scaled = layerPoseMatrix(
-          _pose(),
-          _canvasSize,
+        final scaled = placementMatrix(
+          placedBy(_pose(), _canvasSize),
           rasterScale: rasterScale,
         );
 
@@ -97,7 +101,7 @@ void main() {
     );
   });
 
-  group('layerPoseViewportWrapMatrix', () {
+  group('placementViewportWrapMatrix', () {
     final viewport = CanvasViewport(zoom: 1.6, panX: 120, panY: -40);
 
     Offset viewportMap(Offset point) => Offset(
@@ -107,11 +111,13 @@ void main() {
 
     test('wrap ∘ viewport == viewport ∘ pose: wrapping the viewport-rendered '
         'artwork shows it posed exactly like the composite routes', () {
-      final wrap = layerPoseViewportWrapMatrix(
-        _pose(),
-        _canvasSize,
+      final wrap = placementViewportWrapMatrix(
+        placedBy(
+          _pose(),
+          _canvasSize,
+          anchorPoint: CanvasPoint(x: 100, y: 50),
+        ),
         viewport,
-        anchorPoint: CanvasPoint(x: 100, y: 50),
       );
       final poseMatrix = layerPoseMatrix(
         _pose(),
@@ -134,7 +140,10 @@ void main() {
 
     test('the wrap inverse routes a posed screen point back to the '
         'artwork\'s own viewport point — the hit-test path strokes ride', () {
-      final wrap = layerPoseViewportWrapMatrix(_pose(), _canvasSize, viewport);
+      final wrap = placementViewportWrapMatrix(
+        placedBy(_pose(), _canvasSize),
+        viewport,
+      );
       final poseMatrix = layerPoseMatrix(_pose(), _canvasSize);
       final wrapInverse = Matrix4.inverted(wrap);
 
@@ -144,84 +153,113 @@ void main() {
     });
   });
 
-  group('composeLayerPoseSamples (R9-B: cut ∘ layer in ONE wrap)', () {
-    test('composing with the identity preserves the other pose\'s exact '
-        'map', () {
-      final LayerPoseSample identity = (
-        pose: TransformPose(center: CanvasPoint(x: 640, y: 360)),
-        anchorPoint: null,
-      );
-      final LayerPoseSample posed = (
-        pose: _pose(),
-        anchorPoint: CanvasPoint(x: 100, y: 50),
-      );
-      final original = layerPoseMatrix(
-        posed.pose,
-        _canvasSize,
-        anchorPoint: posed.anchorPoint,
-      );
-      for (final composed in [
-        composeLayerPoseSamples(identity, posed, _canvasSize),
-        composeLayerPoseSamples(posed, identity, _canvasSize),
-      ]) {
-        final composedMatrix = layerPoseMatrix(
-          composed.pose,
-          _canvasSize,
-          anchorPoint: composed.anchorPoint,
-        );
-        for (final point in const [
-          Offset.zero,
-          Offset(1280, 720),
-          Offset(87.5, 12.25),
-        ]) {
-          _expectClose(_map(composedMatrix, point), _map(original, point));
-        }
-      }
-    });
+  // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. ↩️This
+  // group pinned `composeLayerPoseSamples`, which folded two poses into ONE
+  // POSE — zooms multiplied, turns added (R9-B: cut ∘ layer in one wrap).
+  // That is every fold there is while a pose is a similarity, and no fold
+  // at all once a folder can stretch one axis: the last pin is that case.
+  group('placementUnderFolders — a folder chain is ONE placement', () {
+    final LayerPoseSample turned = (
+      pose: _pose(),
+      anchorPoint: CanvasPoint(x: 100, y: 50),
+    );
+    final LayerPoseSample shrunk = (
+      pose: TransformPose.uniform(
+        center: CanvasPoint(x: 500, y: 300),
+        zoom: 0.8,
+        rotationDegrees: -20,
+      ),
+      anchorPoint: CanvasPoint(x: 640, y: 360),
+    );
 
-    test('the composed sample maps every point exactly like applying the '
-        'two matrices in sequence (similarities compose exactly)', () {
-      final LayerPoseSample outer = (
-        pose: TransformPose.uniform(
-          center: CanvasPoint(x: 500, y: 300),
-          zoom: 0.8,
-          rotationDegrees: -20,
-        ),
-        anchorPoint: CanvasPoint(x: 640, y: 360),
-      );
-      final LayerPoseSample inner = (
-        pose: _pose(),
-        anchorPoint: CanvasPoint(x: 100, y: 50),
-      );
-      final composed = composeLayerPoseSamples(outer, inner, _canvasSize);
-      expect(composed.pose.zoom, closeTo(0.8 * 1.7, 1e-9));
-      expect(composed.pose.rotationDegrees, closeTo(-20 + 33, 1e-9));
+    Matrix4 matrixOf(LayerPoseSample sample) => layerPoseMatrix(
+      sample.pose,
+      _canvasSize,
+      anchorPoint: sample.anchorPoint,
+    );
 
-      final composedMatrix = layerPoseMatrix(
-        composed.pose,
-        _canvasSize,
-        anchorPoint: composed.anchorPoint,
-      );
-      final product =
-          layerPoseMatrix(
-            outer.pose,
-            _canvasSize,
-            anchorPoint: outer.anchorPoint,
-          )..multiply(
-            layerPoseMatrix(
-              inner.pose,
-              _canvasSize,
-              anchorPoint: inner.anchorPoint,
-            ),
-          );
+    LayerPlacement? under(
+      List<LayerPoseSample> folders,
+      LayerPoseSample? row,
+    ) => placementUnderFolders(
+      folderPoses: folders,
+      layerSample: row,
+      canvasSize: _canvasSize,
+    );
+
+    void expectMapsAs(LayerPlacement? placement, Matrix4 expected) {
+      final matrix = placementMatrix(placement!);
       for (final point in const [
         Offset.zero,
         Offset(1280, 720),
         Offset(640, 360),
         Offset(87.5, 12.25),
       ]) {
-        _expectClose(_map(composedMatrix, point), _map(product, point));
+        _expectClose(_map(matrix, point), _map(expected, point));
       }
+    }
+
+    test('a row under no posed folder lies where its own pose puts it — '
+        'and with no pose of its own, nowhere but where it is', () {
+      expect(
+        under(const [], turned),
+        placedBy(
+          turned.pose,
+          _canvasSize,
+          anchorPoint: turned.anchorPoint,
+        ),
+      );
+      expect(under(const [], null), isNull);
+    });
+
+    test('an unposed row in a posed folder lies where the folder puts it', () {
+      expectMapsAs(under([shrunk], null), matrixOf(shrunk));
+    });
+
+    test('the fold is the PRODUCT, the outermost folder first', () {
+      final LayerPoseSample moved = (
+        pose: TransformPose(center: CanvasPoint(x: 900, y: 100)),
+        anchorPoint: null,
+      );
+
+      expectMapsAs(
+        under([moved, shrunk], turned),
+        matrixOf(moved)
+          ..multiply(matrixOf(shrunk))
+          ..multiply(matrixOf(turned)),
+      );
+      // Order is the point: a move outside a turn is not a turn outside a
+      // move.
+      expect(
+        under([moved, shrunk], turned),
+        isNot(under([shrunk, moved], turned)),
+      );
+    });
+
+    test('🚨a folder stretched along ONE axis over a turned row SHEARS the '
+        'row — the product says so, and no pose could', () {
+      final LayerPoseSample stretched = (
+        pose: TransformPose(center: CanvasPoint(x: 640, y: 360), scaleX: 2),
+        anchorPoint: null,
+      );
+      final LayerPoseSample askew = (
+        pose: TransformPose(
+          center: CanvasPoint(x: 640, y: 360),
+          rotationDegrees: 45,
+        ),
+        anchorPoint: null,
+      );
+
+      final folded = under([stretched], askew)!;
+
+      expectMapsAs(folded, matrixOf(stretched)..multiply(matrixOf(askew)));
+      // The row's own two axes, as the canvas shows them, no longer stand
+      // square to one another — which a centre, two scales and a turn can
+      // never say.
+      expect(
+        folded.a * folded.c + folded.b * folded.d,
+        closeTo(-1.5, 1e-9),
+      );
     });
   });
 }

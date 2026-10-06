@@ -298,10 +298,12 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       if (pose == null) {
         canvas.clipRect(canvasRect);
       }
-      applyLayerPoseTransform(
+      applyLayerPlacement(
         canvas,
-        resolvedCutPose,
-        pose != null ? cameraFrameSize! : canvasSize,
+        placementOf((
+          pose: resolvedCutPose,
+          anchorPoint: null,
+        ), pose != null ? cameraFrameSize! : canvasSize),
       );
     }
     if (pose != null) {

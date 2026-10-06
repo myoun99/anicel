@@ -66,7 +66,7 @@ import 'timeline/timeline_drag_preview.dart'
 import '../models/layer.dart' show Layer;
 import '../models/layer_kind.dart';
 import '../services/layer_pose_matrix.dart'
-    show LayerPoseSample, artworkToCanvas, canvasToArtwork;
+    show LayerPlacement, canvasToArtwork, placementOf;
 import '../models/canvas_point.dart';
 import '../models/transform_track.dart' show TransformPose, TransformTrack;
 import '../models/transition_geometry.dart' show TransitionVeil;
@@ -854,21 +854,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// crosshair 200 to the left of its picture, and under a 2× folder a drag
   /// moved the picture twice as far as the pointer (measured 2026-09-25).
   ({
-    LayerPoseSample? placement,
+    LayerPlacement? placement,
     CanvasPoint Function(CanvasPoint point) toCanvas,
     CanvasPoint Function(CanvasPoint point) fromCanvas,
   })
   _parentSpaceOf(EditorSessionManager session, Layer layer) {
     final placement = session.frameVerbs.layerParentPlacement(layer.id);
-    final cut = session.activeCutOrNull;
-    if (placement == null || cut == null) {
+    if (placement == null) {
       return (placement: null, toCanvas: (p) => p, fromCanvas: (p) => p);
     }
-    final out = artworkToCanvas(placement, cut.canvasSize);
-    final back = canvasToArtwork(placement, cut.canvasSize);
+    final back = canvasToArtwork(placement);
     return (
       placement: placement,
-      toCanvas: out.apply,
+      toCanvas: placement.apply,
       fromCanvas: (p) => back?.apply(p) ?? p,
     );
   }
@@ -936,21 +934,27 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final parent = _parentSpaceOf(session, activeLayer);
     // The box draws the row as the canvas SHOWS it — its own pose under the
     // folders' — and turns and scales about the row's anchor where that
-    // shows. It hands back the zoom and the turn it shows; the row's own
-    // are those less the parent's.
-    final parentZoom = parent.placement?.pose.zoom ?? 1;
-    final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
-    final pose = TransformPose.uniform(
-      center: parent.toCanvas(own.center),
-      zoom: parentZoom * own.zoom,
-      rotationDegrees: parentTurn + own.rotationDegrees,
-    );
+    // shows. The scale and the turn it stands on are the ROW'S OWN: a corner
+    // scales by a ratio and outside turns by an angle, and what comes back
+    // is the value the lane keys.
+    //
+    // ↩️It stood on the parent's zoom times the row's and the parent's turn
+    // plus the row's, and each landing took the parent's back off — a
+    // second fold of the folders beside the plan's, which only a parent
+    // that is a similarity has a zoom and a turn to give.
+    //
+    // 🚧The TURN is still measured on the canvas, which is the row's own
+    // turn while the folders above only move, turn and scale evenly. It is
+    // measured in the parent's space once a folder can stretch
+    // (`TransformPose`'s stages).
+    final pose = own.copyWith(center: parent.toCanvas(own.center));
     final name = activeLayer.name;
     final box = frame.boxGrabbable;
-    final posed = artworkToCanvas((
-      pose: pose,
+    final ownPlacement = placementOf((
+      pose: own,
       anchorPoint: anchorPoint,
     ), canvasSize);
+    final shown = parent.placement?.compose(ownPlacement) ?? ownPlacement;
     return RowTransformBox(
       // The box frames the layer's PICTURE (the user chose that on the
       // mockup: 「레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고?
@@ -962,7 +966,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 canvasSize,
                 frame.inkBounds,
               ).points)
-                posed.apply(point),
+                shown.apply(point),
             ]
           : const [],
       pose: pose,
@@ -991,7 +995,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   (track, frameIndex) => transformTrackWithScaleDragged(
                     track,
                     frameIndex: frameIndex,
-                    zoom: zoom / parentZoom,
+                    zoom: zoom,
                   ),
               description: 'Scale $name',
             )
@@ -1004,7 +1008,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   (track, frameIndex) => transformTrackWithRotationDragged(
                     track,
                     frameIndex: frameIndex,
-                    rotationDegrees: degrees - parentTurn,
+                    rotationDegrees: degrees,
                   ),
               description: 'Rotate $name',
             )

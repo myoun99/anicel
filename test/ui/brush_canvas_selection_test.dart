@@ -49,6 +49,7 @@ import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/placement_reading.dart';
 
 /// P9 widget routing on the R19 pixel model: the selection layer mounts
 /// only for selection tools, regions select PIXELS, move sessions float
@@ -202,8 +203,16 @@ void main() {
                 availableFrameKeys: frameKeys,
                 cacheInvalidationSink: cacheSink,
                 transformTargetKeys: transformTargetKeys,
-                cellPlacementOf: cellPlacementOf,
-                interactiveContentPose: placement,
+                cellPlacementOf: cellPlacementOf == null
+                    ? null
+                    : (key) => placementOfSample(
+                        cellPlacementOf(key),
+                        canvasSize,
+                      ),
+                interactiveContentPose: placementOfSample(
+                  placement,
+                  canvasSize,
+                ),
                 historyManager: history,
                 brushToolState: brush,
                 selectionCommands: commands,

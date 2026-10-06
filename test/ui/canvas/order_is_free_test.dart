@@ -5,7 +5,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
@@ -149,8 +148,7 @@ void main() {
       image: source,
       worldRect: const Rect.fromLTWH(0, 0, 32, 32),
       extent: const Rect.fromLTWH(0, 0, 32, 32),
-      canvasSize: const CanvasSize(width: 32, height: 32),
-      pose: null,
+      placement: null,
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       effects: [deleteWhite()],

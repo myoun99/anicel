@@ -191,7 +191,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the active layer's pose sample (the
   /// draw-through wrap; null = identity).
-  final LayerPoseSample? interactiveContentPose;
+  final LayerPlacement? interactiveContentPose;
 
   /// The CPU half of the ACTIVE row's effect chain — the colour keys the
   /// live surface has to be drawn THROUGH.
@@ -375,7 +375,7 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Where each of those cels' rows stands on the canvas — passed straight
   /// through to the panel ([BrushCanvasPanel.cellPlacementOf]).
-  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
+  final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
 
   /// Where the cut tool's stamp lands (F-293) — passed straight through to
   /// the panel ([BrushCanvasPanel.pieceGround]).

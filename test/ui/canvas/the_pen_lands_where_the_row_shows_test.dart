@@ -7,9 +7,11 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/transform_track.dart';
-import 'package:anicel/src/services/layer_pose_paint.dart' show LayerPoseSample;
+import 'package:anicel/src/services/layer_pose_paint.dart' show LayerPlacement;
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../../helpers/placement_reading.dart';
 
 /// The pen maps through the placement the stack PAINTS the row with.
 ///
@@ -57,7 +59,7 @@ void main() {
   }
 
   /// The placement the merged stack paints the row being drawn on with.
-  LayerPoseSample? painted(EditorSessionManager s) {
+  LayerPlacement? painted(EditorSessionManager s) {
     CanvasActiveLayerRow? active;
     void walk(List<CompositeNode<CanvasStackRow>> nodes) {
       for (final node in nodes) {
@@ -74,9 +76,7 @@ void main() {
     walk(s.editingCanvas.stack.nodes);
     final row = active;
     expect(row, isNotNull, reason: 'fixture: the row is painted live');
-    return row!.pose == null
-        ? null
-        : (pose: row.pose!, anchorPoint: row.anchorPoint);
+    return row!.placement;
   }
 
   final twice = TransformPose.uniform(
@@ -102,7 +102,7 @@ void main() {
 
     final wrap = s.frameVerbs.layerCanvasPoseSample(row)!;
     expect(wrap, painted(s));
-    expect(wrap.pose.zoom, 6, reason: 'zooms multiply');
+    expect(wrap.evenScale, 6, reason: 'zooms multiply');
   });
 
   test('a folder with its fx off moves nothing — the pen stays with the '

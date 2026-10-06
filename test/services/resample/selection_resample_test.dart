@@ -5,6 +5,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/guide_geometry.dart' show GuideTransform;
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/services/resample/selection_resample.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -134,6 +135,66 @@ void main() {
         rotationDegrees: 89.999,
       );
       expect(near.cosTheta, isNot(0.0));
+    });
+  });
+
+  // 🗣️F-256-Q1 (유저 2026-10-06): a row's placement is any affine once a
+  // scale is an axis's — a shear, a mirror — and this fold is what carries
+  // a picture through one (a stamp crossing a posed row, the fill reading
+  // a posed layer).
+  group('plane fold', () {
+    test('agrees with the map it folds over random affines, shears and '
+        'mirrors among them', () {
+      final random = math.Random(20261006);
+      double within(double span) => random.nextDouble() * span - span / 2;
+      var worst = 0.0;
+      var mirrors = 0;
+      for (var trial = 0; trial < 400; trial += 1) {
+        final toSource = GuideTransform(
+          within(4),
+          within(4),
+          within(4),
+          within(4),
+          within(400),
+          within(400),
+        );
+        final determinant =
+            toSource.a * toSource.d - toSource.b * toSource.c;
+        if (determinant.abs() < 0.05) {
+          continue;
+        }
+        if (determinant < 0) {
+          mirrors += 1;
+        }
+        final srcLeft = within(200);
+        final srcTop = within(200);
+        final outLeft = random.nextInt(400) - 200;
+        final outTop = random.nextInt(400) - 200;
+        final fold = planeResampleTransform(
+          toSource: toSource,
+          srcLeft: srcLeft,
+          srcTop: srcTop,
+          outLeft: outLeft,
+          outTop: outTop,
+        );
+        expect(fold.isAffine, isTrue);
+        for (final (ox, oy) in const [(0, 0), (7, 3), (31, 19)]) {
+          // The destination pixel's centre on the canvas, taken to the
+          // source, as an index into the source's own pixels.
+          final source = toSource.apply(
+            CanvasPoint(x: outLeft + ox + 0.5, y: outTop + oy + 0.5),
+          );
+          final sample = kernelSample(fold, ox, oy);
+          for (final off in [
+            sample.u - (source.x - srcLeft - 0.5),
+            sample.v - (source.y - srcTop - 0.5),
+          ]) {
+            worst = math.max(worst, off.abs());
+          }
+        }
+      }
+      expect(mirrors, greaterThan(50), reason: 'the sweep reaches mirrors');
+      expect(worst, lessThan(1e-9));
     });
   });
 

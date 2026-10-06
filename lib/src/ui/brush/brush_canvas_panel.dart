@@ -330,7 +330,7 @@ class BrushCanvasPanel extends StatefulWidget {
   ///
   /// ⚠️Null (a host with no rows behind it — the focused tests) crosses
   /// every cel through the standing row's, the one the lift crossed.
-  final LayerPoseSample? Function(BrushFrameKey key)? cellPlacementOf;
+  final LayerPlacement? Function(BrushFrameKey key)? cellPlacementOf;
 
   /// 🚨★★★**WHERE THE CUT TOOL'S STAMP LANDS** — the ground 픽셀 붙여넣기
   /// lands on, read by the session that reads it for the paste
@@ -597,7 +597,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// testing inverse-maps pointers — strokes record in original artwork
   /// coordinates (draw-through). Brush sizes are artwork-space: the live
   /// stroke and the committed composite stay pixel-identical.
-  final LayerPoseSample? interactiveContentPose;
+  final LayerPlacement? interactiveContentPose;
 
   /// The CPU half of the ACTIVE row's effect chain — the colour keys the
   /// live surface has to be drawn THROUGH.
@@ -2036,7 +2036,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       guides: guidesInArtworkSpace(
         widget.guides ?? CutGuides.empty,
         widget.interactiveContentPose,
-        widget.canvasSize,
       ),
     );
     // The draw-through wrap: display AND hit testing share one screen
@@ -2050,16 +2049,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // mount on the first step of every drag and again when a drag went away.
     // An identity Transform paints its child in place (a translation by
     // zero: no layer), so standing still costs nothing.
-    final pose = widget.interactiveContentPose;
+    final placement = widget.interactiveContentPose;
     final posedView = Transform(
-      transform: pose == null
+      transform: placement == null
           ? Matrix4.identity()
-          : layerPoseViewportWrapMatrix(
-              pose.pose,
-              widget.canvasSize,
-              _viewportState._viewport,
-              anchorPoint: pose.anchorPoint,
-            ),
+          : placementViewportWrapMatrix(placement, _viewportState._viewport),
       child: interactiveView,
     );
     if (widget.interactiveContentOpacity >= 1.0) {
@@ -2148,11 +2142,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (bounds == null || placement == null) {
       return bounds;
     }
-    final onCanvas = artworkToCanvas(placement, widget.canvasSize);
     final corners = [
       for (final x in [bounds.left, bounds.rightExclusive])
         for (final y in [bounds.top, bounds.bottomExclusive])
-          onCanvas.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
+          placement.apply(CanvasPoint(x: x.toDouble(), y: y.toDouble())),
     ];
     final xs = [for (final corner in corners) corner.x];
     final ys = [for (final corner in corners) corner.y];
@@ -2307,7 +2300,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// ↩️They went down the stroke funnel ([_commitSourceStroke]), which lands
   /// on the cel you stand on and cuts through a selection's hard outline.
   /// The erase flag a stamp's dab wears rode along here; the door sets it.
-  void _landStamp(BrushDab? Function(LayerPoseSample? placement) onTheRow) {
+  void _landStamp(BrushDab? Function(LayerPlacement? placement) onTheRow) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
       return;

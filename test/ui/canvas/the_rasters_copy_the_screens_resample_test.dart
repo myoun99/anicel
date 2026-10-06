@@ -39,6 +39,8 @@ import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🚨★★★WHICH ROUTES COPY A LAYER IMAGE AND WHICH RESAMPLE IT (유저
 /// 2026-09-24 「통일해서」) — the four that draw one, each asked.
 ///
@@ -143,12 +145,15 @@ void main() {
                             opacity: 1,
                             // The identity: centred on the canvas, no zoom,
                             // no turn — the pose that moves nothing.
-                            pose: posed
-                                ? TransformPose(
-                                    center: CanvasPoint(
-                                      x: canvasSize.width / 2,
-                                      y: canvasSize.height / 2,
+                            placement: posed
+                                ? placedBy(
+                                    TransformPose(
+                                      center: CanvasPoint(
+                                        x: canvasSize.width / 2,
+                                        y: canvasSize.height / 2,
+                                      ),
                                     ),
+                                    canvasSize,
                                   )
                                 : null,
                           ),

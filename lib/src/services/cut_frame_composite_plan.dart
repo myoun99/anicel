@@ -42,8 +42,7 @@ class CutFrameCompositeLayer {
     required BitmapSurface surface,
     required this.opacity,
     this.blendMode = LayerBlendMode.normal,
-    this.pose,
-    this.anchorPoint,
+    this.placement,
     List<ResolvedLayerEffect> effects = const [],
   }) : surface = celSurfaceAsShown(surface, effects),
        effects = splitSourceEffects(effects).paint;
@@ -62,15 +61,10 @@ class CutFrameCompositeLayer {
   /// group is still a later slice).
   final double opacity;
 
-  /// The layer's transform at this frame — WITH every enclosing folder's
-  /// FX composed outside it (폴더째 이동); null = identity (no transform
-  /// work — the overwhelmingly common case skips the canvas
-  /// save/restore).
-  final TransformPose? pose;
-
-  /// The pose's anchor point; null = canvas center (see
-  /// applyLayerPoseTransform).
-  final CanvasPoint? anchorPoint;
+  /// Where the layer lies at this frame — its own pose under every
+  /// enclosing folder's (폴더째 이동); null = identity (no transform work —
+  /// the overwhelmingly common case skips the canvas save/restore).
+  final LayerPlacement? placement;
 
   /// The layer's EFFECT CHAIN sampled at this frame (R6), applied over the
   /// row's own picture before its opacity/blend meet the stack. Empty for
@@ -159,8 +153,7 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
     required this.frame,
     required this.opacity,
     this.blendMode = LayerBlendMode.normal,
-    this.pose,
-    this.anchorPoint,
+    this.placement,
     this.effects = const [],
   });
 
@@ -171,10 +164,9 @@ class CutFrameCompositeEntry extends CutFrameCompositeRow {
   /// The layer's composite blend against everything below (R26 #30).
   final LayerBlendMode blendMode;
 
-  /// The layer's transform at this frame — WITH every enclosing folder's
-  /// FX composed outside it (L3); null = identity.
-  final TransformPose? pose;
-  final CanvasPoint? anchorPoint;
+  /// Where the layer lies at this frame — its own pose under every
+  /// enclosing folder's (L3); null = identity.
+  final LayerPlacement? placement;
 
   /// The row's effect chain sampled at this frame (R6) — from the FX
   /// CARRIER, so an attach row wears its base's effects exactly as it wears
@@ -189,10 +181,9 @@ typedef ResolvedRowRender = ({
   double opacity,
   LayerBlendMode blendMode,
 
-  /// The pose the folder chain composed outside the row, with its anchor —
-  /// the pair travels together everywhere ([LayerPoseSample]); null =
+  /// Where the row lies: its own pose under the folder chain's; null =
   /// identity.
-  LayerPoseSample? placement,
+  LayerPlacement? placement,
   List<ResolvedLayerEffect> effects,
 });
 
@@ -439,7 +430,7 @@ LayerPoseSample? _ownPlacementAt(Cut cut, Layer carrier, int frameIndex) {
 ///
 /// A hidden folder still places its members: what is drawn inside it lands
 /// where it will show when the folder is shown again.
-LayerPoseSample? layerPlacementAt({
+LayerPlacement? layerPlacementAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
@@ -447,7 +438,7 @@ LayerPoseSample? layerPlacementAt({
   final carrier = isAttachedLayer(layer)
       ? (attachedBaseOf(layer, cut.layers) ?? layer)
       : layer;
-  return composeFolderAndLayerPose(
+  return placementUnderFolders(
     folderPoses: _folderPosesAbove(cut, layer, frameIndex),
     layerSample: _ownPlacementAt(cut, carrier, frameIndex),
     canvasSize: cut.canvasSize,
@@ -465,20 +456,15 @@ LayerPoseSample? layerPlacementAt({
 /// right by 200 stood 200 to the left of the picture it moves, and under a
 /// 2× folder a drag moved the picture twice as far as the pointer
 /// (measured 2026-09-25).
-LayerPoseSample? layerParentPlacementAt({
+LayerPlacement? layerParentPlacementAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-}) {
-  final folderPoses = _folderPosesAbove(cut, layer, frameIndex);
-  return folderPoses.isEmpty
-      ? null
-      : composeFolderAndLayerPose(
-          folderPoses: folderPoses,
-          layerSample: null,
-          canvasSize: cut.canvasSize,
-        );
-}
+}) => placementUnderFolders(
+  folderPoses: _folderPosesAbove(cut, layer, frameIndex),
+  layerSample: null,
+  canvasSize: cut.canvasSize,
+);
 
 /// The posed folders above [layer] at [frameIndex], outermost first — the
 /// part of [layerPlacementAt] that is the row's parent.
@@ -491,25 +477,25 @@ List<LayerPoseSample> _folderPosesAbove(
     ?_folderPoseAt(folder, frameIndex, cut.canvasSize),
 ];
 
-/// [layerSample] with the folder chain's poses composed OUTSIDE it via
-/// [composeLayerPoseSamples] — ONE pose per entry, so every consumer
-/// (composite cache, camera renders, editing stack, signatures) applies
-/// folder FX with zero changes. Null when neither the folders nor the
-/// layer carry geometry.
-LayerPoseSample? composeFolderAndLayerPose({
+/// [layerSample] under the folder chain's poses — ONE placement per entry,
+/// so every consumer (composite cache, camera renders, editing stack,
+/// signatures) applies folder FX with zero changes. Null when neither the
+/// folders nor the layer carry geometry.
+///
+/// The fold is the PRODUCT, and nothing else: a placement is an affine and
+/// affines are closed under it ([LayerPlacement] says what that replaced).
+LayerPlacement? placementUnderFolders({
   required List<LayerPoseSample> folderPoses,
   required LayerPoseSample? layerSample,
   required CanvasSize canvasSize,
 }) {
-  if (folderPoses.isEmpty) {
-    return layerSample;
-  }
-  var combined =
-      layerSample ??
-      (pose: layerIdentityPose(canvasSize), anchorPoint: null as CanvasPoint?);
+  var combined = layerSample == null
+      ? null
+      : placementOf(layerSample, canvasSize);
   // Fold innermost-outward: outer ∘ (… ∘ (inner ∘ layer)).
   for (final folderPose in folderPoses.reversed) {
-    combined = composeLayerPoseSamples(folderPose, combined, canvasSize);
+    final outer = placementOf(folderPose, canvasSize);
+    combined = combined == null ? outer : outer.compose(combined);
   }
   return combined;
 }
@@ -673,7 +659,7 @@ CutFrameCompositeRow? _resolveLayerNode(
   );
   // The placement is [layerPlacementAt]'s: the same own part, under the
   // folder poses this walk already gathered with the chain's gates.
-  final combined = composeFolderAndLayerPose(
+  final combined = placementUnderFolders(
     folderPoses: folderChain.poses,
     layerSample: _ownPlacementAt(cut, fxCarrier, frameIndex),
     canvasSize: cut.canvasSize,
@@ -704,8 +690,7 @@ CutFrameCompositeRow? _resolveLayerNode(
     frame: frame,
     opacity: opacity,
     blendMode: blendMode,
-    pose: combined?.pose,
-    anchorPoint: combined?.anchorPoint,
+    placement: combined,
     effects: effects,
   );
 }
@@ -927,8 +912,7 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
         surface: surface,
         opacity: entry.opacity,
         blendMode: entry.blendMode,
-        pose: entry.pose,
-        anchorPoint: entry.anchorPoint,
+        placement: entry.placement,
         effects: entry.effects,
       ),
     );
@@ -953,8 +937,7 @@ List<CompositeNode<CutFrameCompositeLayer>> planCutFrameCompositeTree({
       surface: surface,
       opacity: entry.opacity,
       blendMode: entry.blendMode,
-      pose: entry.pose,
-      anchorPoint: entry.anchorPoint,
+      placement: entry.placement,
       effects: entry.effects,
     );
   }

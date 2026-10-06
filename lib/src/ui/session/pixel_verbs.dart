@@ -17,7 +17,7 @@ import '../../services/commands/cel_pixel_overwrite_command.dart';
 import '../../services/cut_frame_composite_plan.dart' show layerPlacementAt;
 import '../../services/cut_piece_lift.dart' show buildCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
-import '../../services/layer_pose_matrix.dart' show LayerPoseSample;
+import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/piece_landing.dart';
 import '../text/app_strings.dart';
 import '../widgets/cursor_notice.dart';
@@ -282,7 +282,7 @@ class PixelVerbs {
   /// crosses through its OWN row's placement, not the standing row's). The
   /// raw track value read before missed the anchor, the fx switch and every
   /// folder above the row.
-  LayerPoseSample? placementOf(BrushFrameKey key) {
+  LayerPlacement? placementOf(BrushFrameKey key) {
     final cut = _project.activeCutOrNull;
     final layer = cut?.layers.byId(key.layerId);
     if (cut == null || layer == null) {
@@ -322,13 +322,7 @@ class PixelVerbs {
     BrushFrameKey key,
     CanvasSelectionRegion region,
   ) {
-    final placement = placementOf(key);
-    return regionInArtworkSpace(
-      region: region,
-      pose: placement?.pose,
-      anchorPoint: placement?.anchorPoint,
-      canvasSize: _project.requireActiveCut.canvasSize,
-    );
+    return regionInArtworkSpace(region: region, placement: placementOf(key));
   }
 
   // --- 픽셀 복사 · 붙여넣기 (I-55) · 전체 잘라내기 (I-28) ---------------------

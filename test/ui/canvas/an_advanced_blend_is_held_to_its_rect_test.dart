@@ -3,7 +3,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
@@ -72,8 +71,7 @@ void main() {
           image: image,
           worldRect: atOrigin ? atOriginRect : rect,
           extent: atOrigin ? atOriginRect : rect,
-          canvasSize: const CanvasSize(width: 120, height: 80),
-          pose: null,
+          placement: null,
           opacity: 1,
           blendMode: blend,
           effects: effects,

@@ -7,6 +7,8 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
 /// 2026-09-24 「통일해서」) — the law the sub-tree blit, the tile blits and
 /// the buffer carry already keep, asked of a layer image.
@@ -50,8 +52,9 @@ void main() {
       image: image,
       worldRect: worldRect,
       extent: worldRect,
-      canvasSize: const CanvasSize(width: 120, height: 80),
-      pose: pose,
+      placement: pose == null
+          ? null
+          : placedBy(pose, const CanvasSize(width: 120, height: 80)),
       opacity: 1,
       blendMode: LayerBlendMode.normal,
       texelScale: texelScale,

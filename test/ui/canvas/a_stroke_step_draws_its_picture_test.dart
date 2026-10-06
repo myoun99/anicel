@@ -42,6 +42,8 @@ import 'package:anicel/src/ui/canvas/display_buffer_cache.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🎯A STROKE STEP DRAWS ITS PICTURE (2026-09-25). A patch over the real
 /// base whose picture lands the same bytes on the screen goes there as that
 /// picture, and no head is rastered — a render pass a step, since a
@@ -159,7 +161,7 @@ void main() {
       frameKey: key(id),
       opacity: 1,
       blendMode: blendMode,
-      pose: pose,
+      placement: pose == null ? null : placedBy(pose, canvasSize),
     ),
   );
 

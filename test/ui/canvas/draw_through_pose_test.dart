@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/services/layer_pose_paint.dart';
 import '../../helpers/blank_cel.dart';
+import '../../helpers/placement_reading.dart';
 
 /// The draw-through wrap (R3 ⑩): wrapping the interactive view in
 /// `Transform(layerPoseViewportWrapMatrix(...))` shows the active layer
@@ -37,9 +38,8 @@ Future<void> _pumpPosedView(
             width: _canvasSize.width.toDouble(),
             height: _canvasSize.height.toDouble(),
             child: Transform(
-              transform: layerPoseViewportWrapMatrix(
-                pose,
-                _canvasSize,
+              transform: placementViewportWrapMatrix(
+                placedBy(pose, _canvasSize),
                 CanvasViewport(),
               ),
               child: InteractiveBrushEditCanvasView(

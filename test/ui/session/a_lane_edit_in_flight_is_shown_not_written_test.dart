@@ -16,6 +16,8 @@ import 'package:anicel/src/ui/session/lane_verbs.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// F-195 at the session: A LANE EDIT IN FLIGHT IS SHOWN, NOT WRITTEN — and
 /// what it shows is what its release writes.
 ///
@@ -61,6 +63,12 @@ void main() {
     return found!;
   }
 
+  /// Where that row shows the canvas centre — its Position, while its
+  /// anchor is the centre.
+  CanvasPoint shownCentre(EditorSessionManager session) => activeRowIn(
+    session,
+  ).placement!.centreOf(session.requireActiveCut.canvasSize);
+
   Layer committed(EditorSessionManager session, Layer layer) =>
       session.requireActiveCut.layers.byId(layer.id)!;
 
@@ -81,10 +89,12 @@ void main() {
 
       final preview = session.dragPreview.value;
       expect(preview, isA<LaneEditPreview>());
-      expect(activeRowIn(session).pose!.center, CanvasPoint(x: 40, y: 30));
+      expect(shownCentre(session), nearPoint(CanvasPoint(x: 40, y: 30)));
       expect(
-        session.frameVerbs.layerCanvasPoseSample(row.id)!.pose.center,
-        CanvasPoint(x: 40, y: 30),
+        session.frameVerbs
+            .layerCanvasPoseSample(row.id)!
+            .centreOf(session.requireActiveCut.canvasSize),
+        nearPoint(CanvasPoint(x: 40, y: 30)),
         reason: 'the pen draws in the space the picture shows',
       );
       expect(
@@ -144,7 +154,7 @@ void main() {
 
       session.laneVerbs.previewLayerTransformAtPlayhead(row.id, moveTo);
       final shown = (session.dragPreview.value! as LaneEditPreview).row!;
-      expect(activeRowIn(session).pose!.center, CanvasPoint(x: 12, y: 34));
+      expect(shownCentre(session), nearPoint(CanvasPoint(x: 12, y: 34)));
 
       session.laneVerbs.editLayerTransformAtPlayhead(
         row.id,
@@ -172,8 +182,8 @@ void main() {
       );
       session.selectFrameIndex(2);
       expect(
-        activeRowIn(session).pose!.center.x,
-        50,
+        shownCentre(session).x,
+        closeTo(50, 1e-9),
         reason: 'the premise: halfway between the two keys',
       );
 
@@ -190,8 +200,8 @@ void main() {
 
       expect(session.dragPreview.value, isA<LaneEditPreview>());
       expect(
-        activeRowIn(session).pose!.center.x,
-        100,
+        shownCentre(session).x,
+        closeTo(100, 1e-9),
         reason: 'the key slid onto the playhead — the picture shows it there',
       );
       expect(

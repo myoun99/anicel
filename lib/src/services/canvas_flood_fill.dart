@@ -12,7 +12,6 @@ import '../models/brush_dab.dart';
 import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
-import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/drawing_guide.dart';
 import '../models/layer_id.dart';
@@ -164,7 +163,7 @@ class LazyCanvasRasterRgb {
     bool extendBeyondCanvas = false,
     CanvasReadSource source = CanvasReadSource.display,
     LayerId? activeLayerId,
-    LayerPoseSample? space,
+    LayerPlacement? space,
   }) {
     // Extended (pasteboard) fills widen the raster by a finite apron and
     // shift its origin into negative world space; the default raster IS
@@ -202,7 +201,7 @@ class LazyCanvasRasterRgb {
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
     required Set<LayerId>? read,
-    required LayerPoseSample? space,
+    required LayerPlacement? space,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -229,10 +228,7 @@ class LazyCanvasRasterRgb {
     // eyedropper reads by too. R20-C2's flag (the CSP lighthouse: paint on a
     // colour layer never blocks or leaks a fill traced against the line
     // art) is one of its three answers since I-36. HOW each is read is
-    // [_carryInto]'s: in the seed's [space], through the layer's pose.
-    final toCanvas = space == null
-        ? null
-        : artworkToCanvas(space, cut.canvasSize);
+    // [_carryInto]'s: in the seed's [space], through the layer's placement.
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
@@ -240,7 +236,7 @@ class LazyCanvasRasterRgb {
       if (read != null && !read.contains(entry.layer.id)) {
         continue;
       }
-      final carry = _carryInto(entry, space, toCanvas, cut.canvasSize);
+      final carry = _carryInto(entry, space);
       final surface = surfaceResolver(entry.layer, entry.frame);
       if (carry.shows && surface != null) {
         _layers.add((
@@ -611,26 +607,17 @@ class LazyCanvasRasterRgb {
     );
   }
 
-  /// [toArtwork] folded into the kernel's destination-INDEX → source-index
-  /// form, for a tile at [world]'s origin reading [source] — the kernel
-  /// supplies both half pixels (see `selectionAffineResampleTransform`).
+  /// [toArtwork] folded for a tile at [world]'s origin reading [source].
   static ResampleTransform _resampleFold(
     GuideTransform toArtwork,
     DirtyRegion world,
     DirtyRegion source,
-  ) => ResampleTransform(
-    a: toArtwork.a,
-    b: toArtwork.c,
-    c: toArtwork.a * world.left +
-        toArtwork.c * world.top +
-        toArtwork.tx -
-        source.left,
-    d: toArtwork.b,
-    e: toArtwork.d,
-    f: toArtwork.b * world.left +
-        toArtwork.d * world.top +
-        toArtwork.ty -
-        source.top,
+  ) => planeResampleTransform(
+    toSource: toArtwork,
+    srcLeft: source.left,
+    srcTop: source.top,
+    outLeft: world.left,
+    outTop: world.top,
   );
 }
 
@@ -646,9 +633,9 @@ typedef _ReadLayer = ({
 /// How [entry] is read by a raster laid in [space]: null `toArtwork` for a
 /// layer placed exactly as that space (read 1:1, byte for byte as before —
 /// every layer, when nothing is posed); otherwise the map from raster WORLD
-/// into the layer's artwork, out through the space's pose ([toCanvas]) and
-/// in through the inverse of the layer's own. `shows` is false when the
-/// layer's pose collapses it: it shows nothing, so it walls nothing.
+/// into the layer's artwork, out through the space's placement and in
+/// through the inverse of the layer's own. `shows` is false when the
+/// layer's placement collapses it: it shows nothing, so it walls nothing.
 ///
 /// 🚨I-36 — THE POSE LAW, the eyedropper's since R28 #7: a posed layer is
 /// read THROUGH its pose, never skipped. P5+P6 skipped posed layers in both
@@ -660,25 +647,19 @@ typedef _ReadLayer = ({
 /// artwork.
 ({bool shows, GuideTransform? toArtwork}) _carryInto(
   CutFrameCompositeEntry entry,
-  LayerPoseSample? space,
-  GuideTransform? toCanvas,
-  CanvasSize canvasSize,
+  LayerPlacement? space,
 ) {
-  if (entry.pose == space?.pose &&
-      (space == null || entry.anchorPoint == space.anchorPoint)) {
+  final placement = entry.placement;
+  if (placement == space) {
     return (shows: true, toArtwork: null);
   }
-  final pose = entry.pose;
-  final fromCanvas = pose == null
+  final fromCanvas = placement == null
       ? const GuideTransform.identity()
-      : canvasToArtwork(
-          (pose: pose, anchorPoint: entry.anchorPoint),
-          canvasSize,
-        );
+      : canvasToArtwork(placement);
   if (fromCanvas == null) {
     return (shows: false, toArtwork: null);
   }
-  final carried = toCanvas == null ? fromCanvas : fromCanvas.compose(toCanvas);
+  final carried = space == null ? fromCanvas : fromCanvas.compose(space);
   return (shows: true, toArtwork: carried.isIdentity ? null : carried);
 }
 
@@ -1260,7 +1241,7 @@ BrushDab? buildFillDab({
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
   LayerId? activeLayerId,
-  LayerPoseSample? space,
+  LayerPlacement? space,
   SymmetryShape? symmetry,
   void Function()? onOpenRegion,
 }) {

@@ -151,11 +151,7 @@ ContePicture? _pictureOf(
       ),
       artworkToCanvas: placement == null
           ? Matrix4.identity()
-          : layerPoseMatrix(
-              placement.pose,
-              cut.canvasSize,
-              anchorPoint: placement.anchorPoint,
-            ),
+          : placementMatrix(placement),
       overlay: overlayOf(id),
       refusal: pending ? project.refusalOf(CutId(cell.cutId)) : null,
     ),

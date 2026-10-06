@@ -109,12 +109,7 @@ class _CanvasPanelSelection {
   /// model can hold collapses a row.
   CanvasSelectionRegion? regionOnTheRow(CanvasSelectionRegion region) {
     final placement = _state.widget.interactiveContentPose;
-    return regionInArtworkSpace(
-      region: region,
-      pose: placement?.pose,
-      anchorPoint: placement?.anchorPoint,
-      canvasSize: _state.widget.canvasSize,
-    );
+    return regionInArtworkSpace(region: region, placement: placement);
   }
 
   /// [shape] on the active row's artwork — [regionOnTheRow] for one outline.
@@ -129,22 +124,17 @@ class _CanvasPanelSelection {
 
   /// [pointOnTheRow] for a row standing at [placement] — any row a range
   /// names, each of which shows the press somewhere of its own (F-293).
-  CanvasPoint? pointOnARow(CanvasPoint point, LayerPoseSample? placement) {
+  CanvasPoint? pointOnARow(CanvasPoint point, LayerPlacement? placement) {
     if (placement == null) {
       return point;
     }
-    return canvasToArtwork(placement, _state.widget.canvasSize)?.apply(point);
+    return canvasToArtwork(placement)?.apply(point);
   }
 
   /// [pointOnTheRow] run backwards: a point of the active row's artwork,
   /// where the canvas shows it.
-  CanvasPoint pointOnTheCanvas(CanvasPoint onTheRow) {
-    final placement = _state.widget.interactiveContentPose;
-    if (placement == null) {
-      return onTheRow;
-    }
-    return artworkToCanvas(placement, _state.widget.canvasSize).apply(onTheRow);
-  }
+  CanvasPoint pointOnTheCanvas(CanvasPoint onTheRow) =>
+      _state.widget.interactiveContentPose?.apply(onTheRow) ?? onTheRow;
 
   /// Lifts [region]'s pixels out of the cel (R19 pixel model): the stamp
   /// comes back to float and the cel it came from shows the hole — **while
@@ -199,7 +189,6 @@ class _CanvasPanelSelection {
     // it shows ([regionOnTheRow]), and the lifted stamp comes out on the
     // canvas, where the box that moves it lives ([stampOnCanvas]).
     final placement = _state.widget.interactiveContentPose;
-    final canvasSize = _state.widget.canvasSize;
     final inArtwork = regionOnTheRow(region);
     if (inArtwork == null) {
       return null;
@@ -237,7 +226,7 @@ class _CanvasPanelSelection {
     _state._rebuild(() {});
     return (
       liftToken: token,
-      stampDab: stampOnCanvas(lift.stampDab, placement, canvasSize),
+      stampDab: stampOnCanvas(lift.stampDab, placement),
     );
   }
 

@@ -343,9 +343,7 @@ class CameraFrameRenderService {
               // Composed here over the whole content, never a cache's ink.
               worldRect: layerImage.worldRect,
               extent: layerImage.worldRect,
-              canvasSize: canvasSize,
-              pose: layer.pose,
-              anchorPoint: layer.anchorPoint,
+              placement: layer.placement,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: layer.effects,

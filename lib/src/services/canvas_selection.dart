@@ -16,6 +16,7 @@ import '../models/canvas_size.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
 import 'canvas_selection_shape.dart';
+import 'guide_geometry.dart' show GuideTransform;
 import 'mask_morphology.dart';
 import 'mask_soft_edge.dart';
 import 'resample/resample_kernel.dart';
@@ -213,16 +214,81 @@ BrushDab transformStampDab(
   SelectionAffine affine, {
   ResampleMode mode = ResampleMode.blend,
   SelectionVisibleRect? visible,
+}) => _stampThrough(
+  stampDab,
+  identity: affine.isIdentity,
+  move: affine.isPureTranslation
+      ? (dx: affine.appliedTx, dy: affine.appliedTy)
+      : null,
+  apply: affine.apply,
+  fold: (srcLeft, srcTop, out) => selectionAffineResampleTransform(
+    affine: affine,
+    srcLeft: srcLeft,
+    srcTop: srcTop,
+    outLeft: out.left,
+    outTop: out.top,
+  ),
+  mode: mode,
+  visible: visible,
+);
+
+/// The lifted stamp through the plane affine [to] — a row's PLACEMENT, or
+/// the way back through one, [from] being the other direction — carried
+/// exactly as [transformStampDab] carries one through the box's affine:
+/// the same three answers, out of the same body.
+///
+/// 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」. A placement
+/// is any affine — a folder stretched along one axis over a turned row
+/// SHEARS it — and the box's affine is a scale about a pivot and then a
+/// turn, which can say neither a shear nor the way BACK through a row
+/// scaled an axis apiece (S⁻¹·R⁻¹ is not an R·S).
+BrushDab carryStampDab(
+  BrushDab stampDab, {
+  required GuideTransform to,
+  required GuideTransform from,
+  ResampleMode mode = ResampleMode.blend,
+}) => _stampThrough(
+  stampDab,
+  identity: to.isIdentity,
+  move: to.isPureTranslation ? (dx: to.tx, dy: to.ty) : null,
+  apply: to.apply,
+  fold: (srcLeft, srcTop, out) => planeResampleTransform(
+    toSource: from,
+    srcLeft: srcLeft,
+    srcTop: srcTop,
+    outLeft: out.left,
+    outTop: out.top,
+  ),
+  mode: mode,
+);
+
+/// One stamp through one map of the plane ([apply]): [identity] hands the
+/// dab back, a pure [move] only moves its centre, and anything else is ONE
+/// resample into the bounding box of the stamp's mapped corners, through
+/// the destination-to-source [fold] of that same map.
+BrushDab _stampThrough(
+  BrushDab stampDab, {
+  required bool identity,
+  required ({double dx, double dy})? move,
+  required CanvasPoint Function(CanvasPoint point) apply,
+  required ResampleTransform Function(
+    double srcLeft,
+    double srcTop,
+    ({int left, int top, int width, int height}) out,
+  )
+  fold,
+  required ResampleMode mode,
+  SelectionVisibleRect? visible,
 }) {
   final stamp = stampDab.stamp;
-  if (stamp == null || affine.isIdentity) {
+  if (stamp == null || identity) {
     return stampDab;
   }
-  if (affine.isPureTranslation) {
+  if (move != null) {
     return stampDab.copyWith(
       center: CanvasPoint(
-        x: stampDab.center.x + affine.appliedTx,
-        y: stampDab.center.y + affine.appliedTy,
+        x: stampDab.center.x + move.dx,
+        y: stampDab.center.y + move.dy,
       ),
     );
   }
@@ -233,12 +299,10 @@ BrushDab transformStampDab(
 
   // Output AABB = the transformed source corners.
   final corners = [
-    affine.apply(CanvasPoint(x: srcLeft, y: srcTop)),
-    affine.apply(CanvasPoint(x: srcLeft + stamp.width, y: srcTop)),
-    affine.apply(
-      CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
-    ),
-    affine.apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
+    apply(CanvasPoint(x: srcLeft, y: srcTop)),
+    apply(CanvasPoint(x: srcLeft + stamp.width, y: srcTop)),
+    apply(CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height)),
+    apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
   ];
   final out = selectionWarpOutputRect(corners);
   final window = selectionPreviewWindow(out: out, visible: visible);
@@ -252,13 +316,7 @@ BrushDab transformStampDab(
     // pixel grid and says where it sits; folding the offset into the
     // origin instead is the version that is equal in arithmetic and not
     // in doubles — see ABI 26.
-    transform: selectionAffineResampleTransform(
-      affine: affine,
-      srcLeft: srcLeft,
-      srcTop: srcTop,
-      outLeft: out.left,
-      outTop: out.top,
-    ),
+    transform: fold(srcLeft, srcTop, out),
     mode: mode,
   );
 }

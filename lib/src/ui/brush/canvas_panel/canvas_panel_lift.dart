@@ -63,7 +63,7 @@ class _CanvasPanelLift {
     required BitmapSurface holed,
     required BrushDab eraseDab,
     required BrushFrameKey key,
-    required LayerPoseSample? placement,
+    required LayerPlacement? placement,
   }) {
     final session = _MoveSession(
       region: region,
@@ -127,7 +127,7 @@ class _CanvasPanelLift {
   /// lifted from — the one crossing a landing makes, through the same
   /// placement the lift crossed out through (a-marquee-on-a-posed-row).
   BrushDab _stampBackInArtwork(_MoveSession session, BrushDab stampDab) =>
-      stampInArtwork(stampDab, session.placement, _state.widget.canvasSize);
+      stampInArtwork(stampDab, session.placement);
 
   /// 🚨★★★**THE OTHER CELS THE SAME CONFIRM LANDS ON** — the frame range's
   /// whole block (F-116-b / F-164).
@@ -234,9 +234,7 @@ class _CanvasPanelLift {
           ? null
           : regionInArtworkSpace(
               region: userSelection,
-              pose: placement?.pose,
-              anchorPoint: placement?.anchorPoint,
-              canvasSize: canvasSize,
+              placement: placement,
             );
       if (userSelection != null && userSelectionInArtwork == null) {
         continue;
@@ -273,11 +271,8 @@ class _CanvasPanelLift {
           carry == null
               ? lift.stampDab
               : stampInArtwork(
-                  carry.through(
-                    stampOnCanvas(lift.stampDab, placement, canvasSize),
-                  ),
+                  carry.through(stampOnCanvas(lift.stampDab, placement)),
                   placement,
-                  canvasSize,
                 ),
         ),
         cacheInvalidationSink: _state.widget.cacheInvalidationSink,
@@ -478,7 +473,7 @@ class _MoveSession {
   /// floats on the canvas and lands back through THIS
   /// ([stampInArtwork]), the one it was lifted through, so the two
   /// crossings cannot disagree (a-marquee-on-a-posed-row).
-  final LayerPoseSample? placement;
+  final LayerPlacement? placement;
 
   /// Null after a memory warning took it — never a lost edit, only a lost
   /// computation.

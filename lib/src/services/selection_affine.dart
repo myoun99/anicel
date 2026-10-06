@@ -1,5 +1,4 @@
-import 'dart:math' as math;
-
+import '../core/turn_trig.dart';
 import '../models/canvas_point.dart';
 import '../models/transform_values.dart';
 
@@ -116,41 +115,15 @@ class SelectionAffine {
   CanvasPoint get anchorCanvas =>
       CanvasPoint(x: pivot.x + anchorX + tx, y: pivot.y + anchorY + ty);
 
-  double get _radians => rotationDegrees * math.pi / 180;
-
-  /// The rotation's cosine and sine, EXACT at the quarter turns.
-  ///
-  /// `math.cos(pi / 2)` is 6.1e-17, not zero, and that residue is enough to
-  /// make a quarter turn miss the resampler's lattice: destination pixel
-  /// centres land a hair off source pixel centres, the footprint reaches a
-  /// neighbour it should not, and "rotating by 90° gives back the same
-  /// pixels" becomes a rounding accident rather than a guarantee. Reading
-  /// the table for exact multiples of 90 makes it structural.
+  /// The rotation's cosine and sine, EXACT at the quarter turns
+  /// ([turnSin] has the table and why it is one).
   ///
   /// Both the geometry ([apply], which moves the selection outline) and the
   /// pixels (the resample fold) read these, so the ants and the picture can
   /// never disagree about where the rotation went.
-  double get cosTheta {
-    final quarter = _exactQuarterTurn;
-    return quarter == null ? math.cos(_radians) : _quarterCos[quarter];
-  }
+  double get cosTheta => turnCos(rotationDegrees);
 
-  double get sinTheta {
-    final quarter = _exactQuarterTurn;
-    return quarter == null ? math.sin(_radians) : _quarterSin[quarter];
-  }
-
-  /// 0/1/2/3 for an exact 0/90/180/270, null for anything in between.
-  int? get _exactQuarterTurn {
-    if (rotationDegrees % 90 != 0 || !rotationDegrees.isFinite) {
-      return null;
-    }
-    final quarter = (rotationDegrees ~/ 90) % 4;
-    return quarter < 0 ? quarter + 4 : quarter;
-  }
-
-  static const List<double> _quarterCos = <double>[1, 0, -1, 0];
-  static const List<double> _quarterSin = <double>[0, 1, 0, -1];
+  double get sinTheta => turnSin(rotationDegrees);
 
   CanvasPoint apply(CanvasPoint point) {
     final lx = (point.x - pivot.x) * sx;

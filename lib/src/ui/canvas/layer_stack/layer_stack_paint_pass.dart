@@ -507,16 +507,11 @@ class _LayerStackPaintPass {
   /// them (`stampOnCanvas`). Drawn inside the wrap as they came, the float
   /// of a row moved right by 100 showed 100 further right than its box.
   late final Matrix4? _slotFromCanvas = () {
-    final active = _activeRowIn(_painter.nodes);
-    final pose = active?.pose;
-    if (pose == null) {
+    final placement = _activeRowIn(_painter.nodes)?.placement;
+    if (placement == null) {
       return null;
     }
-    final wrap = layerPoseMatrix(
-      pose,
-      _painter.canvasSize,
-      anchorPoint: active!.anchorPoint,
-    );
+    final wrap = placementMatrix(placement);
     return wrap.invert() == 0 ? null : wrap;
   }();
 
@@ -549,7 +544,7 @@ class _LayerStackPaintPass {
     final drawn = _activeSurfaceExtent();
     final covered =
         inkCropDrawsTheSame(
-          pose: row.pose,
+          placement: row.placement,
           blendMode: row.blendMode,
           effects: row.effects,
         )
@@ -630,11 +625,7 @@ class _LayerStackPaintPass {
     CompositeNode<_PaintRow> node,
     Rect Function() activeSurfaceExtent,
   ) => _visibleCanvasRect.intersect(
-    _paintNodeExtent(
-      node,
-      canvasSize: _painter.canvasSize,
-      activeSurfaceExtent: activeSurfaceExtent,
-    ),
+    _paintNodeExtent(node, activeSurfaceExtent: activeSurfaceExtent),
   );
 
   void _paintNodesWith(
@@ -648,25 +639,18 @@ class _LayerStackPaintPass {
     for (final node in list) {
       // Poses apply at composite time — the stack shows the same picture
       // playback composes (route parity).
-      final nodePose = switch (node) {
-        CompositeLeaf(payload: _PaintImage(:final pose)) => pose,
-        CompositeLeaf(payload: _PaintActiveSurface(:final pose)) => pose,
+      final nodePlacement = switch (node) {
+        CompositeLeaf(payload: _PaintImage(:final placement)) => placement,
+        CompositeLeaf(payload: _PaintActiveSurface(:final placement)) =>
+          placement,
         CompositeGroup() || CompositeAdjustment() => null,
       };
-      final nodeAnchor = switch (node) {
-        CompositeLeaf(payload: _PaintImage(:final anchorPoint)) => anchorPoint,
-        CompositeLeaf(payload: _PaintActiveSurface(:final anchorPoint)) =>
-          anchorPoint,
-        CompositeGroup() || CompositeAdjustment() => null,
-      };
-      // The wrap straddles the live-surface node too, which HAS a pose
-      // and no image — that is why the pose and the draw are separate
+      // The wrap straddles the live-surface node too, which HAS a placement
+      // and no image — that is why the wrap and the draw are separate
       // helpers rather than one.
-      withLayerPose(
+      withLayerPlacement(
         canvas,
-        pose: nodePose,
-        canvasSize: _painter.canvasSize,
-        anchorPoint: nodeAnchor,
+        placement: nodePlacement,
         body: () {
           switch (node) {
             case final CompositeGroup<_PaintRow> group:
@@ -970,7 +954,7 @@ class _LayerStackPaintPass {
       :worldRect,
       :extent,
       :laidBack,
-      :pose,
+      :placement,
       :opacity,
       :blendMode,
       :tint,
@@ -978,16 +962,16 @@ class _LayerStackPaintPass {
     ) = node;
     // Dest = the image's WORLD rect: where its pixels belong — the ink
     // alone, or the whole content, off-canvas artwork of non-active layers
-    // included ([extent]). The pose is already applied by the wrap above,
-    // which this node shares with the live surface — hence pose: null here
-    // rather than a second save/restore around the same matrix.
+    // included ([extent]). The placement is already applied by the wrap
+    // above, which this node shares with the live surface — hence
+    // placement: null here rather than a second save/restore around the
+    // same matrix.
     drawPosedLayerImage(
       canvas,
       image: image,
       worldRect: worldRect,
       extent: extent,
-      canvasSize: _painter.canvasSize,
-      pose: null,
+      placement: null,
       opacity: opacity,
       blendMode: blendMode,
       effects: effects,
@@ -996,7 +980,7 @@ class _LayerStackPaintPass {
       // it, the backdrop raster on its grid — and a pose wrapped round this
       // draw (invisible from in here) transforms it. The walk draws onto the
       // screen: never a texel copy.
-      texelScale: _composingTheBuffer && pose == null ? rasterScale : null,
+      texelScale: _composingTheBuffer && placement == null ? rasterScale : null,
       // 🚨THE ZOOM DECIDES, HERE TOO (T21 / D14). This used to be a
       // flat `low` — 「the same sampling every non-active layer has
       // always taken on this route」 — and that is exactly half of
@@ -1429,20 +1413,20 @@ class _LayerStackPaintPass {
       final inPlace = switch (node) {
         CompositeLeaf(payload: final _PaintImage row) =>
           inkCropDrawsTheSame(
-                pose: row.pose,
+                placement: row.placement,
                 blendMode: row.blendMode,
                 effects: row.effects,
               ) &&
               drawsAsTexelCopy(row.image, row.worldRect),
         CompositeLeaf(payload: final _PaintActiveSurface row) =>
           inkCropDrawsTheSame(
-            pose: row.pose,
+            placement: row.placement,
             blendMode: row.blendMode,
             effects: row.effects,
           ),
         CompositeGroup(:final blendMode, :final effects, :final children) =>
           inkCropDrawsTheSame(
-                pose: null,
+                placement: null,
                 blendMode: blendMode,
                 effects: effects,
               ) &&

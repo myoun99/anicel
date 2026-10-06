@@ -15,6 +15,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/models/composite_tree.dart';
+import '../helpers/placement_reading.dart';
 
 /// R27 #29 — the FOLDER GROUP BUFFER, 유저 확정: "폴더는 정식 합성
 /// 레이어로해서 합성 버퍼 같이가자. 그룹 한번합쳐서 한번블렌드."
@@ -120,7 +121,7 @@ void main() {
       final leaf = tree.single as CompositeLeaf<CutFrameCompositeRow>;
       final entry = leaf.payload as CutFrameCompositeEntry;
       expect(
-        entry.pose?.zoom,
+        entry.placement?.evenScale,
         2,
         reason: 'the folder pose still reaches the member, without a buffer',
       );

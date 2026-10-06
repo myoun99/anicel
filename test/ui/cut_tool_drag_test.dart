@@ -34,6 +34,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
+import '../helpers/placement_reading.dart';
 
 /// The cut tool driven through real pointer input.
 ///
@@ -124,7 +125,10 @@ void main() {
               pieceGround: pieceGround,
               cutPieceSlot: slot,
               rowAcceptsStrokes: rowTakesStrokes,
-              interactiveContentPose: placement,
+              interactiveContentPose: placementOfSample(
+                placement,
+                BrushCanvasFixture.canvasSize,
+              ),
               // ⚠️An EXPLICIT render 1.0. These cases map screen offsets to
               // canvas coordinates one for one, and an uncontrolled panel
               // now opens at the IDENTITY — one artwork pixel per DEVICE
@@ -590,7 +594,10 @@ void main() {
         tool: CanvasTool.cut,
         pieceGround: () => PieceGround(
           cels: cels,
-          placementOf: placementOf ?? (_) => null,
+          placementOf: (key) => placementOfSample(
+            placementOf?.call(key),
+            BrushCanvasFixture.canvasSize,
+          ),
         ),
       );
       env.coordinator.frameStore.setLinkResolver(

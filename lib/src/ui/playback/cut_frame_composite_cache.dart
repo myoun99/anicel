@@ -411,7 +411,7 @@ class CutFrameCompositeCache {
               sourceEffects: halves.source,
               shouldAbort: shouldAbort,
               inkSuffices: inkCropDrawsTheSame(
-                pose: layer.pose,
+                placement: layer.placement,
                 blendMode: layer.blendMode,
                 effects: halves.paint,
               ),
@@ -426,11 +426,11 @@ class CutFrameCompositeCache {
               }
               continue;
             }
-            // Layer transforms apply at composite time; the pose is
+            // Layer transforms apply at composite time; the placement is
             // canvas-space, adapted to this quality tier's raster scale.
-            // Folder FX is already COMPOSED into this pose by the shared
-            // visit (an affine transform distributes over compositing, so
-            // it needs no buffer) — one pose, every route identical.
+            // Folder FX is already FOLDED into it by the shared visit (an
+            // affine transform distributes over compositing, so it needs
+            // no buffer) — one placement, every route identical.
             //
             // R6: the row's effects filter its own picture before the
             // opacity/blend meet the stack, and the images here are
@@ -442,9 +442,7 @@ class CutFrameCompositeCache {
               image: layerImage.image,
               worldRect: layerImage.worldRect,
               extent: layerImage.extent,
-              canvasSize: cut.canvasSize,
-              pose: layer.pose,
-              anchorPoint: layer.anchorPoint,
+              placement: layer.placement,
               opacity: layer.opacity,
               blendMode: layer.blendMode,
               effects: halves.paint,

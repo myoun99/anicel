@@ -38,6 +38,8 @@ import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
+import '../../helpers/placement_reading.dart';
+
 /// 🚨★★★A CEL STORED AS ITS INK PUTS THE SAME BYTES ON SCREEN AS THE WHOLE
 /// IMAGE DID (유저 2026-09-23: 「1/4해상도같은 결과바뀌는건 절대로
 /// 허용안하고 … 보이는 결과 특히」; 09-24: 「남는경우같은것도 최대한 결과
@@ -145,7 +147,7 @@ void main() {
       frameKey: key(id),
       opacity: opacity,
       blendMode: blendMode,
-      pose: pose,
+      placement: pose == null ? null : placedBy(pose, canvasSize),
       tint: tint,
       effects: effects,
     ),

@@ -57,10 +57,12 @@ void main() {
         ),
       );
 
-      final sample = session.frameVerbs.layerCanvasPoseSample(layer.id)!;
-      expect(sample.pose.center.x, 100);
-      expect(sample.pose.center.y, 60);
-      expect(sample.anchorPoint, CanvasPoint(x: 10, y: 20));
+      final placement = session.frameVerbs.layerCanvasPoseSample(layer.id)!;
+      expect(
+        placement.apply(CanvasPoint(x: 10, y: 20)),
+        CanvasPoint(x: 100, y: 60),
+        reason: 'the anchor is the point of the artwork the position takes',
+      );
 
       session.effectsAndFx.toggleLayerFx(layer.id);
       expect(session.frameVerbs.layerCanvasPoseSample(layer.id), isNull);
