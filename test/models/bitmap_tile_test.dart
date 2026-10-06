@@ -119,6 +119,28 @@ void main() {
       expect(tile.copyWith(pixels: Uint8List(16)..[0] = 2), isNot(tile));
     });
 
+    // R9-rest: a text's bake asks this of every tile of its plate, so the
+    // walk reads a pixel at a time — and must still see every byte of one.
+    test('🚨a tile that differs in ONE byte — any channel of any pixel, the '
+        'last one too — is another tile', () {
+      const size = 3;
+      final pixels = Uint8List(BitmapTile.bytesFor(size));
+      for (var i = 0; i < pixels.length; i += 1) {
+        pixels[i] = (i * 7 + 3) & 0xFF;
+      }
+      final tile = BitmapTile(size: size, pixels: pixels);
+
+      expect(BitmapTile(size: size, pixels: pixels) == tile, isTrue);
+      for (var i = 0; i < pixels.length; i += 1) {
+        final changed = Uint8List.fromList(pixels)..[i] ^= 0x10;
+        expect(
+          BitmapTile(size: size, pixels: changed) == tile,
+          isFalse,
+          reason: 'byte $i',
+        );
+      }
+    });
+
     test('toJson/fromJson round-trips', () {
       final tile = BitmapTile(
         size: 2,

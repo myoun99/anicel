@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import '../core/collection_equality.dart';
 import '../native/qa_native_engine.dart';
 
 /// The tight box of a tile's ink, in TILE-LOCAL pixels. Exclusive on the
@@ -314,28 +313,48 @@ class BitmapTile implements Finalizable {
     );
   }
 
-  /// 🧪**IT COMPARES EVERY BYTE, AND NO HOT PATH ASKS** (counted
-  /// 2026-09-09). `listEquals` over the whole view, and `hashCode`
-  /// hashes it — which would matter if a tile were ever a Set element or
-  /// a Map key, or if `BitmapSurface ==` ran per frame. Neither happens:
-  /// `Set<BitmapTile>` and `Map<BitmapTile` have zero hits across lib and
-  /// test, no surface is compared to another anywhere in lib, and the one
-  /// place that could (`SelectionFloatPaint`) uses `identical` on purpose.
+  /// 🧪**IT COMPARES EVERY PIXEL — A WORD AT A TIME, SINCE 2026-10-06.**
+  /// ↩️Until then it was `listEquals` over the bytes, a closure call for
+  /// each of a tile's quarter-million, under the heading 「NO HOT PATH
+  /// ASKS」 (counted 2026-09-09). One asks now: a text's bake keeps the
+  /// tiles of its last plate that came out the same (`bakeCelTextPlate`,
+  /// R9-rest) — once per tile per bake, while the person types — and a
+  /// tile that did not change is exactly the one that pays the whole walk.
   ///
-  /// ⚠️**BUT IT IS NOT DEAD — THE TESTS HOLD IT AS A CONTRACT** (an
-  /// earlier note here said "a call site that does not exist", which was
-  /// wrong). `expectJsonRoundTrip` compares a decoded tile with the
-  /// original, `bitmap_surface_test` asks that two surfaces built in
-  /// different insertion orders are equal, and the history builder tests
-  /// compare whole surfaces. Value equality is what those measure; it
-  /// simply never runs where a frame would feel it.
+  /// `hashCode` still hashes every byte, which would matter if a tile were
+  /// ever a Set element or a Map key, or if `BitmapSurface ==` ran per
+  /// frame. Neither happens: `Set<BitmapTile>` and `Map<BitmapTile` have
+  /// zero hits across lib and test, no surface is compared to another on a
+  /// frame's path, and the one place that could (`SelectionFloatPaint`)
+  /// uses `identical` on purpose.
+  ///
+  /// ⚠️**THE TESTS HOLD IT AS A CONTRACT TOO** (an earlier note here said
+  /// "a call site that does not exist", which was wrong).
+  /// `expectJsonRoundTrip` compares a decoded tile with the original,
+  /// `bitmap_surface_test` asks that two surfaces built in different
+  /// insertion orders are equal, and the history builder tests compare
+  /// whole surfaces.
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is BitmapTile &&
+      other is BitmapTile && other.size == size && _samePixelsAs(other);
 
-          other.size == size &&
-          listEquals(other._view, _view);
+  /// Whether [other], a tile of this one's size, holds this one's pixels.
+  bool _samePixelsAs(BitmapTile other) {
+    // RGBA: one 32-bit word is one pixel.
+    final count = size * size;
+    final mine = _view.buffer.asUint32List(_view.offsetInBytes, count);
+    final theirs = other._view.buffer.asUint32List(
+      other._view.offsetInBytes,
+      count,
+    );
+    for (var i = 0; i < count; i += 1) {
+      if (mine[i] != theirs[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   @override
   int get hashCode => Object.hash(size, Object.hashAll(_view));
