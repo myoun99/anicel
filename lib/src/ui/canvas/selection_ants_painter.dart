@@ -155,8 +155,8 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// white beneath it is `Colors.white` for the same reason.
   static const Color _antColour = Color(0xFF000000);
 
-  static const double _dashOn = 5;
-  static const double _dashOff = 4;
+  /// Five of line, four of none.
+  static const DashPattern _dashes = DashPattern(on: 5, off: 4);
 
   /// Screen pixels. The same number the layer hit-tests the close tap
   /// against, so what the ring says is aimable is what is aimable — and
@@ -180,7 +180,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   @override
   void paint(Canvas canvas, Size size) {
     canvas.clipRect(Offset.zero & size);
-    final phase = _phase.value * (_dashOn + _dashOff);
+    final phase = _phase.value * _dashes.period;
 
     // I-38: where this session started, UNDER everything else — it is what
     // the live outline is being compared against, so the live one is what
@@ -302,9 +302,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
         canvas,
         path,
         color: _antColour,
-        on: _dashOn,
-        off: _dashOff,
-        phase: phase,
+        dashes: _dashes.marchedBy(phase),
       );
 
   @override

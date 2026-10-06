@@ -69,8 +69,7 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
           for (final corner in box.corners) stage.onPanel(corner),
         ], true),
         color: _restingColor,
-        on: _restingDash,
-        off: _restingDash,
+        dashes: _restingDashes,
       );
     }
     final traced = tracedBox;
@@ -120,8 +119,8 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
   );
 
   /// The dashes of a box nobody is holding, and the gaps between them, on
-  /// screen — the drawing's 「안 고름」 box.
-  static const double _restingDash = 3;
+  /// screen — the drawing's 「안 고름」 box: three of line, three of none.
+  static const DashPattern _restingDashes = DashPattern(on: 3, off: 3);
 
   /// ⛔A constant, as the ants' black is: canvas chrome has to read on the
   /// artwork, and follows neither the accent — that is the box in hand —

@@ -35,20 +35,25 @@ class TimelineSilhouettePainter extends CustomPainter with RepaintOnProps {
   /// one-cell block (22px in the mockup) — a longer one draws a single
   /// segment per side there, which is a solid rect with gaps at the
   /// corners.
-  static const double _on = 4;
-  static const double _off = 3;
+  static const DashPattern _dashes = DashPattern(on: 4, off: 3);
 
-  /// ⚠️**THE SECOND DASH WALK IN THIS APP, AND IT IS DELIBERATE.** The first
-  /// is `canvas/selection_ants_painter.dart`'s private `_dashPath`: animated
-  /// (its phase rides a ticker), white-under-stroked, and about a selection
-  /// on the canvas. This one is static, single-stroked, and about a block
-  /// that does not exist yet.
-  ///
-  /// Two is not the number that merges them (3의 규칙): pulled together now,
-  /// the shared thing would have to carry a phase nobody here wants and a
-  /// pair of colours nobody there wants. ⛔But the next one IS the third —
-  /// written down because noticing it is not something to leave to memory.
-  /// When it comes, the walk (metrics → extract on/off) is what moves.
+  // ↩️**THIS WAS THE SECOND DASH WALK IN THE APP, AND DELIBERATELY ITS
+  // OWN.** The first was `canvas/selection_ants_painter.dart`'s private
+  // `_dashPath`: animated (its phase rides a ticker), white-under-stroked,
+  // and about a selection on the canvas. This one is static,
+  // single-stroked, and about a block that does not exist yet.
+  //
+  // Two was not the number that merged them (3의 규칙): pulled together
+  // then, the shared thing would have had to carry a phase nobody here
+  // wants and a pair of colours nobody there wants. ⛔But the next one WAS
+  // the third — written down because noticing it is not something to leave
+  // to memory: 「when it comes, the walk (metrics → extract on/off) is what
+  // moves」.
+  //
+  // It came twice — the repeat span's, unnoticed, and then the text tool's
+  // resting boxes (R9-rest, 2026-10-06) — and the walk moved, as written:
+  // `dashesAlong` (`ui/dashed_path.dart`). What each painter does WITH a
+  // dash stayed its own, so no phase and no second colour came here.
 
   /// ⚠️A RECORD, not a list: a list compares by identity, so a fresh one per
   /// build would repaint this every frame of a drag. The accent is in here
@@ -82,11 +87,7 @@ class TimelineSilhouettePainter extends CustomPainter with RepaintOnProps {
       ..color = accent
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    for (final dash in dashesAlong(
-      Path()..addRRect(box),
-      on: _on,
-      off: _off,
-    )) {
+    for (final dash in dashesAlong(Path()..addRRect(box), _dashes)) {
       canvas.drawPath(dash, stroke);
     }
   }

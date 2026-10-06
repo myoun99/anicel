@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// the text tool's resting boxes. Where a dash is, is measured here once;
 /// what each painter does with its dashes is its own test's.
 void main() {
+  /// Five of line, four of none — the ants' own.
+  const fiveFour = DashPattern(on: 5, off: 4);
+
   Path line(double from, double to, {double y = 0}) => Path()
     ..moveTo(from, y)
     ..lineTo(to, y);
@@ -23,7 +26,7 @@ void main() {
 
   test('a line is walked on and off from its start, and its last dash '
       'stops where the line does', () {
-    expect(spans(dashesAlong(line(0, 20), on: 5, off: 4)), [
+    expect(spans(dashesAlong(line(0, 20), fiveFour)), [
       (0, 5),
       (9, 14),
       (18, 20),
@@ -31,14 +34,14 @@ void main() {
   });
 
   test('a line that ends in a gap has no dash there', () {
-    expect(spans(dashesAlong(line(0, 8), on: 5, off: 4)), [(0, 5)]);
+    expect(spans(dashesAlong(line(0, 8), fiveFour)), [(0, 5)]);
   });
 
   test('🚨a phase slides the pattern BACK along the line — and what that '
       'leaves of a dash before the start is not drawn', () {
     // Three back: the dash that stood at 9 stands at 6, and the one that
     // stood at 0 would run from -3 to 2 — the line opens on a gap instead.
-    expect(spans(dashesAlong(line(0, 20), on: 5, off: 4, phase: 3)), [
+    expect(spans(dashesAlong(line(0, 20), fiveFour.marchedBy(3))), [
       (6, 11),
       (15, 20),
     ]);
@@ -46,8 +49,8 @@ void main() {
 
   test('a phase of one whole pattern is no phase', () {
     expect(
-      spans(dashesAlong(line(0, 20), on: 5, off: 4, phase: 9)),
-      spans(dashesAlong(line(0, 20), on: 5, off: 4)),
+      spans(dashesAlong(line(0, 20), fiveFour.marchedBy(9))),
+      spans(dashesAlong(line(0, 20), fiveFour)),
     );
   });
 
@@ -56,7 +59,7 @@ void main() {
       ..addPath(line(0, 7), Offset.zero)
       ..addPath(line(100, 112), Offset.zero);
 
-    expect(spans(dashesAlong(two, on: 5, off: 4)), [
+    expect(spans(dashesAlong(two, fiveFour)), [
       (0, 5),
       (100, 105),
       (109, 112),
@@ -69,7 +72,7 @@ void main() {
       ..lineTo(3, 0)
       ..lineTo(3, 10);
 
-    final first = dashesAlong(corner, on: 5, off: 4).first;
+    final first = dashesAlong(corner, fiveFour).first;
 
     expect(first.getBounds(), const Rect.fromLTRB(0, 0, 3, 2));
   });
@@ -111,8 +114,7 @@ void main() {
           canvas,
           line(0, 20),
           color: ink,
-          on: 5,
-          off: 4,
+          dashes: fiveFour,
         ),
       );
 
@@ -134,9 +136,7 @@ void main() {
           canvas,
           line(0, 20),
           color: const Color(0xFF000000),
-          on: 5,
-          off: 4,
-          phase: 3,
+          dashes: fiveFour.marchedBy(3),
         ),
       );
 

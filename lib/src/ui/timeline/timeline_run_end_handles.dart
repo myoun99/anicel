@@ -479,12 +479,11 @@ void paintTimelineRunPatternSpan(
     ..strokeWidth = 2;
   for (final dash in dashesAlong(
     Path()..addRRect(rrect.deflate(1)),
-    on: _patternDashLength,
-    off: _patternDashGap,
+    _patternDashes,
   )) {
     canvas.drawPath(dash, stroke);
   }
 }
 
-const double _patternDashLength = 5;
-const double _patternDashGap = 4;
+/// Five of line, four of none.
+const DashPattern _patternDashes = DashPattern(on: 5, off: 4);
