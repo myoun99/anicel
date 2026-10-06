@@ -422,11 +422,11 @@ void main() {
     expect(placedAt5.evenScale, 1);
   });
 
-  test('layerIdentityPose centers the canvas at zoom 1, no rotation', () {
+  test('layerIdentityPose centers the canvas at scale 1, no rotation', () {
     final pose = layerIdentityPose(canvasSize);
     expect(pose.center.x, 2);
     expect(pose.center.y, 2);
-    expect(pose.zoom, 1);
+    expect(pose.scale, uniformScale(1));
     expect(pose.rotationDegrees, 0);
   });
 

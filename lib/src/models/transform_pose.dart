@@ -22,18 +22,20 @@ CanvasPoint uniformScale(double zoom) => CanvasPoint(x: zoom, y: zoom);
 /// track resolves to THIS and the camera reads its own out of it
 /// ([toCameraPose]).
 ///
-/// 🚧THE ROUND IS STAGED. The VALUE has two scales (stage one), and where a
-/// row LIES is one affine — its pose under its folders', folded as their
-/// product (`LayerPlacement`, stage two) — so the painter, the pick, the
-/// fill, a region and a stamp each take a stretched, a flipped or a
-/// sheared row as it is — and so does everything a guide measures, which
-/// is measured on the canvas and read through the placement
-/// (`GuideSpace`) and a conte picture's pen, laid through it as the main
-/// canvas's is. Nothing lets the two scales differ YET, because two
-/// readers still work a row out as a similarity: the row's box (one
-/// scale a corner, and a turn measured on the canvas) and the Scale
-/// lane's one number. The ones that take a number take [zoom], which is
-/// how they are found.
+/// The VALUE has two scales, and where a row LIES is one affine — its pose
+/// under its folders', folded as their product (`LayerPlacement`) — so the
+/// painter, the pick, the fill, a region and a stamp each take a
+/// stretched, a flipped or a sheared row as it is; so does everything a
+/// guide measures, which is measured on the canvas and read through the
+/// placement (`GuideSpace`), and a conte picture's pen, laid through it as
+/// the main canvas's is. The two scales are ENTERED on the row's Scale
+/// lane (`TwoScales`) and by the middles of its box's edges
+/// (`RowBoxTwoScales`).
+///
+/// ↩️The round was staged — the value, the placement, the entry — and
+/// until the entry opened, the readers that still worked a row out as a
+/// similarity took a `zoom` getter here that asserted the two scales were
+/// one. It went with the last of them (the row's box).
 class TransformPose {
   TransformPose({
     required this.center,
@@ -59,8 +61,7 @@ class TransformPose {
     }
   }
 
-  /// The same scale along both axes — every pose there is, until the lanes
-  /// can say two.
+  /// The same scale along both axes.
   TransformPose.uniform({
     required CanvasPoint center,
     double zoom = 1.0,
@@ -104,26 +105,21 @@ class TransformPose {
   /// Position and Anchor Point (x across, y down).
   CanvasPoint get scale => CanvasPoint(x: scaleX, y: scaleY);
 
-  /// 🚧THE ONE SCALE of a pose whose two are equal — what a reader that
-  /// still works a placement out as a similarity takes (the class note).
-  ///
-  /// ⛔Not a way to 「get the scale」 of a pose: it asserts the two are one,
-  /// and it goes when the last of those readers does.
-  double get zoom {
+  /// The camera's pose out of a track's. A camera keeps ONE zoom, and its
+  /// Scale lane keys one number into both scales (`OneZoom`), so the two
+  /// are the same here — asserted, because a camera read off a pose with
+  /// two would silently drop one.
+  CameraPose toCameraPose() {
     assert(
       scaleX == scaleY,
-      'A similarity reader was handed a pose with two scales '
-      '($scaleX × $scaleY): it must read the matrix.',
+      'A camera was read off a pose with two scales ($scaleX × $scaleY).',
     );
-    return scaleX;
+    return CameraPose(
+      center: center,
+      zoom: scaleX,
+      rotationDegrees: rotationDegrees,
+    );
   }
-
-  /// The camera's pose out of a track's: its one zoom is [zoom].
-  CameraPose toCameraPose() => CameraPose(
-    center: center,
-    zoom: zoom,
-    rotationDegrees: rotationDegrees,
-  );
 
   TransformPose copyWith({
     CanvasPoint? center,

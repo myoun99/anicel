@@ -68,7 +68,7 @@ void main() {
 
       expect(mid.center.x, 4.0);
       expect(mid.center.y, 8.0);
-      expect(mid.zoom, 2.0);
+      expect(mid.scale, uniformScale(2));
       // Rotation lerps as-is (no wrap): 0 → 360 passes through 180.
       expect(mid.rotationDegrees, 180.0);
     });
@@ -133,7 +133,7 @@ void main() {
       // Position interpolates between ITS keys; scale falls back to the
       // default; rotation holds its single key.
       expect(mid.center.x, 50);
-      expect(mid.zoom, 3);
+      expect(mid.scale, uniformScale(3));
       expect(mid.rotationDegrees, 90);
     });
 
@@ -169,7 +169,7 @@ void main() {
       final mid = track.resolveAt(frameIndex: 5, orElse: () => _pose(0));
 
       expect(mid.center.x, 0, reason: 'position holds');
-      expect(mid.zoom, 2, reason: 'scale still lerps');
+      expect(mid.scale, uniformScale(2), reason: 'scale still lerps');
     });
 
     test('per-property json round-trips', () {

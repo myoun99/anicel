@@ -101,15 +101,18 @@ void main() {
       expect(TransformPose.ofCamera(camera).toCameraPose(), camera);
     });
 
-    test('🚨a pose with two scales has no ONE zoom to hand a reader that '
-        'still works a placement out as a similarity', () {
-      expect(TransformPose.uniform(center: centre, zoom: 2).zoom, 2);
+    test('🚨a pose with two scales has no ONE zoom for a camera to be read '
+        'off: it says so, and drops neither', () {
       expect(
-        () => TransformPose(center: centre, scaleX: 2).zoom,
-        throwsA(isA<AssertionError>()),
+        TransformPose.uniform(center: centre, zoom: 2).toCameraPose().zoom,
+        2,
       );
       expect(
         () => TransformPose(center: centre, scaleX: 2).toCameraPose(),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => TransformPose(center: centre, scaleY: 2).toCameraPose(),
         throwsA(isA<AssertionError>()),
       );
     });
