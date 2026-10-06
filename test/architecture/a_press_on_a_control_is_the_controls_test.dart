@@ -36,6 +36,9 @@ void main() {
         'the tool tap and the stamp drag: the other half of the canvas',
     'lib/src/ui/canvas/canvas_viewport_gesture_layer.dart':
         'pan / zoom / rotate of the view itself',
+    'lib/src/ui/canvas/text/cel_text_tool_layer.dart':
+        'the text tool: every press on the canvas while it is in hand — a '
+        'text begun, taken, moved, sized, turned',
     'lib/src/ui/input/eager_pan_gesture_recognizer.dart':
         'the rails\' column drag, which every row recogniser goes through',
     'lib/src/ui/timeline/rail_column_swipe.dart':
@@ -48,7 +51,11 @@ void main() {
     final silent = <String>[];
     for (final entry in mustAsk.entries) {
       final source = File(entry.key).readAsStringSync();
-      if (!source.contains('controlOwnsTap')) {
+      // ⚠️The CALL, not the name: a file that imports the question and
+      // never puts it is as silent as one that never heard of it (found
+      // 2026-10-07 by a mutant that took the asking out of the text
+      // tool's layer and left its import standing).
+      if (!source.contains('controlOwnsTap(')) {
         silent.add('${entry.key} — ${entry.value}');
       }
     }
