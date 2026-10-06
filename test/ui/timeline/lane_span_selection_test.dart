@@ -196,7 +196,7 @@ void main() {
           8: PropertyKey(CanvasPoint(x: 9, y: 9)),
         },
       ),
-      scale: PropertyTrack(keys: {3: const PropertyKey(1.5)}),
+      scale: PropertyTrack(keys: {3: PropertyKey(uniformScale(1.5))}),
       rotation: PropertyTrack.empty(),
       opacity: PropertyTrack(keys: {4: const PropertyKey(0.5)}),
     );

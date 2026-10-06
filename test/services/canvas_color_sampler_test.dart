@@ -193,7 +193,10 @@ void main() {
         layer(
           'a',
           transformTrack: TransformTrack.empty().copyWith(
-            scale: PropertyTrack<double>.empty().withKey(0, 2.0),
+            scale: PropertyTrack<CanvasPoint>.empty().withKey(
+              0,
+              uniformScale(2.0),
+            ),
           ),
         ),
       ]);

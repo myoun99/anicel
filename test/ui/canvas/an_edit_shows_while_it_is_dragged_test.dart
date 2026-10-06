@@ -20,6 +20,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -359,11 +360,15 @@ void main() {
     await gesture.up();
     await tester.pump();
 
-    expect(
-      committedRow(session).transformTrack.scale.keyAt(0)!.value,
-      closeTo(shownZoom, 1e-9),
-      reason: 'the release writes the zoom the drag showed',
-    );
+    final released =
+        committedRow(session).transformTrack.scale.keyAt(0)!.value;
+    for (final alongAnAxis in [released.x, released.y]) {
+      expect(
+        alongAnAxis,
+        closeTo(shownZoom, 1e-9),
+        reason: 'the release writes the zoom the drag showed',
+      );
+    }
   });
 
   testWidgets('FX × the lane: scrubbing a parameter re-draws the picture '
@@ -490,7 +495,11 @@ void main() {
     await tester.pump();
 
     final track = session.requireActiveCut.camera.track;
-    expect(track.scale.keyAt(0)?.value, 2.0, reason: 'the zoom keys');
+    expect(
+      track.scale.keyAt(0)?.value,
+      uniformScale(2),
+      reason: 'the zoom keys',
+    );
     expect(track.position.isEmpty, isTrue, reason: 'the centre does not');
     expect(track.rotation.isEmpty, isTrue, reason: 'nor does the turn');
   });

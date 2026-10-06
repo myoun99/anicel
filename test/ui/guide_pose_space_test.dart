@@ -23,7 +23,7 @@ void main() {
 
   /// A quarter turn CLOCKWISE about the canvas centre.
   final quarterTurn = (
-    pose: TransformPose(
+    pose: TransformPose.uniform(
       center: CanvasPoint(x: 100, y: 100),
       zoom: 1,
       rotationDegrees: 90,
@@ -75,7 +75,7 @@ void main() {
 
     test('a moved layer moves the axis with it', () {
       final shifted = (
-        pose: TransformPose(
+        pose: TransformPose.uniform(
           center: CanvasPoint(x: 140, y: 100),
           zoom: 1,
           rotationDegrees: 0,
@@ -133,7 +133,7 @@ void main() {
       // a path: the pose model refuses a zero zoom at construction, so the
       // layer can never actually collapse to nothing under it.
       expect(
-        () => TransformPose(
+        () => TransformPose.uniform(
           center: CanvasPoint(x: 100, y: 100),
           zoom: 0,
           rotationDegrees: 0,

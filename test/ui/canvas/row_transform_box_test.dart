@@ -468,9 +468,9 @@ void main() {
     test('scale keys scale, keeping its interpolation and the other lanes',
         () {
       final track = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>().withKey(
+        scale: PropertyTrack<CanvasPoint>().withKey(
           2,
-          1.5,
+          uniformScale(1.5),
           interpolation: PropertyKeyInterpolation.hold,
         ),
         rotation: PropertyTrack<double>().withKey(2, 30),
@@ -480,7 +480,7 @@ void main() {
         frameIndex: 2,
         zoom: 2.5,
       );
-      expect(next.scale.keyAt(2)!.value, 2.5);
+      expect(next.scale.keyAt(2)!.value, uniformScale(2.5));
       expect(
         next.scale.keyAt(2)!.interpolation,
         PropertyKeyInterpolation.hold,
@@ -520,7 +520,7 @@ void main() {
                 y: 150 + (corner.y - 150) * zoom,
               ),
           ],
-          pose: TransformPose(center: anchor, zoom: zoom),
+          pose: TransformPose.uniform(center: anchor, zoom: zoom),
           canvasSize: canvasSize,
           viewport: CanvasViewport(),
           claimsCanvas: true,

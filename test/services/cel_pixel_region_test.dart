@@ -4,10 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/canvas_selection.dart'
     show CanvasSelectionShape;
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -161,7 +161,7 @@ void main() {
       // artwork coordinates.
       final moved = regionInArtworkSpace(
         region: region,
-        pose: CameraPose(
+        pose: TransformPose(
           center: CanvasPoint(x: canvas.width / 2 + 50, y: canvas.height / 2),
         ),
         canvasSize: canvas,
@@ -178,12 +178,15 @@ void main() {
     test('the singular-pose guard is a backstop, not a path', () {
       // A pose cannot collapse a layer in the first place, so the null
       // return in regionInArtworkSpace is unreachable through the model.
-      // Pinned rather than deleted: if CameraPose ever admits a zero zoom,
-      // this is the line that says the guard has become a real path.
-      expect(
-        () => CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 0),
-        throwsArgumentError,
-      );
+      // Pinned rather than deleted: if TransformPose ever admits a zero
+      // scale — on either axis, since F-256-Q1 gave it two — this is the
+      // line that says the guard has become a real path.
+      for (final collapsed in [
+        () => TransformPose(center: CanvasPoint(x: 0, y: 0), scaleX: 0),
+        () => TransformPose(center: CanvasPoint(x: 0, y: 0), scaleY: 0),
+      ]) {
+        expect(collapsed, throwsArgumentError);
+      }
     });
   });
 }

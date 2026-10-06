@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart' show ValueNotifier;
-import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/transform_track.dart';
 import '../../models/layer.dart';
@@ -899,7 +898,7 @@ class LaneVerbs {
   /// not live on the camera pseudo-layer — its own transform track is
   /// permanently empty — so reading [_timeline.layerPoseAtFrame] there froze the
   /// canvas-centre identity pose and snapped the camera mid-move.
-  CameraPose _laneResolvedPose(Layer layer, int frameIndex) {
+  TransformPose _laneResolvedPose(Layer layer, int frameIndex) {
     if (layer.kind != LayerKind.camera) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
@@ -907,10 +906,12 @@ class LaneVerbs {
     if (cut == null) {
       return _timeline.layerPoseAtFrame(layer, frameIndex);
     }
-    return resolveCameraPoseAt(
-      camera: cut.camera,
-      canvasSize: cut.canvasSize,
-      frameIndex: frameIndex,
+    return TransformPose.ofCamera(
+      resolveCameraPoseAt(
+        camera: cut.camera,
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
     );
   }
 

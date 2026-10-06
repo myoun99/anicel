@@ -788,13 +788,19 @@ void main() {
 
   group('transform lane editing policy', () {
     test('toggle adds a key with the resolved value and removes it again', () {
-      final track = TransformTrack(keyframes: {0: _pose(0), 8: _pose(80)});
+      TransformPose layerPose(double x) => TransformPose.ofCamera(_pose(x));
+      final track = TransformTrack(
+        keyframes: {0: layerPose(0), 8: layerPose(80)},
+      );
 
       final added = transformTrackWithLaneKeyToggled(
         track,
         laneId: 'position',
         frameIndex: 4,
-        resolvedPose: track.resolveAt(frameIndex: 4, orElse: () => _pose(0)),
+        resolvedPose: track.resolveAt(
+          frameIndex: 4,
+          orElse: () => layerPose(0),
+        ),
       )!;
       expect(added.position.keyAt(4)!.value, CanvasPoint(x: 40, y: 40));
       // Only the position lane changed.
@@ -804,9 +810,26 @@ void main() {
         added,
         laneId: 'position',
         frameIndex: 4,
-        resolvedPose: _pose(0),
+        resolvedPose: layerPose(0),
       )!;
       expect(removed.position.keyAt(4), isNull);
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): 「가른다 — AE 처럼 Scale X · Y」.
+    test('🚨toggling a Scale key on keys BOTH numbers the row shows there', () {
+      final added = transformTrackWithLaneKeyToggled(
+        TransformTrack.empty(),
+        laneId: 'scale',
+        frameIndex: 4,
+        resolvedPose: TransformPose(
+          center: CanvasPoint(x: 0, y: 0),
+          scaleX: 2,
+          scaleY: -3,
+        ),
+      )!;
+
+      expect(added.scale.keyAt(4)!.value, CanvasPoint(x: 2, y: -3));
+      expect(added.position.isEmpty, isTrue, reason: 'one lane');
     });
 
     test('lane-range shift (UI-R23 #3 part 2) moves ONLY the named lane\'s '
@@ -815,7 +838,7 @@ void main() {
         position: PropertyTrack<CanvasPoint>()
             .withKey(2, CanvasPoint(x: 1, y: 1))
             .withKey(8, CanvasPoint(x: 9, y: 9)),
-        scale: PropertyTrack<double>().withKey(2, 1.5),
+        scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
       );
 
       final shifted = transformLaneLens('position')!.keysShifted(
@@ -866,9 +889,9 @@ void main() {
 
     test('value edits parse AE units and preserve interpolation', () {
       final track = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>().withKey(
+        scale: PropertyTrack<CanvasPoint>().withKey(
           0,
-          1,
+          uniformScale(1),
           interpolation: PropertyKeyInterpolation.hold,
         ),
       );
@@ -879,7 +902,7 @@ void main() {
         frameIndex: 0,
         input: '250%',
       )!;
-      expect(scaled.scale.keyAt(0)!.value, 2.5);
+      expect(scaled.scale.keyAt(0)!.value, uniformScale(2.5));
       expect(
         scaled.scale.keyAt(0)!.interpolation,
         PropertyKeyInterpolation.hold,

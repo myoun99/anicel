@@ -14,7 +14,6 @@ import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -31,6 +30,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/rgba_color.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -153,7 +153,7 @@ void main() {
   CompositeNode<CanvasStackRow> row(
     String id, {
     LayerBlendMode blendMode = LayerBlendMode.normal,
-    CameraPose? pose,
+    TransformPose? pose,
   }) => CompositeLeaf<CanvasStackRow>(
     CanvasLayerImageRequest(
       frameKey: key(id),
@@ -485,7 +485,10 @@ void main() {
       await expectHeads(
         tester,
         below: [
-          row('below', pose: CameraPose(center: CanvasPoint(x: 130, y: 128))),
+          row(
+            'below',
+            pose: TransformPose(center: CanvasPoint(x: 130, y: 128)),
+          ),
         ],
       );
     });

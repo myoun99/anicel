@@ -105,9 +105,10 @@ CelPixelWalk celPixelWalkFor({
 /// on the same selection would take.
 ///
 /// Null when the pose is singular. ⚠️That is a BACKSTOP rather than a path:
-/// [CameraPose] refuses a zero zoom outright, so no pose the model can hold
-/// collapses a layer. `cel_pixel_region_test` pins that refusal, which is
-/// what would tell a later round the guard had become reachable.
+/// [TransformPose] refuses a zero scale on either axis outright, so no pose
+/// the model can hold collapses a layer. `cel_pixel_region_test` pins that
+/// refusal, which is what would tell a later round the guard had become
+/// reachable.
 CanvasSelectionRegion? regionInArtworkSpace({
   required CanvasSelectionRegion region,
   required TransformPose? pose,

@@ -117,7 +117,7 @@ void main() {
       // (2,2)-(6,6) on screen.
       await _pumpPosedView(
         tester,
-        pose: TransformPose(center: CanvasPoint(x: 4, y: 4), zoom: 0.5),
+        pose: TransformPose.uniform(center: CanvasPoint(x: 4, y: 4), zoom: 0.5),
         onResult: results.add,
       );
 

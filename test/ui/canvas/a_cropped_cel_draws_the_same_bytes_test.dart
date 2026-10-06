@@ -8,7 +8,6 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
@@ -26,6 +25,7 @@ import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -137,7 +137,7 @@ void main() {
     String id, {
     double opacity = 1,
     LayerBlendMode blendMode = LayerBlendMode.normal,
-    CameraPose? pose,
+    TransformPose? pose,
     int? tint,
     List<ResolvedLayerEffect> effects = const [],
   }) => CompositeLeaf<CanvasStackRow>(
@@ -179,16 +179,22 @@ void main() {
       row('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
     ],
     'posed rows': [
-      row('interior', pose: CameraPose(center: CanvasPoint(x: 78, y: 48.5))),
+      row(
+        'interior',
+        pose: TransformPose(center: CanvasPoint(x: 78, y: 48.5)),
+      ),
       row(
         'leftTop',
-        pose: CameraPose(center: CanvasPoint(x: 75.5, y: 50.75)),
+        pose: TransformPose(center: CanvasPoint(x: 75.5, y: 50.75)),
       ),
       row(
         'rightBottom',
-        pose: CameraPose(center: center, rotationDegrees: 15),
+        pose: TransformPose(center: center, rotationDegrees: 15),
       ),
-      row('pasteboard', pose: CameraPose(center: center, zoom: 0.6)),
+      row(
+        'pasteboard',
+        pose: TransformPose.uniform(center: center, zoom: 0.6),
+      ),
       row('sparse'),
     ],
     'effects: blur, colour, a key at the head, a key after colour': [

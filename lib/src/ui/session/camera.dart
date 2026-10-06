@@ -304,7 +304,7 @@ class Camera {
       // The pose-facade form — the exact shape the block-ride commit lands
       // (`CutCamera(keyframes: cameraShifted)`), so the preview can never
       // promise a landing the release won't keep.
-      _cameraBlockPreviewTrackMemo = TransformTrack(keyframes: keys);
+      _cameraBlockPreviewTrackMemo = CutCamera(keyframes: keys).track;
     }
     return _cameraBlockPreviewTrackMemo;
   }

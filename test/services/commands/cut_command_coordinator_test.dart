@@ -945,7 +945,7 @@ void main() {
 
         final track = TransformTrack(
           keyframes: {
-            0: TransformPose(center: CanvasPoint(x: 5, y: 5), zoom: 2),
+            0: TransformPose.uniform(center: CanvasPoint(x: 5, y: 5), zoom: 2),
           },
         );
         fixture.coordinator.updateLayerTransformTrack(

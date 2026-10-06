@@ -109,7 +109,10 @@ void main() {
           'f',
           transformTrack: TransformTrack(
             keyframes: {
-              0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+              0: TransformPose.uniform(
+                center: CanvasPoint(x: 3, y: 2),
+                zoom: 2,
+              ),
             },
           ),
         ),

@@ -187,7 +187,7 @@ void main() {
             opacity: 1,
             // The layer's anchor (canvas center 4,4) lands at (6,5):
             // content translates by (+2, +1).
-            pose: CameraPose(center: CanvasPoint(x: 6, y: 5)),
+            pose: TransformPose(center: CanvasPoint(x: 6, y: 5)),
           ),
         ],
         pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),

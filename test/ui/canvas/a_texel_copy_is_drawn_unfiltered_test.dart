@@ -1,10 +1,10 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/ui/canvas/layer_image_draw.dart';
 
 /// 🚨★★★A TEXEL COPY RESAMPLES NOTHING, SO IT IS DRAWN AT `none` (유저
@@ -41,7 +41,7 @@ void main() {
     ui.Image image, {
     required ui.Rect worldRect,
     required double? texelScale,
-    CameraPose? pose,
+    TransformPose? pose,
     bool drawAtOrigin = false,
   }) {
     final canvas = _SpyCanvas();
@@ -106,7 +106,10 @@ void main() {
         full,
         worldRect: rect,
         texelScale: 1,
-        pose: CameraPose(center: CanvasPoint(x: 61, y: 40), zoom: 1.2),
+        pose: TransformPose.uniform(
+          center: CanvasPoint(x: 61, y: 40),
+          zoom: 1.2,
+        ),
       ),
       ui.FilterQuality.low,
     );

@@ -77,7 +77,10 @@ void main() {
         : TransformTrack.empty().copyWith(
             scale: scale == null
                 ? null
-                : PropertyTrack<double>.empty().withKey(0, scale),
+                : PropertyTrack<CanvasPoint>.empty().withKey(
+                    0,
+                    uniformScale(scale),
+                  ),
             position: position == null
                 ? null
                 : PropertyTrack<CanvasPoint>.empty().withKey(0, position),
@@ -133,7 +136,7 @@ void main() {
     // posed 0.5× about the centre, so that inside is artwork 2..29 (28) in
     // its pixels — where the dab lands.
     final space = (
-      pose: TransformPose(
+      pose: TransformPose.uniform(
         center: CanvasPoint(x: 16, y: 16),
         zoom: 0.5,
         rotationDegrees: 0,

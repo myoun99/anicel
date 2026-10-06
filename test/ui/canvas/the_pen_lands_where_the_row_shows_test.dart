@@ -79,7 +79,10 @@ void main() {
         : (pose: row.pose!, anchorPoint: row.anchorPoint);
   }
 
-  final twice = TransformPose(center: CanvasPoint(x: 100, y: 100), zoom: 2);
+  final twice = TransformPose.uniform(
+    center: CanvasPoint(x: 100, y: 100),
+    zoom: 2,
+  );
 
   test('a row in a posed folder takes the pen through the folder\'s pose', () {
     final (:s, :row) = inPosedFolder(keyed(twice));
@@ -92,7 +95,9 @@ void main() {
   test('its own pose composes under the folder\'s, as the stack paints it', () {
     final (:s, :row) = inPosedFolder(
       keyed(twice),
-      rowTrack: keyed(TransformPose(center: CanvasPoint(x: 40, y: 30), zoom: 3)),
+      rowTrack: keyed(
+        TransformPose.uniform(center: CanvasPoint(x: 40, y: 30), zoom: 3),
+      ),
     );
 
     final wrap = s.frameVerbs.layerCanvasPoseSample(row)!;

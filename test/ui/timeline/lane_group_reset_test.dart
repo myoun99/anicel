@@ -15,7 +15,7 @@ import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 /// 리셋**, scoped to the playhead or, with a lane range live, to the keys it
 /// covers.
 void main() {
-  final identity = TransformPose(
+  final identity = TransformPose.uniform(
     center: CanvasPoint(x: 640, y: 360),
     zoom: 1,
     rotationDegrees: 0,
@@ -37,9 +37,13 @@ void main() {
     test('a KEYED lane takes the default at the playhead, keeping every key '
         'it had — including the one being reset', () {
       final track = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>()
-            .withKey(0, 2.0, interpolation: PropertyKeyInterpolation.hold)
-            .withKey(8, 3.0),
+        scale: PropertyTrack<CanvasPoint>()
+            .withKey(
+              0,
+              uniformScale(2.0),
+              interpolation: PropertyKeyInterpolation.hold,
+            )
+            .withKey(8, uniformScale(3.0)),
       );
       final reset = transformTrackWithGroupReset(
         track,
@@ -48,13 +52,17 @@ void main() {
         defaultAnchorPoint: centre,
       )!;
       expect(reset.scale.keys.keys.toList(), [0, 8]);
-      expect(reset.scale.keyAt(0)!.value, 1.0);
+      expect(reset.scale.keyAt(0)!.value, uniformScale(1));
       expect(
         reset.scale.keyAt(0)!.interpolation,
         PropertyKeyInterpolation.hold,
         reason: 'a reset changes the value, not how it is reached',
       );
-      expect(reset.scale.keyAt(8)!.value, 3.0, reason: 'out of scope');
+      expect(
+        reset.scale.keyAt(8)!.value,
+        uniformScale(3),
+        reason: 'out of scope',
+      );
     });
 
     test('the playhead scope KEYS a frame that had none — the only way the '

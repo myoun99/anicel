@@ -108,7 +108,7 @@ List<double>? _adjustmentColorMatrix({
 
 /// The canvas point mapped into [entry]'s ARTWORK space — the inverse of
 /// the pose every composite route paints with ([canvasToArtwork], the one
-/// inverse). Null when the pose is singular (a zero zoom collapses the
+/// inverse). Null when the pose is singular (a zero scale collapses the
 /// layer to nothing, so there is no pixel under the pointer).
 ///
 /// R28 #7: posed layers used to be SKIPPED here, which meant any layer

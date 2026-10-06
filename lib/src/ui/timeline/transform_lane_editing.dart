@@ -48,7 +48,7 @@ TransformTrack? transformTrackWithLaneKeyToggled(
       return track.copyWith(
         scale: track.scale.keyAt(frameIndex) != null
             ? track.scale.withoutKey(frameIndex)
-            : track.scale.withKey(frameIndex, resolvedPose.zoom),
+            : track.scale.withKey(frameIndex, resolvedPose.scale),
       );
     case 'rotation':
       return track.copyWith(
@@ -175,8 +175,9 @@ TransformTrack? transformTrackWithLaneKeysInterpolated(
 /// at [frameIndex] (AE: changing an animated value keys it at the
 /// playhead), preserving an existing key's interpolation. Accepted input
 /// per lane (AE display units): position/anchor `x, y`; scale `150` or
-/// `150%` (zoom·100); rotation `45` or `45°`; opacity `75` or `75%`
-/// (clamped 0–100). Null on parse failure.
+/// `150%` (zoom·100, along both axes — 🚧one number until a layer's
+/// placement can hold two, `TransformPose`); rotation `45` or `45°`;
+/// opacity `75` or `75%` (clamped 0–100). Null on parse failure.
 TransformTrack? transformTrackWithLaneValueEdited(
   TransformTrack track, {
   required String laneId,
@@ -217,7 +218,7 @@ TransformTrack? transformTrackWithLaneValueEdited(
       return track.copyWith(
         scale: track.scale.withKey(
           frameIndex,
-          percent / 100,
+          uniformScale(percent / 100),
         ),
       );
     case 'rotation':
@@ -265,7 +266,8 @@ TransformTrack transformTrackWithPositionDragged(
 
 /// The transform box's SCALE release (R5 #10): ONE key at the playhead on
 /// the scale lane alone. Dragging a corner is a statement about scale, so
-/// nothing else keys.
+/// nothing else keys. 🚧[zoom] goes to both axes: the box has corners
+/// only, until its edges can say one (`TransformPose`).
 TransformTrack transformTrackWithScaleDragged(
   TransformTrack track, {
   required int frameIndex,
@@ -274,7 +276,7 @@ TransformTrack transformTrackWithScaleDragged(
   return track.copyWith(
     scale: track.scale.withKey(
       frameIndex,
-      zoom,
+      uniformScale(zoom),
     ),
   );
 }
@@ -372,7 +374,7 @@ TransformTrack? transformTrackWithGroupReset(
 
   final anchor = reset(track.anchorPoint, defaultAnchorPoint);
   final position = reset(track.position, identity.center);
-  final scale = reset(track.scale, identity.zoom);
+  final scale = reset(track.scale, identity.scale);
   final rotation = reset(track.rotation, identity.rotationDegrees);
   final opacity = reset(track.opacity, 1.0);
   if (anchor == null &&
@@ -404,7 +406,7 @@ LaneLens<TransformTrack>? transformLaneLens(String laneId) =>
         get: (track) => track.position,
         set: (track, lane) => track.copyWith(position: lane),
       ),
-      'scale' => PropertyLaneLens<TransformTrack, double>(
+      'scale' => PropertyLaneLens<TransformTrack, CanvasPoint>(
         get: (track) => track.scale,
         set: (track, lane) => track.copyWith(scale: lane),
       ),

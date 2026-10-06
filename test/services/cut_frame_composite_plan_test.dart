@@ -131,7 +131,7 @@ void main() {
         'pose rides the folder, one with a pose gets the composition', () {
       final folderTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+          0: TransformPose.uniform(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
       final plan = planCutFrameComposite(
@@ -150,7 +150,7 @@ void main() {
       // multiply).
       final layerTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 2, y: 2), zoom: 3),
+          0: TransformPose.uniform(center: CanvasPoint(x: 2, y: 2), zoom: 3),
         },
       );
       final composedPlan = planCutFrameComposite(
@@ -167,7 +167,7 @@ void main() {
     test('the folder fx switch IS the layer fx switch', () {
       final folderTrack = TransformTrack(
         keyframes: {
-          0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
+          0: TransformPose.uniform(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
       // R8: the switch is the folder row's own persisted field.

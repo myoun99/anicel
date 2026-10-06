@@ -1,6 +1,7 @@
 import '../../models/cut_camera.dart' show CutCamera;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/transform_pose.dart';
 import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import '../editor_session_manager.dart';
 import 'property_lane_model.dart';
@@ -75,12 +76,14 @@ List<PropertyLaneRow> _cameraLanes(EditorSessionManager session) {
   final cameraTrack = session.camera.activeCutCameraTrack ?? cut.camera.track;
   return transformPropertyLanes(
     cameraTrack,
-    poseAt: (frameIndex) => resolveCameraPoseAt(
-      // The SAME track the lanes are built from, so the value column
-      // follows an in-flight key move like the diamonds do.
-      camera: CutCamera.fromTrack(cameraTrack),
-      canvasSize: cut.canvasSize,
-      frameIndex: frameIndex,
+    poseAt: (frameIndex) => TransformPose.ofCamera(
+      resolveCameraPoseAt(
+        // The SAME track the lanes are built from, so the value column
+        // follows an in-flight key move like the diamonds do.
+        camera: CutCamera.fromTrack(cameraTrack),
+        canvasSize: cut.canvasSize,
+        frameIndex: frameIndex,
+      ),
     ),
   ).where((lane) => !lane.isGroupHeader).toList();
 }

@@ -67,6 +67,11 @@ void applyCameraProjection(
 /// combined map sends the canvas center. Lets the CUT-level pose (the
 /// storyboard V-row fx, R9-B) stack over a layer's own pose in the editing
 /// canvas's SINGLE draw-through wrap — one Transform, one hit-test inverse.
+///
+/// 🚧THE FIRST of the similarity readers (`TransformPose.zoom`): with a
+/// scale an axis, an outer pose that stretches one axis over an inner one
+/// that turns is a SHEAR, which no pose can say — the fold has to hand back
+/// a matrix. Until it does, nothing lets the two scales differ.
 LayerPoseSample composeLayerPoseSamples(
   LayerPoseSample outer,
   LayerPoseSample inner,
@@ -84,7 +89,7 @@ LayerPoseSample composeLayerPoseSamples(
   final cx = canvasSize.width / 2;
   final cy = canvasSize.height / 2;
   return (
-    pose: TransformPose(
+    pose: TransformPose.uniform(
       center: CanvasPoint(
         x: s[0] * cx + s[4] * cy + s[12],
         y: s[1] * cx + s[5] * cy + s[13],

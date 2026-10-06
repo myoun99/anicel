@@ -195,7 +195,7 @@ void main() {
             8: PropertyKey(CanvasPoint(x: 300, y: 200)),
           },
         ),
-        scale: PropertyTrack(keys: {4: const PropertyKey(1.5)}),
+        scale: PropertyTrack(keys: {4: PropertyKey(uniformScale(1.5))}),
       ),
     );
 
@@ -214,7 +214,11 @@ void main() {
       isNull,
       reason: 'no synthesized position key at the scale key\'s frame',
     );
-    expect(moved.track.scale.keyAt(4)!.value, 1.5);
+    expect(
+      moved.track.scale.keyAt(4)!.value,
+      uniformScale(1.5),
+      reason: 'a scale is two numbers and no place on the canvas',
+    );
     expect(moved.track.scale.keys.length, 1);
   });
 

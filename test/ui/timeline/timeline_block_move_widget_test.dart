@@ -1,7 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -1844,7 +1843,10 @@ metrics: const TimelineGridMetrics(
       transformTrack: TransformTrack(
         keyframes: {
           for (final frame in keyFrames)
-            frame: CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 1),
+            frame: TransformPose.uniform(
+              center: CanvasPoint(x: 0, y: 0),
+              zoom: 1,
+            ),
         },
       ),
     );

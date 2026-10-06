@@ -15,9 +15,10 @@ typedef LayerPoseSample = ({TransformPose pose, CanvasPoint? anchorPoint});
 
 /// Artwork space → posed canvas space: the artwork's ANCHOR POINT (canvas
 /// center unless the anchor-point lane keys one) lands on `pose.center`,
-/// scaled by `pose.zoom` and rotated clockwise by `pose.rotationDegrees`
-/// about that point. The identity pose maps to the identity matrix by
-/// construction. [rasterScale] adapts the same canvas-space pose to a
+/// scaled along its own axes by `pose.scaleX` · `pose.scaleY` and rotated
+/// clockwise by `pose.rotationDegrees` about that point (scale first, then
+/// the turn — AE's order). The identity pose maps to the identity matrix
+/// by construction. [rasterScale] adapts the same canvas-space pose to a
 /// scaled raster (playback quality tiers).
 ///
 /// 🚨It lives in SERVICES rather than beside the painter that applies it,
@@ -38,7 +39,7 @@ Matrix4 layerPoseMatrix(
       pose.center.y * rasterScale,
       0,
     ).multiplied(Matrix4.rotationZ(pose.rotationDegrees * math.pi / 180))
-    ..multiply(Matrix4.diagonal3Values(pose.zoom, pose.zoom, 1))
+    ..multiply(Matrix4.diagonal3Values(pose.scaleX, pose.scaleY, 1))
     ..multiply(Matrix4.translationValues(-anchorX, -anchorY, 0));
 }
 
@@ -54,9 +55,9 @@ GuideTransform artworkToCanvas(LayerPoseSample sample, CanvasSize canvasSize) =>
     );
 
 /// CANVAS space → a posed layer's ARTWORK space: the inverse of
-/// [artworkToCanvas]. Null when the pose is singular — a zero zoom collapses
-/// the layer, and [TransformPose] refuses one, so that is a backstop rather
-/// than a path.
+/// [artworkToCanvas]. Null when the pose is singular — a zero scale
+/// collapses the layer, and [TransformPose] refuses one on either axis, so
+/// that is a backstop rather than a path.
 ///
 /// ⛔ONE INVERSE. The eyedropper's pick (R28 #7), a region restated in a
 /// posed layer's pixels, the guides the pen draws against and the fill's

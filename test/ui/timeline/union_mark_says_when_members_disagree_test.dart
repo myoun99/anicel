@@ -39,7 +39,11 @@ void main() {
     }
     if (scale != null) {
       track = track.copyWith(
-        scale: PropertyTrack<double>().withKey(4, 2, interpolation: scale),
+        scale: PropertyTrack<CanvasPoint>().withKey(
+          4,
+          uniformScale(2),
+          interpolation: scale,
+        ),
       );
     }
     if (rotation != null) {

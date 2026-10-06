@@ -896,7 +896,7 @@ void main() {
         tester,
         framed(
           zoom: 0.5,
-          rowPose: CameraPose(center: CanvasPoint(x: 220, y: 180)),
+          rowPose: TransformPose(center: CanvasPoint(x: 220, y: 180)),
         ),
       );
       brushOn.value = true;

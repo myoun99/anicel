@@ -208,7 +208,7 @@ void main() {
   });
 
   group('in a folder scaled 2x', () {
-    final twice = TransformPose(center: centre, zoom: 2);
+    final twice = TransformPose.uniform(center: centre, zoom: 2);
 
     testWidgets('a move lands under the pointer — half the drag, in the '
         'folder', (tester) async {

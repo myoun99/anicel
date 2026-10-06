@@ -175,7 +175,7 @@ class CameraFrameBox extends StatelessWidget {
         ))
           CanvasPoint(x: corner.dx, y: corner.dy),
       ],
-      pose: TransformPose(
+      pose: TransformPose.uniform(
         center: pose.center,
         zoom: 1 / pose.zoom,
         rotationDegrees: pose.rotationDegrees,

@@ -72,7 +72,7 @@ void main() {
 
   test('an identity pose wraps to identity under ANY viewport', () {
     const canvasSize = CanvasSize(width: 200, height: 100);
-    final identityPose = TransformPose(
+    final identityPose = TransformPose.uniform(
       center: CanvasPoint(x: 100, y: 50),
       zoom: 1,
       rotationDegrees: 0,

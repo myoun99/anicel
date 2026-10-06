@@ -11,7 +11,7 @@ import 'package:anicel/src/services/layer_pose_matrix.dart';
 void main() {
   const size = CanvasSize(width: 64, height: 48);
   final sample = (
-    pose: TransformPose(
+    pose: TransformPose.uniform(
       center: CanvasPoint(x: 40, y: 30),
       zoom: 2,
       rotationDegrees: 30,

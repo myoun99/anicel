@@ -66,6 +66,15 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v6 (2026-10-06, F-256-Q1 — a layer's Scale keys an axis apiece): a
+/// transform track's `scale` lane holds `{x, y}` where it held one number
+/// (`TransformTrack.toJson` — a layer's `transform`, a cut's `camera`). A
+/// v5 build casts that value to a number and fails the open on the cast,
+/// naming nothing a person could act on, so the bump refuses the file up
+/// front instead, as a newer Anicel's ([decodeAnicelProjectDocument]). v5
+/// files open here unchanged: one number is read as that scale along both
+/// axes (`TransformTrack.fromJson`).
+///
 /// v5 (2026-10-06, the text tool — R9-rest): a cel's entry carries the
 /// TEXTS set on its picture after its tiles (cel stream v3,
 /// `anicelCelBinaryVersion`). A v4 build stops at such an entry with
@@ -96,7 +105,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 5;
+const int anicelFormatVersion = 6;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,

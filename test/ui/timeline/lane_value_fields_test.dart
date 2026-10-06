@@ -72,7 +72,7 @@ void main() {
     }
 
     test('transform lanes', () {
-      final pose = TransformPose(
+      final pose = TransformPose.uniform(
         center: CanvasPoint(x: 120, y: 45.5),
         zoom: 0.85,
         rotationDegrees: -30,

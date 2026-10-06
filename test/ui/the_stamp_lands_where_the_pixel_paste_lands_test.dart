@@ -9,6 +9,7 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/cut_piece.dart';
@@ -625,7 +626,10 @@ void main() {
       transformTrack: scale == null
           ? null
           : TransformTrack.empty().copyWith(
-              scale: PropertyTrack<double>.empty().withKey(0, scale),
+              scale: PropertyTrack<CanvasPoint>.empty().withKey(
+                0,
+                uniformScale(scale),
+              ),
             ),
     );
 

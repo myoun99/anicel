@@ -27,6 +27,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -143,7 +144,7 @@ void main() {
                             // The identity: centred on the canvas, no zoom,
                             // no turn — the pose that moves nothing.
                             pose: posed
-                                ? CameraPose(
+                                ? TransformPose(
                                     center: CanvasPoint(
                                       x: canvasSize.width / 2,
                                       y: canvasSize.height / 2,

@@ -6,6 +6,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
+import 'package:anicel/src/models/transform_pose.dart';
 
 void main() {
   group('CameraPose', () {
@@ -80,6 +81,26 @@ void main() {
       expect(camera.keyframes.keys.toList(), [0]);
       expect(added.keyframes.keys.toList(), [0, 8]);
       expect(replaced.keyframeAt(0), _pose(x: 99));
+    });
+
+    // 🗣️F-256-Q1 (유저 2026-10-06): the track under it keys a scale an axis;
+    // the option chosen says of the camera 「카메라는 줌 하나 그대로」.
+    test('a pose comes back out the pose that went in — built, written, '
+        'and saved — and its one zoom is keyed along both axes', () {
+      final pose = CameraPose(
+        center: CanvasPoint(x: 3, y: 4),
+        zoom: 2.5,
+        rotationDegrees: -15,
+      );
+      final built = CutCamera(keyframes: {4: pose});
+      final written = CutCamera.empty().withKeyframe(4, pose);
+
+      expect(built.keyframeAt(4), pose);
+      expect(built.keyframes, {4: pose});
+      expect(written, built);
+      expect(written.keyframeAt(4), pose);
+      expect(written.track.scale.keyAt(4)!.value, uniformScale(2.5));
+      expect(CutCamera.fromJson(built.toJson()).keyframeAt(4), pose);
     });
 
     test('withoutKeyframe removes and tolerates missing indexes', () {

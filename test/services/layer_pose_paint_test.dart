@@ -8,7 +8,7 @@ import 'package:anicel/src/services/layer_pose_paint.dart';
 
 const _canvasSize = CanvasSize(width: 1280, height: 720);
 
-TransformPose _pose() => TransformPose(
+TransformPose _pose() => TransformPose.uniform(
   center: CanvasPoint(x: 700, y: 400),
   zoom: 1.7,
   rotationDegrees: 33,
@@ -182,7 +182,7 @@ void main() {
     test('the composed sample maps every point exactly like applying the '
         'two matrices in sequence (similarities compose exactly)', () {
       final LayerPoseSample outer = (
-        pose: TransformPose(
+        pose: TransformPose.uniform(
           center: CanvasPoint(x: 500, y: 300),
           zoom: 0.8,
           rotationDegrees: -20,

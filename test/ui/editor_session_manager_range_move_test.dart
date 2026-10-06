@@ -1086,7 +1086,7 @@ void main() {
               position: PropertyTrack<CanvasPoint>()
                   .withKey(2, CanvasPoint(x: 1, y: 1))
                   .withKey(8, CanvasPoint(x: 9, y: 9)),
-              scale: PropertyTrack<double>().withKey(2, 1.5),
+              scale: PropertyTrack<CanvasPoint>().withKey(2, uniformScale(1.5)),
               rotation: PropertyTrack.empty(),
               opacity: PropertyTrack.empty(),
             ),
@@ -1216,7 +1216,7 @@ void main() {
                 2,
                 CanvasPoint(x: 1, y: 1),
               ),
-              scale: PropertyTrack<double>().withKey(3, 1.5),
+              scale: PropertyTrack<CanvasPoint>().withKey(3, uniformScale(1.5)),
               rotation: PropertyTrack<double>().withKey(9, 45),
               opacity: PropertyTrack.empty(),
             ),

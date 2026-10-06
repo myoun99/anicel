@@ -28,7 +28,7 @@ void main() {
     final track = TransformTrack(
       keyframes: {
         0: TransformPose(center: CanvasPoint(x: 12, y: 34)),
-        8: TransformPose(
+        8: TransformPose.uniform(
           center: CanvasPoint(x: 56, y: 78),
           zoom: 1.5,
           rotationDegrees: -12,

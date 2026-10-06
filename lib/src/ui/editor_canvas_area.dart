@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/layer_effect.dart';
+import '../models/camera_pose.dart';
 import '../models/canvas_size.dart';
 import '../models/composite_tree.dart';
 import '../models/pasteboard_bounds.dart';
@@ -939,7 +940,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // are those less the parent's.
     final parentZoom = parent.placement?.pose.zoom ?? 1;
     final parentTurn = parent.placement?.pose.rotationDegrees ?? 0;
-    final pose = TransformPose(
+    final pose = TransformPose.uniform(
       center: parent.toCanvas(own.center),
       zoom: parentZoom * own.zoom,
       rotationDegrees: parentTurn + own.rotationDegrees,
@@ -1199,7 +1200,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// pose read on the cursor alone stayed frozen on the cut being left.
   Widget _atTheCameraPose(
     EditorSessionManager session,
-    Widget Function(TransformPose pose) build,
+    Widget Function(CameraPose pose) build,
   ) => ListenableBuilder(
     listenable: session.editingFrameCursor,
     builder: (context, _) => ValueListenableBuilder<int?>(
