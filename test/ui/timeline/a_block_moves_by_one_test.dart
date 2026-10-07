@@ -458,6 +458,18 @@ void main() {
         reason: '🚨a move is not a tap: the band\'s release clears on a tap, '
             'and eight pixels read as one',
       );
+
+      // …and the press AFTER the drag is its own: a click that follows —
+      // a pixel of hand in it, nothing started — is a tap, and clears.
+      final clicked = await tester.startGesture(
+        inside,
+        kind: PointerDeviceKind.mouse,
+      );
+      await clicked.moveBy(const Offset(1, 0));
+      await tester.pump();
+      await clicked.up();
+      await tester.pump();
+      expect(heard.clears, 1);
     });
 
     for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
