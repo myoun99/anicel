@@ -14,7 +14,6 @@ import '../../models/timeline_row_address.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
 import '../../services/commands/track_se_layer_commands.dart';
 import 'active_cut_controllers.dart';
-import 'active_cut_edits.dart';
 import 'independent_clip_mint.dart'
     show carryBakedPictures, carryConteHandwriting;
 import 'render_caches.dart';
@@ -36,13 +35,11 @@ class LayerVerbs {
     required SelectionAccess selection,
     required ChangeSink changes,
     required ActiveCutControllers controllers,
-    required ActiveCutEdits activeCut,
     required RenderCaches renderCaches,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _controllers = controllers,
-       _activeCutEdits = activeCut,
        _renderCaches = renderCaches;
 
   final ProjectAccess _project;
@@ -52,10 +49,6 @@ class LayerVerbs {
 
   /// Where a duplicate's pictures are.
   final RenderCaches _renderCaches;
-
-  /// The active-row cut-command envelope — the session's one instance,
-  /// handed in (see [ActiveCutEdits]).
-  final ActiveCutEdits _activeCutEdits;
 
   /// The selected rows that name a LAYER this cut may delete (⑨).
   ///
@@ -111,16 +104,13 @@ class LayerVerbs {
 
   /// The selected rows that may be DUPLICATED (⑨'s 복사).
   ///
-  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
-  /// predicates rather than restated: a track-owned SE row has no clipboard
-  /// shape, a per-cut singleton cannot have a second, and an attach row's
-  /// copy would double-link its base's cels.
-  List<LayerId> duplicatableSelectedLayerIds() => selectedLayerIdsWhere(
-    (layer) =>
-        layer.kind.isClipboardCopyable &&
-        !layer.kind.isSingletonPerCut &&
-        !isAttachedLayer(layer),
-  );
+  /// The stand-downs are [duplicateActiveLayer]'s, read off the same
+  /// predicate rather than restated ([layerTakesACopyBesideIt]): a
+  /// track-owned SE row has no clipboard shape, a per-cut singleton cannot
+  /// have a second, and an attach row's copy would double-link its base's
+  /// cels.
+  List<LayerId> duplicatableSelectedLayerIds() =>
+      selectedLayerIdsWhere(layerTakesACopyBesideIt);
 
   /// The selected rows whose NAME may be edited (⑨).
   ///
@@ -297,13 +287,10 @@ class LayerVerbs {
     }
     final activeLayer = _selection.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
-    // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
-    // double-link the same base cels).
-    if (activeLayer == null ||
-        !activeLayer.kind.isClipboardCopyable ||
-        // R9 #7: the copy lands in the same cut — always the second one.
-        activeLayer.kind.isSingletonPerCut ||
-        isAttachedLayer(activeLayer)) {
+    // reason as the board's copy); attach rows too (v1 — a duplicate would
+    // double-link the same base cels); and R9 #7: the copy lands in the
+    // same cut — always the second one.
+    if (activeLayer == null || !layerTakesACopyBesideIt(activeLayer)) {
       return;
     }
 
@@ -345,25 +332,11 @@ class LayerVerbs {
     );
   }
 
-  bool get canLinkDuplicateActiveLayer {
-    final activeLayer = _selection.activeLayer;
-    // Same stand-downs as plain duplication; an attach row's LINK
-    // duplicate is reached through its base (the group goes whole).
-    return activeLayer != null &&
-        activeLayer.kind.isClipboardCopyable &&
-        // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
-        // copy would always be the second one.
-        !activeLayer.kind.isSingletonPerCut &&
-        !isAttachedLayer(activeLayer);
-  }
-
-  /// 링크 복제: duplicates the active layer's whole attach group SHARING
-  /// the originals' pictures (the store routes both to one cel bank).
-  void linkDuplicateActiveLayer() => _activeCutEdits.onActiveLayer(
-    when: canLinkDuplicateActiveLayer,
-    command: (cutId, layerId) => _project.cutCommandCoordinator
-        .linkDuplicateLayer(cutId: cutId, layerId: layerId),
-  );
+  // ↩️「링크 복제」 of the ACTIVE row stood here (`linkDuplicateActiveLayer`),
+  // behind the layer menu's 「링크해서 복제」. 🗣️I-77 (유저 2026-10-06):
+  // 「링크해서 복제도 필요없어지니 삭제」 — the shared pill's copy and its
+  // linked paste make that copy now, of every selected row
+  // (`LayerClipboard.pasteRowsLinked`).
 
   /// Whether [layer]'s attach group shares its pictures through a link —
   /// the one question 독립시키기 answers, from the layer menu and from the

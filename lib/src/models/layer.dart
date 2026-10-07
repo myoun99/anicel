@@ -598,6 +598,24 @@ bool layerAcceptsBrushInput(Layer layer) =>
 /// unchanged.
 bool isAttachedLayer(Layer layer) => layer.attachedToLayerId != null;
 
+/// Whether a clipboard can hold [layer] as a row of its own — what a copy
+/// and a duplicate both ask first.
+///
+/// A track-owned SE row has no cut-layer shape to copy
+/// ([LayerKind.isClipboardCopyable]), and an attach row's cel links point
+/// into its base's cels, so a copy of it would double-link them.
+///
+/// ★Named when the THIRD speller arrived (I-77's pill copy): the layer
+/// board's copy, the duplicate and the linked duplicate each wrote it out.
+bool layerTakesACopy(Layer layer) =>
+    layer.kind.isClipboardCopyable && !isAttachedLayer(layer);
+
+/// Whether a copy of [layer] may land in the cut [layer] stands in — a
+/// duplicate, a linked copy. R9 #7: a per-cut singleton cannot have a
+/// second.
+bool layerTakesACopyBesideIt(Layer layer) =>
+    layerTakesACopy(layer) && !layer.kind.isSingletonPerCut;
+
 /// Every layer kind that PRINTS carries the timesheet-output toggle — one
 /// entrance for every row (unified layer controls, user rule): cel/image/SE
 /// gate their sheet columns and the CAMERA layer gates the printed CAM

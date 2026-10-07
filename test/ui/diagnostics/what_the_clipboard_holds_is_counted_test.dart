@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/diagnostics/memory_census.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🔎clipboard-held-pictures-uncounted (2026-09-26): a copy holds its cels'
 /// pictures by value, and a picture the clipboard alone holds — its source
@@ -64,7 +65,7 @@ void main() {
 
   test('a copy whose source stands untouched adds nothing — it shares every '
       'tile with it', () {
-    session.layerClipboard.copyActiveLayer();
+    copyRowsWithThePill(session);
     expect(
       session.appClipboard.heldPictures,
       contains(same(picture)),
@@ -76,7 +77,7 @@ void main() {
 
   test('drawn over, the source lets go and the copy alone holds what it '
       'took — counted', () {
-    session.layerClipboard.copyActiveLayer();
+    copyRowsWithThePill(session);
     final over = drawOver();
     final kept = picture.bytesNotSharedWith(over);
     expect(kept, greaterThan(0), reason: 'fixture premise');
@@ -84,22 +85,23 @@ void main() {
     expect(drawingsRow([session]), storesHold(session) + kept);
   });
 
-  test('what both boards hold, and what the app\'s one board holds for two '
-      'open projects, is counted once', () {
+  test('what is in hand, held by the app\'s one board for two open '
+      'projects, is counted once', () {
     final other = EditorSessionManager(
       initialProject: createDefaultProject(),
       appClipboard: session.appClipboard,
     );
     addTearDown(other.dispose);
-    session.layerClipboard.copyActiveLayer();
+    copyRowsWithThePill(session);
     session.clipboard.copyFrameAtCurrentFrame();
     expect(
       session.appClipboard.heldPictures.where((held) => identical(
         held,
         picture,
       )),
-      hasLength(2),
-      reason: 'fixture premise: both boards hold the one picture',
+      hasLength(1),
+      reason: 'fixture premise: ONE copy is in hand — the frame copy let '
+          'the rows go (I-77), where both boards used to hold the picture',
     );
     final over = drawOver();
 

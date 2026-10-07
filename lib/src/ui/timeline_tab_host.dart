@@ -1107,6 +1107,15 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   /// notify with an unchanged token reuses its widgets.
   Widget? _cachedActions;
 
+  /// The shared pill's copy and its two pastes, as the PILL reads them:
+  /// this panel's own answers.
+  ///
+  /// I-77: they answer for ROWS as well as the frame axis now. The token
+  /// read the session's frame-axis getters, which a copy of rows does not
+  /// move — the two pastes stayed dark behind it.
+  TimelineToolbarPanelContext get _pill =>
+      TimelineToolbarPanelContext(widget.session);
+
   /// Every value the ACTION toolbar's directly-rendered widgets read. Split by
   /// the widget that consumes each so a future button's owner is obvious.
   ///
@@ -1120,15 +1129,15 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       session.frameVerbs.canRenameFrameAtCurrentFrame,
       session.exposureVerbs.canBlankExposureAtCurrentFrame,
       session.layerMarks.canToggleMarkAtCurrentFrame,
-      session.canCopyFrameAtCurrentFrame,
-      session.canPasteLinkedFrameAtCurrentFrame,
+      _pill.canCopyFrame,
+      _pill.canPasteLinkedFrame,
       // The shared pill's other three gates. They used to ride that pill's
       // own rebuild key, which re-evaluates only when the cached toolbar
       // is dropped — so a change moving ONLY these left them stale. A
       // BAND does exactly that: it can flip cut / edit / independent
       // paste while every entry around them holds its value.
       session.clipboard.canCutRunAtCurrentFrame,
-      session.canPasteIndependentFrameAtCurrentFrame,
+      _pill.canPasteIndependentFrame,
       session.cellInstances.canEditCellInstanceAtCurrentFrame,
       session.cells.canDeleteCellAtCurrentFrame,
       session.exposureVerbs.canDecreaseSelectedExposure,

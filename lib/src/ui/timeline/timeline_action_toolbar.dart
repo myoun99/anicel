@@ -13,7 +13,6 @@ import '../../models/pixel_clipboard_verb.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
-import '../paste_with_its_media.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
 import '../widgets/command_pill.dart';
@@ -456,29 +455,11 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: editable,
         onSelected: session.layerVerbs.duplicateActiveLayer,
       ),
-      PanelFlyoutItem(
-        keyValue: 'copy-layer-button',
-        label: AppText.strings.tlCopyLayer,
-        icon: Icons.content_copy,
-        enabled: serves && active != null,
-        onSelected: session.layerClipboard.copyActiveLayer,
-      ),
-      PanelFlyoutItem(
-        keyValue: 'paste-layer-button',
-        label: session.layerClipboard.layerClipboardName == null
-            ? 'Paste layer'
-            : 'Paste layer (${session.layerClipboard.layerClipboardName})',
-        icon: Icons.content_paste,
-        enabled: serves && session.layerClipboard.hasLayerClipboard,
-        onSelected: () => unawaited(
-          pasteWithItsMedia(
-            context,
-            title: session.layerClipboard.layerClipboardName ?? 'Paste layer',
-            board: session.layerClipboard,
-            paste: session.layerClipboard.pasteLayerFromClipboard,
-          ),
-        ),
-      ),
+      // ⛔COPY AND PASTE ARE NOT HERE, AND NEITHER IS 「링크해서 복제」
+      // (I-77, 유저 2026-10-06: 「복사/붙여넣기버튼 레이어도 연결 … 그러고
+      // 레이어버튼의 레이어복사/붙여넣기는 필요없으니 삭제」 · 「링크해서
+      // 복제도 필요없어지니 삭제」). The shared pill's copy takes the selected
+      // rows and its two pastes put them down — independent, or linked.
       // R5 #5: the row-order STEP verbs are gone, session methods and all
       // (user: "단축키로도 남기지마 일단"). The drag is the whole answer
       // now; the one thing the step could reach that a drop cannot — the
@@ -525,13 +506,6 @@ class TimelineActionToolbar extends StatelessWidget {
       // 'SE name tag…' opened a window. R5 #7 put every control it held on
       // the SE row's Name Tag lane group, so the entry would only lead
       // somewhere that changes the same thing a second way.
-      PanelFlyoutItem(
-        keyValue: 'timeline-link-duplicate-button',
-        label: AppText.strings.tlLinkDuplicateLayer,
-        icon: Icons.link,
-        enabled: serves && session.layerVerbs.canLinkDuplicateActiveLayer,
-        onSelected: session.layerVerbs.linkDuplicateActiveLayer,
-      ),
       // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
       // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
       // link window, and its button unlinks.
@@ -1030,6 +1004,9 @@ class TimelineActionToolbar extends StatelessWidget {
           icon: Icons.content_cut,
           onPressed: panelContext.cutPress,
         ),
+        // I-77: with rows selected the copy takes the ROWS, and the two
+        // pastes put down whichever the hand holds. The panel answers which
+        // ([ToolbarPanelContext]); nothing here knows the difference.
         _iconButton(
           key: const ValueKey<String>('shared-copy-button'),
           tooltip: editorActionLabel(EditorActionIds.editCopy),

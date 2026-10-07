@@ -9,6 +9,7 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 import 'helpers/home_page_probes.dart';
 
@@ -241,44 +242,70 @@ void main() {
     },
   );
 
-  testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (
+  /// 🗣️I-77 (유저 2026-10-06): 「복사/붙여넣기버튼 레이어도 연결. 레이어
+  /// 선택,다중선택등에서 복사 붙여넣기버튼 가능하게. 그러고 레이어버튼의
+  /// 레이어복사/붙여넣기는 필요없으니 삭제」. ↩️These three drove the Layer ▾
+  /// flyout's 'copy-layer-button' and 'paste-layer-button'.
+  Future<EditorSessionManager> withTheActiveRowSelected(
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.rowSelectionVerbs.beginRowSelection(
+      LayerRowAddress(session.activeLayerId!),
+    );
+    await tester.pumpAndSettle();
+    return session;
+  }
 
-    const copyKey = ValueKey<String>('copy-layer-button');
-    const pasteKey = ValueKey<String>('paste-layer-button');
+  const copyKey = ValueKey<String>('shared-copy-button');
+  const pasteKey = ValueKey<String>('shared-paste-independent-button');
+  const pasteLinkedKey = ValueKey<String>('shared-paste-linked-button');
 
-    // Copy/paste live in the Layer ▾ flyout (R-toolbar round); the paste
-    // item's LABEL carries the clipboard name.
+  testWidgets('the shared pill copies the selected ROW, and both pastes '
+      'light behind it', (WidgetTester tester) async {
+    final session = await withTheActiveRowSelected(tester);
+
     expect(await isActionButtonEnabled(tester, copyKey), isTrue);
     expect(await isActionButtonEnabled(tester, pasteKey), isFalse);
+    expect(await isActionButtonEnabled(tester, pasteLinkedKey), isFalse);
 
-    await tapToolbarButton(tester, copyKey);
-
+    // The Layer ▾ flyout lists none of the three it used to.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-layer-menu-button')),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Paste layer (A)'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('duplicate-layer-button')),
+      findsOneWidget,
+      reason: '⛔전제: the flyout is open',
+    );
+    for (final gone in const [
+      'copy-layer-button',
+      'paste-layer-button',
+      'timeline-link-duplicate-button',
+    ]) {
+      expect(find.byKey(ValueKey<String>(gone)), findsNothing, reason: gone);
+    }
     await tester.tapAt(const Offset(5, 400));
     await tester.pumpAndSettle();
+
+    await tapToolbarButton(tester, copyKey);
+
+    expect(session.layerClipboard.hasLayerClipboard, isTrue);
     expect(await isActionButtonEnabled(tester, pasteKey), isTrue);
+    expect(await isActionButtonEnabled(tester, pasteLinkedKey), isTrue);
   });
 
   testWidgets(
-    'Paste Layer creates another A, selects it, and undo/redo works',
+    'the pill\'s paste creates another A, selects it, and undo/redo works',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const AnicelApp());
+      await withTheActiveRowSelected(tester);
 
-      await tapToolbarButton(
-        tester,
-        const ValueKey<String>('copy-layer-button'),
-      );
-      await tapToolbarButton(
-        tester,
-        const ValueKey<String>('paste-layer-button'),
-      );
+      await tapToolbarButton(tester, copyKey);
+      await tapToolbarButton(tester, pasteKey);
 
       expect(find.text('A'), findsWidgets);
       // Two drawing rows plus the always-present fixtures: S1·S2, CAM 1,
@@ -310,13 +337,10 @@ void main() {
   testWidgets('pasted layer can be renamed and deleted', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    await withTheActiveRowSelected(tester);
 
-    await tapToolbarButton(tester, const ValueKey<String>('copy-layer-button'));
-    await tapToolbarButton(
-      tester,
-      const ValueKey<String>('paste-layer-button'),
-    );
+    await tapToolbarButton(tester, copyKey);
+    await tapToolbarButton(tester, pasteKey);
     // T25: the loose rename is folded into the shared Edit Instance, whose
     // subject is the selection — so the row is named first, exactly as the
     // ONE delete already asks.

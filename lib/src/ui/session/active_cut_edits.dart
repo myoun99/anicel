@@ -59,7 +59,9 @@ class ActiveCutEdits {
   ///
   /// Four verbs across two collaborators wrote it out by hand — 링크 복제,
   /// 링크 해제, 폴더 생성, 공정 폴더 생성. What differs between them is a bool
-  /// getter and a two-argument command, and both are values.
+  /// getter and a two-argument command, and both are values. (↩️The two
+  /// link verbs have left since — I-25, I-77 — and the two folder verbs
+  /// are what it serves.)
   ///
   /// ⚠️The trailing step is the one that goes missing when an envelope is
   /// copied: `CutVerbs._moveActiveCut` carries a comment recording exactly

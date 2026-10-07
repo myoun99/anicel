@@ -26,6 +26,7 @@ import 'package:anicel/src/ui/session/cell_verbs.dart';
 import 'package:anicel/src/ui/session/frame_verbs.dart';
 import 'package:anicel/src/ui/session/layer_switch_verbs.dart';
 import 'package:anicel/src/ui/session/opacity_verbs.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨F-278 · F-98 — A LINKED ROW'S PICTURES ARE ONE BANK, AND A PICTURE IS
 /// SHARED BY ITS NAME: on an animation row, on an image row, and on the
@@ -830,7 +831,7 @@ void main() {
         'row is not on this canvas', () {
       final (:s, :cut1, :row1, :cut2, :row2) = linked();
       s.selectLayer(row2);
-      s.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       final twin = s.repository
           .requireProject()
           .linkRegistry

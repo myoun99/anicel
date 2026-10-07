@@ -22,6 +22,7 @@ import '../../helpers/draw_on_current_frame.dart';
 import '../../helpers/opened_session.dart';
 import '../../helpers/project_scratch_folder.dart';
 import '../../helpers/staged_carry.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨I-7 (유저 2026-09-26): 「탭사이에 복사나 붙여넣기 뭐든 가능. 앱 전체에
 /// 하나. 레이어 id가 다른거?라던가 id늘리게한다던가 알아서 조심하고.」
@@ -182,11 +183,11 @@ void main() {
       final row = a.activeLayer!;
       final cel = rowOf(a, row.id).frames.single;
       final picture = pictureOf(a, row, cel);
-      a.layerClipboard.copyActiveLayer();
+      copyRowsWithThePill(a);
 
       final before = {for (final layer in b.requireActiveCut.layers) layer.id};
       expect(before, contains(row.id), reason: 'fixture premise: the id is taken');
-      b.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(b);
       final pasted = b.requireActiveCut.layers
           .where((layer) => !before.contains(layer.id))
           .single;
@@ -239,7 +240,7 @@ void main() {
       await a.mediaPool.addMediaAssets([path], carried: true);
       expect(stagedCopyIn(a, path), isNotNull, reason: 'fixture: A holds it');
       a.selectLayer(const LayerId('shows-the-still'));
-      a.layerClipboard.copyActiveLayer();
+      copyRowsWithThePill(a);
       return (a: a, path: path);
     }
 
@@ -257,7 +258,7 @@ void main() {
       expect(b.layerClipboard.pasteMustHoldMedia, isFalse, reason: 'held');
 
       final before = {for (final layer in b.requireActiveCut.layers) layer.id};
-      b.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(b);
       final mine = carryIn(b, path);
       expect(mine, isNotNull, reason: 'the pool lists it, carried');
       expect(mine, isNot(carryIn(a, path)), reason: 'a carry of its own');
@@ -284,7 +285,7 @@ void main() {
         'entry that says carried is the promise the bytes are held', () async {
       final (a: _, :path) = await aCarriedStill();
       final b = open();
-      b.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(b);
       expect(b.repository.requireProject().mediaAssetByPath(path), isNull);
     });
 
@@ -292,7 +293,7 @@ void main() {
       final (:a, :path) = await aCarriedStill();
       expect(a.layerClipboard.pasteMustHoldMedia, isFalse);
       final pool = a.repository.requireProject().mediaAssets;
-      a.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(a);
       expect(a.repository.requireProject().mediaAssets, pool);
       expect(carryIn(a, path), isNotNull);
     });
@@ -331,10 +332,10 @@ void main() {
       spell(a, 'SHAKE');
       spell(b, 'BLUR');
       aTermRow(a, 'custom-1');
-      a.layerClipboard.copyActiveLayer();
+      copyRowsWithThePill(a);
 
       final before = {for (final layer in b.requireActiveCut.layers) layer.id};
-      b.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(b);
       final vocabulary = b.repository.requireProject().cameraInstructions;
       expect(vocabulary.defById('custom-1')!.name, 'BLUR', reason: 'kept');
       expect(vocabulary.defById('custom-2')!.name, 'SHAKE');
@@ -351,15 +352,15 @@ void main() {
       spell(a, 'SHAKE');
       spell(b, 'SHAKE');
       aTermRow(a, 'custom-1');
-      a.layerClipboard.copyActiveLayer();
-      b.layerClipboard.pasteLayerFromClipboard();
+      copyRowsWithThePill(a);
+      pasteWithThePill(b);
       expect(
         b.repository.requireProject().cameraInstructions.defs,
         hasLength(CameraInstructionSet.standard.defs.length + 1),
       );
 
       final c = open();
-      c.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(c);
       expect(
         c.repository.requireProject().cameraInstructions
             .defById('custom-1')
@@ -373,11 +374,11 @@ void main() {
       final a = open();
       spell(a, 'SHAKE');
       aTermRow(a, 'custom-1');
-      a.layerClipboard.copyActiveLayer();
+      copyRowsWithThePill(a);
       a.cutCommandCoordinator.updateCameraInstructionSet(
         CameraInstructionSet.standard,
       );
-      a.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(a);
       expect(
         a.repository.requireProject().cameraInstructions
             .defById('custom-1')
@@ -399,9 +400,9 @@ void main() {
         ),
       );
       aTermRow(a, 'pan');
-      a.layerClipboard.copyActiveLayer();
+      copyRowsWithThePill(a);
       final before = {for (final layer in b.requireActiveCut.layers) layer.id};
-      b.layerClipboard.pasteLayerFromClipboard();
+      pasteWithThePill(b);
       final vocabulary = b.repository.requireProject().cameraInstructions;
       expect(vocabulary.defs, hasLength(CameraInstructionSet.standard.defs.length));
       expect(vocabulary.defById('pan')!.name, '팬');

@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show laneGroupKey;
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기, 폴더/어태치
 /// 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태
@@ -136,7 +137,7 @@ void main() {
     final before = {for (final layer in r.s.layers) layer.id};
     r.s.selectLayer(r.plain);
 
-    r.s.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(r.s);
 
     final copy = r.s.layers.firstWhere((l) => !before.contains(l.id)).id;
     expect(r.s.layerVerbs.isLayerLinked(copy), isTrue, reason: '⛔전제');

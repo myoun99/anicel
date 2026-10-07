@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 import 'storyboard_cut_block_probe.dart';
+import '../helpers/pill_row_clipboard.dart';
 
 /// 🗣️I-25 (유저 2026-09-14): 「링크컷/링크레이어 등 좀 더 알기쉽게. 우선
 /// 링크컷이 발생해있는 경우, 모든 컷에 적용. 내용은 컷블록에서 컷 이름 오른쪽에
@@ -50,7 +51,7 @@ void main() {
       final s = session();
       final row = s.activeLayerId!;
       final before = {for (final layer in s.layers) layer.id};
-      s.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       // The duplicate leaves you standing on the row you duplicated (the
       // standing law, `the_row_you_acted_on_stays_active_test`): the copy
       // is the row that was not there before.
@@ -166,7 +167,7 @@ void main() {
         'unlinks every selected row', (tester) async {
       final s = session();
       final row = s.activeLayerId!;
-      s.layerVerbs.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       final copy = s.activeLayerId!;
       s.rowSelection.value = [LayerRowAddress(row), LayerRowAddress(copy)];
       await timeline(tester, s);

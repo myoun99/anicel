@@ -439,8 +439,15 @@ class CutCommandCoordinator {
     originCutId: originCutId,
     targetCutId: targetCutId,
   );
-  void linkDuplicateLayer({required CutId cutId, required LayerId layerId}) =>
-      _links.linkDuplicateLayer(cutId: cutId, layerId: layerId);
+  LayerId linkDuplicateLayer({
+    required CutId cutId,
+    required LayerId layerId,
+    required int insertionIndex,
+  }) => _links.linkDuplicateLayer(
+    cutId: cutId,
+    layerId: layerId,
+    insertionIndex: insertionIndex,
+  );
 
   // ── the folder and attachment commands: their own object ────────────
   //

@@ -114,6 +114,10 @@ abstract class ToolbarPanelContext {
   bool get canCutRun;
   void cutRun();
 
+  /// The pill's copy and its two pastes. ⚠️「Frame」 is the name they were
+  /// given while the frame axis was all they served: since I-77 the copy
+  /// takes the selected ROWS where rows are the panel's, and a paste puts
+  /// down whichever the hand holds ([_ClipboardAtThePanelsPlace]).
   bool get canCopyFrame;
   void copyFrame();
 
@@ -201,27 +205,68 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
   /// nothing the board serves.
   ClipboardPlace? get clipboardPlace;
 
+  /// 🗣️I-77 (유저 2026-10-06): 「복사/붙여넣기버튼 레이어도 연결. 레이어
+  /// 선택,다중선택등에서 복사 붙여넣기버튼 가능하게」 · 「타임라인의 공용
+  /// 복사/독립붙여넣기/링크붙여넣기를 말한거였음」.
+  ///
+  /// Whether ROWS are this panel's to copy and paste — the timeline's, whose
+  /// rows are the cut's layers. The storyboard's rows are tracks and their
+  /// fixtures, which no board holds, so its copy stays the frame axis's.
+  bool get rowsAreThisPanels;
+
   @override
   bool get canCutRun => session.clipboard.canCutAt(clipboardPlace);
 
   @override
   void cutRun() => session.clipboard.cutAt(clipboardPlace);
 
-  @override
-  bool get canCopyFrame => session.clipboard.canCopyAt(clipboardPlace);
+  /// WHAT the copy takes, on the pill's one ladder ([pillSubjectOn]): the
+  /// selected rows, else the frame axis — 「선택안하면 현재프레임, 선택하면
+  /// 해당 선택한 소재가 기준임」 (I-45's answer, which every verb here
+  /// follows).
+  PillSubject get _copySubject => pillSubjectOn(
+    cuts: false,
+    layers: () =>
+        rowsAreThisPanels && session.layerClipboard.canCopySelectedRows,
+    cells: () => session.clipboard.canCopyAt(clipboardPlace),
+  );
 
   @override
-  void copyFrame() => session.clipboard.copyAt(clipboardPlace);
+  bool get canCopyFrame => _copySubject != PillSubject.nothing;
 
   @override
-  bool get canPasteIndependentFrame =>
-      session.clipboard.canPasteIndependentAt(clipboardPlace);
+  void copyFrame() {
+    switch (_copySubject) {
+      case PillSubject.layers:
+        session.layerClipboard.copySelectedRows();
+      case PillSubject.cells:
+        session.clipboard.copyAt(clipboardPlace);
+      case PillSubject.cuts:
+      case PillSubject.nothing:
+        break;
+    }
+  }
+
+  /// Whether a paste here puts down ROWS: the hand holds them, and rows are
+  /// this panel's. ⛔Not asked of the selection — one copy is in hand
+  /// (`AppClipboard`), so what a paste brings is already said; where it
+  /// lands is the row you stand on.
+  bool get _pastesRows =>
+      rowsAreThisPanels && session.layerClipboard.hasLayerClipboard;
+
+  @override
+  bool get canPasteIndependentFrame => _pastesRows
+      ? session.layerClipboard.canPasteRows
+      : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
   @override
   void pasteIndependentFrame() {
+    final rows = _pastesRows;
     // The place is asked when the paste LANDS — after the wait, where one
     // is held.
-    void paste() => session.clipboard.pasteIndependentAt(clipboardPlace);
+    void paste() => rows
+        ? session.layerClipboard.pasteRows()
+        : session.clipboard.pasteIndependentAt(clipboardPlace);
     final context = waitIn;
     if (context == null) {
       paste();
@@ -231,22 +276,30 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       pasteWithItsMedia(
         context,
         title: editorActionLabel(EditorActionIds.editPasteIndependent),
-        board: session.clipboard,
+        board: rows ? session.layerClipboard : session.clipboard,
         paste: paste,
       ),
     );
   }
 
   @override
-  bool get canPasteLinkedFrame =>
-      session.clipboard.canPasteLinkedAt(clipboardPlace);
+  bool get canPasteLinkedFrame => _pastesRows
+      ? session.layerClipboard.canPasteRowsLinked
+      : session.clipboard.canPasteLinkedAt(clipboardPlace);
 
   /// On a row the copy was not taken from it links by NAME, and asks before
   /// it joins a name the row already holds ([pasteLinkedAskingFirst], I-71).
   /// With no window to ask in, such a paste stands down — the verb writes
   /// nothing until it is told to join.
+  ///
+  /// ROWS in hand are linked whole, each beside the row you stand on, and
+  /// have nothing to ask.
   @override
   void pasteLinkedFrame() {
+    if (_pastesRows) {
+      session.layerClipboard.pasteRowsLinked();
+      return;
+    }
     final context = waitIn;
     if (context == null) {
       session.clipboard.pasteLinkedAt(clipboardPlace);
@@ -275,6 +328,9 @@ class TimelineToolbarPanelContext
   /// The cut's active row at the cut's playhead.
   @override
   ClipboardPlace? get clipboardPlace => session.clipboard.timelinePlace;
+
+  @override
+  bool get rowsAreThisPanels => true;
 
   // ⑥ 유저 2026-08-12: 「레이어 +버튼, 선택된 레이어 기준이아니라 애니메이션
   // 레이어 생성.」 — moved here verbatim from the button.
@@ -417,6 +473,10 @@ class StoryboardToolbarPanelContext
 
   @override
   final BuildContext? waitIn;
+
+  /// Its rows are tracks and their fixtures: no board holds one (I-77).
+  @override
+  bool get rowsAreThisPanels => false;
 
   /// The rail's ONE addable kind: an S row (track-owned SE). V tracks and
   /// the transition row are fixtures nothing can add ("disable" is the

@@ -30,6 +30,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 import '../../helpers/home_page_probes.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨I-45 — THE LINK-INDEPENDENT BUTTON ASKS THE SHARED PILL'S ONE LADDER.
 ///
@@ -234,7 +235,7 @@ void main() {
       final layers = layersOf(s);
       drawnAndLinked(s, [5]);
       final original = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       final copy = s.layers
           .firstWhere(
             (layer) => layer.id != original && layers.isLayerLinked(layer.id),
@@ -260,10 +261,10 @@ void main() {
       final s = session();
       final layers = layersOf(s);
       final first = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       s.layerStack.addLayerOfKind(LayerKind.animation);
       final second = row(s).id;
-      layers.linkDuplicateActiveLayer();
+      linkDuplicateActiveRow(s);
       s.rowSelectionVerbs.beginRowSelection(LayerRowAddress(first));
       s.rowSelectionVerbs.rowSelection.value = [
         LayerRowAddress(first),

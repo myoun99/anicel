@@ -12,6 +12,7 @@ import 'package:anicel/src/ui/session/frame_verbs.dart';
 import 'package:anicel/src/ui/session/layer_clipboard.dart';
 
 import '../../helpers/draw_on_current_frame.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🚨A COPIED BLOCK STARTS WITH ITS SOURCE'S HANDWRITING, UNDER AN ID OF
 /// ITS OWN.
@@ -129,8 +130,8 @@ void main() {
     final before = {
       for (final layer in session.requireActiveCut.layers) layer.id,
     };
-    session.layerClipboard.copyActiveLayer();
-    session.layerClipboard.pasteLayerFromClipboard();
+    copyRowsWithThePill(session);
+    pasteWithThePill(session);
     final pasted = session.requireActiveCut.layers
         .where((layer) => !before.contains(layer.id))
         .single;

@@ -4,6 +4,7 @@ import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// F-20 — **the verb row names the active layer.**
 ///
@@ -91,8 +92,8 @@ void main() {
       // follow, and is not in this list for that reason.)
       'duplicate': (s) => s.layerVerbs.duplicateActiveLayer(),
       'paste': (s) {
-        s.layerClipboard.copyActiveLayer();
-        s.layerClipboard.pasteLayerFromClipboard();
+        copyRowsWithThePill(s);
+        pasteWithThePill(s);
       },
     };
     for (final door in doors.entries) {

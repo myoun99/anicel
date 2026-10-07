@@ -38,6 +38,16 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_lookup.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
+/// The stack seat directly above [layerId] in `cut-1` — where a linked copy
+/// made standing on that row is aimed (I-77: the copy is a PASTE's, and
+/// lands where it is asked to).
+int seatAbove(Project project, String layerId) =>
+    requireCut(
+      project,
+      const CutId('cut-1'),
+    ).layers.indexWhere((layer) => layer.id.value == layerId) +
+    1;
+
 void main() {
   group('CutCommandCoordinator', () {
     test('createCut mints a cut id of its own, the first free layer id, and '
@@ -125,6 +135,7 @@ void main() {
           cutId: const CutId('cut-1'),
           // Selecting the ATTACH member resolves to the whole group.
           layerId: const LayerId('color'),
+          insertionIndex: seatAbove(fixture.project, 'color'),
         );
 
         final cut = requireCut(fixture.project, const CutId('cut-1'));
@@ -286,6 +297,7 @@ void main() {
         coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         final copyId = fixture.project.linkRegistry.groups
             .firstWhere(
@@ -379,6 +391,7 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         fixture.coordinator.renameLayer(
           cutId: const CutId('cut-1'),
@@ -783,6 +796,7 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         final cut = requireCut(fixture.project, const CutId('cut-1'));
         final baseCopyId = cut.layers[2].id;
@@ -1130,10 +1144,12 @@ void main() {
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
+          insertionIndex: seatAbove(fixture.project, 'base'),
         );
         fixture.coordinator.linkDuplicateLayer(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('layer-1'),
+          insertionIndex: seatAbove(fixture.project, 'layer-1'),
         );
 
         final registry = fixture.project.linkRegistry;

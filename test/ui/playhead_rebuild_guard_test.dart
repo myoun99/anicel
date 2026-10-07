@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/home_page_probes.dart' show isActionButtonEnabled;
+import '../helpers/pill_row_clipboard.dart';
 
 /// R13-2 playhead rebuild guards: committed seeks and cursor moves must
 /// not rebuild what they don't change — measured on device as the
@@ -524,7 +525,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(session);
     final zoom = ValueNotifier<double>(24);
     addTearDown(zoom.dispose);
     await pumpZoomableTimeline(tester, session, zoom);

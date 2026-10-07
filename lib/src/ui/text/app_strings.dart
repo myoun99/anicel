@@ -818,13 +818,11 @@ enum AppStrings {
   String get tlFrame => _s('tlFrame');
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlSelectRowSpan => _s('tlSelectRowSpan');
-  String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   /// I-25: the link window's button, and why it is off on a linked cut's row.
   String get linkWindowUnlink => _s('linkWindowUnlink');
   String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
   String get tlResetGroup => _s('tlResetGroup');
   String get tlRenameLayer => _s('tlRenameLayer');
-  String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
@@ -2777,12 +2775,10 @@ enum AppStrings {
     'tlFrame': 'Frame',
     'tlDuplicateLayer': 'Duplicate layer',
     'tlSelectRowSpan': 'Select whole row',
-    'tlLinkDuplicateLayer': 'Link duplicate layer',
     'linkWindowUnlink': 'Unlink',
     'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
     'tlResetGroup': 'Reset (keeps keys)',
     'tlRenameLayer': 'Rename layer…',
-    'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
@@ -4158,12 +4154,10 @@ enum AppStrings {
     'tlFrame': 'フレーム',
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlSelectRowSpan': '行全体を選択',
-    'tlLinkDuplicateLayer': 'リンクして複製',
     'linkWindowUnlink': 'リンクを解除',
     'linkWindowUnlinkLinkedCut': '兼用カットのレイヤーはカットごと解除します',
     'tlResetGroup': 'リセット（キーは残す）',
     'tlRenameLayer': 'レイヤー名を変更…',
-    'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
@@ -5529,12 +5523,10 @@ enum AppStrings {
     'tlFrame': '프레임',
     'tlDuplicateLayer': '레이어 복제',
     'tlSelectRowSpan': '행 전체 선택',
-    'tlLinkDuplicateLayer': '링크해서 복제',
     'linkWindowUnlink': '링크 해제',
     'linkWindowUnlinkLinkedCut': '겸용컷이라 레이어만 해제할 수 없습니다',
     'tlResetGroup': '리셋 (키는 유지)',
     'tlRenameLayer': '레이어 이름 변경…',
-    'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
@@ -6979,12 +6971,10 @@ enum AppStrings {
     'tlFrame': 'Image',
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlSelectRowSpan': 'Sélectionner toute la ligne',
-    'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'linkWindowUnlink': 'Délier',
     'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
     'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlRenameLayer': 'Renommer le calque…',
-    'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
@@ -8273,12 +8263,10 @@ enum AppStrings {
     'tlFrame': '帧',
     'tlDuplicateLayer': '复制图层',
     'tlSelectRowSpan': '选择整行',
-    'tlLinkDuplicateLayer': '链接复制图层',
     'linkWindowUnlink': '取消链接',
     'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',
     'tlResetGroup': '重置（保留关键帧）',
     'tlRenameLayer': '重命名图层…',
-    'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',

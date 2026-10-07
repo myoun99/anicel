@@ -12,6 +12,7 @@ import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/services/project_lookup.dart' show requireLayer;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/block_naming.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// 🗣️I-18 — 자동 이름 지정, said of the TIMELINE (유저): 「대상은 선택된
 /// 블록들(컷이나 프레임)이 있으면 선택한 대상만. 없으면 현재 인덱스에 위치한
@@ -361,7 +362,7 @@ void main() {
     final original = s.activeLayerId!;
     final a = drawn(s, 0, 'a');
     final b = drawn(s, 1, 'b');
-    s.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(s);
     final copy = s.layers
         .firstWhere(
           (layer) =>

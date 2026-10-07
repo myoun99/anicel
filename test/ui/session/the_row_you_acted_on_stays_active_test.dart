@@ -9,6 +9,7 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/active_cut_edits.dart';
 import 'package:anicel/src/ui/session/session_roles.dart';
+import '../../helpers/pill_row_clipboard.dart';
 
 /// FOUR VERBS, ONE ENVELOPE: gate, take the ACTIVE row's id, run one
 /// coordinator command keyed by (cutId, layerId), then refresh KEEPING
@@ -18,6 +19,11 @@ import 'package:anicel/src/ui/session/session_roles.dart';
 /// written out four times — `CutVerbs._moveActiveCut` carries a comment
 /// recording exactly that loss. Pinned here for all four before they were
 /// folded onto one call.
+///
+/// ↩️Two of the four have left it since: 링크 해제 went to the link window
+/// (I-25), and 링크 복제 is the shared pill's linked PASTE (I-77), which
+/// stands on what it put down as a paste does. The unlink pin below stays,
+/// for the row verb the window presses.
 void main() {
   EditorSessionManager session() {
     final s = EditorSessionManager(initialProject: createDefaultProject());
@@ -25,22 +31,11 @@ void main() {
     return s;
   }
 
-  test('link duplicate leaves you standing on the row you duplicated', () {
-    final s = session();
-    final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
-    s.selectLayer(layer);
-    expect(s.layerVerbs.canLinkDuplicateActiveLayer, isTrue);
-
-    s.layerVerbs.linkDuplicateActiveLayer();
-
-    expect(s.activeLayerId, layer);
-  });
-
   test('unlink leaves you standing on the row you unlinked', () {
     final s = session();
     final layer = s.layers.firstWhere((l) => l.kind == LayerKind.animation).id;
     s.selectLayer(layer);
-    s.layerVerbs.linkDuplicateActiveLayer();
+    linkDuplicateActiveRow(s);
     expect(s.activeLayerId, layer);
     expect(
       s.layerVerbs.groupIsLinked(s.activeLayer!, s.requireActiveCut),

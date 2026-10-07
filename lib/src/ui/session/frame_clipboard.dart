@@ -605,7 +605,7 @@ class FrameClipboard implements BringsMedia {
     final cels = _celsCarriedBy(layer, clip);
     // 🚨결정 14 ②ⓐ — the board takes EVERY swept row, the anchor first.
     final rows = [_copiedRowFor(layer, clip), ..._copiedRowsBesides(place)];
-    _board._copy = _CopiedFrameReference(
+    _board._take(_CopiedFrameReference(
       from: this,
       layerId: layer.id,
       frameId: frame.id,
@@ -625,7 +625,7 @@ class FrameClipboard implements BringsMedia {
         ]),
         bytesOf: _mediaBytesOf,
       ),
-    );
+    ));
     _changes.notifyChanged();
   }
 
@@ -1451,6 +1451,18 @@ class _CopiedRow {
 /// which project its ids are ids of.
 class FrameBoard {
   _CopiedFrameReference? _copy;
+
+  /// What this board taking a copy lets go of: the pill's other board
+  /// (`AppClipboard`, I-77).
+  void Function()? onTake;
+
+  void _take(_CopiedFrameReference copy) {
+    _copy = copy;
+    onTake?.call();
+  }
+
+  /// Lets go of what it holds: the hand took a copy of the other kind.
+  void letGo() => _copy = null;
 
   /// The pictures the copy holds, every swept row's — the memory census's
   /// to weigh.
