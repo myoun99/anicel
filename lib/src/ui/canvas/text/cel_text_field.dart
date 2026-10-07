@@ -177,10 +177,16 @@ class CelTextField extends StatelessWidget {
   /// Whether [event] was one, and was answered.
   ///
   /// ⚠️Plain and with Shift alone. A jump by a word or to the end of the
-  /// text is the field's own, as it is in lines.
+  /// text — an arrow with Ctrl, or with ⌘ — is the field's own, as it is in
+  /// lines.
+  ///
+  /// ⛔The third modifier is not asked after: held under the text tool it
+  /// is the eyedropper's (F-299 — 유저 2026-10-05: 「어떤 도구 들고있던 규칙
+  /// 만들지말고 법 통일해서 작동하도록」), and two tools alone keep theirs
+  /// (`canvasToolReadsAlt`).
   bool _arrow(KeyEvent event) {
     final keys = HardwareKeyboard.instance;
-    if (keys.isControlPressed || keys.isAltPressed || keys.isMetaPressed) {
+    if (keys.isControlPressed || keys.isMetaPressed) {
       return false;
     }
     final from = letters.selection.extentOffset;
