@@ -96,9 +96,9 @@ ui.Rect surfaceInkWorldRect(BitmapSurface surface) {
 /// go right after it; what differs is whether the compose gives way while
 /// it makes them.
 enum MissingTilePictures {
-  /// A run of them at a time ([tilePicturesInARun]), the event queue given
-  /// its turn between runs ([_giveWay]) — which is what lets a pen that
-  /// comes down be heard, and an opportunistic compose be stood down
+  /// A run of them at a time ([tilePictureRun]), the event queue given its
+  /// turn between runs ([_giveWay]) — which is what lets a pen that comes
+  /// down be heard, and an opportunistic compose be stood down
   /// ([shouldAbort]), within a run. The road of everything that builds a
   /// layer's image off the frame: the warm, a row the canvas fills in, a
   /// cut the track stack asks for.
@@ -128,16 +128,24 @@ enum MissingTilePictures {
   madeAtOnce,
 }
 
-/// How many tile pictures [MissingTilePictures.madeInTurn] makes before it
-/// gives way.
+/// How long [MissingTilePictures.madeInTurn] makes tile pictures before it
+/// gives way: the bound the decode rounds kept — 「an interactive input
+/// stops an opportunistic compose within ~one tile (1–2ms)」 (R13-4).
 ///
-/// A picture through the door is a few hundredths of a millisecond (0.04 ms
-/// measured in a debug build on a desk), so a run is well under one: the
-/// bound the decode rounds kept — 「an interactive input stops an
-/// opportunistic compose within ~one tile (1–2ms)」 (R13-4) — on a machine
-/// several times slower than the one it was measured on.
+/// ⛔A LENGTH OF TIME, NOT A COUNT OF PICTURES. A count is a different
+/// length on every machine — 0.04 ms a picture on the desk it was measured
+/// on (debug build), several times that on an old tablet — and the turn it
+/// buys is not free: 🔬0.5–0.7 ms each on the Windows app (2026-10-07), so
+/// sixteen pictures a run spent as long giving way as making them. Most
+/// cels never reach the end of a run: the raster after a layer's tiles is a
+/// turn of its own.
 @visibleForTesting
-const int tilePicturesInARun = 16;
+const Duration tilePictureRun = Duration(milliseconds: 2);
+
+/// A test's clock for [tilePictureRun], in microseconds — the time a run
+/// has taken is read off the wall when this is null.
+@visibleForTesting
+int Function()? debugTilePictureClock;
 
 /// One turn of the event queue: whatever was waiting in it when this is
 /// called — a pen coming down, a frame — is handled before it completes.
@@ -187,9 +195,9 @@ Future<void> _giveWay() {
 /// [shouldAbort] (R13-4, abandonable work only): checked before every
 /// tile picture and before the final full-canvas raster — the two cost
 /// centers — so an interactive input stops an opportunistic compose within
-/// one run of tile pictures ([tilePicturesInARun], under a millisecond),
-/// not one canvas. Aborts return null with nothing cached and the transient
-/// pictures disposed; without [shouldAbort] the result is never null.
+/// one run of tile pictures ([tilePictureRun]), not one canvas. Aborts
+/// return null with nothing cached and the transient pictures disposed;
+/// without [shouldAbort] the result is never null.
 Future<ui.Image?> composeTiledSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
@@ -224,7 +232,9 @@ Future<ui.Image?> _composeAsync(
   final paint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final transient = <ui.Image>[];
   var recorderClosed = false;
-  var madeThisRun = 0;
+  final watch = Stopwatch()..start();
+  int now() => debugTilePictureClock?.call() ?? watch.elapsedMicroseconds;
+  var runBegan = now();
 
   try {
     for (final entry in _tilesShownBy(surface).entries) {
@@ -232,9 +242,9 @@ Future<ui.Image?> _composeAsync(
       var image = reuse?.imageFor(tile);
       if (image == null) {
         if (missing == MissingTilePictures.madeInTurn &&
-            madeThisRun == tilePicturesInARun) {
+            now() - runBegan >= tilePictureRun.inMicroseconds) {
           await _giveWay();
-          madeThisRun = 0;
+          runBegan = now();
         }
         if (shouldAbort?.call() ?? false) {
           recorder.endRecording().dispose();
@@ -242,7 +252,6 @@ Future<ui.Image?> _composeAsync(
           return null;
         }
         image = BitmapTileImageCache.pictureOfTile(tile);
-        madeThisRun += 1;
         transient.add(image);
       }
       canvas.drawImage(

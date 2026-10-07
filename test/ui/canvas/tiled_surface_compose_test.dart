@@ -382,82 +382,155 @@ void main() {
     });
   });
 
-  testWidgets('🚨the road in turn GIVES WAY between runs of pictures: what '
-      'was waiting in the event queue is heard before the compose is done — '
-      'and a compose somebody waits for does not stop for it', (tester) async {
-    await tester.runAsync(() async {
-      // One picture more than a run makes: the queue gets its turn once.
-      final surface = rowOfTiles(tilePicturesInARun + 1);
-      var heard = false;
-      Timer.run(() => heard = true);
-      expect(
-        await composeTiledSurfaceImage(surface, shouldAbort: () => heard),
-        isNull,
-        reason: 'what was waiting was let in after the first run, and it '
-            'stood the compose down',
-      );
-      expect(heard, isTrue);
+  group('the road in turn gives way', () {
+    // A test's clock, moved on a quarter of a run by every check before a
+    // picture: the queue's turn comes before the fifth picture, the ninth,
+    // the thirteenth.
+    var clock = 0;
+    final aQuarterOfARun = tilePictureRun.inMicroseconds ~/ 4;
+    bool Function() checking(bool Function() abandoned) => () {
+      clock += aQuarterOfARun;
+      return abandoned();
+    };
 
-      // A whole run is made before the first giving way.
-      var heardInARun = false;
-      Timer.run(() => heardInARun = true);
-      final oneRun = await composeTiledSurfaceImage(
-        rowOfTiles(tilePicturesInARun),
-        shouldAbort: () => heardInARun,
-      );
-      expect(
-        oneRun,
-        isNotNull,
-        reason: 'a run is made in one go: nothing was let in before its '
-            'last picture, nor before the raster after it',
-      );
-      oneRun!.dispose();
+    setUp(() {
+      clock = 0;
+      debugTilePictureClock = () => clock;
+    });
+    tearDown(() => debugTilePictureClock = null);
 
-      // And the road of a render somebody waits for never gives way.
-      var heardAtOnce = false;
-      Timer.run(() => heardAtOnce = true);
-      final atOnce = await composeTiledSurfaceImage(
-        surface,
-        missing: MissingTilePictures.madeAtOnce,
-        shouldAbort: () => heardAtOnce,
-      );
-      expect(atOnce, isNotNull);
-      atOnce!.dispose();
+    testWidgets('🚨what was waiting in the event queue is heard before a '
+        'compose longer than a run is done — and a compose somebody waits '
+        'for does not stop for it', (tester) async {
+      await tester.runAsync(() async {
+        // One picture more than a run holds: the queue gets its turn once.
+        var heard = false;
+        Timer.run(() => heard = true);
+        expect(
+          await composeTiledSurfaceImage(
+            rowOfTiles(5),
+            shouldAbort: checking(() => heard),
+          ),
+          isNull,
+          reason: 'what was waiting was let in when the run was up, and it '
+              'stood the compose down',
+        );
+        expect(heard, isTrue);
+
+        // A whole run is made before the first giving way.
+        clock = 0;
+        var heardInARun = false;
+        Timer.run(() => heardInARun = true);
+        final oneRun = await composeTiledSurfaceImage(
+          rowOfTiles(4),
+          shouldAbort: checking(() => heardInARun),
+        );
+        expect(
+          oneRun,
+          isNotNull,
+          reason: 'a run is made in one go: nothing was let in before its '
+              'last picture, nor before the raster after it',
+        );
+        oneRun!.dispose();
+
+        // And the road of a render somebody waits for never gives way.
+        clock = 0;
+        var heardAtOnce = false;
+        Timer.run(() => heardAtOnce = true);
+        final atOnce = await composeTiledSurfaceImage(
+          rowOfTiles(5),
+          missing: MissingTilePictures.madeAtOnce,
+          shouldAbort: checking(() => heardAtOnce),
+        );
+        expect(atOnce, isNotNull);
+        atOnce!.dispose();
+      });
+    });
+
+    testWidgets('once a RUN, not once a picture — the turn the old road '
+        'waited for every tile', (tester) async {
+      await tester.runAsync(() async {
+        // Every turn of the event queue from here on is counted: each one,
+        // when it comes, asks for the next.
+        var turns = 0;
+        var counting = true;
+        void count() {
+          if (counting) {
+            turns += 1;
+            Timer.run(count);
+          }
+        }
+
+        Timer.run(count);
+        var turnsAtTheLastCheck = -1;
+        final image = await composeTiledSurfaceImage(
+          // Three whole runs, and one picture more.
+          rowOfTiles(13),
+          shouldAbort: checking(() {
+            turnsAtTheLastCheck = turns;
+            return false;
+          }),
+        );
+        counting = false;
+        image!.dispose();
+        expect(
+          turnsAtTheLastCheck,
+          3,
+          reason: 'the queue had its turn after each of the three runs, '
+              'and at no other picture',
+        );
+      });
+    });
+
+    testWidgets('a run is read off the wall when no test holds the clock: '
+        'once a run\'s worth of time has gone by, the queue gets its turn', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        debugTilePictureClock = null;
+        var heard = false;
+        Timer.run(() => heard = true);
+        expect(
+          await composeTiledSurfaceImage(
+            rowOfTiles(2),
+            shouldAbort: () {
+              // Longer than a run, on the wall — and only ever longer: a
+              // machine that stalls here makes the same point.
+              final spent = Stopwatch()..start();
+              while (spent.elapsed <= tilePictureRun) {}
+              return heard;
+            },
+          ),
+          isNull,
+          reason: 'the first picture took a run\'s worth of time, so the '
+              'queue had its turn before the second',
+        );
+      });
     });
   });
 
-  testWidgets('it gives way once a RUN, not once a picture — the turn the '
-      'old road waited for every tile', (tester) async {
+  testWidgets('a compose whose every tile has its picture is still stood '
+      'down before the raster (R13-4)', (tester) async {
     await tester.runAsync(() async {
-      // Every turn of the event queue from here on is counted: each one,
-      // when it comes, asks for the next.
-      var turns = 0;
-      var counting = true;
-      void count() {
-        if (counting) {
-          turns += 1;
-          Timer.run(count);
-        }
-      }
-
-      Timer.run(count);
-      var turnsAtTheLastCheck = -1;
-      final image = await composeTiledSurfaceImage(
-        // Three whole runs, and one picture more.
-        rowOfTiles(tilePicturesInARun * 3 + 1),
-        shouldAbort: () {
-          turnsAtTheLastCheck = turns;
-          return false;
-        },
+      final surface = patternedSurface(
+        const CanvasSize(width: 300, height: 200),
       );
-      counting = false;
-      image!.dispose();
+      final cache = BitmapTileImageCache();
+      await seedCache(cache, surface);
+      var checks = 0;
       expect(
-        turnsAtTheLastCheck,
-        3,
-        reason: 'the queue had its turn after each of the three runs, and '
-            'at no other picture',
+        await composeTiledSurfaceImage(
+          surface,
+          reuse: cache,
+          shouldAbort: () {
+            checks += 1;
+            return true;
+          },
+        ),
+        isNull,
       );
+      expect(checks, 1, reason: 'no picture was missing: the one check is '
+          'the raster\'s');
     });
   });
 }
