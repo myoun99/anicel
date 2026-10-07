@@ -170,13 +170,12 @@ class RenderCaches {
   /// pruned at LOAD exactly like a conte row's.
   final BrushFrameStore envelopeInkStore = BrushFrameStore();
 
-  /// The timesheet's ink stores — SESSION-owned like the conte's and the
+  /// The timesheet's ink store — SESSION-owned like the conte's and the
   /// envelope's (유저 2026-09-26: 「다 통일해줘. 기능은 어차피 생길수있어」):
   /// the ink was the one sheet's that no save carried. The keys carry the
   /// cut's id, so an entry whose cut is gone is pruned at LOAD, the
   /// envelope's unit.
-  final BrushFrameStore timesheetInkStripStore = BrushFrameStore();
-  final BrushFrameStore timesheetInkPageStore = BrushFrameStore();
+  final BrushFrameStore timesheetInkStore = BrushFrameStore();
 
   /// Every sheet's ink stores — the ONE list a whole-session walk reads:
   /// the budgets, memory pressure, the census, a save, an open, a reset.
@@ -186,16 +185,15 @@ class RenderCaches {
   List<BrushFrameStore> get sheetInkStores => [
     conteInkRowStore,
     envelopeInkStore,
-    timesheetInkStripStore,
-    timesheetInkPageStore,
+    timesheetInkStore,
   ];
 
   /// Every store a cel ref can live in — the drawings, then
   /// [sheetInkStores], the order every writer lists them in.
   List<BrushFrameStore> get celStores => [brushFrameStore, ...sheetInkStores];
 
-  /// The store a sheet-ink [key] lives in — by its namespace and its plane
-  /// — or null for a drawing's key.
+  /// The store a sheet-ink [key] lives in — by its namespace — or null for
+  /// a drawing's key.
   BrushFrameStore? sheetInkStoreFor(BrushFrameKey key) {
     // Every conte key, even the paper plane an older file kept: it is
     // sheet ink and never a drawing, and the load drops what names no block.
@@ -203,9 +201,7 @@ class RenderCaches {
       return conteInkRowStore;
     }
     if (isTimesheetInkKey(key)) {
-      return key.layerId == timesheetInkStripLayerId
-          ? timesheetInkStripStore
-          : timesheetInkPageStore;
+      return timesheetInkStore;
     }
     return isEnvelopeInkKey(key) ? envelopeInkStore : null;
   }

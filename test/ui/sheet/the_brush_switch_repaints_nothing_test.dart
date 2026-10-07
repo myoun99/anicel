@@ -150,25 +150,32 @@ void main() {
               () {
                 // On the sheet's FIRST row, where the playhead stands — 20
                 // of the sheet's units in from the strip's corner and half
-                // a row down, in the ink's pixels (the paper's, F-294). Its
+                // a row down, on the page's paper, in the ink's pixels (the
+                // paper's, F-294). Its
                 // highlight lies over the ink with the brush on as off
                 // (board: timesheet-playhead-row-over-ink): it lay over the
                 // print and under the live windows, and this dab sat on the
                 // second row to stay out of that question.
                 final cut = session.requireActiveCut;
-                final scale = TimesheetDocumentLayout(
+                final layout = TimesheetDocumentLayout(
                   document: TimesheetDocument.fromCut(
                     cut: cut,
                     projectName: 'Switch',
                     fps: session.projectSettings.projectFps,
                   ),
-                ).paperScale;
+                );
+                final scale = layout.paperScale;
+                final corner =
+                    Offset(layout.halfLeft(0, 0), layout.halfRowsTop(0)) -
+                    layout.pageRect(0).topLeft;
                 ink.commitStroke(
-                  plane: TimesheetInkPlane.strip,
-                  key: timesheetInkStripKey(cut.id, 0),
+                  plane: null,
+                  key: timesheetInkPageKey(cut.id, 0),
                   strokeData: oneDab(
-                    at: 20 * scale,
-                    down: TimesheetDocumentLayout.rowHeight / 2 * scale,
+                    at: (corner.dx + 20) * scale,
+                    down:
+                        (corner.dy + TimesheetDocumentLayout.rowHeight / 2) *
+                        scale,
                   ),
                   historyManager: session.historyManager,
                 );

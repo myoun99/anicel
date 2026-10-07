@@ -143,8 +143,7 @@ class TimesheetStrata extends StatelessWidget {
         SheetStratum.ink: painterOf(
           SheetStratum.ink,
           ink: windows,
-          inkSurfaceFor: (key) =>
-              ink.controller.surfaceFor(TimesheetInkPlane.of(key), key),
+          inkSurfaceFor: (key) => ink.controller.surfaceFor(null, key),
           liveInkKeys: ink.live
               ? {for (final window in windows) window.key}
               : const {},

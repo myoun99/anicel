@@ -28,14 +28,14 @@ const _memoZoneKey = ValueKey<String>('timesheet-memo-edit-p0');
 void main() {
   late EditorSessionManager session;
   late TimesheetInkController inkController;
-  late BrushFrameStore stripStore;
+  late BrushFrameStore inkStore;
   late ValueNotifier<BrushToolState> brushTool;
 
   Future<void> pumpHost(WidgetTester tester, {bool brushAllowed = true}) async {
     session = EditorSessionManager(initialProject: createDefaultProject());
     addTearDown(session.dispose);
-    stripStore = BrushFrameStore();
-    inkController = TimesheetInkController(stripStore: stripStore);
+    inkStore = BrushFrameStore();
+    inkController = TimesheetInkController(store: inkStore);
     addTearDown(inkController.dispose);
     brushTool = ValueNotifier<BrushToolState>(BrushToolState.defaults);
     addTearDown(brushTool.dispose);
@@ -87,8 +87,8 @@ void main() {
     testWidgets('🚨the saved ink prints with the brush OFF too; with it ON, '
         'the windows the live layer shows stand down', (tester) async {
       await pumpHost(tester, brushAllowed: false);
-      final band = timesheetInkStripKey(session.requireActiveCut.id, 0);
-      stripStore.storeBakedSurface(band, _inkedSurface());
+      final page = timesheetInkPageKey(session.requireActiveCut.id, 0);
+      inkStore.storeBakedSurface(page, _inkedSurface());
       await tester.pump();
       TimesheetDocumentPainter printed() =>
           tester
@@ -99,16 +99,16 @@ void main() {
               as TimesheetDocumentPainter;
 
       expect(find.byKey(_inkLayerKey), findsNothing, reason: 'the premise');
-      expect(printed().ink.map((window) => window.key), contains(band));
+      expect(printed().ink.map((window) => window.key), contains(page));
       // On screen the print draws the surface itself, as the live window
       // does (F-215).
-      expect(printed().inkSurfaceFor!(band), isNotNull);
+      expect(printed().inkSurfaceFor!(page), isNotNull);
       expect(printed().liveInkKeys, isEmpty);
 
       await tester.tap(find.byKey(_inkToggleKey));
       await tester.pumpAndSettle();
       expect(find.byKey(_inkLayerKey), findsOneWidget);
-      expect(printed().liveInkKeys, contains(band));
+      expect(printed().liveInkKeys, contains(page));
     });
 
     // H40 ② (2026-09-24): the ink layer was rebuilt on every brush change —

@@ -32,8 +32,7 @@ import 'timesheet/timesheet_strata.dart';
 /// so navigation feels exactly like the drawing canvas — wheel zoom,
 /// middle-drag/two-finger pan, panbars, Fit. With an [inkController] and
 /// [brushToolState] the sheet takes freehand ink memos with the current
-/// brush/eraser (S2): frame-anchored strip ink over the column grid,
-/// paper-anchored page ink everywhere else.
+/// brush/eraser (S2): ink on the paper, one surface per page (F-252).
 class TimesheetTabHost extends StatefulWidget {
   const TimesheetTabHost({
     super.key,

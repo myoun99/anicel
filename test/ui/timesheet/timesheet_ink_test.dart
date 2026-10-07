@@ -52,8 +52,8 @@ BrushStrokeCommitData _oneDabStroke({double x = 20, double y = 20}) {
 
 void main() {
   group('timesheetInkWindows', () {
-    test('paged: page ink under two strip half windows per page, the halves '
-        'sharing one band surface', () {
+    test('one window per page, the whole paper — the ink is the paper\'s '
+        '(F-252)', () {
       final document = _document();
       final layout = TimesheetDocumentLayout(document: document);
       final windows = timesheetInkWindows(
@@ -61,77 +61,16 @@ void main() {
         cutId: _cutId,
       );
 
-      // 2 page windows first (bottom of the stack), then 2 halves × 2 pages.
-      expect(windows, hasLength(6));
-      expect(
-        windows.take(2).every((w) => w.plane == TimesheetInkPlane.page),
-        isTrue,
-      );
-      expect(windows[0].documentRect, layout.pageRect(0));
-      expect(windows[0].inkOffset, Offset.zero);
-
-      final strips = windows.skip(2).toList();
-      expect(strips.every((w) => w.plane == TimesheetInkPlane.strip), isTrue);
-      expect(strips[0].key, strips[1].key, reason: 'one band, two halves');
-      expect(strips[0].key == strips[2].key, isFalse, reason: 'page 2 band');
-      expect(
-        strips[0].documentRect.topLeft,
-        Offset(layout.halfLeft(0, 0), layout.halfRowsTop(0)),
-      );
-      expect(
-        strips[1].documentRect.topLeft,
-        Offset(layout.halfLeft(0, 1), layout.halfRowsTop(0)),
-      );
-      expect(strips[0].inkOffset, Offset.zero);
-      expect(
-        strips[1].inkOffset,
-        Offset(
-          0,
-          document.halfFrameCount *
-              TimesheetDocumentLayout.rowHeight *
-              layout.paperScale,
-        ),
-        reason: 'the right half windows the band below row 72',
-      );
-    });
-
-    test('a half with no rows gets no window — the same halves the painter '
-        'prints, and no other', () {
-      // The painter and the ink windows re-derive "which halves of a page
-      // have rows" from the same layout; a one-row page (halfFrameCount 0)
-      // is the case where the answer is not simply "both".
-      final document = TimesheetDocument.fromCut(
-        cut: Cut(
-          id: _cutId,
-          name: 'Cut 1',
-          layers: const [],
-          duration: 2,
-          canvasSize: const CanvasSize(width: 1280, height: 720),
-        ),
-        projectName: 'Project',
-        fps: 1,
-        pageSeconds: 1,
-      );
-      final layout = TimesheetDocumentLayout(document: document);
-      expect(layout.halfRowCount(0), 0);
-      expect(layout.halfRowCount(1), 1);
-
-      final windows = timesheetInkWindows(
-        layout: layout,
-        cutId: _cutId,
-      );
-      final strips = windows
-          .where((w) => w.plane == TimesheetInkPlane.strip)
-          .toList();
-      expect(strips, hasLength(document.pages.length));
-      for (final strip in strips) {
-        expect(strip.documentRect.height, TimesheetDocumentLayout.rowHeight);
+      expect(layout.pageIndexes, [0, 1], reason: 'fixture: two pages');
+      expect(windows.map((window) => window.key), [
+        timesheetInkPageKey(_cutId, 0),
+        timesheetInkPageKey(_cutId, 1),
+      ]);
+      for (final (page, window) in windows.indexed) {
+        expect(window.documentRect, layout.pageRect(page));
+        expect(window.inkOffset, Offset.zero);
+        expect(window.plane, isNull, reason: 'one plane');
       }
-      expect(
-        strips.first.documentRect.left,
-        layout.halfLeft(0, 1),
-        reason: 'the empty LEFT half is skipped, not merely drawn thin',
-      );
     });
 
     test('inkViewport composes the panel transform, window placement and '
@@ -144,10 +83,10 @@ void main() {
       );
       final panel = CanvasViewport(zoom: 2, panX: 7, panY: 9);
 
-      // The page-0 right-half strip window: ink pixel (x, inkOffset.y + d)
-      // must land where the document paints doc point (rect.left + x/s,
-      // rect.top + d/s) — s the paper's pixels a sheet unit takes.
-      final window = windows[3];
+      // The second page's window: ink pixel (x, y) must land where the
+      // document paints doc point (rect.left + x/s, rect.top + y/s) — s the
+      // paper's pixels a sheet unit takes.
+      final window = windows[1];
       final ink = window.inkViewport(panel);
       const inkPoint = Offset(10, 40);
       final screenX = ink.panX + ink.zoom * (window.inkOffset.dx + inkPoint.dx);
@@ -170,42 +109,24 @@ void main() {
   });
 
   group('TimesheetInkController', () {
-    test('syncGeometry sizes the band and page surfaces at the paper\'s '
-        'grade — a band holds the 6-second strip and, right of it, the '
-        'eight columns only the 3-second sheet prints; a page is the paper, '
-        'pixel for pixel', () {
-      final document = _document();
-      final layout = TimesheetDocumentLayout(document: document);
+    test('syncGeometry sizes the page surface: the paper, pixel for pixel',
+        () {
+      final layout = TimesheetDocumentLayout(document: _document());
       final controller = TimesheetInkController();
       controller.syncGeometry(layout);
 
-      expect(
-        controller.stripBandSurfaceSize,
-        CanvasSize(
-          width:
-              ((layout.halfWidth + 8 * TimesheetDocumentLayout.celColumnWidth) *
-                      layout.paperScale)
-                  .ceil(),
-          height:
-              (document.pageFrameCount *
-                      TimesheetDocumentLayout.rowHeight *
-                      layout.paperScale)
-                  .ceil(),
-        ),
-      );
       // F-294 (유저 2026-10-05): 「1754x2480을 기본으로 할것」.
       expect(
         controller.pageSurfaceSize,
         const CanvasSize(width: 1754, height: 2480),
       );
-
       final state = controller.sessionStateFor(
-        TimesheetInkPlane.strip,
-        timesheetInkStripKey(_cutId, 0),
+        null,
+        timesheetInkPageKey(_cutId, 0),
       );
       expect(
         state.canvasState.currentSurface.canvasSize,
-        controller.stripBandSurfaceSize,
+        controller.pageSurfaceSize,
       );
     });
 
@@ -215,44 +136,44 @@ void main() {
       final controller = TimesheetInkController();
       controller.syncGeometry(layout);
       final historyManager = HistoryManager();
-      final band0 = timesheetInkStripKey(_cutId, 0);
       final page0 = timesheetInkPageKey(_cutId, 0);
+      final page1 = timesheetInkPageKey(_cutId, 1);
 
       controller.commitStroke(
-        plane: TimesheetInkPlane.strip,
-        key: band0,
+        plane: null,
+        key: page0,
         strokeData: _oneDabStroke(),
         historyManager: historyManager,
       );
       controller.commitStroke(
-        plane: TimesheetInkPlane.page,
-        key: page0,
+        plane: null,
+        key: page1,
         strokeData: _oneDabStroke(x: 100, y: 30),
         historyManager: historyManager,
       );
 
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
-      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isTrue);
+      expect(controller.hasInkFor(null, page0), isTrue);
+      expect(controller.hasInkFor(null, page1), isTrue);
 
       historyManager.undo();
       expect(
-        controller.hasInkFor(TimesheetInkPlane.page, page0),
+        controller.hasInkFor(null, page1),
         isFalse,
-        reason: 'the LAST stroke (page plane) undoes first',
+        reason: 'the LAST stroke (the second page) undoes first',
       );
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
+      expect(controller.hasInkFor(null, page0), isTrue);
 
       historyManager.undo();
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isFalse);
+      expect(controller.hasInkFor(null, page0), isFalse);
 
       historyManager.redo();
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
+      expect(controller.hasInkFor(null, page0), isTrue);
     });
   });
 
   group('TimesheetInkLayer', () {
-    testWidgets('a stroke on the column grid lands on the strip plane; one '
-        'on the memo band lands on the page plane; undo removes both', (
+    testWidgets('a stroke on the column grid and one on the memo band both '
+        'land on the page\'s paper; undo removes them one at a time', (
       tester,
     ) async {
       final document = _document(duration: 24);
@@ -307,32 +228,32 @@ void main() {
         expect(strokeActive.value, isFalse);
       }
 
-      // Inside the page-0 half-0 column grid → strip plane.
+      final page0 = timesheetInkPageKey(_cutId, 0);
+      // Inside the page-0 half-0 column grid.
       final gridPoint = Offset(
         layout.halfLeft(0, 0) + 30,
         layout.halfRowsTop(0) + 30,
       );
       await stroke(gridPoint, gridPoint + const Offset(24, 10));
-
-      final band0 = timesheetInkStripKey(_cutId, 0);
-      final page0 = timesheetInkPageKey(_cutId, 0);
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
-      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isFalse);
+      expect(controller.hasInkFor(null, page0), isTrue);
 
       // On the Direction memo band (under the header, left of the memo
-      // box) → page plane.
+      // box).
       final memoBand = layout.memoBandRect(0);
       await stroke(
         memoBand.topLeft + const Offset(30, 40),
         memoBand.topLeft + const Offset(80, 60),
       );
-      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isTrue);
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isTrue);
+      expect(historyManager.undoCount, 2, reason: 'two strokes, two steps');
 
       historyManager.undo();
+      expect(
+        controller.hasInkFor(null, page0),
+        isTrue,
+        reason: 'the grid\'s stroke is still on the paper',
+      );
       historyManager.undo();
-      expect(controller.hasInkFor(TimesheetInkPlane.strip, band0), isFalse);
-      expect(controller.hasInkFor(TimesheetInkPlane.page, page0), isFalse);
+      expect(controller.hasInkFor(null, page0), isFalse);
     });
   });
 }

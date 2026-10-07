@@ -172,12 +172,11 @@ class CutVerbs {
       cutEnvelopeInkOwner(_project.repository.requireProject(), from),
       (key) => envelopeInkKeyOfCut(key, to),
     );
-    for (final store in [
-      _renderCaches.timesheetInkStripStore,
-      _renderCaches.timesheetInkPageStore,
-    ]) {
-      carry(store, from, (key) => timesheetInkKeyOfCut(key, to));
-    }
+    carry(
+      _renderCaches.timesheetInkStore,
+      from,
+      (key) => timesheetInkKeyOfCut(key, to),
+    );
   }
 
   void deleteActiveCut() {

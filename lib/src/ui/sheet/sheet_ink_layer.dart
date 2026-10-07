@@ -45,19 +45,16 @@ import '../widgets/cursor_notice.dart' show cursorNotices;
 sealed class SheetWindow {
   const SheetWindow({required this.id, required this.key, this.plane});
 
-  /// WHICH of the panel's planes this window belongs to — the timesheet's
-  /// page/strip, the conte's paper/cell/picture. ⛔This layer never reads
-  /// it: it hands the window back to [SheetInkLayer.sessionStateFor] and
+  /// WHICH of the panel's planes this window belongs to — the conte's cell
+  /// or a picture's canvas. ⛔This layer never reads it: it hands the window
+  /// back to [SheetInkLayer.sessionStateFor] and
   /// [SheetInkLayer.onStrokeCommitted], and the panel that made the window
   /// is the only thing that knows what its planes mean. A sheet with one
-  /// plane (the envelope) leaves it null.
+  /// plane (the timesheet, the envelope) leaves it null.
   final Object? plane;
 
-  /// Identifies the WINDOW, not the surface.
-  ///
-  /// The same strip band surface appears through TWO windows on a paged
-  /// timesheet (the page's left and right halves), so the frame key cannot
-  /// stand in for this.
+  /// Identifies the WINDOW — the view the layer mounts for it is keyed by
+  /// this — not the surface.
   final String id;
 
   final BrushFrameKey key;

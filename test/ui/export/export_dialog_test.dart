@@ -768,7 +768,7 @@ void main() {
         'written', (tester) async {
       final session = exportSession();
       addTearDown(session.dispose);
-      session.renderCaches.timesheetInkPageStore.storeBakedSurface(
+      session.renderCaches.timesheetInkStore.storeBakedSurface(
         timesheetInkPageKey(const CutId('cut'), 0),
         _redSurface(),
       );

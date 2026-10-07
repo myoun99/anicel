@@ -66,6 +66,20 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v10 (2026-10-08, F-252 — 유저 10-01 「잉크는 용지에 귀속됨」): a
+/// timesheet's ink is the paper's, one surface per page
+/// (`sheet-page-<cut>-p<n>`), and the frame-anchored plane over its column
+/// grid (`sheet-strip-<cut>-b<n>`, one surface per band of frame rows) is
+/// gone. A v9 build would open a v10 file and lay its next stroke on the
+/// grid into the plane this build no longer reads — so the bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔The strip cels are NOT read here (the save law), and with them goes
+/// every file older than this one ([anicelOldestReadFormatVersion]). What
+/// to carry when one is asked for: each strip cel's writing onto the pages
+/// it showed on — a band's rows lie in its page's two halves, and in two
+/// pages' on the 3-second sheet — then every `sheet-strip-*` cel dropped.
+///
 /// v9 (2026-10-07, the text tool's vertical writing — R9-rest): a text on a
 /// cel says when it is written in columns (`CelTextContent.vertical`,
 /// written only where it is). A v8 build reads the text without the word:
@@ -151,7 +165,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 9;
+const int anicelFormatVersion = 10;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -169,7 +183,8 @@ const int anicelFormatVersion = 9;
 /// filled in by a default, and the next save makes the default the truth.
 ///
 /// 6: a scale's one number is no longer read (v6 above).
-const int anicelOldestReadFormatVersion = 6;
+/// 10: a timesheet's strip ink is no longer read (v10 above).
+const int anicelOldestReadFormatVersion = 10;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,

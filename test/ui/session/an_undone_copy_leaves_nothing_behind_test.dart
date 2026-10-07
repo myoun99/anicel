@@ -162,7 +162,6 @@ void main() {
     session.cutVerbs.createCut();
     final gone = cutsNow().difference(first).single;
     writeSheet(envelopeInkBoxKey(gone, 'memo'));
-    writeSheet(timesheetInkStripKey(gone, 0));
     writeSheet(timesheetInkPageKey(gone, 0));
     session.cutCommandCoordinator.deleteCut(cutId: gone);
     expect(cutsNow(), first, reason: 'fixture: the cut is gone');
@@ -171,7 +170,6 @@ void main() {
     final made = cutsNow().difference(first).single;
 
     expect(readSheet(envelopeInkBoxKey(made, 'memo')), isNull);
-    expect(readSheet(timesheetInkStripKey(made, 0)), isNull);
     expect(readSheet(timesheetInkPageKey(made, 0)), isNull);
   });
 

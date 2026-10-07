@@ -97,10 +97,7 @@ class _WorkspaceDocumentViews {
   /// door for the project coming on screen.
   void bindSession(EditorSessionManager session) {
     final caches = session.renderCaches;
-    _timesheetInk = TimesheetInkController(
-      stripStore: caches.timesheetInkStripStore,
-      pageStore: caches.timesheetInkPageStore,
-    );
+    _timesheetInk = TimesheetInkController(store: caches.timesheetInkStore);
     _conteInk = ConteInkController(rowStore: caches.conteInkRowStore);
     _contePictures = ContePictureInkController(cels: caches.brushFrameStore);
     _envelopeInk = CutEnvelopeInkController(store: caches.envelopeInkStore);

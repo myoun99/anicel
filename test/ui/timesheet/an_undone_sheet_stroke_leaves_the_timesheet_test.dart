@@ -55,26 +55,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final band = timesheetInkStripKey(
-      session.requireActiveCut.id,
-      0,
-    );
-    // Page 0's first half: the paged view's window over band 0 — what it
-    // DRAWS, which is what its last build handed it. (Its view asks for the
+    final page = timesheetInkPageKey(session.requireActiveCut.id, 0);
+    // Page 0's window — what it DRAWS, which is what its last build handed it. (Its view asks for the
     // cel as it stands whenever a pen lands, so reading that would say
     // nothing about whether the window was built again.)
     BitmapSurface onScreen() => tester
         .widget<BrushEditCanvasView>(
           find.descendant(
-            of: find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+            of: find.byKey(const ValueKey<String>('timesheet-ink-page-0')),
             matching: find.byType(BrushEditCanvasView),
           ),
         )
         .surface;
 
     ink.commitStroke(
-      plane: TimesheetInkPlane.strip,
-      key: band,
+      plane: null,
+      key: page,
       strokeData: BrushStrokeCommitData(
         sourceDabs: [
           BrushDab(
@@ -97,7 +93,7 @@ void main() {
       onScreen(),
       same(
         ink
-            .sessionStateFor(TimesheetInkPlane.strip, band)
+            .sessionStateFor(null, page)
             .canvasState
             .currentSurface,
       ),
@@ -108,15 +104,15 @@ void main() {
     await tester.pump();
 
     expect(
-      ink.hasInkFor(TimesheetInkPlane.strip, band),
+      ink.hasInkFor(null, page),
       isFalse,
-      reason: 'the CONTROL — the undo put the band back',
+      reason: 'the CONTROL — the undo put the page back',
     );
     expect(
       onScreen(),
       same(
         ink
-            .sessionStateFor(TimesheetInkPlane.strip, band)
+            .sessionStateFor(null, page)
             .canvasState
             .currentSurface,
       ),

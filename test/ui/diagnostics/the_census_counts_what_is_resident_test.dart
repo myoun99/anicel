@@ -58,8 +58,8 @@ void main() {
   // The other half of the row: what IS resident counts, in every sheet's
   // store. The test below parks every byte, so a row that counted
   // nothing at all passed it.
-  test('every sheet\'s resident ink is counted, the timesheet\'s two '
-      'stores included', () {
+  test('every sheet\'s resident ink is counted, the timesheet\'s '
+      'included', () {
     final session = EditorSessionManager(
       initialProject: createDefaultProject(),
     );
@@ -68,8 +68,7 @@ void main() {
     final stores = [
       caches.conteInkRowStore,
       caches.envelopeInkStore,
-      caches.timesheetInkStripStore,
-      caches.timesheetInkPageStore,
+      caches.timesheetInkStore,
     ];
     for (final (index, store) in stores.indexed) {
       store.storeBakedSurface(key('ink-$index'), inked());
@@ -121,8 +120,7 @@ void main() {
       rows['sheetInk'],
       caches.conteInkRowStore.hotBakedBytes +
           caches.envelopeInkStore.hotBakedBytes +
-          caches.timesheetInkStripStore.hotBakedBytes +
-          caches.timesheetInkPageStore.hotBakedBytes,
+          caches.timesheetInkStore.hotBakedBytes,
       reason: 'the same for the sheet-ink stores',
     );
   });

@@ -30,8 +30,6 @@ import 'package:anicel/src/ui/open_projects.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
-import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart'
-    show TimesheetInkPlane;
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 import '../helpers/app_icon_button_probe.dart';
@@ -738,13 +736,13 @@ void main() {
         drawn.frameId,
       ),
     )!;
-    final key = timesheetInkStripKey(first.requireActiveCut.id, 0);
-    first.renderCaches.timesheetInkStripStore.storeBakedSurface(key, ink);
+    final key = timesheetInkPageKey(first.requireActiveCut.id, 0);
+    first.renderCaches.timesheetInkStore.storeBakedSurface(key, ink);
     await tester.pump();
     bool sheetShowsMemo() => tester
         .widget<TimesheetTabHost>(find.byType(TimesheetTabHost))
         .inkController!
-        .hasInkFor(TimesheetInkPlane.strip, key);
+        .hasInkFor(null, key);
     expect(sheetShowsMemo(), isTrue, reason: 'CONTROL: its own sheet');
 
     await newProject(tester);

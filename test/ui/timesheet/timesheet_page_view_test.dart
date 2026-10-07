@@ -106,18 +106,14 @@ void main() {
         cutId: const CutId('cut-1'),
         pages: const [1],
       );
-      expect(second.map((window) => window.id), [
-        'page-1',
-        'strip-1-h0',
-        'strip-1-h1',
-      ]);
+      expect(second.map((window) => window.id), ['page-1']);
       expect(second.first.documentRect, layout.pageRect(1));
 
       final all = timesheetInkWindows(
         layout: layout,
         cutId: const CutId('cut-1'),
       );
-      expect(all, hasLength(6));
+      expect(all.map((window) => window.id), ['page-0', 'page-1']);
     });
   });
 
@@ -326,11 +322,11 @@ void main() {
         'next sheet brings its own, and back takes it away', (tester) async {
       await pumpHost(tester, render: CanvasViewport());
       final second = find.byKey(
-        const ValueKey<String>('timesheet-ink-strip-1-h0'),
+        const ValueKey<String>('timesheet-ink-page-1'),
       );
 
       expect(
-        find.byKey(const ValueKey<String>('timesheet-ink-strip-0-h0')),
+        find.byKey(const ValueKey<String>('timesheet-ink-page-0')),
         findsOneWidget,
       );
       expect(

@@ -99,8 +99,8 @@ void main() {
                 brushAllowed: brushAllowed.value,
               ),
               () => ink.commitStroke(
-                plane: TimesheetInkPlane.strip,
-                key: timesheetInkStripKey(session.requireActiveCut.id, 0),
+                plane: null,
+                key: timesheetInkPageKey(session.requireActiveCut.id, 0),
                 strokeData: oneDab(),
                 historyManager: session.historyManager,
               ),

@@ -8,97 +8,57 @@ import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
 import '../sheet/sheet_ink_controller.dart';
 import 'timesheet_document_painter.dart';
-import 'timesheet_ink_bands.dart';
 
-/// Which sheet ink plane a stroke lands on.
-enum TimesheetInkPlane {
-  /// Frame-anchored ink over the half's column area: X = within-half
-  /// offset, Y = frame row axis. One surface per PAGE BAND of frames
-  /// (`sheet-strip-<cut>-b<n>`), so annotations follow their frames.
-  strip,
-
-  /// Paper-anchored ink over the whole page (header fields, Direction
-  /// memo band, margins) — one surface per page
-  /// (`sheet-page-<cut>-p<n>`).
-  page;
-
-  /// The plane [key]'s ink lives on — its layer says; the ink walk and the
-  /// sheet's printing both ask here.
-  static TimesheetInkPlane of(BrushFrameKey key) =>
-      key.layerId == timesheetInkStripLayerId ? strip : page;
-}
-
-/// The timesheet's ink: brush strokes on the timesheet, kept in
-/// coordinators/stores fully SEPARATE from the session's cel
+/// The timesheet's ink: brush strokes on the timesheet, kept in a
+/// coordinator/store fully SEPARATE from the session's cel
 /// [BrushFrameStore] so sheet ink can never leak into cel rendering or
 /// export. Strokes commit through the app [HistoryManager] with the same
 /// [BrushStrokeHistoryCommand] the drawing canvas uses (undo parity), and
 /// erase reuses the same blend routes untouched.
+///
+/// ONE plane: the paper (F-252, 유저 2026-10-01 「잉크는 용지에
+/// 귀속됨」) — one surface per page ([timesheetInkPageKey]), the header,
+/// the memo band, the margins and the column grid alike. ↩️The column grid
+/// had a frame-anchored plane of its own, and F-252-Q1 (10-08) took it out.
 ///
 /// 🚨It EXTENDS [SheetInkController] (F-80 ②, 2026-09-15). It was a plain
 /// notifier beside that class, repeating its session lookup, its commit
 /// and its has-ink oracle around two planes of its own — so the law that
 /// makes a sheet hear its ink come back through undo had to be written in
 /// the shared class, and would have reached every sheet but this one.
-class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
-  /// The strip and page stores are the SESSION's when it hands them in, so
-  /// the project archive saves and opens the timesheet's ink with the
-  /// conte's and the envelope's; a test's controller makes its own.
-  TimesheetInkController({
-    BrushFrameStore? stripStore,
-    BrushFrameStore? pageStore,
-  }) : this._(
-         InkPlaneSlot(
-           store: stripStore ?? BrushFrameStore(),
-           initialFrameKey: _initKey,
-         ),
-         InkPlaneSlot(
-           store: pageStore ?? BrushFrameStore(),
-           initialFrameKey: _initKey,
-         ),
-       );
+class TimesheetInkController extends SheetInkController<Null> {
+  /// The store is the SESSION's when it hands it in, so the project
+  /// archive saves and opens the timesheet's ink with the conte's and the
+  /// envelope's; a test's controller makes its own.
+  TimesheetInkController({BrushFrameStore? store})
+    : this._(
+        InkPlaneSlot(
+          store: store ?? BrushFrameStore(),
+          initialFrameKey: _initKey,
+        ),
+      );
 
-  TimesheetInkController._(this._strip, this._page)
-    : super({TimesheetInkPlane.strip: _strip, TimesheetInkPlane.page: _page});
+  TimesheetInkController._(this._page) : super({null: _page});
 
   static const BrushFrameKey _initKey = BrushFrameKey(
     projectId: timesheetInkProjectId,
     trackId: timesheetInkTrackId,
     cutId: CutId('timesheet-ink-init'),
-    layerId: timesheetInkStripLayerId,
+    layerId: timesheetInkPageLayerId,
     frameId: FrameId('timesheet-ink-init'),
   );
 
-  final InkPlaneSlot _strip;
   final InkPlaneSlot _page;
-
-  /// One band of frame rows ([timesheetInkBandFrames]) × every column's
-  /// writing ([timesheetInkStripWidth]), at the paper's grade
-  /// ([TimesheetDocumentLayout.paperScale]).
-  CanvasSize? get stripBandSurfaceSize => _strip.size;
 
   /// The whole paper, pixel for pixel
   /// ([TimesheetDocumentLayout.paperPixelSize]).
   CanvasSize? get pageSurfaceSize => _page.size;
 
-  /// Adopts the sheet geometry from [layout]. Geometry changes rebuild the
-  /// ink sessions from their durable commands with stroke coordinates
-  /// preserved (top-left anchored, like canvas resize).
+  /// Adopts the paper's size from [layout]. A size change rebuilds the ink
+  /// session from its durable commands with stroke coordinates preserved
+  /// (top-left anchored, like canvas resize).
   ///
   /// Never notifies: callers run this during build.
-  void syncGeometry(TimesheetDocumentLayout layout) {
-    final document = layout.document;
-    final scale = layout.paperScale;
-    _strip.syncTo(
-      CanvasSize(
-        width: (timesheetInkStripWidth(document) * scale).ceil(),
-        height:
-            (timesheetInkBandFrames(document) *
-                    TimesheetDocumentLayout.rowHeight *
-                    scale)
-                .ceil(),
-      ),
-    );
-    _page.syncTo(layout.paperPixelSize);
-  }
+  void syncGeometry(TimesheetDocumentLayout layout) =>
+      _page.syncTo(layout.paperPixelSize);
 }

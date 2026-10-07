@@ -20,29 +20,22 @@ import 'track_id.dart';
 /// the UI.
 const ProjectId timesheetInkProjectId = ProjectId('timesheet-ink');
 const TrackId timesheetInkTrackId = TrackId('timesheet-ink');
-const LayerId timesheetInkStripLayerId = LayerId('sheet-strip');
 const LayerId timesheetInkPageLayerId = LayerId('sheet-page');
 
-/// The two planes' frame ids are these plus the band or the page — minted
-/// by [timesheetInkStripKey] and [timesheetInkPageKey] and read back by
-/// [timesheetInkKeyOfCut], one spelling.
-String _stripFramePrefix(CutId cutId) => 'sheet-strip-${cutId.value}-b';
+/// A page's frame id is this plus the page — minted by
+/// [timesheetInkPageKey] and read back by [timesheetInkKeyOfCut], one
+/// spelling.
 String _pageFramePrefix(CutId cutId) => 'sheet-page-${cutId.value}-p';
 
-/// Frame-anchored ink: one surface per page BAND of frame rows, so writing
-/// follows its frames.
-BrushFrameKey timesheetInkStripKey(CutId cutId, int band) {
-  return BrushFrameKey(
-    projectId: timesheetInkProjectId,
-    trackId: timesheetInkTrackId,
-    cutId: cutId,
-    layerId: timesheetInkStripLayerId,
-    frameId: FrameId('${_stripFramePrefix(cutId)}$band'),
-  );
-}
-
-/// Paper-anchored ink: one surface per page — the header, the memo band,
-/// the margins.
+/// The ink of one page of the sheet: everything written on that paper.
+///
+/// 🗣️F-252 (유저 2026-10-01): 「잉크는 용지에 귀속됨. 더이상 칸에
+/// 귀속되지않음. 내용물이 뭐가 바뀌던 독립적」 — the writing stays where it
+/// was written on the paper, whatever the sheet prints under it. ↩️Ink on
+/// the column grid lived on a second, frame-anchored plane (one surface
+/// per band of frame rows, `sheet-strip-<cut>-b<n>`) that followed its
+/// frames through a sheet-kind switch; F-252-Q1 (10-08: 「잔재 싹 삭제」)
+/// took it out.
 BrushFrameKey timesheetInkPageKey(CutId cutId, int page) {
   return BrushFrameKey(
     projectId: timesheetInkProjectId,
@@ -53,27 +46,19 @@ BrushFrameKey timesheetInkPageKey(CutId cutId, int page) {
   );
 }
 
-/// The ink [key] is — the same band or the same page — on the sheet of the
-/// cut [cutId] instead (a duplicated cut's copy, cut-duplicate-sheet-ink);
-/// null for a key of no timesheet plane.
+/// The ink [key] is — the same page — on the sheet of the cut [cutId]
+/// instead (a duplicated cut's copy, cut-duplicate-sheet-ink); null for a
+/// key that names no page of a timesheet.
 BrushFrameKey? timesheetInkKeyOfCut(BrushFrameKey key, CutId cutId) {
   if (!isTimesheetInkKey(key)) {
     return null;
   }
-  final strip = key.layerId == timesheetInkStripLayerId;
-  final prefix = strip
-      ? _stripFramePrefix(key.cutId)
-      : _pageFramePrefix(key.cutId);
+  final prefix = _pageFramePrefix(key.cutId);
   final frame = key.frameId.value;
-  final number = frame.startsWith(prefix)
+  final page = frame.startsWith(prefix)
       ? int.tryParse(frame.substring(prefix.length))
       : null;
-  if (number == null) {
-    return null;
-  }
-  return strip
-      ? timesheetInkStripKey(cutId, number)
-      : timesheetInkPageKey(cutId, number);
+  return page == null ? null : timesheetInkPageKey(cutId, page);
 }
 
 /// Whether [key] belongs to the timesheet ink namespace at all.

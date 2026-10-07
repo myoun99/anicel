@@ -19,9 +19,9 @@ import '../sheet/sheet_ink_controller.dart';
 /// the app [HistoryManager] with the same command the drawing canvas uses,
 /// so undo behaves identically.
 ///
-/// ONE plane, unlike the timesheet's and conte's pair: an envelope has no
-/// page plane because it has no margin — its boxes meet, and a stroke is
-/// the box's it starts in, kept inside that box (유저 2026-09-30, H49;
+/// ONE plane, of boxes: an envelope has no page plane because it has no
+/// margin — its boxes meet, and a stroke is the box's it starts in, kept
+/// inside that box (유저 2026-09-30, H49;
 /// ↩️every box it crossed kept its piece from 09-25, one paper). A box
 /// that stops existing takes its ink with it, which is exactly the
 /// contract that removes stray annotations from a form the user
