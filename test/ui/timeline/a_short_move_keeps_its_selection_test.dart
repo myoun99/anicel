@@ -113,7 +113,10 @@ void main() {
   }
 
   List<int> blockStarts(EditorSessionManager session) => [
-    ...session.layers.firstWhere((layer) => layer.id.value == 'a').timeline.keys,
+    ...session.layers
+        .firstWhere((layer) => layer.id.value == 'a')
+        .timeline
+        .keys,
   ];
 
   for (final cell in [24.0, 8.0]) {
