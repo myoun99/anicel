@@ -851,9 +851,6 @@ enum AppStrings {
   /// ellipsized labels on device. The '…' convention belongs to menu
   /// ENTRIES that open a dialog, not to the buttons themselves.
 
-  /// The shared pill's link-independent button (I-45) — the user's own
-  /// word for it, 「링크 독립」.
-  String get tlSharedUnlink => _s('tlSharedUnlink');
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
@@ -2784,7 +2781,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
-    'tlSharedUnlink': 'Make independent',
     'tlAdd': 'Add',
     'tlPush': 'Push (open frames)',
     'tlPull': 'Pull (close frames)',
@@ -3347,6 +3343,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': 'コピー',
     'shortcutAction.edit-paste-linked': 'リンクして貼り付け',
     'shortcutAction.edit-paste-independent': '独立して貼り付け',
+    'shortcutAction.edit-unlink': 'リンクから独立',
     'shortcutAction.edit-delete': '削除',
     'shortcutAction.edit-replace-colour': '色変換',
     'shortcutAction.edit-clear-pixels': 'ピクセル消去',
@@ -4150,7 +4147,6 @@ enum AppStrings {
     'tlDetachLayer': 'アタッチを解除',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
-    'tlSharedUnlink': 'リンクから独立',
     'tlAdd': '追加',
     'tlPush': '押し出し（コマを開ける）',
     'tlPull': '詰め（コマを詰める）',
@@ -4710,6 +4706,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': '복사',
     'shortcutAction.edit-paste-linked': '링크 붙여넣기',
     'shortcutAction.edit-paste-independent': '독립 붙여넣기',
+    'shortcutAction.edit-unlink': '링크 독립',
     'shortcutAction.edit-delete': '삭제',
     'shortcutAction.edit-replace-colour': '색 변환',
     'shortcutAction.edit-clear-pixels': '픽셀 비우기',
@@ -5508,7 +5505,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
-    'tlSharedUnlink': '링크 독립',
     'tlAdd': '추가',
     'tlPush': '밀기(칸 열기)',
     'tlPull': '당기기(칸 닫기)',
@@ -6105,6 +6101,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': 'Copier',
     'shortcutAction.edit-paste-linked': 'Coller lié',
     'shortcutAction.edit-paste-independent': 'Coller indépendant',
+    'shortcutAction.edit-unlink': 'Rendre indépendant',
     'shortcutAction.edit-delete': 'Supprimer',
     'shortcutAction.edit-replace-colour': 'Remplacer la couleur',
     'shortcutAction.edit-clear-pixels': 'Effacer les pixels',
@@ -6943,7 +6940,6 @@ enum AppStrings {
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
-    'tlSharedUnlink': 'Rendre indépendant',
     'tlAdd': 'Ajouter',
     'tlPush': 'Pousser (ouvrir des images)',
     'tlPull': 'Tirer (fermer des images)',
@@ -7472,6 +7468,7 @@ enum AppStrings {
     'shortcutAction.edit-copy': '复制',
     'shortcutAction.edit-paste-linked': '粘贴链接',
     'shortcutAction.edit-paste-independent': '粘贴独立',
+    'shortcutAction.edit-unlink': '取消链接',
     'shortcutAction.edit-delete': '删除',
     'shortcutAction.edit-replace-colour': '替换颜色',
     'shortcutAction.edit-clear-pixels': '清空像素',
@@ -8222,7 +8219,6 @@ enum AppStrings {
     'tlDetachLayer': '解除附属',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
-    'tlSharedUnlink': '取消链接',
     'tlAdd': '添加',
     'tlPush': '推出（空出帧）',
     'tlPull': '拉回（收拢帧）',

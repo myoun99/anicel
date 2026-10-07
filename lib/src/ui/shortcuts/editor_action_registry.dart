@@ -298,6 +298,9 @@ abstract final class EditorActionIds {
   /// 🗣️I-18 — 자동 이름 지정, the shared pill's button beside Edit.
   static const editAutoName = 'edit-auto-name';
 
+  /// 🗣️I-45 — 링크 독립, the shared pill's button beside the linked paste.
+  static const editUnlink = 'edit-unlink';
+
   /// The colour edit list's four verbs, in its order — every one an action
   /// (유저 2026-09-13: 「그 외 같이있는 버튼들도 다 숏컷 지정가능하게」).
   static const editReplaceColour = 'edit-replace-colour';
@@ -520,6 +523,17 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyV, control: true),
     ],
+  ),
+  // 🗣️I-45 (유저 2026-09-20): 「링크 독립버튼. 위치는 타임라인의 공용
+  // 알약부분?」 — a button, so a row a key can be put on (유저 2026-09-13:
+  // 「버튼이면 왠만해선 숏컷 지정 가능하게 리스트로 올리는걸 기본으로」). It
+  // ships unbound: nobody named a key. The words are the user's own for it,
+  // 「링크 독립」, and they live here now — the button wears this name.
+  const EditorActionDefinition(
+    id: EditorActionIds.editUnlink,
+    label: 'Make independent',
+    category: 'Edit',
+    defaultActivators: [],
   ),
   // Bare Delete and Backspace: a focused text field keeps both (bare keys
   // stand down there), so they never reach a pill while you are typing.

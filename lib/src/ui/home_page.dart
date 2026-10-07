@@ -1053,6 +1053,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _workingPanel.pasteLinkedPress?.call();
       case EditorActionIds.editPasteIndependent:
         _workingPanel.pasteIndependentPress?.call();
+      case EditorActionIds.editUnlink:
+        _workingPanel.unlinkPress?.call();
       case EditorActionIds.editDelete:
         // R9-rest: the thing in hand first — Delete takes a text held by
         // its box off its cel, and only with none in hand is it the

@@ -1018,7 +1018,7 @@ class TimelineActionToolbar extends StatelessWidget {
         // hole. It is the LIFT half of the one splice — the same half a
         // paste-over-a-selection does before it puts the clip down — so it
         // needed no placement rules of its own.
-        // 🗣️I-19: each of these five IS one action's entrance, so it wears
+        // 🗣️I-19: each of these six IS one action's entrance, so it wears
         // that action's registry name and names the action for its key.
         _iconButton(
           key: const ValueKey<String>('shared-cut-button'),
@@ -1060,7 +1060,8 @@ class TimelineActionToolbar extends StatelessWidget {
         // pictures, and on the storyboard the cuts.
         _iconButton(
           key: const ValueKey<String>('shared-unlink-button'),
-          tooltip: AppText.strings.tlSharedUnlink,
+          tooltip: editorActionLabel(EditorActionIds.editUnlink),
+          shortcuts: const [EditorActionIds.editUnlink],
           icon: Icons.link_off,
           onPressed: panelContext.unlinkPress,
         ),
