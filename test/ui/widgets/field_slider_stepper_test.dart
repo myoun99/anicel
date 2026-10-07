@@ -56,6 +56,39 @@ void main() {
     expect(down, findsNothing);
   });
 
+  testWidgets('nor does a STOOD-UP bar, whatever it is named — its row has '
+      'no room across for the pair', (tester) async {
+    // The rule's other half, in the bar's own words: 「A VERTICAL bar is out
+    // for a plainer reason: it is the timeline's turned axis, whose row has
+    // no horizontal room at all」. ⛔Nothing pinned it until 2026-10-08, when
+    // the rule gained a second reader (the bar's narrowest) and a mutant
+    // that dropped this half lived.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 28,
+              height: 200,
+              child: FieldSlider(
+                value: 0.5,
+                min: 0,
+                max: 1,
+                label: 'Size',
+                unit: '%',
+                axis: Axis.vertical,
+                onChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Size'), findsOneWidget, reason: '⛔LIVENESS');
+    expect(up, findsNothing);
+    expect(down, findsNothing);
+  });
+
   testWidgets('a DISABLED bar keeps the slot — the row must not resize when '
       'the control comes alive', (tester) async {
     Future<double> widthWith(bool enabled) async {
