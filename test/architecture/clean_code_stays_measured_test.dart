@@ -211,7 +211,17 @@ void main() {
   /// together, and are handed down as one (`_FileReport`). 🔬The lane's
   /// scan against its base (`4b6fa8ff5`, at 382) named that one added and
   /// nothing gone.
-  const wideSignatures = 383;
+  ///
+  /// ⚠️383 → 384 on 2026-10-08, one named as the rule above asks (card
+  /// `csp-clip-import-analysis`, a CLIP STUDIO file planned as the project
+  /// it opens as): `planClipImport` (five) — a whole project's planner, as
+  /// `planTvpImport` (five) is a cut's. The document; the name the one cut
+  /// of a file with no timeline takes; the program language's word for the
+  /// folder hidden layers stand in (the planner is below the string
+  /// tables); the track its link members name, which the door builds; and
+  /// the id mint. 🔬The lane's scan against master (`94d72eef8`, at 383)
+  /// named that one added and nothing gone.
+  const wideSignatures = 384;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took

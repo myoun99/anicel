@@ -94,6 +94,7 @@ final class ClipCelBake {
     required this.layerId,
     required this.frameId,
     required this.source,
+    required this.label,
     required this.alpha,
   });
 
@@ -106,6 +107,11 @@ final class ClipCelBake {
   /// The layer whose picture this is — its render, or the original of a
   /// dropped picture, standing where it stands.
   final ClipLayer source;
+
+  /// What a warning calls it: the layer's name — or, for a layer inside a
+  /// cel, whose own name has no row to stand on, its animation folder and
+  /// cel (`A / 3`).
+  final String label;
 
   /// What the picture's alpha is multiplied by: below 1 where the cel was
   /// fainter than its row's opacity (Q5 — 「낮은채로 구워버려서」).
@@ -194,6 +200,7 @@ ClipImportPlan planClipImport({
           layerId: bake.row.ids.first,
           frameId: bake.frameId,
           source: bake.source,
+          label: bake.label,
           alpha: bake.alpha,
         ),
     ],
@@ -519,9 +526,13 @@ final class _Leaf {
     required this.opacity,
     required this.blend,
     required this.spread,
+    required this.where,
   });
 
   final ClipLayer layer;
+
+  /// Its animation folder and cel, as a warning names it (`A / 3`).
+  final String where;
 
   /// Its own eye and every folder's between it and the cel's top.
   final bool visible;
@@ -562,7 +573,13 @@ final class _Line {
 }
 
 /// What the planner bakes, before the cuts are made.
-typedef _Bake = ({_Row row, FrameId frameId, ClipLayer source, double alpha});
+typedef _Bake = ({
+  _Row row,
+  FrameId frameId,
+  ClipLayer source,
+  String label,
+  double alpha,
+});
 
 final class _Planner {
   _Planner({
@@ -642,7 +659,13 @@ final class _Planner {
     );
     rows.add(row);
     if (layer.hasPicture) {
-      bakes.add((row: row, frameId: frame.id, source: layer, alpha: 1));
+      bakes.add((
+        row: row,
+        frameId: frame.id,
+        source: layer,
+        label: layer.name,
+        alpha: 1,
+      ));
     }
     _sayWhereShownInPart(layer, folders);
   }
@@ -804,6 +827,7 @@ final class _Planner {
           row: row,
           frameId: frameOf(cel),
           source: leaf.layer,
+          label: leaf.where,
           alpha: strongest > 0 ? leaf.opacity / strongest : 1,
         ));
       }
@@ -884,6 +908,7 @@ final class _Planner {
           spread:
               blend != own ||
               chain.any((inside) => inside.opacity < _fullOpacity),
+          where: where,
         ),
       );
     }

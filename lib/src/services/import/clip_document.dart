@@ -57,6 +57,8 @@ final class ClipLayer {
     required this.uuid,
     required this.left,
     required this.top,
+    required this.offsetX,
+    required this.offsetY,
     required this.render,
     required this.original,
     required this.originalTransform,
@@ -94,6 +96,11 @@ final class ClipLayer {
   /// is).
   final int left;
   final int top;
+
+  /// `LayerOffset` alone — what a dropped picture's [originalTransform]
+  /// places its original from.
+  final int offsetX;
+  final int offsetY;
 
   /// The layer's own render at 100% — null when it has none.
   final ClipPictureSource? render;
@@ -176,6 +183,10 @@ final class ClipTimeline {
   final Map<String, ClipTrack> tracks;
 }
 
+/// The shooting frame (撮影フレーム): its size, and where its centre stands
+/// on the canvas.
+typedef ClipFrame = ({int width, int height, double centerX, double centerY});
+
 /// A CLIP STUDIO PAINT document's structure — what the import reads before
 /// any pixel.
 final class ClipDocument {
@@ -186,11 +197,15 @@ final class ClipDocument {
     required this.timelines,
     required this.currentTimeline,
     required this.warnings,
+    this.frame,
   });
 
   final int width;
   final int height;
   final ClipLayer root;
+
+  /// The shooting frame — null when the file has none (the whole canvas).
+  final ClipFrame? frame;
 
   /// In the file's order.
   final List<ClipTimeline> timelines;
@@ -277,6 +292,7 @@ final class _DocumentReader {
       'CanvasWidth',
       'CanvasHeight',
       'CanvasRootFolder',
+      ..._frameColumns,
     ]).values.firstOrNull;
     if (canvas == null) {
       throw const ClipFormatException('the file holds no canvas');
@@ -289,13 +305,53 @@ final class _DocumentReader {
       'FirstTimeLine',
       'CurrentIndex',
     ]).values.firstOrNull;
+    final width = _num(canvas['CanvasWidth']);
+    final height = _num(canvas['CanvasHeight']);
     return ClipDocument(
-      width: _num(canvas['CanvasWidth']).round(),
-      height: _num(canvas['CanvasHeight']).round(),
+      width: width.round(),
+      height: height.round(),
       root: root,
       timelines: bank == null ? const [] : _timelines(bank),
       currentTimeline: bank == null ? 0 : _int(bank['CurrentIndex']),
       warnings: warnings,
+      frame: _frameOf(canvas, width, height),
+    );
+  }
+
+  static const _frameColumns = [
+    'CropFrameInnerWidth',
+    'CropFrameInnerHeight',
+    'CropFrameCropOffsetX',
+    'CropFrameCropOffsetY',
+    'CropFrameInnerOffsetX',
+    'CropFrameInnerOffsetY',
+  ];
+
+  /// The shooting frame: `CropFrameInner` is its size, and its centre
+  /// stands at the canvas's centre moved by the crop's offset and the
+  /// inner frame's (memory `csp-clip-format-notes` §3 — measured on a
+  /// sample, a 1500×846 frame on 1754×2236 paper). None without a width.
+  static ClipFrame? _frameOf(
+    Map<String, Object?> canvas,
+    double width,
+    double height,
+  ) {
+    final frameWidth = _int(canvas['CropFrameInnerWidth']);
+    final frameHeight = _int(canvas['CropFrameInnerHeight']);
+    if (frameWidth <= 0 || frameHeight <= 0) {
+      return null;
+    }
+    return (
+      width: frameWidth,
+      height: frameHeight,
+      centerX:
+          width / 2 +
+          _num(canvas['CropFrameCropOffsetX']) +
+          _num(canvas['CropFrameInnerOffsetX']),
+      centerY:
+          height / 2 +
+          _num(canvas['CropFrameCropOffsetY']) +
+          _num(canvas['CropFrameInnerOffsetY']),
     );
   }
 
@@ -402,6 +458,8 @@ final class _DocumentReader {
       uuid: _text(row['LayerUuid']).replaceAll('-', '').toLowerCase(),
       left: _int(row['LayerOffsetX']) + _int(row['LayerRenderOffscrOffsetX']),
       top: _int(row['LayerOffsetY']) + _int(row['LayerRenderOffscrOffsetY']),
+      offsetX: _int(row['LayerOffsetX']),
+      offsetY: _int(row['LayerOffsetY']),
       render: pictures[_int(row['LayerRenderMipmap'])],
       original: pictures[_int(row['ResizableOriginalMipmap'])],
       originalTransform: transform is Uint8List ? transform : null,

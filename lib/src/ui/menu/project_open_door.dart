@@ -17,6 +17,7 @@ import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
 import '../open_projects.dart';
 import '../session/project_file_door.dart' show readProjectFile;
+import '../session/clip_import_door.dart' show readClipProject;
 import '../session/tvpp_import_door.dart' show readTvppProject;
 import '../text/app_strings.dart';
 import '../text/model_vocabulary.dart' show ImportWarningWords;
@@ -41,13 +42,19 @@ typedef ProjectPick = ({String path, String? folderBookmark, bool placed});
 ///
 /// TVPaint projects open through the same door (the user's call: ONE
 /// entry, the Open button — the import pickers retire later). A .tvpp
-/// converts into cuts rather than loading as a project.
+/// converts into cuts rather than loading as a project. So does a CLIP
+/// STUDIO file: every timeline a cut (card `csp-clip-import-analysis` — a
+/// cut container opens AS A PROJECT).
 ///
 /// 🚨These are now what the open ACCEPTS, not what the dialog SHOWS —
 /// 유저 2026-08-29 named this exact dialog: 「특히 윈도우 열기시 anicel
 /// 이랑 tvp만 설정따라서 보이게 되있는데 그게아니라 … 어떤 확장자던
 /// 선택할수 있게」.
-const List<String> projectOpenExtensions = [anicelProjectExtension, 'tvpp'];
+const List<String> projectOpenExtensions = [
+  anicelProjectExtension,
+  'tvpp',
+  'clip',
+];
 
 /// Whether [path] names a file 「열기」 opens ([projectOpenExtensions]) —
 /// by NAME, the way the door tells a .tvpp: a provider document's URI says
@@ -87,8 +94,13 @@ final class ProjectOpenDoor {
   ) async {
     final path = pick.path;
     // By NAME: a provider document's URI says nothing of what it is (PICK-7).
-    if (ProviderDocuments.nameOf(path).toLowerCase().endsWith('.tvpp')) {
+    final name = ProviderDocuments.nameOf(path).toLowerCase();
+    if (name.endsWith('.tvpp')) {
       await _openTvppAsProject(context, path);
+      return;
+    }
+    if (name.endsWith('.clip')) {
+      await _openClipAsProject(context, path);
       return;
     }
     // A file already open is SHOWN, not opened again: two sessions on one
@@ -289,8 +301,79 @@ final class ProjectOpenDoor {
     }
   }
 
+  /// A CLIP STUDIO file opens AS A PROJECT — every timeline a cut — in a
+  /// tab of its own, the way a .tvpp does (the second of its kind: what the
+  /// two say is the same, and the third that asks for it will make one of
+  /// them). No recents entry — the result is a NEW unsaved project until its
+  /// first save.
+  Future<void> _openClipAsProject(BuildContext context, String path) async {
+    final opened =
+        await _openBehindWindow<
+          ({EditorSessionManager session, List<ImportWarning> warnings})?
+        >(context, (wait, report) => _convertClip(path, wait, report));
+    if (opened == null) {
+      return;
+    }
+    final converted = opened.value;
+    if (converted == null) {
+      if (context.mounted) {
+        showFileError(context, AppText.strings.imNotClip);
+      }
+      return;
+    }
+    if (!context.mounted) {
+      projects.discard(converted.session);
+      return;
+    }
+    projects.adopt(converted.session);
+    if (converted.warnings.isNotEmpty) {
+      await showAppNotice(
+        context,
+        windowKey: const ValueKey<String>('clip-import-warnings-notice'),
+        title: AppText.strings.commonNotice,
+        message: converted.warnings
+            .take(6)
+            .map((warning) => warning.textFor(AppText.language))
+            .join('\n'),
+      );
+    }
+  }
+
+  /// The .clip read and planned, and the session born for the project it
+  /// became with every picture baked into it. Null when the file is not a
+  /// CLIP STUDIO file.
+  Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
+  _convertClip(
+    String path,
+    CloudWait wait,
+    void Function(double) report,
+  ) async {
+    final read = await readClipProject(
+      clipPath: path,
+      onWaiting: wait.report,
+      isCancelled: wait.isCancelled,
+    );
+    if (read == null) {
+      return null;
+    }
+    final session = projects.prepare(read.project);
+    try {
+      final warnings = await session.clipDoor.bake(
+        read,
+        onProgress: (fraction) {
+          wait.ended();
+          report(fraction);
+        },
+      );
+      return (session: session, warnings: warnings);
+    } on Object {
+      projects.discard(session);
+      rethrow;
+    }
+  }
+
   /// The ONE window every open stands behind, up from the first frame, for
-  /// a .anicel and a .tvpp alike.
+  /// a .anicel, a .tvpp and a .clip alike.
   ///
   /// 🚨IT USED TO COVER ONLY THE WAIT FOR A PROVIDER'S BYTES and stay silent
   /// for a local pick, on the premise that an open is instant. A 74MB

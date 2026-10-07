@@ -1,6 +1,9 @@
 import 'dart:collection';
 
 import '../editing/default_cut_helpers.dart';
+import '../editing/default_layer_helpers.dart'
+    show defaultLayerIdForSequence;
+import '../editing/run_id_mint.dart' show mintFrameId;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/canvas_size.dart';
@@ -40,6 +43,22 @@ class ImportIdMint {
     required this.nextFrameId,
     required this.nextCutId,
   });
+
+  /// The ids of a project being MADE — before any session holds it, so
+  /// there is nothing in it to step past: each id is the next of its kind,
+  /// in the forms an import mints into a project that exists
+  /// (`ImportLanding.idMint`). The drawings' come from the process's one
+  /// mint ([mintFrameId]), which the session born for the project goes on
+  /// counting from. A .tvpp and a .clip are both such projects.
+  factory ImportIdMint.forANewProject() {
+    var layers = 0;
+    var cuts = 0;
+    return ImportIdMint(
+      nextLayerId: () => defaultLayerIdForSequence(layers += 1),
+      nextFrameId: mintFrameId,
+      nextCutId: () => CutId('import-cut-${cuts += 1}'),
+    );
+  }
 
   final LayerId Function() nextLayerId;
   final FrameId Function(LayerId layerId) nextFrameId;

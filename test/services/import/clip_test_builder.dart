@@ -1,6 +1,8 @@
 import 'dart:convert';
-import 'dart:io' show ZLibEncoder;
+import 'dart:io' show Directory, File, ZLibEncoder;
 import 'dart:typed_data';
+
+import 'package:sqlite3/sqlite3.dart';
 
 /// Writes the parts of a CLIP STUDIO PAINT file the way the format notes
 /// say they are laid out (memory `csp-clip-format-notes`) — the files the
@@ -356,3 +358,123 @@ Uint8List blockRecordsBytes(Map<int, Uint8List?> blocks) {
   }
   return out.toBytes();
 }
+
+/// The tables of a CLIP STUDIO file's database the reader asks, with the
+/// columns the format notes name — the ones a program leaves out of a file
+/// that does not use them (`AudioLayer`, `GradationFillInfo`) left out
+/// here too.
+const clipSchema = '''
+  CREATE TABLE Canvas(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    CanvasWidth REAL, CanvasHeight REAL, CanvasRootFolder INTEGER,
+    CropFrameInnerWidth INTEGER, CropFrameInnerHeight INTEGER,
+    CropFrameCropOffsetX REAL, CropFrameCropOffsetY REAL,
+    CropFrameInnerOffsetX REAL, CropFrameInnerOffsetY REAL);
+  CREATE TABLE Layer(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    LayerName TEXT, LayerType INTEGER, LayerFolder INTEGER,
+    LayerVisibility INTEGER, LayerOpacity INTEGER,
+    LayerComposite INTEGER, LayerUuid TEXT, LayerOffsetX INTEGER,
+    LayerOffsetY INTEGER, LayerRenderOffscrOffsetX INTEGER,
+    LayerRenderOffscrOffsetY INTEGER, LayerFirstChildIndex INTEGER,
+    LayerNextIndex INTEGER, LayerRenderMipmap INTEGER,
+    ResizableOriginalMipmap INTEGER, ResizableImageInfo BLOB,
+    DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER);
+  CREATE TABLE Mipmap(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    BaseMipmapInfo INTEGER);
+  CREATE TABLE MipmapInfo(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    ThisScale REAL, Offscreen INTEGER, NextIndex INTEGER);
+  CREATE TABLE Offscreen(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    Attribute BLOB, BlockData TEXT);
+  CREATE TABLE AnimationCutBank(_PW_ID INTEGER PRIMARY KEY,
+    MainId INTEGER, FirstTimeLine INTEGER, CurrentIndex INTEGER);
+  CREATE TABLE TimeLine(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    NextTimeLine INTEGER, TimeLineName TEXT, FrameRate REAL,
+    StartFrame INTEGER, EndFrame INTEGER, FirstTrack INTEGER);
+  CREATE TABLE Track(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
+    TrackNextIndex INTEGER, TrackKind INTEGER,
+    LayerUuidWithTrack BLOB, TrackActionMixer TEXT,
+    TrackActionMixer2 TEXT, TrackLabelFirstIndex INTEGER);
+  CREATE TABLE TimeLineLabel(_PW_ID INTEGER PRIMARY KEY,
+    MainId INTEGER, LabelFrame INTEGER, LabelType INTEGER,
+    LabelNextIndex INTEGER);
+''';
+
+/// The bytes of a database [build] fills, made in [folder] (the file goes
+/// as soon as it is read).
+Uint8List clipDatabaseBytes(
+  Directory folder,
+  void Function(Database db) build,
+) {
+  final stamp = DateTime.now().microsecondsSinceEpoch;
+  final path = '${folder.path}/build-$stamp.db';
+  final db = sqlite3.open(path);
+  try {
+    build(db);
+  } finally {
+    db.close();
+  }
+  final bytes = File(path).readAsBytesSync();
+  File(path).deleteSync();
+  return bytes;
+}
+
+/// [uuid] as a track names its layer: its sixteen bytes.
+Uint8List clipUuidBytes(String uuid) {
+  final hex = uuid.replaceAll('-', '');
+  return Uint8List.fromList([
+    for (var i = 0; i < 32; i += 2)
+      int.parse(hex.substring(i, i + 2), radix: 16),
+  ]);
+}
+
+/// One clip of a track document (`ActionNodeClip`): its place on the
+/// timeline in ticks ([time]), the motion it plays ([motion]), and the cels
+/// it keys — ticks in [keys], names in [cels]. Rate 60, as the samples.
+CmtSpec clipNodeSpec({
+  required List<num> time,
+  required List<num> motion,
+  List<num> keys = const [],
+  List<String> cels = const [],
+}) => CmtSpec(
+  'ActionNodeClip',
+  'null',
+  children: [
+    CmtSpec(
+      'TimeClip',
+      'null',
+      children: [
+        CmtSpec('Start', 'Double', value: time[0]),
+        CmtSpec('End', 'Double', value: time[1]),
+        const CmtSpec('Rate', 'Double', value: 60),
+      ],
+    ),
+    CmtSpec(
+      'MotionClip',
+      'null',
+      children: [
+        CmtSpec('Start', 'Double', value: motion[0]),
+        CmtSpec('End', 'Double', value: motion[1]),
+      ],
+    ),
+    if (keys.isNotEmpty)
+      CmtSpec(
+        'AnimInfo',
+        'null',
+        children: [
+          CmtSpec(
+            'FCurve',
+            'null',
+            attributes: const {'Type': 'ImageCelName'},
+            children: [
+              CmtSpec('Frame', 'Double[]', value: keys),
+              CmtSpec('Tag', 'String[]', value: cels),
+            ],
+          ),
+        ],
+      ),
+  ],
+);
+
+
+/// A track document holding [clips].
+CmtSpec clipTrackSpec(List<CmtSpec> clips) =>
+    CmtSpec('celsysdocument', 'null', children: clips);

@@ -18,19 +18,8 @@ void main() {
   setUp(() => folder = Directory.systemTemp.createTempSync('qa_clip_doc_'));
   tearDown(() => deleteTempQuietly(folder));
 
-  Uint8List databaseBytes(void Function(Database db) build) {
-    final stamp = DateTime.now().microsecondsSinceEpoch;
-    final path = '${folder.path}/build-$stamp.db';
-    final db = sqlite3.open(path);
-    try {
-      build(db);
-    } finally {
-      db.close();
-    }
-    final bytes = File(path).readAsBytesSync();
-    File(path).deleteSync();
-    return bytes;
-  }
+  Uint8List databaseBytes(void Function(Database db) build) =>
+      clipDatabaseBytes(folder, build);
 
   String write(Uint8List database, Map<String, List<int>> externals) {
     final path = '${folder.path}/cut.clip';
@@ -42,67 +31,12 @@ void main() {
 
   const uuidA = '0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0';
   const uuidBg = '11112222-3333-4444-5555-666677778888';
-  Uint8List uuidBlob(String uuid) {
-    final hex = uuid.replaceAll('-', '');
-    return Uint8List.fromList([
-      for (var i = 0; i < 32; i += 2)
-        int.parse(hex.substring(i, i + 2), radix: 16),
-    ]);
-  }
-
-  CmtSpec clip({
-    required List<num> time,
-    required List<num> motion,
-    List<num> keys = const [],
-    List<String> cels = const [],
-  }) => CmtSpec(
-    'ActionNodeClip',
-    'null',
-    children: [
-      CmtSpec(
-        'TimeClip',
-        'null',
-        children: [
-          CmtSpec('Start', 'Double', value: time[0]),
-          CmtSpec('End', 'Double', value: time[1]),
-          const CmtSpec('Rate', 'Double', value: 60),
-        ],
-      ),
-      CmtSpec(
-        'MotionClip',
-        'null',
-        children: [
-          CmtSpec('Start', 'Double', value: motion[0]),
-          CmtSpec('End', 'Double', value: motion[1]),
-        ],
-      ),
-      if (keys.isNotEmpty)
-        CmtSpec(
-          'AnimInfo',
-          'null',
-          children: [
-            CmtSpec(
-              'FCurve',
-              'null',
-              attributes: const {'Type': 'ImageCelName'},
-              children: [
-                CmtSpec('Frame', 'Double[]', value: keys),
-                CmtSpec('Tag', 'String[]', value: cels),
-              ],
-            ),
-          ],
-        ),
-    ],
-  );
 
   /// [track]'s clips as nested lists — a record holding a list compares
   /// that list by identity, so the pieces are spelled out for `equals`.
   List<Object> shape(ClipTrack track) => [
     for (final piece in track.pieces) [piece.span, piece.cels],
   ];
-
-  CmtSpec document(List<CmtSpec> clips) =>
-      CmtSpec('celsysdocument', 'null', children: clips);
 
   String fixture() {
     final attribute50 = offscreenAttributeBytes(
@@ -123,8 +57,8 @@ void main() {
       // Timeline 1, A: keys 0 · 30 · 60 ticks = frames 0 · 12 · 24.
       externalId(10): trackDataBytes(
         cmtDocumentBytes(
-          document([
-            clip(
+          clipTrackSpec([
+            clipNodeSpec(
               time: [0, 120],
               motion: [0, 120],
               keys: [0, 30, 60],
@@ -137,8 +71,13 @@ void main() {
       // document is the one to read.
       externalId(11): trackDataBytes(
         cmtDocumentBytes(
-          document([
-            clip(time: [0, 120], motion: [0, 120], keys: [0], cels: ['2']),
+          clipTrackSpec([
+            clipNodeSpec(
+              time: [0, 120],
+              motion: [0, 120],
+              keys: [0],
+              cels: ['2'],
+            ),
           ]),
           doubles: false,
         ),
@@ -146,10 +85,10 @@ void main() {
       // Timeline 2, A: a clip moved to tick 25 — its motion starts at −25.
       externalId(12): trackDataBytes(
         cmtDocumentBytes(
-          document([
+          clipTrackSpec([
             // Its keys written out of order: a clip's cels come in order
             // of frame however the file lists them.
-            clip(
+            clipNodeSpec(
               time: [25, 60],
               motion: [-25, 10],
               keys: [5, -25],
@@ -161,7 +100,7 @@ void main() {
       // Timeline 2, BG: only the single-precision document, shown 0 … 24.
       externalId(13): trackDataBytes(
         cmtDocumentBytes(
-          document([clip(time: [0, 60], motion: [0, 60])]),
+          clipTrackSpec([clipNodeSpec(time: [0, 60], motion: [0, 60])]),
           doubles: false,
         ),
       ),
@@ -170,9 +109,14 @@ void main() {
       // and, written FIRST, a second clip after a gap.
       externalId(14): trackDataBytes(
         cmtDocumentBytes(
-          document([
-            clip(time: [150, 180], motion: [0, 30], keys: [0], cels: ['2']),
-            clip(
+          clipTrackSpec([
+            clipNodeSpec(
+              time: [150, 180],
+              motion: [0, 30],
+              keys: [0],
+              cels: ['2'],
+            ),
+            clipNodeSpec(
               time: [0, 120],
               motion: [0, 60],
               keys: [0, 30],
@@ -183,37 +127,7 @@ void main() {
       ),
     };
     final database = databaseBytes((db) {
-      db.execute('''
-        CREATE TABLE Canvas(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          CanvasWidth REAL, CanvasHeight REAL, CanvasRootFolder INTEGER);
-        CREATE TABLE Layer(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          LayerName TEXT, LayerType INTEGER, LayerFolder INTEGER,
-          LayerVisibility INTEGER, LayerOpacity INTEGER,
-          LayerComposite INTEGER, LayerUuid TEXT, LayerOffsetX INTEGER,
-          LayerOffsetY INTEGER, LayerRenderOffscrOffsetX INTEGER,
-          LayerRenderOffscrOffsetY INTEGER, LayerFirstChildIndex INTEGER,
-          LayerNextIndex INTEGER, LayerRenderMipmap INTEGER,
-          ResizableOriginalMipmap INTEGER, ResizableImageInfo BLOB,
-          DrawToRenderOffscreenType INTEGER, AnimationFolder INTEGER);
-        CREATE TABLE Mipmap(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          BaseMipmapInfo INTEGER);
-        CREATE TABLE MipmapInfo(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          ThisScale REAL, Offscreen INTEGER, NextIndex INTEGER);
-        CREATE TABLE Offscreen(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          Attribute BLOB, BlockData TEXT);
-        CREATE TABLE AnimationCutBank(_PW_ID INTEGER PRIMARY KEY,
-          MainId INTEGER, FirstTimeLine INTEGER, CurrentIndex INTEGER);
-        CREATE TABLE TimeLine(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          NextTimeLine INTEGER, TimeLineName TEXT, FrameRate REAL,
-          StartFrame INTEGER, EndFrame INTEGER, FirstTrack INTEGER);
-        CREATE TABLE Track(_PW_ID INTEGER PRIMARY KEY, MainId INTEGER,
-          TrackNextIndex INTEGER, TrackKind INTEGER,
-          LayerUuidWithTrack BLOB, TrackActionMixer TEXT,
-          TrackActionMixer2 TEXT, TrackLabelFirstIndex INTEGER);
-        CREATE TABLE TimeLineLabel(_PW_ID INTEGER PRIMARY KEY,
-          MainId INTEGER, LabelFrame INTEGER, LabelType INTEGER,
-          LabelNextIndex INTEGER);
-      ''');
+      db.execute(clipSchema);
       db.execute(
         'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
         'CanvasRootFolder) VALUES (1, 1919.6, 1080.4, 1)',
@@ -300,13 +214,13 @@ void main() {
         'LayerUuidWithTrack, TrackActionMixer, TrackActionMixer2, '
         'TrackLabelFirstIndex) VALUES (?, ?, ?, ?, ?, ?, ?)',
       );
+      final a = clipUuidBytes(uuidA);
+      final bg = clipUuidBytes(uuidBg);
       track
-        ..execute([
-          50, 0, 2000, uuidBlob(uuidA), externalId(11), externalId(10), 70,
-        ])
-        ..execute([52, 53, 2000, uuidBlob(uuidA), '', externalId(12), 0])
-        ..execute([53, 0, 2001, uuidBlob(uuidBg), externalId(13), '', 0])
-        ..execute([54, 0, 2000, uuidBlob(uuidA), '', externalId(14), 0])
+        ..execute([50, 0, 2000, a, externalId(11), externalId(10), 70])
+        ..execute([52, 53, 2000, a, '', externalId(12), 0])
+        ..execute([53, 0, 2001, bg, externalId(13), '', 0])
+        ..execute([54, 0, 2000, a, '', externalId(14), 0])
         ..close();
     });
     return write(database, externals);
@@ -318,6 +232,7 @@ void main() {
     final a = root.children[2];
 
     expect((document.width, document.height), (1920, 1080));
+    expect(document.frame, isNull, reason: 'no shooting frame: shot whole');
     expect(root.kind, ClipLayerKind.root);
     expect([for (final layer in root.children) layer.name], [
       'paper',
@@ -350,6 +265,12 @@ void main() {
     final scan = document.root.children[2].children[2];
 
     expect((bg.left, bg.top), (15, 16));
+    expect(
+      (bg.offsetX, bg.offsetY),
+      (10, -4),
+      reason: 'the layer\'s own offset, apart — what a dropped picture is '
+          'placed from',
+    );
     expect(bg.render!.blocksId, externalId(1), reason: 'not the 50% level');
     expect(bg.render!.attribute, isNotEmpty);
     expect(scan.render, isNull);
@@ -413,6 +334,37 @@ void main() {
       [(start: 0, end: 24), isEmpty],
     ]);
     expect(document.warnings, isEmpty);
+  });
+
+  test('the shooting frame: its size, and its centre the canvas\'s moved by '
+      'the crop\'s offset and the inner frame\'s', () {
+    final database = databaseBytes((db) {
+      db
+        ..execute(clipSchema)
+        ..execute(
+          'INSERT INTO Canvas(MainId, CanvasWidth, CanvasHeight, '
+          'CanvasRootFolder, CropFrameInnerWidth, CropFrameInnerHeight, '
+          'CropFrameCropOffsetX, CropFrameCropOffsetY, '
+          'CropFrameInnerOffsetX, CropFrameInnerOffsetY) '
+          'VALUES (1, 1754, 2236, 1, 1500, 846, 10, -498, -4, 73)',
+        )
+        ..execute(
+          'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder) '
+          "VALUES (1, '', 256, 1)",
+        );
+    });
+
+    final document = readClipDocument(
+      write(database, const {}),
+      scratch: folder,
+    );
+
+    expect(document.frame, (
+      width: 1500,
+      height: 846,
+      centerX: 877.0 + 10 - 4,
+      centerY: 1118.0 - 498 + 73,
+    ));
   });
 
   test('a file whose database holds no canvas is refused', () {

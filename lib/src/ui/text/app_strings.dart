@@ -1308,13 +1308,17 @@ enum AppStrings {
   String get imPsdMerge => _s('imPsdMerge');
   String get imPsdExpand => _s('imPsdExpand');
 
-  /// What the file doors say themselves — the two refusals an open can end
-  /// in, the picture a cel could not read, and the two the .tvpp door adds
-  /// to a converted project's notice.
+  /// What the file doors say themselves — the refusals an open can end in,
+  /// the picture a cel could not read, and the two the .tvpp door adds to a
+  /// converted project's notice.
   String get imNotTvpp => _s('imNotTvpp');
+  String get imNotClip => _s('imNotClip');
   String get imFileUnreadable => _s('imFileUnreadable');
   String imNotFound(String path) =>
       _s('imNotFoundTemplate').replaceAll('{path}', path);
+
+  /// The folder a CLIP STUDIO cel's hidden layers stand in, its eye off.
+  String get clipHiddenLayers => _s('clipHiddenLayers');
 
   /// What the window says about its source and its run.
   String get imNoSource => _s('imNoSource');
@@ -2320,6 +2324,8 @@ enum AppStrings {
     'exCutSize': 'Cut size',
     'exRealSheet': 'Real sheet',
     'imNotTvpp': 'This file cannot be read as a TVPaint project.',
+    'imNotClip': 'This file cannot be read as a CLIP STUDIO PAINT file.',
+    'clipHiddenLayers': 'Hidden',
     'imFileUnreadable':
         'The file could not be read — if it is in the cloud, try again in a '
         'moment.',
@@ -3557,6 +3563,8 @@ enum AppStrings {
     'exCutSize': 'カットサイズ',
     'exRealSheet': '実寸用紙',
     'imNotTvpp': 'このファイルはTVPaintプロジェクトとして読めません。',
+    'imNotClip': 'このファイルはCLIP STUDIO PAINTのファイルとして読めません。',
+    'clipHiddenLayers': '非表示',
     'imFileUnreadable': 'ファイルを読めませんでした — クラウド上のファイルなら、少し後にもう一度お試しください。',
     'imNotFoundTemplate': '見つかりません: {path}',
     'importWarning.stagedCopy': 'その場で読めなかったため一時コピーから開きました — この文言が出たら知らせてください。',
@@ -3600,6 +3608,8 @@ enum AppStrings {
     'importWarning.clipSound': '{name}: 音声レイヤーは取り込みませんでした。',
     'importWarning.clipUnknownLayer': '{name}: この取り込みでは読めない種類のレイヤーです。',
     'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
+    'importWarning.clipNotColour': '{name}: グレー・モノクロのレイヤー — 描画していません。',
+    'importWarning.clipTransform': '{name}: 画像の拡大縮小・回転は適用していません。',
     'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
     'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
     'exclusionReason.unrecognized': '認識できない名前',
@@ -4944,6 +4954,8 @@ enum AppStrings {
     'exCutSize': '컷 크기',
     'exRealSheet': '실측 용지',
     'imNotTvpp': 'TVPaint 프로젝트로 읽을 수 없는 파일입니다.',
+    'imNotClip': 'CLIP STUDIO PAINT 파일로 읽을 수 없는 파일입니다.',
+    'clipHiddenLayers': '숨김',
     'imFileUnreadable': '파일을 읽지 못했습니다 — 클라우드의 파일이면 잠시 후 다시 시도해 주세요.',
     'imNotFoundTemplate': '찾을 수 없습니다: {path}',
     'importWarning.stagedCopy': '제자리에서 읽지 못해 임시 사본으로 열었습니다 — 이 문구가 보이면 알려주세요.',
@@ -4987,6 +4999,8 @@ enum AppStrings {
     'importWarning.clipSound': '{name}: 소리 레이어는 가져오지 않았습니다.',
     'importWarning.clipUnknownLayer': '{name}: 이 가져오기가 읽지 못하는 종류의 레이어입니다.',
     'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
+    'importWarning.clipNotColour': '{name}: 그레이 · 모노크롬 레이어 — 그리지 않았습니다.',
+    'importWarning.clipTransform': '{name}: 그림의 크기 · 회전은 적용하지 않았습니다.',
     'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
     'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
     'exclusionReason.unrecognized': '알 수 없는 이름',
@@ -6376,6 +6390,9 @@ enum AppStrings {
     'exCutSize': 'Taille du plan',
     'exRealSheet': 'Feuille réelle',
     'imNotTvpp': 'Ce fichier ne peut pas être lu comme un projet TVPaint.',
+    'imNotClip':
+        'Ce fichier ne peut pas être lu comme un fichier CLIP STUDIO PAINT.',
+    'clipHiddenLayers': 'Masqués',
     'imFileUnreadable':
         'Le fichier n\'a pas pu être lu — s\'il est dans le cloud, réessayez '
         'dans un instant.',
@@ -6470,6 +6487,10 @@ enum AppStrings {
     'importWarning.clipBlend':
         '{name} : le mode de fusion {mode} n\'a pas d\'équivalent — réglé '
         'sur normal.',
+    'importWarning.clipNotColour':
+        '{name} : calque gris ou monochrome — non dessiné.',
+    'importWarning.clipTransform':
+        '{name} : l\'échelle ou la rotation de l\'image n\'est pas appliquée.',
     'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
     'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
     'exclusionReason.unrecognized': 'non reconnu',
@@ -7769,6 +7790,8 @@ enum AppStrings {
     'exCutSize': '镜头尺寸',
     'exRealSheet': '实际纸张',
     'imNotTvpp': '该文件无法作为 TVPaint 项目读取。',
+    'imNotClip': '该文件无法作为 CLIP STUDIO PAINT 文件读取。',
+    'clipHiddenLayers': '隐藏',
     'imFileUnreadable': '无法读取该文件——如果文件在云端，请稍后重试。',
     'imNotFoundTemplate': '未找到：{path}',
     'importWarning.stagedCopy': '因无法就地读取，已通过临时副本打开——看到此提示请告知。',
@@ -7812,6 +7835,8 @@ enum AppStrings {
     'importWarning.clipSound': '{name}：未导入声音图层。',
     'importWarning.clipUnknownLayer': '{name}：此导入无法读取的图层类型。',
     'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
+    'importWarning.clipNotColour': '{name}：灰度或单色图层——未绘制。',
+    'importWarning.clipTransform': '{name}：未应用图片的缩放或旋转。',
     'exclusionReason.processSubfolder': '工序子文件夹（存档）',
     'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
     'exclusionReason.unrecognized': '无法识别',

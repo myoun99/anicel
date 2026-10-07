@@ -100,6 +100,7 @@ import 'session/import_landing.dart';
 import 'session/project_import_doors.dart';
 import 'session/cut_folder_import_door.dart';
 import 'session/tvpp_import_door.dart';
+import 'session/clip_import_door.dart';
 import 'session/audio_clips.dart';
 import 'session/project_file.dart';
 import 'session/project_file_door.dart';
@@ -2236,6 +2237,16 @@ class EditorSessionManager extends ChangeNotifier
     file: projectFile,
     projectDoor: projectDoor,
     mediaPool: mediaPool,
+  );
+
+  // The CLIP STUDIO door (session/clip_import_door.dart) — a .clip opens AS
+  // A PROJECT the way a .tvpp does, and what it does here is the same: bake
+  // the pictures the plan made room for, into this session's stores.
+  late final ClipImportDoor clipDoor = ClipImportDoor(
+    project: this,
+    changes: this,
+    renderCaches: renderCaches,
+    file: projectFile,
   );
 
   bool disposed = false;

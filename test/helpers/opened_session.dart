@@ -1,6 +1,8 @@
 import 'package:anicel/src/models/import/import_warning.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/clip_import_door.dart'
+    show readClipProject;
 import 'package:anicel/src/ui/session/project_file_door.dart'
     show readProjectFile;
 import 'package:anicel/src/ui/session/tvpp_import_door.dart'
@@ -45,4 +47,21 @@ openedTvpp(
   }
   final session = make(read.project);
   return (session: session, warnings: await session.tvppDoor.bake(read));
+}
+
+/// The session the CLIP STUDIO file at [path] opens as — read and planned,
+/// then born with the project it became and every picture baked into it —
+/// with the warnings the import raised; null when the file is not one. The
+/// caller disposes it.
+Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
+openedClip(
+  String path, {
+  EditorSessionManager Function(Project project) make = _plainSession,
+}) async {
+  final read = await readClipProject(clipPath: path);
+  if (read == null) {
+    return null;
+  }
+  final session = make(read.project);
+  return (session: session, warnings: await session.clipDoor.bake(read));
 }

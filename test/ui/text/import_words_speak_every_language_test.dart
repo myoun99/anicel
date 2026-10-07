@@ -72,6 +72,8 @@ void main() {
     'clipSound',
     'clipUnknownLayer',
     'clipBlend',
+    'clipNotColour',
+    'clipTransform',
   ];
 
   for (final language in translated) {
