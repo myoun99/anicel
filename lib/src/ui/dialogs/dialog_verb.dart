@@ -32,8 +32,11 @@ Future<T?> showDialogVerb<T extends Object>(
 }) async {
   final answer = await showDialog<T>(
     context: context,
-    // Escape goes with the barrier: the route's dismiss action is only
-    // enabled where the barrier dismisses.
+    // The veto below already stops a tap on the barrier and escape as it
+    // stops the system's back — all three end in the route's `maybePop`
+    // (measured 2026-10-07: with this line turned off, none of the three
+    // took the window down). What this adds is a barrier that does not
+    // OFFER the dismissal it would not give — to a screen reader above all.
     barrierDismissible: !staysUntilAnswered,
     builder: staysUntilAnswered
         ? (context) => PopScope(canPop: false, child: dialog(context))
