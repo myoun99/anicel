@@ -553,6 +553,51 @@ void main() {
     expect(s.mediaPool.mediaAssets.single.pageCount, 2);
   });
 
+  testWidgets('🎯a PDF counts its pages into the run\'s % (F-282-Q1)', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    PdfRenderService.debugOpenerOverride = (_) async => FakePdfDocument(
+      pageSizes: List.filled(4, const ui.Size(595, 842)),
+    );
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}pages.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    await tester.pump();
+    final window = find.byType(AppProgressDialog);
+    expect(window, findsOneWidget);
+    final progress = tester.widget<AppProgressDialog>(window).progress;
+    final counted = <double>[];
+    progress.addListener(() {
+      if (progress.value.fraction case final fraction?) {
+        counted.add(fraction);
+      }
+    });
+    await pumpPastTheWaitWindow(tester);
+
+    expect(
+      counted.where((fraction) => fraction > 0 && fraction < 1),
+      isNotEmpty,
+      reason: 'its pages were counted on the way, not only its end',
+    );
+  });
+
   testWidgets('a PDF with NO renderer warns honestly instead of failing '
       'as a decode', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
