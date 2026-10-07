@@ -167,6 +167,18 @@
 # to be run again (2026-10-08, 관제: F-291's land lost that way to
 # top-strip-narrows').
 #
+# ⚠️THE GATES ASK THE MACHINE BEFORE THEY LAUNCH, AND RUN AT IDLE. That is
+# CLAUDE.md's 「Flutter 실행은 여유만큼」 (유저 2026-09-26 · 10-01): 4GB of
+# commit headroom, fewer than four runs across every session, all of it
+# Idle. One tool measures — tool/flutter_room.dart, whose head says what
+# takes a place. ↩️Until 2026-10-08 this script measured nothing and
+# lowered nothing: every session wrapped it in a waiter of its own, so a
+# land waited for one of the four places like any run. 유저 that day, on
+# the board (a-sent-lane-is-gated-once-Q1), chose 「착지 게이트는 이 넷에
+# 세지 않는다 — 커밋 여유 4GB 는 똑같이 재고, 우선순위도 Idle 그대로」.
+# So `land` waits for the headroom alone, `gate` — an ordinary run — for a
+# place as well, and neither wants a waiter around it.
+#
 # ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
 #   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
 # bash reads a script LAZILY, so the `merge --ff-only` near the end of `land`
@@ -736,12 +748,48 @@ lane_is_clean() {
   return 1
 }
 
+# The turn this process holds while it lands (`land_turn` sets it).
+HELD_TURN=
+
+# ROOM FIRST (the head of this file: THE GATES ASK THE MACHINE). $1 is
+# `land` for a land's gates — the headroom alone — and anything else for a
+# run that takes one of the four places.
+# ⛔An instrument that cannot measure launches nothing: 「no answer」 is not
+# 「room」.
+room_first() {
+  local flag= seen rc told=
+  [ "$1" = land ] && flag=--land
+  until seen="$(dart "$ROOT/tool/flutter_room.dart" ${flag:+"$flag"} 2>&1)"; do
+    rc=$?
+    [ "$rc" -eq 1 ] || die "the machine's room could not be measured — nothing was launched
+  $seen"
+    [ -n "$told" ] || echo "lane: no room for the gates yet ($seen) — waiting"
+    told=1
+    # A land that waits is alive: its turn is not one to take over.
+    [ -z "$HELD_TURN" ] || touch "$HELD_TURN"
+    sleep 20
+  done
+}
+
+# …AND AT IDLE: this shell is lowered, and Windows hands an Idle parent's
+# class to everything it launches (measured 2026-10-08 — through a
+# subshell, and through a bash script that execs a Windows program).
+at_idle() {
+  command -v powershell.exe >/dev/null 2>&1 || return 0
+  local me; me="$(cat "/proc/$$/winpid" 2>/dev/null)" || return 0
+  powershell.exe -NoProfile -NonInteractive -Command \
+    "(Get-Process -Id $me).PriorityClass = 'Idle'" >/dev/null 2>&1 || true
+}
+
 # THE GATES A LANDING STANDS BEHIND, on the lane at $2 as it is checked
 # out — refusals 3 and 5. `land` runs them after its rebase and `gate` on a
 # lane as it stands: the same lines, so a stamp vouches for exactly what a
-# land would have measured.
+# land would have measured. $3 says which of the two is asking, for the
+# room alone.
 gates() {
   local name="$1" p="$2"
+  room_first "${3:-}"
+  at_idle
   echo "lane: flutter analyze (no arguments)"
   (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
     (cd "$p" && flutter analyze) | tail -20 >&2
@@ -792,7 +840,7 @@ cmd_gate() {
   lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
   A stamp names a COMMIT; the gates would be measuring more than it holds."
   local measured; measured="$(git -C "$p" rev-parse HEAD)"
-  gates "$name" "$p"
+  gates "$name" "$p" gate
   unmoved_since "$p" "$measured" gate
   git -C "$ROOT" update-ref "$(gate_ref "$name")" "$measured" \
     || die "the gates passed, and the stamp could not be written"
@@ -820,6 +868,7 @@ land_turn() {
     sleep 10
   done
   echo "$$" >"$turn/pid"
+  HELD_TURN="$turn"
   # shellcheck disable=SC2064
   trap "rm -rf '$turn'" EXIT
 }
@@ -858,7 +907,7 @@ cmd_land() {
   this file before choosing a side."
     # Refusal 7: the commit the gates below are measuring.
     local measured; measured="$(git -C "$p" rev-parse HEAD)"
-    gates "$name" "$p"
+    gates "$name" "$p" land
     unmoved_since "$p" "$measured" land
   fi
 

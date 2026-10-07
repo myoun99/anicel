@@ -29,6 +29,15 @@
 # loses one of two lands started together, and deletes the uncommitted
 # file.
 #
+# 🆕And the room (same day, same card — sections O to Q, 86 checks in
+# all): the gates ask the machine before they launch — a gate for one of
+# the four places, a land for the headroom alone — wait while there is no
+# room, launch nothing when it cannot be measured, and run at Idle. ⚠️The
+# script before THAT fails 12 of the 86: it asks nothing, so it neither
+# waits nor refuses, and its gates run in the class it was started in.
+# ⚠️It takes minutes, not seconds: the scratch lanes are real worktrees,
+# and one section waits out the script's own twenty seconds.
+#
 # usage: bash tool/lane_test.sh [<another lane.sh to try>]
 SCRIPT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lane.sh}"
 E="$(mktemp -d "${TMPDIR:-/tmp}/lane-test.XXXXXX")" || exit 2
@@ -38,6 +47,8 @@ export LANE_TEST_LOG="$E/flutter.log"; : > "$LANE_TEST_LOG"
 cat > "$E/bin/flutter" <<'EOF'
 #!/bin/bash
 echo "$(basename "$PWD") flutter $*" >> "$LANE_TEST_LOG"
+[ -z "${LANE_TEST_PRIORITY:-}" ] || powershell.exe -NoProfile -Command \
+  "(Get-Process -Id $(cat /proc/$$/winpid)).PriorityClass" | tr -d '\r' >> "$LANE_TEST_LOG.priority"
 case "${LANE_TEST_FLUTTER:-ok}" in
   slow) [ "$1" = analyze ] && sleep 5 ;;
   red) [ "$1" = analyze ] && exit 1 ;;
@@ -46,7 +57,21 @@ case "${LANE_TEST_FLUTTER:-ok}" in
 esac
 exit 0
 EOF
-printf '#!/bin/bash\nexit 0\n' > "$E/bin/dart"
+# `dart` writes down what it was asked. Asked for the room
+# (tool/flutter_room.dart) it answers what LANE_TEST_ROOM says — `full` is
+# no room the first time and room after, `blind` cannot measure, anything
+# else is room; asked for any other tool it only succeeds.
+cat > "$E/bin/dart" <<'EOF'
+#!/bin/bash
+echo "$(basename "$PWD") dart $(basename "$1")${2:+ $2}" >> "$LANE_TEST_LOG"
+[ "$(basename "$1")" = flutter_room.dart ] || exit 0
+case "${LANE_TEST_ROOM:-ok}" in
+  full) mkdir "$LANE_TEST_LOG.asked" 2>/dev/null && { echo "runs=4 free_gb=9 room=no"; exit 1; } ;;
+  blind) echo "flutter_room: this machine could not be measured" >&2; exit 2 ;;
+esac
+echo "runs=0 free_gb=9 room=yes"
+exit 0
+EOF
 chmod +x "$E/bin/flutter" "$E/bin/dart"
 export PATH="$E/bin:$PATH"
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
@@ -250,6 +275,51 @@ rm -f "$AW/lane-surface11-keep/draft.txt"
 O=$(out "$E/away" sync)
 has "once the worktree is clean the lane is let go" "$O" "keep landed — letting go"
 check "and it is gone" "$(git -C "$E/away" branch --list 'work/surface11/keep' | wc -l | tr -d ' ')" 0
+
+say "O ROOM FIRST: the gates ask the machine before they launch — a gate for a place, a land for the headroom alone"
+asks() { grep -c " dart flutter_room.dart" "$LANE_TEST_LOG"; }
+quiet "$E/home" open u; commit "$HW/lane-u" u.txt "u"
+: > "$LANE_TEST_LOG"
+quiet "$E/home" gate u
+check "a gate asks for a place, before anything runs" "$(head -n 1 "$LANE_TEST_LOG")" "home dart flutter_room.dart"
+commit "$HW/lane-u" u2.txt "u again"
+: > "$LANE_TEST_LOG"
+O=$(out "$E/home" land u)
+check "a land asks for the headroom alone, before anything runs" "$(head -n 1 "$LANE_TEST_LOG")" "home dart flutter_room.dart --land"
+has "and lands" "$O" "merged work/u"
+quiet "$E/home" open v; commit "$HW/lane-v" v.txt "v"
+quiet "$E/home" gate v
+: > "$LANE_TEST_LOG"
+quiet "$E/home" land v
+check "a land that is not measured again asks nothing" "$(asks)" 0
+
+say "P no room: the gates wait and launch nothing — and an instrument that cannot measure launches nothing either"
+quiet "$E/home" open w; commit "$HW/lane-w" w.txt "w"
+: > "$LANE_TEST_LOG"; rmdir "$LANE_TEST_LOG.asked" 2>/dev/null
+O=$(LANE_TEST_ROOM=full out "$E/home" land w)
+has "it says it is waiting" "$O" "no room for the gates yet"
+has "and what it saw" "$O" "runs=4 free_gb=9 room=no"
+check "it asked twice" "$(asks)" 2
+check "and nothing ran between the two answers" "$(sed -n 2p "$LANE_TEST_LOG")" "home dart flutter_room.dart --land"
+has "then it lands" "$O" "merged work/w"
+quiet "$E/home" open x; commit "$HW/lane-x" x.txt "x"
+BEFORE=$(git -C "$E/home" rev-parse master); N=$(gates_run)
+O=$(LANE_TEST_ROOM=blind out "$E/home" land x)
+has "a room that cannot be measured refuses the land" "$O" "could not be measured"
+check "no gate ran" "$(( $(gates_run) - N ))" 0
+check "master did not move" "$(git -C "$E/home" rev-parse master)" "$BEFORE"
+check "the lane is kept" "$(git -C "$E/home" branch --list work/x --format='%(refname:short)')" "work/x"
+check "and the turn is free" "$(ls -d "$E/home/.git/lane-land.turn" 2>/dev/null | wc -l | tr -d ' ')" 0
+
+say "Q AT IDLE: what the gates launch runs in the lowest class"
+if command -v powershell.exe >/dev/null 2>&1; then
+  rm -f "$LANE_TEST_LOG.priority"
+  O=$(LANE_TEST_PRIORITY=1 out "$E/home" land x)
+  has "the lane lands" "$O" "merged work/x"
+  check "and every gate ran at Idle" "$(sort -u "$LANE_TEST_LOG.priority" 2>/dev/null | tr '\n' ' ')" "Idle "
+else
+  echo "  (not Windows: nothing is lowered here)"
+fi
 
 echo
 echo "== $FAILS failed"

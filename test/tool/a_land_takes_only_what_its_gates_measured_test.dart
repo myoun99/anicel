@@ -62,6 +62,48 @@ void main() {
         );
       }
     });
+
+    // 2026-10-08 (card a-sent-lane-is-gated-once): the script measured
+    // nothing and lowered nothing — every session wrapped it in a waiter of
+    // its own, so a land waited for one of the four places like any run.
+    test('🚨ask the machine for room before anything runs in the lane — and '
+        'this shell is lowered only after it has asked', () {
+      final asks = at(gates, r'room_first "${3:-}"');
+      final lowered = at(gates, 'at_idle');
+
+      expect(asks, isNot(-1));
+      expect(lowered, greaterThan(asks));
+      expect(runsIn(gates).first, greaterThan(lowered));
+    });
+
+    test('a land asks for the headroom alone; a gate, for a place as '
+        'well', () {
+      expect(at(codeOf('cmd_land'), r'gates "$name" "$p" land'), isNot(-1));
+      expect(at(codeOf('cmd_gate'), r'gates "$name" "$p" gate'), isNot(-1));
+
+      final room = codeOf('room_first');
+      expect(at(room, r'[ "$1" = land ] && flag=--land'), isNot(-1));
+      expect(
+        at(room, r'dart "$ROOT/tool/flutter_room.dart" ${flag:+"$flag"}'),
+        isNot(-1),
+      );
+    });
+
+    test('⛔a room that cannot be measured launches nothing: 「no room」 is '
+        'the only answer that waits', () {
+      final room = codeOf('room_first');
+      final refused = at(room, r'[ "$rc" -eq 1 ] || die');
+
+      expect(refused, isNot(-1));
+      expect(at(room, 'sleep 20'), greaterThan(refused));
+    });
+
+    test('a land that waits for room keeps its turn its own', () {
+      final room = codeOf('room_first');
+
+      expect(at(room, r'[ -z "$HELD_TURN" ] || touch "$HELD_TURN"'), isNot(-1));
+      expect(at(codeOf('land_turn'), r'HELD_TURN="$turn"'), isNot(-1));
+    });
   });
 
   group('asking again', () {
