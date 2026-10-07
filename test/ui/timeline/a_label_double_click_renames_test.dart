@@ -71,7 +71,7 @@ void main() {
       var fired = 0;
       timelineLabelDoubleTapRecord(a, (_) => () => fired += 1)(Offset.zero);
       timelineCellDoubleTapRecord(
-        layerId: a,
+        row: const LayerRowAddress(a),
         cells: (
           frameAt: (_) => 0,
           axis: Axis.horizontal,

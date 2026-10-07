@@ -6,6 +6,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
+import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
     show trackTransformLaneCarrierId;
@@ -336,6 +337,46 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     }
   }
 
+  /// THE cells' press, standing in this panel: [_pressRowFrame] stands
+  /// without the verb, so it names the timeline's seat itself (F-187).
+  void _pressRowFrameHere(TimelineRowAddress row, int globalFrame) =>
+      _session.standing.standInStoryboard(
+        () => _pressRowFrame(row, globalFrame),
+      );
+
+  /// 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대. 지금 프레임블록이랑
+  /// 레이어라벨 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도
+  /// 통일적용」 — a CUT block's double click: its cut, renamed through the
+  /// Edit button's own door ([renameActiveCutWithDialog]).
+  ///
+  /// The press lands first, as a frame block's double tap picks its cell
+  /// before it opens it: that door renames the cut in hand, and a first
+  /// press inside a cut selection stood nowhere — it may have been the
+  /// start of a move.
+  Future<void> _editCutBlock(TrackId trackId, int globalFrame) {
+    _pressRowFrameHere(TrackRowAddress(trackId), globalFrame);
+    return renameActiveCutWithDialog(context, _session);
+  }
+
+  /// …and a CONTE block's: the frame block's own double tap
+  /// ([activateCellOnDoubleTap]) on the cell it is — its cut's storyboard
+  /// row at the cut's own frame, picked the way the timeline's cell is
+  /// (the frame, then the row).
+  Future<void> _editConteBlock(
+    TrackId trackId,
+    LayerId layerId,
+    int globalFrame,
+  ) {
+    _pressRowFrameHere(TrackRowAddress(trackId), globalFrame);
+    _session.standOnRow(LayerRowAddress(layerId));
+    return activateCellOnDoubleTap(
+      context,
+      _session,
+      layerId: layerId,
+      frameIndex: _session.currentFrameIndex,
+    );
+  }
+
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.
   VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
@@ -578,12 +619,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           },
                     acceptsMediaAssetOnRail: (path) =>
                         _session.storyboardRailDropSpotFor(path) != null,
-                    // THE cells' press ([_pressRowFrame]) stands without the
-                    // verb, so it names the timeline's seat itself (F-187).
-                    onRowFramePress: (row, globalFrame) =>
-                        _session.standing.standInStoryboard(
-                          () => _pressRowFrame(row, globalFrame),
-                        ),
+                    onRowFramePress: _pressRowFrameHere,
                     activeLayerId: _session.activeLayerId,
                     // The rail speaks ROW ADDRESSES, and selecting one lands
                     // the editing focus on it (user 2026-07-29, superseding
@@ -1077,6 +1113,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // 🚨★★★I-9: and an EMPTY one CREATES — one fork, inside
                     // that shared verb, exactly like the transition row's.
                     onEditSeEntry: _editSeEntry,
+                    // F-255: the cut blocks and the conte blocks open their
+                    // names on the same double tap.
+                    onEditCutBlock: _editCutBlock,
+                    onEditConteBlock: _editConteBlock,
                   ),
                 ),
               ),

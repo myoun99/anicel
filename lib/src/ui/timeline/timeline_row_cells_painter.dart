@@ -9,6 +9,7 @@ import '../../models/frame.dart' show drawingHeadOf;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_row_address.dart' show LayerRowAddress;
 import '../../models/timeline_repeat.dart';
 import '../../models/app_input_settings.dart' show AppInput;
 import '../text/word_condensation.dart';
@@ -1301,7 +1302,7 @@ Widget timelineRowCellsPaintArea({
     // R26 #37: remember WHICH cell this press hit, whatever the device —
     // the double-tap recognizer only reports the second tap's position.
     onPressDown: timelineCellDoubleTapRecord(
-      layerId: layer.id,
+      row: LayerRowAddress(layer.id),
       cells: cells,
     ),
     onTap: (localPosition) {
@@ -1330,7 +1331,7 @@ Widget timelineRowCellsPaintArea({
       onDoubleTapDown: onActivateCell == null
           ? null
           : timelineCellDoubleTapActivation(
-              layerId: layer.id,
+              row: LayerRowAddress(layer.id),
               cells: cells,
               onActivate: (frameIndex) {
                 select(frameIndex);

@@ -522,13 +522,29 @@ class _TimelineFrameRangeGestureLayerState
             widget.callbacks.onTapClear(widget.row);
           }
         },
-        child: GestureDetector(
+        // The release still clears for everything the down could not
+        // decide: a press inside the selection that turned out to be a
+        // tap, and the devices the down stands down for.
+        //
+        // 🚨OFF THE ARENA, as every primary tap beside a double tap is
+        // ([InstantTapRegion] — 유저: 「아무것도 안 했는데 300ms나 반응성
+        // 느려지는 거잖아」). ↩️It was a `GestureDetector`'s tap-up until
+        // F-255 put the frame blocks' double tap on the storyboard's cut
+        // row: an arena tap waits out the double-tap window wherever a
+        // double tap shares its row, and measured there a click inside a
+        // cut selection took 300ms to drop it, where it had taken none.
+        //
+        // ⛔And a press this layer's own pan carried is a DRAG, however
+        // short: a move's first step can come inside the tap's slop (F-238,
+        // a cell narrower than it), and that release must not drop the
+        // selection it has just moved. The pan's end comes after this — a
+        // pointer's listeners hear its up before the recognisers do — so
+        // the mode still says.
+        child: InstantTapRegion(
           behavior: HitTestBehavior.translucent,
-          // The release still clears for everything the down could not
-          // decide: a press inside the selection that turned out to be a
-          // tap, and the devices the down stands down for.
-          onTapUp: (_) {
-            if (!_clearedOnDown) {
+          onTap: (_) {},
+          onSettledTap: (_) {
+            if (!_clearedOnDown && _mode == _RangeDragMode.none) {
               widget.callbacks.onTapClear(widget.row);
             }
           },
@@ -919,8 +935,7 @@ class _TimelineLaneRangeGestureLayerState
         // The frame block's activation law, RECORD half: which cell of THIS
         // lane the press hit — the recogniser reports only the second tap.
         onPressDown: timelineCellDoubleTapRecord(
-          layerId: widget.layer.id,
-          laneId: widget.laneId,
+          row: _rowAddress,
           cells: _cells,
         ),
         onTap: (localPosition) => widget.callbacks.onTapAt(
@@ -957,8 +972,7 @@ class _TimelineLaneRangeGestureLayerState
           onDoubleTapDown: activate == null
               ? null
               : timelineCellDoubleTapActivation(
-                  layerId: widget.layer.id,
-                  laneId: widget.laneId,
+                  row: _rowAddress,
                   cells: _cells,
                   onActivate: (frame) =>
                       activate(widget.layer.id, widget.laneId, frame),

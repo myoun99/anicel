@@ -96,6 +96,7 @@ import 'timeline/timeline_beat_lines.dart'
         timelineRowPaperExtent;
 import 'timeline/timeline_double_tap.dart'
     show
+        TimelineDoubleTapCells,
         TimelineLabelDoubleClick,
         timelineCellDoubleTapActivation,
         timelineCellDoubleTapRecord,
@@ -543,6 +544,8 @@ class StoryboardPanel extends StatefulWidget {
     this.transitionCommaDrag,
     this.onEditTransitionSpan,
     this.onEditSeEntry,
+    this.onEditCutBlock,
+    this.onEditConteBlock,
     this.dragPreview,
     this.legend,
     this.rowFilter = TimelineRowFilter.none,
@@ -1169,6 +1172,18 @@ class StoryboardPanel extends StatefulWidget {
   /// covering this GLOBAL frame on [LayerId] — the timeline SE cells'
   /// entrance, reached by the frame blocks' same-cell double tap.
   final void Function(LayerId layerId, int globalFrame)? onEditSeEntry;
+
+  /// 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대. 지금 프레임블록이랑
+  /// 레이어라벨 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도
+  /// 통일적용」 — a CUT block double-clicked on its own paper, at this
+  /// GLOBAL frame of [TrackId]'s row: the frame blocks' same-cell double
+  /// tap, on the cut row.
+  final void Function(TrackId trackId, int globalFrame)? onEditCutBlock;
+
+  /// …and a CONTE block double-clicked: the cell it is, of its cut's
+  /// storyboard row [LayerId], at this GLOBAL frame.
+  final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
+  onEditConteBlock;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
@@ -3192,7 +3207,7 @@ Positioned _storyboardRowPressLayer({
       behavior: HitTestBehavior.translucent,
       pressSeeksFor: AppInput.timelineCellPressSeeks,
       onPressDown: timelineCellDoubleTapRecord(
-        layerId: layer.id,
+        row: LayerRowAddress(layer.id),
         cells: cells,
       ),
       onTap: (localPosition) {
@@ -3207,7 +3222,7 @@ Positioned _storyboardRowPressLayer({
         onDoubleTapDown: onEdit == null
             ? null
             : timelineCellDoubleTapActivation(
-                layerId: layer.id,
+                row: LayerRowAddress(layer.id),
                 cells: cells,
                 onActivate: onEdit,
               ),
@@ -4683,7 +4698,16 @@ class _StoryboardTrackRow extends StatelessWidget {
     this.onCreateStoryboardLayer,
     this.linkedCutIds = const {},
     this.onOpenCutLinks,
+    this.onEditCutBlock,
+    this.onEditConteBlock,
   });
+
+  /// F-255: a double click on a cut block's own paper, and on a conte
+  /// block ([StoryboardPanel.onEditCutBlock]). Null keeps the paper
+  /// without one.
+  final void Function(TrackId trackId, int globalFrame)? onEditCutBlock;
+  final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
+  onEditConteBlock;
 
   /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
   /// by the PANEL against the heights it paints. Null keeps the anchor.
@@ -5221,6 +5245,28 @@ class _StoryboardTrackRow extends StatelessWidget {
                   onPointerDown: (event) {
                     _onCutPressDown(context, event, blocksPainter);
                   },
+                  // …and its ACTIVATION half, on the same gate, INSIDE the
+                  // press: a pointer down reaches the deepest handler
+                  // first, so the first press is read here before the
+                  // second one's record above replaces it — the order the
+                  // cells' two halves keep.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onDoubleTapDown: (details) {
+                      final cell = _doubleClickCellAt(
+                        details.localPosition,
+                        blocksPainter,
+                      );
+                      if (cell != null) {
+                        timelineCellDoubleTapActivation(
+                          row: cell.row,
+                          cells: cell.cells,
+                          onActivate: cell.open,
+                        )(details);
+                      }
+                    },
+                    onDoubleTap: () {},
+                  ),
                 ),
               ),
             ),
@@ -5423,6 +5469,76 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
+  /// The CELL of this row a double click at a position aims at, as the frame
+  /// blocks' gate takes it ([timelineCellDoubleTapRecord]), and what a
+  /// double click on it opens — null where no block stands.
+  ///
+  /// 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대. 지금 프레임블록이랑
+  /// 레이어라벨 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도
+  /// 통일적용」. The row holds TWO papers, and which one a position is on
+  /// is the split its gestures already make by hit-testing: where the conte
+  /// blocks are drawn ([StoryboardCutBlocksPainter.conteBlockBandOf]) over a
+  /// cut that has a storyboard row, the CONTE block — the cell it is, of
+  /// that row on the cut's own frames, the very cell the timeline's double
+  /// tap names; anywhere else on a cut block, the CUT — a cell of the
+  /// track's row. So the two never answer for each other, and neither
+  /// answers for a block of another row.
+  ({
+    TimelineRowAddress row,
+    TimelineDoubleTapCells cells,
+    void Function(int frame) open,
+  })?
+  _doubleClickCellAt(
+    Offset localPosition,
+    StoryboardCutBlocksPainter blocksPainter,
+  ) {
+    double cellExtent() => timelineScale.pixelsPerFrame;
+    final conteSlot = StoryboardCutBlocksPainter.conteBlockBandOf(laneHeight);
+    final strip =
+        localPosition.dy >= conteSlot.top &&
+            localPosition.dy < conteSlot.top + conteSlot.height
+        ? _stripAt(_frameAtX(localPosition.dx))
+        : null;
+    final onEditConteBlock = this.onEditConteBlock;
+    if (strip != null) {
+      final start = strip.entry.startFrame;
+      return onEditConteBlock == null
+          ? null
+          : (
+              row: LayerRowAddress(strip.layer.id),
+              cells: (
+                // The cut's own frames — and none of the next cut's, which a
+                // sub-pixel aim may step onto.
+                frameAt: (at) {
+                  final frame = _frameAtX(at.dx);
+                  return _stripAt(frame)?.layer.id == strip.layer.id
+                      ? frame - start
+                      : null;
+                },
+                axis: Axis.horizontal,
+                cellExtent: cellExtent,
+              ),
+              open: (frame) =>
+                  onEditConteBlock(track.id, strip.layer.id, start + frame),
+            );
+    }
+    final onEditCutBlock = this.onEditCutBlock;
+    if (onEditCutBlock == null ||
+        blocksPainter.blockAt(localPosition) == null) {
+      return null;
+    }
+    return (
+      row: TrackRowAddress(track.id),
+      cells: (
+        frameAt: (at) =>
+            _cutAtFrame(_frameAtX(at.dx)) == null ? null : _frameAtX(at.dx),
+        axis: Axis.horizontal,
+        cellExtent: cellExtent,
+      ),
+      open: (frame) => onEditCutBlock(track.id, frame),
+    );
+  }
+
   /// A press on the cut blocks: gated first, then the press itself, then
   /// the storyboard-layer create judged on the painter this build drew.
   void _onCutPressDown(
@@ -5430,6 +5546,16 @@ class _StoryboardTrackRow extends StatelessWidget {
     PointerDownEvent event,
     StoryboardCutBlocksPainter blocksPainter,
   ) {
+    // The frame block's activation law, RECORD half: which cell this press
+    // hit, whatever the device and whatever the press goes on to do — the
+    // recogniser reports only the second tap.
+    if (_doubleClickCellAt(event.localPosition, blocksPainter)
+        case final cell?) {
+      timelineCellDoubleTapRecord(
+        row: cell.row,
+        cells: cell.cells,
+      )(event.localPosition);
+    }
     if (_pressDownGated(event)) {
       return;
     }

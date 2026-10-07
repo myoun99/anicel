@@ -3,6 +3,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/widgets.dart';
 
 import '../../models/layer_id.dart';
+import '../../models/timeline_row_address.dart';
 import '../input/value_control_pointers.dart' show controlOwnsTap;
 
 /// R26 #37: the cell editor opens only when BOTH taps land on the SAME
@@ -58,14 +59,20 @@ class TimelineDoubleTapGate {
   static void reset() => _press = null;
 }
 
-/// A cell as the gate compares it — of the lane [lane] when the row is a
-/// property lane, whose cells are its owner's frames too: a layer's cell and
-/// its lane's cell at one frame are two cells.
-({LayerId layer, String? lane, int frame}) _cell(
-  LayerId layer,
+/// A cell as the gate compares it: its ROW and its frame. A property lane
+/// is a row of its own — its cells are its owner's frames too, so a layer's
+/// cell and its lane's cell at one frame are two cells — and so is a
+/// track's cut row, whose cells are the track's frames.
+///
+/// ↩️It was a layer, an optional lane and a frame until F-255 (유저
+/// 2026-10-01: 「이름변경 입구 확대. 지금 프레임블록이랑 레이어라벨
+/// 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도 통일적용」): a CUT
+/// block's cell has no layer to be named by, and the address every other
+/// gesture of these rows speaks already says all three.
+({TimelineRowAddress row, int frame}) _cell(
+  TimelineRowAddress row,
   int frame,
-  String? lane,
-) => (layer: layer, lane: lane, frame: frame);
+) => (row: row, frame: frame);
 
 /// A surface's cells as the double tap reads them: which cell a local
 /// position is ([frameAt] — null for positions that are no cell at all:
@@ -114,14 +121,13 @@ int? _cellAimedAt(Offset localPosition, TimelineDoubleTapCells cells) =>
 /// (유저 2026-09-11: 「트랜스폼행에서 더블클릭으로 편집창 안열리는것등 이런거
 /// 싹 법 하나로 통일」).
 void Function(Offset localPosition) timelineCellDoubleTapRecord({
-  required LayerId layerId,
-  String? laneId,
+  required TimelineRowAddress row,
   required TimelineDoubleTapCells cells,
 }) {
   return (localPosition) {
     final frameIndex = _cellAimedAt(localPosition, cells);
     if (frameIndex != null) {
-      TimelineDoubleTapGate.recordTapDown(_cell(layerId, frameIndex, laneId));
+      TimelineDoubleTapGate.recordTapDown(_cell(row, frameIndex));
     }
   };
 }
@@ -133,17 +139,14 @@ void Function(Offset localPosition) timelineCellDoubleTapRecord({
 /// [cells] must be the SAME the record half uses, or the two halves
 /// describe two different grids and the gate compares apples to pears.
 GestureTapDownCallback timelineCellDoubleTapActivation({
-  required LayerId layerId,
-  String? laneId,
+  required TimelineRowAddress row,
   required TimelineDoubleTapCells cells,
   required void Function(int frameIndex) onActivate,
 }) {
   return (details) {
     final frameIndex = _cellAimedAt(details.localPosition, cells);
     if (frameIndex != null &&
-        TimelineDoubleTapGate.acceptsActivation(
-          _cell(layerId, frameIndex, laneId),
-        )) {
+        TimelineDoubleTapGate.acceptsActivation(_cell(row, frameIndex))) {
       onActivate(frameIndex);
     }
   };

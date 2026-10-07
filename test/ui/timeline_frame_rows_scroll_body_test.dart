@@ -307,6 +307,7 @@ void main() {
     Future<(List<TimelineRowAddress>, TestGesture)> press(
       WidgetTester tester, {
       required bool inSelection,
+      bool moves = false,
     }) async {
       final cleared = <TimelineRowAddress>[];
       await tester.pumpWidget(
@@ -316,7 +317,7 @@ void main() {
             isInSelection: (_, _) => inSelection,
             onSelectUpdate: (_, _, _, _) {},
             onTapClear: cleared.add,
-            onMoveBegin: (_, _) => false,
+            onMoveBegin: (_, _) => moves,
             onMoveUpdate: (_, _) {},
             onMoveEnd: () {},
             onMoveCancel: () {},
@@ -334,13 +335,13 @@ void main() {
       return (cleared, pointer);
     }
 
-    testWidgets('outside the selection: cleared before the finger lifts', (
-      tester,
-    ) async {
+    testWidgets('outside the selection: cleared before the finger lifts — '
+        'and the release does not say it a second time', (tester) async {
       final (cleared, pointer) = await press(tester, inSelection: false);
       expect(cleared, isNotEmpty);
       await pointer.up();
       await tester.pumpAndSettle();
+      expect(cleared, hasLength(1));
     });
 
     testWidgets('inside it: left alone, because that press may be a MOVE', (
@@ -348,10 +349,31 @@ void main() {
     ) async {
       final (cleared, pointer) = await press(tester, inSelection: true);
       expect(cleared, isEmpty);
-      // A press that turns out to be only a tap still clears on release.
+      // A press that turns out to be only a tap still clears on release —
+      // AT the release: the clear rides the raw pointer, so no double tap
+      // sharing the row can make it wait (F-255).
+      await pointer.up();
+      expect(cleared, hasLength(1));
+      await tester.pumpAndSettle();
+      expect(cleared, hasLength(1));
+    });
+
+    // F-238 let a move take its first step inside the slop a release may
+    // travel and still be a tap (a narrow cell), so 「did it travel」 no
+    // longer tells a tap from a drag: the layer's own pan does.
+    testWidgets('🚨a press the pan carried is no tap, however short: a move '
+        'of a few pixels clears nothing', (tester) async {
+      final (cleared, pointer) = await press(
+        tester,
+        inSelection: true,
+        moves: true,
+      );
+      await pointer.moveBy(const Offset(3, 0));
+      await pointer.moveBy(const Offset(3, 0));
+      await tester.pump();
       await pointer.up();
       await tester.pumpAndSettle();
-      expect(cleared, isNotEmpty);
+      expect(cleared, isEmpty);
     });
   });
 }

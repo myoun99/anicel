@@ -1,5 +1,5 @@
 import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, kSecondaryButton;
+    show PointerDeviceKind, kDoubleTapTimeout, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -16,9 +16,13 @@ import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart';
 
 import 'storyboard_cut_block_probe.dart';
 
@@ -540,5 +544,278 @@ void main() {
         reason: 'double space in "$label"',
       );
     }
+  });
+
+  group('🗣️F-255 — a block opens its name on a double click', () {
+    // 유저 2026-10-01: 「이름변경 입구 확대. 지금 프레임블록이랑 레이어라벨
+    // 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도 통일적용」 — the
+    // frame blocks' same-cell double tap, on the cut row's two papers.
+    setUp(TimelineDoubleTapGate.reset);
+
+    Future<void> clickTwice(
+      WidgetTester tester,
+      Offset first, [
+      Offset? second,
+    ]) async {
+      await tester.tapAt(first, kind: PointerDeviceKind.mouse);
+      await tester.pump(const Duration(milliseconds: 60));
+      await tester.tapAt(second ?? first, kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+    }
+
+    final cutName = find.byKey(const ValueKey<String>('rename-cut-dialog'));
+    final frameName = find.byKey(
+      const ValueKey<String>('rename-frame-dialog'),
+    );
+
+    EditorSessionManager sessionOf(WidgetTester tester) =>
+        tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+
+    Cut cutOf(WidgetTester tester, String id) => sessionOf(tester).repository
+        .requireProject()
+        .tracks
+        .single
+        .cuts
+        .firstWhere((cut) => cut.id == CutId(id));
+
+    testWidgets('a CUT block, on its own band: the name of the cut under '
+        'the click — whichever cut was in hand', (tester) async {
+      await _openStoryboard(tester);
+      expect(_activeCut(tester), const CutId('cut-1'), reason: '⛔전제');
+
+      await clickTwice(tester, _bandPoint(tester, 13));
+
+      expect(cutName, findsOneWidget);
+      expect(frameName, findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('rename-cut-text-field')),
+        'B',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('rename-cut-confirm-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(cutOf(tester, 'cut-2').name, 'B');
+      expect(cutOf(tester, 'cut-1').name, 'cut-1');
+    });
+
+    testWidgets('a CONTE block: the name of the drawing it shows — the '
+        'frame block\'s own editor, on the cell it is', (tester) async {
+      await _openStoryboard(tester);
+
+      // Global 16 is cut 2's local 6: its second panel, [4, 10).
+      await clickTwice(tester, _stripPoint(tester, 16));
+
+      expect(frameName, findsOneWidget);
+      expect(cutName, findsNothing);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('rename-frame-text-field')),
+        'B2',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+      );
+      await tester.pumpAndSettle();
+      final row = cutOf(
+        tester,
+        'cut-2',
+      ).layers.firstWhere((layer) => layer.id == const LayerId('cut-2-sb'));
+      expect(
+        {for (final frame in row.frames) frame.id.value: frame.name},
+        {'cut-2-0': null, 'cut-2-4': 'B2'},
+      );
+      expect(
+        sessionOf(tester).storyboardStandingRow,
+        const TrackRowAddress(_trackId),
+        reason: 'the panel still stands on the cut row it was clicked on',
+      );
+    });
+
+    testWidgets('a conte block\'s NAME band is the conte block\'s too', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+
+      await clickTwice(tester, _conteBandPoint(tester, 2));
+
+      expect(frameName, findsOneWidget);
+      expect(cutName, findsNothing);
+    });
+
+    testWidgets('a cut with NO storyboard row is all the cut\'s paper — '
+        'its picture slot opens the cut\'s name', (tester) async {
+      await _openStoryboard(tester);
+      final block = requireCutBlock(tester, 'cut-3');
+      // Off the + its conte band wears: the slot's middle, a frame from the
+      // cut's end.
+      final at = _stripPoint(tester, 28);
+      expect(
+        StoryboardCutBlocksPainter.createAffordanceRectOf(block)?.contains(
+              at - _cutRowRect(tester).topLeft,
+            ) ??
+            false,
+        isFalse,
+        reason: '⛔전제: not the create button',
+      );
+
+      await clickTwice(tester, at);
+
+      expect(cutName, findsOneWidget);
+      expect(frameName, findsNothing);
+    });
+
+    testWidgets('🚨two clicks on DIFFERENT frames of one block are two '
+        'seeks, never an editor — on either paper', (tester) async {
+      await _openStoryboard(tester);
+
+      await clickTwice(tester, _bandPoint(tester, 12), _bandPoint(tester, 14));
+      expect(cutName, findsNothing);
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 100));
+
+      await clickTwice(
+        tester,
+        _stripPoint(tester, 15),
+        _stripPoint(tester, 17),
+      );
+      expect(frameName, findsNothing);
+      expect(cutName, findsNothing);
+    });
+
+    testWidgets('🚨the two papers do not answer for each other: a click on '
+        'the cut\'s band and one on the conte block under it are two '
+        'clicks', (tester) async {
+      await _openStoryboard(tester);
+
+      await clickTwice(tester, _bandPoint(tester, 13), _stripPoint(tester, 13));
+      expect(cutName, findsNothing);
+      expect(frameName, findsNothing);
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 100));
+
+      await clickTwice(tester, _stripPoint(tester, 13), _bandPoint(tester, 13));
+      expect(cutName, findsNothing);
+      expect(frameName, findsNothing);
+    });
+
+    testWidgets('a double click past the last cut opens nothing', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+
+      await clickTwice(tester, _bandPoint(tester, 34));
+
+      expect(cutName, findsNothing);
+      expect(frameName, findsNothing);
+    });
+
+    // A press inside a selected run stands nowhere — it may be the start of
+    // a move — so the double click it begins lands on its block itself, as
+    // a frame block's double tap picks its cell before it opens it.
+    testWidgets('🚨inside a selected RUN the double click still opens the '
+        'block under it — the cut in hand is not the one renamed', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+      // Cuts 1 and 2 as one run, taken from cut 1: cut 1 stays in hand.
+      await _drag(tester, _bandPoint(tester, 1), _bandPoint(tester, 16));
+      expect(_activeCut(tester), const CutId('cut-1'), reason: '⛔전제');
+      await tester.pump(kDoubleTapTimeout * 2);
+
+      await clickTwice(tester, _bandPoint(tester, 13));
+
+      expect(cutName, findsOneWidget);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey<String>('rename-cut-text-field')),
+            )
+            .controller
+            ?.text,
+        'cut-2',
+      );
+    });
+
+    testWidgets('🚨…and so does a conte block\'s: its own drawing is named, '
+        'in its own cut', (tester) async {
+      await _openStoryboard(tester);
+      await _drag(tester, _bandPoint(tester, 1), _bandPoint(tester, 16));
+      expect(_activeCut(tester), const CutId('cut-1'), reason: '⛔전제');
+      await tester.pump(kDoubleTapTimeout * 2);
+
+      await clickTwice(tester, _stripPoint(tester, 16));
+
+      expect(frameName, findsOneWidget);
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('rename-frame-text-field')),
+        'B2',
+      );
+      await tester.tap(
+        find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+      );
+      await tester.pumpAndSettle();
+      Layer rowOf(String cutId) => cutOf(
+        tester,
+        cutId,
+      ).layers.firstWhere((layer) => layer.id == LayerId('$cutId-sb'));
+      expect(
+        {for (final frame in rowOf('cut-2').frames) frame.id.value: frame.name},
+        {'cut-2-0': null, 'cut-2-4': 'B2'},
+      );
+      expect(
+        [for (final frame in rowOf('cut-1').frames) frame.name],
+        [null, null],
+        reason: 'the cut that was in hand is untouched',
+      );
+    });
+
+    // 유저 (InstantTapRegion): 「아무것도 안 했는데 300ms나 반응성 느려지는
+    // 거잖아」. A double tap on a row makes every ARENA tap of that row wait
+    // out its window; measured with the double tap above and the range
+    // gesture's tap still on the arena, this click took 300ms to drop the
+    // run, where it had taken none.
+    for (final kind in [PointerDeviceKind.mouse, PointerDeviceKind.touch]) {
+      testWidgets('🚨the double click costs the single one nothing: a '
+          '${kind.name} click inside a selected run drops it at once', (
+        tester,
+      ) async {
+        await _openStoryboard(tester);
+        StoryboardPanel panel() =>
+            tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+        await _drag(tester, _bandPoint(tester, 1), _bandPoint(tester, 6));
+        expect(panel().cutSelect!.selectedRange.value, isNotNull);
+        await tester.pump(kDoubleTapTimeout * 2);
+
+        await tester.tapAt(_bandPoint(tester, 3), kind: kind);
+        await tester.pump();
+
+        expect(
+          panel().cutSelect!.selectedRange.value,
+          isNull,
+          reason: 'not after the double-tap window',
+        );
+        await tester.pumpAndSettle();
+      });
+    }
+
+    testWidgets('🚨…and a press the drag carried is no click, however short '
+        '— a run slid less than a tap\'s slop stays selected', (tester) async {
+      await _openStoryboard(tester);
+      StoryboardPanel panel() =>
+          tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+      await _drag(tester, _bandPoint(tester, 11), _bandPoint(tester, 18));
+      final run = panel().cutSelect!.selectedRange.value;
+      expect(run, isNotNull);
+
+      // One frame's worth, inside the run: a drag from its first pixel, and
+      // nine of them — under the twelve a release may travel and still be a
+      // tap ([InstantTapRegion.travelSlop]).
+      final from = _bandPoint(tester, 14);
+      await _drag(tester, from, from + const Offset(9, 0));
+
+      expect(
+        panel().cutSelect!.selectedRange.value,
+        run,
+        reason: 'a slide that went nowhere is still a slide',
+      );
+    });
   });
 }
