@@ -297,6 +297,13 @@ void main() {
     expect(session.layerClipboard.hasLayerClipboard, isTrue);
     expect(await isActionButtonEnabled(tester, pasteKey), isTrue);
     expect(await isActionButtonEnabled(tester, pasteLinkedKey), isTrue);
+
+    // The row it was copied off goes: nothing is left to share, and the
+    // linked paste dims on its own — the independent one stays.
+    session.layerVerbs.deleteSelectedLayers();
+    await tester.pumpAndSettle();
+    expect(await isActionButtonEnabled(tester, pasteLinkedKey), isFalse);
+    expect(await isActionButtonEnabled(tester, pasteKey), isTrue);
   });
 
   testWidgets(

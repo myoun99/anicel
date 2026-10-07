@@ -289,6 +289,44 @@ void main() {
       expect(names(r.s), ['A', 'B', 'C', 'A']);
     });
 
+    test('rows in hand that cannot land here leave both pastes dark, and a '
+        'press of either writes nothing', () {
+      final r = threeRows();
+      r.s.layerStack.addLayerOfKind(LayerKind.storyboard);
+      select(r.s, [r.s.activeLayerId!]);
+      pill(r.s).copyFrame();
+      expect(rowsOf(r.s).hasLayerClipboard, isTrue, reason: '⛔전제');
+      final rows = r.s.requireActiveCut.layers.length;
+      final steps = r.s.historyManager.undoCount;
+
+      expect(pill(r.s).canPasteIndependentFrame, isFalse);
+      expect(pill(r.s).canPasteLinkedFrame, isFalse);
+      expect(pill(r.s).pasteIndependentFrame, returnsNormally);
+      expect(pill(r.s).pasteLinkedFrame, returnsNormally);
+
+      expect(r.s.requireActiveCut.layers, hasLength(rows));
+      expect(r.s.historyManager.undoCount, steps, reason: 'no step at all');
+    });
+
+    test('standing on a row that is not the cut\'s — an S row — the rows '
+        'land at the top of the stack', () {
+      final r = threeRows();
+      select(r.s, [r.b]);
+      pill(r.s).copyFrame();
+      r.s.selectLayer(r.s.activeTrack.seLayers.first.id);
+      expect(
+        r.s.requireActiveCut.layers.any(
+          (layer) => layer.id == r.s.activeLayerId,
+        ),
+        isFalse,
+        reason: '⛔전제: the S row is the track\'s',
+      );
+
+      pill(r.s).pasteIndependentFrame();
+
+      expect(names(r.s), ['A', 'B', 'C', 'B']);
+    });
+
     test('the board a paste must hold the media of is the one in hand', () {
       // What the wait window is told to wait for (`pasteWithItsMedia`): a
       // row copy's media, asked of the frame board, would never be held.
