@@ -172,8 +172,22 @@ class PlaybackRig implements PlaybackRun {
           ? prerenderScheduler.has(wanted.picturesOf(playlistFrame))
           : null;
     },
-    aheadIsFilled: () => prerenderScheduler.progress.value.isComplete,
+    aheadIsFilled: () => prerenderScheduler.isResting,
   );
+
+  /// The question the run's clock asks of every frame it would stand on
+  /// ([CanvasPlaybackController.waitsOn]).
+  bool _waitsOn(int playlistFrame, {required bool placed}) {
+    if (placed) {
+      // A run put somewhere has the warmer look at that place — awake or at
+      // rest, it comes to rest again and says so, which is what a run that
+      // fills before it goes waits to hear. The playhead moving wakes it
+      // too, but a run dragged onto the frame it already stands on moves
+      // nothing.
+      prerenderScheduler.wake();
+    }
+    return _pictureWait.holds(playlistFrame, placed: placed);
+  }
 
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).
@@ -185,19 +199,8 @@ class PlaybackRig implements PlaybackRun {
     resolveFrameRate: () => _settings.projectFrameRate,
     onStopped: _onStopped,
     onStoppedInGap: _onStoppedInGap,
-    onPlaylistWarmRequested: _onRunBegins,
-  )..waitsOn = _pictureWait.holds;
-
-  /// A run begins: the warmer follows it from here — the session says what
-  /// it wants — and, rendering first, it fills before it goes.
-  void _onRunBegins(
-    List<StoryboardTimelineLayoutEntry> playlist,
-    PlaybackScope scope,
-    int startGlobalFrame,
-  ) {
-    _onPlaylistWarmRequested(playlist, scope, startGlobalFrame);
-    _pictureWait.runBegins();
-  }
+    onPlaylistWarmRequested: _onPlaylistWarmRequested,
+  )..waitsOn = _waitsOn;
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.
@@ -286,11 +289,10 @@ class PlaybackRig implements PlaybackRun {
     // playhead that moves on is what it looks again for.
     playback.globalFrameIndexListenable.addListener(prerenderScheduler.wake);
     playback.isActiveListenable.addListener(_onRunToggled);
-    // A run that waits for its picture goes on when the warmer says one
-    // landed — or that it has come to rest, which is what a run that
-    // renders first waits for.
-    prerenderScheduler.landings.addListener(playback.lookAgain);
-    prerenderScheduler.progress.addListener(playback.lookAgain);
+    // A run that waits looks again whenever the warmer says the answer
+    // may have changed: a picture landed, one was given up on, or it has
+    // come to rest — which is what a run that renders first waits for.
+    prerenderScheduler.changes.addListener(playback.lookAgain);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -309,8 +311,7 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
-    prerenderScheduler.progress.removeListener(playback.lookAgain);
-    prerenderScheduler.landings.removeListener(playback.lookAgain);
+    prerenderScheduler.changes.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(
       prerenderScheduler.wake,

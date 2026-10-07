@@ -56,7 +56,7 @@ void main() {
     resolveActiveTrackId: () => const TrackId('track'),
     resolveFrameRate: () => const ProjectFrameRate.integer(10),
     onStopped: onStopped,
-  )..waitsOn = missing.contains;
+  )..waitsOn = (frame, {required placed}) => missing.contains(frame);
 
   /// The picture came: the run is told, as the rig tells it.
   void arrive(CanvasPlaybackController c, int frame) {
@@ -350,6 +350,40 @@ void main() {
     expect(c.isWaiting, isFalse);
     c.lookAgain();
     expect(c.isActive, isFalse, reason: 'looking again starts nothing');
+    c.detachTicker();
+  });
+
+  testWidgets('the owner is told how the run came to the frame: PUT there '
+      '— play pressed, the ruler dragged — or reached by its clock', (
+    tester,
+  ) async {
+    final asked = <(int, bool)>[];
+    final c = controller()
+      ..waitsOn = (frame, {required placed}) {
+        asked.add((frame, placed));
+        return missing.contains(frame);
+      };
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+
+    c.play(scope: PlaybackScope.activeCut);
+    expect(asked, [(0, true)]);
+
+    asked.clear();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(asked, [(1, false)], reason: 'the clock reached it');
+
+    asked.clear();
+    missing.add(3);
+    c.seekToGlobalFrame(3);
+    expect(asked, [(3, true)], reason: 'the ruler put it there');
+
+    asked.clear();
+    c.lookAgain();
+    expect(asked, [(3, false)], reason: 'looking again puts it nowhere');
+
+    c.stop();
     c.detachTicker();
   });
 

@@ -138,9 +138,23 @@ class PlaybackPrerenderScheduler {
   final ValueNotifier<int> _landings = ValueNotifier<int>(0);
 
   /// Ticks each time a picture lands — what a view that shows playback's
-  /// pictures repaints on, and what a run waiting for its picture goes on
-  /// at.
+  /// pictures repaints on.
   Listenable get landings => _landings;
+
+  final ValueNotifier<int> _changes = ValueNotifier<int>(0);
+
+  /// Ticks whenever the answer a run that WAITS is waiting for may have
+  /// changed: a picture landed, a picture was given up on, or the walk came
+  /// to rest ([isResting]). ↩️A waiting run looked again on [landings] and
+  /// on [progress] — and progress is a value: a walk that rests on the same
+  /// count twice changes nothing and tells nobody, which is a run put on a
+  /// frame of a film that is all made.
+  Listenable get changes => _changes;
+
+  /// Whether the walk rests: everything wanted is there, or no more fits
+  /// and what is held is the window. False from the moment it is woken —
+  /// it has not looked yet.
+  bool get isResting => _resting != null;
 
   FrameDemand? _demand;
 
@@ -329,6 +343,8 @@ class PlaybackPrerenderScheduler {
     }
     _settle();
     final resting = _resting = Completer<void>();
+    // Told once it rests in every sense: whoever hears it may wake it.
+    _changes.value += 1;
     return resting.future;
   }
 
@@ -350,6 +366,7 @@ class PlaybackPrerenderScheduler {
     _settle();
     _progress.dispose();
     _landings.dispose();
+    _changes.dispose();
   }
 
   /// How many steps a walk passes over before it lets interactive work in:
@@ -466,11 +483,14 @@ class PlaybackPrerenderScheduler {
         // Interrupted — the frame waits behind the idle gate and is made
         // when quiet returns — or it threw, and the record passes it. The
         // yield keeps a compose that keeps coming back empty from spinning.
+        // A picture that threw will not come: a run waiting for it goes on.
+        _changes.value += 1;
         await _wait(Duration.zero);
         continue;
       }
       afterFrameCached?.call();
       _landings.value += 1;
+      _changes.value += 1;
       // Yield so interactive work interleaves between pictures.
       await _wait(Duration.zero);
     }

@@ -605,7 +605,8 @@ void main() {
     final missing = <int>{};
     setUp(() {
       missing.clear();
-      controller.waitsOn = missing.contains;
+      controller.waitsOn =
+          (frame, {required placed}) => missing.contains(frame);
     });
 
     test('the players stop where the run waits, and start again where it '

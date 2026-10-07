@@ -224,8 +224,9 @@ void main() {
   /// 유저 2026-10-08: 「세개 두면 좋을거같긴하고」 · 「기본값 모든그림」 —
   /// the three modes, through the session's own warmer.
   group('how a run waits for its picture', () {
-    /// Whether the run waited, read as each picture landed.
-    Future<List<bool>> waitedAtEachLanding(
+    /// Whether the run waited, read at the press and then each time the
+    /// warmer said the answer may have changed.
+    Future<List<bool>> waitedAtEachChange(
       EditorSessionManager s, {
       int budget = 16 * picture,
     }) async {
@@ -233,7 +234,7 @@ void main() {
       rig.playbackCache.debugSetPlaybackCacheBudgetBytes(budget);
       final waited = <bool>[];
       // After the rig's own listener, which is what lets the run go on.
-      rig.prerenderScheduler.landings.addListener(
+      rig.prerenderScheduler.changes.addListener(
         () => waited.add(rig.playback.isWaiting),
       );
       rig.playback.play(scope: PlaybackScope.activeCut);
@@ -248,13 +249,13 @@ void main() {
         final s = twoPictures();
         addTearDown(s.dispose);
 
-        final waited = await waitedAtEachLanding(s);
+        final waited = await waitedAtEachChange(s);
 
         expect(
           waited,
-          [true, false, false],
+          [true, false, false, false],
           reason: 'at the press, nothing is made; one picture later it goes '
-              '— the second picture is not waited for',
+              '— the second picture is not waited for, nor the rest',
         );
         expect(playbackRigOf(s).playback.isWaiting, isFalse);
         expect(playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)), 0);
@@ -269,17 +270,63 @@ void main() {
         addTearDown(s.dispose);
         playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
 
-        final waited = await waitedAtEachLanding(s);
+        final waited = await waitedAtEachChange(s);
 
         expect(
           waited,
-          [true, true, true],
+          [true, true, true, false],
           reason: 'still waiting as each of the two pictures lands: it goes '
               'when the warmer has come to rest',
         );
-        expect(playbackRigOf(s).playback.isWaiting, isFalse);
         expect([held(s, 0), held(s, 2)], [true, true]);
         playbackRigOf(s).playback.stop();
+      });
+    });
+
+    testWidgets('🚨rendering first, a run dragged somewhere else fills again '
+        'before it goes — onto a frame whose picture is there, too: what '
+        'was filled was filled for where it stood', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s)
+          ..setPlaybackMode(PlaybackMode.renderFirst);
+        await waitedAtEachChange(s);
+        expect(rig.playback.isWaiting, isFalse, reason: '⛔premise: it goes');
+        expect(held(s, 2), isTrue, reason: '⛔premise: frame 2 is there');
+
+        rig.playback.seekToGlobalFrame(2);
+        expect(rig.playback.isWaiting, isTrue);
+        await rested(rig);
+        expect(rig.playback.isWaiting, isFalse);
+
+        // 🚨Onto the frame it already stands on: the playhead does not
+        // move, so nothing else wakes the warmer — and a warmer left at
+        // rest never says it has come to rest.
+        rig.playback.seekToGlobalFrame(2);
+        expect(rig.playback.isWaiting, isTrue);
+        await rested(rig);
+        expect(
+          rig.playback.isWaiting,
+          isFalse,
+          reason: 'the rig wakes the warmer for a run that was put',
+        );
+        rig.playback.stop();
+      });
+    });
+
+    testWidgets('showing every picture, a run dragged onto a frame whose '
+        'picture is there goes on at once', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+        await waitedAtEachChange(s);
+        expect(held(s, 2), isTrue, reason: '⛔premise: frame 2 is there');
+
+        rig.playback.seekToGlobalFrame(2);
+        expect(rig.playback.isWaiting, isFalse);
+        rig.playback.stop();
       });
     });
 
@@ -290,7 +337,7 @@ void main() {
         addTearDown(s.dispose);
         playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
 
-        await waitedAtEachLanding(s, budget: picture);
+        await waitedAtEachChange(s, budget: picture);
 
         expect(
           playbackRigOf(s).playback.isWaiting,
@@ -309,8 +356,13 @@ void main() {
         addTearDown(s.dispose);
         final rig = playbackRigOf(s)..setPlaybackMode(PlaybackMode.skipFrames);
 
-        final waited = await waitedAtEachLanding(s);
+        final waited = await waitedAtEachChange(s);
 
+        expect(
+          waited.length,
+          greaterThan(1),
+          reason: '⛔premise: it was asked as pictures landed',
+        );
         expect(waited, everyElement(isFalse));
         expect(
           rig.demand!.leadFor(const Duration(seconds: 1)),

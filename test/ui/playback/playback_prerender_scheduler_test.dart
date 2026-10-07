@@ -697,6 +697,49 @@ void main() {
       });
     });
 
+    /// What a run that waits looks again on.
+    testWidgets('🚨it says each time the answer a waiting run waits for may '
+        'have changed — at every picture that lands, and when it comes to '
+        'rest: there it IS at rest, and woken, it is not', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+        );
+        final restingAtEach = <bool>[];
+        scheduler.changes.addListener(
+          () => restingAtEach.add(scheduler.isResting),
+        );
+
+        scheduler.follow(run());
+        expect(scheduler.isResting, isFalse);
+        await rested(scheduler);
+        expect(
+          restingAtEach,
+          [false, false, false, false, true],
+          reason: 'four pictures landed, and then it rested',
+        );
+
+        // A film that is all made: woken, the walk rests on the same count
+        // again. The progress value does not change, and tells nobody —
+        // which left a run that fills before it goes standing for good.
+        restingAtEach.clear();
+        final before = scheduler.progress.value;
+        var progressSaid = 0;
+        scheduler.progress.addListener(() => progressSaid += 1);
+        scheduler.wake();
+        expect(scheduler.isResting, isFalse, reason: 'it has not looked yet');
+        await rested(scheduler);
+        expect(scheduler.progress.value, before, reason: '⛔premise');
+        expect(progressSaid, 0, reason: '⛔premise');
+        expect(restingAtEach, [true], reason: 'a rest is told every time');
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
     testWidgets('where the clock does not wait, a picture is started where '
         'the playhead will be when it lands', (tester) async {
       await tester.runAsync(() async {
@@ -990,6 +1033,10 @@ void main() {
           resolveCut: (_) => four(),
           idleDelay: Duration.zero,
         );
+        final passedAtEach = <bool>[];
+        scheduler.changes.addListener(
+          () => passedAtEach.add(scheduler.has([(cut: four(), frameIndex: 1)])),
+        );
 
         scheduler.follow(run());
         await rested(scheduler);
@@ -1000,6 +1047,13 @@ void main() {
 
         expect(there(composites), [true, false, true, true]);
         expect(reported, hasLength(1), reason: 'the failure is said, once');
+        expect(
+          passedAtEach,
+          [false, true, true, true, true],
+          reason: 'frame 0 landed; frame 1 was given up on, and THAT is told '
+              '— a run that waits for it goes on then, not when the walk '
+              'rests; frames 2 and 3 landed; it rested',
+        );
         expect(
           scheduler.has([(cut: four(), frameIndex: 1)]),
           isTrue,

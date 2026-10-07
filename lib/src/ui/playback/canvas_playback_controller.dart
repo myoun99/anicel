@@ -90,14 +90,16 @@ class CanvasPlaybackController extends ChangeNotifier
 
   /// Asked of every frame the run would stand on: whether its clock must
   /// WAIT there — the frame's picture is not made yet, or (rendering first)
-  /// what lies ahead of it is not. Null = the clock never waits.
+  /// what lies ahead of it is not. `placed` when someone PUT the run on the
+  /// frame — play was pressed there, the ruler was dragged there — rather
+  /// than its clock reaching it. Null = the clock never waits.
   ///
   /// 유저 2026-10-08: 「거슬리는건 재생했는데 재생바는 지나가고있는데 그림이
   /// 없어서 비어있다던가」 · 「안구워진곳에 닿으면 그 자리에서 만들어서
   /// 보여주기때문에 그 자리에서 멈췃다가 구워지면 이어서 재생」. The playhead
   /// stops ON the frame that is not there — it does not pass it — and
   /// [lookAgain] is how it hears the picture has come.
-  bool Function(int playlistFrame)? waitsOn;
+  bool Function(int playlistFrame, {required bool placed})? waitsOn;
 
   /// Fired on every explicit seek with the clamped target frame, so a
   /// device transport can move without inferring the jump from frame
@@ -288,7 +290,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// there, the ruler was dragged there: its clock starts from this frame,
   /// or waits on it for its picture.
   void _standHere() {
-    _waiting = waitsOn?.call(_currentGlobalFrame) ?? false;
+    _waiting = waitsOn?.call(_currentGlobalFrame, placed: true) ?? false;
     if (_waiting) {
       _stopTicker();
     } else {
@@ -305,7 +307,7 @@ class CanvasPlaybackController extends ChangeNotifier
     if (!_waiting || _playlist == null) {
       return;
     }
-    if (waitsOn?.call(_currentGlobalFrame) ?? false) {
+    if (waitsOn?.call(_currentGlobalFrame, placed: false) ?? false) {
       return;
     }
     _waiting = false;
@@ -512,7 +514,7 @@ class CanvasPlaybackController extends ChangeNotifier
     while (landing != frame && !waits) {
       landing = (landing + 1) % total;
       passed += 1;
-      waits = waitsOn?.call(landing) ?? false;
+      waits = waitsOn?.call(landing, placed: false) ?? false;
     }
     if (landing < from) {
       _droppedFrames = 0;

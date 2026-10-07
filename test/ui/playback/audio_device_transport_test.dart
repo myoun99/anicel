@@ -313,7 +313,8 @@ void main() {
     await pumpEventQueue();
     final transport = buildTransport(store);
     final missing = <int>{};
-    controller.waitsOn = missing.contains;
+    controller.waitsOn =
+        (frame, {required placed}) => missing.contains(frame);
 
     controller.play(scope: PlaybackScope.activeCut);
     expect(await _waitFor(() => device.positionSamples > 0), isTrue);
@@ -352,7 +353,8 @@ void main() {
     await pumpEventQueue();
     final transport = buildTransport(store);
     final missing = <int>{0};
-    controller.waitsOn = missing.contains;
+    controller.waitsOn =
+        (frame, {required placed}) => missing.contains(frame);
 
     controller.play(scope: PlaybackScope.activeCut);
     expect(transport.carryingPlayback, isTrue, reason: 'the run is its own');

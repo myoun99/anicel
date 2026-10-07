@@ -23,28 +23,28 @@ class PlaybackPictureWait {
   /// what is held is the window.
   final bool Function() aheadIsFilled;
 
-  /// Rendering first: true from where a run begins — or reaches a frame
+  /// Rendering first: true from where a run is put — or reaches a frame
   /// that is not there — until [aheadIsFilled].
   bool _filling = false;
 
-  /// A run begins: rendering first, it fills before it goes.
-  void runBegins() => _filling = true;
-
-  /// Whether the clock must wait on [playlistFrame].
-  bool holds(int playlistFrame) {
+  /// Whether the clock must wait on [playlistFrame]. [placed] when someone
+  /// PUT the run on the frame — play was pressed there, the ruler was
+  /// dragged there — rather than its clock reaching it: rendering first, a
+  /// run fills before it goes from wherever it was put.
+  bool holds(int playlistFrame, {required bool placed}) {
     final mode = this.mode();
-    if (mode == PlaybackMode.skipFrames) {
-      return false;
+    final there = mode == PlaybackMode.skipFrames
+        ? null
+        : pictureIsThere(playlistFrame);
+    if (there == null || mode != PlaybackMode.renderFirst) {
+      // The fill is render-first's alone: a mode picked under a run starts
+      // from nothing, whatever was being filled when it was last left.
+      _filling = false;
+      // Skipping frames never waits — and a run nobody makes pictures for
+      // would wait for good.
+      return there != null && !there;
     }
-    final there = pictureIsThere(playlistFrame);
-    if (there == null) {
-      // A run nobody makes pictures for would wait for good.
-      return false;
-    }
-    if (mode == PlaybackMode.everyPicture) {
-      return !there;
-    }
-    if (!there) {
+    if (placed || !there) {
       _filling = true;
     } else if (_filling && aheadIsFilled()) {
       _filling = false;
