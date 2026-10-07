@@ -138,24 +138,44 @@ const double verticalSmallKanaShiftEm = 0.15;
 const int verticalTateChuYokoDigits = 2;
 
 /// Characters a column does not BEGIN with (行頭禁則): the closing half of
-/// every bracket pair, the full stops and commas, and the marks that end
-/// or join a clause.
+/// every bracket and quote pair, the full stops and commas, the marks that
+/// end or join a clause, and the marks that only ever FOLLOW a letter — a
+/// repeat mark, a voicing mark, a leader, a hyphen, a per cent or a degree.
 ///
-/// JIS X 4051's basic set, read by a host that WRAPS a column — a text set
-/// in a box on a cel — so that a column never opens on a mark that belongs
-/// to the letter before it ([verticalMayBreakBetween]). The sheets never
-/// ask: each of their columns is one cell's own, and does not wrap.
+/// Read by a host that WRAPS a column — a text set in a box on a cel — so
+/// that a column never opens on a mark that belongs to the letter before
+/// it ([verticalMayBreakBetween]). The sheets never ask: each of their
+/// columns is one cell's own, and does not wrap.
+///
+/// 🚨IT IS WHAT THE ENGINE KEEPS OFF A LINE'S HEAD — one law for a text
+/// whichever way it is written, so that writing it the other way moves no
+/// break for a reason of this table's own. 🔬Measured 2026-10-07, four
+/// letters to a line and the fifth asked about, 170 characters: the engine
+/// keeps every one here off a line's head — and lets the long vowel mark
+/// (ー) and the small kana (っ, ゃ…) BEGIN a line, which a stricter house
+/// style would not. So they begin a column too. Every character is asked
+/// of both, every run (`vertical_writing_test.dart`, 「a column breaks
+/// where a line would」): one added here that the engine lets through, or
+/// one the engine takes to keeping, fails there.
 const Set<String> verticalNoColumnStartChars = {
   '）', ')', '〕', '］', ']', '｝', '}', '〉', '》', '」', '』', '】', '〗', '〙', '〛',
-  '、', '。', '，', '．', ',', '.',
-  '？', '！', '?', '!',
-  '・', '：', '；', ':', ';',
+  '｠', '｣', '〟', '〞', '’', '”', '»', '›',
+  '、', '。', '，', '．', ',', '.', '､', '｡',
+  '？', '！', '?', '!', '‼', '⁇', '⁈', '⁉',
+  '・', '･', '：', '；', ':', ';',
+  '々', 'ゝ', 'ゞ', 'ヽ', 'ヾ', '〻', '゛', '゜', 'ﾞ', 'ﾟ',
+  '〜', '…', '‥', '–', '‐', '‑', '-', '゠', '/',
+  '％', '%', '‰', '°', '′', '″', '℃', '¢',
 };
 
 /// Characters a column does not END with (行末禁則): the opening half of
-/// every bracket pair.
+/// every bracket and quote pair, and the signs that only ever LEAD a
+/// number. What the engine keeps off a line's end, measured and kept to
+/// the same way ([verticalNoColumnStartChars]).
 const Set<String> verticalNoColumnEndChars = {
   '（', '(', '〔', '［', '[', '｛', '{', '〈', '《', '「', '『', '【', '〖', '〘', '〚',
+  '｟', '｢', '〝', '‘', '“', '«', '‹',
+  '￥', '＄', r'$', '£', '€', '¥', '№', '+', '‑',
 };
 
 /// Whether a column that wraps may END between two neighbouring cells —

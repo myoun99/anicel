@@ -666,4 +666,114 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
+
+  // 🚨ONE LAW for a text whichever way it is written (R9-rest, 세로쓰기 —
+  // 유저 2026-10-06: 「그거 통합하면서 진행」). Where a column that wraps may
+  // end is this table's to say ([verticalMayBreakBetween]) and where a line
+  // may is the engine's own: so the table says what the engine does, of
+  // every character asked here — and the engine is asked AGAIN every run,
+  // never trusted from the day the sets were written (2026-10-07).
+  group('a column breaks where a line would', () {
+    /// Where the engine ends the first line of [text] — four letters fit.
+    int firstLineEnd(String text) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: const TextStyle(fontSize: 10, height: 1),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: 40);
+      final end = painter.getLineBoundary(const TextPosition(offset: 0)).end;
+      painter.dispose();
+      return end;
+    }
+
+    /// Whether the engine keeps [char] off a line's HEAD: fifth on a line
+    /// of four, it takes the fourth letter down with it.
+    bool keptOffAHead(String char) => firstLineEnd('ああああ$charあ') < 4;
+
+    /// Whether the engine keeps [char] off a line's END: fourth on a line
+    /// of four, it goes down with the letter after it.
+    bool keptOffAnEnd(String char) => firstLineEnd('あああ$charああ') < 4;
+
+    const asked = [
+      // closing brackets and quotes
+      '）', ')', '〕', '］', ']', '｝', '}', '〉', '》', '」', '』', '】', '〗', '〙',
+      '〛', '｠', '｣', '〟', '〞', '’', '”', '»', '›',
+      // opening brackets and quotes
+      '（', '(', '〔', '［', '[', '｛', '{', '〈', '《', '「', '『', '【', '〖', '〘',
+      '〚', '｟', '｢', '〝', '‘', '“', '«', '‹',
+      // stops
+      '、', '。', '，', '．', ',', '.', '､', '｡',
+      // clause marks
+      '？', '！', '?', '!', '‼', '⁇', '⁈', '⁉', '・', '･', '·', '：', '；', ':',
+      ';',
+      // repeat marks
+      '々', 'ゝ', 'ゞ', 'ヽ', 'ヾ', '〻', '〃',
+      // the long vowel mark and the small kana — free on a line
+      'ー', 'ｰ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ', 'っ', 'ゃ', 'ゅ', 'ょ', 'ゎ', 'ゕ',
+      'ゖ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ', 'ッ', 'ャ', 'ュ', 'ョ', 'ヮ', 'ヵ', 'ヶ',
+      'ｧ', 'ｨ', 'ｩ', 'ｪ', 'ｫ', 'ｯ', 'ｬ', 'ｭ', 'ｮ',
+      // dashes and leaders
+      '〜', '～', '…', '‥', '―', '—', '–', '‐', '‑', '-', '゠', '＝', '=',
+      // signs that follow a number
+      '％', '%', '‰', '°', '′', '″', '℃', '¢',
+      // signs that lead one
+      '￥', '＄', r'$', '£', '€', '¥', '№', '＃', '#', '＠', '@', '〒',
+      // others
+      '＆', '&', '＊', '*', '／', '/', '＋', '+', '×', '÷', '※', '★', '☆', '○',
+      '●', '◎', '△', '□', '♪', '→', '←', '↑', '↓',
+      // voicing marks
+      '゛', '゜', 'ﾞ', 'ﾟ',
+      // letters
+      'あ', '漢', 'ア', '한',
+    ];
+
+    test('⛔CONTROL: the engine IS asked, and answers both ways', () {
+      expect(keptOffAHead('あ'), isFalse);
+      expect(keptOffAnEnd('あ'), isFalse);
+      expect(keptOffAHead('。'), isTrue);
+      expect(keptOffAnEnd('。'), isFalse);
+      expect(keptOffAHead('「'), isFalse);
+      expect(keptOffAnEnd('「'), isTrue);
+    });
+
+    test('🚨what does not HEAD a line does not head a column — and what '
+        'may, may', () {
+      for (final char in asked) {
+        expect(
+          verticalMayBreakBetween('あ', char),
+          !keptOffAHead(char),
+          reason: 'before 「$char」',
+        );
+      }
+    });
+
+    test('🚨what does not END a line does not end a column — and what may, '
+        'may', () {
+      for (final char in asked) {
+        expect(
+          verticalMayBreakBetween(char, 'あ'),
+          !keptOffAnEnd(char),
+          reason: 'after 「$char」',
+        );
+      }
+    });
+
+    test('every character the table names is one of those asked', () {
+      expect(asked.toSet(), containsAll(verticalNoColumnStartChars));
+      expect(asked.toSet(), containsAll(verticalNoColumnEndChars));
+    });
+
+    // 🔬Measured with the rest: the engine lets these begin a line, so the
+    // table lets them begin a column. Named, because a house style that
+    // keeps them off would be a change of BOTH — the engine's is not ours
+    // to set.
+    test('the long vowel mark and the small kana may head either', () {
+      for (final char in ['ー', 'っ', 'ゃ', 'ッ', 'ャ']) {
+        expect(keptOffAHead(char), isFalse, reason: char);
+        expect(verticalMayBreakBetween('あ', char), isTrue, reason: char);
+      }
+    });
+  });
 }
