@@ -132,6 +132,97 @@ void main() {
         isNull,
       );
     });
+
+    test('🚨읽음 표식은 통과한다 — 끝난 카드에 남은 전달도 읽을 수 있어야 '
+        '한다', () {
+      expect(
+        endedCardRefusal(
+          {'id': 'W', 'at': kReadMark, 'ref': 't', 'from': '저장'},
+          1,
+          ended,
+        ),
+        isNull,
+      );
+    });
+
+    test('⛔끝난 카드에 새로 남기는 전달은 여전히 새 말이다 — 거절된다', () {
+      expect(
+        endedCardRefusal(
+          {'id': 'W', 'to': '저장', 'from': '관제', 'note': '새 전달'},
+          1,
+          ended,
+        ),
+        isNotNull,
+      );
+    });
+  });
+
+  group('🚨끝난 카드에 남은 전달 — 카드가 닫힌 뒤에 읽는다', () {
+    // 2026-10-08, the 캔버스 베이스 패널 session: 관제's landing letter on F-272
+    // was unread when the card went to 완료. The hook marks every letter it
+    // shows in ONE append; the mark on the ended card was refused, a refusal
+    // writes nothing, and the same twelve letters came back every turn.
+    const letterAt = '2026-10-07T21:10:00.000Z';
+    const otherAt = '2026-10-07T22:00:00.000Z';
+    File records() {
+      final d = Directory.systemTemp.createTempSync('ended-letters');
+      deleteAfterSessionEnds(d);
+      return File('${d.path}/board.jsonl')..writeAsStringSync(
+        '${[
+          '{"kind":"item","id":"W","at":"검증","title":"착지한 일",'
+              '"ts":"2026-10-07T20:00:00.000Z"}',
+          '{"kind":"item","id":"W","to":"저장","from":"관제",'
+              '"note":"착지했습니다","ts":"$letterAt"}',
+          '{"kind":"item","id":"W","at":"완료","said":"끝",'
+              '"ts":"2026-10-07T23:00:00.000Z"}',
+          '{"kind":"item","id":"X","at":"진행 중","title":"열린 일",'
+              '"ts":"2026-10-07T20:30:00.000Z"}',
+          '{"kind":"item","id":"X","to":"저장","from":"관제",'
+              '"note":"하나 더","ts":"$otherAt"}',
+        ].join('\n')}\n',
+      );
+    }
+
+    List<BoardCard> board() => readBoard(records());
+
+    test('그 전달은 아직 받는 담당을 기다린다(⛔전제)', () {
+      final cards = board();
+      expect(endedCards(cards), contains('W'));
+      final letter = lettersByStamp(cards)['W']![letterAt]!;
+      expect(letterWaitsFor(letter, '저장'), isTrue);
+    });
+
+    test('훅이 한 번에 적는 읽음 표식이 전부 나간다 — 끝난 카드의 것도, '
+        '그 옆의 것도 — 그래서 같은 전달이 다음 턴에 다시 오지 않는다', () {
+      final file = records();
+      final shown = takeLetters(file, '저장', DateTime.utc(2026, 10, 8));
+      expect(shown, contains('전달 2건'));
+      expect(shown, contains('읽음으로 표시했습니다'));
+      expect(shown, isNot(contains('끝난 카드')));
+
+      final after = lettersByStamp(readBoard(file));
+      expect(after['W']![letterAt]!.readBy, contains('저장'));
+      expect(after['X']![otherAt]!.readBy, contains('저장'));
+      expect(
+        takeLetters(file, '저장', DateTime.utc(2026, 10, 8, 0, 1)),
+        isEmpty,
+        reason: 'nothing waits any more',
+      );
+    });
+
+    test('⛔그 표식이 가리키는 전달이 없으면 여전히 거절된다 — 끝난 '
+        '카드라고 아무 표식이나 받지는 않는다', () {
+      final cards = board();
+      final r = boardSayAppend(
+        ['{"id":"W","at":"$kReadMark","ref":"2026-01-01T00:00:00.000Z",'
+            '"from":"저장"}'],
+        DateTime.utc(2026, 10, 8),
+        ended: endedCards(cards),
+        letters: lettersByStamp(cards),
+      );
+      expect(r.refusal, contains('전달이 없습니다'));
+      expect(r.bytes, isNull);
+    });
   });
 
   test('🚨★★★쓰기 전에 막는다 — 한 줄이라도 나쁘면 아무것도 안 나간다', () {

@@ -292,6 +292,16 @@ String? endedCardRefusal(
   if (why == null) return null;
   final at = '${json['at'] ?? ''}'.trim();
   if (at == '정정') return null;
+  // ⛔A READER'S MARK IS NOT A WORD ON THE CARD. It brings no subject and
+  // draws nothing: it says that a letter which is already there was read —
+  // and a letter outlives its card's work. 2026-10-08, the 캔버스 베이스 패널
+  // session on the second machine: the control session's landing letter on
+  // F-272 was still unread when the card went to 완료; the mark for it was
+  // refused HERE, and since a refusal writes nothing at all, the eleven
+  // marks beside it in the hook's batch were not written either — the same
+  // twelve letters came back at every turn. (Whether the mark names a real
+  // letter, left for this reader, is [readMarkRefusal]'s to say.)
+  if (at == kReadMark) return null;
   return '$lineNo번째 줄: 「$id」 는 이미 끝난 카드입니다 ($why).\n'
       '  거기 적은 말은 화면에 안 뜹니다 — 끝난 카드는 보드가 안 그립니다.\n'
       '  ⇒ 새 주제면 **새 id** 를 쓰세요. 정말 이 카드를 고치는 것이면 '
