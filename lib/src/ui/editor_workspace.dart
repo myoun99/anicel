@@ -2008,7 +2008,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // THE STAGE'S OUTER SURFACES, SAID ONCE (유저, R4 #2). Every canvas
       // panel in the app is somewhere under here — the drawing floor, the
       // timesheet, the conte, the cut envelope, the media viewer — so this
-      // is the one place the room's colours have to be right.
+      // is the one place the room's colours have to be right. ↩️Since F-272
+      // only the floor reads them: the others lie on black.
       //
       // ★The workspace rides through as a `child:`. The listenable is the
       // session, which notifies constantly, and the only thing that must

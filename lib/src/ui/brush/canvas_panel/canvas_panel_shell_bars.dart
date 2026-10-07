@@ -12,7 +12,20 @@ class _CanvasPanelShellBars {
 
   final _BrushCanvasPanelState _state;
 
+  /// F-272's black: the whole stage of a [BrushCanvasPanel.canvasBase]
+  /// panel.
+  static const int _canvasBaseStageArgb = 0xFF000000;
+
   void readStageColors() {
+    // A canvas-base panel takes nothing from the room — it lies on black and
+    // has no pasteboard — so it does not listen to it either.
+    if (_state.widget.canvasBase) {
+      _state._stageBackdropArgb = _canvasBaseStageArgb;
+      _state._stagePasteboardArgb = _canvasBaseStageArgb;
+      _state._stageBackdropNone = false;
+      _state._stagePasteboardNone = false;
+      return;
+    }
     final scope = CanvasStageColors.maybeOf(_state.context);
     _state._stageBackdropArgb =
         _state.widget.backdropArgb ??

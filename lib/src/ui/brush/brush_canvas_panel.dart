@@ -221,7 +221,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.pasteboardNone,
     this.onPasteboardColorChanged,
     this.onPasteboardNone,
-    this.hasPasteboard = true,
+    this.canvasBase = false,
     this.backdropArgb,
     this.backdropNone,
     this.onBackdropColorChanged,
@@ -761,16 +761,26 @@ class BrushCanvasPanel extends StatefulWidget {
   final bool? pasteboardNone;
   final VoidCallback? onPasteboardNone;
 
-  /// Whether this stage HAS a pasteboard plane at all. A paper panel — a
-  /// sheet — has none: its paper is a printed page, not a canvas with a
-  /// drawing bound around it, so the stage is the backdrop alone (유저
-  /// 2026-09-25, F-179: 「타임시트패널등 캔버스 베이스 패널엔 페이스트보드가
-  /// 없다는 뜻임」 · 「배경색은 캔버스 패널의 배경색 따라가도록」).
+  /// Whether this is a CANVAS-BASE panel — a sheet, the viewer, the cut
+  /// envelope, the export preview: a page shown on the canvas panel, not
+  /// the drawing floor. Its stage is not the drawing's room:
+  ///
+  /// - it has NO PASTEBOARD plane (유저 2026-09-25, F-179: 「타임시트패널등
+  ///   캔버스 베이스 패널엔 페이스트보드가 없다는 뜻임」) — its paper is a
+  ///   printed page, not a canvas with a drawing bound around it;
+  /// - its backdrop is BLACK, whatever the project's is (유저 2026-10-03,
+  ///   F-272: 「캔버스 베이스 패널들은 배경색 캔버스의 배경색 따라가는데, 그냥
+  ///   검정색 고정/통일」). ↩️It reverses F-179's other half, 「배경색은 캔버스
+  ///   패널의 배경색 따라가도록」, and R4 #2 before it.
+  ///
+  /// ONE flag for the two: both are said of the same panels, and a panel
+  /// with its pasteboard off that still followed the project's backdrop is
+  /// the very state F-272 was about.
   ///
   /// ⛔Not [pasteboardNone]: that one is the plane being ABSENT, which shows
   /// the checkerboard where it would be. A sheet has no such plane to be
   /// absent.
-  final bool hasPasteboard;
+  final bool canvasBase;
 
   /// The BACKDROP behind the pasteboard (R3b): the stage's floor — thinnable
   /// since F-114 — or the alpha checkerboard while the preview toggle is on.
@@ -1033,7 +1043,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   );
 
   /// The stage's outer surfaces, RESOLVED: this panel's own parameters when
-  /// it was given them, otherwise the shell's [CanvasStageColors].
+  /// it was given them, otherwise the shell's [CanvasStageColors] — and
+  /// black on a [BrushCanvasPanel.canvasBase] panel, whatever either says.
   ///
   /// Resolved into fields rather than read at each use, because the reads
   /// happen inside memo builders called from `build` and one of them
@@ -1582,7 +1593,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _bindCelPixelRevision();
     // A host that passes its own colours can change them without the scope
     // moving; `didChangeDependencies` alone would never hear that.
-    if (oldWidget.backdropArgb != widget.backdropArgb ||
+    if (oldWidget.canvasBase != widget.canvasBase ||
+        oldWidget.backdropArgb != widget.backdropArgb ||
         oldWidget.pasteboardColor != widget.pasteboardColor ||
         oldWidget.backdropNone != widget.backdropNone ||
         oldWidget.pasteboardNone != widget.pasteboardNone) {
@@ -3643,7 +3655,7 @@ class _StagePlanes extends StatelessWidget {
   final bool backdropNone;
   final bool pasteboardNone;
 
-  /// [BrushCanvasPanel.hasPasteboard].
+  /// False on a [BrushCanvasPanel.canvasBase] panel.
   final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;
@@ -3695,7 +3707,7 @@ class _StagePlanesPainter extends CustomPainter with RepaintOnProps {
   final bool backdropNone;
   final bool pasteboardNone;
 
-  /// [BrushCanvasPanel.hasPasteboard]: false leaves the backdrop alone.
+  /// False on a [BrushCanvasPanel.canvasBase] panel: the backdrop alone.
   final bool hasPasteboard;
   final bool paperNone;
   final CanvasSize canvasSize;

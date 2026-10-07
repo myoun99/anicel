@@ -100,11 +100,15 @@ class CanvasFloorInsets extends InheritedWidget {
       oldWidget.bottomOverlaySpan != bottomOverlaySpan;
 }
 
-/// The stage's outer two surfaces, published ONCE for every canvas panel in
-/// the app.
+/// The stage's outer two surfaces, published ONCE by the shell for the
+/// canvas panels that stand in the project's room.
 ///
 /// 유저, R4 #2: 캔버스 베이스 패널들 배경색 통일하고싶어. 캔버스패널에서
 /// 배경색 정하잖아. 그거 그대로 따라가게. 즉 바꾸면 바뀌게.
+///
+/// ↩️Reversed for those very panels on 2026-10-03 (F-272: 「그냥 검정색
+/// 고정/통일」): a canvas-base panel lies on black and reads nothing here
+/// (`BrushCanvasPanel.canvasBase`). The drawing floor is who this speaks to.
 ///
 /// ⛔Deliberately NOT a parameter threaded to each host. It effectively was:
 /// the drawing floor dug the values out of the session and passed them down,

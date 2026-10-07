@@ -1295,8 +1295,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
       runsTheSelectedTool: tool != null,
       // F-179 (유저 2026-09-25: 「타임시트패널등 캔버스 베이스 패널엔
       // 페이스트보드가 없다는 뜻임」): the viewer is one of those panels —
-      // F-201 names it one — so its paper lies on the panel's backdrop.
-      hasPasteboard: false,
+      // F-201 names it one.
+      canvasBase: true,
       onCutContent: widget.cutPieceSlot == null ? null : _cutFromPage,
       autoFrame: framing,
       // 유저 확정 2026-08-13 (⑤): opening a file is the one verb that stays

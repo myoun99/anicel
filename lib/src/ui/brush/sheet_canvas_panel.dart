@@ -244,8 +244,8 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       // The sheet's ink/header overlays speak zoom/pan only — the paper
       // never rotates (the timesheet's rule; P8 is the drawing canvas's).
       allowViewRotation: false,
-      // F-179: a sheet is a printed page on the canvas panel's backdrop.
-      hasPasteboard: false,
+      // F-179 · F-272: a sheet is a printed page — no pasteboard, on black.
+      canvasBase: true,
       bottomBarLeading: _barLeading,
       pageStrip: widget.pageStrip,
       // The switch is built HERE, so its state joins the host's token here —

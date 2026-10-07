@@ -366,7 +366,7 @@ class ExportPreviewPanelState extends State<ExportPreviewPanel>
       toolCursorsEnabled: false,
       runsTheSelectedTool: false,
       oneFingerAction: CanvasTouchDragAction.navigate,
-      hasPasteboard: false,
+      canvasBase: true,
       hasContentToView: document != null,
       pageStrip: _pageStrip(document),
       transport: _transport(context, document),

@@ -253,6 +253,16 @@ void main() {
       await pump(tester, document());
       expect(painter(tester).ground, ViewportPageGround.none);
     });
+
+    testWidgets('its stage is a canvas-base panel\'s: no pasteboard, on '
+        'black (F-179 · F-272)', (tester) async {
+      await pump(tester, document());
+      expect(
+        tester.widget<BrushCanvasPanel>(find.byType(BrushCanvasPanel))
+            .canvasBase,
+        isTrue,
+      );
+    });
   });
 
   group('the pixels a page is asked at', () {

@@ -430,6 +430,8 @@ class _InteractiveCanvasBuild {
       // says it once for all of them (유저, R4 #2). The COMMIT
       // handlers stay — this is still where the pill's swatches are
       // wired, and writing is not the same question as reading.
+      // ↩️F-272 put those panels back on black — on purpose, in one
+      // place (`BrushCanvasPanel.canvasBase`).
       paperColor: session.projectSettings.projectBackground.argb,
       // F-114: a pick is a plane that is there; 「없음」 takes it away and
       // keeps its colour for the next pick.
