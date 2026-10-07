@@ -98,6 +98,21 @@ class _ImportTally {
 /// there was nothing to count.
 double _share(int done, int total) => total <= 0 ? 1 : done / total;
 
+/// What one file's door tells back while it runs: how far it is, and the
+/// pages or frames it could not render. The two go down the same doors
+/// together, so they are handed down as one.
+class _FileReport {
+  _FileReport(this._within);
+
+  final void Function(double) _within;
+
+  /// The pages (a PDF) or frames (a movie) that would not render.
+  final List<int> failed = [];
+
+  /// [done] of the file's [total] pieces rendered.
+  void rendered(int done, int total) => _within(_share(done, total));
+}
+
 /// The Into answer a SOUND gives: the track's SE rows, by their own rule.
 final class _SoundOnSeRows {
   const _SoundOnSeRows();
@@ -712,28 +727,23 @@ class _ImportDialogState extends State<ImportDialog> {
     _ImportTally tally,
     void Function(double) within,
   ) async {
-    final failedPages = <int>[];
+    final fileReport = _FileReport(within);
     final bool ok;
     try {
-      ok = await _placeCarryingOnlyTheSpan(
-        path,
-        kind,
-        tally,
-        failedPages,
-        within,
-      );
+      ok = await _placeCarryingOnlyTheSpan(path, kind, tally, fileReport);
     } on Object {
       tally.warnings.add(
         AppText.strings.imCorrupt(mediaFileName(path)),
       );
       return;
     }
-    if (failedPages.isNotEmpty) {
+    final failed = fileReport.failed.length;
+    if (failed > 0) {
       final name = mediaFileName(path);
       tally.warnings.add(
         kind == MediaAssetKind.video
-            ? AppText.strings.imFramesFailed(name, failedPages.length)
-            : AppText.strings.imPagesFailed(name, failedPages.length),
+            ? AppText.strings.imFramesFailed(name, failed)
+            : AppText.strings.imPagesFailed(name, failed),
       );
     }
     if (ok) {
@@ -771,12 +781,11 @@ class _ImportDialogState extends State<ImportDialog> {
     String path,
     MediaAssetKind? kind,
     _ImportTally tally,
-    List<int> failedPages,
-    void Function(double) within,
+    _FileReport fileReport,
   ) async {
     final settings = _settingsFor(path);
     if (kind == null || !_comesInAsAPiece(path, settings)) {
-      return _placeThrough(path, kind, tally, failedPages, settings, within);
+      return _placeThrough(path, kind, tally, settings, fileReport);
     }
     final pieces = widget.session.trimmedPieces;
     final piece = await pieces.cut(
@@ -794,9 +803,8 @@ class _ImportDialogState extends State<ImportDialog> {
         piece.path,
         kind,
         tally,
-        failedPages,
         settings.copyWith(inFrame: 0, outFrame: piece.frames - 1),
-        within,
+        fileReport,
         sourcePath: path,
       );
     } finally {
@@ -811,14 +819,13 @@ class _ImportDialogState extends State<ImportDialog> {
 
   /// Which door this file goes through: an expanded PSD, the PDF
   /// renderer, or the ordinary image path — the doors that count their
-  /// work telling [within] how far it is.
+  /// work telling [fileReport] how far it is.
   Future<bool> _placeThrough(
     String path,
     MediaAssetKind? kind,
     _ImportTally tally,
-    List<int> failedPages,
     ImportFileSettings settings,
-    void Function(double) within, {
+    _FileReport fileReport, {
     String? sourcePath,
   }) {
     final carry = settings.mode == ImportFileMode.keepInside;
@@ -834,13 +841,7 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     }
     if (kind == MediaAssetKind.video) {
-      return _placeMovie(
-        path,
-        settings,
-        failedPages,
-        within,
-        sourcePath: sourcePath,
-      );
+      return _placeMovie(path, settings, fileReport, sourcePath: sourcePath);
     }
     if (importPathIsPsd(path) && settings.psd == PsdPlaceMode.expand) {
       return _expandPsd(widget.session, path, settings, tally.warnings);
@@ -856,8 +857,8 @@ class _ImportDialogState extends State<ImportDialog> {
         outFrame: settings.outFrame,
         // A 100-page conte renders for seconds — the wait window's % says
         // where it is instead of looking hung.
-        onRenderProgress: (rendered, total) => within(_share(rendered, total)),
-        onPageRenderFailed: failedPages.add,
+        onRenderProgress: fileReport.rendered,
+        onPageRenderFailed: fileReport.failed.add,
         spot: widget.spot,
         sourcePath: sourcePath,
       );
@@ -881,20 +882,19 @@ class _ImportDialogState extends State<ImportDialog> {
   /// (「SE 행은 소리만 담으므로 영상의 소리만 블록이 된다」,
   /// [importMovieParts] — the cell used to be answered HERE, straight to a
   /// sound's door). A picture that bakes is hundreds of cels (「이런 무거움이
-  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [within]
+  /// 예상되는 로직은 로딩 ui 띄우도록」), so its frames are what [fileReport]
   /// counts for it — under the run's one wait window ([_runImport]).
   /// ↩️It stood behind a wait window of its own, one for every movie.
   Future<bool> _placeMovie(
     String path,
     ImportFileSettings settings,
-    List<int> failedFrames,
-    void Function(double) within, {
+    _FileReport fileReport, {
     String? sourcePath,
   }) => widget.session.importDoors.importVideoFile(
     path: path,
     settings: settings,
-    onRenderProgress: (rendered, total) => within(_share(rendered, total)),
-    onFrameRenderFailed: failedFrames.add,
+    onRenderProgress: fileReport.rendered,
+    onFrameRenderFailed: fileReport.failed.add,
     spot: widget.spot,
     sourcePath: sourcePath,
   );

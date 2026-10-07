@@ -199,7 +199,19 @@ void main() {
   /// body serves both rather than a second copy of it. 🔬The lane's scan
   /// against master (`7916affa5`, at 381) named that one added and nothing
   /// gone.
-  const wideSignatures = 382;
+  ///
+  /// ⚠️382 → 383 on 2026-10-08, one named as the rule above asks (F-282-Q1,
+  /// an import waits in the window a bake and a save wait in):
+  /// `CutFolderImportDoor.importCutFolder` (five) took `onProgress` — the
+  /// scans it bakes are what the window's % counts, and only the door knows
+  /// how many there are. The other four are the folder and the window's
+  /// three answers for it, as they were. The dialog's two that grew with it
+  /// (`_placeCarryingOnlyTheSpan`, `_placeMovie`) went back under: what a
+  /// door could not render and how far it is go down the same doors
+  /// together, and are handed down as one (`_FileReport`). 🔬The lane's
+  /// scan against its base (`4b6fa8ff5`, at 382) named that one added and
+  /// nothing gone.
+  const wideSignatures = 383;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
