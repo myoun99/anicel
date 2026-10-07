@@ -9,6 +9,10 @@
 #   bash tool/lane.sh list             what is open right now
 #   bash tool/lane.sh drop  <name>     throw a lane away (its commits go with it)
 #   bash tool/lane.sh sweep            delete the empty shells left by Windows
+#   bash tool/lane.sh sync             (away) make this machine's master the trunk's
+#   bash tool/lane.sh send  <name>     (away) put a finished lane on the mirror
+#   bash tool/lane.sh receive <machine>/<name>   take a sent lane, ready to land
+#   bash tool/lane.sh incoming         what other machines sent that is not here
 #
 # 🚨WHY A SCRIPT AND NOT A PARAGRAPH. Round 8 ran ten lanes at once and every
 # rule below was learned by breaking it. A paragraph is read once; this is read
@@ -94,6 +98,39 @@
 # runs also share `build/test_cache` and die with PathExistsException; when a
 # suite stalls, delete that folder and run it alone.
 #
+# 🆕A SECOND MACHINE (2026-10-07). 유저: 「작업을 노트북이 해줫으면
+# 한단거지」 — one machine queues its Flutter runs, and there are others in
+# the house. And on how its branches reach this one: 「브랜치는 깃 랩 미러로
+# 하고」 (cards work-runs-on-the-surface-too,
+# a-lane-arrives-from-another-machine).
+#
+# ONE machine holds the trunk: the one whose clone names no machine. Every
+# other clone names itself once —
+#     git config anicel.machine surface11
+# — and from then on it is an AWAY machine, where three things differ:
+#   · its master is a COPY of the trunk. `sync` takes it from the mirror
+#     (`open` does that first), and nothing ever lands on it: `land`
+#     refuses, and it never pushes master anywhere. Two machines that each
+#     landed would be two trunks.
+#   · its lanes are work/<machine>/<name>. Two machines that both open
+#     「fix」 keep apart on the mirror, where lanes are pushed with force —
+#     and a lane of the trunk's machine, whose name can hold no slash, can
+#     never be taken for one that came from elsewhere.
+#   · a finished lane is SENT, not landed: `send <name>` puts it on the
+#     mirror, on top of the trunk as the mirror has it.
+# The trunk's machine takes it with `receive <machine>/<name>` and from
+# there it is a lane like any other — `land` rebases it, runs every gate
+# on THIS machine, merges, and takes it off the mirror.
+#
+# ⚠️TWO PLACES ON THE MIRROR, BECAUSE THEY MEAN TWO THINGS. work/… is a
+# COPY — `backup` keeps one of every open lane, finished or not. sent/…
+# is an OFFER — only `send` writes there, `incoming` and `receive` read
+# only there, and `land` takes it away. With one place for both, a lane
+# that was merely backed up half-done would look exactly like one waiting
+# to be landed (found running the commands for real, 2026-10-07). An offer
+# that has left the mirror is how an away machine knows its lane landed:
+# its next `sync` lets go of the lane, unless it grew since it was sent.
+#
 # ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
 #   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
 # bash reads a script LAZILY, so the `merge --ff-only` near the end of `land`
@@ -104,9 +141,22 @@ set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="$ROOT/.claude/worktrees"
 TRUNK=master
-# THE MIRROR. ⛔Not a second trunk: nothing is ever pulled from it, and
-# `.githooks/pre-push` lets it through ungated precisely because it runs no CI.
+# THE MIRROR. ⛔Not a second trunk, and `.githooks/pre-push` lets it through
+# ungated precisely because it runs no CI.
+# ↩️Until 2026-10-07 this said 「nothing is ever pulled from it」. 유저 that
+# day, on where a second machine's branches travel: 「브랜치는 깃 랩 미러로
+# 하고」 (card a-lane-arrives-from-another-machine). What made the old
+# sentence true still holds: THE TRUNK'S MACHINE NEVER TAKES MASTER FROM
+# IT — master moves by `land`, here, and nowhere else. What changed: a lane
+# made on another machine arrives through it (`receive`), and another
+# machine takes its copy of master from it (`sync`) — origin's master only
+# follows when a bundle is pushed; the mirror's follows every `land`.
 MIRROR=backup
+
+# WHICH MACHINE THIS IS. The one that holds the trunk says nothing; every
+# other clone has named itself (the header says what that changes).
+MACHINE="$(git -C "$ROOT" config --get anicel.machine 2>/dev/null || true)"
+away() { [ -n "$MACHINE" ]; }
 
 die() { echo "lane: $*" >&2; exit 1; }
 
@@ -117,16 +167,54 @@ require_worktree() {
   the MAIN checkout instead. Remove it and open the lane under a new name."
 }
 
-lane_path() { echo "$LANES/lane-$1"; }
+# A lane's directory. The slash of another machine's lane becomes a dash:
+# the directories all sit side by side.
+lane_path() { echo "$LANES/lane-${1//\//-}"; }
+
+# The lane a name means on this machine: an away machine's lanes all live
+# under its own name, whether or not the caller spelled it out.
+lane_named() {
+  local name="$1"
+  case "$name" in
+    ''|*[!A-Za-z0-9._/-]*|*..*|/*|*/|*/*/*) die "not a lane name: '$name'" ;;
+  esac
+  if away; then
+    case "$name" in
+      "$MACHINE"/*) ;;
+      */*) die "'$name' is another machine's lane — this one is $MACHINE" ;;
+      *) name="$MACHINE/$name" ;;
+    esac
+  fi
+  printf '%s\n' "$name"
+}
 
 cmd_open() {
   local name="${1:-}"; [ -n "$name" ] || die "open needs a name"
+  name="$(lane_named "$name")" || exit 1
+  if away; then
+    # A lane is cut from the trunk as the mirror has it. Offline is not a
+    # reason to refuse a lane — but it is said, because the lane will have
+    # to be rebased before it can be sent.
+    (cmd_sync) >/dev/null 2>&1 \
+      || echo "lane: ⚠️could not take $TRUNK from $MIRROR — this lane starts from the $TRUNK this machine last saw" >&2
+  else
+    case "$name" in */*) die "'$name' names another machine's lane — \`receive\` takes those" ;; esac
+  fi
   # Clear the shells first, so a name freed by a landed lane is usable again
   # rather than burned for ever. It only ever removes what is not a worktree.
   cmd_sweep >/dev/null
   local p; p="$(lane_path "$name")"
   [ -e "$p" ] && die "already there: $p (pick another name — reusing a path mixes the old build cache in)"
   git -C "$ROOT" worktree add "$p" -b "work/$name" "$TRUNK" >/dev/null || die "worktree add failed"
+  furnish "$p"
+  echo "$p"
+}
+
+# What a fresh worktree needs before anything can run in it. `open` and
+# `receive` both end here, so a lane that arrived from another machine is
+# given exactly what one cut on this machine is.
+furnish() {
+  local p="$1"
   mkdir -p "$p/build"
   # Refusal 6: what gets copied is first made the trunk's own, so a lane
   # opened after a C landing does not inherit the engine from before it
@@ -150,7 +238,6 @@ cmd_open() {
   ensure_engine "$p" \
     || echo "lane: ⚠️this lane's engine is not built from its C — native results here describe other C" >&2
   (cd "$p" && flutter pub get >/dev/null 2>&1)
-  echo "$p"
 }
 
 cmd_list() {
@@ -194,6 +281,7 @@ cmd_sweep() {
 
 cmd_drop() {
   local name="${1:-}"; [ -n "$name" ] || die "drop needs a name"
+  name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
   git -C "$ROOT" worktree remove "$p" --force 2>/dev/null || rm -rf "$p"
   git -C "$ROOT" worktree prune
@@ -212,6 +300,11 @@ cmd_drop() {
 # calling the lane broken would send the author looking for a problem that is
 # not there. It says loudly what to run instead.
 mirror_trunk() {
+  # ⛔AN AWAY MACHINE NEVER PUSHES MASTER. Its master is a copy; the mirror's
+  # is the trunk's, and a copy pushed over it — stale, or carrying a commit
+  # somebody made on the wrong branch — is what the trunk's next `land`
+  # would then fail to mirror.
+  away && return 0
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || {
     echo "lane: ⚠️no '$MIRROR' remote — $TRUNK exists on this disk only." >&2
     return 0
@@ -226,13 +319,157 @@ mirror_trunk() {
 # Every open lane too, not just the trunk: a lane's commits live in its branch
 # and nowhere else, and a lane can sit open for days. FORCED, because a lane
 # rebases — the mirror is a copy of what is here now, not a history to protect.
+#
+# ⚠️EACH MACHINE PUSHES ITS OWN LANES AND NOBODY ELSE'S. The push is forced,
+# so a lane this machine merely RECEIVED — work/<machine>/<name> — pushed
+# back from here would overwrite whatever its author sent since. The
+# trunk's machine therefore leaves every lane under a machine's name alone,
+# and an away machine pushes only the ones under its own.
 cmd_backup() {
   mirror_trunk
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
-  git -C "$ROOT" push --quiet "$MIRROR" '+refs/heads/work/*:refs/heads/work/*' \
-    || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
-  echo "lane: mirrored $TRUNK and $(git -C "$ROOT" for-each-ref \
-    --format='%(refname)' 'refs/heads/work/**' | wc -l) open lane(s)"
+  if away; then
+    # First let go of what landed: a lane the trunk already has, pushed
+    # again, is a copy of nothing.
+    landed_lanes_leave
+    git -C "$ROOT" push --quiet "$MIRROR" \
+      "+refs/heads/work/$MACHINE/*:refs/heads/work/$MACHINE/*" \
+      || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+    echo "lane: mirrored $(git -C "$ROOT" for-each-ref \
+      --format='%(refname)' "refs/heads/work/$MACHINE/**" | wc -l) open lane(s)"
+    return 0
+  fi
+  # ⚠️Named one by one. `refs/heads/work/*` stops at a slash in
+  # for-each-ref and does NOT in a push refspec, where it would sweep the
+  # received lanes along — and a refspec may hold one `*`, so there is no
+  # pattern that says 「one level」.
+  local own; own="$(git -C "$ROOT" for-each-ref \
+    --format='+%(refname):%(refname)' 'refs/heads/work/*')"
+  if [ -n "$own" ]; then
+    # shellcheck disable=SC2086
+    git -C "$ROOT" push --quiet "$MIRROR" $own \
+      || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
+  fi
+  echo "lane: mirrored $TRUNK and $(printf '%s' "$own" | grep -c .) open lane(s)"
+}
+
+# (away) This machine's master becomes the trunk's, as the mirror has it.
+# ⛔The trunk's machine refuses: its master IS the trunk, and taking
+# another over it is the one thing the mirror must never be used for.
+cmd_sync() {
+  away || die "sync is for an away machine — this one holds the trunk"
+  git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 \
+    || die "no '$MIRROR' remote — add the mirror first"
+  [ "$(git -C "$ROOT" branch --show-current)" = "$TRUNK" ] \
+    || die "the main checkout is not on $TRUNK — lanes are worktrees, the main checkout stays on $TRUNK"
+  git -C "$ROOT" fetch --quiet "$MIRROR" "$TRUNK" \
+    || die "could not fetch $TRUNK from $MIRROR"
+  # ⚠️ASKED BEFORE THE MERGE, not left to it. `merge --ff-only` of a commit
+  # this master is already AHEAD of succeeds — there is nothing to do — and
+  # that is exactly the master that must be refused: it holds a commit the
+  # trunk does not (found running this for real, 2026-10-07).
+  git -C "$ROOT" merge-base --is-ancestor "$TRUNK" FETCH_HEAD \
+    || die "this machine's $TRUNK holds commits the trunk does not
+  Nothing lands on an away machine. Keep them — git branch work/$MACHINE/rescue $TRUNK —
+  then put $TRUNK back: git reset --keep FETCH_HEAD."
+  git -C "$ROOT" merge --ff-only FETCH_HEAD >/dev/null 2>&1 \
+    || die "could not move $TRUNK to the trunk's — is the main checkout clean?"
+  echo "lane: $TRUNK is the trunk's $(git -C "$ROOT" rev-parse --short HEAD)"
+  landed_lanes_leave
+}
+
+# (away) Let go of the lanes that landed. A lane this machine sent, whose
+# offer is no longer on the mirror, was landed by the trunk's machine (or
+# turned down there) — and it is dropped here, UNLESS it grew since it was
+# sent: those commits exist nowhere else, so the lane stays and says so.
+# ⚠️Silent and harmless when the mirror cannot be asked: a lane is only
+# ever dropped on the mirror's own word that the offer is gone.
+landed_lanes_leave() {
+  local offers
+  offers="$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
+    ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null)" \
+    || return 0
+  local ref name sent
+  git -C "$ROOT" for-each-ref --format='%(refname:short)' \
+    "refs/heads/work/$MACHINE/*" | while read -r ref; do
+      name="${ref#work/}"
+      sent="$(git -C "$ROOT" config --get "branch.$ref.sent" 2>/dev/null)" || continue
+      printf '%s\n' "$offers" | grep -q "refs/heads/sent/$name\$" && continue
+      if [ "$(git -C "$ROOT" rev-parse "$ref")" = "$sent" ]; then
+        echo "lane: $name landed — letting go of it here"
+        (cmd_drop "$name") >/dev/null 2>&1
+      else
+        git -C "$ROOT" config --unset "branch.$ref.sent"
+        echo "lane: ⚠️$name landed as it was sent (${sent:0:10}), and has commits since." >&2
+        echo "lane:   They are on no other machine: rebase the lane onto $TRUNK and send it again." >&2
+      fi
+    done
+}
+
+# (away) Put a finished lane on the mirror for the trunk's machine.
+# What arrives there is what was measured here: the lane has to sit on top
+# of the trunk as the mirror has it NOW, so a rebase — and the gates that
+# have to follow a rebase — happen on this machine, by the lane's author.
+cmd_send() {
+  away || die "send is for an away machine — on the trunk's machine a lane lands"
+  local name="${1:-}"; [ -n "$name" ] || die "send needs a name"
+  name="$(lane_named "$name")" || exit 1
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+  lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
+  A '??' line is a file nobody added; it does NOT travel with the push."
+  cmd_sync >/dev/null
+  git -C "$p" merge-base --is-ancestor "$TRUNK" HEAD || die "the lane is not on top of the trunk as $MIRROR has it
+  Rebase it — git -C $p rebase $TRUNK — run its gates again, then send again."
+  git -C "$ROOT" push --quiet "$MIRROR" \
+    "+refs/heads/work/$name:refs/heads/sent/$name" \
+    || die "the lane did not reach $MIRROR"
+  # What was offered, so `landed_lanes_leave` can tell a lane that landed
+  # from one that landed AND was worked on since.
+  git -C "$ROOT" config "branch.work/$name.sent" "$(git -C "$p" rev-parse HEAD)"
+  echo "lane: sent work/$name at $(git -C "$p" rev-parse --short HEAD)"
+  echo "lane:   on the trunk's machine: bash tool/lane.sh receive $name"
+}
+
+# Take a lane another machine sent. It comes in as a worktree furnished
+# like any other, and `land <machine>/<name>` does the rest — the rebase,
+# every gate, the merge — on this machine.
+# ⚠️It fetches THAT BRANCH and nothing else: master never comes from the
+# mirror to the machine that holds the trunk.
+cmd_receive() {
+  away && die "receive is for the machine that holds the trunk"
+  local name="${1:-}"
+  case "$name" in
+    */*) ;;
+    *) die "receive needs <machine>/<name> — \`incoming\` lists what waits" ;;
+  esac
+  name="$(lane_named "$name")" || exit 1
+  local p; p="$(lane_path "$name")"
+  cmd_sweep >/dev/null
+  [ -e "$p" ] && die "already there: $p (drop it first to take the lane again)"
+  git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name" \
+    && die "a branch work/$name is already here (drop it first to take the lane again)"
+  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
+    "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
+    || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` asks for one)"
+  git -C "$ROOT" worktree add "$p" "work/$name" >/dev/null || die "worktree add failed"
+  furnish "$p"
+  echo "$p"
+}
+
+# What other machines have sent. A lane already received says so.
+cmd_incoming() {
+  away && die "incoming is for the machine that holds the trunk"
+  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" ls-remote \
+    --heads "$MIRROR" 'refs/heads/sent/*/*' \
+    | sed -n 's|.*refs/heads/sent/||p' \
+    | while read -r name; do
+        if git -C "$ROOT" show-ref --verify --quiet "refs/heads/work/$name"; then
+          echo "$name (received)"
+        else
+          echo "$name"
+        fi
+      done
 }
 
 # cmake is on PATH on a Mac or a Linux box; on this Windows machine it lives
@@ -307,7 +544,8 @@ build_engine() {
 cmd_engine() {
   local c="$ROOT"
   if [ -n "${1:-}" ]; then
-    c="$(lane_path "$1")"
+    local name; name="$(lane_named "$1")" || exit 1
+    c="$(lane_path "$name")"
     require_worktree "$c"
   fi
   ensure_engine "$c" || die "the engine in $c is not built from its C — see above"
@@ -317,6 +555,7 @@ cmd_engine() {
 # Refusal 5, runnable on its own. The header says why each step is there.
 cmd_native() {
   local name="${1:-}"; [ -n "$name" ] || die "native needs a name"
+  name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
   local cm; cm="$(find_cmake)" || die "cmake not found — not on PATH, not in C:/Program Files/CMake"
@@ -370,7 +609,11 @@ lane_is_clean() {
 }
 
 cmd_land() {
+  # ⛔NOTHING LANDS ON AN AWAY MACHINE. Its master is a copy of the trunk;
+  # a merge into it would be a second trunk that no other machine has.
+  away && die "nothing lands on an away machine ($MACHINE) — \`send\` the lane to the trunk's"
   local name="${1:-}"; [ -n "$name" ] || die "land needs a name"
+  name="$(lane_named "$name")" || exit 1
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
 
@@ -428,6 +671,15 @@ cmd_land() {
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -d "work/$name" 2>/dev/null
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
+  # A landed lane is finished on the mirror too: its OFFER goes — that is
+  # how the machine that sent it, and `incoming` here, see that it landed —
+  # and so does its copy. (A lane that was never there has nothing to take
+  # off; the push says so and is not listened to.)
+  local gone
+  for gone in "sent/$name" "work/$name"; do
+    GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
+      "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
+  done
   # ⛔NOBODY IS THERE TO ANSWER A LOGIN. A land runs unattended, and with no
   # saved login git-credential-manager waited for one: the land never
   # returned, the trunk's engine below was never rebuilt, and the copy was
@@ -453,5 +705,9 @@ case "${1:-}" in
   list) shift; cmd_list "$@" ;;
   drop) shift; cmd_drop "$@" ;;
   sweep) shift; cmd_sweep "$@" ;;
-  *) sed -n '2,12p' "$0"; exit 2 ;;
+  sync) shift; cmd_sync "$@" ;;
+  send) shift; cmd_send "$@" ;;
+  receive) shift; cmd_receive "$@" ;;
+  incoming) shift; cmd_incoming "$@" ;;
+  *) sed -n '2,16p' "$0"; exit 2 ;;
 esac

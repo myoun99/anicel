@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import '../helpers/lane_script.dart';
+
 /// 🚨lane-land-edited-under-its-gates (2026-09-30): while a land sat in
 /// `flutter analyze`, its author fixed the red architecture test in the
 /// lane, uncommitted. The gates read the working tree and passed; the merge
@@ -17,24 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// change landed all three. A `flutter` that rewrote a registrant, as the
 /// build hooks do, landed.
 void main() {
-  final script = File('tool/lane.sh').readAsStringSync().replaceAll(
-    '\r\n',
-    '\n',
-  );
-
-  // The second copy of a_land_never_waits_for_a_login_test's `body`, kept
-  // apart by the rule of three: the third test that cuts a function out of
-  // lane.sh merges them.
-  List<String> codeOf(String function) {
-    final start = script.indexOf('\n$function() {');
-    expect(start, isNot(-1), reason: 'LIVENESS — $function is in the script');
-    return [
-      for (final line in script
-          .substring(start, script.indexOf('\n}\n', start))
-          .split('\n'))
-        if (line.trimLeft().startsWith('#')) '' else line,
-    ];
-  }
+  final codeOf = LaneScript(File('tool/lane.sh').readAsStringSync()).codeOf;
 
   // Late, so the LIVENESS expect in `codeOf` runs inside a test.
   late final land = codeOf('cmd_land');
