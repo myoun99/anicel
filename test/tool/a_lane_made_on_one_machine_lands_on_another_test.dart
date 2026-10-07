@@ -17,7 +17,11 @@ import '../helpers/lane_script.dart';
 /// clone; stand-in `flutter` and `dart`): an away lane is cut under the
 /// machine's name · `land` refuses there · a backup copy is not an offer ·
 /// `send` refuses a lane that is not on top of the trunk and offers one that
-/// is · the trunk's machine lists, receives and lands it, and offer and copy
+/// is (↩️2026-10-08: it offers the lane as it stands, with the stamp of its
+/// gates — the trunk's machine rebases where it must and measures ONCE;
+/// run by hand again that day, `a_land_takes_only_what_its_gates_measured`
+/// says how) · the trunk's machine lists, receives and lands it, and offer
+/// and copy
 /// leave the mirror · the away `sync` lets go of the landed lane, keeps one
 /// that grew since it was sent, and refuses a master that holds a commit of
 /// its own · neither machine pushes the other's lanes · an offer that left
@@ -93,6 +97,30 @@ void main() {
       expect(receive.join('\n'), isNot(contains(r'"$TRUNK"')));
       expect(at(receive, 'away && die'), isNot(-1));
       expect(at(receive, 'away && die'), lessThan(at(receive, 'fetch')));
+    });
+
+    test('🚨`receive` clears whatever stamp that name had here BEFORE it '
+        'takes the one that was sent — a lane that arrives without one '
+        'arrives unmeasured', () {
+      final receive = lane.codeOf('cmd_receive');
+      final offer = at(
+        receive,
+        r'"refs/heads/sent/$name:refs/heads/work/$name"',
+      );
+      final cleared = at(receive, r'update-ref -d "$(gate_ref "$name")"');
+      final taken = at(
+        receive,
+        r'"+refs/heads/gated/$name:$(gate_ref "$name")"',
+      );
+      expect([offer, cleared, taken], everyElement(isNot(-1)));
+      expect(offer, lessThan(cleared));
+      expect(cleared, lessThan(taken));
+      expect(taken, lessThan(at(receive, 'worktree add')));
+      expect(
+        receive[taken],
+        contains('|| true'),
+        reason: 'a lane sent without a stamp is still received',
+      );
     });
   });
 
@@ -186,22 +214,51 @@ void main() {
   group('send', () {
     late final send = lane.codeOf('cmd_send');
 
-    test('🚨what is offered is what was measured: clean, then the trunk as '
-        'the mirror has it, then the lane on top of it — and only then the '
-        'push', () {
+    test('🚨what is offered is the lane as it stands: clean, then the push '
+        '— it takes no trunk and asks for no place on it', () {
+      // ↩️Until 2026-10-08 a lane had to sit on top of the trunk as the
+      // mirror had it at that moment, and `send` took the trunk first to
+      // ask (「what is offered is what was measured」). The trunk moves
+      // some thirty times a day, so the author rebased and measured again
+      // just to be allowed to send — and the trunk's machine did both once
+      // more. 유저 2026-10-08, as the 관제 session wrote it down: 「다
+      // 권하는대로 하자. 낭비없애자고」 (card a-sent-lane-is-gated-once).
       final clean = at(send, r'lane_is_clean "$p" || die');
-      final synced = at(send, 'cmd_sync');
-      final onTop = at(send, r'merge-base --is-ancestor "$TRUNK" HEAD || die');
       final pushed = at(send, 'push --quiet');
-      expect([clean, synced, onTop, pushed], everyElement(isNot(-1)));
-      expect(clean, lessThan(synced));
-      expect(synced, lessThan(onTop));
-      expect(onTop, lessThan(pushed));
+      expect([clean, pushed], everyElement(isNot(-1)));
+      expect(clean, lessThan(pushed));
+      final all = send.join('\n');
+      expect(all, isNot(contains('cmd_sync')));
+      expect(all, isNot(contains('merge-base')));
+      expect(all, isNot(contains(r'"$TRUNK"')));
       expect(
-        send.join('\n'),
+        all,
         isNot(contains('rebase "')),
-        reason: 'it does not rebase for the author: a rebase needs its gates '
-            'again, and those are the author\'s to run',
+        reason: 'nor does it rebase for the author — the lane is rebased '
+            'where it lands, as every lane is',
+      );
+    });
+
+    test('🚨the stamp of its gates travels with the offer only when it '
+        'names the very commit offered — and a stamp of an earlier one '
+        'leaves the mirror', () {
+      final stamped = at(send, 'local stamped=');
+      expect(stamped, isNot(-1));
+      expect(send[stamped], contains(r'[ "$(gated_at "$name")" = "$head" ]'));
+      final pushed = at(send, 'push --quiet');
+      expect(stamped, lessThan(pushed));
+      final offer = send.sublist(pushed).join('\n');
+      expect(
+        offer,
+        contains(
+          r'${stamped:+"+$(gate_ref "$name"):refs/heads/gated/$name"}',
+        ),
+      );
+      final unstamped = at(send, r'[ -n "$stamped" ] || git');
+      expect(unstamped, greaterThan(pushed));
+      expect(
+        send.sublist(unstamped, unstamped + 2).join('\n'),
+        contains(r'--delete "gated/$name"'),
       );
     });
 
@@ -278,7 +335,17 @@ void main() {
       expect(at(unsend, 'away || die'), isNot(-1));
       expect(at(unsend, 'away || die'), lessThan(at(unsend, 'push')));
       expect(all, contains(r'--delete "sent/$name"'));
+      expect(
+        all,
+        contains(r'--delete "gated/$name"'),
+        reason: 'the stamp that went with the offer leaves with it',
+      );
       expect(all, isNot(contains('"work/')), reason: 'the lane stays');
+      expect(
+        all,
+        isNot(contains('update-ref')),
+        reason: 'and so does this machine\'s own stamp',
+      );
       expect(all, isNot(contains('cmd_drop')));
       expect(
         at(unsend, r'config --unset "branch.work/$name.sent"'),
@@ -287,11 +354,14 @@ void main() {
       );
     });
 
-    test('🚨a landed lane leaves the mirror — its offer and its copy — '
-        'after the merge, and without asking for a login', () {
+    test('🚨a landed lane leaves the mirror — its offer, its stamp and its '
+        'copy — after the merge, and without asking for a login', () {
       final land = lane.codeOf('cmd_land');
       final merged = at(land, 'merge --ff-only');
-      final names = at(land, r'for gone in "sent/$name" "work/$name"; do');
+      final names = at(
+        land,
+        r'for gone in "sent/$name" "gated/$name" "work/$name"; do',
+      );
       final deleted = at(land, r'--delete "$gone"');
       expect([merged, names, deleted], everyElement(isNot(-1)));
       expect(names, greaterThan(merged));

@@ -3,6 +3,7 @@
 #
 #   bash tool/lane.sh open  <name>     a worktree + branch off master, ready to run
 #   bash tool/lane.sh land  <name>     rebase onto master, run the gates, merge, clean up
+#   bash tool/lane.sh gate  <name>     run the land's gates on a lane as it stands, and stamp it
 #   bash tool/lane.sh native <name>    build the lane's C, run its tests and parity
 #   bash tool/lane.sh engine [<name>]  this checkout's engine (or a lane's) built from its own C
 #   bash tool/lane.sh backup           copy the trunk and every open lane to the mirror
@@ -36,7 +37,9 @@
 #    and `flutter test test/architecture` after the rebase and before the merge.
 #    A merge that rebases cleanly can still not compile: two lanes touching the
 #    two ENDS of one type are each green alone (2026-09-07, a required parameter
-#    on one side and a fixture on the other).
+#    on one side and a fixture on the other). (Measured ONCE: a lane whose
+#    gates passed on the very commit that merges is not measured a second
+#    time — see MEASURED ONCE below.)
 # 4. Leave master behind. `land` fast-forwards master last, so the next lane
 #    someone opens is based on what just landed.
 # 5. Land C that nobody compiled. `flutter analyze` does not read C, and the
@@ -118,10 +121,11 @@
 #     and a lane of the trunk's machine, whose name can hold no slash, can
 #     never be taken for one that came from elsewhere.
 #   · a finished lane is SENT, not landed: `send <name>` puts it on the
-#     mirror, on top of the trunk as the mirror has it.
+#     mirror — with the stamp of its gates, when it was gated here.
 # The trunk's machine takes it with `receive <machine>/<name>` and from
-# there it is a lane like any other — `land` rebases it, runs every gate
-# on THIS machine, merges, and takes it off the mirror.
+# there it is a lane like any other — `land` merges it, behind every gate
+# (run on THIS machine unless they were run on that very commit already:
+# MEASURED ONCE, below), and takes it off the mirror.
 #
 # ⚠️TWO PLACES ON THE MIRROR, BECAUSE THEY MEAN TWO THINGS. work/… is a
 # COPY — `backup` keeps one of every open lane, finished or not. sent/…
@@ -133,6 +137,35 @@
 # `sync` asks the trunk whether it holds the lane's commits, and lets go of
 # the lane only then — an offer can also leave because it was taken back
 # (`unsend`) or turned down, and those lanes hold work that is nowhere else.
+#
+# 🆕MEASURED ONCE (2026-10-08, card a-sent-lane-is-gated-once). 유저, as the
+# 관제 session wrote it down that day: 「순서 기다리는게 싫어서 서피스로
+# 옮겼던건데 똑같이 순서기다리고 리베이스해야하고 20분소모하고 이러는거
+# 싫어서」 — and to the changes it then proposed: 「다 권하는대로 하자.
+# 낭비없애자고」. Measured over the seven lanes sent that night: one pass of
+# the land's gates took six to ten minutes, and four of the seven arrived
+# sitting on master exactly as their machine had measured them — and were
+# measured again here.
+#   · `gate <name>` runs the land's gates on a lane as it stands and STAMPS
+#     the commit they passed on. The stamp is the tool's, never a session's
+#     word: nothing else writes it.
+#   · `send` carries the stamp with the offer, and no longer asks that the
+#     lane sit on the trunk as the mirror has it at that moment. ↩️It did,
+#     so that 「what arrives is what was measured」 — the trunk moves some
+#     thirty times a day, so the author rebased and measured again, only
+#     for the trunk's machine to do both once more.
+#   · `land` does not measure twice: a lane that still sits on master and
+#     whose stamp names its very commit merges as it is. A master that
+#     moved is what it always was — rebase, every gate, once.
+# ⚠️A stamp says 「the gates passed on THIS commit」 and nothing about any
+# other: one more commit, or a rebase, and it names nothing.
+#
+# ⚠️ONE LAND AT A TIME. `land` holds the trunk from before its rebase to
+# after its merge; a second one waits its turn and then rebases onto what
+# the first left. ↩️Two ran side by side, and the one whose gates finished
+# second had its fast-forward refused — six minutes of gates thrown away,
+# to be run again (2026-10-08, 관제: F-291's land lost that way to
+# top-strip-narrows').
 #
 # ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
 #   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
@@ -173,6 +206,18 @@ require_worktree() {
 # A lane's directory. The slash of another machine's lane becomes a dash:
 # the directories all sit side by side.
 lane_path() { echo "$LANES/lane-${1//\//-}"; }
+
+# Where a lane's gate stamp is kept on this machine: the commit `gate` saw
+# every gate pass on (MEASURED ONCE, above). ⛔Not under refs/heads — it is
+# no branch, and `backup`, `list` and the lanes' own patterns must never
+# take it for a lane. On the mirror it travels as gated/<name>, beside the
+# offer it vouches for.
+gate_ref() { echo "refs/lane-gated/$1"; }
+
+# The commit a lane was gated at, or nothing.
+gated_at() {
+  git -C "$ROOT" rev-parse -q --verify "$(gate_ref "$1")^{commit}" 2>/dev/null || true
+}
 
 # The lane a name means on this machine: an away machine's lanes all live
 # under its own name, whether or not the caller spelled it out.
@@ -289,6 +334,9 @@ cmd_drop() {
   git -C "$ROOT" worktree remove "$p" --force 2>/dev/null || rm -rf "$p"
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -D "work/$name" 2>/dev/null
+  # Its stamp goes with it: a lane opened later under the same name is
+  # another lane.
+  git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
   echo "dropped work/$name"
 }
 
@@ -434,10 +482,16 @@ trunk_holds() {
   ! printf '%s\n' "$missing" | grep -q '^+'
 }
 
-# (away) Put a finished lane on the mirror for the trunk's machine.
-# What arrives there is what was measured here: the lane has to sit on top
-# of the trunk as the mirror has it NOW, so a rebase — and the gates that
-# have to follow a rebase — happen on this machine, by the lane's author.
+# (away) Put a finished lane on the mirror for the trunk's machine — as it
+# stands, with the stamp of its gates when `gate` made one for this very
+# commit.
+# ↩️Until 2026-10-08 the lane had to sit on top of the trunk as the mirror
+# had it at that moment (「what arrives there is what was measured here」),
+# and `send` took the trunk first to ask. The trunk moves some thirty times
+# a day: the author rebased and ran the gates again just to be allowed to
+# send, and the trunk's machine then did both once more. 유저 that day, of
+# the waiting: 「다 권하는대로 하자. 낭비없애자고」 (MEASURED ONCE, above). A
+# lane behind the trunk is rebased where it lands, as every lane is.
 cmd_send() {
   away || die "send is for an away machine — on the trunk's machine a lane lands"
   local name="${1:-}"; [ -n "$name" ] || die "send needs a name"
@@ -446,16 +500,25 @@ cmd_send() {
   require_worktree "$p"
   lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
   A '??' line is a file nobody added; it does NOT travel with the push."
-  cmd_sync >/dev/null
-  git -C "$p" merge-base --is-ancestor "$TRUNK" HEAD || die "the lane is not on top of the trunk as $MIRROR has it
-  Rebase it — git -C $p rebase $TRUNK — run its gates again, then send again."
+  local head; head="$(git -C "$p" rev-parse HEAD)"
+  # The stamp travels only when it names the commit that is offered: one of
+  # an earlier commit vouches for nothing here, and leaves the mirror.
+  local stamped=; [ "$(gated_at "$name")" = "$head" ] && stamped=1
   git -C "$ROOT" push --quiet "$MIRROR" \
     "+refs/heads/work/$name:refs/heads/sent/$name" \
+    ${stamped:+"+$(gate_ref "$name"):refs/heads/gated/$name"} \
     || die "the lane did not reach $MIRROR"
+  [ -n "$stamped" ] || git -C "$ROOT" push --quiet "$MIRROR" \
+    --delete "gated/$name" >/dev/null 2>&1 || true
   # What was offered, so `landed_lanes_leave` can tell a lane that landed
   # from one that landed AND was worked on since.
-  git -C "$ROOT" config "branch.work/$name.sent" "$(git -C "$p" rev-parse HEAD)"
-  echo "lane: sent work/$name at $(git -C "$p" rev-parse --short HEAD)"
+  git -C "$ROOT" config "branch.work/$name.sent" "$head"
+  echo "lane: sent work/$name at ${head:0:10}"
+  if [ -n "$stamped" ]; then
+    echo "lane:   gated here at that commit — it lands unmeasured again while the trunk has not moved"
+  else
+    echo "lane:   not gated here (\`gate $name\` stamps it) — the trunk's machine runs the gates"
+  fi
   echo "lane:   on the trunk's machine: bash tool/lane.sh receive $name"
 }
 
@@ -467,6 +530,9 @@ cmd_unsend() {
   name="$(lane_named "$name")" || exit 1
   git -C "$ROOT" push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
     || die "nothing sent as $name on $MIRROR"
+  # The stamp that went with the offer leaves with it; this machine's own
+  # stays, and travels again if the same commit is sent again.
+  git -C "$ROOT" push --quiet "$MIRROR" --delete "gated/$name" >/dev/null 2>&1 || true
   git -C "$ROOT" config --unset "branch.work/$name.sent" 2>/dev/null
   echo "lane: took back the offer of work/$name — the lane is as it was"
 }
@@ -492,6 +558,12 @@ cmd_receive() {
   GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
     "$MIRROR" "refs/heads/sent/$name:refs/heads/work/$name" \
     || die "nothing sent as $name on $MIRROR (or no saved login for it — \`backup\` asks for one)"
+  # The stamp its machine's `gate` made, when it sent one (MEASURED ONCE).
+  # Whatever stamp an earlier lane of this name left here goes first: a
+  # lane that arrives without one arrives unmeasured.
+  git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
+  GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" fetch --quiet \
+    "$MIRROR" "+refs/heads/gated/$name:$(gate_ref "$name")" >/dev/null 2>&1 || true
   git -C "$ROOT" worktree add "$p" "work/$name" >/dev/null || die "worktree add failed"
   furnish "$p"
   echo "$p"
@@ -648,6 +720,94 @@ lane_is_clean() {
   return 1
 }
 
+# THE GATES A LANDING STANDS BEHIND, on the lane at $2 as it is checked
+# out — refusals 3 and 5. `land` runs them after its rebase and `gate` on a
+# lane as it stands: the same lines, so a stamp vouches for exactly what a
+# land would have measured.
+gates() {
+  local name="$1" p="$2"
+  echo "lane: flutter analyze (no arguments)"
+  (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
+    (cd "$p" && flutter analyze) | tail -20 >&2
+    die "analyze is not clean — this is refusal 3"
+  }
+
+  echo "lane: flutter test test/architecture"
+  (cd "$p" && flutter test test/architecture) >/dev/null 2>&1 || {
+    (cd "$p" && flutter test test/architecture) | grep -A4 '\[E\]' | head -20 >&2
+    die "the architecture gate is red
+  A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
+  trunk's: land the lane, then lower the ceiling to the measured number."
+  }
+
+  # Refusal 5. Only a lane that touched the C pays for it.
+  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
+    cmd_native "$name"
+  fi
+}
+
+# Refusal 7, asked after the LAST gate: every gate read the working tree,
+# and what follows — a merge, or a stamp — takes only the commit $2 that
+# was read before the first. $3 is the command to run again.
+unmoved_since() {
+  local p="$1" measured="$2" again="$3"
+  local now; now="$(git -C "$p" rev-parse HEAD)"
+  [ "$now" = "$measured" ] || die "the lane got a commit while its gates ran — this is refusal 7
+  HEAD was ${measured:0:10} when they started and is ${now:0:10} now: what
+  the gates never measured would pass as measured. Run $again again."
+  lane_is_clean "$p" || die "the lane was edited while its gates ran — this is refusal 7
+  The gates measured these edits, but only the commits go on from here — a
+  land merges them and removes the worktree with --force right after:
+  master would get what nobody measured, and the edits would be destroyed.
+  Commit them (or discard them) and run $again again."
+}
+
+# Run the land's gates on a lane as it stands, and STAMP the commit they
+# passed on (MEASURED ONCE, at the head of this file). On an away machine
+# this is what lets the trunk's machine land the lane without measuring it
+# a second time.
+# ⛔The stamp is written HERE and nowhere else — after the last gate, and
+# only for the commit read before the first.
+cmd_gate() {
+  local name="${1:-}"; [ -n "$name" ] || die "gate needs a name"
+  name="$(lane_named "$name")" || exit 1
+  local p; p="$(lane_path "$name")"
+  require_worktree "$p"
+  lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
+  A stamp names a COMMIT; the gates would be measuring more than it holds."
+  local measured; measured="$(git -C "$p" rev-parse HEAD)"
+  gates "$name" "$p"
+  unmoved_since "$p" "$measured" gate
+  git -C "$ROOT" update-ref "$(gate_ref "$name")" "$measured" \
+    || die "the gates passed, and the stamp could not be written"
+  echo "lane: gated work/$name at ${measured:0:10}"
+}
+
+# ONE LAND AT A TIME (the head of this file says what two at once cost).
+# The turn is a directory in the repository's own .git — one for every
+# worktree and every session — held from here to the end of the land,
+# however it ends.
+# ⚠️A lander that was killed leaves its turn behind. It is taken over when
+# the process that held it is gone, or when it is older than any land takes.
+land_turn() {
+  local turn; turn="$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/lane-land.turn"
+  local holder told=
+  until mkdir "$turn" 2>/dev/null; do
+    holder="$(cat "$turn/pid" 2>/dev/null || true)"
+    if { [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; } \
+      || [ -n "$(find "$turn" -maxdepth 0 -mmin +45 2>/dev/null)" ]; then
+      rm -rf "$turn"
+      continue
+    fi
+    [ -n "$told" ] || echo "lane: another lane is landing — waiting for its turn to end"
+    told=1
+    sleep 10
+  done
+  echo "$$" >"$turn/pid"
+  # shellcheck disable=SC2064
+  trap "rm -rf '$turn'" EXIT
+}
+
 cmd_land() {
   # ⛔NOTHING LANDS ON AN AWAY MACHINE. Its master is a copy of the trunk;
   # a merge into it would be a second trunk that no other machine has.
@@ -657,11 +817,21 @@ cmd_land() {
   local p; p="$(lane_path "$name")"
   require_worktree "$p"
 
+  land_turn
+
   lane_is_clean "$p" || die "uncommitted changes in the lane — commit them first
   A '??' line is a file nobody added; it does NOT travel with the merge."
 
-  echo "lane: rebasing work/$name onto $TRUNK"
-  git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
+  # MEASURED ONCE: the gates passed on this very commit, and the trunk has
+  # not moved from under it — the tree that merges is the tree that was
+  # measured, and measuring it again would say the same.
+  local head; head="$(git -C "$p" rev-parse HEAD)"
+  if [ "$(gated_at "$name")" = "$head" ] \
+    && git -C "$p" merge-base --is-ancestor "$TRUNK" HEAD; then
+    echo "lane: work/$name was gated at ${head:0:10} and sits on $TRUNK as it stands — not measured again"
+  else
+    echo "lane: rebasing work/$name onto $TRUNK"
+    git -C "$p" rebase "$TRUNK" >/dev/null 2>&1 || die "REBASE CONFLICT in $p
   Resolve it IN THE REBASE, commit by commit: fix the files, \`git -C $p add\`
   them, \`git -C $p rebase --continue\`, repeat. Then run land again.
   ⛔DO NOT abort and merge master into the lane instead. \`git rebase\` DROPS
@@ -670,39 +840,11 @@ cmd_land() {
   and lost that way before anyone noticed.
   If the conflict is a LAW rather than a line, read the rule at the top of
   this file before choosing a side."
-  # Refusal 7: the commit the gates below are measuring.
-  local measured; measured="$(git -C "$p" rev-parse HEAD)"
-
-  echo "lane: flutter analyze (no arguments)"
-  (cd "$p" && flutter analyze) >/dev/null 2>&1 || {
-    (cd "$p" && flutter analyze) | tail -20 >&2
-    die "analyze is not clean after the rebase — this is refusal 3"
-  }
-
-  echo "lane: flutter test test/architecture"
-  (cd "$p" && flutter test test/architecture) >/dev/null 2>&1 || {
-    (cd "$p" && flutter test test/architecture) | grep -A4 '\[E\]' | head -20 >&2
-    die "the architecture gate is red after the rebase
-  A 'grew past' failure is the lane's. A 'ceiling is slack' failure is the
-  trunk's: land the lane, then lower the ceiling to the measured number."
-  }
-
-  # Refusal 5. Only a lane that touched the C pays for it.
-  if [ -n "$(git -C "$p" diff --name-only "$TRUNK" HEAD -- packages/qa_native/src)" ]; then
-    cmd_native "$name"
+    # Refusal 7: the commit the gates below are measuring.
+    local measured; measured="$(git -C "$p" rev-parse HEAD)"
+    gates "$name" "$p"
+    unmoved_since "$p" "$measured" land
   fi
-
-  # Refusal 7, after the LAST gate: every gate above read the working tree,
-  # and the merge below takes only the commits.
-  local now; now="$(git -C "$p" rev-parse HEAD)"
-  [ "$now" = "$measured" ] || die "the lane got a commit while its gates ran — this is refusal 7
-  HEAD was ${measured:0:10} when they started and is ${now:0:10} now: the
-  merge would take what the gates never measured. Run land again."
-  lane_is_clean "$p" || die "the lane was edited while its gates ran — this is refusal 7
-  The gates measured these edits, but the merge takes only the commits and
-  the worktree is removed with --force right after it: master would get
-  what nobody measured, and the edits would be destroyed. Commit them (or
-  discard them) and run land again."
 
   git -C "$ROOT" merge --ff-only "work/$name" >/dev/null || die "fast-forward refused — someone moved $TRUNK under you; run land again"
   echo "lane: merged work/$name -> $(git -C "$ROOT" log --oneline -1)"
@@ -710,13 +852,15 @@ cmd_land() {
   git -C "$ROOT" worktree remove "$p" --force 2>/dev/null || rm -rf "$p" 2>/dev/null
   git -C "$ROOT" worktree prune
   git -C "$ROOT" branch -d "work/$name" 2>/dev/null
+  # The stamp was for the lane that just merged; the name is free again.
+  git -C "$ROOT" update-ref -d "$(gate_ref "$name")" 2>/dev/null
   echo "lane: $TRUNK is now $(git -C "$ROOT" rev-parse --short HEAD)"
   # A landed lane is finished on the mirror too: its OFFER goes — that is
   # how the machine that sent it, and `incoming` here, see that it landed —
-  # and so does its copy. (A lane that was never there has nothing to take
-  # off; the push says so and is not listened to.)
+  # and so do its stamp and its copy. (A lane that was never there has
+  # nothing to take off; the push says so and is not listened to.)
   local gone
-  for gone in "sent/$name" "work/$name"; do
+  for gone in "sent/$name" "gated/$name" "work/$name"; do
     GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" push --quiet \
       "$MIRROR" --delete "$gone" >/dev/null 2>&1 || true
   done
@@ -750,5 +894,6 @@ case "${1:-}" in
   unsend) shift; cmd_unsend "$@" ;;
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
-  *) sed -n '2,17p' "$0"; exit 2 ;;
+  gate) shift; cmd_gate "$@" ;;
+  *) sed -n '2,18p' "$0"; exit 2 ;;
 esac
