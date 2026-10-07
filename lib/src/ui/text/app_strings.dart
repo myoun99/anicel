@@ -59,6 +59,12 @@ enum AppStrings {
   String shortcutCategory(String category, String fallback) =>
       _values['shortcutCategory.$category'] ?? fallback;
 
+  /// And for a shortcut preset's name (I-63), by the enum value's `name`: the
+  /// English is the preset's own. The app's own name is one word in every
+  /// language, so the anicel preset has no row anywhere.
+  String shortcutPresetName(String preset, String fallback) =>
+      _values['shortcutPreset.$preset'] ?? fallback;
+
   /// A menu entry's wording, by the stable id the menu bar already keys its
   /// widgets with. Same fallback contract as [shortcutLabel]: English lives
   /// at the call site, the other languages here. An id left untabled — the
@@ -3311,6 +3317,7 @@ enum AppStrings {
     'shortcutCategory.View': '表示',
     'shortcutCategory.Timeline': 'タイムライン',
     'shortcutCategory.File': 'ファイル',
+    'shortcutPreset.clipStudio': 'CLIP STUDIO ベース',
     'shortcutAction.frame-previous': '前のフレーム',
     'shortcutAction.frame-next': '次のフレーム',
     'shortcutAction.drawing-previous': '前のブロック',
@@ -4683,6 +4690,7 @@ enum AppStrings {
     'shortcutCategory.View': '보기',
     'shortcutCategory.Timeline': '타임라인',
     'shortcutCategory.File': '파일',
+    'shortcutPreset.clipStudio': '클립 스튜디오 기반',
     'shortcutAction.frame-previous': '이전 프레임',
     'shortcutAction.frame-next': '다음 프레임',
     'shortcutAction.drawing-previous': '이전 블록',
@@ -6086,6 +6094,7 @@ enum AppStrings {
     'shortcutCategory.View': 'Affichage',
     'shortcutCategory.Timeline': 'Timeline',
     'shortcutCategory.File': 'Fichier',
+    'shortcutPreset.clipStudio': 'Base Clip Studio',
     'shortcutAction.frame-previous': 'Image précédente',
     'shortcutAction.frame-next': 'Image suivante',
     'shortcutAction.drawing-previous': 'Bloc précédent',
@@ -7463,6 +7472,7 @@ enum AppStrings {
     'shortcutCategory.View': '视图',
     'shortcutCategory.Timeline': '时间轴',
     'shortcutCategory.File': '文件',
+    'shortcutPreset.clipStudio': '基于 CLIP STUDIO',
     'shortcutAction.frame-previous': '上一帧',
     'shortcutAction.frame-next': '下一帧',
     'shortcutAction.drawing-previous': '上一个块',

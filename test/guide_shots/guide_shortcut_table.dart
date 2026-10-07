@@ -1,6 +1,6 @@
 // The guide's shortcut page, written from the app's own shortcut list: its
-// groups, its names and its default keys, in the order the shortcut window
-// shows them.
+// presets, and under each its groups, its names and the keys that preset
+// ships with, in the order the shortcut window shows them.
 //
 // 유저 2026-10-03: 「단축키 바뀔경우 많을텐데 낡지않을구존가? 프로들하는거처럼?」
 // — a page that copies keys by hand is wrong the day a default moves. Here
@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart'
     show editorActionLabel;
 import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_presets.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
 const _begin = '<!-- shortcuts:begin -->';
@@ -53,7 +54,10 @@ void writeShortcutTable(String guideRoot, AppLanguage language) {
   );
 }
 
-/// Every action that ships with a key, one table per group, in [language].
+/// Every action that ships with a key, one table per group, under each
+/// shortcut preset's name (I-63, 유저 2026-10-03: 「이를 가이드페이지에도 두
+/// 프리셋별로 낡지않게 단축키 보여주도록」), in [language]. The keys are the
+/// ones the shortcut window shows for that preset ([presetActivators]).
 String shortcutTableMarkdown(AppLanguage language) {
   final before = AppText.settings.value;
   AppText.settings.value = AppLanguageSettings(
@@ -61,34 +65,47 @@ String shortcutTableMarkdown(AppLanguage language) {
     notationLanguage: language,
   );
   try {
-    final words = _wordsOf(language);
-    final groups = <String, List<EditorActionDefinition>>{};
-    for (final definition in editorActionDefinitions) {
-      if (definition.defaultActivators.isNotEmpty) {
-        (groups[definition.category] ??= []).add(definition);
-      }
-    }
     final out = StringBuffer();
-    for (final MapEntry(key: category, value: actions) in groups.entries) {
+    for (final preset in ShortcutPreset.values) {
+      final name = AppText.strings.shortcutPresetName(
+        preset.name,
+        preset.label,
+      );
       out
         ..writeln()
-        ..writeln('## ${AppText.strings.shortcutCategory(category, category)}')
-        ..writeln()
-        ..writeln('| ${words.action} | ${words.key} |')
-        ..writeln('|---|---|');
-      for (final action in actions) {
-        final keys = [
-          for (final activator in action.defaultActivators) _key(activator),
-        ];
-        out.writeln(
-          '| ${_cell(editorActionLabel(action.id))} '
-          '| ${keys.join(' ${words.or} ')} |',
-        );
-      }
+        ..writeln('## ${_html(name)}');
+      _writeGroups(out, preset, _wordsOf(language));
     }
     return out.toString();
   } finally {
     AppText.settings.value = before;
+  }
+}
+
+/// [preset]'s tables, one per group that has a key in it.
+void _writeGroups(
+  StringBuffer out,
+  ShortcutPreset preset,
+  ({String action, String key, String or}) words,
+) {
+  final groups = <String, List<String>>{};
+  for (final definition in editorActionDefinitions) {
+    final keys = presetActivators(preset, definition).map(_key);
+    if (keys.isNotEmpty) {
+      (groups[definition.category] ??= []).add(
+        '| ${_cell(editorActionLabel(definition.id))} '
+        '| ${keys.join(' ${words.or} ')} |',
+      );
+    }
+  }
+  for (final MapEntry(key: category, value: rows) in groups.entries) {
+    out
+      ..writeln()
+      ..writeln('### ${AppText.strings.shortcutCategory(category, category)}')
+      ..writeln()
+      ..writeln('| ${words.action} | ${words.key} |')
+      ..writeln('|---|---|');
+    rows.forEach(out.writeln);
   }
 }
 

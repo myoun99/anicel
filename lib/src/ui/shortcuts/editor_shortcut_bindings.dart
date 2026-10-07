@@ -6,11 +6,12 @@ import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
 import 'sheet_arrow.dart';
 import 'shortcut_activator_codec.dart';
+import 'shortcut_presets.dart';
 import 'shortcut_settings_store.dart';
 import 'touch_shortcuts.dart';
 
-/// The LIVE shortcut bindings: registry defaults merged with the user's
-/// persisted overrides. Notifies on every change so the app-level
+/// The LIVE shortcut bindings: the keys of the preset in use merged with the
+/// user's persisted overrides. Notifies on every change so the app-level
 /// Shortcuts map, the menu labels and the settings dialog all rebuild
 /// from one source.
 class EditorShortcutBindings extends ChangeNotifier {
@@ -23,7 +24,39 @@ class EditorShortcutBindings extends ChangeNotifier {
 
   final List<EditorActionDefinition> definitions;
 
-  final Map<String, List<SingleActivator>> _overrides = {};
+  /// The layout the keys start from (I-63).
+  ///
+  /// ⚠️It starts as [ShortcutPreset.anicel] — the keys this app had before
+  /// there were presets, so nobody's keys move by themselves. Which preset a
+  /// NEW install opens with is asked on the board (I-63-Q5); the first words
+  /// (유저 2026-10-03: 「기본값은 일반으로」) named a preset that became two.
+  ShortcutPreset get preset => _preset;
+  ShortcutPreset _preset = ShortcutPreset.anicel;
+
+  /// What the user recorded, PER PRESET: a key recorded while one layout is
+  /// in use is a change to that layout, and stays with it.
+  ///
+  /// ⚠️Not said by the user — asked on the board (I-63-Q6). One set over
+  /// every preset would carry a repair made for one program's layout (a key
+  /// moved off a clash that only that layout has) into the others.
+  final Map<ShortcutPreset, Map<String, List<SingleActivator>>>
+  _overridesByPreset = {
+    for (final preset in ShortcutPreset.values) preset: {},
+  };
+
+  Map<String, List<SingleActivator>> get _overrides =>
+      _overridesByPreset[_preset]!;
+
+  /// Starts from [preset]'s keys, under whatever was recorded while it was
+  /// last in use. Persists and notifies.
+  void setPreset(ShortcutPreset preset) {
+    if (preset == _preset) {
+      return;
+    }
+    _preset = preset;
+    _persist();
+    notifyListeners();
+  }
 
   EditorActionDefinition? definitionFor(String actionId) {
     for (final definition in definitions) {
@@ -34,15 +67,17 @@ class EditorShortcutBindings extends ChangeNotifier {
     return null;
   }
 
-  /// The registry's defaults as THIS platform presses them: the command
-  /// modifier the registry writes as Ctrl is ⌘ on a Mac or an iPad
-  /// ([platformActivator]).
-  List<SingleActivator> defaultActivatorsFor(String actionId) => [
-    for (final activator
-        in definitionFor(actionId)?.defaultActivators ??
-            const <SingleActivator>[])
-      platformActivator(activator),
-  ];
+  /// The keys the preset in use ships [actionId] with ([presetActivators]),
+  /// as THIS platform presses them: the command modifier written as Ctrl is
+  /// ⌘ on a Mac or an iPad ([platformActivator]).
+  List<SingleActivator> defaultActivatorsFor(String actionId) {
+    final definition = definitionFor(actionId);
+    return [
+      if (definition != null)
+        for (final activator in presetActivators(_preset, definition))
+          platformActivator(activator),
+    ];
+  }
 
   /// The action's LIVE activators (override or defaults). An override may
   /// be an empty list = the action is deliberately unbound.
@@ -259,6 +294,8 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
   }
 
+  /// Back to the keys the preset in use ships with, and the registry's touch
+  /// gestures. What was recorded under another preset stays with it.
   void resetAll() {
     if (_overrides.isEmpty && _touchOverrides.isEmpty) {
       return;
@@ -319,49 +356,67 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Loads persisted overrides (unknown action ids and malformed entries
-  /// are dropped — an app update or corrupt file never breaks bindings).
+  /// Loads the persisted preset and overrides (unknown action ids and
+  /// malformed entries are dropped, and a preset no build knows reads as the
+  /// registry's own — an app update or corrupt file never breaks bindings).
   Future<void> restore() async {
     final payload = await store?.load();
-    final overridesJson = payload?['overrides'];
-    if (overridesJson is! Map) {
+    final byPreset = payload?['overrides'];
+    if (byPreset is! Map) {
       return;
     }
-    _overrides.clear();
-    for (final entry in overridesJson.entries) {
+    // ⚠️NOT the preset an install with no file opens on ([preset]'s first
+    // value) — the two only agree today. A file that names no preset this
+    // build knows was written over the registry's keys: before the presets,
+    // or by a build whose preset this one lacks.
+    _preset = ShortcutPreset.named(payload?['preset']) ?? ShortcutPreset.anicel;
+    for (final MapEntry(key: preset, value: overrides)
+        in _overridesByPreset.entries) {
+      overrides
+        ..clear()
+        ..addAll(_keyOverridesFrom(byPreset[preset.name]));
+    }
+    _restoreTouch(payload?['touch']);
+    notifyListeners();
+  }
+
+  /// One preset's recorded keys out of its saved [json].
+  Map<String, List<SingleActivator>> _keyOverridesFrom(Object? json) {
+    if (json is! Map) {
+      return const {};
+    }
+    return {
+      for (final MapEntry(key: actionId, value: listJson) in json.entries)
+        if (actionId is String &&
+            definitionFor(actionId) != null &&
+            listJson is List)
+          actionId: List.unmodifiable([
+            for (final activatorJson in listJson)
+              ?singleActivatorFromJson(activatorJson),
+          ]),
+    };
+  }
+
+  void _restoreTouch(Object? touchJson) {
+    _touchOverrides.clear();
+    if (touchJson is! Map) {
+      return;
+    }
+    for (final entry in touchJson.entries) {
       final actionId = entry.key;
       if (actionId is! String || definitionFor(actionId) == null) {
         continue;
       }
-      final listJson = entry.value;
-      if (listJson is! List) {
-        continue;
-      }
-      _overrides[actionId] = List.unmodifiable([
-        for (final activatorJson in listJson)
-          ?singleActivatorFromJson(activatorJson),
-      ]);
-    }
-    _touchOverrides.clear();
-    final touchJson = payload?['touch'];
-    if (touchJson is Map) {
-      for (final entry in touchJson.entries) {
-        final actionId = entry.key;
-        if (actionId is! String || definitionFor(actionId) == null) {
-          continue;
-        }
-        final name = entry.value;
-        if (name == null) {
-          _touchOverrides[actionId] = null;
-        } else if (name is String) {
-          final gesture = TouchGesture.fromName(name);
-          if (gesture != null) {
-            _touchOverrides[actionId] = gesture;
-          }
+      final name = entry.value;
+      if (name == null) {
+        _touchOverrides[actionId] = null;
+      } else if (name is String) {
+        final gesture = TouchGesture.fromName(name);
+        if (gesture != null) {
+          _touchOverrides[actionId] = gesture;
         }
       }
     }
-    notifyListeners();
   }
 
   Future<void> _pendingPersist = Future<void>.value();
@@ -377,12 +432,17 @@ class EditorShortcutBindings extends ChangeNotifier {
       return;
     }
     final payload = {
+      'preset': _preset.name,
       'overrides': {
-        for (final entry in _overrides.entries)
-          entry.key: [
-            for (final activator in entry.value)
-              singleActivatorToJson(activator),
-          ],
+        for (final MapEntry(key: preset, value: overrides)
+            in _overridesByPreset.entries)
+          preset.name: {
+            for (final entry in overrides.entries)
+              entry.key: [
+                for (final activator in entry.value)
+                  singleActivatorToJson(activator),
+              ],
+          },
       },
       'touch': {
         for (final entry in _touchOverrides.entries)

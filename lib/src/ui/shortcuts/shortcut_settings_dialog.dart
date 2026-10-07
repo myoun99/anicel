@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../widgets/panel_flyout.dart';
+import '../widgets/pill_strip.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
 import 'shortcut_activator_codec.dart';
+import 'shortcut_presets.dart';
 import 'touch_shortcuts.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -165,6 +167,26 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // 🗣️I-63: the preset the keys below start from. Picking one
+              // shows ITS keys and what was recorded under it.
+              Align(
+                alignment: Alignment.centerLeft,
+                child: PillStrip(
+                  items: [
+                    for (final preset in ShortcutPreset.values)
+                      PillItem(
+                        keyValue: 'shortcut-preset-${preset.name}',
+                        label: AppText.strings.shortcutPresetName(
+                          preset.name,
+                          preset.label,
+                        ),
+                        selected: bindings.preset == preset,
+                        onTap: () => bindings.setPreset(preset),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
               TextField(
                 key: const ValueKey<String>('shortcut-search-field'),
                 controller: _search,

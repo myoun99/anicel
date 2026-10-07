@@ -195,7 +195,7 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
 List<EditorActionDefinition> _blendModeActions() => [
   for (final (index, mode) in BrushBlendMode.values.indexed)
     EditorActionDefinition(
-      id: 'tool-blend-${mode.name}',
+      id: blendModeActionId(mode),
       label: blendModeActionLabel(mode, AppLanguage.en),
       category: 'Tools',
       defaultActivators: [
@@ -219,6 +219,10 @@ const _functionKeys = [
   LogicalKeyboardKey.f11,
   LogicalKeyboardKey.f12,
 ];
+
+/// The action that picks [mode] — spelled here once, for whoever names a
+/// blend action without the list in hand (a shortcut preset).
+String blendModeActionId(BrushBlendMode mode) => 'tool-blend-${mode.name}';
 
 /// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
 String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
