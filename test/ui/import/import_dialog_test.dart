@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 import '../../helpers/fake_pdf_document.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/psd_fixture.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -805,6 +806,21 @@ void main() {
         'the bake is its own question again', (tester) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
+      // The preview reads a Photoshop file whole, through an awaited read
+      // that holds it open between turns — and one this test ended in the
+      // middle of held it open for the rest of the run, so its folder could
+      // not be removed (2026-10-08). Shown, it has been read and let go.
+      expect(
+        await settleAsync(
+          tester,
+          () => find
+              .byKey(const ValueKey<String>('import-preview-checker'))
+              .evaluate()
+              .isNotEmpty,
+        ),
+        isTrue,
+        reason: 'the preview shows the file it read',
+      );
 
       expect(
         cellText(tester, 'psd', psd),
