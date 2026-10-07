@@ -1852,10 +1852,7 @@ class ExportDialogState extends State<ExportDialog> {
   /// again.
   Future<String?> _handOverOutboxes(List<String> outboxes) async {
     try {
-      final outputs = [
-        for (final outbox in outboxes)
-          for (final entry in Directory(outbox).listSync()) entry.path,
-      ];
+      final outputs = _outputsUnderNamesOfTheirOwn(outboxes);
       if (outputs.isEmpty || !mounted) {
         return null;
       }
@@ -1868,6 +1865,44 @@ class ExportDialogState extends State<ExportDialog> {
     } finally {
       _discardOutboxes(outboxes);
     }
+  }
+
+  /// What the [outboxes] hold — every output of every job — each under a
+  /// name no other of them wears.
+  ///
+  /// ONE window takes them all to ONE place, and each job of a queue made
+  /// its own in a room of its own, so two jobs can each have made a
+  /// `Project.png`. Side by side where the user puts them, the later would
+  /// land on the earlier and the earlier would be gone — unasked, and with
+  /// no window that could have asked (a desktop's save window asks about
+  /// the name it is given; nothing here does). So the later one is renamed
+  /// where it stands, by the bump a run gives a name it has already handed
+  /// out ([bumpedOutputName]).
+  ///
+  /// By its WHOLE top-level name, file or folder alike: a folder that is
+  /// bumped keeps its job's tree together, where two folders of one name
+  /// would pour two jobs' cels into each other. And blind to case, as the
+  /// disks these land on are.
+  List<String> _outputsUnderNamesOfTheirOwn(List<String> outboxes) {
+    final taken = <String>{};
+    final outputs = <String>[];
+    for (final outbox in outboxes) {
+      final made = Directory(outbox).listSync()
+        ..sort((a, b) => a.path.compareTo(b.path));
+      for (final output in made) {
+        final name = fileNameOfPath(output.path);
+        var own = name;
+        for (var bump = 2; !taken.add(own.toLowerCase()); bump += 1) {
+          own = bumpedOutputName(name, bump, isFolder: output is Directory);
+        }
+        outputs.add(
+          own == name
+              ? output.path
+              : output.renameSync('$outbox${Platform.pathSeparator}$own').path,
+        );
+      }
+    }
+    return outputs;
   }
 
   void _discardOutboxes(List<String> outboxes) {

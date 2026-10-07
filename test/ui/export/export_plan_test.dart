@@ -240,6 +240,24 @@ void main() {
     });
   });
 
+  group('bumpedOutputName', () {
+    test('a file is bumped before its extension — the last one', () {
+      expect(bumpedOutputName('shot.png', 2, isFolder: false), 'shot_2.png');
+      expect(bumpedOutputName('A.1.png', 3, isFolder: false), 'A.1_3.png');
+    });
+
+    test('a FOLDER has no extension, whatever dots its name holds', () {
+      expect(bumpedOutputName('CUT1', 2, isFolder: true), 'CUT1_2');
+      expect(bumpedOutputName('C.1', 2, isFolder: true), 'C.1_2');
+    });
+
+    test('a name with no extension, or only a leading dot, is bumped at its '
+        'end', () {
+      expect(bumpedOutputName('README', 2, isFolder: false), 'README_2');
+      expect(bumpedOutputName('.hidden', 2, isFolder: false), '.hidden_2');
+    });
+  });
+
   group('buildExportAudioPlan', () {
     // Frame-linked sounds: one SE layer per sound, its block = the window.
     Layer seLayer(

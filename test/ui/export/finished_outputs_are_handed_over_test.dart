@@ -673,6 +673,71 @@ void main() {
       expect(leftIn(outbox()), isEmpty);
     });
 
+    testWidgets('🚨two jobs that each made a file of ONE name hand them over '
+        'under names of their own — the later is bumped as a run bumps its '
+        'own, where it would have landed on the earlier and left one', (
+      tester,
+    ) async {
+      final handed = iosPickerPlaces();
+      final state = await open(tester, 'ios');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+      await tapKey(tester, 'export-queue-add-button');
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(handed, [
+        ['Project.png', 'Project_2.png'],
+      ]);
+      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('names that differ only by CASE are one name on the disks '
+        'these land on: the later is bumped all the same', (tester) async {
+      final handed = iosPickerPlaces();
+      final state = await open(tester, 'ios');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+      await tester.ensureVisible(
+        find.byKey(const ValueKey<String>('export-file-name-field')),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey<String>('export-file-name-field')),
+        'project',
+      );
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(handed, [
+        ['Project.png', 'project_2.png'],
+      ]);
+    });
+
+    testWidgets('Android: the same two reach the folder its window answers '
+        'as TWO files', (tester) async {
+      AppStorage.debugAllFilesAccessOverride = true;
+      FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
+          FolderGrant.granted(path: placed.path);
+      final state = await open(tester, 'android');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+      await tapKey(tester, 'export-queue-add-button');
+
+      await tester.runAsync(state.runQueue);
+      await tester.pump();
+
+      expect(filesWrittenUnder(placed), ['Project.png', 'Project_2.png']);
+      expect(leftIn(outbox()), isEmpty);
+    });
+
     testWidgets('Android: a queue of single files hands them over in ONE '
         'folder window once the last is done — the save window takes one '
         'file, and these are two', (tester) async {

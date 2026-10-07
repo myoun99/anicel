@@ -483,16 +483,32 @@ class ExportCelFileNamer {
   }
 
   /// `[folders][base].[extension]`, bumped (`_2`, `_3`…) past every name
-  /// the run has handed out.
+  /// the run has handed out ([bumpedOutputName]).
   String _unused(String folders, String base, String extension) {
-    var fileName = '$folders$base.$extension';
+    final name = '$base.$extension';
+    var fileName = '$folders$name';
     var bump = 2;
     while (!_used.add(fileName)) {
-      fileName = '$folders${base}_$bump.$extension';
+      fileName = '$folders${bumpedOutputName(name, bump, isFolder: false)}';
       bump += 1;
     }
     return fileName;
   }
+}
+
+/// [name] as the [bump]-th output to wear it: `shot.png` becomes
+/// `shot_2.png`, and a folder `CUT1` becomes `CUT1_2` — a folder's name has
+/// no extension, whatever dots it holds ([isFolder]).
+///
+/// The ONE bump of the exports. A run gives it to the second file its own
+/// naming rule calls the same ([ExportCelFileNamer]); the export window
+/// gives it to the second output of one name among those that leave for one
+/// place together (several jobs of a queue, handed over in one window).
+String bumpedOutputName(String name, int bump, {required bool isFolder}) {
+  final dot = isFolder ? -1 : name.lastIndexOf('.');
+  return dot <= 0
+      ? '${name}_$bump'
+      : '${name.substring(0, dot)}_$bump${name.substring(dot)}';
 }
 
 /// Makes a cut/layer name safe as a file-name component: characters Windows

@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/path_names.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
@@ -29,6 +30,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/move_into_folder.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart'
     show debugOperatingSystemOverride;
 import 'package:anicel/src/ui/editor_session_manager.dart';
@@ -70,7 +72,7 @@ void main() {
   );
 
   /// A (two cels) · B (one) · a direction row whose one block says PAN.
-  EditorSessionManager film() => EditorSessionManager(
+  EditorSessionManager film({String cutName = 'CUT1'}) => EditorSessionManager(
     initialProject: Project(
       id: const ProjectId('project'),
       name: 'Project',
@@ -83,7 +85,7 @@ void main() {
           cuts: [
             Cut(
               id: cutId,
-              name: 'CUT1',
+              name: cutName,
               duration: 2,
               canvasSize: size,
               layers: [
@@ -599,6 +601,63 @@ void main() {
       reason: '↩️three cels written to one name, each over the last',
     );
     expect(status(tester), startsWith(AppText.strings.exFailed('').trim()));
+    session.playbackRig.prerenderScheduler.cancel();
+  });
+
+  testWidgets('two queued jobs that each made a FOLDER of one name hand '
+      'them over as two folders — the later bumped whole, with its own cels '
+      'still in it; a folder\'s dots are no extension', (tester) async {
+    AppExport.settings.value = AppExportSettings(
+      lastSpecs: const ExportTabSpecs(
+        cels: CelsExportSpec(
+          kinds: celKindsAlone,
+          naming: ExportCelNaming(cutFolder: true),
+        ),
+      ),
+    );
+    // iOS: everything is made first and handed over in one window.
+    debugOperatingSystemOverride = 'ios';
+    FolderPicker.debugOperatingSystem = 'ios';
+    final temp = Directory.systemTemp.createTempSync('qa-cels-two-folders');
+    deleteAfterSessionEnds(temp);
+    final handed = <String>[];
+    FolderPicker.debugFilesExporter = (sourcePaths) async {
+      for (final source in sourcePaths) {
+        handed.add(fileNameOfPath(source));
+        moveIntoFolder(source, temp.path);
+      }
+      return FolderGrant.granted(path: temp.path);
+    };
+    addTearDown(() {
+      debugOperatingSystemOverride = null;
+      FolderPicker.debugOperatingSystem = null;
+      FolderPicker.debugFilesExporter = null;
+    });
+    final session = film(cutName: 'C.1');
+    addTearDown(session.dispose);
+    draw(session);
+
+    final state = await pumpCels(
+      tester,
+      session,
+      temp,
+      throughTheSystemsWindows: true,
+    );
+    await tapKey(tester, 'export-queue-add-button');
+    await tapKey(tester, 'export-queue-add-button');
+
+    await tester.runAsync(state.runQueue);
+    await tester.pump();
+
+    expect(handed..sort(), ['C.1', 'C.1_2']);
+    expect(filesWrittenUnder(temp), [
+      'C.1/A1.png',
+      'C.1/A2.png',
+      'C.1/B1.png',
+      'C.1_2/A1.png',
+      'C.1_2/A2.png',
+      'C.1_2/B1.png',
+    ]);
     session.playbackRig.prerenderScheduler.cancel();
   });
 }
