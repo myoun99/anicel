@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_table.dart';
@@ -74,6 +75,49 @@ void main() {
     );
     await tester.pumpAndSettle();
   }
+
+  testWidgets('🎯a cut folder counts its scans into the run\'s % (F-282-Q1)', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final folderPath = await tester.runAsync(() async {
+      const root = 'upn_02_064_lo';
+      final sep = Platform.pathSeparator;
+      for (final scan in ['A1', 'A2', 'A3']) {
+        await writePng('$root$sep$scan.png');
+      }
+      return '${tempDir.path}$sep$root';
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [folderPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    await tester.pump();
+    final window = find.byType(AppProgressDialog);
+    expect(window, findsOneWidget);
+    final progress = tester.widget<AppProgressDialog>(window).progress;
+    final counted = <double>[];
+    progress.addListener(() {
+      if (progress.value.fraction case final fraction?) {
+        counted.add(fraction);
+      }
+    });
+    await pumpPastTheWaitWindow(tester);
+
+    expect(
+      counted.where((fraction) => fraction > 0 && fraction < 1),
+      isNotEmpty,
+      reason: 'its scans were counted on the way, not only its end',
+    );
+  });
 
   testWidgets('a dropped cut folder shows the interpretation (layers, '
       'pictures, exclusions) and Import builds the cut through the '
