@@ -175,6 +175,17 @@ void main() {
     );
   });
 
+  // F-252 (format 10): a v9 file may hold the timesheet's strip ink, which
+  // this build no longer reads — it is refused by its number rather than
+  // opened with that writing gone and saved back without it.
+  test('🚨a v9 file is refused by its number — its strip ink would open '
+      'gone', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(9)),
+      refusesNaming('format 9,'),
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
