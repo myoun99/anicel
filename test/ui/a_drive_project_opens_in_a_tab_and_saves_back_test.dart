@@ -114,6 +114,17 @@ void main() {
     return tester.widget<EditorTopStrip>(find.byType(EditorTopStrip)).projects;
   }
 
+  // 🚨HOW LONG THE WAITS BELOW WAIT IS A TIME, NOT A NUMBER OF ROUNDS.
+  // ⛔They counted 200 rounds — about five seconds on an idle machine — and a
+  // round grows with the load. This file went red in a batch beside other
+  // runs with the save not yet in the document (`Expected: <2> Actual: <1>`)
+  // on 2026-10-06 and again on 10-07, on lanes that touched nothing of
+  // saving, and passed alone each time (board
+  // `a-poll-that-counts-rounds-runs-out-under-load`). A wait that passes
+  // returns the moment what it waits for is there, so the ceiling costs
+  // nothing; it is only how long a real failure takes to say so.
+  const patience = Duration(seconds: 60);
+
   Future<void> tapKey(WidgetTester tester, String key) async {
     final target = find.byKey(ValueKey<String>(key));
     await tester.ensureVisible(target);
@@ -122,13 +133,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Pumps real time until [done] says so.
+  /// One beat of real time: the test clock moves, then the disk gets a turn.
+  Future<void> beat(WidgetTester tester) async {
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 25)),
+    );
+  }
+
+  /// Pumps real time until [done] says so, or [patience] has run out.
   Future<void> until(WidgetTester tester, bool Function() done) async {
-    for (var attempt = 0; attempt < 200 && !done(); attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
+    final deadline = DateTime.now().add(patience);
+    while (!done() && DateTime.now().isBefore(deadline)) {
+      await beat(tester);
     }
     await tester.pumpAndSettle();
   }
@@ -180,11 +197,9 @@ void main() {
     await tapKey(tester, 'top-strip-project-button');
     await tester.tap(find.byKey(const ValueKey<String>('menu-file-save')));
     var saved = before;
-    for (var attempt = 0; attempt < 200 && saved == before; attempt += 1) {
-      await tester.pump(const Duration(milliseconds: 50));
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 25)),
-      );
+    final deadline = DateTime.now().add(patience);
+    while (saved == before && DateTime.now().isBefore(deadline)) {
+      await beat(tester);
       saved = await cutsIn(tester, documents[drive.uri]!);
     }
     // The save's window lingers a beat after it lands, then goes.
