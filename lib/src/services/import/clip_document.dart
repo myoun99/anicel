@@ -276,11 +276,7 @@ final class _DocumentReader {
     if (canvas == null) {
       throw const ClipFormatException('the file holds no canvas');
     }
-    final layers = _rows('Layer', _layerColumns);
-    final pictures = _picturesById();
-    final vectorLayers = _vectorLayerIds();
-    final rootId = _int(canvas['CanvasRootFolder']);
-    final root = _layer(rootId, layers, pictures, vectorLayers, {});
+    final root = _layer(_int(canvas['CanvasRootFolder']));
     if (root == null) {
       throw const ClipFormatException('the canvas names no root folder');
     }
@@ -362,33 +358,37 @@ final class _DocumentReader {
     };
   }
 
-  ClipLayer? _layer(
-    int id,
-    Map<int, Map<String, Object?>> layers,
-    Map<int, ClipPictureSource> pictures,
-    Set<int> vectorLayers,
-    Set<int> seen,
-  ) {
-    final row = layers[id];
-    if (row == null || !seen.add(id)) {
+  /// What every step of the tree walk asks: the layer table, the 100%
+  /// pictures, and the layers that hold vectors.
+  late final _layerRows = _rows('Layer', _layerColumns);
+  late final _pictures = _picturesById();
+  late final _vectorLayers = _vectorLayerIds();
+
+  /// The layers the walk has reached — a chain that loops stops there.
+  final _walked = <int>{};
+
+  ClipLayer? _layer(int id) {
+    final row = _layerRows[id];
+    if (row == null || !_walked.add(id)) {
       return null;
     }
     final children = <ClipLayer>[];
     var childId = _int(row['LayerFirstChildIndex']);
     while (childId != 0) {
-      final child = _layer(childId, layers, pictures, vectorLayers, seen);
+      final child = _layer(childId);
       if (child == null) {
         warnings.add('a layer chain names layer $childId, which is not there');
         break;
       }
       children.add(child);
-      childId = _int(layers[childId]!['LayerNextIndex']);
+      childId = _int(_layerRows[childId]!['LayerNextIndex']);
     }
+    final pictures = _pictures;
     final transform = row['ResizableImageInfo'];
     return ClipLayer(
       id: id,
       name: _text(row['LayerName']),
-      kind: _kindOf(row, vectorLayers.contains(id)),
+      kind: _kindOf(row, _vectorLayers.contains(id)),
       visibility: _int(row['LayerVisibility']),
       opacity: _int(row['LayerOpacity']),
       composite: _int(row['LayerComposite']),
