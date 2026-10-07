@@ -13,8 +13,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart'
-    show PrerenderProgress;
+import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
@@ -82,6 +81,11 @@ void main() {
 
   const picture = 8 * 8 * 4;
 
+  /// The walk at rest — or ten seconds gone: a walk that never rests is a
+  /// failure the test SAYS, not one it hangs on.
+  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
+      .timeout(const Duration(seconds: 10), onTimeout: () {});
+
   bool held(EditorSessionManager s, int frameIndex) =>
       s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: s.activeCutOrNull!,
@@ -99,10 +103,19 @@ void main() {
       budget.debugSetPlaybackCacheBudgetBytes(2 * picture);
       final scheduler = s.playbackRig.prerenderScheduler;
 
+      final said = <PrerenderProgress>[];
+      scheduler.progress.addListener(() => said.add(scheduler.progress.value));
+
       // The playhead on frame 0. The cut's three pictures, nearest first:
       // the body cel (0..1), the nothing between (2..4), the runway cel.
       s.warmActiveCut();
-      await scheduler.idle;
+      await rested(scheduler);
+      expect(
+        said,
+        contains(const PrerenderProgress(cached: 2, total: 4)),
+        reason: 'two frames in, one picture held of the two that fit: the '
+            'walk expects four frames — the session told it its room',
+      );
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [true, true, false],
@@ -123,7 +136,7 @@ void main() {
 
       // The playhead out on the runway: the window follows it.
       s.selectFrameIndex(5);
-      await scheduler.idle;
+      await rested(scheduler);
       expect(
         [for (final frame in [0, 2, 5]) held(s, frame)],
         [false, true, true],
@@ -146,7 +159,7 @@ void main() {
       final scheduler = s.playbackRig.prerenderScheduler;
       final composites = s.renderCaches.cutFrameCompositeCache;
       s.warmActiveCut();
-      await scheduler.idle;
+      await rested(scheduler);
 
       // A third picture — the runway cel, made by another hand — and the
       // nothing between is now the one used longest ago.

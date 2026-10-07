@@ -124,6 +124,7 @@ void main() {
     required CutFrameCompositeCache composites,
     bool cameraViewEnabled = false,
     ValueListenable<PrerenderProgress>? progress,
+    Listenable? picturesLanded,
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
     Widget? trackStack,
@@ -139,6 +140,7 @@ void main() {
             compositeCache: composites,
             prerenderProgress:
                 progress ?? ValueNotifier(PrerenderProgress.none),
+            picturesLanded: picturesLanded,
             cameraViewEnabled: cameraViewEnabled,
             cameraFrameSize: const CanvasSize(width: 4, height: 2),
             cameraPoseOf: (cut, frameIndex) =>
@@ -326,6 +328,42 @@ void main() {
 
     expect(f.controller.position!.localFrameIndex, 1);
     expect(painterOf(tester).image, isNotNull, reason: 'stale frame held');
+
+    f.controller.stop();
+    await tester.pump();
+    f.composites.dispose();
+  });
+
+  /// 유저 2026-10-08, the playback rework: the frame under the playhead may
+  /// get its picture while the playhead stands on it, and the controller
+  /// speaks only when the frame changes.
+  testWidgets('a picture that lands under a standing playhead is shown: the '
+      'view repaints when it is told one landed', (tester) async {
+    final f = fixture();
+    final landed = ValueNotifier<int>(0);
+    addTearDown(landed.dispose);
+    f.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: f.controller,
+      composites: f.composites,
+      picturesLanded: landed,
+    );
+    expect(painterOf(tester).image, isNull, reason: '⛔premise: none yet');
+
+    await tester.runAsync(
+      () => f.composites.prepareComposite(cut: cut(), frameIndex: 0),
+    );
+    await tester.pump();
+    expect(
+      painterOf(tester).image,
+      isNull,
+      reason: '⛔premise: the frame has not changed, so nothing rebuilt',
+    );
+
+    landed.value += 1;
+    await tester.pump();
+    expect(painterOf(tester).image, isNotNull);
 
     f.controller.stop();
     await tester.pump();

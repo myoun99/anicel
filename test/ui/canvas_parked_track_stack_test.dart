@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart'
     show PlaybackScope;
+import 'package:anicel/src/ui/playback/canvas_playback_view.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/session/frame_scrub.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart'
@@ -98,6 +99,42 @@ void main() {
       reason: 'the covered frame paints a projection, not the void',
     );
     expect(tester.takeException(), isNull);
+    await drainWarming(tester);
+  });
+
+  /// 유저 2026-10-08, the playback rework: a run has ONE maker of its
+  /// pictures — the warmer, which follows it — and a parked frame is still
+  /// composed where it is asked for (F-206: 「스크럽하던 뭐던 존재하는게
+  /// 보여야함」).
+  testWidgets('each mount says whose pictures it shows: a parked stack '
+      'makes its own, a run\'s are the warmer\'s', (tester) async {
+    final (s, first, _) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    await pumpArea(tester, s);
+    final landings = s.playbackRig.prerenderScheduler.landings;
+    CanvasTrackStackView stack() =>
+        tester.widget<CanvasTrackStackView>(find.byKey(stackKey));
+    CanvasPlaybackView playbackView() =>
+        tester.widget<CanvasPlaybackView>(find.byType(CanvasPlaybackView));
+
+    s.parkGlobalFrame(1);
+    await tester.pump();
+    expect(stack().picturesLanded, isNull, reason: 'parked: it makes its own');
+
+    s.playbackRig.playback.play(scope: PlaybackScope.allCuts);
+    await tester.pump();
+    expect(stack().picturesLanded, same(landings));
+    expect(playbackView().picturesLanded, same(landings));
+    s.playbackRig.playback.stop();
+    await tester.pump();
+
+    s.selectCut(first);
+    await tester.pump();
+    s.playbackRig.playback.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    expect(playbackView().picturesLanded, same(landings));
+    s.playbackRig.playback.stop();
     await drainWarming(tester);
   });
 

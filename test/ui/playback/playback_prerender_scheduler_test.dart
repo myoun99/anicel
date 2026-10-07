@@ -31,6 +31,11 @@ import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
+  /// The walk at rest — or ten seconds gone: a walk that never rests is a
+  /// failure the test SAYS, not one it hangs on.
+  Future<void> rested(PlaybackPrerenderScheduler scheduler) => scheduler.idle
+      .timeout(const Duration(seconds: 10), onTimeout: () {});
+
   BrushFrameKey frameKey(Cut cut, LayerId layerId, FrameId frameId) =>
       BrushFrameKey(
         projectId: const ProjectId('project'),
@@ -138,7 +143,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await scheduler.idle;
+      await rested(scheduler);
 
       expect(
         f.composites.validCompositeOrNull(
@@ -186,7 +191,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 0,
       );
-      await scheduler.idle;
+      await rested(scheduler);
 
       expect(filled, isNotEmpty);
       for (final frame in filled) {
@@ -217,7 +222,7 @@ void main() {
         cutId: const CutId('cut'),
         aroundFrameIndex: 2,
       );
-      await scheduler.idle;
+      await rested(scheduler);
 
       for (var index = 0; index < 4; index += 1) {
         expect(
@@ -259,7 +264,7 @@ void main() {
       );
 
       warm();
-      await scheduler.idle;
+      await rested(scheduler);
       // The runway's empty frames share one picture, so fewer than four.
       expect(warmed, greaterThan(1), reason: 'the premise: frames to warm');
       expect(
@@ -271,7 +276,7 @@ void main() {
       reports = 0;
       final cold = warmed;
       warm();
-      await scheduler.idle;
+      await rested(scheduler);
       expect(warmed, cold, reason: 'the second pass warmed nothing');
       expect(reports, 1 + 1, reason: 'the request, then the pass once');
       expect(
@@ -310,7 +315,7 @@ void main() {
       );
 
       scheduler.dispose();
-      await scheduler.idle;
+      await rested(scheduler);
       f.composites.dispose();
     });
   });
@@ -335,7 +340,7 @@ void main() {
           resolveCut: (_) => cut(duration: 40),
         ),
       );
-      await scheduler.idle;
+      await rested(scheduler);
 
       expect(scheduler.progress.value.total, 2);
       expect(scheduler.progress.value.isComplete, isTrue);
@@ -374,7 +379,7 @@ void main() {
       );
 
       scheduler.endInputHold();
-      await scheduler.idle;
+      await rested(scheduler);
 
       expect(scheduler.progress.value.isComplete, isTrue);
       expect(
@@ -404,7 +409,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await scheduler.idle;
+      await rested(scheduler);
       final before = f.composites.validCompositeOrNull(
         cut: cut(),
         frameIndex: 0,
@@ -437,7 +442,7 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      await scheduler.idle;
+      await rested(scheduler);
 
       final after = f.composites.validCompositeOrNull(
         cut: cut(),
@@ -516,7 +521,7 @@ void main() {
           aroundFrameIndex: 2,
           followedByCutId: const CutId('cut-b'),
         );
-        await scheduler.idle;
+        await rested(scheduler);
 
         for (var index = 0; index < 4; index += 1) {
           expect(
@@ -564,7 +569,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('cut'),
         );
-        await scheduler.idle;
+        await rested(scheduler);
         expect(
           scheduler.progress.value.total,
           4,
@@ -575,7 +580,7 @@ void main() {
           cutId: const CutId('cut'),
           followedByCutId: const CutId('gone'),
         );
-        await scheduler.idle;
+        await rested(scheduler);
         expect(
           scheduler.progress.value.total,
           4,
@@ -649,7 +654,7 @@ void main() {
         // The stroke or the seek just before play was pressed.
         scheduler.notifyEditActivity();
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
 
         expect(there(f.composites), everyElement(isTrue));
         expect(
@@ -677,7 +682,7 @@ void main() {
 
         playhead = 2;
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
 
         expect(made, [2, 3, 0, 1]);
         expect(landings, 4, reason: 'a landing is told once a picture');
@@ -699,7 +704,7 @@ void main() {
         );
 
         scheduler.follow(run(lead: (_) => 2));
-        await scheduler.idle;
+        await rested(scheduler);
 
         expect(made, [2, 3, 0, 1], reason: 'two frames on, then the lap');
         scheduler.dispose();
@@ -723,7 +728,7 @@ void main() {
         room.demand = () => scheduler.demand;
 
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
         expect(made, [0, 1], reason: 'two pictures fit');
         expect(there(f.composites), [true, true, false, false]);
         expect(
@@ -733,9 +738,17 @@ void main() {
         );
         expect(f.composites.estimatedBytes, 2 * pictureBytes);
 
+        // One frame on: the frame that came into the window is made, out
+        // of the room of the one that fell behind.
+        playhead = 1;
+        scheduler.wake();
+        await rested(scheduler);
+        expect(made, [0, 1, 2]);
+        expect(there(f.composites), [false, true, true, false]);
+
         playhead = 2;
         scheduler.wake();
-        await scheduler.idle;
+        await rested(scheduler);
         expect(
           made,
           [0, 1, 2, 3],
@@ -743,6 +756,38 @@ void main() {
         );
         expect(there(f.composites), [false, false, true, true]);
         expect(f.composites.estimatedBytes, 2 * pictureBytes);
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('while it fills, the walk says how many frames it expects '
+        'to hold — every one wanted, or as many as the room has held so far', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final room = _Room(f.composites, 2 * pictureBytes);
+        final said = <PrerenderProgress>[];
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+        scheduler.progress.addListener(
+          () => said.add(scheduler.progress.value),
+        );
+
+        scheduler.follow(run());
+        await rested(scheduler);
+
+        expect(said, const [
+          PrerenderProgress(cached: 0, total: 4),
+          PrerenderProgress(cached: 1, total: 2),
+          PrerenderProgress(cached: 2, total: 2),
+        ]);
         scheduler.dispose();
         f.composites.dispose();
       });
@@ -763,7 +808,7 @@ void main() {
 
         playhead = 1;
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
 
         expect(there(f.composites), [false, true, false, false]);
         expect(
@@ -786,7 +831,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
         expect(there(f.composites), everyElement(isTrue));
 
         // A memory warning's work: every picture goes.
@@ -794,7 +839,7 @@ void main() {
         expect(there(f.composites), everyElement(isFalse));
 
         scheduler.wake();
-        await scheduler.idle;
+        await rested(scheduler);
         expect(there(f.composites), everyElement(isTrue));
         scheduler.dispose();
         f.composites.dispose();
@@ -823,13 +868,13 @@ void main() {
             playlistFrameOf: (_, frameIndex) => frameIndex,
           ),
         );
-        await scheduler.idle;
+        await rested(scheduler);
         expect(asked, greaterThanOrEqualTo(40), reason: 'the first walk');
 
         asked = 0;
         playhead = 1;
         scheduler.wake();
-        await scheduler.idle;
+        await rested(scheduler);
         expect(
           asked,
           lessThanOrEqualTo(2),
@@ -851,7 +896,7 @@ void main() {
           idleDelay: Duration.zero,
         );
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
 
         f.composites.invalidateWhereLayerFrame(
           layerId: const LayerId('layer'),
@@ -860,7 +905,7 @@ void main() {
         expect(there(f.composites), [true, true, false, true]);
 
         scheduler.wake(fromTheStart: true);
-        await scheduler.idle;
+        await rested(scheduler);
         expect(there(f.composites), everyElement(isTrue));
         scheduler.dispose();
         f.composites.dispose();
@@ -888,7 +933,7 @@ void main() {
         );
 
         scheduler.follow(run());
-        await scheduler.idle;
+        await rested(scheduler);
 
         expect(there(composites), [true, false, true, true]);
         expect(reported, hasLength(1), reason: 'the failure is said, once');
@@ -904,7 +949,7 @@ void main() {
         );
 
         scheduler.wake(fromTheStart: true);
-        await scheduler.idle;
+        await rested(scheduler);
         expect(composites.thrown, 1, reason: 'the same content is not retried');
         scheduler.dispose();
         composites.dispose();
