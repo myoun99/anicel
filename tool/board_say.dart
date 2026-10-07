@@ -16,6 +16,12 @@
 //
 // Usage:
 //   dart run tool/board_say.dart <board.jsonl> <lines.jsonl>
+//   dart run tool/board_say.dart <http://host:4321> <lines.jsonl>
+//
+// 🆕The second form (유저 2026-10-07, card
+// the-board-is-one-server-for-both-machines) is for a machine that holds no
+// records file: the lines go to the server of the one that does, which runs
+// [sayToRecords] on them — the same refusals, the same clock, the same file.
 //
 // Each line of <lines.jsonl> is one record WITHOUT `ts`. They are appended in
 // order, each a millisecond after the last, so the story keeps the order they
@@ -27,6 +33,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'board_door.dart';
 import 'board_model.dart';
 
 /// Why this run cannot happen, or null if it can.
@@ -40,7 +47,15 @@ String? boardSayRefusal(List<String> args, {bool Function(String)? exists}) {
     return 'board_say: 인자는 두 개입니다 — <board.jsonl> <lines.jsonl> '
         '(${args.length}개 받음: ${args.join(' ')})';
   }
-  for (final p in args) {
+  if (args.first.trim().isEmpty) {
+    return 'board_say: 보드 자리가 비었습니다 — 첫 인자는 board.jsonl 의 '
+        '경로이거나 보드 서버의 주소(http://…)입니다.';
+  }
+  // A server is asked, not looked for on this disk.
+  final files = boardPlaceOf(args.first, environment: const {}) is BoardServer
+      ? args.skip(1)
+      : args;
+  for (final p in files) {
     if (!there(p)) return 'board_say: 파일이 없습니다 — $p';
   }
   return null;
@@ -219,30 +234,105 @@ Map<String, String> lawCares(List<BoardCard> cards) => {
   return (refusal: null, bytes: out.toString(), warnings: warnings);
 }
 
-void main(List<String> args) {
+/// What became of one telling: how many lines went onto the records and at
+/// what time, or why none did.
+typedef BoardSaid = ({
+  String? refusal,
+  int lines,
+  String at,
+  List<String> warnings,
+});
+
+/// Tells [lines] to [records], stamped [now] — refused whole or written
+/// whole.
+///
+/// ⚠️ONE FUNCTION FOR BOTH ROADS. `board_say` runs it when it is pointed at
+/// the records file, and the server runs it when a tool on another machine
+/// posts the same lines to `/say`. What a card refuses, what a law warns
+/// about and whose clock stamps the line cannot differ between the two,
+/// because there is nothing else to run.
+BoardSaid sayToRecords(File records, List<String> lines, DateTime now) {
+  final cards = readBoard(records);
+  final result = boardSayAppend(
+    lines,
+    now,
+    ended: endedCards(cards),
+    lawCare: lawCares(cards),
+  );
+  final bytes = result.bytes;
+  if (bytes == null) {
+    return (
+      refusal: result.refusal,
+      lines: 0,
+      at: now.toIso8601String(),
+      warnings: const <String>[],
+    );
+  }
+  records.writeAsStringSync(bytes, mode: FileMode.append);
+  return (
+    refusal: null,
+    lines: '\n'.allMatches(bytes).length,
+    at: now.toIso8601String(),
+    warnings: result.warnings,
+  );
+}
+
+/// The same telling, asked of the server that holds the records.
+///
+/// A server that could not be reached, or that would not let this tool in,
+/// is a refusal like any other: nothing was written, and the reason is said.
+Future<BoardSaid> sayToServer(BoardServer server, List<String> lines) async {
+  final answer = await askBoard(
+    server,
+    'POST',
+    '/say',
+    body: '${lines.join('\n')}\n',
+  );
+  BoardSaid refused(String why) =>
+      (refusal: why, lines: 0, at: '', warnings: const <String>[]);
+  if (answer.status == 0) return refused(answer.body);
+  if (answer.status == HttpStatus.unauthorized) {
+    return refused('보드 서버가 들여보내지 않았습니다(${server.base}) — '
+        '${turnedAwayAdvice(server)}');
+  }
+  Map<String, dynamic> said;
+  try {
+    said = jsonDecode(answer.body) as Map<String, dynamic>;
+  } on Object catch (_) {
+    return refused('보드 서버의 대답을 읽지 못했습니다(${answer.status}) — '
+        '이 도구와 서버의 판이 다를 수 있습니다.');
+  }
+  return (
+    refusal: said['refusal'] as String? ??
+        (answer.status == HttpStatus.ok
+            ? null
+            : '보드 서버가 ${answer.status} 로 답했습니다.'),
+    lines: (said['lines'] as num?)?.toInt() ?? 0,
+    at: '${said['at'] ?? ''}',
+    warnings: [for (final w in (said['warnings'] as List?) ?? const []) '$w'],
+  );
+}
+
+Future<void> main(List<String> args) async {
   final refusal = boardSayRefusal(args);
   if (refusal != null) {
     stderr.writeln(refusal);
     exit(2);
   }
-  // 🚨THE CLOCK, ONCE, HERE — the only place this program asks what time it
-  // is, and the only place it was ever possible to get wrong.
-  final now = DateTime.now();
-  final cards = readBoard(File(args[0]));
-  final result = boardSayAppend(
-    File(args[1]).readAsLinesSync(),
-    now,
-    ended: endedCards(cards),
-    lawCare: lawCares(cards),
-  );
-  if (result.refusal != null) {
-    stderr.writeln('board_say: ${result.refusal}');
+  final lines = File(args[1]).readAsLinesSync();
+  final said = switch (boardPlaceOf(args[0])) {
+    // 🚨THE CLOCK, ONCE, HERE — the only place this program asks what time
+    // it is, and the only place it was ever possible to get wrong. (Through
+    // a server it is the server's clock, read once there.)
+    BoardFile(:final path) => sayToRecords(File(path), lines, DateTime.now()),
+    final BoardServer server => await sayToServer(server, lines),
+  };
+  if (said.refusal != null) {
+    stderr.writeln('board_say: ${said.refusal}');
     exit(2);
   }
-  File(args[0]).writeAsStringSync(result.bytes!, mode: FileMode.append);
-  final n = '\n'.allMatches(result.bytes!).length;
-  stdout.writeln('board_say: $n줄 추가 (${now.toIso8601String()})');
-  for (final warning in result.warnings) {
+  stdout.writeln('board_say: ${said.lines}줄 추가 (${said.at})');
+  for (final warning in said.warnings) {
     stderr.writeln('board_say: $warning');
   }
 }

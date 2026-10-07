@@ -14,6 +14,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'board_door.dart';
 import 'board_model.dart';
 
 /// Matches a PR named in prose — 「#1302」, 「PR #1302」 — which the board
@@ -111,21 +112,60 @@ String? boardCheckRefusal(List<String> args, {bool Function(String)? exists}) {
     return 'board_check: 「${args.first}」 는 옵션처럼 보입니다 — 이 도구는 '
         '옵션을 받지 않습니다. 경로 하나만 주세요.';
   }
+  // 🆕An address is a server to ask (2026-10-07: a machine that holds no
+  // records file asks the one that does) — not a file to look for.
+  if (boardPlaceOf(args.first, environment: const {}) is BoardServer) {
+    return null;
+  }
   if (!there(args.first)) {
     return 'board_check: 파일이 없습니다 — ${args.first}';
   }
   return null;
 }
 
-void main(List<String> args) {
+/// The complaints of the board at [place], or why it could not be judged.
+///
+/// ⚠️A server that did not answer, or answered anything but 200, is a gate
+/// that DID NOT RUN — said as [refusal], never as an empty string, which is
+/// what a clean board looks like.
+Future<({String complaints, String? refusal})> boardCheckOf(
+  BoardPlace place,
+) async {
+  switch (place) {
+    case BoardFile(:final path):
+      return (complaints: boardCheckComplaints(File(path)), refusal: null);
+    case final BoardServer server:
+      final answer = await askBoard(server, 'GET', '/api/check');
+      if (answer.status == HttpStatus.ok) {
+        return (complaints: answer.body, refusal: null);
+      }
+      return (
+        complaints: '',
+        refusal: switch (answer.status) {
+          0 => 'board_check: ${answer.body}',
+          HttpStatus.unauthorized =>
+            'board_check: 보드 서버가 들여보내지 않았습니다(${server.base}) — '
+                '${turnedAwayAdvice(server)}',
+          _ => 'board_check: 보드 서버가 ${answer.status} 로 답했습니다 '
+              '(${server.base}).',
+        },
+      );
+  }
+}
+
+Future<void> main(List<String> args) async {
   final refusal = boardCheckRefusal(args);
   if (refusal != null) {
     stderr.writeln(refusal);
     exit(2);
   }
-  final out = boardCheckComplaints(File(args.first));
-  if (out.isEmpty) return;
-  stdout.write(out);
+  final judged = await boardCheckOf(boardPlaceOf(args.first));
+  if (judged.refusal case final why?) {
+    stderr.writeln(why);
+    exit(2);
+  }
+  if (judged.complaints.isEmpty) return;
+  stdout.write(judged.complaints);
   exit(1);
 }
 

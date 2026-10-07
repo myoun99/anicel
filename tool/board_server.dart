@@ -37,16 +37,25 @@
 //     empty board that looks like "nothing to do".
 //
 //   dart run tool/board_server.dart --records <file.jsonl> [--port 4321]
+//       [--open-to lan --token-file <file>]
 //
-// Localhost only, on purpose: the board is not published anywhere and the
-// records file is not in this repository, because the repository is public.
+// ↩️Until 2026-10-07 this said: 「Localhost only, on purpose: the board is
+// not published anywhere and the records file is not in this repository,
+// because the repository is public.」 The second half stands. The first was
+// reversed by 유저 that day (card the-board-is-one-server-for-both-machines,
+// 답 「집 네트워크에서 보드 서버를 연다」): a second machine at home reads and
+// writes the same board, through this server, behind a secret. What may come
+// in, and why open-and-unlocked cannot be launched, is [board_door.dart].
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 // 🚨The card model lives in ONE place — see [board_model.dart]. The gate
 // reads the same file, so it cannot judge the board by different rules.
+import 'board_check.dart';
+import 'board_door.dart';
 import 'board_model.dart';
+import 'board_say.dart';
 
 const _repo = 'myoun99/anicel';
 const _ghCacheSeconds = 20;
@@ -71,6 +80,17 @@ late final String _recordsPath;
 String _shotsDir = '';
 late final String _ghPath;
 late final String _gitRoot;
+
+/// Where this server listens and whom it lets in — see [board_door.dart].
+BoardDoor _door = const LoopbackDoor();
+
+/// Whether a request comes from the machine the records are on.
+/// ⚠️Only a test hands [boardIs] another answer: one process cannot make
+/// a socket arrive from a second machine, and the door has to be tried from
+/// outside.
+bool Function(InternetAddress from) _isThisMachine = _loopback;
+
+bool _loopback(InternetAddress from) => from.isLoopback;
 
 /// 🚨★★★THE BOARD REPLACES ITSELF WHEN ITS OWN SOURCE CHANGES.
 ///
@@ -230,23 +250,32 @@ setInterval(function(){
 ''';
 
 Future<void> main(List<String> args) async {
-  _recordsPath = _flag(args, '--records') ?? '';
-  _ghPath = _flag(args, '--gh') ?? 'gh';
-  _gitRoot = _flag(args, '--git') ?? Directory.current.path;
+  final records = _flag(args, '--records') ?? '';
   final port = int.tryParse(_flag(args, '--port') ?? '4321') ?? 4321;
 
-  if (_recordsPath.isEmpty || !File(_recordsPath).existsSync()) {
+  if (records.isEmpty || !File(records).existsSync()) {
     stderr.writeln('records file not found. '
         'usage: dart run tool/board_server.dart --records <file.jsonl>');
     exit(2);
   }
-  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
-  Directory(_shotsDir).createSync(recursive: true);
-  _findOwnSource();
+  final asked = doorAsked(
+    _flag(args, '--open-to'),
+    _flag(args, '--token-file'),
+  );
+  if (asked.complaint case final complaint?) {
+    stderr.writeln('board: $complaint');
+  }
 
+  boardIs(
+    records: records,
+    gh: _flag(args, '--gh') ?? 'gh',
+    gitRoot: _flag(args, '--git') ?? Directory.current.path,
+    door: asked.door,
+  );
   HttpServer server;
   try {
-    server = await HttpServer.bind(InternetAddress.loopbackIPv4, port);
+    // ⚠️The address is the door's and is worked out nowhere else.
+    server = await HttpServer.bind(doorListensOn(asked.door), port);
   } on SocketException catch (e) {
     stderr.writeln('port $port is not available (${e.osError?.message}). '
         'Another board server is probably already running.');
@@ -254,9 +283,43 @@ Future<void> main(List<String> args) async {
   }
 
   stdout.writeln('board  ->  http://localhost:$port');
+  if (asked.door is LanDoor) {
+    stdout.writeln('door:      the home network, behind its secret');
+  }
   stdout.writeln('records:   $_recordsPath');
   stdout.writeln('shots:     $_shotsDir');
 
+  await answerAll(server);
+}
+
+/// Makes this isolate the server of the board in [records], behind [door].
+///
+/// ⚠️It does not listen — [main] binds, at the address the door names. A
+/// test binds its own socket on loopback and hands it to [answerAll]: a test
+/// that listened on the whole network would have the firewall ask the
+/// person at the machine whether a test runner may accept connections.
+void boardIs({
+  required String records,
+  required String gh,
+  required String gitRoot,
+  required BoardDoor door,
+  bool Function(InternetAddress from)? isThisMachine,
+}) {
+  _recordsPath = records;
+  _ghPath = gh;
+  _gitRoot = gitRoot;
+  _door = door;
+  _isThisMachine = isThisMachine ?? _loopback;
+  _shotsDir = '${File(_recordsPath).parent.path}/board-shots';
+  Directory(_shotsDir).createSync(recursive: true);
+  _findOwnSource();
+}
+
+/// Answers [server]'s requests, one at a time and in the order they came.
+///
+/// ⚠️ONE AT A TIME is why a record written here cannot land inside another:
+/// each request is answered whole before the next is taken.
+Future<void> answerAll(HttpServer server) async {
   await for (final request in server) {
     try {
       await _handle(request);
@@ -277,16 +340,49 @@ String? _flag(List<String> args, String name) {
 
 Future<void> _handle(HttpRequest req) async {
   final path = req.uri.path;
+  if (!await _letIn(req, path)) return;
 
   if (path.startsWith('/shot/') && req.method == 'GET') {
-    final file = File('$_shotsDir/${Uri.decodeComponent(path.substring(6))}');
-    if (!file.existsSync() || !file.path.endsWith('.png')) {
+    final name = Uri.decodeComponent(path.substring(6));
+    final file = File('$_shotsDir/$name');
+    // A shot is a file IN the shots folder: a name that climbs out of it
+    // (`..`, a separator) names somebody else's file.
+    if (name.contains(RegExp(r'[\\/]|\.\.')) ||
+        !file.existsSync() ||
+        !file.path.endsWith('.png')) {
       req.response.statusCode = 404;
       await req.response.close();
       return;
     }
     req.response.headers.contentType = ContentType('image', 'png');
     await req.response.addStream(file.openRead());
+    await req.response.close();
+    return;
+  }
+
+  // 🆕WHAT A SESSION SAYS, through the server (유저 2026-10-07: the board
+  // is one file on one machine, and a session on another machine has no file
+  // to append to). The body is what `board_say` is handed as its lines file,
+  // and what becomes of it is the very function `board_say` runs on this
+  // machine — refused whole or written whole, stamped by THIS machine's
+  // clock, so two machines cannot disagree about the order of the story.
+  if (req.method == 'POST' && path == '/say') {
+    final said = sayToRecords(
+      File(_recordsPath),
+      const LineSplitter().convert(await utf8.decoder.bind(req).join()),
+      DateTime.now(),
+    );
+    req.response
+      ..statusCode = said.refusal == null
+          ? HttpStatus.ok
+          : HttpStatus.badRequest
+      ..headers.contentType = ContentType.json
+      ..write(jsonEncode({
+        'refusal': ?said.refusal,
+        'lines': said.lines,
+        'at': said.at,
+        'warnings': said.warnings,
+      }));
     await req.response.close();
     return;
   }
@@ -568,6 +664,30 @@ Future<void> _handle(HttpRequest req) async {
     await req.response.close();
     return;
   }
+  // The gate's judgement and the records themselves, for a machine that
+  // has no file to run `board_check` on or to read.
+  if (path == '/api/check') {
+    req.response
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(boardCheckComplaints(File(_recordsPath)));
+    await req.response.close();
+    return;
+  }
+  if (path == '/api/records') {
+    final asked = recordsAsked(
+      File(_recordsPath).readAsLinesSync(),
+      id: req.uri.queryParameters['id'],
+      since: req.uri.queryParameters['since'],
+    );
+    req.response
+      ..statusCode = asked == null ? HttpStatus.badRequest : HttpStatus.ok
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(asked ?? 'id= 나 since= 가 있어야 합니다\n');
+    await req.response.close();
+    return;
+  }
   if (path == '/card') {
     final html = _detail(
       _board(),
@@ -622,6 +742,95 @@ Future<void> _handle(HttpRequest req) async {
     ..headers.set('Cache-Control', 'no-store')
     ..write(_shell(boot));
   await req.response.close();
+}
+
+/// Lets a request in, or answers it at the door and says no.
+///
+/// The one thing heard from an outsider who has not shown the secret is the
+/// secret itself: a browser posts it to `/enter` once and is handed the
+/// cookie that carries it from then on.
+Future<bool> _letIn(HttpRequest req, String path) async {
+  final from = req.connectionInfo?.remoteAddress;
+  final here = from != null && _isThisMachine(from);
+  if (doorAdmits(_door, fromThisMachine: here, shown: secretShown(req))) {
+    return true;
+  }
+  if (req.method == 'POST' && path == '/enter') {
+    final shown = (await utf8.decoder.bind(req).join()).trim();
+    if (doorAdmits(_door, fromThisMachine: false, shown: shown)) {
+      req.response
+        ..cookies.add(doorCookie(shown))
+        ..headers.contentType = ContentType.json
+        ..write(jsonEncode({'ok': true}));
+      await req.response.close();
+      return false;
+    }
+  }
+  req.response
+    ..statusCode = HttpStatus.unauthorized
+    ..headers.set('Cache-Control', 'no-store');
+  if (req.method == 'GET' && path == '/') {
+    req.response
+      ..headers.contentType = ContentType.html
+      ..write(_doorPage());
+  }
+  await req.response.close();
+  return false;
+}
+
+/// What a browser from another machine sees until it has shown the secret.
+/// ⚠️Self-contained, like the rebuilding page: nothing of the board — not
+/// its script, not its style — is handed to somebody who is not in yet.
+String _doorPage() => """
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>보드</title>
+<style>
+body{margin:0;display:grid;place-items:center;height:100vh;
+  font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
+  background:#14161a;color:#e6e8ec}
+form{display:flex;gap:8px}
+input,button{font:inherit;padding:8px 12px;border-radius:6px;
+  border:1px solid #3a3f4a;background:#1c1f25;color:inherit}
+input{width:22em}
+</style></head><body>
+<form id="door">
+<input id="secret" type="password" autocomplete="current-password"
+  aria-label="비밀값" autofocus>
+<button>들어가기</button>
+</form>
+<script>
+document.getElementById('door').addEventListener('submit', function(e){
+  e.preventDefault();
+  var secret = document.getElementById('secret').value;
+  fetch('/enter', {method:'POST', body: secret})
+    .then(function(r){ if (r.ok) location.reload(); });
+});
+</script>
+</body></html>
+""";
+
+/// The records a tool asked for, as the lines they are: one card's (its
+/// questions with it) by [id], or everything stamped at or after [since].
+/// Null when it asked for neither — the whole file is not an answer.
+String? recordsAsked(Iterable<String> lines, {String? id, String? since}) {
+  if (id == null && since == null) return null;
+  final out = StringBuffer();
+  for (final line in lines) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) continue;
+    Map<String, dynamic> json;
+    try {
+      json = jsonDecode(trimmed) as Map<String, dynamic>;
+    } on Object catch (_) {
+      continue;
+    }
+    final lineId = '${json['id'] ?? ''}';
+    if (id != null && lineId != id && !lineId.startsWith('$id-Q')) continue;
+    if (since != null && '${json['ts'] ?? ''}'.compareTo(since) < 0) continue;
+    out.writeln(trimmed);
+  }
+  return out.toString();
 }
 
 /// The commit master is at now, short — what a build marks.
