@@ -712,11 +712,19 @@ void main() {
     expect(result.warnings, isEmpty);
   });
 
-  test('pass-through is a folder\'s word — a layer that carries it draws as '
-      'normal', () {
-    final result = plan(root([layer('thru', composite: 30)]), const []);
+  test('pass-through is a folder\'s word — a folder keeps it, a layer that '
+      'carries it draws as normal', () {
+    final result = plan(
+      root([
+        layer('thru', composite: 30),
+        folder('F', [layer('x')]),
+      ]),
+      const [],
+    );
+    final cut = result.cuts.single;
 
-    expect(row(result.cuts.single, 'thru').blendMode, LayerBlendMode.normal);
+    expect(row(cut, 'thru').blendMode, LayerBlendMode.normal);
+    expect(row(cut, 'F').blendMode, LayerBlendMode.passThrough);
     expect(result.warnings, isEmpty);
   });
 
