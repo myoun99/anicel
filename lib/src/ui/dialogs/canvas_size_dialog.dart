@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../../services/editing/default_cut_helpers.dart'
+    show defaultCutCanvasSize;
 import '../widgets/app_window.dart';
+import '../widgets/panel_flyout.dart';
 import 'size_fields_row.dart';
 import '../text/app_strings.dart';
 import '../input/control_press_claim.dart';
@@ -72,11 +75,16 @@ class CanvasSizeDialog extends StatefulWidget {
 }
 
 class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
-  static const _presets = <(String, CanvasSize)>[
-    ('Default', CanvasSize(width: 2340, height: 1654)),
-    ('HD', CanvasSize(width: 1280, height: 720)),
-    ('FHD', CanvasSize(width: 1920, height: 1080)),
-    ('4K', CanvasSize(width: 3840, height: 2160)),
+  /// The sizes the presets list offers, each with its name.
+  ///
+  /// 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서 여러 프리셋
+  /// 준비하고」 — the app's one picking list ([PanelFlyoutButton]).
+  /// ↩️They were four chips in a row.
+  static List<(String, CanvasSize)> get _presets => [
+    (AppText.strings.canvasPresetDefault, defaultCutCanvasSize),
+    ('HD', const CanvasSize(width: 1280, height: 720)),
+    ('FHD', const CanvasSize(width: 1920, height: 1080)),
+    ('4K', const CanvasSize(width: 3840, height: 2160)),
   ];
 
   late final TextEditingController _widthController = TextEditingController(
@@ -136,38 +144,29 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             onChanged: () => setState(() {}),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final (label, size) in _presets)
-                ActionChip(
-                  key: ValueKey<String>(
-                    'canvas-size-preset-${size.width}x${size.height}',
-                  ),
-                  label: Text('$label ${size.width}×${size.height}'),
-                  onPressed: () => _applyPreset(size),
-                ),
-            ],
+          PanelFlyoutButton(
+            key: const ValueKey<String>('canvas-size-presets'),
+            label: strings.canvasSizePresets,
+            entriesBuilder: () => _presets.asFlyoutValueChoices(
+              current: _presets
+                  .where((preset) => preset.$2 == enteredRequest?.size)
+                  .firstOrNull,
+              choiceOf: (preset) => PanelFlyoutChoice(
+                key:
+                    'canvas-size-preset-${preset.$2.width}x${preset.$2.height}',
+                label: '${preset.$1} ${preset.$2.width}×${preset.$2.height}',
+              ),
+              onPicked: (preset) => _applyPreset(preset.$2),
+            ),
           ),
           const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _AnchorGrid(
-                selected: _anchor,
-                onSelected: (anchor) => setState(() => _anchor = anchor),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  strings.canvasAnchorHelpTemplate
-                      .replaceAll('{min}', '${CanvasSizeDialog.minDimension}')
-                      .replaceAll('{max}', '${CanvasSizeDialog.maxDimension}'),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
+          // ⛔No caption beside the grid: the rule against explaining a
+          // control under it (no-explanatory-ui-copy). ↩️It said what an
+          // anchor is, that cropped strokes come back, and the size range —
+          // which the fields already enforce by refusing what is outside it.
+          _AnchorGrid(
+            selected: _anchor,
+            onSelected: (anchor) => setState(() => _anchor = anchor),
           ),
         ],
       ),

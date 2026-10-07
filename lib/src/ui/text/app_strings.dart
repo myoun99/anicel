@@ -505,7 +505,7 @@ enum AppStrings {
   String get canvasHeightLabel => _s('canvasHeightLabel');
 
   /// '{min}'/'{max}' are the dimension bounds.
-  String get canvasAnchorHelpTemplate => _s('canvasAnchorHelpTemplate');
+  String get canvasSizePresets => _s('canvasSizePresets');
   String get canvasPresetDefault => _s('canvasPresetDefault');
   String get commonResize => _s('commonResize');
 
@@ -1920,10 +1920,8 @@ enum AppStrings {
     'cameraSizeTitle': 'Camera size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
-    'canvasAnchorHelpTemplate':
-        'Anchor: existing artwork stays pinned here. Cropped strokes are '
-        'kept and reappear if the canvas grows again. ({min}–{max} px)',
     'canvasPresetDefault': 'Default',
+    'canvasSizePresets': 'Presets',
     'commonResize': 'Resize',
     'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
@@ -3076,10 +3074,8 @@ enum AppStrings {
     'cameraSizeTitle': 'カメラサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
-    'canvasAnchorHelpTemplate':
-        '基準：既存の絵はここに固定されます。切り取られた線は保持され、'
-        'カンバスを広げれば再び現れます。（{min}〜{max} px）',
     'canvasPresetDefault': '既定',
+    'canvasSizePresets': 'プリセット',
     'commonResize': 'サイズ変更',
     'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
@@ -4454,10 +4450,8 @@ enum AppStrings {
     'cameraSizeTitle': '카메라 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
-    'canvasAnchorHelpTemplate':
-        '기준점: 기존 그림이 여기에 고정됩니다. 잘린 획은 보존되며 캔버스를 '
-        '다시 넓히면 되살아납니다. ({min}~{max} px)',
     'canvasPresetDefault': '기본',
+    'canvasSizePresets': '프리셋',
     'commonResize': '크기 변경',
     'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
@@ -5835,11 +5829,8 @@ enum AppStrings {
     'cameraSizeTitle': 'Taille de la caméra',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
-    'canvasAnchorHelpTemplate':
-        'Ancrage : le dessin existant reste fixé ici. Les traits rognés sont '
-        'conservés et réapparaissent si le canevas est agrandi. '
-        '({min}–{max} px)',
     'canvasPresetDefault': 'Par défaut',
+    'canvasSizePresets': 'Préréglages',
     'commonResize': 'Redimensionner',
     'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
@@ -7262,10 +7253,8 @@ enum AppStrings {
     'cameraSizeTitle': '摄影机尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
-    'canvasAnchorHelpTemplate':
-        '锚点：已有画面固定在此处。被裁掉的笔画会保留，画布再放大时会重新出现。'
-        '（{min}–{max} px）',
     'canvasPresetDefault': '默认',
+    'canvasSizePresets': '预设',
     'commonResize': '调整尺寸',
     'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',

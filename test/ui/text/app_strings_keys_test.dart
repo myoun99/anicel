@@ -229,7 +229,7 @@ void main() {
     'cameraSizeTitle': (s) => s.cameraSizeTitle,
     'canvasWidthLabel': (s) => s.canvasWidthLabel,
     'canvasHeightLabel': (s) => s.canvasHeightLabel,
-    'canvasAnchorHelpTemplate': (s) => s.canvasAnchorHelpTemplate,
+    'canvasSizePresets': (s) => s.canvasSizePresets,
     'canvasPresetDefault': (s) => s.canvasPresetDefault,
     'commonResize': (s) => s.commonResize,
     'inputTitle': (s) => s.inputTitle,

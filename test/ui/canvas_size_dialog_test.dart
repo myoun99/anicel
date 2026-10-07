@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
   CanvasResizeRequest? dialogResult;
@@ -164,13 +165,22 @@ void main() {
     }
   });
 
-  testWidgets('preset chip fills both fields', (tester) async {
+  // 🗣️I-79 (유저 2026-10-06): 「프리셋은 리스트팝오버로서」.
+  testWidgets('a preset picked from the list fills both fields, and the list '
+      'marks the one the fields hold', (tester) async {
     await pumpOpenDialog(tester);
+    expect(
+      find.byKey(const ValueKey<String>('canvas-size-preset-1280x720')),
+      findsNothing,
+      reason: 'the presets are a list, not chips on the window',
+    );
 
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-size-presets')));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('canvas-size-preset-1280x720')),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(
       fieldByKey(tester, 'canvas-size-width-field').controller!.text,
@@ -179,6 +189,28 @@ void main() {
     expect(
       fieldByKey(tester, 'canvas-size-height-field').controller!.text,
       '720',
+    );
+
+    final marked = [
+      for (final entry in tester
+          .widget<PanelFlyoutButton>(
+            find.byKey(const ValueKey<String>('canvas-size-presets')),
+          )
+          .entriesBuilder())
+        if (entry is PanelFlyoutItem && entry.selected) entry.keyValue,
+    ];
+    expect(marked, ['canvas-size-preset-1280x720']);
+  });
+
+  testWidgets('⛔no caption explains the anchor grid', (tester) async {
+    await pumpOpenDialog(tester);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('canvas-size-dialog')),
+        matching: find.textContaining('16384'),
+      ),
+      findsNothing,
+      reason: 'the range is the fields\' to enforce, not a sentence\'s',
     );
   });
 
