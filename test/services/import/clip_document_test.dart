@@ -147,11 +147,13 @@ void main() {
       externalId(12): trackDataBytes(
         cmtDocumentBytes(
           document([
+            // Its keys written out of order: a clip's cels come in order
+            // of frame however the file lists them.
             clip(
               time: [25, 60],
               motion: [-25, 10],
-              keys: [-25, 5],
-              cels: ['2', '1'],
+              keys: [5, -25],
+              cels: ['1', '2'],
             ),
           ]),
         ),

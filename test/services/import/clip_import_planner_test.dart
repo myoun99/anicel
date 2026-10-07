@@ -410,12 +410,24 @@ void main() {
       expect(alpha.containsKey('rough3'), isFalse);
     });
 
+    /// The row each source layer's picture was baked into, by [result]'s
+    /// cut.
+    String rowOf(ClipImportPlan result, String source) {
+      final frameId = result.bakes
+          .singleWhere((bake) => bake.source.name == source)
+          .frameId;
+      return result.cuts.single.layers
+          .singleWhere((layer) => layer.frameById(frameId) != null)
+          .name;
+    }
+
     test('🎯a line that blends two ways is two rows — the base takes the '
-        'blend most cels stand in', () {
+        'blend most cels stand in, even when the first cel blends the other '
+        'way', () {
       final a = animation('A', [
-        folder('1', [layer('s1', composite: 2), layer('l1')], composite: 0),
-        folder('2', [layer('s2'), layer('l2')], composite: 0),
-        folder('3', [layer('s3', composite: 2), layer('l3', composite: 2)]),
+        folder('1', [layer('s1'), layer('l1', composite: 2)], composite: 0),
+        folder('2', [layer('s2', composite: 2), layer('l2')], composite: 0),
+        folder('3', [layer('s3', composite: 2), layer('l3')], composite: 0),
         folder('4', [layer('s4', composite: 2), layer('l4')], composite: 0),
       ]);
       final result = plan(root([a]), [
@@ -425,14 +437,6 @@ void main() {
       ]);
       final cut = result.cuts.single;
       final base = cut.layers.firstWhere((layer) => layer.name == 'A');
-      String rowOf(String source) {
-        final frameId = result.bakes
-            .singleWhere((bake) => bake.source.name == source)
-            .frameId;
-        return cut.layers
-            .singleWhere((layer) => layer.frameById(frameId) != null)
-            .name;
-      }
 
       expect(names(cut), ['A-4', 'A-3', 'A-2', 'A', 'A']);
       expect(base.blendMode, LayerBlendMode.normal);
@@ -443,17 +447,33 @@ void main() {
           LayerBlendMode.multiply,
           LayerBlendMode.normal,
         ],
-        reason: 'from the top: the top line\'s multiply, then the second '
+        reason: 'from the top: the top line\'s other blend, then the second '
             'line by how many cels stand in each',
       );
       expect(
-        [for (final s in ['l1', 'l2', 'l3', 'l4']) rowOf(s)],
-        ['A', 'A', 'A-2', 'A'],
+        [for (final s in ['l1', 'l2', 'l3', 'l4']) rowOf(result, s)],
+        ['A-2', 'A', 'A', 'A'],
       );
       expect(
-        [for (final s in ['s1', 's2', 's3', 's4']) rowOf(s)],
-        ['A-3', 'A-4', 'A-3', 'A-3'],
+        [for (final s in ['s1', 's2', 's3', 's4']) rowOf(result, s)],
+        ['A-4', 'A-3', 'A-3', 'A-3'],
       );
+    });
+
+    test('lines that stand in as many cels keep the order they came in — '
+        'the one whose first cel comes first is the base', () {
+      final a = animation('A', [
+        layer('m', composite: 2),
+        layer('n'),
+      ]);
+      final result = plan(root([a]), [
+        timeline([
+          keyed(a, [(0, 'm'), (6, 'n')]),
+        ]),
+      ]);
+
+      expect(rowOf(result, 'm'), 'A');
+      expect(rowOf(result, 'n'), 'A-2');
     });
 
     test('a folder inside a cel hands its blend to a layer alone in it; the '
@@ -517,7 +537,13 @@ void main() {
                 pieces: [
                   (
                     span: (start: 2, end: 6),
-                    cels: [(frame: 0, cel: '1'), (frame: 4, cel: '2')],
+                    // The last key lies past the clip's end: it shows
+                    // nothing, and the one before still stops at the end.
+                    cels: [
+                      (frame: 0, cel: '1'),
+                      (frame: 4, cel: '2'),
+                      (frame: 7, cel: '1'),
+                    ],
                   ),
                   (span: (start: 8, end: 20), cels: [(frame: 8, cel: '1')]),
                 ],
@@ -617,6 +643,20 @@ void main() {
         baseOf(second).id,
         reason: 'each cut\'s attach rides its own base',
       );
+      expect(
+        row(second, 'A-2').baseFrameLinks,
+        {
+          for (final cel in baseOf(first).frames)
+            cel.id: attachedMirrorCelId(row(first, 'A-2').id, cel.id),
+        },
+        reason: 'every cut mirrors a base cel with the canonical row\'s cel '
+            '(F-278)',
+      );
+      expect(
+        [for (final warning in result.warnings) warning.key],
+        ['clipCelLayers'],
+        reason: 'a row a timeline does not hold at all is not 「part of it」',
+      );
 
       final rows = [
         for (final layer in first.layers)
@@ -655,6 +695,55 @@ void main() {
       expect(result.fps, 24);
       expect(result.warnings.single.key, 'clipFps');
     });
+  });
+
+  test('a folder\'s clips are its layers\' clips — a picture in a folder '
+      'the timeline does not show is an empty row there', () {
+    final bg = layer('BG');
+    final lo = folder('LO', [bg]);
+    final result = plan(root([lo]), [
+      timeline([
+        shownOver(lo, const []),
+        shownOver(bg, [(start: 0, end: 12)]),
+      ]),
+    ]);
+
+    expect(row(result.cuts.single, 'BG').timeline, isEmpty);
+    expect(result.warnings, isEmpty);
+  });
+
+  test('pass-through is a folder\'s word — a layer that carries it draws as '
+      'normal', () {
+    final result = plan(root([layer('thru', composite: 30)]), const []);
+
+    expect(row(result.cuts.single, 'thru').blendMode, LayerBlendMode.normal);
+    expect(result.warnings, isEmpty);
+  });
+
+  test('a folder\'s blend with no equivalent is said once however many '
+      'layers it holds, and a blend handed to layers that overlap is said', () {
+    final a = animation('A', [
+      folder('1', [
+        folder('in', [layer('x'), layer('y')], composite: 5),
+      ]),
+      folder('2', [
+        folder('in', [layer('z'), layer('w')], composite: 8),
+      ]),
+    ]);
+    final result = plan(root([a]), [
+      timeline([
+        keyed(a, [(0, '1'), (6, '2')]),
+      ]),
+    ]);
+
+    expect(
+      [
+        for (final warning in result.warnings)
+          (warning.key, warning.values['count']),
+      ],
+      [('clipBlend', null), ('clipCelLayers', null), ('clipSpread', '1')],
+      reason: 'cel 2\'s screen went to both its layers',
+    );
   });
 
   test('a file with no timeline is one cut, named after the file, its '

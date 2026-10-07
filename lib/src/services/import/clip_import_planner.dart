@@ -34,6 +34,8 @@ library;
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'package:collection/collection.dart' show mergeSort;
+
 import '../../models/attached_layer_resolve.dart' show attachedMirrorCelId;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
@@ -537,13 +539,10 @@ final class _Leaf {
 /// The cels of one line — a place from the top, and a blend — on their way
 /// to one row.
 final class _Line {
-  _Line(this.rank, this.blend, this.firstCel);
+  _Line(this.rank, this.blend);
 
   final int rank;
   final LayerBlendMode blend;
-
-  /// Where in the bank its first cel stands — the tie-break.
-  final int firstCel;
 
   /// Each with the cel it is in, by the cel's place in the bank.
   final leaves = <(int, _Leaf)>[];
@@ -762,8 +761,9 @@ final class _Planner {
 
   /// The cels' layers in lines: the visible ones counted from the top, the
   /// hidden ones apart, and a line for every blend a place holds. Each list
-  /// runs from the top: by place, then the line more cels stand in, then
-  /// the one whose first cel comes first.
+  /// runs from the top: by place, then the line more cels stand in — and
+  /// lines that ask nothing more keep the order they came in, which is the
+  /// order of their first cels (a STABLE sort is what says so).
   ({List<_Line> visible, List<_Line> hidden}) _linesOf(
     List<List<_Leaf>> leaves,
   ) {
@@ -775,21 +775,22 @@ final class _Planner {
       for (final leaf in leaves[cel]) {
         final rank = leaf.visible ? shown++ : unseen++;
         (leaf.visible ? visible : hidden)
-            .putIfAbsent((rank, leaf.blend), () => _Line(rank, leaf.blend, cel))
+            .putIfAbsent((rank, leaf.blend), () => _Line(rank, leaf.blend))
             .leaves
             .add((cel, leaf));
       }
     }
-    List<_Line> ordered(Iterable<_Line> lines) => lines.toList()
-      ..sort((a, b) {
-        final byRank = a.rank.compareTo(b.rank);
-        final byCount = b.leaves.length.compareTo(a.leaves.length);
-        return byRank != 0
-            ? byRank
-            : byCount != 0
-            ? byCount
-            : a.firstCel.compareTo(b.firstCel);
-      });
+    List<_Line> ordered(Iterable<_Line> lines) {
+      final list = lines.toList();
+      mergeSort(
+        list,
+        compare: (a, b) => a.rank != b.rank
+            ? a.rank.compareTo(b.rank)
+            : b.leaves.length.compareTo(a.leaves.length),
+      );
+      return list;
+    }
+
     return (visible: ordered(visible.values), hidden: ordered(hidden.values));
   }
 
