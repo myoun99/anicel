@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -258,31 +259,57 @@ void main() {
       expect(layersOf(said([run('ab', outline: blue)])), 1);
     });
 
-    test('🚨a hard pass is CUT at the room it is given, on every engine — '
-        'all the letters can draw, a letter\'s size past their block', () {
+    test('🚨a hard pass is CUT, on every engine, just past all the letters '
+        'can draw — a letter\'s size past their block', () {
       final layout = layoutCelText(
         said([run('ab', outline: blue, outlineWidth: 4)]),
       );
       final canvas = _CountsLayers();
       layout.paint(canvas);
 
-      // Size 10: the block is 20 by 10, and the room a letter's size and
-      // half the outline past it on every side.
+      // Size 10: the block is 20 by 10, and what the letters can draw a
+      // letter's size and half the outline past it on every side — the
+      // cut, two units clear of that.
       expect(canvas.cuts, hasLength(2), reason: 'the outline, the fill');
       expect(
         canvas.cuts.toSet(),
-        {layout.block.inflate(10 + 2)},
+        {layout.block.inflate(10 + 2).inflate(2)},
       );
+      expect(canvas.layerBounds.toSet(), canvas.cuts.toSet());
       layout.dispose();
     });
 
-    test('the box behind hard letters is cut at itself', () {
+    // 🚨THE DEVICE'S LAW, which no pixel read here can see (2026-10-07): the
+    // engine that ships smooths a cut's own edge, whatever the cut is asked
+    // to be. A turned box cut ON its edge came down there with 241 pixels
+    // half and three quarters covered; the test engine cuts it clean.
+    test('🚨the box behind hard letters is cut CLEAR of itself — farther '
+        'than a pixel is across, so a cut\'s soft edge falls on no pixel of '
+        'it', () {
       final layout = layoutCelText(said([run('ab')], background: green));
       final canvas = _CountsLayers();
       layout.paint(canvas);
       layout.dispose();
 
-      expect(canvas.cuts.first, layout.box);
+      final cut = canvas.cuts.first;
+      final clear = layout.box.left - cut.left;
+      expect(cut, layout.box.inflate(clear), reason: 'as clear on each side');
+      expect(
+        clear,
+        greaterThan(math.sqrt2),
+        reason: 'a pixel is that far across, corner to corner',
+      );
+      expect(canvas.layerBounds.first, cut);
+    });
+
+    test('a see-through hard colour\'s two layers are both that room', () {
+      final layout = layoutCelText(said([run('ab', color: 0x80C80A14)]));
+      final canvas = _CountsLayers();
+      layout.paint(canvas);
+      layout.dispose();
+
+      expect(canvas.layerBounds, hasLength(2));
+      expect(canvas.layerBounds.toSet(), {canvas.cuts.single});
     });
   });
 }
@@ -290,11 +317,12 @@ void main() {
 /// A canvas that counts the layers opened on it, keeps the rects it was cut
 /// at, and draws nothing.
 class _CountsLayers implements ui.Canvas {
-  int layers = 0;
+  int get layers => layerBounds.length;
+  final List<ui.Rect?> layerBounds = [];
   final List<ui.Rect> cuts = [];
 
   @override
-  void saveLayer(ui.Rect? bounds, ui.Paint paint) => layers += 1;
+  void saveLayer(ui.Rect? bounds, ui.Paint paint) => layerBounds.add(bounds);
 
   @override
   void clipRect(

@@ -153,8 +153,8 @@ class CanvasLetterPasses {
   }
 
   /// Draws the letters with their box's corner at [at]. [within] holds
-  /// everything they can draw, in the canvas's own space: the hard letters'
-  /// layers are no larger.
+  /// everything they can draw, in the canvas's own space: the hard letters
+  /// are cut just past it ([_drawHard]).
   void paint(ui.Canvas canvas, ui.Offset at, {required ui.Rect within}) {
     void hard(_HardPass pass) => _drawHard(
       canvas,
@@ -193,12 +193,19 @@ typedef _HardPass = ({int argb, TextPainter cover});
 /// a half see-through colour came down whole), so under the cliff it would
 /// be read as cover.
 ///
-/// ⚠️[within] IS A CUT, MADE HERE. One engine cuts a layer at the bounds it
+/// ⚠️THE ROOM IS A CUT, MADE HERE. One engine cuts a layer at the bounds it
 /// is given and another takes them as a hint (measured 2026-10-07: the test
 /// engine drew a hard outline past them, whole) — so a room too small would
 /// show on the first and pass every test on the second. Cut here, it shows
-/// wherever this runs. The cut is hard, and keeps a pixel the cliff keeps:
-/// one whose middle is inside.
+/// wherever this runs.
+///
+/// 🚨AND THE CUT IS MADE CLEAR OF [within] ([_cutClear]), NEVER ON IT. A cut
+/// is not hard on the engine that ships, whatever `doAntiAlias` says: its
+/// own edge is smoothed. Measured on the device, 2026-10-07 — a turned box
+/// cut at its own edge came down with 241 of that edge's pixels half and
+/// three quarters there (alpha 7f, bf), under letters asked to have no such
+/// pixel. The test engine cut the same box clean, so no test of pixels
+/// here can see it: the room is pinned as a rect, and read on the device.
 void _drawHard(
   ui.Canvas canvas,
   int argb, {
@@ -207,17 +214,18 @@ void _drawHard(
 }) {
   final alpha = (argb >> 24) & 0xFF;
   final seeThrough = alpha != 0xFF;
+  final room = within.inflate(_cutClear);
   canvas
     ..save()
-    ..clipRect(within, doAntiAlias: false);
+    ..clipRect(room, doAntiAlias: false);
   if (seeThrough) {
     canvas.saveLayer(
-      within,
+      room,
       ui.Paint()..color = ui.Color.fromARGB(alpha, 0, 0, 0),
     );
   }
   canvas.saveLayer(
-    within,
+    room,
     ui.Paint()
       ..colorFilter = ui.ColorFilter.matrix(<double>[
         0, 0, 0, 0, ((argb >> 16) & 0xFF).toDouble(),
@@ -233,6 +241,19 @@ void _drawHard(
   }
   canvas.restore();
 }
+
+/// How far past what is drawn a hard pass is cut ([_drawHard]), in the
+/// canvas's own units: farther than a pixel is across from corner to
+/// corner, where a unit is a pixel. A pixel the ink so much as touches is
+/// then whole inside the cut, so whatever an engine makes of the cut's
+/// edge within a pixel, it makes it of pixels nothing is drawn on.
+///
+/// ⚠️A unit IS a pixel where a text is baked onto its cel
+/// ([bakeCelTextPlate], drawn 1:1) — the one place a letter is set hard
+/// today. Drawn under a view zoomed out, two units are less than that and
+/// the cut closes on the ink again: whoever sets a tag hard measures the
+/// room in the surface's pixels first.
+const double _cutClear = 2;
 
 /// How steep the alpha's cliff is ([_drawHard]): of two covers a 255th
 /// apart on either side of half, one comes down nothing and the other
