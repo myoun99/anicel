@@ -147,8 +147,8 @@ class TimelineRangeMoveRowResolver {
   TimelineRangeMoveCallbacks? session;
   LayerId? _sourceLayerId;
 
-  /// [TimelineRangeMoveCallbacks.holds], of the row a drag started on — a
-  /// lane row holds or not as the layer it belongs to does.
+  /// [TimelineRangeMoveCallbacks.holds], of the layer the row a drag
+  /// started on belongs to — the reading the move's begin makes of it.
   bool holdsRow(TimelineRowAddress row) {
     final layerId = row.owningLayerId;
     return layerId != null && (session?.holds(layerId) ?? false);
