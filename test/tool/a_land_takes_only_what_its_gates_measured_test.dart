@@ -193,6 +193,27 @@ void main() {
   group('a stamp', () {
     late final gate = codeOf('cmd_gate');
 
+    test('⛔is no branch: it is kept beside the branches, where no pattern '
+        'of lanes — `backup`, `list`, the mirror\'s copies — can take it '
+        'for one', () {
+      final script = File('tool/lane.sh').readAsStringSync();
+      final kept = RegExp(
+        r'^gate_ref\(\) \{ echo "(refs/[^"]+)/\$1"; \}$',
+        multiLine: true,
+      ).firstMatch(script.replaceAll('\r\n', '\n'));
+      expect(kept, isNotNull, reason: 'LIVENESS — the stamp has one home');
+      expect(kept!.group(1), isNot(startsWith('refs/heads')));
+      expect(kept.group(1), isNot(startsWith('refs/tags')));
+    });
+
+    test('goes when its lane does: a lane that landed, and a lane that was '
+        'dropped, leave no stamp for a later lane of that name', () {
+      const gone = r'update-ref -d "$(gate_ref "$name")"';
+      final land = codeOf('cmd_land');
+      expect(at(land, gone), greaterThan(at(land, 'merge --ff-only')));
+      expect(at(codeOf('cmd_drop'), gone), isNot(-1));
+    });
+
     test('🚨is written for the commit read BEFORE the first gate, after '
         'the asking-again that follows the last', () {
       final clean = at(gate, r'lane_is_clean "$p" || die');
