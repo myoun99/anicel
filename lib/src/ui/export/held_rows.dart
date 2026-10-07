@@ -93,18 +93,10 @@ class HeldRows {
   }
 
   /// Lets go of the rows held under [picture] — the ones no other held
-  /// picture is made of.
+  /// picture is made of. A row is held under nothing but a picture, so
+  /// once every picture is let go, every row is.
   void letGoOf(Object picture) {
     _byPicture.remove(picture)?.forEach(_release);
-    _tell();
-  }
-
-  /// Lets go of every row held.
-  void dispose() {
-    for (final rows in _byPicture.values) {
-      rows.forEach(_release);
-    }
-    _byPicture.clear();
     _tell();
   }
 

@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart'
+    show FlutterMemoryAllocations, ObjectCreated, ObjectDisposed, ObjectEvent;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -30,17 +32,25 @@ void main() {
   /// Every picture [compose] made, in the order it made them.
   final composed = <ui.Image>[];
 
+  /// Every picture key a test made a picture under.
+  final keys = <Object>{};
+
   setUp(() {
     heldBefore = HeldRows.debugHeld;
     told = [];
     room = 1 << 30;
     rows = HeldRows(room: () => room, onHeld: told.add);
     composed.clear();
+    keys.clear();
   });
 
   tearDown(() {
-    rows.dispose();
-    expect(HeldRows.debugHeld, heldBefore, reason: 'nothing left held');
+    keys.forEach(rows.letGoOf);
+    expect(
+      HeldRows.debugHeld,
+      heldBefore,
+      reason: 'every picture let go: nothing left held',
+    );
   });
 
   BitmapSurface surface(int seed) => BitmapSurface(
@@ -69,13 +79,15 @@ void main() {
 
   /// One picture under [key], made of [surfaces] in that order — what it
   /// was handed for each.
-  Future<List<ui.Image>> picture(Object key, List<BitmapSurface> surfaces) =>
-      rows.during(key, (asked) async {
-        return [
-          for (final surface in surfaces)
-            (await asked.of(surface, compose)).image,
-        ];
-      });
+  Future<List<ui.Image>> picture(Object key, List<BitmapSurface> surfaces) {
+    keys.add(key);
+    return rows.during(key, (asked) async {
+      return [
+        for (final surface in surfaces)
+          (await asked.of(surface, compose)).image,
+      ];
+    });
+  }
 
   test('🎯a row a held picture is made of composes ONCE for the picture '
       'after it — the same picture, handed again', () async {
@@ -162,7 +174,7 @@ void main() {
     rows.letGoOf('p1');
     expect(told.last, rowBytes, reason: 'b went; a stays with p2');
 
-    rows.dispose();
+    rows.letGoOf('p2');
     expect(told.last, 0);
     expect(
       [for (var i = 1; i < told.length; i += 1) told[i] != told[i - 1]],
@@ -225,6 +237,20 @@ void main() {
           format: ui.ImageByteFormat.rawRgba,
         ))!.buffer.asUint8List();
 
+    Future<ui.Image> render(
+      CutFrameCompositeLayer layer, {
+      required bool displayLevels,
+      RowPictures? rows,
+    }) => const CameraFrameRenderService().renderThroughCamera(
+      layers: [layer],
+      pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+      cameraFrameSize: canvas,
+      // A quarter: the level halves twice when asked to.
+      outputSize: const CanvasSize(width: 2, height: 2),
+      displayLevels: displayLevels,
+      rows: rows,
+    );
+
     for (final displayLevels in [false, true]) {
       testWidgets('🚨displayLevels $displayLevels: draws what it is handed, '
           'never lets it go, and draws what it would have composed', (
@@ -232,20 +258,13 @@ void main() {
       ) async {
         await tester.runAsync(() async {
           final layer = CutFrameCompositeLayer(surface: ink(), opacity: 1);
-          Future<ui.Image> render({RowPictures? rows}) =>
-              const CameraFrameRenderService().renderThroughCamera(
-                layers: [layer],
-                pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
-                cameraFrameSize: canvas,
-                // A quarter: the level halves twice when asked to.
-                outputSize: const CanvasSize(width: 2, height: 2),
-                displayLevels: displayLevels,
-                rows: rows,
-              );
-
-          final alone = await render();
+          final alone = await render(layer, displayLevels: displayLevels);
           final kept = <PositionedSurfaceImage>[];
-          final handed = await render(rows: _Keeping(kept));
+          final handed = await render(
+            layer,
+            displayLevels: displayLevels,
+            rows: _Keeping(kept),
+          );
 
           expect(kept, hasLength(1), reason: 'LIVENESS: the row was asked');
           expect(kept.single.image.debugDisposed, isFalse);
@@ -253,6 +272,49 @@ void main() {
           kept.single.image.dispose();
           alone.dispose();
           handed.dispose();
+        });
+      });
+
+      testWidgets('🚨displayLevels $displayLevels: with nobody keeping its '
+          'rows, a render lets go of every picture it made but the one it '
+          'hands back — and with a keeper, of all but the kept', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final layer = CutFrameCompositeLayer(surface: ink(), opacity: 1);
+          // Warm: the tiles' own pictures are the tile cache's to keep.
+          (await render(layer, displayLevels: displayLevels)).dispose();
+          final live = <Object>{};
+          void count(ObjectEvent event) {
+            if (event.object is! ui.Image) {
+              return;
+            }
+            if (event is ObjectCreated) {
+              live.add(event.object);
+            } else if (event is ObjectDisposed) {
+              live.remove(event.object);
+            }
+          }
+
+          FlutterMemoryAllocations.instance.addListener(count);
+          addTearDown(
+            () => FlutterMemoryAllocations.instance.removeListener(count),
+          );
+
+          final alone = await render(layer, displayLevels: displayLevels);
+          expect(live, {alone}, reason: 'the picture it handed back, alone');
+          alone.dispose();
+
+          final kept = <PositionedSurfaceImage>[];
+          final handed = await render(
+            layer,
+            displayLevels: displayLevels,
+            rows: _Keeping(kept),
+          );
+          expect(live, {handed, kept.single.image});
+          handed.dispose();
+          kept.single.image.dispose();
+          expect(live, isEmpty);
         });
       });
     }

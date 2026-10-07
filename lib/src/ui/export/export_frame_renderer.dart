@@ -141,12 +141,10 @@ class ExportFrameRenderer {
     _pictures.nextFrame();
   }
 
-  /// Lets go of the pictures a video run held, and the rows they were made
-  /// of. The run's to call when its last frame is out.
-  void dispose() {
-    _pictures.dispose();
-    _rows.dispose();
-  }
+  /// Lets go of the pictures a video run held — and with them the rows they
+  /// were made of, which are held under nothing else. The run's to call
+  /// when its last frame is out.
+  void dispose() => _pictures.dispose();
 
   /// Keeps the cels [signature]'s picture is made of for one more frame.
   ///

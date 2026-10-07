@@ -52,7 +52,7 @@ void main() {
     ],
   );
 
-  EditorSessionManager session() {
+  EditorSessionManager session({int budget = fullImageBytes}) {
     final s = EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('budget'),
@@ -73,9 +73,7 @@ void main() {
     );
     addTearDown(s.dispose);
     // Before the first cache use — the enforcer reads it once, when built.
-    s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(
-      fullImageBytes,
-    );
+    s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(budget);
     return s;
   }
 
@@ -151,6 +149,57 @@ void main() {
             'the session handed the enforcer its budget; cut-2 is not '
             'the active cut, so nothing protected it',
       );
+    });
+  });
+
+  /// 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 — a
+  /// video run's rows are held on this line, and the caches give way to
+  /// them the moment they are lent, and stay out of their way for as long
+  /// as they are.
+  testWidgets('🎯what a run holds comes off the line at once, and every '
+      'enforce after counts it until it is handed back', (tester) async {
+    await tester.runAsync(() async {
+      const budget = 1024;
+      const lent = 600;
+      final s = session(budget: budget);
+      final line = s.playbackRig.playbackCache;
+      final composites = s.renderCaches.cutFrameCompositeCache;
+      int held() =>
+          composites.estimatedBytes +
+          s.renderCaches.layerFrameImageCache.estimatedBytes;
+      Future<void> prepare(String id) => composites.prepareComposite(
+        cut: s.cutById(CutId(id))!,
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+      );
+      for (final (id, frameId) in [
+        ('cut-2', 'frame-b'),
+        ('cut-3', 'frame-c'),
+      ]) {
+        draw(s, s.cutById(CutId(id))!, '$id-layer', frameId);
+        await prepare(id);
+      }
+      line.enforcePlaybackCacheBudget();
+      expect(composites.estimatedBytes, 2 * fullImageBytes, reason: 'premise');
+      expect(held(), lessThanOrEqualTo(budget), reason: 'all of it fits');
+
+      line.lend(lent);
+      expect(line.lentBytes, lent);
+      expect(held(), lessThanOrEqualTo(budget - lent), reason: 'at once');
+
+      // The warm builds the evicted frame again and enforces, as it does
+      // after every frame it bakes.
+      await prepare('cut-2');
+      await prepare('cut-3');
+      line.enforcePlaybackCacheBudget();
+      expect(
+        held(),
+        lessThanOrEqualTo(budget - lent),
+        reason: 'the lent bytes are still the run\'s',
+      );
+
+      line.lend(0);
+      expect(line.lentBytes, 0);
     });
   });
 }
