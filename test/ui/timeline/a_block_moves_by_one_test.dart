@@ -136,6 +136,7 @@ void main() {
               }) => heard.selects.add((anchorIndex, headIndex)),
           onClear: () => heard.clears += 1,
           move: TimelineRangeMoveCallbacks(
+            holds: (_) => false,
             onBegin: (_) {
               heard.begins.add(heard.steps.length);
               return moveBegins;

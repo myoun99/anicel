@@ -86,6 +86,7 @@ void main() {
                     }) => fail('a press inside the selection is a move'),
                 onClear: () {},
                 move: TimelineRangeMoveCallbacks(
+                  holds: (_) => false,
                   onBegin: (grabbed) {
                     begins.add(grabbed);
                     return true;

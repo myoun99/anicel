@@ -116,6 +116,25 @@ class FrameRangeMoveDragVerbs {
     ),
   );
 
+  /// Whether a drag that starts on [grabLayerId] INSIDE the selection is
+  /// nobody's: the row is one whose blocks cannot move — an image row, its
+  /// one picture pinned over the cut ([RowSpans.isSingleCelLayerId], the
+  /// reason a move leaves that row's block where it is).
+  ///
+  /// 🗣️F-263 (유저 2026-10-02): 「선택된곳 어디든 클릭하면 이동시작하도록.
+  /// 물론 클릭한게 이미지레이어같은 이동불가한 대상이면 못하게 하는게 나을까
+  /// 싶긴함」, and F-263-Q1 (2026-10-07): 「옮길 수 없는 행을 누르면 아무
+  /// 일도 안 일어난다」 — neither the move the other rows would make nor a
+  /// new selection, and the selection stays. ↩️It began the move: the cel
+  /// rows' blocks went with a hand that was holding a picture that stayed.
+  ///
+  /// ⛔Asked of the ROW, not of what else is selected: an image row grabbed
+  /// in a selection of image rows alone answers the same (↩️that drag swept
+  /// a new selection). ⛔And not of a synced attach row: its blocks are its
+  /// base's, and grabbed beside its base it carries them (F-276).
+  bool grabHolds(LayerId grabLayerId) =>
+      _rowSpans.isSingleCelLayerId(grabLayerId);
+
   /// Starts moving the CURRENT cut-local frame-range selection; false when
   /// there is none (or its row stands down, or the span holds nothing but
   /// empty cells).

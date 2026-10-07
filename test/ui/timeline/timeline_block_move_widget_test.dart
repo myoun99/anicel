@@ -116,6 +116,7 @@ metrics: metrics,
           },
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
+        holds: (_) => false,
         onBegin: onMoveBegin == null ? (_) => true : (_) => onMoveBegin(),
         onUpdate: onMoveUpdate ?? ({required frameDelta, targetLayerId}) {},
         onEnd: onMoveEnd ?? () {},
@@ -535,6 +536,7 @@ rangeHooks: TimelineFrameRangeHooks(
                   (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
+                holds: (_) => false,
                 onBegin: (_) => true,
                 // The session's row-change preview: the SOURCE row loses
                 // its blocks — its SE overlays (labels/marks) vanish, so

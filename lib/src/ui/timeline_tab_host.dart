@@ -775,6 +775,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   ),
               onClear: _session.clearFrameRangeSelection,
               move: TimelineRangeMoveCallbacks(
+                holds: _session.rangeMove.grabHolds,
                 onBegin: _session.rangeMove.beginFrameRangeMoveDrag,
                 onUpdate: ({required frameDelta, targetLayerId}) =>
                     _session.rangeMove.updateFrameRangeMoveDrag(

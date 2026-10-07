@@ -157,4 +157,142 @@ void main() {
       expect(stored(s, lower).timeline[3], isNull);
     });
   }
+
+  // 🗣️The second half of F-263, 「물론 클릭한게 이미지레이어같은 이동불가한
+  // 대상이면 못하게 하는게 나을까 싶긴함」, answered on F-263-Q1 (유저
+  // 2026-10-07): 「옮길 수 없는 행을 누르면 아무 일도 안 일어난다」 — 「이미지
+  // 행 칸에서 시작한 드래그는 이동도 새 선택도 만들지 않습니다. 선택은 그대로
+  // 남고, 옮기려면 선택 안의 다른 행을 잡습니다」.
+  group('F-263-Q1: an image row of the selection is no grip', () {
+    /// The workspace with a cel row holding a block at 3 and, above it,
+    /// [images] image rows (each born with its one picture over the cut).
+    Future<({EditorSessionManager s, LayerId cel, List<LayerId> images})>
+    aCelRowUnderImageRows(WidgetTester tester, {int images = 1}) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+      final s = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      final cel = s.activeLayer!.id;
+      s.selectFrameIndex(3);
+      s.createDrawingAtCurrentFrame();
+      final made = <LayerId>[];
+      for (var i = 0; i < images; i += 1) {
+        s.layerStack.addLayerOfKind(LayerKind.image);
+        made.add(s.activeLayer!.id);
+      }
+      s.selectLayer(cel);
+      await tester.pumpAndSettle();
+      return (s: s, cel: cel, images: made);
+    }
+
+    Offset cell(WidgetTester tester, LayerId row, int frame) =>
+        timelineCellCenter(tester, row.value, frame);
+
+    testWidgets('a drag that starts on it moves nothing and sweeps nothing: '
+        'the selection stays — and the same drag from the cel row carries '
+        'it', (tester) async {
+      final (:s, :cel, :images) = await aCelRowUnderImageRows(tester);
+      final image = images.single;
+      final block = stored(s, cel).timeline[3]!.frameId;
+      final picture = stored(s, image).timeline;
+
+      await drag(tester, cell(tester, cel, 3), cell(tester, image, 4));
+      final swept = s.frameRangeSelection.value;
+      expect(
+        swept?.spanLayerIds,
+        unorderedEquals([cel, image]),
+        reason: '⛔전제: both rows swept',
+      );
+      final steps = s.historyManager.undoCount;
+
+      await drag(tester, cell(tester, image, 3), cell(tester, image, 6));
+
+      expect(
+        stored(s, cel).timeline[3]?.frameId,
+        block,
+        reason: 'the cel row\'s block is where it was',
+      );
+      expect(s.frameRangeSelection.value, swept, reason: 'no new selection');
+      expect(s.historyManager.undoCount, steps, reason: 'and no undo step');
+
+      // LIVENESS — 「옮기려면 선택 안의 다른 행을 잡습니다」.
+      await drag(tester, cell(tester, cel, 3), cell(tester, cel, 6));
+
+      expect(stored(s, cel).timeline[6]?.frameId, block);
+      expect(stored(s, cel).timeline[3], isNull);
+      expect(stored(s, image).timeline, picture, reason: 'the picture stays');
+    });
+
+    // ⛔Asked of the ROW, not of what else is selected (작업 규칙: 선택으로
+    // 법을 가르지 않는다). ↩️In a selection of image rows alone the drag
+    // swept a new selection — the one row it started on.
+    testWidgets('in a selection of image rows ALONE it answers the same', (
+      tester,
+    ) async {
+      final (:s, cel: _, :images) = await aCelRowUnderImageRows(
+        tester,
+        images: 2,
+      );
+      final [lower, upper] = images;
+
+      await drag(tester, cell(tester, lower, 3), cell(tester, upper, 4));
+      final swept = s.frameRangeSelection.value;
+      expect(
+        swept?.spanLayerIds,
+        unorderedEquals([lower, upper]),
+        reason: '⛔전제: the two image rows, and nothing else',
+      );
+
+      await drag(tester, cell(tester, upper, 3), cell(tester, upper, 6));
+
+      expect(s.frameRangeSelection.value, swept);
+    });
+
+    testWidgets('a TAP there is still a tap — it lets the selection go, as '
+        'on any row', (tester) async {
+      final (:s, :cel, :images) = await aCelRowUnderImageRows(tester);
+      await drag(
+        tester,
+        cell(tester, cel, 3),
+        cell(tester, images.single, 4),
+      );
+      expect(s.frameRangeSelection.value, isNotNull, reason: '⛔전제');
+
+      await tester.tapAt(
+        cell(tester, images.single, 3),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+
+      expect(s.frameRangeSelection.value, isNull);
+    });
+
+    test('which rows: an image row, and no other', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final cel = s.activeLayer!.id;
+      s.layerStack.addLayerOfKind(LayerKind.image);
+      final image = s.activeLayer!.id;
+
+      expect(s.rangeMove.grabHolds(image), isTrue);
+      expect(
+        [
+          for (final layer in s.requireActiveCut.layers)
+            if (s.rangeMove.grabHolds(layer.id)) layer.id,
+        ],
+        [image],
+        reason: 'not the cel row ($cel), the direction row or the camera',
+      );
+    });
+  });
 }

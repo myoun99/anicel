@@ -75,11 +75,17 @@ void retireRangeDragOnUnmount({
 
 class TimelineRangeMoveCallbacks {
   const TimelineRangeMoveCallbacks({
+    required this.holds,
     required this.onBegin,
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
   });
+
+  /// Whether a drag that starts on [grabLayerId] inside the selection is
+  /// nobody's — the row's blocks cannot move (F-263-Q1; the session's
+  /// `grabHolds` says which rows and why). Asked BEFORE [onBegin].
+  final bool Function(LayerId grabLayerId) holds;
 
   /// Starts moving the CURRENT selection; false = nothing to move.
   ///
@@ -141,6 +147,13 @@ class TimelineRangeMoveRowResolver {
   TimelineRangeMoveCallbacks? session;
   LayerId? _sourceLayerId;
 
+  /// [TimelineRangeMoveCallbacks.holds], of the row a drag started on — a
+  /// lane row holds or not as the layer it belongs to does.
+  bool holdsRow(TimelineRowAddress row) {
+    final layerId = row.owningLayerId;
+    return layerId != null && (session?.holds(layerId) ?? false);
+  }
+
   bool begin(LayerId layerId) {
     final callbacks = session;
     if (callbacks == null) {
@@ -187,6 +200,7 @@ class TimelineRangeGestureCallbacks {
     required this.isInSelection,
     required this.onSelectUpdate,
     required this.onTapClear,
+    this.rowHolds,
     required this.onMoveBegin,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -241,6 +255,15 @@ class TimelineRangeGestureCallbacks {
   /// the release would walk straight back through both.
   final void Function(TimelineRowAddress row) onTapClear;
 
+  /// Whether [row] is one whose blocks cannot move at all. A drag that
+  /// starts on it INSIDE the selection is nobody's: no move, no new
+  /// selection, and the selection stays (F-263-Q1, 유저 2026-10-07:
+  /// 「옮길 수 없는 행을 누르면 아무 일도 안 일어난다」). Read before
+  /// [onMoveBegin], which is then not asked.
+  ///
+  /// Null on a surface none of whose rows is such a row.
+  final bool Function(TimelineRowAddress row)? rowHolds;
+
   /// Move mode (handle-level): pure grid geometry — frame steps along the
   /// main axis, ROW steps across it (the mount maps rows onto layers or
   /// tracks). [frameIndex] is where the pointer went DOWN, which is what
@@ -251,7 +274,10 @@ class TimelineRangeGestureCallbacks {
   final VoidCallback onMoveCancel;
 }
 
-enum _RangeDragMode { none, select, move }
+/// [held]: the drag began inside the selection on a row that cannot move
+/// ([TimelineRangeGestureCallbacks.rowHolds]) — a drag, so its release is
+/// no tap, and nothing else.
+enum _RangeDragMode { none, select, move, held }
 
 /// The row-wide gesture layer for range selection + range move (UI-R8).
 /// Replaces the block-body move handle: dragging frames now SELECTS, and
@@ -345,6 +371,12 @@ class _TimelineFrameRangeGestureLayerState
     _scrolledCross = 0;
     final frame = _frameAt(localPosition);
     final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
+    final rowHolds = widget.callbacks.rowHolds?.call(widget.row) ?? false;
+    if (insideSelection && rowHolds) {
+      _mode = _RangeDragMode.held;
+      widget.callbacks.onGripTaken?.call(widget.row);
+      return;
+    }
     if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
       setState(() {
         _mode = _RangeDragMode.move;
@@ -376,7 +408,7 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
-    if (_mode == _RangeDragMode.none) {
+    if (_mode == _RangeDragMode.none || _mode == _RangeDragMode.held) {
       return;
     }
     // D42: reaching a viewport edge auto-pans on BOTH axes — the row
@@ -397,7 +429,7 @@ class _TimelineFrameRangeGestureLayerState
     );
     _scrolledCross += appliedCross;
     switch (_mode) {
-      case _RangeDragMode.none:
+      case _RangeDragMode.none || _RangeDragMode.held:
         return;
       case _RangeDragMode.select:
         final local =
@@ -858,7 +890,8 @@ class _TimelineLaneRangeGestureLayerState
       axis: horizontal ? Axis.vertical : Axis.horizontal,
     );
     switch (_mode) {
-      case _RangeDragMode.none:
+      // (Held is the cells layer's: a lane's keys are its own to move.)
+      case _RangeDragMode.none || _RangeDragMode.held:
         return;
       case _RangeDragMode.select:
         final local =
