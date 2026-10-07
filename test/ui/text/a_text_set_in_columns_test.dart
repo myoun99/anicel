@@ -114,6 +114,19 @@ void main() {
       expect(letter(layout, 3), at(-90, 0, 30, 20));
     });
 
+    test('🚨…its largest letter WHEREVER in the column it stands — first, '
+        'and the smaller ones after it', () {
+      final layout = set([
+        run('い', size: 40),
+        run('あ'),
+        run('\nう'),
+      ], lineHeight: 1.5);
+
+      expect(layout.block.width, 60 + 30);
+      expect(letter(layout, 0), at(-60, 0, 60, 40));
+      expect(letter(layout, 1), at(-60, 40, 60, 20));
+    });
+
     test('tracking is room AFTER a letter, down its column', () {
       final layout = set([run('あいう', tracking: 5)]);
 
@@ -168,6 +181,17 @@ void main() {
       final layout = set([run('あ「い')], wrapWidth: 40);
 
       expect(layout.wrapPlaces, [1]);
+    });
+
+    test('🚨white space at a column\'s foot HANGS past the box — it is not '
+        'what has to fit, so the letter before it stays in its column', () {
+      final layout = set([run('あい うえ')], wrapWidth: 40);
+
+      // あい fill the box, the space hangs past its foot, う heads the next.
+      expect(layout.wrapPlaces, [3]);
+      expect(letter(layout, 1), at(-20, 20, 20, 20));
+      expect(letter(layout, 2).top, 40, reason: 'the space, past the foot');
+      expect(letter(layout, 3), at(-40, 0, 20, 20));
     });
 
     test('🚨a NUMBER does not part across two columns — so a break typed '
