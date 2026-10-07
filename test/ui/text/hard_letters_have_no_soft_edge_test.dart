@@ -123,6 +123,10 @@ void main() {
 
       expect(hard, isNotEmpty);
       expect({for (final pixel in hard) pixel >>> 24}, {0x80});
+      // What it covers is read off its SHAPE, never off how see-through
+      // its colour is.
+      final whole = await inkOf(said([run('ab')]));
+      expect(hard.length, whole.length);
     });
 
     test('with an OUTLINE is fill, outline, or nothing', () async {
@@ -131,6 +135,31 @@ void main() {
       );
 
       expect(hex(hard), {'ffc80a14', 'ff0a14c8'});
+    });
+
+    test('🚨its outline is UNDER its fill, and whole: the fill covers what it '
+        'covers with no outline, and the outline about what it covers '
+        'smooth', () async {
+      int count(List<int> pixels, int argb) =>
+          pixels.where((pixel) => pixel == argb).length;
+      final bare = await inkOf(said([run('ab')]));
+      final hard = await inkOf(
+        said([run('ab', outline: blue, outlineWidth: 3)]),
+      );
+      final smooth = await inkOf(
+        said([run('ab', antialias: true, outline: blue, outlineWidth: 3)]),
+      );
+      // Smooth, the outline's cover is what is not the fill's.
+      final all = smooth.fold<double>(
+        0,
+        (sum, pixel) => sum + (pixel >>> 24) / 255,
+      );
+
+      expect(count(hard, red), bare.length);
+      expect(
+        count(hard, blue),
+        closeTo(all - bare.length, (all - bare.length) * 0.15),
+      );
     });
   });
 

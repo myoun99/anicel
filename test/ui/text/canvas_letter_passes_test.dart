@@ -4,6 +4,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/text/canvas_letter_passes.dart';
 import 'package:anicel/src/ui/text/text_cel_render.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,22 +33,37 @@ void main() {
     antialias: false,
   );
 
-  TextPainter set() => TextPainter(
-    text: const TextSpan(text: 'a'),
+  /// A text set — [letters] long, so that one set can be told from another
+  /// by its width.
+  TextPainter set([int letters = 1]) => TextPainter(
+    text: TextSpan(text: 'a' * letters, style: const TextStyle(fontSize: 10)),
     textDirection: TextDirection.ltr,
   )..layout();
 
   /// The passes of a text whose runs are in [letters] — and, pass by pass
-  /// in the order they were set, what each run was to be painted with.
+  /// in the order they were set, what each run was to be painted with. The
+  /// Nth pass set is N letters long.
   ({CanvasLetterPasses passes, List<Map<TextLetterStyle, ui.Paint?>> said})
   passesOf(List<TextLetterStyle> letters, {TextPainter? measured}) {
     final said = <Map<TextLetterStyle, ui.Paint?>>[];
     final passes = CanvasLetterPasses.of(letters, (paintOf) {
       said.add({for (final style in letters) style: paintOf(style)});
-      return set();
+      return set(said.length);
     }, measured: measured);
     addTearDown(passes.dispose);
     return (passes: passes, said: said);
+  }
+
+  /// What [passes] draw, call by call: each pass by the number it was set
+  /// as, and the layers opened and shut round them.
+  List<String> drawnBy(CanvasLetterPasses passes) {
+    final canvas = _WritesDown();
+    passes.paint(
+      canvas,
+      ui.Offset.zero,
+      within: const ui.Rect.fromLTWH(0, 0, 100, 100),
+    );
+    return canvas.calls;
   }
 
   bool drawsNothing(ui.Paint? paint) => paint != null && paint.color.a == 0;
@@ -110,6 +126,79 @@ void main() {
       expect(outline.strokeJoin, ui.StrokeJoin.round);
       expect(outline.color.toARGB32(), 0xFF00BB00);
       expect(hardFill[hardOutlined]!.color.toARGB32(), 0xFFAA0000);
+    });
+
+    test('🚨EVERY outline is under EVERY fill — smooth or hard — and each '
+        'hard pass in a layer of its own', () {
+      final (:passes, said: _) = passesOf([smoothOutlined, hardOutlined]);
+
+      // Set as: 1 the fill · 2 the smooth outline · 3 the hard outline ·
+      // 4 the hard fill. (The hard outline's colour is see-through: a
+      // layer of its own round the hard one.)
+      expect(drawnBy(passes), [
+        'pass 2',
+        'layer',
+        'layer',
+        'pass 3',
+        'restore',
+        'restore',
+        'pass 1',
+        'layer',
+        'pass 4',
+        'restore',
+      ]);
+    });
+
+    test('hard letters alone, outlined: no smooth pass strokes for them', () {
+      final (:passes, :said) = passesOf([hardOutlined]);
+
+      // The fill (it measures) · the hard outline · the hard fill.
+      expect(said, hasLength(3));
+      expect(drawnBy(passes), [
+        'layer',
+        'layer',
+        'pass 2',
+        'restore',
+        'restore',
+        'pass 1',
+        'layer',
+        'pass 3',
+        'restore',
+      ]);
+    });
+
+    test('a SMOOTH run in the very colour of a hard one — fill or outline — '
+        'is none of the hard pass\'s', () {
+      const smoothTwin = TextLetterStyle(
+        color: 0xFFAA0000,
+        outlineColor: 0x8000BB00,
+        outlineWidth: 5,
+      );
+      final (passes: _, :said) = passesOf([smoothTwin, hardOutlined]);
+
+      expect(said, hasLength(4));
+      final [_, _, hardStroke, hardFill] = said;
+      expect(drawsNothing(hardStroke[smoothTwin]), isTrue);
+      expect(drawsNothing(hardFill[smoothTwin]), isTrue);
+    });
+
+    test('two hard runs outlined in two colours: each outline\'s pass '
+        'strokes its own and paints the other with nothing', () {
+      const otherOutline = TextLetterStyle(
+        color: 0xFFAA0000,
+        outlineColor: 0xFF0000BB,
+        outlineWidth: 2,
+        antialias: false,
+      );
+      final (passes: _, :said) = passesOf([hardOutlined, otherOutline]);
+
+      // The fill · two hard outlines · one hard fill (one colour).
+      expect(said, hasLength(4));
+      final [_, first, second, _] = said;
+      expect(first[hardOutlined]!.strokeWidth, 5);
+      expect(drawsNothing(first[otherOutline]), isTrue);
+      expect(drawsNothing(second[hardOutlined]), isTrue);
+      expect(second[otherOutline]!.strokeWidth, 2);
     });
 
     test('two runs of ONE colour are one pass; of two colours, two — each '
@@ -212,6 +301,52 @@ void main() {
       );
     });
 
+    test('🚨a smooth tag sets its letters ONCE — what it set to measure '
+        'itself is what it draws (it is set every frame it is on screen) — '
+        'and lets go of everything it set', () {
+      final made = <Object>{};
+      final gone = <Object>{};
+      void heard(ObjectEvent event) {
+        if (event.object is! TextPainter) {
+          return;
+        }
+        if (event is ObjectCreated) {
+          made.add(event.object);
+        } else if (event is ObjectDisposed) {
+          gone.add(event.object);
+        }
+      }
+
+      FlutterMemoryAllocations.instance.addListener(heard);
+      addTearDown(
+        () => FlutterMemoryAllocations.instance.removeListener(heard),
+      );
+
+      layoutTextCel(
+        content: const TextCelContent(
+          text: 'ab',
+          style: TextCelStyle(fontSize: 10),
+        ),
+        canvas: canvas,
+      ).dispose();
+
+      expect(made, hasLength(1));
+      expect(gone, made);
+
+      made.clear();
+      gone.clear();
+      layoutTextCel(
+        content: const TextCelContent(
+          text: 'ab',
+          style: TextCelStyle(fontSize: 10, antialias: false),
+        ),
+        canvas: canvas,
+      ).dispose();
+
+      expect(made, hasLength(3), reason: 'measured, the fill, its cover');
+      expect(gone, made, reason: 'the one it measured with too');
+    });
+
     test('a hard tag is the size and stands where the smooth one does', () {
       TextCelLayout tag({required bool antialias}) => layoutTextCel(
         content: TextCelContent(
@@ -230,6 +365,26 @@ void main() {
       expect(hardTag.inkBounds, smoothTag.inkBounds);
     });
   });
+}
+
+/// A canvas that writes down what is drawn on it, and draws nothing: a set
+/// text by how many letters long it is (`passesOf` sets its Nth pass N
+/// letters long, in the test font's ten-pixel boxes).
+class _WritesDown implements ui.Canvas {
+  final List<String> calls = [];
+
+  @override
+  void saveLayer(ui.Rect? bounds, ui.Paint paint) => calls.add('layer');
+
+  @override
+  void restore() => calls.add('restore');
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, ui.Offset offset) =>
+      calls.add('pass ${(paragraph.longestLine / 10).round()}');
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 /// A canvas that counts the layers opened on it and draws nothing.

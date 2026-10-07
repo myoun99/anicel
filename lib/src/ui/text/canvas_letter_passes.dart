@@ -106,7 +106,7 @@ class CanvasLetterPasses {
         for (final argb in {for (final style in hard) style.color})
           _hardFillOf(argb, set),
       ],
-      hardThroughout: styles.isNotEmpty && hard.length == styles.length,
+      hardThroughout: hard.length == styles.length,
     );
   }
 
@@ -132,7 +132,7 @@ class CanvasLetterPasses {
   final List<_HardPass> _hardStrokes;
   final List<_HardPass> _hardFills;
 
-  /// Whether the text has letters and EVERY one of them is hard.
+  /// Whether NO letter of the text is smooth.
   final bool _hardThroughout;
 
   /// Draws the box behind the letters — [box], in [argb] — HARD where every
