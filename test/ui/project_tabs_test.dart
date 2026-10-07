@@ -289,6 +289,7 @@ void main() {
     projects.active.projectFile.bindToSavedFile(
       '$beside/Saved.anicel',
       mediaInFile: {},
+      fontsInFile: const {},
       cleanAsOf: 0,
     );
     await tapKey(tester, 'top-strip-project-button');

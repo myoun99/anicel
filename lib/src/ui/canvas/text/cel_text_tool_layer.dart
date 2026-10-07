@@ -11,6 +11,7 @@ import '../../../services/history_manager.dart' show HistoryMark;
 import '../../input/value_control_pointers.dart' show controlOwnsTap;
 import '../../text/canvas_letter_faces.dart';
 import '../../theme/app_theme.dart';
+import '../canvas_press.dart';
 import 'cel_text_chrome.dart';
 import 'cel_text_field.dart';
 import 'cel_text_press.dart';
@@ -222,7 +223,16 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
       }
       return;
     }
-    if (!AppInput.toolAcceptsPress(event, oneFinger: widget.oneFingerAction)) {
+    // The two doors every tool's layer asks, as the selection layer asks
+    // them: a finger drives a tool only while the one-finger slot says draw
+    // (TS9), and the press is the tool's own — the plain primary contact,
+    // not a mapped button's and not a pen's tail (no pen's tail holds the
+    // text tool).
+    if (!AppInput.toolAcceptsPointer(
+          event.kind,
+          oneFinger: widget.oneFingerAction,
+        ) ||
+        !canvasPressIsTheTools(event, tailsToolInHand: (_) => false)) {
       return;
     }
     final artwork = widget.stage.artworkAt(event.localPosition);
