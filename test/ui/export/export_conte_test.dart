@@ -510,6 +510,52 @@ void main() {
     );
   });
 
+  testWidgets('🎯the export prints the book the work keeps: its cover taken '
+      'out, the blank back and the body are the whole book', (tester) async {
+    // 유저 2026-10-02 (I-59): 「이게 내보내기시에도 연동. 내보내기는
+    // 기본적으로 이런식으로 해당 패널에서 설정한 대로 내보내기임」.
+    final session = EditorSessionManager(initialProject: project());
+    addTearDown(session.dispose);
+    session.updateTimesheetInfo(
+      session.timesheetInfo.copyWith(conteCover: false),
+    );
+    await tester.binding.setSurfaceSize(const Size(1120, 660));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ExportDialog(
+            session: session,
+            exportDirectoryPicker: () async => temp.path,
+            formatAvailability: ExportFormatAvailability.permissive(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    final state = tester.state<ExportDialogState>(find.byType(ExportDialog));
+
+    await tester.tap(find.byKey(const ValueKey<String>('export-tab-conte')));
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('export-conteformat-png')),
+    );
+    await tester.pump();
+
+    await tester.runAsync(state.export);
+    await tester.pump();
+
+    expect(
+      {
+        for (final file in temp.listSync().whereType<File>())
+          if (file.path.endsWith('.png'))
+            file.path.split(Platform.pathSeparator).last,
+      },
+      {'conte_p1.png', 'conte_p2.png'},
+    );
+  });
+
   testWidgets('the page images carry the cover\'s picture and the logo the '
       'panel prints — the pages name them, the export reads them', (
     tester,

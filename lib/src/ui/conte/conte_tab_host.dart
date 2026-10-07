@@ -33,6 +33,7 @@ import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
+import '../widgets/panel_flyout.dart' show PanelFlyoutItem;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -431,6 +432,14 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// The book's front as the work keeps it — one undo step.
+  void _setFront({bool? cover, bool? blankPage}) {
+    final info = _session.timesheetInfo;
+    _session.updateTimesheetInfo(
+      info.copyWith(conteCover: cover, conteBlankPage: blankPage),
+    );
+  }
+
   /// The book on the canvas panel, every page one under another (F-201),
   /// the page strip reading and turning the page the view is on.
   Widget _panel(ConteSheetSource source, List<ContePageLayout> pages) {
@@ -463,7 +472,28 @@ class _ConteTabHostState extends State<ConteTabHost> {
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,
       ),
-      bottomBarHostToken: (pageIndex, pages.length),
+      // The book's front (I-59: 「콘티 용지패널의 설정버튼안에」), kept with
+      // the work — and printed as shown, since the export lays the same book.
+      bottomBarSettings: [
+        PanelFlyoutItem(
+          keyValue: 'conte-cover-toggle',
+          label: AppText.strings.conteCoverPage,
+          checked: source.cover,
+          onSelected: () => _setFront(cover: !source.cover),
+        ),
+        PanelFlyoutItem(
+          keyValue: 'conte-blank-page-toggle',
+          label: AppText.strings.conteBlankPage,
+          checked: source.blankPage,
+          onSelected: () => _setFront(blankPage: !source.blankPage),
+        ),
+      ],
+      bottomBarHostToken: (
+        pageIndex,
+        pages.length,
+        source.cover,
+        source.blankPage,
+      ),
       unframedFit: pages.isEmpty ? null : stack.pageRect(pageIndex),
       // The book's paper: where the view stops (F-201).
       viewLimit: pages.isEmpty ? null : stack.paper,

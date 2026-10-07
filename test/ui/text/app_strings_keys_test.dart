@@ -364,6 +364,8 @@ void main() {
     'sheetFillOn': (s) => s.sheetFillOn,
     'sheetFillOff': (s) => s.sheetFillOff,
     'sheetBrushAllow': (s) => s.sheetBrushAllow,
+    'conteCoverPage': (s) => s.conteCoverPage,
+    'conteBlankPage': (s) => s.conteBlankPage,
     'sheetModeNotation': (s) => s.sheetModeNotation,
     'sheetModeData': (s) => s.sheetModeData,
     'sheetViewPage': (s) => s.sheetViewPage,

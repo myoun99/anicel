@@ -168,6 +168,11 @@ void main() {
       expect(restored.logoAssetPath, isNull);
       expect(restored.coverImagePath, isNull);
       expect(restored.envelopeFormId, CutEnvelopePresets.analogId);
+      expect(
+        (restored.conteCover, restored.conteBlankPage),
+        (true, true),
+        reason: 'a conte book has its cover and blank back unless taken out',
+      );
     });
   });
 
@@ -190,6 +195,35 @@ void main() {
         restored.copyWith(coverImagePath: () => null).coverImagePath,
         isNull,
         reason: 'a cover picture can be cleared',
+      );
+    });
+
+    test('the conte book\'s front travels with the work — each of its two '
+        'pages on its own — and a whole front writes nothing', () {
+      // 유저 2026-10-02 (I-59): 「1페이지 헤더 넣기/빼기, 2페이지 빈용지
+      // 넣기빼기 … 이게 내보내기시에도 연동」.
+      final whole = TimesheetInfo.empty.toJson();
+      expect(whole.containsKey('conteCover'), isFalse);
+      expect(whole.containsKey('conteBlankPage'), isFalse);
+      for (final (cover, blank) in [
+        (false, true),
+        (true, false),
+        (false, false),
+      ]) {
+        final info = TimesheetInfo.empty.copyWith(
+          conteCover: cover,
+          conteBlankPage: blank,
+        );
+
+        final restored = TimesheetInfo.fromJson(info.toJson());
+
+        expect(restored, info);
+        expect((restored.conteCover, restored.conteBlankPage), (cover, blank));
+      }
+      expect(
+        TimesheetInfo.empty.copyWith(conteCover: false),
+        isNot(TimesheetInfo.empty),
+        reason: 'a change of front is a change of the work — one undo step',
       );
     });
   });

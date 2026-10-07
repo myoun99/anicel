@@ -194,6 +194,8 @@ class ConteSheetSource {
     this.coverImagePath,
     this.conteStaffName = '',
     this.framesPerSecond = 24,
+    this.cover = true,
+    this.blankPage = true,
   });
 
   final List<ConteCutSource> cuts;
@@ -216,6 +218,13 @@ class ConteSheetSource {
   final String conteStaffName;
 
   final int framesPerSecond;
+
+  /// The pages before the body — the work's choice
+  /// (`TimesheetInfo.conteCover` · `TimesheetInfo.conteBlankPage`), read
+  /// here so that every book laid from this source (`layoutConteBook`) has
+  /// the same front.
+  final bool cover;
+  final bool blankPage;
 
   /// The cut [cutId] names. Every cut a layout placed is here.
   ConteCutSource cutById(String cutId) =>

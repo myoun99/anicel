@@ -693,6 +693,8 @@ enum AppStrings {
   String get sheetFillOn => _s('sheetFillOn');
   String get sheetFillOff => _s('sheetFillOff');
   String get sheetBrushAllow => _s('sheetBrushAllow');
+  String get conteCoverPage => _s('conteCoverPage');
+  String get conteBlankPage => _s('conteBlankPage');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
   String get sheetViewPage => _s('sheetViewPage');
@@ -2134,6 +2136,8 @@ enum AppStrings {
     'sheetFillOn': 'Grayed',
     'sheetFillOff': 'Blank',
     'sheetBrushAllow': 'Allow Brush',
+    'conteCoverPage': 'Cover',
+    'conteBlankPage': 'Blank page',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
     'sheetViewPage': 'Page View',
@@ -3275,6 +3279,8 @@ enum AppStrings {
     'sheetFillOn': '塗る',
     'sheetFillOff': '塗らない',
     'sheetBrushAllow': 'ブラシを許可',
+    'conteCoverPage': '表紙',
+    'conteBlankPage': '白紙',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
     'sheetViewPage': 'ページ表示',
@@ -4650,6 +4656,8 @@ enum AppStrings {
     'sheetFillOn': '칠함',
     'sheetFillOff': '비움',
     'sheetBrushAllow': '브러시 허용',
+    'conteCoverPage': '표지',
+    'conteBlankPage': '빈 용지',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
     'sheetViewPage': '페이지 보기',
@@ -6057,6 +6065,8 @@ enum AppStrings {
     'sheetFillOn': 'Grisées',
     'sheetFillOff': 'Vides',
     'sheetBrushAllow': 'Autoriser le pinceau',
+    'conteCoverPage': 'Couverture',
+    'conteBlankPage': 'Page blanche',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
     'sheetViewPage': 'Vue page',
@@ -7438,6 +7448,8 @@ enum AppStrings {
     'sheetFillOn': '置灰',
     'sheetFillOff': '留空',
     'sheetBrushAllow': '允许画笔',
+    'conteCoverPage': '封面',
+    'conteBlankPage': '空白页',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
     'sheetViewPage': '分页视图',

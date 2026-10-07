@@ -32,6 +32,8 @@ class TimesheetInfo {
     this.logoAssetPath,
     this.coverImagePath,
     this.envelopeFormId = CutEnvelopePresets.analogId,
+    this.conteCover = true,
+    this.conteBlankPage = true,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -86,6 +88,16 @@ class TimesheetInfo {
   /// workspace value that did not outlive the session.
   final String envelopeFormId;
 
+  /// Whether the conte book opens with its COVER, and whether the cover's
+  /// BLANK back follows it (유저 2026-09-25: 「보통 1페이지는 표지,
+  /// 2페이지는 인쇄할때 생각해서 빈용지, 3페이지부터 콘티 본 페이지」) —
+  /// each put in or taken out in the conte panel's settings and kept with
+  /// the work, and an export prints the book the panel shows (유저
+  /// 2026-10-02, I-59: 「1페이지 헤더 넣기/빼기, 2페이지 빈용지 넣기빼기.
+  /// 위치는 콘티 용지패널의 설정버튼안에. 이게 내보내기시에도 연동」).
+  final bool conteCover;
+  final bool conteBlankPage;
+
   /// The name for [mark]'s work, or empty when nobody is set — so a form
   /// binding never has to null-check.
   String staffNameFor(LayerMark mark) => staff[mark.keySlug] ?? '';
@@ -106,6 +118,8 @@ class TimesheetInfo {
     String? Function()? logoAssetPath,
     String? Function()? coverImagePath,
     String? envelopeFormId,
+    bool? conteCover,
+    bool? conteBlankPage,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -123,6 +137,8 @@ class TimesheetInfo {
           ? this.coverImagePath
           : coverImagePath(),
       envelopeFormId: envelopeFormId ?? this.envelopeFormId,
+      conteCover: conteCover ?? this.conteCover,
+      conteBlankPage: conteBlankPage ?? this.conteBlankPage,
     );
   }
 
@@ -154,6 +170,8 @@ class TimesheetInfo {
     if (coverImagePath != null) 'cover': coverImagePath,
     if (envelopeFormId != CutEnvelopePresets.analogId)
       'envelopeForm': envelopeFormId,
+    if (!conteCover) 'conteCover': false,
+    if (!conteBlankPage) 'conteBlankPage': false,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -173,6 +191,8 @@ class TimesheetInfo {
       coverImagePath: json['cover'] as String?,
       envelopeFormId:
           json['envelopeForm'] as String? ?? CutEnvelopePresets.analogId,
+      conteCover: json['conteCover'] as bool? ?? true,
+      conteBlankPage: json['conteBlankPage'] as bool? ?? true,
     );
   }
 
@@ -187,6 +207,8 @@ class TimesheetInfo {
           other.logoAssetPath == logoAssetPath &&
           other.coverImagePath == coverImagePath &&
           other.envelopeFormId == envelopeFormId &&
+          other.conteCover == conteCover &&
+          other.conteBlankPage == conteBlankPage &&
           mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
@@ -200,6 +222,8 @@ class TimesheetInfo {
     logoAssetPath,
     coverImagePath,
     envelopeFormId,
+    conteCover,
+    conteBlankPage,
     Object.hashAllUnordered(
       staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
     ),

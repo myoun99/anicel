@@ -462,7 +462,8 @@ class ContePageLayout {
 
 /// The whole conte as printed: the cover, the blank page behind it, then
 /// the body [layoutConteSheet] lays out — the order the panel turns through
-/// and the exports print.
+/// and the exports print. The work may leave the cover or its blank back
+/// out ([ConteSheetSource.cover] · [ConteSheetSource.blankPage]).
 List<ContePageLayout> layoutConteBook(
   ConteSheetSource source, {
   ConteSheetMetrics metrics = const ConteSheetMetrics(),
@@ -477,12 +478,15 @@ List<ContePageLayout> layoutConteBook(
     metrics: metrics,
     bodyCount: body.length,
   );
+  final front = [
+    if (source.cover) ContePageKind.cover,
+    if (source.blankPage) ContePageKind.blank,
+  ];
   return [
-    bare(0, ContePageKind.cover),
-    bare(1, ContePageKind.blank),
+    for (final (index, kind) in front.indexed) bare(index, kind),
     for (final page in body)
       ContePageLayout(
-        pageIndex: page.pageIndex + 2,
+        pageIndex: page.pageIndex + front.length,
         bodyIndex: page.pageIndex,
         cells: page.cells,
         cutBands: page.cutBands,

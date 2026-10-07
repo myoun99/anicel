@@ -88,6 +88,45 @@ void main() {
     expect(body.first.cells, hasLength(5));
   });
 
+  test('the work may take the cover or its blank back out — the book is '
+      'what is left, and the body still numbers its own pages', () {
+    // 유저 2026-10-02 (I-59): 「1페이지 헤더 넣기/빼기, 2페이지 빈용지
+    // 넣기빼기」.
+    final cuts = [
+      for (var index = 0; index < 7; index += 1)
+        _cut(
+          'c$index',
+          duration: 24,
+          cumulativeEnd: 24 * (index + 1),
+          cells: [_cell(0, 24)],
+        ),
+    ];
+    const body = ContePageKind.body;
+    for (final (cover, blank, front) in [
+      (false, true, [ContePageKind.blank]),
+      (true, false, [ContePageKind.cover]),
+      (false, false, <ContePageKind>[]),
+    ]) {
+      final book = layoutConteBook(
+        ConteSheetSource(cuts: cuts, cover: cover, blankPage: blank),
+      );
+      final said = 'cover $cover, blank page $blank';
+      expect(book.map((page) => page.kind), [
+        ...front,
+        body,
+        body,
+      ], reason: said);
+      expect(
+        book.map((page) => page.pageIndex),
+        [for (var index = 0; index < book.length; index += 1) index],
+        reason: said,
+      );
+      final bodyPages = book.where((page) => page.kind == body);
+      expect(bodyPages.map((page) => page.bodyNumber), [1, 2], reason: said);
+      expect(bodyPages.first.cells, hasLength(5), reason: said);
+    }
+  });
+
   test('a cut merges its CUT and TIME boxes across its own cells', () {
     final pages = layoutConteSheet(
       ConteSheetSource(

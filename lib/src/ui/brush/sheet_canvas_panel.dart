@@ -8,6 +8,7 @@ import '../canvas/viewport_canvas_transform.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/panel_flyout.dart' show PanelFlyoutEntry;
 import 'brush_canvas_panel.dart';
 import 'canvas_book.dart';
 
@@ -74,6 +75,7 @@ class SheetCanvasPanel extends StatefulWidget {
     this.viewportController,
     this.onViewportChanged,
     this.bottomBarLeading = const <Widget>[],
+    this.bottomBarSettings = const <PanelFlyoutEntry>[],
     this.pageStrip = const <Widget>[],
     this.bottomBarHostToken,
     this.fitFocusRect,
@@ -104,6 +106,11 @@ class SheetCanvasPanel extends StatefulWidget {
   final ValueNotifier<CanvasViewport?>? viewportController;
   final ValueChanged<CanvasViewport>? onViewportChanged;
   final List<Widget> bottomBarLeading;
+
+  /// The sheet's own entries in the panel's settings list
+  /// ([BrushCanvasPanel.bottomBarSettings]) — what the host carries in
+  /// [bottomBarHostToken] too, or the memoised bar keeps the old ones.
+  final List<PanelFlyoutEntry> bottomBarSettings;
   final List<Widget> pageStrip;
   final Object? bottomBarHostToken;
   final Rect? fitFocusRect;
@@ -247,6 +254,7 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
       // F-179 · F-272: a sheet is a printed page — no pasteboard, on black.
       canvasBase: true,
       bottomBarLeading: _barLeading,
+      bottomBarSettings: widget.bottomBarSettings,
       pageStrip: widget.pageStrip,
       // The switch is built HERE, so its state joins the host's token here —
       // a host that forgot it would get a switch the memo serves stale.
