@@ -148,42 +148,16 @@ class TimesheetDocumentLayout {
   /// The strips a page lays side by side ([TimesheetSheetKind.strips]).
   int get _strips => document.sheetKind.strips;
 
-  /// A strip's width at its sheet's own column counts, before any scale:
-  /// the ACTION and CELL blocks and the two fixed group allotments.
-  static double _baseStripWidth(TimesheetSheetKind kind) =>
-      kind.celColumns * (actionColumnWidth + celColumnWidth) +
-      seGroupWidth +
-      cameraGroupWidth;
-
-  /// What the strips of [kind] span inside the paper's padding, their
-  /// columns printed [scale] times as wide.
-  static double _stripsSpan(TimesheetSheetKind kind, double scale) =>
-      kind.strips * (frameNumberGutterWidth + _baseStripWidth(kind) * scale) +
-      (kind.strips - 1) * halfGap;
-
-  /// How much wider [kind]'s columns print than the 6-second sheet's: what
-  /// spreads its strips across the SAME paper — 1 on the 6-second sheet,
-  /// about 1.5 on the 3-second one, whose single strip spans what the two
-  /// halves and the gap between them do (the reference sheet's wider
-  /// columns, TOEI_3sec; 유저 2026-09-25: 「형식은 지금 우리가 만든 형식.
-  /// 규격이나 사이즈나 그런거」).
-  static double columnScaleOf(TimesheetSheetKind kind) {
-    final span = _stripsSpan(TimesheetSheetKind.sixSeconds, 1);
-    final fixed = _stripsSpan(kind, 0);
-    return (span - fixed) / (kind.strips * _baseStripWidth(kind));
-  }
-
   int get _seColumnCount => _columnCountOf(TimesheetColumnKind.se);
 
-  /// Per-column width. Instance-level because the CAM and SE cells share
-  /// a fixed group allotment ([cameraGroupWidth] / [seGroupWidth]): past
-  /// the base two slots each column in that group narrows so the paper
-  /// width stays put.
-  double columnWidthFor(TimesheetColumnKind kind) =>
-      _baseColumnWidthFor(kind) * columnScaleOf(document.sheetKind);
-
-  /// [columnWidthFor] on the 6-second sheet's scale.
-  double _baseColumnWidthFor(TimesheetColumnKind kind) {
+  /// Per-column width — the same on either sheet: the 3-second sheet
+  /// prints more cells, not wider ones (F-252, 유저 2026-10-08). ↩️Its
+  /// columns printed about half again as wide (`columnScaleOf`).
+  ///
+  /// Instance-level because the CAM and SE cells share a fixed group
+  /// allotment ([cameraGroupWidth] / [seGroupWidth]): past the base two
+  /// slots each column in that group narrows so the paper width stays put.
+  double columnWidthFor(TimesheetColumnKind kind) {
     if (kind == TimesheetColumnKind.camera && _cameraColumnCount > 2) {
       return cameraGroupWidth / _cameraColumnCount;
     }

@@ -258,7 +258,7 @@ void main() {
     });
 
     test('more animation layers than the 6-second strip\'s 8 take the '
-        '3-second sheet (timesheet-sheet-capacity-Q1), and past its 12 they '
+        '3-second sheet (timesheet-sheet-capacity-Q1), and past its 19 they '
         'grow its ACTION block', () {
       List<TimesheetColumn> actionsOf(int layers) => _document(
         _cut(layers: [for (var i = 0; i < layers; i += 1) _layer('L$i')]),
@@ -267,13 +267,13 @@ void main() {
           .toList();
 
       final ten = actionsOf(10);
-      expect(ten, hasLength(12));
+      expect(ten, hasLength(19));
       expect(ten[9].layerName, 'L9');
       expect(ten[10].layerName, isNull);
 
-      final fourteen = actionsOf(14);
-      expect(fourteen, hasLength(14));
-      expect(fourteen[13].layerName, 'L13');
+      final twentyOne = actionsOf(21);
+      expect(twentyOne, hasLength(21));
+      expect(twentyOne[20].layerName, 'L20');
     });
 
     test('SE layers fill the S slots and extra ones grow the section', () {
