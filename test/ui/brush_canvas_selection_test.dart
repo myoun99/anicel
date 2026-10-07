@@ -46,6 +46,9 @@ import 'package:anicel/src/ui/canvas/float_warp.dart'
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
 import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 import 'package:anicel/src/ui/canvas/selection_float_overlay.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart'
+    show EditorActionIds;
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -2928,6 +2931,37 @@ void main() {
       await press.up();
       await tester.pump();
     }
+  });
+
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록」 — these
+  // two were in the list all along (Enter · Esc) and did not say so. A
+  // button names the action it is, and its tooltip wears that action's key.
+  testWidgets('the box\'s ✓ and ✕ name the actions they press', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+
+    List<String> actionsOf(String key) => tester
+        .widget<AppIconButton>(
+          find.ancestor(
+            of: find.byKey(ValueKey<String>(key)),
+            matching: find.byType(AppIconButton),
+          ),
+        )
+        .shortcuts;
+    expect(actionsOf('selection-move-confirm'), [EditorActionIds.confirm]);
+    expect(actionsOf('selection-move-cancel'), [
+      EditorActionIds.selectionTransformCancel,
+    ]);
   });
 
   testWidgets('⑪취소 버튼이 상자도 이동도 되돌린다', (tester) async {

@@ -50,6 +50,8 @@ void main() {
       ('rail-onion-skin-button', 'Toggle Onion Skin (T)'),
       ('playback-play-button', 'Play (Shift+X)'),
       ('playback-skip-to-start-button', 'To Start (Shift+Z)'),
+      // 🗣️I-40: in the list since REC1-B (Ctrl+R), and silent about it.
+      ('playback-record-voice-button', 'Record voice at the playhead (Ctrl+R)'),
       ('rail-visibility-solo-button', 'Solo active layer (Q)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
@@ -177,6 +179,26 @@ void main() {
       ),
       findsNothing,
       reason: 'a row that presses no action prints no key',
+    );
+  });
+
+  testWidgets('a blend mode\'s row in the strip\'s list prints its key — '
+      'every mode is an action (I-31), and the row it is picked from says '
+      'so', (tester) async {
+    await _pumpApp(tester);
+    await tester.tap(_button('brush-tool-blend-menu-button'));
+    await tester.pumpAndSettle();
+
+    Finder inRow(String mode, Finder text) => find.descendant(
+      of: find.byKey(ValueKey<String>('brush-tool-blend-$mode')),
+      matching: text,
+    );
+    expect(inRow('multiply', find.text('F5')), findsOneWidget);
+    expect(inRow('color', find.text('F1')), findsOneWidget);
+    expect(
+      inRow('hardLight', find.textContaining(RegExp(r'^F\d'))),
+      findsNothing,
+      reason: 'a mode that ships with no key prints none',
     );
   });
 

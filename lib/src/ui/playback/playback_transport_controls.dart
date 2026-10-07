@@ -291,6 +291,9 @@ class PlaybackTransportControls extends StatelessWidget {
         // colour is what made the row hard to read.
         return AppIconButton(
           keyValue: 'playback-record-voice-button',
+          // 🗣️I-40: the action was in the shortcut list (Ctrl+R) and its button
+          // did not say so — every button wears the key of the action it is.
+          shortcuts: const [EditorActionIds.voiceRecordToggle],
           tooltip: recording
               ? strings.recordVoiceStopTooltip
               : strings.recordVoiceTooltip,

@@ -248,11 +248,13 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required String keyPrefix,
     required String Function(T value) labelOf,
     required ValueChanged<T> onPicked,
+    List<String> Function(T value)? shortcutsOf,
   }) => asFlyoutValueChoices(
     current: current,
     choiceOf: (value) => PanelFlyoutChoice(
       key: '$keyPrefix${value.name}',
       label: labelOf(value),
+      shortcuts: shortcutsOf?.call(value) ?? const [],
     ),
     onPicked: onPicked,
   );
@@ -261,11 +263,20 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
 /// How a picker shows one value: the key its row is found by, the words it
 /// reads, and the glyph it wears when it has one.
 class PanelFlyoutChoice {
-  const PanelFlyoutChoice({required this.key, required this.label, this.icon});
+  const PanelFlyoutChoice({
+    required this.key,
+    required this.label,
+    this.icon,
+    this.shortcuts = const [],
+  });
 
   final String key;
   final String label;
   final IconData? icon;
+
+  /// The actions picking this value is ([PanelFlyoutItem.shortcuts]) — a
+  /// value that is a row of the shortcut list prints that row's key.
+  final List<String> shortcuts;
 }
 
 /// One [PanelFlyoutItem] per value, the one equal to [current] marked as
@@ -299,6 +310,7 @@ extension PanelFlyoutValueChoices<T> on Iterable<T> {
           keyValue: choice.key,
           label: choice.label,
           icon: choice.icon,
+          shortcuts: choice.shortcuts,
           selected: value == current,
           onSelected: () => onPicked(value),
         ),

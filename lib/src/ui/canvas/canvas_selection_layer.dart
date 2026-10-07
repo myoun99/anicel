@@ -22,6 +22,7 @@ import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
 import '../../models/app_input_settings.dart';
+import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../text/app_strings.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
@@ -3279,6 +3280,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// ink, the tooltip and the press law all come from the one widget.
   Widget _cancelButton() => AppIconButton(
     keyValue: 'selection-move-cancel',
+    shortcuts: const [EditorActionIds.selectionTransformCancel],
     tooltip: AppText.strings.commonCancel,
     icon: const Icon(Icons.close),
     onPressed: _cancelTransform,
@@ -3295,6 +3297,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// wearing a colour of its own.
   Widget _confirmButton(CanvasSelectionRegion displayShape) => AppIconButton(
     keyValue: 'selection-move-confirm',
+    shortcuts: const [EditorActionIds.confirm],
     tooltip: AppText.strings.commonApply,
     icon: const Icon(Icons.check),
     isSelected: _sessionHasChanges,

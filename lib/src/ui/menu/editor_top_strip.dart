@@ -1243,6 +1243,9 @@ class _BlendModeControl extends StatelessWidget {
             entriesBuilder: () => BrushBlendMode.values.asFlyoutChoices(
               current: mode,
               keyPrefix: 'brush-tool-blend-',
+              // 🗣️I-31 made every mode an action (F1–F12); the row it is
+              // picked from says so, as every button does (I-40).
+              shortcutsOf: (candidate) => [blendModeActionId(candidate)],
               labelOf: (candidate) => candidate.labelFor(language),
               // Writes to whichever drawer the armed tool owns — the
               // BRUSH's is its own shape, so the mode picked here is
