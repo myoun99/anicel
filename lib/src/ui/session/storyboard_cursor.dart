@@ -8,8 +8,6 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
-import '../../models/attached_layer_resolve.dart'
-    show isSyncedAttachedLayer;
 import '../../models/timeline_row_address.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
@@ -257,7 +255,7 @@ class StoryboardCursor {
     final frame = global == null
         ? _controllers.timelineController.currentFrameIndex
         : _selection.editingGlobalFrame;
-    final row = global ?? _cutRowWithTimingOfItsOwn(layerId);
+    final row = global ?? _rangeSelections.cutRowWithTimingOfItsOwn(layerId);
     if (row == null || frame < 0) {
       return null;
     }
@@ -266,25 +264,6 @@ class StoryboardCursor {
       return null;
     }
     return StoryboardCursorRowBlock(layerId, block.startIndex);
-  }
-
-  /// [layerId]'s row in the cut, when its blocks are its own to re-time:
-  /// SYNCED attach rows own no timing (free rows retime normally), and
-  /// single-cel rows are pinned by the covering normalization.
-  ///
-  /// ⚠️As the timeline's press has always stood down — and that is two of
-  /// the retime law's three ([RetimeLaw.standsDownFromRetime]): a movie kept
-  /// as a reference is passed over under a band and re-timed under the
-  /// cursor, past its file's end included (🧪measured 2026-10-06). Which of
-  /// the two a reference movie's block should answer is the user's to rule
-  /// (board: F-283-Q1) — ⛔not settled here by joining either side.
-  Layer? _cutRowWithTimingOfItsOwn(LayerId layerId) {
-    final layer = _project.rangeLayerById(layerId);
-    return layer == null ||
-            isSyncedAttachedLayer(layer) ||
-            layer.kind.holdsSingleCel
-        ? null
-        : layer;
   }
 
   /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s

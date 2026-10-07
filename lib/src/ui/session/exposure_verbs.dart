@@ -246,8 +246,10 @@ class ExposureVerbs {
   /// did not name (🧪measured 2026-10-06). One half for both panels, by the
   /// one collector their gate reads.
   bool setCommaForSelection(int comma) {
-    // Single-cel rows are already absent — the shared collector states
-    // that standdown once, so this verb and its `can…` gate agree.
+    // Rows whose timing is not their own are already absent — the shared
+    // collector states that standdown once, so this verb, its `can…` gate
+    // and the cursor's half agree. A reference movie's block is among the
+    // targets: one block, so its retime is its end trim (F-283-Q1).
     final targets = _rangeSelections.selectionBlockStartsByLayer();
     if (targets == null) {
       return _cells.cellSelectionClaimsSubject;

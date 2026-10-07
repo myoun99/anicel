@@ -327,7 +327,7 @@ class RangeSelections {
   /// The comma edge and the frame-axis slide ask this one question; the
   /// delete/comma collector does NOT (it resolves the display form only
   /// and keeps a row whose commit form is null) — see
-  /// [cutLocalSelectionBlockStartsByLayer].
+  /// [selectionBlockStartsByLayer].
   List<({LayerId id, Layer display, Layer commit})> retimableSpanRows(
     TimelineFrameRangeSelection selection,
   ) {
@@ -835,12 +835,40 @@ class RangeSelections {
   /// the track-global one is already stated in commit keys. The two are
   /// mutually exclusive, so at most one answers.
   ///
-  /// The RESHAPING verbs' form (the comma set, the edge drags): a row whose
-  /// timing is not its own is passed over
-  /// ([RetimeLaw.standsDownFromRetime]).
+  /// THE COMMA's form: a row whose timing is not its own is passed over
+  /// ([cutRowWithTimingOfItsOwn]) — the answer the cursor's half of the
+  /// press reads too.
   Map<LayerId, List<int>>? selectionBlockStartsByLayer() =>
-      cutLocalSelectionBlockStartsByLayer() ??
+      _cutLocalBlockStartsByLayer(
+        passesOver: (id) => cutRowWithTimingOfItsOwn(id) == null,
+      ) ??
       trackSelectionBlockStartsByLayer();
+
+  /// [layerId]'s row in the cut, when its blocks are its own to give a
+  /// length: a SYNCED attach row owns no timing (a free one retimes like
+  /// any row), and an image row's one cel is pinned by the covering
+  /// normalization.
+  ///
+  /// ⛔Two of the retime law's three ([RetimeLaw.standsDownFromRetime]),
+  /// and the third is left out on purpose. A movie kept as a reference
+  /// reshapes never — no split, no gap, no squeeze — but a comma on its
+  /// one block is none of those: it is the END TRIM the video spec gives
+  /// that block.
+  ///
+  /// 🗣️F-283-Q1 (유저 2026-10-07): 「코마 = 끝 트림」 — 「서 있든 선택했든,
+  /// 참조 동영상 블록에 코마를 누르면 끝 엣지를 그 길이까지 끈 것과
+  /// 같아집니다」. ↩️The press's halves answered apart: the cursor's rung
+  /// asked this and gave the block its length, the selection's collector
+  /// asked the whole retime law and passed the block over, its buttons dark
+  /// (🧪measured 2026-10-06).
+  Layer? cutRowWithTimingOfItsOwn(LayerId layerId) {
+    final layer = _project.rangeLayerById(layerId);
+    return layer == null ||
+            isSyncedAttachedLayer(layer) ||
+            layer.kind.holdsSingleCel
+        ? null
+        : layer;
+  }
 
   /// The blocks a DELETE takes across the live selection — and the ones
   /// 링크 독립 reads its runs off.
@@ -864,9 +892,6 @@ class RangeSelections {
     return layer != null && isSyncedAttachedLayer(layer);
   }
 
-  Map<LayerId, List<int>>? cutLocalSelectionBlockStartsByLayer() =>
-      _cutLocalBlockStartsByLayer(passesOver: _retime.standsDownFromRetime);
-
   /// The cut-local selection's real block starts per row, in commit keys,
   /// over the rows [passesOver] does not name.
   Map<LayerId, List<int>>? _cutLocalBlockStartsByLayer({
@@ -881,9 +906,9 @@ class RangeSelections {
       // SYNCED attach rows hold no editable blocks of their own — their
       // mirror blocks are non-ghost now (the synced-block UI), so without
       // this gate a mirror-only selection would light up delete/comma
-      // verbs that then no-op against the stored-empty row. The reshaping
-      // verbs pass over the SINGLE-CEL (image) rows with them — see
-      // [EditorSessionManager.standsDownFromRetime].
+      // verbs that then no-op against the stored-empty row. The comma
+      // passes over the SINGLE-CEL (image) rows with them — see
+      // [cutRowWithTimingOfItsOwn].
       if (passesOver(id)) {
         continue;
       }
