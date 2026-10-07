@@ -53,8 +53,8 @@ void main() {
     test('anicel is the registry, row for row', () {
       for (final definition in editorActionDefinitions) {
         expect(
-          presetActivators(ShortcutPreset.anicel, definition),
-          same(definition.defaultActivators),
+          written(presetActivators(ShortcutPreset.anicel, definition)),
+          written(definition.defaultActivators),
           reason: definition.id,
         );
       }
@@ -467,7 +467,8 @@ void main() {
         File(path).writeAsStringSync(
           '{"version":2,"preset":"no-such-preset","overrides":'
           '{"anicel":7,"clipStudio":{"tool-fill":'
-          '[{"key":${LogicalKeyboardKey.keyK.keyId}}],"no-such-action":[]}}}',
+          '[{"key":${LogicalKeyboardKey.keyK.keyId}}],"no-such-action":[],'
+          '"edit-undo":5}}}',
         );
         final bindings = await restored();
         expect(bindings.preset, ShortcutPreset.anicel);
@@ -477,6 +478,9 @@ void main() {
           written(bindings.activatorsFor(EditorActionIds.toolFill)),
           ['K'],
         );
+        // An action no build knows, and one whose keys are not a list.
+        expect(bindings.isOverridden('no-such-action'), isFalse);
+        expect(bindings.isOverridden(EditorActionIds.undo), isFalse);
       });
 
       test('a restore replaces what was recorded before it — on every '
@@ -557,6 +561,25 @@ void main() {
       expect(
         tester.widget<Pill>(pillOf(ShortcutPreset.clipStudio)).label,
         ShortcutPreset.clipStudio.label,
+      );
+    });
+
+    testWidgets('a pill reads in the program language — the app\'s own name '
+        'in every one', (tester) async {
+      final before = AppText.settings.value;
+      AppText.settings.value = AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+        notationLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = before);
+      await pump(tester);
+      expect(
+        tester.widget<Pill>(pillOf(ShortcutPreset.clipStudio)).label,
+        '클립 스튜디오 기반',
+      );
+      expect(
+        tester.widget<Pill>(pillOf(ShortcutPreset.anicel)).label,
+        'Anicel',
       );
     });
 

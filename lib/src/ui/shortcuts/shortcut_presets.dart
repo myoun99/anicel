@@ -56,9 +56,6 @@ List<SingleActivator> presetActivators(
     return named;
   }
   final taken = _takenKeys[preset]!;
-  if (taken.isEmpty) {
-    return definition.defaultActivators;
-  }
   return [
     for (final activator in definition.defaultActivators)
       if (!taken.contains(activatorKey(activator))) activator,
