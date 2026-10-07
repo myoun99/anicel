@@ -24,6 +24,7 @@ import '../widgets/content_scrollbar.dart';
 import '../widgets/instant_tap_region.dart';
 import '../widgets/panel_flyout.dart';
 import 'brush_group_icon_glyph.dart';
+import 'brush_library_keys.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_preset_reorder_grid.dart';
 import 'brush_preset_view_options.dart';
@@ -62,9 +63,6 @@ enum _BrushPresetMenuAction {
 // measured: the rail still went red. The crash is a live tooltip being
 // re-parented, and it is fixed separately in `_dismissTooltipsOnPress`.
 
-/// Label for the root section holding presets that belong to no group.
-const String _rootSectionLabel = 'Default';
-
 /// The brush library panel: a rail of group TABS down the left, and the open
 /// group's brushes beside it — one row per preset with a tip icon, a stroke
 /// preview and the name, each hideable from the options menu.
@@ -100,6 +98,7 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupEdited,
     this.onGroupDeleted,
     this.onGroupOpened,
+    this.libraryKeys,
     this.onGroupsReordered,
     this.onLibraryReset,
     this.onPresetExported,
@@ -148,6 +147,11 @@ class BrushPresetPanel extends StatefulWidget {
   /// tool in hand can take up the brush it last held there (F-250); the
   /// panel only shows the tab.
   final ValueChanged<BrushGroupId?>? onGroupOpened;
+
+  /// The library as a KEY reaches it (I-56). While this panel is on screen
+  /// a group's key presses its TAB here — the hand and the tab shown, as a
+  /// tap does ([_BrushPresetPanelState._enterTab]).
+  final BrushLibraryKeys? libraryKeys;
 
   /// Called with the full reordered group list after a tab drag.
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
@@ -699,6 +703,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    widget.libraryKeys?.enterTab = _enterTab;
+  }
+
+  @override
   void didUpdateWidget(BrushPresetPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     _selection.value = widget.selectedPresetId;
@@ -711,6 +721,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
 
   @override
   void dispose() {
+    if (widget.libraryKeys?.enterTab == _enterTab) {
+      widget.libraryKeys?.enterTab = null;
+    }
     _springTimer?.cancel();
     _railController.dispose();
     _scrollController.dispose();
@@ -935,7 +948,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             final group = tabs[index];
             final tab = _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
-              label: group?.name ?? _rootSectionLabel,
+              label: group?.name ?? brushRootSectionLabel,
               icon: group?.icon,
               showIcon: _railShowIcon,
               showName: _railShowName,

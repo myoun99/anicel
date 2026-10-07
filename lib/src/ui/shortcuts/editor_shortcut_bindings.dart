@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../debug/key_trace.dart';
+import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
 import 'sheet_arrow.dart';
@@ -17,12 +18,46 @@ import 'touch_shortcuts.dart';
 class EditorShortcutBindings extends ChangeNotifier {
   EditorShortcutBindings({
     this.store,
-  }) : definitions = editorActionDefinitions;
+  });
 
   /// Null disables persistence (tests, and FLUTTER_TEST runs).
   final ShortcutSettingsStore? store;
 
-  final List<EditorActionDefinition> definitions;
+  /// Every action a key can be put on: the registry's, then the brush
+  /// library's as it stands ([setBrushActions]).
+  List<EditorActionDefinition> get definitions => _definitions;
+  List<EditorActionDefinition> _definitions = editorActionDefinitions;
+  Map<String, EditorActionDefinition> _definitionsById = {
+    for (final definition in editorActionDefinitions) definition.id: definition,
+  };
+
+  /// The brush library's rows (I-56, `brushActionsOf`) — they follow the
+  /// registry's, and change with the library. Notifies.
+  ///
+  /// ⚠️What was recorded for a brush that is not among [actions] stays where
+  /// it is and presses nothing ([isBrushActionId]).
+  void setBrushActions(List<EditorActionDefinition> actions) {
+    // The library tells of every change — a group folded shut in its panel
+    // too — and everything that shows a key listens here: rows that are
+    // what they were tell nobody.
+    final held = _definitions.sublist(editorActionDefinitions.length);
+    final unchanged =
+        held.length == actions.length &&
+        Iterable<int>.generate(actions.length).every(
+          (i) =>
+              held[i].id == actions[i].id &&
+              held[i].label == actions[i].label &&
+              held[i].brushPress == actions[i].brushPress,
+        );
+    if (unchanged) {
+      return;
+    }
+    _definitions = [...editorActionDefinitions, ...actions];
+    _definitionsById = {
+      for (final definition in _definitions) definition.id: definition,
+    };
+    notifyListeners();
+  }
 
   /// The layout the keys start from (I-63).
   ///
@@ -58,14 +93,13 @@ class EditorShortcutBindings extends ChangeNotifier {
     notifyListeners();
   }
 
-  EditorActionDefinition? definitionFor(String actionId) {
-    for (final definition in definitions) {
-      if (definition.id == actionId) {
-        return definition;
-      }
-    }
-    return null;
-  }
+  EditorActionDefinition? definitionFor(String actionId) =>
+      _definitionsById[actionId];
+
+  /// Whether a saved entry for [actionId] is kept: an action there is, or a
+  /// brush the library may yet hold.
+  bool _keeps(String actionId) =>
+      definitionFor(actionId) != null || isBrushActionId(actionId);
 
   /// The keys the preset in use ships [actionId] with ([presetActivators]),
   /// as THIS platform presses them: the command modifier written as Ctrl is
@@ -388,7 +422,7 @@ class EditorShortcutBindings extends ChangeNotifier {
     return {
       for (final MapEntry(key: actionId, value: listJson) in json.entries)
         if (actionId is String &&
-            definitionFor(actionId) != null &&
+            _keeps(actionId) &&
             listJson is List)
           actionId: List.unmodifiable([
             for (final activatorJson in listJson)
@@ -404,7 +438,7 @@ class EditorShortcutBindings extends ChangeNotifier {
     }
     for (final entry in touchJson.entries) {
       final actionId = entry.key;
-      if (actionId is! String || definitionFor(actionId) == null) {
+      if (actionId is! String || !_keeps(actionId)) {
         continue;
       }
       final name = entry.value;

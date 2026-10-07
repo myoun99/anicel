@@ -37,17 +37,27 @@ class EditorShortcutScope extends InheritedNotifier<EditorShortcutBindings> {
 ///
 /// ⚠️A shape tile's name is COMPOSED rather than tabled ([shapeTileLabel]),
 /// so it is asked here, where every reader of a name already comes.
-String editorActionLabel(String actionId) {
-  final definition = editorActionDefinitions.firstWhere(
+String editorActionLabel(String actionId) => actionLabelOf(
+  editorActionDefinitions.firstWhere(
     (definition) => definition.id == actionId,
-  );
+  ),
+);
+
+/// [definition]'s name in the program language — [editorActionLabel] for a
+/// row in hand, which a brush library's row always is: it is in no registry
+/// to be looked up by id, and its name is the user's own word for the brush
+/// or the group (I-56), the same in every language.
+String actionLabelOf(EditorActionDefinition definition) {
+  if (definition.brushPress != null) {
+    return definition.label;
+  }
   if (definition.toolPress case ShapeTilePress(:final verb, :final shape)) {
     return shapeTileLabel(verb, shape);
   }
   if (definition.blendMode case final mode?) {
     return blendModeActionLabel(mode, AppText.language);
   }
-  return AppText.strings.shortcutLabel(actionId, definition.label);
+  return AppText.strings.shortcutLabel(definition.id, definition.label);
 }
 
 /// [label] followed by the live keys of the actions a control is the entrance

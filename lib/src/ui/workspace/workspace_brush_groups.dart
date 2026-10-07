@@ -29,23 +29,32 @@ class _WorkspaceBrushGroups {
     _lastInGroup[(tool, group)] = preset.id;
   }
 
-  /// Opens [group]'s tab for the paint tool in hand — the library shows only
-  /// while one is (`ToolLibraryPanel`): it takes up the brush it last held
-  /// there, or the tab's first ([BrushPresetLibrary.presetEntering]) —
-  /// unless the brush in hand already shows in that tab, which stays exactly
-  /// where it is (`railEntry`: 안에 있으면 그대로).
+  /// Opens [group]'s tab for the paint tool in hand: it takes up the brush
+  /// it last held there, or the tab's first
+  /// ([BrushPresetLibrary.presetEntering]) — unless the brush in hand
+  /// already shows in that tab, which stays exactly where it is (`railEntry`:
+  /// 안에 있으면 그대로).
+  ///
+  /// ↩️「The library shows only while a paint tool is in hand」 was the whole
+  /// premise: a tab cannot be tapped otherwise. A group's KEY can be pressed
+  /// with any tool (I-56) — then the hand is outside, and comes in: the
+  /// brush tool is armed ([_toolTakingUpABrush]) holding
+  /// what IT last held in the tab.
   void openGroup(BrushGroupId? group) {
     final presets = _state._brushPresets;
     final state = _state._brushTool.value;
     final library = _state._presetLibrary;
+    final tool = _toolTakingUpABrush(state.tool);
     final heldId = state.presetId;
     final held = heldId == null ? null : presets._presetNamed(heldId);
-    if (held != null && held.groupShownAmong(library.groups) == group) {
+    if (tool == state.tool &&
+        held != null &&
+        held.groupShownAmong(library.groups) == group) {
       return;
     }
     final entering = library.presetEntering(
       group,
-      remembered: _lastInGroup[(state.tool, group)],
+      remembered: _lastInGroup[(tool, group)],
     );
     final preset = entering == null ? null : presets._presetNamed(entering);
     if (preset != null) {

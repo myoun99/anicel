@@ -88,3 +88,9 @@ class BrushGroup {
 /// group entities from the group NAMES older files stored on each preset.
 BrushGroupId importedBrushGroupId(String sourceName) =>
     BrushGroupId('imported-$sourceName');
+
+/// The name of the ROOT section — the brushes that belong to no group. It is
+/// not a group: it has no id, no icon of its own choosing and no place in
+/// the group list; where the brushes are listed by group (the library's
+/// rail, the shortcut window) the loose ones stand under this word.
+const String brushRootSectionLabel = 'Default';

@@ -37,6 +37,7 @@ import '../services/persistence/session_scratch.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
+import 'brush/brush_library_keys.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/confirm_verb.dart';
 import 'brush/history_verbs.dart';
@@ -59,6 +60,7 @@ import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
 import 'playback/playback_transport_controls.dart'
     show playOrStop, skipToStart, toggleVoiceRecordingWithFeedback;
+import 'shortcuts/brush_actions.dart';
 import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
@@ -320,6 +322,16 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   late final EditorShortcutBindings _shortcuts = EditorShortcutBindings(
     store: _unlessTesting(ShortcutSettingsStore.new),
   )..sheet = _flipHud;
+
+  /// The brush library as the keys reach it (I-56): the workspace says what
+  /// it holds, the bindings make rows of it, and a brush action presses
+  /// through it.
+  late final BrushLibraryKeys _brushKeys = BrushLibraryKeys()
+    ..addListener(_showBrushesToShortcuts);
+
+  void _showBrushesToShortcuts() => _shortcuts.setBrushActions(
+    brushActionsOf(_brushKeys.groups, _brushKeys.presets),
+  );
 
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
   /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
@@ -798,6 +810,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _lastStroke.dispose();
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
+    _brushKeys.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();
     super.dispose();
@@ -866,6 +879,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         transform: _transformOptions,
         cutWhole: _session.pixelVerbs.cutWhole,
       );
+      return;
+    }
+    // 🗣️I-56 (유저 2026-10-01): 「브러시 그룹이나 브러시에도 단축키」 — a brush
+    // action presses what the brush's row or the group's tab does.
+    if (definition?.brushPress case final press?) {
+      _brushKeys.press(press);
       return;
     }
     if (definition?.pixelVerb case final verb?) {
@@ -1331,6 +1350,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                     history: _history,
                                     layerNav: _timelineLayerNav,
                                     flipHud: _flipHud,
+                                    brushKeys: _brushKeys,
                                     onInvokeAction: _invokeAction,
                                   ),
                                 ),

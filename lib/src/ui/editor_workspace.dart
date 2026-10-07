@@ -39,6 +39,7 @@ import '../services/last_stroke_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/arrange_brush_library_command.dart';
+import 'brush/brush_library_keys.dart';
 import 'brush/brush_preset_library.dart';
 import 'brush/temporary_tool.dart' show ToolHoldMemory;
 import 'brush/canvas_floor_insets.dart';
@@ -214,6 +215,7 @@ class EditorWorkspace extends StatefulWidget {
     this.layerNav,
     this.onInvokeAction,
     this.flipHud,
+    this.brushKeys,
   });
 
   final EditorSessionManager session;
@@ -283,6 +285,10 @@ class EditorWorkspace extends StatefulWidget {
   /// supplier — the displayed rows are its view state, exactly as the
   /// ↑/↓ walk's are.
   final FlipHudController? flipHud;
+
+  /// The brush library as the shell's keys reach it (I-56): this state says
+  /// what the library holds and lends its two presses.
+  final BrushLibraryKeys? brushKeys;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -798,6 +804,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // mounted by the shell. Nothing in the workspace reads a colour any more.
 
   late final BrushPresetLibrary _presetLibrary;
+
+  void _showLibraryToKeys() =>
+      widget.brushKeys?.show(_presetLibrary.groups, _presetLibrary.presets);
   late final BrushTipLibrary _tipLibrary;
 
   /// The fonts this device was brought — the text tool's faces beside the
@@ -1064,6 +1073,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       tipLibrary: _tipLibrary,
       handSettingsPort: _brushPresets._handSettingsPort,
     );
+    // 🗣️I-56: the library's groups and brushes are shortcut rows, and a key
+    // presses what the tab or the brush row does.
+    _presetLibrary.addListener(_showLibraryToKeys);
+    widget.brushKeys
+      ?..takeUp = _brushPresets.takeUp
+      ..openGroup = _brushGroups.openGroup;
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read. And the bank
     // before the opening brush is taken up, so that brush wears what the
@@ -1591,6 +1606,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     if (_brushPresets._brushHandSettingsSave?.isActive ?? false) {
       _brushPresets._brushHandSettingsSave!.cancel();
       _brushPresets.saveHandSettings();
+    }
+    _presetLibrary.removeListener(_showLibraryToKeys);
+    if (widget.brushKeys?.takeUp == _brushPresets.takeUp) {
+      widget.brushKeys
+        ?..takeUp = null
+        ..openGroup = null;
     }
     _presetLibrary.dispose();
     _tipLibrary.dispose();

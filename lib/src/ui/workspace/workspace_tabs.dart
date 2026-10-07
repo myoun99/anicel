@@ -434,6 +434,7 @@ class _WorkspaceTabs {
                             onGroupEdited: _state._presetLibrary.editGroup,
                             onGroupDeleted: _state._brushPresets.deleteGroup,
                             onGroupOpened: _state._brushGroups.openGroup,
+                            libraryKeys: _state.widget.brushKeys,
                             onGroupsReordered:
                                 _state._brushPresets.arrangeGroups,
                             onLibraryReset:

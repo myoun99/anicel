@@ -2,8 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_anti_alias.dart';
+import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset_id.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/models/brush_shape.dart' show BrushMaskSlot;
@@ -17,6 +19,9 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/project_scratch_folder.dart';
@@ -847,5 +852,125 @@ void main() {
       reason: 'resumed once the library could name it, not dropped because '
           'it was still empty',
     );
+  });
+
+  // 🗣️I-56 (유저 2026-10-01): 「브러시 그룹이나 브러시에도 단축키 명명가능하게.
+  // 단축키리스트 등록」 — a key presses what the brush's row or the group's
+  // tab does (the rows themselves: test/ui/shortcuts/brush_keys_test.dart).
+  group('🚨I-56: a key on a brush or a group', () {
+    const k = LogicalKeyboardKey.keyK;
+
+    EditorShortcutBindings keys(WidgetTester tester) =>
+        EditorShortcutScope.peek(tester.element(find.byType(EditorWorkspace)))!;
+
+    BrushGroupId groupOf(WidgetTester tester, BrushPresetId member) {
+      final shown = panel(tester);
+      return shown.presets
+          .firstWhere((preset) => preset.id == member)
+          .groupShownAmong(shown.groups)!;
+    }
+
+    CanvasTool toolInHand(WidgetTester tester) => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .brushTool!
+        .value
+        .tool;
+
+    /// The key, once the app has taken in what was just recorded for it.
+    Future<void> press(WidgetTester tester) async {
+      await tester.pump();
+      await tester.sendKeyEvent(k);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('the library\'s groups and brushes are rows of the shortcut '
+        'list once it has landed, in the library\'s order', (tester) async {
+      await pumpWithPresets(tester);
+      final shown = panel(tester);
+      expect(shown.groups, isNotEmpty, reason: '⛔premise');
+      expect(
+        [
+          for (final row in keys(tester).definitions)
+            if (row.brushPress != null) row.id,
+        ],
+        [
+          for (final row in brushActionsOf(shown.groups, shown.presets))
+            row.id,
+        ],
+      );
+    });
+
+    testWidgets('a brush\'s key takes it up — out of another tab, and the '
+        'tab shown stays', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await tapTabOf(tester, x.first);
+      keys(tester).setActivators(brushPresetActionId(y[1]), const [
+        SingleActivator(k),
+      ]);
+
+      await press(tester);
+
+      expect(panel(tester).selectedPresetId, y[1]);
+      expect(tileOf(x.first), findsOneWidget, reason: 'tab x is still shown');
+      expect(tileOf(y[1]), findsNothing);
+    });
+
+    testWidgets('a group\'s key enters its tab: the brush last picked there '
+        'comes to hand, and the tab is shown', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      await tapTabOf(tester, y.first);
+      expect(tileOf(x[1]), findsNothing, reason: '⛔premise: tab y is shown');
+      keys(tester).setActivators(
+        brushGroupActionId(groupOf(tester, x.first)),
+        const [SingleActivator(k)],
+      );
+
+      await press(tester);
+
+      expect(
+        panel(tester).selectedPresetId,
+        x[1],
+        reason: '「그 그룹에서 마지막으로 고른 브러시」',
+      );
+      expect(tileOf(x[1]), findsOneWidget, reason: 'the tab itself is shown');
+      expect(tileOf(y.first), findsNothing);
+    });
+
+    testWidgets('with a tool in hand that paints nothing, a group\'s key '
+        'arms the brush holding what the BRUSH last held there — and its '
+        'own tab\'s key arms it too', (tester) async {
+      await pumpWithPresets(tester);
+      final [x, y, ...] = otherTabsWithAtLeast(tester, 2);
+      await tapTabOf(tester, x.first);
+      await pickInView(tester, x[1]);
+      await tapTabOf(tester, y.first);
+      final groupX = groupOf(tester, x.first);
+      final groupY = groupOf(tester, y.first);
+      keys(tester).setActivators(brushGroupActionId(groupX), const [
+        SingleActivator(k),
+      ]);
+
+      await takeUp(tester, 'select');
+      expect(toolInHand(tester), CanvasTool.select, reason: '⛔premise');
+      await press(tester);
+
+      expect(toolInHand(tester), CanvasTool.brush);
+      expect(panel(tester).selectedPresetId, x[1]);
+
+      // The hand outside again, and the key of the tab its brush shows in:
+      // 「안에 있으면 그대로」 is for a hand that IS inside.
+      await tapTabOf(tester, y.first);
+      keys(tester).setActivators(brushGroupActionId(groupY), const [
+        SingleActivator(k),
+      ]);
+      await takeUp(tester, 'select');
+      await press(tester);
+      expect(toolInHand(tester), CanvasTool.brush);
+      expect(panel(tester).selectedPresetId, y.first);
+    });
   });
 }

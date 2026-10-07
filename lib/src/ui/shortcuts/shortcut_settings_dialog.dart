@@ -2,8 +2,12 @@ import '../widgets/app_icon_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../models/brush_group.dart';
+import '../brush/brush_press.dart';
+import '../timeline/layer_rail_columns.dart' show LayerFoldTwirl;
 import '../widgets/panel_flyout.dart';
 import '../widgets/pill_strip.dart';
+import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'editor_shortcut_scope.dart';
@@ -95,7 +99,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// search that only matched the English registry would find nothing in
   /// any other language.
   String _labelOf(EditorActionDefinition definition) =>
-      editorActionLabel(definition.id);
+      actionLabelOf(definition);
 
   String _categoryOf(EditorActionDefinition definition) =>
       AppText.strings.shortcutCategory(
@@ -103,52 +107,157 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         definition.category,
       );
 
-  List<EditorActionDefinition> get _filtered {
-    final query = _search.text.trim().toLowerCase();
-    if (query.isEmpty) {
-      return widget.bindings.definitions;
+  String get _query => _search.text.trim().toLowerCase();
+
+  bool _matches(EditorActionDefinition definition, String query) =>
+      query.isEmpty ||
+      _labelOf(definition).toLowerCase().contains(query) ||
+      _categoryOf(definition).toLowerCase().contains(query);
+
+  /// The brush BUNDLES standing open — a group's, named by its title row's
+  /// action; the root section's, by [_rootBundle].
+  ///
+  /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
+  /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
+  /// 접힘 — 그룹 줄 자체(그룹 키)는 묶음 제목 줄에 둔다. 검색하면 맞는 묶음이
+  /// 펼쳐진다」. So none is open when the window opens, and a search opens
+  /// the ones it finds something in ([_openFoundBundles]) — by putting them
+  /// in this one set, so the twirl folds them again like any other.
+  final Set<String> _openBundles = {};
+
+  /// The root section's bundle: the brushes of no group. ⚠️Its title is a
+  /// word and not a row — the root is not a group and has no press.
+  static const _rootBundle = 'brush-root';
+
+  /// The bundle [definition] stands in, or null for every other action.
+  String? _bundleOf(EditorActionDefinition definition) =>
+      switch (definition.brushPress) {
+        BrushGroupPress(:final group) => brushGroupActionId(group),
+        BrushPresetPress(group: final group?) => brushGroupActionId(group),
+        BrushPresetPress() => _rootBundle,
+        null => null,
+      };
+
+  /// The bundles [query] finds something in — a title or a brush.
+  Set<String> _bundlesFound(String query) => {
+    for (final definition in widget.bindings.definitions)
+      if (_matches(definition, query)) ?_bundleOf(definition),
+  };
+
+  void _openFoundBundles() {
+    final query = _query;
+    if (query.isNotEmpty) {
+      _openBundles.addAll(_bundlesFound(query));
     }
-    return [
-      for (final definition in widget.bindings.definitions)
-        if (_labelOf(definition).toLowerCase().contains(query) ||
-            _categoryOf(definition).toLowerCase().contains(query))
-          definition,
-    ];
   }
+
+  void _toggleBundle(String bundle) => setState(() {
+    if (!_openBundles.remove(bundle)) {
+      _openBundles.add(bundle);
+    }
+  });
+
+  /// The list's rows: every action the search matches under its category,
+  /// and of the brush library a title per bundle with — while it stands open
+  /// — its brushes.
+  List<Widget> _rows(ThemeData theme) {
+    final bindings = widget.bindings;
+    final conflicted = bindings.conflictedActionIds;
+    final touchConflicted = bindings.touchConflictedActionIds;
+    final query = _query;
+    final found = _bundlesFound(query);
+    // A bundle whose TITLE the search matched shows every brush it holds.
+    final titlesFound = {
+      for (final definition in bindings.definitions)
+        if (definition.brushPress is BrushGroupPress &&
+            _matches(definition, query))
+          definition.id,
+    };
+    bool shows(EditorActionDefinition definition, String? bundle) {
+      if (bundle == null) {
+        return _matches(definition, query);
+      }
+      if (!found.contains(bundle)) {
+        return false;
+      }
+      return definition.brushPress is BrushGroupPress ||
+          (_openBundles.contains(bundle) &&
+              (_matches(definition, query) || titlesFound.contains(bundle)));
+    }
+
+    final rows = <Widget>[];
+    String? category;
+    var rootTitled = false;
+    for (final definition in bindings.definitions) {
+      final bundle = _bundleOf(definition);
+      final shown = shows(definition, bundle);
+      final rootTitleDue =
+          bundle == _rootBundle && !rootTitled && found.contains(_rootBundle);
+      if (!shown && !rootTitleDue) {
+        continue;
+      }
+      if (definition.category != category) {
+        category = definition.category;
+        rows.add(_categoryHeading(theme, definition));
+      }
+      if (rootTitleDue) {
+        rootTitled = true;
+        rows.add(_rootTitleRow(theme));
+      }
+      if (shown) {
+        rows.add(
+          _actionRow(
+            definition,
+            conflicted.contains(definition.id),
+            touchConflicted.contains(definition.id),
+            bundle: bundle,
+          ),
+        );
+      }
+    }
+    return rows;
+  }
+
+  Widget _categoryHeading(
+    ThemeData theme,
+    EditorActionDefinition definition,
+  ) => Padding(
+    padding: const EdgeInsets.only(top: 12, bottom: 4),
+    child: Text(
+      _categoryOf(definition),
+      style: theme.textTheme.labelLarge?.copyWith(
+        color: theme.colorScheme.primary,
+      ),
+    ),
+  );
+
+  /// The fold of [bundle], where the layer rail's fold is (F-29): at the far
+  /// edge of the name it folds under — the app's one twirl.
+  Widget _twirl(String bundle) => LayerFoldTwirl(
+    keyValue: 'shortcut-bundle-$bundle',
+    expanded: _openBundles.contains(bundle),
+    onToggle: () => _toggleBundle(bundle),
+  );
+
+  Widget _rootTitleRow(ThemeData theme) => Padding(
+    key: const ValueKey<String>('shortcut-row-$_rootBundle'),
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(brushRootSectionLabel, style: theme.textTheme.bodyMedium),
+        ),
+        _twirl(_rootBundle),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
-    final touchConflicted = bindings.touchConflictedActionIds;
-    final definitions = _filtered;
-
-    final rows = <Widget>[];
-    String? category;
-    for (final definition in definitions) {
-      if (definition.category != category) {
-        category = definition.category;
-        rows.add(
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 4),
-            child: Text(
-              _categoryOf(definition),
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          ),
-        );
-      }
-      rows.add(
-        _actionRow(
-          definition,
-          conflicted.contains(definition.id),
-          touchConflicted.contains(definition.id),
-        ),
-      );
-    }
+    final rows = _rows(theme);
 
     return AppWindow(
       windowKey: const ValueKey<String>('shortcut-settings-dialog'),
@@ -195,7 +304,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
                   hintText: AppText.strings.shortcutSearch,
                   isDense: true,
                 ),
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) => setState(_openFoundBundles),
               ),
               if (conflicted.isNotEmpty)
                 Padding(
@@ -239,21 +348,34 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   Widget _actionRow(
     EditorActionDefinition definition,
     bool conflicted,
-    bool touchConflicted,
-  ) {
+    bool touchConflicted, {
+    String? bundle,
+  }) {
     final theme = Theme.of(context);
     final bindings = widget.bindings;
     final recording = _recordingActionId == definition.id;
     final activators = bindings.activatorsFor(definition.id);
     final touchGesture = bindings.touchGestureFor(definition.id);
+    final titlesBundle = definition.brushPress is BrushGroupPress;
 
     return Padding(
+      key: ValueKey<String>('shortcut-row-${definition.id}'),
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
         children: [
           Expanded(
-            child: Text(_labelOf(definition), style: theme.textTheme.bodyMedium),
+            // A brush stands under its bundle's title, a step in.
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: bundle == null || titlesBundle ? 0 : 16,
+              ),
+              child: Text(
+                _labelOf(definition),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
           ),
+          if (bundle != null && titlesBundle) _twirl(bundle),
           if (recording)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),

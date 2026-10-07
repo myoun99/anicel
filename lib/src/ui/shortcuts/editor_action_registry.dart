@@ -6,6 +6,7 @@ import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
+import '../brush/brush_press.dart';
 import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
@@ -42,6 +43,7 @@ class EditorActionDefinition {
     this.blendMode,
     this.pixelClipboardVerb,
     this.sheetMove,
+    this.brushPress,
   });
 
   final String id;
@@ -108,6 +110,12 @@ class EditorActionDefinition {
   /// keys bound bare to the block and row moves — and this is what tells the
   /// keys and the flip which move walks which way ([sheetMoveActionId]).
   final SheetMove? sheetMove;
+
+  /// What a BRUSH action presses (I-56) — a group's tab or one brush of the
+  /// brush library — or null for every other action. These rows are not in
+  /// [editorActionDefinitions]: the library is the user's own, so they are
+  /// made from it as it stands (`brushActionsOf`).
+  final BrushPress? brushPress;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when

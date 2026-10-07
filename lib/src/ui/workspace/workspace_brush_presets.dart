@@ -259,15 +259,23 @@ class _WorkspaceBrushPresets {
   }
 
   void _applyPreset(BrushPreset preset) {
-    // Applying a preset KEEPS the active painting tool (R11-④: the eraser
-    // owns its own preset choice); from a non-painting tool it arms the
-    // brush. Which settings survive the swap is the state's own rule —
-    // see [BrushToolState.withPreset].
+    // Which settings survive the swap is the state's own rule — see
+    // [BrushToolState.withPreset].
     final current = _state._brushTool.value;
-    final targetTool = canvasToolPaints(current.tool)
-        ? current.tool
-        : CanvasTool.brush;
-    _state._brushTool.value = _brushFromPreset(current, preset, targetTool);
+    _state._brushTool.value = _brushFromPreset(
+      current,
+      preset,
+      _toolTakingUpABrush(current.tool),
+    );
+  }
+
+  /// The brush row's press for a KEY (I-56): the brush of [id], while the
+  /// library holds one.
+  void takeUp(BrushPresetId id) {
+    final preset = _presetNamed(id);
+    if (preset != null) {
+      _applyPreset(preset);
+    }
   }
 
   /// [from] holding [preset]'s brush for [tool]. H25: the brush as the hand
@@ -593,3 +601,14 @@ class _WorkspaceBrushPresets {
     );
   }
 }
+
+/// The tool a brush taken up goes to. Applying a preset KEEPS the active
+/// painting tool (R11-④: the eraser owns its own preset choice); from a
+/// non-painting tool it arms the brush.
+///
+/// ★One answer for the brush row and the group's tab. A KEY reaches both
+/// with a tool in hand that paints nothing (I-56) — the library's panel
+/// shows no row or tab to press then — and the group must hand back the
+/// brush the tool it ARMS last held there, not the tool it is leaving.
+CanvasTool _toolTakingUpABrush(CanvasTool inHand) =>
+    canvasToolPaints(inHand) ? inHand : CanvasTool.brush;
