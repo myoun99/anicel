@@ -510,7 +510,11 @@ void main() {
 
       await pressTheKey(tester);
 
-      expect(shownAt(s, 5), isNot(a), reason: 'the key pressed the ladder');
+      expect(
+        shownAt(s, 5),
+        allOf(isNotNull, isNot(a)),
+        reason: 'this block shows a cel of its own now — not an empty cell',
+      );
       expect(shownAt(s, 0), a, reason: 'the other showing keeps A');
       expect(s.historyManager.undoCount, entries + 1, reason: 'ONE step');
 
@@ -563,6 +567,11 @@ void main() {
       );
       await pressTheKey(tester);
       expect(cuts.cutIsLinked(linked), isFalse);
+      expect(
+        s.repository.requireProject().tracks.first.cuts.map((cut) => cut.id),
+        contains(linked),
+        reason: 'the cut stays where it was — only its links are gone',
+      );
     });
   });
 }
