@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../../services/memory_pressure_budget.dart';
+import '../../services/playback/frame_demand.dart';
 import 'cut_frame_composite_cache.dart';
 import 'layer_frame_image_cache.dart';
 
@@ -32,9 +33,10 @@ const int playbackCacheBudgetUnderPressureBytes = 64 * 1024 * 1024;
 
 /// Keeps the two playback caches inside one combined byte budget.
 ///
-/// Composites are the playback hot path, so they claim the budget first
-/// (never evicting the protected playing range) and the layer-frame images
-/// shrink into whatever remains.
+/// Composites are the playback hot path, so they claim the budget first —
+/// letting go, when it is full, of the ones wanted latest
+/// ([FrameDemand]) — and the layer-frame images shrink into whatever
+/// remains.
 ///
 /// 🚨★★★ WHAT IS ON SCREEN RESERVES ITS OWN PIXELS FIRST.
 ///
@@ -91,8 +93,12 @@ class PlaybackCacheBudgetEnforcer {
   /// [lentBytes] is what a borrower holds on this line — an export run's
   /// row pictures (F-289-Q21) — and comes off the caches' share first:
   /// they give way to it, and take it back when it is lent no more.
+  ///
+  /// [demand] is the order pictures are wanted in: under a full budget the
+  /// composites wanted latest go first. Without one the least recently used
+  /// do.
   void enforce({
-    List<PlaybackProtectedRange> protect = const [],
+    FrameDemand? demand,
     int reservedForDisplayBytes = 0,
     int lentBytes = 0,
   }) {
@@ -103,7 +109,11 @@ class PlaybackCacheBudgetEnforcer {
     final reserve = reservedForDisplayBytes.clamp(0, maxBytes ~/ 2);
     composites.enforceBudget(
       maxBytes: maxBytes - reserve - lentBytes,
-      protect: protect,
+      stepOf: demand?.stepOf,
+      // The picture under the playhead stays whatever the cap: it is as
+      // good as on a screen — the one about to be shown, made a moment
+      // before any view could pin it.
+      laterThan: demand == null ? null : 0,
     );
     final remaining = maxBytes - lentBytes - composites.estimatedBytes;
     layerImages.evictLeastRecentlyUsed(
@@ -111,14 +121,51 @@ class PlaybackCacheBudgetEnforcer {
     );
   }
 
+  /// The bytes the composites may hold while pictures are being MADE: the
+  /// line, less what is lent, what a screen's layer images reserve, and the
+  /// layer images the picture composed last was made of
+  /// ([CutFrameCompositeCache.lastComposeLayerBytes]).
+  ///
+  /// ⚠️That last share is the maker's alone — [enforce] does not take it
+  /// off. A full window that left the layer images no room would rebuild
+  /// the background for every picture it made; a window that is not being
+  /// added to has no use for them.
+  int roomForComposites({int reservedForDisplayBytes = 0, int lentBytes = 0}) {
+    final layers =
+        (reservedForDisplayBytes + composites.lastComposeLayerBytes).clamp(
+          0,
+          maxBytes ~/ 2,
+        );
+    return math.max(0, maxBytes - lentBytes - layers);
+  }
+
+  /// Makes room among the composites for one more of [bytes], wanted [step]
+  /// frames on, by letting go of composites wanted LATER than it — never of
+  /// one wanted sooner, nor of one a screen shows. False when that leaves
+  /// no room: what is held is the window.
+  bool makeRoomFor({
+    required int bytes,
+    required int step,
+    FrameDemand? demand,
+    int reservedForDisplayBytes = 0,
+    int lentBytes = 0,
+  }) => composites.enforceBudget(
+    maxBytes:
+        roomForComposites(
+          reservedForDisplayBytes: reservedForDisplayBytes,
+          lentBytes: lentBytes,
+        ) -
+        bytes,
+    stepOf: demand?.stepOf,
+    laterThan: step,
+  );
+
   /// How much of the line a borrower may hold: all of it, less what
-  /// [enforce] never takes back — the composites [protect] keeps or a
-  /// screen shows, and the layer images a screen shows.
-  int lendableBytes({List<PlaybackProtectedRange> protect = const []}) =>
-      math.max(
-        0,
-        maxBytes -
-            composites.protectedBytes(protect: protect) -
-            layerImages.pinnedBytes,
-      );
+  /// [enforce] never takes back — the composites and the layer images a
+  /// screen shows. ↩️The composites of a kept RANGE came off it too, while
+  /// there was one (see [CutFrameCompositeCache.enforceBudget]).
+  int lendableBytes() => math.max(
+    0,
+    maxBytes - composites.pinnedBytes - layerImages.pinnedBytes,
+  );
 }

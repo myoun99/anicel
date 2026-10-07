@@ -367,23 +367,18 @@ void main() {
         reason: 'two fresh signatures of one picture get the ONE filed key '
             'back — what lets the green bar\'s next ask be `identical`',
       );
-      cache.enforceBudget(
-        maxBytes: 0,
-        protect: const [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 5,
-            endFrame: 5,
-          ),
-        ],
-      );
+      // A screen showing frame 5 keeps the image only if frame 5 is one of
+      // the slots it is filed under.
+      cache.retainPin((const CutId('cut'), 5));
+      cache.enforceBudget(maxBytes: 0);
 
       expect(
         heldAt(5),
         isNull,
         reason: 'only frame 0 filed a key — a read that filed frame 5 '
-            'would have let the range keep the image',
+            'would have let the pin keep the image',
       );
+      cache.releasePin((const CutId('cut'), 5));
       cache.dispose();
     });
   });
@@ -441,42 +436,68 @@ void main() {
     });
   });
 
-  testWidgets('budget eviction never touches the protected range', (
+  /// 유저 2026-10-08 (「4 허용치도 해결」): what a full cache keeps is what
+  /// is wanted soonest. ↩️A `protect` list of frame ranges was passed over
+  /// here whatever the cap said.
+  testWidgets('a full cache lets go of the picture wanted latest, and makes '
+      'room only out of pictures wanted later than the one it is for', (
     tester,
   ) async {
     await tester.runAsync(() async {
-      final (store, coordinator) = storeWithStroke();
+      final (store, _) = storeWithStroke();
       final cache = cacheFor(store);
+      const picture = 8 * 8 * 4;
 
-      final protectedImage = await cache.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-      );
-      // A second picture, OUTSIDE the range and the later of the two — so
-      // recency alone would keep it: past the drawing every frame composes
-      // to nothing, which is an image of its own.
+      // Three pictures: the drawing (wanted now), the nothing past it
+      // (wanted thirty frames on), and the drawing as it was before an edit
+      // — which no frame wants. Made in that order, so recency says the
+      // opposite.
+      final wantedNow = await cache.prepareComposite(cut: cut(), frameIndex: 0);
       await cache.prepareComposite(cut: cut(), frameIndex: 30);
-      expect(cache.estimatedBytes, greaterThan(8 * 8 * 4));
+      await cache.prepareComposite(cut: cut(opacity: 0.5), frameIndex: 12);
+      expect(cache.estimatedBytes, 3 * picture);
+      int? stepOf(CutId cutId, int frameIndex) => switch (frameIndex) {
+        0 => 0,
+        30 => 30,
+        _ => null,
+      };
+      bool held(int frameIndex, {double opacity = 1}) =>
+          cache.validCompositeOrNull(
+            cut: cut(opacity: opacity),
+            frameIndex: frameIndex,
+          ) !=
+          null;
 
-      cache.enforceBudget(
-        maxBytes: 8 * 8 * 4,
-        protect: const [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 0,
-            endFrame: 23,
-          ),
-        ],
+      expect(
+        cache.enforceBudget(maxBytes: 2 * picture, stepOf: stepOf),
+        isTrue,
+      );
+      expect(
+        [held(0), held(30), held(12, opacity: 0.5)],
+        [true, true, false],
+        reason: 'what nobody wants goes first',
       );
 
       expect(
+        cache.enforceBudget(maxBytes: 0, stepOf: stepOf, laterThan: 10),
+        isFalse,
+        reason: 'the picture wanted now is not room for one wanted ten on',
+      );
+      expect([held(0), held(30)], [true, false]);
+      expect(
         identical(
           cache.validCompositeOrNull(cut: cut(), frameIndex: 0),
-          protectedImage,
+          wantedNow,
         ),
         isTrue,
       );
-      expect(cache.validCompositeOrNull(cut: cut(), frameIndex: 30), isNull);
+
+      expect(
+        cache.enforceBudget(maxBytes: 0, stepOf: stepOf),
+        isTrue,
+        reason: 'with no such floor, a cap is a cap',
+      );
+      expect(cache.estimatedBytes, 0);
       cache.dispose();
     });
   });

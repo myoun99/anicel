@@ -1,5 +1,6 @@
-import 'dart:typed_data';
+import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -22,6 +23,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart';
@@ -325,8 +327,13 @@ void main() {
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
       );
-      scheduler.requestWarmFrames(
-        frames: const [(CutId('cut'), 0), (CutId('cut'), 1)],
+      scheduler.follow(
+        StandingDemand(
+          cutId: const CutId('cut'),
+          frameCount: 2,
+          around: 0,
+          resolveCut: (_) => cut(duration: 40),
+        ),
       );
       await scheduler.idle;
 
@@ -495,17 +502,13 @@ void main() {
           frameKey(nextCut(), const LayerId('layer-b'), const FrameId('frame-b')),
           inkedSurface(),
         );
-        final resolved = <String>[];
-        var recording = false;
+        // The order pictures were MADE in: the hook answers before each.
+        final made = <String>[];
         final scheduler = PlaybackPrerenderScheduler(
           composites: f.composites,
-          resolveCut: (id) {
-            if (recording) {
-              resolved.add(id.value);
-            }
-            return id == const CutId('cut-b') ? nextCut() : cut();
-          },
+          resolveCut: (id) => id == const CutId('cut-b') ? nextCut() : cut(),
           idleDelay: Duration.zero,
+          beforeCompose: (asked, _) async => made.add(asked.id.value),
         );
 
         scheduler.requestWarmCut(
@@ -513,9 +516,6 @@ void main() {
           aroundFrameIndex: 2,
           followedByCutId: const CutId('cut-b'),
         );
-        // requestWarmCut resolves synchronously while building the order;
-        // everything after this line is the RUN's own resolution sequence.
-        recording = true;
         await scheduler.idle;
 
         for (var index = 0; index < 4; index += 1) {
@@ -535,10 +535,11 @@ void main() {
           const PrerenderProgress(cached: 8, total: 8),
           reason: '4 active + 4 next (duration 2, authored extent 4)',
         );
-        final firstNext = resolved.indexOf('cut-b');
+        final firstNext = made.indexOf('cut-b');
         expect(firstNext, isNot(-1));
+        expect(made.sublist(0, firstNext), isNotEmpty);
         expect(
-          resolved.sublist(firstNext).contains('cut'),
+          made.sublist(firstNext).contains('cut'),
           isFalse,
           reason: 'PRIORITY: every active-cut frame precedes the first '
               'next-cut frame — the lookahead never steals the budget or '
@@ -585,4 +586,380 @@ void main() {
       });
     });
   });
+
+  /// 유저 2026-10-08, the playback rework: 「1 재생누르면 바로 재생」 · 「4
+  /// 허용치도 해결」 · 「통일할거 통일하면서 권장대로가자」. A run that plays is
+  /// followed from the frame under its playhead, at once, and only as far as
+  /// the allowance holds.
+  group('a run that plays', () {
+    const pictureBytes = 8 * 8 * 4;
+
+    // Four frames, four pictures: each frame its own cel, so no two share a
+    // composite and what was made says which frame was asked.
+    Cut four() => Cut(
+      id: const CutId('cut'),
+      name: 'Cut',
+      duration: 4,
+      canvasSize: canvasSize,
+      layers: [
+        Layer(
+          id: const LayerId('layer'),
+          name: 'A',
+          frames: [
+            for (var index = 0; index < 4; index += 1)
+              Frame(id: FrameId('f$index'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            for (var index = 0; index < 4; index += 1)
+              index: TimelineExposure.drawing(FrameId('f$index'), length: 1),
+          },
+        ),
+      ],
+    );
+
+    var playhead = 0;
+    setUp(() => playhead = 0);
+
+    PlayingDemand run({int Function(Duration)? lead}) => PlayingDemand(
+      totalFrames: 4,
+      loops: () => true,
+      playhead: () => playhead,
+      picturesOf: (frame) => [(cut: four(), frameIndex: frame)],
+      playlistFrameOf: (cutId, frameIndex) =>
+          cutId == const CutId('cut') ? frameIndex : null,
+      lead: lead,
+    );
+
+    List<bool> there(CutFrameCompositeCache composites) => [
+      for (var frame = 0; frame < 4; frame += 1)
+        composites.validCompositeOrNull(cut: four(), frameIndex: frame) !=
+            null,
+    ];
+
+    testWidgets('🚨it is followed at once — the quiet window is for the hand '
+        'that draws, and nothing draws under a run', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: const Duration(hours: 1),
+        );
+
+        // The stroke or the seek just before play was pressed.
+        scheduler.notifyEditActivity();
+        scheduler.follow(run());
+        await scheduler.idle;
+
+        expect(there(f.composites), everyElement(isTrue));
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 4, total: 4),
+        );
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('the walk starts under the playhead and goes the way the '
+        'run plays, round to the frame behind it', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final made = <int>[];
+        var landings = 0;
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+          beforeCompose: (_, frameIndex) async => made.add(frameIndex),
+        );
+        scheduler.landings.addListener(() => landings += 1);
+
+        playhead = 2;
+        scheduler.follow(run());
+        await scheduler.idle;
+
+        expect(made, [2, 3, 0, 1]);
+        expect(landings, 4, reason: 'a landing is told once a picture');
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('where the clock does not wait, a picture is started where '
+        'the playhead will be when it lands', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final made = <int>[];
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+          beforeCompose: (_, frameIndex) async => made.add(frameIndex),
+        );
+
+        scheduler.follow(run(lead: (_) => 2));
+        await scheduler.idle;
+
+        expect(made, [2, 3, 0, 1], reason: 'two frames on, then the lap');
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('🚨it rests when no more fits, and walks on when the playhead '
+        'does — each picture made once', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final room = _Room(f.composites, 2 * pictureBytes);
+        final made = <int>[];
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+          beforeCompose: (_, frameIndex) async => made.add(frameIndex),
+        );
+        room.demand = () => scheduler.demand;
+
+        scheduler.follow(run());
+        await scheduler.idle;
+        expect(made, [0, 1], reason: 'two pictures fit');
+        expect(there(f.composites), [true, true, false, false]);
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 2, total: 2),
+          reason: 'what is held is the window: nothing in it is left to make',
+        );
+        expect(f.composites.estimatedBytes, 2 * pictureBytes);
+
+        playhead = 2;
+        scheduler.wake();
+        await scheduler.idle;
+        expect(
+          made,
+          [0, 1, 2, 3],
+          reason: 'the window moved on with the playhead; it did not churn',
+        );
+        expect(there(f.composites), [false, false, true, true]);
+        expect(f.composites.estimatedBytes, 2 * pictureBytes);
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('the picture under the playhead is made whatever the room '
+        '— a run that waits for it must not wait for good', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final room = _Room(f.composites, 0);
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          room: room,
+          idleDelay: Duration.zero,
+        );
+        room.demand = () => scheduler.demand;
+
+        playhead = 1;
+        scheduler.follow(run());
+        await scheduler.idle;
+
+        expect(there(f.composites), [false, true, false, false]);
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 1, total: 1),
+          reason: 'and no other: for the next one there is no room',
+        );
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('a picture let go from under the playhead is made again — '
+        'the frame the walk starts on is asked every time', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+        );
+        scheduler.follow(run());
+        await scheduler.idle;
+        expect(there(f.composites), everyElement(isTrue));
+
+        // A memory warning's work: every picture goes.
+        f.composites.enforceBudget(maxBytes: 0);
+        expect(there(f.composites), everyElement(isFalse));
+
+        scheduler.wake();
+        await scheduler.idle;
+        expect(there(f.composites), everyElement(isTrue));
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('a playhead that moves on costs the walk a frame or two, not '
+        'the window', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        var asked = 0;
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => cut(duration: 40),
+          idleDelay: Duration.zero,
+        );
+        scheduler.follow(
+          PlayingDemand(
+            totalFrames: 40,
+            loops: () => true,
+            playhead: () => playhead,
+            picturesOf: (frame) {
+              asked += 1;
+              return [(cut: cut(duration: 40), frameIndex: frame)];
+            },
+            playlistFrameOf: (_, frameIndex) => frameIndex,
+          ),
+        );
+        await scheduler.idle;
+        expect(asked, greaterThanOrEqualTo(40), reason: 'the first walk');
+
+        asked = 0;
+        playhead = 1;
+        scheduler.wake();
+        await scheduler.idle;
+        expect(
+          asked,
+          lessThanOrEqualTo(2),
+          reason: 'the frame it stands on now, and the one that came into '
+              'the window behind it',
+        );
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('what the walk has passed is taken as there until it is told '
+        'the pictures changed — then it walks them again', (tester) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+        );
+        scheduler.follow(run());
+        await scheduler.idle;
+
+        f.composites.invalidateWhereLayerFrame(
+          layerId: const LayerId('layer'),
+          frameId: const FrameId('f2'),
+        );
+        expect(there(f.composites), [true, true, false, true]);
+
+        scheduler.wake(fromTheStart: true);
+        await scheduler.idle;
+        expect(there(f.composites), everyElement(isTrue));
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('a picture whose compose throws is not waited for, and is '
+        'not paid for twice', (tester) async {
+      await tester.runAsync(() async {
+        final store = BrushFrameStore();
+        final composites = _ThrowsAt(
+          1,
+          layerImages: LayerFrameImageCache(frameStore: store),
+          frameStore: store,
+          frameKeyOf: frameKey,
+        );
+        final reported = <Object>[];
+        final previous = FlutterError.onError;
+        FlutterError.onError = (details) => reported.add(details.exception);
+        addTearDown(() => FlutterError.onError = previous);
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+        );
+
+        scheduler.follow(run());
+        await scheduler.idle;
+
+        expect(there(composites), [true, false, true, true]);
+        expect(reported, hasLength(1), reason: 'the failure is said, once');
+        expect(
+          scheduler.has([(cut: four(), frameIndex: 1)]),
+          isTrue,
+          reason: 'nothing waits for a picture that cannot be made',
+        );
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 4, total: 4),
+          reason: 'one frame\'s failure is one frame\'s: the walk went on',
+        );
+
+        scheduler.wake(fromTheStart: true);
+        await scheduler.idle;
+        expect(composites.thrown, 1, reason: 'the same content is not retried');
+        scheduler.dispose();
+        composites.dispose();
+      });
+    });
+  });
+}
+
+/// The room a test gives the warmer: [bytes] of composites, kept by the
+/// cache's own law against whatever the warmer follows.
+class _Room implements PictureRoom {
+  _Room(this.composites, this.bytes);
+
+  final CutFrameCompositeCache composites;
+
+  @override
+  final int bytes;
+
+  FrameDemand? Function() demand = () => null;
+
+  @override
+  bool makeRoomFor({required int bytes, required int step}) =>
+      composites.enforceBudget(
+        maxBytes: this.bytes - bytes,
+        stepOf: demand()?.stepOf,
+        laterThan: step,
+      );
+}
+
+/// A composite cache whose frame [frameIndex] cannot be made.
+class _ThrowsAt extends CutFrameCompositeCache {
+  _ThrowsAt(
+    this.frameIndex, {
+    required super.layerImages,
+    required super.frameStore,
+    required super.frameKeyOf,
+  });
+
+  final int frameIndex;
+  int thrown = 0;
+
+  @override
+  Future<ui.Image?> prepareCompositeInterruptible({
+    required Cut cut,
+    required int frameIndex,
+    required bool Function() shouldAbort,
+  }) {
+    if (frameIndex == this.frameIndex) {
+      thrown += 1;
+      throw StateError('the cel of frame $frameIndex cannot be read');
+    }
+    return super.prepareCompositeInterruptible(
+      cut: cut,
+      frameIndex: frameIndex,
+      shouldAbort: shouldAbort,
+    );
+  }
 }

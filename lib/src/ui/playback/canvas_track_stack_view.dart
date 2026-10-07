@@ -59,6 +59,7 @@ class CanvasTrackStackView extends StatefulWidget {
     this.trackStaticOpacityOf,
     this.cutPictureVisibleOf,
     this.onFrameCached,
+    this.picturesLanded,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.backdropArgb = defaultProjectBackdropArgb,
@@ -117,6 +118,18 @@ class CanvasTrackStackView extends StatefulWidget {
   /// afterFrameCached hook, so without this nothing would trim what a
   /// long parked scrub piles up.
   final void Function()? onFrameCached;
+
+  /// Null where this view makes what is missing itself: a parked frame, an
+  /// O.L partner — 「스크럽하던 뭐던 존재하는게 보여야함」 (F-206).
+  ///
+  /// Set where a run PLAYS through it
+  /// ([PlaybackPrerenderScheduler.landings]): the warmer follows the run and
+  /// is the one maker of its pictures, in the order the run wants them, so
+  /// this view shows what has landed and repaints when more does. ↩️It
+  /// composed the frame under the playhead itself, beside a warmer that was
+  /// baking the playlist from wherever play had been pressed — two makers,
+  /// one picture between them at the worst moment.
+  final Listenable? picturesLanded;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -230,17 +243,24 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   void initState() {
     super.initState();
     widget.globalFrame.addListener(_onFrameMoved);
+    widget.picturesLanded?.addListener(_onFrameMoved);
   }
 
   @override
   void didUpdateWidget(covariant CanvasTrackStackView oldWidget) {
     super.didUpdateWidget(oldWidget);
     rebindListener(oldWidget.globalFrame, widget.globalFrame, _onFrameMoved);
+    rebindListener(
+      oldWidget.picturesLanded,
+      widget.picturesLanded,
+      _onFrameMoved,
+    );
   }
 
   @override
   void dispose() {
     widget.globalFrame.removeListener(_onFrameMoved);
+    widget.picturesLanded?.removeListener(_onFrameMoved);
     for (final image in _heldFrames.values) {
       image.dispose();
     }
@@ -361,10 +381,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         cut: cut,
         frameIndex: localFrame,
       );
-      if (composite == null) {
-        _prepare(cut, localFrame);
-      } else {
+      if (composite != null) {
         _hold(cut, localFrame, composite);
+      } else if (widget.picturesLanded == null) {
+        _prepare(cut, localFrame);
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;

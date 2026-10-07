@@ -14,14 +14,14 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
-import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 
 /// 🗣️F-227 (유저 2026-09-29): 「재생도 타임라인패널의 재생이면 여백까지 재생」.
 ///
 /// A cut plays every frame it is DRAWN for: the timeline panel's playback
 /// runs through the のりしろ an O.L asks of it, and while ANY playback runs,
-/// the frames an O.L composites — each cut's のりしろ — are protected like
-/// the rest of what plays.
+/// the frames an O.L composites — each cut's のりしろ — are WANTED like the
+/// rest of what plays: the warmer makes them, and the budget keeps them by
+/// when the run shows them.
 void main() {
   const leaving = CutId('a');
   const arriving = CutId('b');
@@ -70,9 +70,6 @@ void main() {
     return s;
   }
 
-  PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
-      s.playbackRig.playbackCache;
-
   /// Starts [scope]'s playback, reads what it asked for, and stands the run
   /// down INSIDE the test — the warm's zero-length yield timer otherwise
   /// trips the binding's timer invariant before the teardown dispose. Stop
@@ -114,19 +111,47 @@ void main() {
     expect(playlist.single.endFrame, 24);
   });
 
-  testWidgets('while the storyboard plays, each cut keeps every frame it is '
-      'drawn for — the O.L composites both のりしろ', (tester) async {
+  testWidgets('while the storyboard plays, each cut is wanted through every '
+      'frame it is drawn for — the O.L composites both のりしろ', (
+    tester,
+  ) async {
     final s = session(overlapped: true);
     addTearDown(s.dispose);
-    final ends = await whilePlaying(tester, s, PlaybackScope.allCuts, () => {
-      for (final range in budgetOf(s).debugPlaybackProtectedRanges())
-        range.cutId: range.endFrame,
+    final read = await whilePlaying(tester, s, PlaybackScope.allCuts, () {
+      final demand = s.playbackRig.demand!;
+      final wanted = <CutId, Set<int>>{};
+      for (var step = 0; step < demand.length; step += 1) {
+        for (final picture in demand.picturesAt(step)!) {
+          (wanted[picture.cut.id] ??= {}).add(picture.frameIndex);
+        }
+      }
+      return (
+        wanted: wanted,
+        length: demand.length,
+        lastOfLeaving: demand.stepOf(leaving, 29),
+        firstOfArriving: demand.stepOf(arriving, 0),
+        pastTheLeaving: demand.stepOf(leaving, 30),
+      );
     });
-    expect(ends, {leaving: 29, arriving: 29});
+    final thirty = {for (var frame = 0; frame < 30; frame += 1) frame};
+    expect(read.wanted, {leaving: thirty, arriving: thirty});
+    expect(read.length, 48, reason: 'the film is two cuts of 24');
+    expect(read.lastOfLeaving, 29, reason: 'its tail のりしろ ends there');
+    expect(
+      read.firstOfArriving,
+      18,
+      reason: 'its material starts six frames ahead of its conte start',
+    );
+    expect(
+      read.pastTheLeaving,
+      isNull,
+      reason: 'a frame the film does not show of the cut is wanted by no '
+          'step — the budget lets it go first',
+    );
   });
 
-  testWidgets('the storyboard\'s playback WARMS every frame each cut is drawn '
-      'for — the のりしろ an O.L composites included', (tester) async {
+  testWidgets('the warmer follows the run it plays: the film\'s frames, '
+      'one walk', (tester) async {
     final s = session(overlapped: true);
     addTearDown(s.dispose);
     final total = await whilePlaying(
@@ -135,6 +160,6 @@ void main() {
       PlaybackScope.allCuts,
       () => s.playbackRig.prerenderScheduler.progress.value.total,
     );
-    expect(total, 60, reason: '(24 + 6) + (24 + 6)');
+    expect(total, 48, reason: 'a walk is counted in the run\'s frames');
   });
 }

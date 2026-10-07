@@ -20,6 +20,7 @@ import 'playback_frame_painter.dart';
 import 'playback_prerender_scheduler.dart';
 import '../effective_device_pixel_ratio.dart';
 import '../input/control_press_claim.dart';
+import '../listenable_rebind.dart';
 
 /// The canvas panel's playback content: cached composite frames advancing
 /// with the controller's ticker, rendered INSIDE the panel viewport so the
@@ -36,6 +37,7 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.controller,
     required this.compositeCache,
     required this.prerenderProgress,
+    this.picturesLanded,
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
@@ -56,6 +58,12 @@ class CanvasPlaybackView extends StatefulWidget {
   final CanvasPlaybackController controller;
   final CutFrameCompositeCache compositeCache;
   final ValueListenable<PrerenderProgress> prerenderProgress;
+
+  /// Ticks when a picture of the run has landed
+  /// ([PlaybackPrerenderScheduler.landings]). The one under the playhead
+  /// may be among them, and while the playhead stands on it nothing else
+  /// says so: the controller speaks only when the frame changes.
+  final Listenable? picturesLanded;
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
@@ -152,10 +160,22 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     super.initState();
     widget.controller.attachTicker(this);
     widget.controller.addListener(_onPlaybackChanged);
+    widget.picturesLanded?.addListener(_onPlaybackChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant CanvasPlaybackView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    rebindListener(
+      oldWidget.picturesLanded,
+      widget.picturesLanded,
+      _onPlaybackChanged,
+    );
   }
 
   @override
   void dispose() {
+    widget.picturesLanded?.removeListener(_onPlaybackChanged);
     widget.controller.removeListener(_onPlaybackChanged);
     widget.controller.detachTicker();
     _swapHeldPin(null);

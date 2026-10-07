@@ -54,8 +54,9 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
-import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/cut_frame_composite_plan.dart';
+import '../models/track_transitions.dart' show drawnFrameCountsOf;
+import '../services/playback/frame_demand.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import '../core/dev_profile.dart';
 import 'playback/canvas_playback_controller.dart';
@@ -568,32 +569,67 @@ class EditorSessionManager extends ChangeNotifier
     );
   }
 
+  /// A run begins, and from here the warmer follows what it shows in the
+  /// order it plays ([PlayingDemand]): the frame under the playhead first,
+  /// so the pictures about to be shown are the ones made, and round to the
+  /// frame behind it when the run loops — a second pass plays out of the
+  /// cache as far as the allowance holds one.
+  ///
+  /// What a frame shows is what the screen draws there. A cut playing alone
+  /// shows that cut, every frame it is DRAWN for (F-227 — the のりしろ an O.L
+  /// asks of it, which its playlist entry already spans). The film shows
+  /// the track stack: every covered track's cut, and both cuts of an O.L.
   void _onPlaybackPlaylistWarmRequested(
     List<StoryboardTimelineLayoutEntry> playlist,
     PlaybackScope scope,
     int startGlobalFrame,
   ) {
-    // Playhead-forward with wrap-around: the frames about to play warm
-    // first, so first-pass misses shrink toward zero and a looping second
-    // pass starts fully cached. Each cut warms every frame it is DRAWN for
-    // (F-227) — an O.L composites the のりしろ, which `entry.duration`
-    // stopped short of — the same count the budget protects while playing.
-    final drawn = drawnFrameCountsOf(repository.requireProject());
-    final frames = <(CutId, int)>[
-      for (final entry in playlist)
-        for (
-          var index = 0;
-          index < (drawn[entry.cutId] ?? entry.duration);
-          index += 1
-        )
-          (entry.cutId, index),
-    ];
-    if (frames.isEmpty) {
+    final playback = playbackRig.playback;
+    final totalFrames = playback.totalFrames;
+    if (totalFrames == 0) {
       return;
     }
-    final start = startGlobalFrame.clamp(0, frames.length - 1);
-    playbackRig.prerenderScheduler.requestWarmFrames(
-      frames: [...frames.sublist(start), ...frames.sublist(0, start)],
+    final alone = scope == PlaybackScope.activeCut;
+    // Where each cut's own frame 0 stands on the film's axis: asked once a
+    // cut, because the budget asks it of every picture it weighs. And how
+    // many frames the film shows of it — what it is DRAWN for; a frame past
+    // that (a drawing out on the runway) is no frame of the film's.
+    final mediaStarts = <CutId, int>{};
+    final drawn = drawnFrameCountsOf(repository.requireProject());
+    playbackRig.prerenderScheduler.follow(
+      PlayingDemand(
+        totalFrames: totalFrames,
+        loops: () => playback.loopMode == PlaybackLoopMode.loop,
+        playhead: () => playback.playlistFrame,
+        picturesOf: alone
+            ? (frame) {
+                final position = resolvePlaybackPosition(
+                  playlist: playlist,
+                  globalFrameIndex: frame,
+                );
+                return [
+                  if (position != null)
+                    (cut: position.cut, frameIndex: position.localFrameIndex),
+                ];
+              }
+            : (frame) => [
+                for (final shown in rowSpans.trackStackContributionsAt(frame))
+                  (cut: shown.cut, frameIndex: shown.localFrameIndex),
+              ],
+        playlistFrameOf: alone
+            ? (cutId, frameIndex) =>
+                  cutId == playlist.first.cutId ? frameIndex : null
+            : (cutId, frameIndex) => frameIndex < (drawn[cutId] ?? 0)
+                  ? (mediaStarts[cutId] ??= rowSpans.trackGlobalFrameOf(
+                          cutId,
+                          0,
+                        )) +
+                        frameIndex
+                  : null,
+        // The clock does not wait for a picture, so one is started where
+        // the playhead will be when it lands.
+        lead: projectSettings.projectFrameRate.frameAtElapsed,
+      ),
     );
   }
 
@@ -1272,6 +1308,13 @@ class EditorSessionManager extends ChangeNotifier
   /// on.
   @override
   void warmActiveCut() {
+    if (playbackRig.playback.isActive) {
+      // A run is being followed, and stays followed. What changed under it
+      // — a reference movie's frame decoded — is looked at again from the
+      // playhead.
+      playbackRig.prerenderScheduler.wake(fromTheStart: true);
+      return;
+    }
     final cut = activeCutOrNull;
     if (cut == null) {
       return;

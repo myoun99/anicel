@@ -23,6 +23,7 @@ import '../playback/audio_device_transport.dart';
 import '../playback/audio_playback_sync.dart';
 import '../playback/audio_scrubber.dart';
 import '../playback/audioplayers_clip_player.dart';
+import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart';
@@ -108,6 +109,7 @@ class PlaybackRig implements PlaybackRun {
       PlaybackPrerenderScheduler(
         composites: _renderCaches.cutFrameCompositeCache,
         resolveCut: _project.cutById,
+        room: playbackCache,
         // Widget tests: zero idle delay, like before R13-3 — the
         // quiet-window polls otherwise leave a pending gate timer at
         // teardown (the session's tearDown dispose runs AFTER the
@@ -116,7 +118,8 @@ class PlaybackRig implements PlaybackRun {
         //
         // Production: 1200ms (R13-4) — during an active work session the
         // warmer resumes only in REAL pauses; per-tile abort granularity
-        // covers whatever still collides at the resume boundary.
+        // covers whatever still collides at the resume boundary. A run
+        // that PLAYS does not wait it out ([FrameDemand.yieldsToEditing]).
         //
         // ⚠️MUTANT SURVIVES, wrong axis (2026-09-08): swapping the two
         // branches leaves every suite green. What the DELAY does is pinned
@@ -131,6 +134,9 @@ class PlaybackRig implements PlaybackRun {
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
       );
+
+  @override
+  FrameDemand? get demand => prerenderScheduler.demand;
 
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).
@@ -228,6 +234,19 @@ class PlaybackRig implements PlaybackRun {
   void attach() {
     audioDeviceTransport.attach();
     audioPlaybackSync.attach();
+    // The warmer rests once what is wanted is made, or no more fits; a
+    // playhead that moves on is what it looks again for.
+    playback.globalFrameIndexListenable.addListener(prerenderScheduler.wake);
+    playback.isActiveListenable.addListener(_onRunToggled);
+  }
+
+  /// A run that ends is followed no further. What is wanted next is the
+  /// session's to say — its warm of the cut the playhead lands on — and
+  /// until it does nothing is.
+  void _onRunToggled() {
+    if (!playback.isActive) {
+      prerenderScheduler.cancel();
+    }
   }
 
   /// ⚠️The ORDER is the same one the session's `dispose` used to spell:
@@ -237,6 +256,10 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    playback.isActiveListenable.removeListener(_onRunToggled);
+    playback.globalFrameIndexListenable.removeListener(
+      prerenderScheduler.wake,
+    );
     transports.dispose();
     audioPlaybackSync.dispose();
     audioScrubber.dispose();

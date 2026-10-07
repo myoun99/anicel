@@ -24,26 +24,6 @@ import '../../core/pin_counts.dart';
 typedef CutBrushFrameKeyResolver =
     BrushFrameKey Function(Cut cut, LayerId layerId, FrameId frameId);
 
-/// The frame range being played (or about to play) that budget eviction
-/// must not touch.
-class PlaybackProtectedRange {
-  const PlaybackProtectedRange({
-    required this.cutId,
-    required this.startFrame,
-    required this.endFrame,
-  });
-
-  final CutId cutId;
-  final int startFrame;
-  final int endFrame;
-
-  bool contains(CutId cutId, int frameIndex) {
-    return cutId == this.cutId &&
-        frameIndex >= startFrame &&
-        frameIndex <= endFrame;
-  }
-}
-
 class _CompositeEntry {
   _CompositeEntry({required this.image, required this.signature});
 
@@ -141,8 +121,8 @@ class CutFrameCompositeCache {
   /// already paid for.
   ///
   /// The hit adopts the key (`_pointIndexAt`), which is load-bearing, not
-  /// cosmetic: pins and protected ranges test an entry's `indexKeys`, so
-  /// an unfiled frame would be an unprotectable frame.
+  /// cosmetic: a pin and the budget's order both read an entry's
+  /// `indexKeys`, so an unfiled frame would be a frame nobody can keep.
   ///
   /// ⚠️Cost shape: a MISS now computes one signature where the bare index
   /// miss used to return free — but every miss path that matters was
@@ -285,6 +265,7 @@ class CutFrameCompositeCache {
       raster.height.toDouble(),
     );
     var aborted = false;
+    var layerBytes = 0;
 
     // This walk paints in canvas pixels with no matrix on the canvas, so a
     // sub-tree rasterises at the scale of the canvas it is drawn into: 1.
@@ -414,6 +395,10 @@ class CutFrameCompositeCache {
               }
               continue;
             }
+            layerBytes += estimatedImageBytes(
+              layerImage.image.width,
+              layerImage.image.height,
+            );
             // Layer transforms apply at composite time; the placement is
             // canvas-space, as this raster is.
             // Folder FX is already FOLDED into it by the shared visit (an
@@ -470,6 +455,7 @@ class CutFrameCompositeCache {
     }
     final picture = recorder.endRecording();
     walkWatch?.stop();
+    _lastComposeLayerBytes = layerBytes;
     try {
       // Last check before the big slice: the full-canvas rasterization is
       // the composite's dominant cost (raster-thread contention included).
@@ -511,9 +497,34 @@ class CutFrameCompositeCache {
 
   int get estimatedBytes => _estimatedBytes;
 
-  /// Evicts least-recently-used composites until at or under [maxBytes],
-  /// never touching frames inside any of the [protect] ranges (the playing
-  /// playlist may span several cuts).
+  /// What the layer images of the picture composed last weigh — the working
+  /// set the next picture is most likely made of again (a background held
+  /// through the cut, the cels still on screen). The budget keeps room for
+  /// it beside the composites, or a full window would rebuild every layer
+  /// image for every picture.
+  int get lastComposeLayerBytes => _lastComposeLayerBytes;
+  int _lastComposeLayerBytes = 0;
+
+  /// Lets go of composites until at or under [maxBytes] — the ones WANTED
+  /// LATEST first, and never one a screen shows (a pinned slot). Answers
+  /// whether the total fits.
+  ///
+  /// [stepOf] says how many frames on a slot is wanted (`FrameDemand.stepOf`;
+  /// null = not at all, so the first to go). Among pictures wanted equally
+  /// the least recently used goes first — the whole order, when nobody says
+  /// what is wanted.
+  ///
+  /// With [laterThan], only pictures wanted later than that many frames on
+  /// may go: room for a picture is never made out of one wanted sooner than
+  /// it.
+  ///
+  /// 🚨NOTHING IS KEPT WHOLE BUT WHAT A SCREEN SHOWS (유저 2026-10-08: 「4
+  /// 허용치도 해결」; 「저장」 10-08: 「천장은 지키는 범위에도 걸린다 — 지키는
+  /// 것만으로 넘치면 화면 핀이 아닌 것부터 놓는다」). ↩️A `protect` list of
+  /// frame RANGES was passed over here whatever [maxBytes] said — the active
+  /// cut's frames, and every cut of the playlist while playing — so the cap
+  /// held only for what nobody had asked to keep, and when a memory warning
+  /// halved it the same ranges stayed.
   ///
   /// One pass over the IMAGES, using each entry's own reverse keys: no
   /// signature is hashed or compared here at all. The old shape re-walked
@@ -522,59 +533,64 @@ class CutFrameCompositeCache {
   /// every layer node — which made the enforcer O(entries² × layers) in
   /// the function that runs after every warmed frame. At 1500 cuts it was
   /// costlier than the work it freed.
-  void enforceBudget({
+  bool enforceBudget({
     required int maxBytes,
-    List<PlaybackProtectedRange> protect = const [],
+    int? Function(CutId cutId, int frameIndex)? stepOf,
+    int? laterThan,
   }) {
     if (_estimatedBytes <= maxBytes) {
-      return;
+      return true;
     }
-    final evictable =
-        _images.values
-            .where((entry) => !_isProtected(entry, protect))
-            .toList()
-          ..sort((a, b) => a.lastUsed.compareTo(b.lastUsed));
-    for (final candidate in evictable) {
+    final candidates = <(_CompositeEntry, int)>[
+      for (final entry in _images.values)
+        if (!_isPinned(entry)) (entry, _wantedAt(entry, stepOf)),
+    ]..sort((a, b) {
+      final latestFirst = b.$2.compareTo(a.$2);
+      return latestFirst != 0
+          ? latestFirst
+          : a.$1.lastUsed.compareTo(b.$1.lastUsed);
+    });
+    for (final (candidate, wantedAt) in candidates) {
       if (_estimatedBytes <= maxBytes) {
+        break;
+      }
+      if (laterThan != null && wantedAt <= laterThan) {
+        // Latest first: everything from here on is wanted sooner still.
         break;
       }
       for (final key in candidate.indexKeys.toList()) {
         _releaseIndexEntry(key);
       }
     }
+    return _estimatedBytes <= maxBytes;
   }
 
-  /// The bytes [enforceBudget] never gives back under [protect].
-  int protectedBytes({List<PlaybackProtectedRange> protect = const []}) {
-    var total = 0;
-    for (final entry in _images.values) {
-      if (_isProtected(entry, protect)) {
-        total += estimatedImageBytes(entry.image.width, entry.image.height);
-      }
-    }
-    return total;
-  }
+  /// Wanted by no frame at all — later than any step.
+  static const int _neverWanted = 1 << 62;
 
-  bool _isProtected(
+  /// How many frames on [entry]'s picture is wanted: the soonest of the
+  /// slots it is filed under.
+  int _wantedAt(
     _CompositeEntry entry,
-    List<PlaybackProtectedRange> protect,
+    int? Function(CutId cutId, int frameIndex)? stepOf,
   ) {
+    var soonest = _neverWanted;
+    if (stepOf == null) {
+      return soonest;
+    }
     for (final key in entry.indexKeys) {
-      // A pinned frame is on screen through a holder's clone —
-      // playback's held frame, the parked track stack. Evicting it
-      // returns no bytes and re-composites the exact picture being
-      // shown.
-      if (_pins.isPinned(key)) {
-        return true;
-      }
-      for (final range in protect) {
-        if (range.contains(key.$1, key.$2)) {
-          return true;
-        }
+      final step = stepOf(key.$1, key.$2);
+      if (step != null && step < soonest) {
+        soonest = step;
       }
     }
-    return false;
+    return soonest;
   }
+
+  /// A pinned frame is on screen through a holder's clone — playback's held
+  /// frame, the parked track stack. Evicting it returns no bytes and
+  /// re-composites the exact picture being shown.
+  bool _isPinned(_CompositeEntry entry) => entry.indexKeys.any(_pins.isPinned);
 
   void dispose() {
     _disposed = true;

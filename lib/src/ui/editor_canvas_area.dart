@@ -88,12 +88,14 @@ part 'canvas_area/interactive_canvas_build.dart';
 
 /// What one mount of the track stack says of itself: the frame it follows,
 /// whose contributions it draws there, whether it lays its own floor,
-/// whether it crops to the camera, and the key it is found by.
+/// whether it crops to the camera, whose pictures it shows (a run's, made
+/// by the warmer — or its own, when null) and the key it is found by.
 typedef _TrackStackMount = ({
   ValueListenable<int?> globalFrame,
   List<TrackStackContribution> Function(int globalFrame) positionsOf,
   bool paintsFloor,
   bool cameraView,
+  Listenable? picturesLanded,
   Key key,
 });
 
@@ -614,11 +616,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
     bool cameraView = false,
+    Listenable? picturesLanded,
   }) => _trackStack(session, viewport, (
     globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
     cameraView: cameraView,
+    picturesLanded: picturesLanded,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
 
@@ -634,6 +638,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     positionsOf: (_) => partners,
     paintsFloor: false,
     cameraView: false,
+    picturesLanded: null,
     key: const ValueKey<String>('canvas-ol-partner'),
   ));
 
@@ -666,6 +671,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         cutPictureVisibleOf: session.cutPictureEyes.showsPicture,
         onFrameCached:
             session.playbackRig.playbackCache.enforcePlaybackCacheBudget,
+        picturesLanded: mount.picturesLanded,
         viewport: viewport,
         background: session.projectSettings.projectBackground,
         backdropArgb: project.backdropArgb,
@@ -787,6 +793,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           controller: session.playbackRig.playback,
           compositeCache: session.renderCaches.cutFrameCompositeCache,
           prerenderProgress: session.playbackRig.prerenderScheduler.progress,
+          picturesLanded: session.playbackRig.prerenderScheduler.landings,
           cameraViewEnabled: widget.cameraViewEnabled.value,
           cameraFrameSize: session.camera.cameraFrameSize,
           cameraPoseOf: session.camera.cameraPoseForCut,
@@ -816,6 +823,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   // Playback is the one place the crop
                   // belongs, and there it answers the toggle.
                   cameraView: widget.cameraViewEnabled.value,
+                  // The run's pictures are the warmer's to make.
+                  picturesLanded:
+                      session.playbackRig.prerenderScheduler.landings,
                 )
               : null,
         ),

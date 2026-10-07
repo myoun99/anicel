@@ -18,6 +18,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/playback/frame_demand.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 import 'package:anicel/src/ui/playback/playback_cache_budget.dart';
@@ -122,15 +123,7 @@ void main() {
           layerImages: c.layers,
           composites: c.composites,
           maxBytes: fullImageBytes,
-        ).enforce(
-          protect: const [
-            PlaybackProtectedRange(
-              cutId: CutId('cut'),
-              startFrame: 0,
-              endFrame: 3,
-            ),
-          ],
-        );
+        ).enforce();
 
         // Composites fit the budget exactly; nothing remains for the layer
         // image cache. With no reserve asked for, that is still the rule.
@@ -179,18 +172,11 @@ void main() {
     const allLevels = 256 + 64 + 16;
     const budget = 512;
 
-    // The frames a warm keeps: the drawing's alone, or the whole cut's.
-    List<PlaybackProtectedRange> protecting({required bool everyFrame}) => [
-      PlaybackProtectedRange(
-        cutId: const CutId('cut'),
-        startFrame: 0,
-        endFrame: everyFrame ? 3 : 0,
-      ),
-    ];
-
+    // [bothOnScreen]: a screen shows the cut's two pictures — the one
+    // thing a full budget does not let go of.
     Future<({int layers, int total})> afterEnforce(
       int reserve, {
-      bool protectEveryFrame = false,
+      bool bothOnScreen = false,
     }) async {
       final c = caches();
       for (final frameIndex in [0, 1]) {
@@ -221,14 +207,17 @@ void main() {
         sourceEffects: const [],
       );
 
-      PlaybackCacheBudgetEnforcer(
+      final enforcer = PlaybackCacheBudgetEnforcer(
         layerImages: c.layers,
         composites: c.composites,
         maxBytes: budget,
-      ).enforce(
-        reservedForDisplayBytes: reserve,
-        protect: protecting(everyFrame: protectEveryFrame),
       );
+      if (bothOnScreen) {
+        c.composites
+          ..retainPin((const CutId('cut'), 0))
+          ..retainPin((const CutId('cut'), 1));
+      }
+      enforcer.enforce(reservedForDisplayBytes: reserve);
       final result = (
         layers: c.layers.estimatedBytes,
         total: c.layers.estimatedBytes + c.composites.estimatedBytes,
@@ -252,8 +241,8 @@ void main() {
         'the picture survives', (tester) async {
       await tester.runAsync(() async {
         // The reserve comes out of the composites' claim (512 − 256), so
-        // they shed the unprotected picture and the floor under the layer
-        // trim is 256 — exactly the image the canvas is drawing.
+        // they shed a picture and the floor under the layer trim is 256 —
+        // exactly the image the canvas is drawing.
         final result = await afterEnforce(fullImageBytes);
         expect(result.layers, fullImageBytes);
         // ⛔And the reserve is a SHARE of the budget, not an extra room on
@@ -270,23 +259,20 @@ void main() {
 
     /// ⛔The floor is a SECOND mechanism, and this is the case that needs
     /// it. Above, the reserve worked by making the composites shed — so a
-    /// build with no floor at all still passed. When every composite is
-    /// protected there is nothing to shed, the remainder stays below the
+    /// build with no floor at all still passed. When a screen shows every
+    /// composite there is nothing to shed, the remainder stays below the
     /// reserve, and only the floor keeps the canvas's image alive.
     testWidgets('the floor holds even when no composite can be shed', (
       tester,
     ) async {
       await tester.runAsync(() async {
         expect(
-          (await afterEnforce(0, protectEveryFrame: true)).layers,
+          (await afterEnforce(0, bothOnScreen: true)).layers,
           0,
           reason: '512 − 512 leaves nothing for the 256-byte image',
         );
         expect(
-          (await afterEnforce(
-            fullImageBytes,
-            protectEveryFrame: true,
-          )).layers,
+          (await afterEnforce(fullImageBytes, bothOnScreen: true)).layers,
           fullImageBytes,
           reason:
               'the remainder is still nothing — the floor is the only thing '
@@ -296,45 +282,221 @@ void main() {
     });
   });
 
-  testWidgets('unprotected composites are evicted before protected ones', (
-    tester,
-  ) async {
+  /// 유저 2026-10-08 (「4 허용치도 해결」) · 「저장」 10-08 (「천장은 지키는
+  /// 범위에도 걸린다」): a full budget keeps what is wanted SOONEST. ↩️It
+  /// kept a named range whole, whatever the cap said.
+  testWidgets('a full budget lets go of the composite wanted latest — not '
+      'the one used longest ago', (tester) async {
+    await tester.runAsync(() async {
+      // The playhead on frame 0, then on frame 1: the picture under it is
+      // the one that stays, whichever was made first.
+      for (final playhead in [0, 1]) {
+        final c = caches();
+        await c.composites.prepareComposite(cut: cut(), frameIndex: 0);
+        await c.composites.prepareComposite(cut: cut(), frameIndex: 1);
+
+        PlaybackCacheBudgetEnforcer(
+          layerImages: c.layers,
+          composites: c.composites,
+          maxBytes: fullImageBytes,
+        ).enforce(
+          demand: StandingDemand(
+            cutId: const CutId('cut'),
+            frameCount: 4,
+            around: playhead,
+            resolveCut: (_) => cut(),
+          ),
+        );
+
+        expect(
+          [
+            for (final frameIndex in [0, 1])
+              c.composites.validCompositeOrNull(
+                    cut: cut(),
+                    frameIndex: frameIndex,
+                  ) !=
+                  null,
+          ],
+          [playhead == 0, playhead == 1],
+          reason: 'the playhead on frame $playhead',
+        );
+        c.composites.dispose();
+        c.layers.dispose();
+      }
+    });
+  });
+
+  testWidgets('the trim leaves the picture under the playhead, whatever '
+      'the cap', (tester) async {
     await tester.runAsync(() async {
       final c = caches();
-      final protectedImage = await c.composites.prepareComposite(
-        cut: cut(),
-        frameIndex: 0,
-      );
-      // The later of the two, so recency alone would keep THIS one.
+      await c.composites.prepareComposite(cut: cut(), frameIndex: 0);
       await c.composites.prepareComposite(cut: cut(), frameIndex: 1);
 
       PlaybackCacheBudgetEnforcer(
         layerImages: c.layers,
         composites: c.composites,
-        maxBytes: fullImageBytes,
+        maxBytes: 0,
       ).enforce(
-        protect: const [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 0,
-            endFrame: 0,
-          ),
-        ],
+        demand: StandingDemand(
+          cutId: const CutId('cut'),
+          frameCount: 4,
+          around: 1,
+          resolveCut: (_) => cut(),
+        ),
       );
 
       expect(
-        identical(
-          c.composites.validCompositeOrNull(cut: cut(), frameIndex: 0),
-          protectedImage,
-        ),
-        isTrue,
-      );
-      expect(
-        c.composites.validCompositeOrNull(cut: cut(), frameIndex: 1),
-        isNull,
+        [
+          for (final frameIndex in [0, 1])
+            c.composites.validCompositeOrNull(
+                  cut: cut(),
+                  frameIndex: frameIndex,
+                ) !=
+                null,
+        ],
+        [false, true],
+        reason: 'the playhead stands on frame 1',
       );
       c.composites.dispose();
       c.layers.dispose();
+    });
+  });
+
+  group('the room the warmer asks before it makes a picture', () {
+    Future<
+      ({
+        LayerFrameImageCache layers,
+        CutFrameCompositeCache composites,
+        PlaybackCacheBudgetEnforcer enforcer,
+      })
+    >
+    bothHeld({required int maxBytes, int madeLast = 1}) async {
+      final c = caches();
+      addTearDown(() {
+        c.composites.dispose();
+        c.layers.dispose();
+      });
+      for (final frameIndex in [1 - madeLast, madeLast]) {
+        await c.composites.prepareComposite(cut: cut(), frameIndex: frameIndex);
+      }
+      return (
+        layers: c.layers,
+        composites: c.composites,
+        enforcer: PlaybackCacheBudgetEnforcer(
+          layerImages: c.layers,
+          composites: c.composites,
+          maxBytes: maxBytes,
+        ),
+      );
+    }
+
+    // The playhead on frame 0: frame 1's picture is wanted a step later.
+    StandingDemand fromFrameZero() => StandingDemand(
+      cutId: const CutId('cut'),
+      frameCount: 4,
+      around: 0,
+      resolveCut: (_) => cut(),
+    );
+
+    bool held(CutFrameCompositeCache composites, int frameIndex) =>
+        composites.validCompositeOrNull(cut: cut(), frameIndex: frameIndex) !=
+        null;
+
+    testWidgets('🚨room is made out of a composite wanted LATER, never out '
+        'of one wanted sooner', (tester) async {
+      await tester.runAsync(() async {
+        final c = await bothHeld(maxBytes: 2 * fullImageBytes);
+
+        expect(
+          c.enforcer.makeRoomFor(
+            bytes: fullImageBytes,
+            step: 5,
+            demand: fromFrameZero(),
+          ),
+          isFalse,
+          reason: 'both are wanted sooner than step 5: what is held is the '
+              'window, and there is no room in it',
+        );
+        expect([held(c.composites, 0), held(c.composites, 1)], [true, true]);
+
+        expect(
+          c.enforcer.makeRoomFor(
+            bytes: fullImageBytes,
+            step: 0,
+            demand: fromFrameZero(),
+          ),
+          isTrue,
+        );
+        expect(
+          [held(c.composites, 0), held(c.composites, 1)],
+          [true, false],
+          reason: 'the one wanted a step later went, and only that one',
+        );
+      });
+    });
+
+    testWidgets('a composite a screen shows is no room at all', (tester) async {
+      await tester.runAsync(() async {
+        final c = await bothHeld(maxBytes: 2 * fullImageBytes);
+        c.composites
+          ..retainPin((const CutId('cut'), 0))
+          ..retainPin((const CutId('cut'), 1));
+
+        expect(
+          c.enforcer.makeRoomFor(
+            bytes: fullImageBytes,
+            step: 0,
+            demand: fromFrameZero(),
+          ),
+          isFalse,
+        );
+        expect([held(c.composites, 0), held(c.composites, 1)], [true, true]);
+      });
+    });
+
+    testWidgets('the layer images the last picture was made of keep their '
+        'room while pictures are being made — and only then', (tester) async {
+      await tester.runAsync(() async {
+        // Frame 0 — the drawing, one 256-byte layer image — made last.
+        final c = await bothHeld(maxBytes: 4 * fullImageBytes, madeLast: 0);
+        expect(c.composites.lastComposeLayerBytes, fullImageBytes);
+
+        expect(c.enforcer.roomForComposites(), 3 * fullImageBytes);
+        expect(
+          c.enforcer.roomForComposites(lentBytes: fullImageBytes),
+          2 * fullImageBytes,
+          reason: 'what is lent comes off as well',
+        );
+        expect(
+          c.enforcer.roomForComposites(
+            reservedForDisplayBytes: 3 * fullImageBytes,
+          ),
+          2 * fullImageBytes,
+          reason: 'the layer images\' share is half the line and no more',
+        );
+
+        // The frame after the drawing shows nothing, and is made of no
+        // layer image: made last, it asks no room for any.
+        final after = await bothHeld(maxBytes: 4 * fullImageBytes);
+        expect(after.composites.lastComposeLayerBytes, 0);
+        expect(after.enforcer.roomForComposites(), 4 * fullImageBytes);
+      });
+    });
+
+    testWidgets('a window nobody is adding to keeps the whole line: the '
+        'enforcer takes no share for layer images nobody will use', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final c = await bothHeld(maxBytes: 2 * fullImageBytes, madeLast: 0);
+        expect(c.enforcer.roomForComposites(), fullImageBytes);
+
+        c.enforcer.enforce(demand: fromFrameZero());
+
+        expect([held(c.composites, 0), held(c.composites, 1)], [true, true]);
+        expect(c.layers.estimatedBytes, 0);
+      });
     });
   });
 
@@ -384,8 +546,9 @@ void main() {
     });
 
     testWidgets('🚨what may be lent is the line less what the caches never '
-        'give back — the composites kept warm and the pictures a screen '
-        'shows', (tester) async {
+        'give back — the pictures a screen shows, and nothing else', (
+      tester,
+    ) async {
       await tester.runAsync(() async {
         final c = await filled();
         final enforcer = PlaybackCacheBudgetEnforcer(
@@ -395,21 +558,19 @@ void main() {
         );
         expect(enforcer.lendableBytes(), 1024, reason: 'all of it gives way');
 
-        const warm = [
-          PlaybackProtectedRange(
-            cutId: CutId('cut'),
-            startFrame: 0,
-            endFrame: 0,
-          ),
-        ];
-        expect(enforcer.lendableBytes(protect: warm), 1024 - fullImageBytes);
+        c.composites.retainPin((const CutId('cut'), 0));
+        expect(
+          enforcer.lendableBytes(),
+          1024 - fullImageBytes,
+          reason: 'less the composite a screen shows',
+        );
 
         c.layers.retainPin(
           frameKey(cut(), const LayerId('layer'), const FrameId('frame-a')),
           PlaybackQuality.full,
         );
         expect(
-          enforcer.lendableBytes(protect: warm),
+          enforcer.lendableBytes(),
           1024 - 2 * fullImageBytes,
           reason: 'and the layer image on screen',
         );

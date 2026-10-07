@@ -68,9 +68,8 @@ class CanvasPlaybackController extends ChangeNotifier
   /// (UI-R9 #3 — stopping in a gap matches the editing gap semantics).
   final void Function(int globalFrame)? onStoppedInGap;
 
-  /// Fired on [play] so the prerender scheduler can warm the playlist;
-  /// [startGlobalFrame] lets warming run playhead-forward (wrapping) so the
-  /// frames about to play always warm first.
+  /// Fired on [play], the run's playlist and first frame in hand, so the
+  /// owner can have the warmer follow it from there.
   final void Function(
     List<StoryboardTimelineLayoutEntry> playlist,
     PlaybackScope scope,
@@ -201,6 +200,17 @@ class CanvasPlaybackController extends ChangeNotifier
       playlist: playlist,
       globalFrameIndex: _currentGlobalFrame,
     );
+  }
+
+  /// The playlist frame the run stands on — where it stood last, once it
+  /// has stopped.
+  int get playlistFrame => _currentGlobalFrame;
+
+  /// The run's frames, the all-cuts scope's trailing gap included; 0 while
+  /// nothing plays.
+  int get totalFrames {
+    final playlist = _playlist;
+    return playlist == null ? 0 : _playbackTotalFrames(playlist);
   }
 
   /// The playback view provides vsync; transport controls can call [play]

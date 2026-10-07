@@ -23,14 +23,13 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 ///
 /// `PlaybackCacheBudgetEnforcer` has its own tests (playback_cache_budget);
 /// the session's `enforcePlaybackCacheBudget` — the one every producer
-/// calls, handing the enforcer what to protect and what the screen has
+/// calls, handing the enforcer what is wanted and what the screen has
 /// pinned — had none. When the budget was carved out of the session as
 /// `_PlaybackCacheBudget` (2026-09-02), the adversarial check made the
 /// session's call a no-op and every test stayed green. The product budget
 /// is 600 MB, which no unit test can fill, so the session grew a test seam
-/// for the number; this fills a 256-byte budget with two 8×8 composites of
-/// a cut that is NOT active (the active cut's range is protected) and asks
-/// the session to enforce.
+/// for the number; this fills a 256-byte budget with two 8×8 composites
+/// and asks the session to enforce.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   // 8×8 RGBA = 256 bytes per full-quality composite.
@@ -143,9 +142,7 @@ void main() {
       expect(
         s.renderCaches.cutFrameCompositeCache.estimatedBytes,
         lessThanOrEqualTo(fullImageBytes),
-        reason:
-            'the session handed the enforcer its budget; cut-2 is not '
-            'the active cut, so nothing protected it',
+        reason: 'the session handed the enforcer its budget',
       );
     });
   });
@@ -200,28 +197,36 @@ void main() {
     });
   });
 
-  testWidgets('🚨what a run may hold is the line less what the session keeps '
-      'warm — the open cut\'s frames, which no trim gives back', (
-    tester,
-  ) async {
+  /// 「저장」 10-08: 「천장은 지키는 범위에도 걸린다 — 지키는 것만으로 넘치면
+  /// 화면 핀이 아닌 것부터 놓는다」. ↩️The open cut's warm frames came off
+  /// what a run might hold, as frames no trim gave back; they give way like
+  /// any other now, and what is left that does not is on a screen.
+  testWidgets('🚨what a run may hold is the line less what a screen shows — '
+      'a warm frame gives way like any other', (tester) async {
     await tester.runAsync(() async {
       const budget = 1024;
       final s = session(budget: budget);
       final line = s.playbackRig.playbackCache;
       final composites = s.renderCaches.cutFrameCompositeCache;
-      expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing warm');
+      expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing shown');
 
       final open = s.activeCutOrNull!;
       draw(s, open, 'cut-1-layer', 'frame-a');
-      await composites.prepareComposite(
-        cut: open,
-        frameIndex: 0,
-      );
+      await composites.prepareComposite(cut: open, frameIndex: 0);
       expect(composites.estimatedBytes, greaterThan(0), reason: 'premise');
       expect(
         line.lendableBytes,
-        budget - composites.estimatedBytes,
-        reason: 'the open cut\'s warm frame is the session\'s, not the run\'s',
+        budget,
+        reason: 'the open cut\'s warm frame is not kept from the run',
+      );
+
+      composites.retainPin((open.id, 0));
+      addTearDown(() => composites.releasePin((open.id, 0)));
+      expect(composites.pinnedBytes, fullImageBytes, reason: 'premise');
+      expect(
+        line.lendableBytes,
+        budget - fullImageBytes,
+        reason: 'the frame a screen shows is the session\'s, not the run\'s',
       );
     });
   });

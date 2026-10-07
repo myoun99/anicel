@@ -13,20 +13,26 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/playback_prerender_scheduler.dart'
+    show PrerenderProgress;
 import 'package:anicel/src/ui/session/playback_cache_budget.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
-/// B1 — WARMING, PROTECTION AND THE BAR REASON OVER ONE NUMBER.
+/// B1 — THE WARM, THE BUDGET AND THE BAR REASON OVER ONE ORDER.
 ///
 /// The asymmetry was not hypothetical: the warm baked out to the authored
 /// runway (⑯) while the non-playing protection stopped AT the end line,
 /// so every runway composite was evictable the moment it landed — by the
-/// budget enforcer that runs after every warmed frame.
+/// budget enforcer that runs after every warmed frame. ↩️B1 closed it by
+/// deriving the kept range from the warm's own frame count; since
+/// 2026-10-08 there is no range to derive — the budget lets go by the very
+/// order the warm makes pictures in (`FrameDemand`), and the warm makes
+/// none it has no room for.
 ///
 /// ⛔THE FIXTURE IS THE TEST. A runway that RE-EXPOSES a body cel shares
-/// its signature, and content addressing then protects the runway image
-/// through the body frame's index key — delete the fix and the test stays
-/// green. The runway cel here appears NOWHERE inside the duration.
+/// its signature, and content addressing then keeps the runway image
+/// through the body frame's index key. The runway cel here appears NOWHERE
+/// inside the duration.
 void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
 
@@ -74,64 +80,98 @@ void main() {
   PlaybackCacheBudget budgetOf(EditorSessionManager s) =>
       s.playbackRig.playbackCache;
 
-  testWidgets('protection derives from the warm law — a runway composite '
-      'survives the enforcer that follows every warmed frame',
-      (tester) async {
+  const picture = 8 * 8 * 4;
+
+  bool held(EditorSessionManager s, int frameIndex) =>
+      s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
+        cut: s.activeCutOrNull!,
+        frameIndex: frameIndex,
+      ) !=
+      null;
+
+  testWidgets('🚨the warm makes no picture the budget then lets go: under an '
+      'allowance of two it rests on the two nearest the playhead, and the '
+      'enforcer that follows takes neither', (tester) async {
     await tester.runAsync(() async {
       final s = session();
       addTearDown(s.dispose);
-      final activeCut = s.activeCutOrNull!;
-
       final budget = budgetOf(s);
-      final range = budget.debugPlaybackProtectedRanges().single;
-      expect(range.endFrame, cutWarmFrameCount(activeCut) - 1);
-      expect(range.endFrame, 6, reason: 'the runway reaches frame 6');
+      budget.debugSetPlaybackCacheBudgetBytes(2 * picture);
+      final scheduler = s.playbackRig.prerenderScheduler;
 
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: activeCut,
-        frameIndex: 5,
-      );
-      // A frame PAST the range: a picture's worth of work, no protection —
-      // the anchor that says survival below is the range doing its job, not
-      // the budget being roomy.
-      final past = range.endFrame + 10;
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: activeCut,
-        frameIndex: past,
-      );
-
-      s.renderCaches.cutFrameCompositeCache.enforceBudget(
-        maxBytes: 0,
-        protect: budget.debugPlaybackProtectedRanges(),
-      );
-
+      // The playhead on frame 0. The cut's three pictures, nearest first:
+      // the body cel (0..1), the nothing between (2..4), the runway cel.
+      s.warmActiveCut();
+      await scheduler.idle;
       expect(
-        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-          cut: activeCut,
-          frameIndex: 5,
-        ),
-        isNotNull,
-        reason: 'the warm just baked this — evicting it is the treadmill '
-            'the one-law derivation exists to end',
+        [for (final frame in [0, 2, 5]) held(s, frame)],
+        [true, true, false],
+        reason: 'two fit; the runway cel is the farthest, and is not made',
       );
       expect(
-        s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-          cut: activeCut,
-          frameIndex: past,
-        ),
-        isNull,
-        reason: 'the unprotected picture goes, so the survival above is the '
-            'range speaking',
+        scheduler.progress.value,
+        const PrerenderProgress(cached: 5, total: 5),
+        reason: 'what is held is the window: frames 0..4 are there',
+      );
+
+      budget.enforcePlaybackCacheBudget();
+      expect(
+        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+        2 * picture,
+        reason: 'the treadmill B1 ended: nothing made is let go',
+      );
+
+      // The playhead out on the runway: the window follows it.
+      s.selectFrameIndex(5);
+      await scheduler.idle;
+      expect(
+        [for (final frame in [0, 2, 5]) held(s, frame)],
+        [false, true, true],
+        reason: 'the body cel is the farthest from here, and gave its room',
+      );
+      expect(
+        s.renderCaches.cutFrameCompositeCache.estimatedBytes,
+        2 * picture,
       );
     });
   });
 
-  testWidgets('the warm queue and the protected range agree to the frame',
-      (tester) async {
+  testWidgets('🚨the enforcer lets go by what is WANTED, not by what was '
+      'used longest ago', (tester) async {
+    await tester.runAsync(() async {
+      final s = session();
+      addTearDown(s.dispose);
+      final budget = budgetOf(s);
+      budget.debugSetPlaybackCacheBudgetBytes(2 * picture);
+      final scheduler = s.playbackRig.prerenderScheduler;
+      final composites = s.renderCaches.cutFrameCompositeCache;
+      s.warmActiveCut();
+      await scheduler.idle;
+
+      // A third picture — the runway cel, made by another hand — and the
+      // nothing between is now the one used longest ago.
+      await composites.prepareComposite(
+        cut: s.activeCutOrNull!,
+        frameIndex: 5,
+      );
+      expect(held(s, 0), isTrue, reason: 'asked: the body cel is used now');
+      expect(held(s, 5), isTrue);
+
+      budget.enforcePlaybackCacheBudget();
+
+      expect(
+        [for (final frame in [0, 2, 5]) held(s, frame)],
+        [true, true, false],
+        reason: 'the runway cel is wanted last from frame 0 — recency '
+            'would have taken the nothing between',
+      );
+    });
+  });
+
+  testWidgets('the warm and the budget read ONE order', (tester) async {
     final s = session();
     addTearDown(s.dispose);
     final activeCut = s.activeCutOrNull!;
-    final budget = budgetOf(s);
 
     s.playbackRig.prerenderScheduler.requestWarmCut(
       cutId: activeCut.id,
@@ -142,10 +182,14 @@ void main() {
       cutWarmFrameCount(activeCut),
     );
     expect(
-      budget.debugPlaybackProtectedRanges().single.endFrame + 1,
-      s.playbackRig.prerenderScheduler.progress.value.total,
-      reason: 'one function, two readers — the disagreement WAS the bug',
+      identical(
+        s.playbackRig.demand,
+        s.playbackRig.prerenderScheduler.demand,
+      ),
+      isTrue,
+      reason: 'one object, two readers — the disagreement WAS the bug',
     );
+    expect(s.playbackRig.demand!.length, cutWarmFrameCount(activeCut));
 
     // Stand the run down INSIDE the test: its zero-length yield timer
     // otherwise trips the binding's timer invariant, which runs before
