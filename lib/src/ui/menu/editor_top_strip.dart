@@ -164,21 +164,17 @@ class EditorTopStrip extends StatelessWidget {
     submenuBuilder: submenuBuilder,
   );
 
-  /// Presses the row of the strip's menus that is [actionId], where that
-  /// row can be pressed (I-40).
+  /// Every row of the strip's two menus as they would open right now
+  /// ([flyoutRowsOf]) — what a KEY presses one of (I-40).
   ///
   /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
   /// 열기 닫기같은거든 뭐든 모든 버튼」. ★A KEY AND ITS ROW ARE ONE PRESS: the
   /// rows are built the way the menu builds them — a second level too — and
-  /// the one that names the action is pressed if the menu would let it be.
-  /// So a row that is dim does nothing by key either, and a row added to a
-  /// menu with its action's name is reachable by key with no more written.
-  /// [context] is where a row's window opens: the shell's own.
-  void pressMenuRow(BuildContext context, String actionId) =>
-      pressFlyoutRow(menuRows(context), actionId);
-
-  /// Every row of the strip's two menus as they would open right now
-  /// ([flyoutRowsOf]).
+  /// the one that names the action is pressed if the menu would let it be
+  /// ([pressFlyoutRow], which the shell runs over these and the timeline
+  /// bar's). So a row that is dim does nothing by key either, and a row
+  /// added to a menu with its action's name is reachable by key with no more
+  /// written. [context] is where a row's window opens: the shell's own.
   List<PanelFlyoutItem> menuRows(BuildContext context) => flyoutRowsOf([
     ..._projectEntries(context),
     ..._settingsEntries(context),

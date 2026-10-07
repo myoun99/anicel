@@ -247,7 +247,21 @@ void main() {
   /// (`shortcutAction.tool-shape`). Its tiles add none: they are generated
   /// (`_shapeTileActions`) and their label is composed from the table. The
   /// text tool's shape (91).
-  const untranslatedElsewhere = 96;
+  ///
+  /// 📒Ledger entry 2026-10-08, **118** (96 + 22 — I-40, the timeline bar's
+  /// menu rows): the cut pill's twelve rows, the layer pill's eight, the
+  /// frame pill's one and its auto-frame switch became actions. None was a
+  /// literal this scan reads: sixteen were worded through a getter with an
+  /// English ROW in the table, five through `menuLabel(id, '…')` or the
+  /// window's title, and the thumbnail switch as a ternary of two literals.
+  /// The registry's label is each one's English now, so the count sees
+  /// twenty-two literals it did not see. All are answered in the other four
+  /// languages by id with the words they already had — but 「Pin thumbnail
+  /// frame」, which was English in EVERY language and has its four
+  /// translations as of this round. ★The debt went DOWN (that switch, and
+  /// its 「Unpin」 twin) while the number went up by twenty-two: the number
+  /// is where English is written, not how much is owed.
+  const untranslatedElsewhere = 118;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

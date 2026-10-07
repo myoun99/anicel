@@ -7,6 +7,8 @@ import '../../models/layer_id.dart';
 import '../editor_session_manager.dart';
 import '../input/control_press_claim.dart';
 import '../media/media_asset_pool_state.dart';
+import '../shortcuts/editor_action_registry.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
@@ -167,8 +169,11 @@ class _LayerReferencePopover extends StatelessWidget {
           ],
           const SizedBox(height: 6),
           _RasterizeButton(
+            // The rasterize verb's ONE name — its action's: the timeline
+            // menu's entry and this button say the same word for the same
+            // verb.
             label:
-                '${strings.layerRasterizeLabel} · '
+                '${editorActionLabel(EditorActionIds.layerRasterize)} · '
                 '${strings.exCelCount(cels)}',
             onPressed: () {
               close();

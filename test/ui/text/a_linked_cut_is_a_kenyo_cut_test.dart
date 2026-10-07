@@ -15,8 +15,8 @@ void main() {
   List<String> wordsFor(AppLanguage language) {
     final strings = AppStrings.of(language);
     return [
-      strings.menuLabel('cut-create-linked', '?'),
-      strings.menuLabel('cut-convert-linked', '?'),
+      strings.shortcutLabel('cut-create-linked', '?'),
+      strings.shortcutLabel('cut-convert-linked', '?'),
       strings.convertLinkedCutTitle,
       strings.linkWindowUnlinkLinkedCut,
       strings.imMultiCutFolders,
@@ -40,9 +40,9 @@ void main() {
     final english = AppStrings.of(AppLanguage.en);
     expect(english.convertLinkedCutTitle, contains('linked'));
     expect(
-      english.menuLabel('cut-create-linked', 'Create linked cut'),
+      english.shortcutLabel('cut-create-linked', 'Create linked cut'),
       'Create linked cut',
-      reason: 'English lives at the call site',
+      reason: 'English lives in the registry, as the row\'s own label',
     );
   });
 }

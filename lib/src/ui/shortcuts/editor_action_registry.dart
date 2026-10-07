@@ -119,9 +119,9 @@ class EditorActionDefinition {
   /// made from it as it stands (`brushActionsOf`).
   final BrushPress? brushPress;
 
-  /// A row of the top strip's menus (I-40): the action IS that row, and a
-  /// key presses it where the row can be pressed
-  /// (`EditorTopStrip.pressMenuRow`).
+  /// A row of a menu (I-40) — the top strip's two, or the timeline bar's:
+  /// the action IS that row, and a key presses it where the row can be
+  /// pressed (`pressFlyoutRow`, over the rows the shell gathers from both).
   ///
   /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
   /// 열기 닫기같은거든 뭐든 모든 버튼」. ⛔A menu row's action has no road of
@@ -377,6 +377,35 @@ abstract final class EditorActionIds {
   /// 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
   /// 기본값 등록하고싶음」 — the layer pill's ＋.
   static const layerAdd = 'layer-add';
+
+  /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+  /// 버튼같은거나」 — the timeline bar's menus: the cut pill's two (and its
+  /// ＋), the layer pill's two, the frame pill's. Where the retired menu bar
+  /// worded a row by an id (`menuAction.<id>`), the action keeps that id.
+  static const cutNew = 'cut-new';
+  static const cutDuplicate = 'cut-duplicate';
+  static const cutCreateLinked = 'cut-create-linked';
+  static const cutRename = 'cut-rename';
+  static const cutEditNote = 'cut-edit-note';
+  static const cutSettings = 'cut-settings';
+  static const cutCanvasSize = 'cut-canvas-size';
+  static const cutConvertLinked = 'cut-convert-linked';
+  static const cutPinThumbnail = 'cut-pin-thumbnail';
+  static const cutMoveLeft = 'cut-move-left';
+  static const cutMoveRight = 'cut-move-right';
+  static const cutCopyAeCamera = 'cut-copy-ae-camera';
+  static const layerDuplicate = 'layer-duplicate';
+  static const layerDetach = 'layer-detach';
+  static const layerRasterize = 'layer-rasterize';
+  static const layerStoryboard = 'layer-storyboard';
+  static const layerAttachFreeAbove = 'layer-attach-free-above';
+  static const layerAttachFreeBelow = 'layer-attach-free-below';
+  static const layerAttachSyncedAbove = 'layer-attach-synced-above';
+  static const layerAttachSyncedBelow = 'layer-attach-synced-below';
+  static const frameSelectRowSpan = 'frame-select-row-span';
+
+  /// The frame pill's standing switch (F-61), a button rather than a row.
+  static const frameAutoCreate = 'frame-auto-create';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
   /// 설정에 줌 스냅 설정한대로」. ↩️The keys are Shift+E and Shift+Q since
@@ -1055,6 +1084,169 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Solo active layer',
     category: 'Timeline',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
+  ),
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+  // 버튼같은거나」 — the rows of the timeline bar's menus, in the bar's own
+  // order: 컷 · 레이어 · 프레임. Each IS its row and is pressed as the row
+  // ([EditorActionDefinition.menuRow]) on the panel being worked in. None has
+  // a key: no key was ever said for one.
+  const EditorActionDefinition(
+    id: EditorActionIds.cutNew,
+    label: 'New cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutDuplicate,
+    label: 'Duplicate cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCreateLinked,
+    label: 'Create linked cut',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutRename,
+    label: 'Rename cut…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutEditNote,
+    label: 'Edit cut note…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutSettings,
+    label: 'Cut settings…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCanvasSize,
+    label: 'Canvas size…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutConvertLinked,
+    label: 'Convert to linked cut…',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // One name for the switch, and the row's check says which way it stands.
+  // ↩️The row read 「Pin thumbnail frame」 or 「Unpin thumbnail frame」 by its
+  // state, in English in every language.
+  const EditorActionDefinition(
+    id: EditorActionIds.cutPinThumbnail,
+    label: 'Pin thumbnail frame',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutMoveLeft,
+    label: 'Move cut left',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutMoveRight,
+    label: 'Move cut right',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.cutCopyAeCamera,
+    label: 'Copy camera AE keyframes',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDuplicate,
+    label: 'Duplicate layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerDetach,
+    label: 'Detach from base',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerRasterize,
+    label: 'Rasterize layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerStoryboard,
+    label: 'Storyboard layer',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachFreeAbove,
+    label: 'Attach free layer above',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachFreeBelow,
+    label: 'Attach free layer below',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachSyncedAbove,
+    label: 'Attach synced layer above',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAttachSyncedBelow,
+    label: 'Attach synced layer below',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameSelectRowSpan,
+    label: 'Select whole row',
+    category: 'Timeline',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // The frame pill's standing switch (F-61) — a button, not a row, so the
+  // shell presses what the button presses.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameAutoCreate,
+    label: 'Make a frame where there is none',
+    category: 'Timeline',
+    defaultActivators: [],
   ),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs

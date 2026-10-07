@@ -1,0 +1,369 @@
+// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
+// 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」.
+//
+// THE TIMELINE BAR'S MENU ROWS ARE ACTIONS, AND A KEY PRESSES THE ROW — on the
+// panel being worked in: every row of the cut, layer and frame pills' menus
+// that runs something names an action of the shortcut list, every such
+// action has its row, and a key recorded for one does what the row does,
+// only where the row can be pressed.
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/main.dart';
+import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_frame_range.dart';
+import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/ui/cut_command_group.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/timeline/timeline_bar_menus.dart';
+import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+
+const k = LogicalKeyboardKey.keyK;
+
+/// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임.
+const barRows = [
+  EditorActionIds.cutNew,
+  EditorActionIds.cutDuplicate,
+  EditorActionIds.cutCreateLinked,
+  EditorActionIds.cutRename,
+  EditorActionIds.cutEditNote,
+  EditorActionIds.cutSettings,
+  EditorActionIds.cutCanvasSize,
+  EditorActionIds.cutConvertLinked,
+  EditorActionIds.cutPinThumbnail,
+  EditorActionIds.cutMoveLeft,
+  EditorActionIds.cutMoveRight,
+  EditorActionIds.cutCopyAeCamera,
+  EditorActionIds.layerDuplicate,
+  EditorActionIds.layerDetach,
+  EditorActionIds.layerRasterize,
+  EditorActionIds.layerStoryboard,
+  EditorActionIds.layerAttachFreeAbove,
+  EditorActionIds.layerAttachFreeBelow,
+  EditorActionIds.layerAttachSyncedAbove,
+  EditorActionIds.layerAttachSyncedBelow,
+  EditorActionIds.frameSelectRowSpan,
+];
+
+Future<void> pumpApp(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1700, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(const AnicelApp());
+  await tester.pumpAndSettle();
+}
+
+EditorSessionManager sessionOf(WidgetTester tester) =>
+    tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+
+BuildContext contextOf(WidgetTester tester) =>
+    tester.element(find.byType(EditorWorkspace));
+
+EditorShortcutBindings keys(WidgetTester tester) =>
+    EditorShortcutScope.peek(contextOf(tester))!;
+
+/// The bar's rows as the TIMELINE panel opens them.
+List<PanelFlyoutItem> timelineRows(WidgetTester tester) => TimelineBarMenus(
+  session: sessionOf(tester),
+  panel: TimelineToolbarPanelContext(sessionOf(tester)),
+).rows(contextOf(tester));
+
+PanelFlyoutItem rowOf(List<PanelFlyoutItem> rows, String actionId) =>
+    rows.firstWhere((row) => row.shortcuts.contains(actionId));
+
+/// The action [pressKeyOf] last recorded [k] for.
+String? _held;
+
+/// Records [k] for [actionId] — ALONE: what this recorded it for before goes
+/// back to no key, so one press is one action's — and presses it, once the
+/// app has taken the recording in.
+Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
+  if (_held case final before? when before != actionId) {
+    keys(tester).resetAction(before);
+  }
+  _held = actionId;
+  keys(tester).setActivators(actionId, const [SingleActivator(k)]);
+  await tester.pump();
+  await tester.sendKeyEvent(k);
+  await tester.pumpAndSettle();
+}
+
+List<CutId> cutIdsOf(WidgetTester tester) => [
+  for (final cut
+      in sessionOf(tester).repository.requireProject().tracks.first.cuts)
+    cut.id,
+];
+
+int cutsOf(WidgetTester tester) => cutIdsOf(tester).length;
+
+int layersOf(WidgetTester tester) =>
+    sessionOf(tester).activeCutOrNull!.layers.length;
+
+void main() {
+  group('the registry', () {
+    test('holds the bar\'s menu rows under Timeline, in the bar\'s order, '
+        'and the frame pill\'s switch after them', () {
+      final timeline = [
+        for (final definition in editorActionDefinitions)
+          if (definition.category == 'Timeline') definition,
+      ];
+      expect(
+        [
+          for (final definition in timeline)
+            if (definition.menuRow) definition.id,
+        ],
+        barRows,
+      );
+      expect(timeline.last.id, EditorActionIds.frameAutoCreate);
+      expect(
+        timeline.last.menuRow,
+        isFalse,
+        reason: 'a button of the pill, not a row of a menu',
+      );
+    });
+
+    test('none ships with a key — nobody named one', () {
+      for (final id in [...barRows, EditorActionIds.frameAutoCreate]) {
+        expect(
+          editorActionDefinitions
+              .singleWhere((definition) => definition.id == id)
+              .defaultActivators,
+          isEmpty,
+          reason: id,
+        );
+      }
+    });
+  });
+
+  group('the bar\'s menus', () {
+    testWidgets('🚨every one of those actions has its row, and every row '
+        'that runs something names an action — but the kinds and the '
+        'labels', (tester) async {
+      await pumpApp(tester);
+      final rows = timelineRows(tester);
+      final named = {for (final row in rows) ...row.shortcuts};
+
+      expect(barRows.toSet().difference(named), isEmpty);
+      expect(named.difference(barRows.toSet()), isEmpty);
+
+      final silent = [
+        for (final row in rows)
+          if (row.shortcuts.isEmpty &&
+              row.onSelected != null &&
+              row.submenuBuilder == null)
+            row.keyValue,
+      ];
+      expect(silent, isNotEmpty, reason: '⛔premise: the families are there');
+      // ⚠️Not yet actions, each for its reason: a KIND of layer and a kind
+      // of effect are families whose action names are composed (「레이어
+      // 추가: 애니메이션」) and come next (I-40); a colour label is a choice
+      // of a list, not a command.
+      expect(
+        silent.where(
+          (key) =>
+              !key.startsWith('add-layer-kind-') &&
+              !key.startsWith('add-effect-') &&
+              !key.startsWith('layer-mark-option-'),
+        ),
+        isEmpty,
+      );
+    });
+
+    testWidgets('a row wears its action\'s name, and its key', (tester) async {
+      await pumpApp(tester);
+      keys(tester).setActivators(EditorActionIds.cutRename, const [
+        SingleActivator(k, control: true),
+      ]);
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('cut-menu-button')).first,
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(const ValueKey<String>('rename-cut-button'));
+      expect(
+        find.descendant(of: row, matching: find.text('Rename cut…')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('Ctrl+K')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('one verb reached from two lists is ONE action: both rows '
+        'of 「컷 복제」 name it and read alike', (tester) async {
+      await pumpApp(tester);
+      final rows = timelineRows(tester)
+          .where((row) => row.shortcuts.contains(EditorActionIds.cutDuplicate))
+          .toList();
+      expect(rows.map((row) => row.keyValue), [
+        'duplicate-cut-button',
+        'add-cut-duplicate',
+      ]);
+      expect(rows.map((row) => row.label).toSet(), {'Duplicate cut'});
+    });
+
+    testWidgets('the thumbnail switch says one name, and its check says '
+        'which way it stands', (tester) async {
+      await pumpApp(tester);
+      final session = sessionOf(tester);
+      PanelFlyoutItem row() =>
+          rowOf(timelineRows(tester), EditorActionIds.cutPinThumbnail);
+      final before = row();
+      expect(before.label, 'Pin thumbnail frame');
+      expect(before.checked, session.cutVerbs.isActiveCutThumbnailPinnedHere);
+
+      before.onSelected!();
+      await tester.pumpAndSettle();
+
+      expect(row().label, 'Pin thumbnail frame');
+      expect(row().checked, isNot(before.checked));
+    });
+  });
+
+  group('a key', () {
+    testWidgets('opens the window its row opens', (tester) async {
+      await pumpApp(tester);
+      final field = find.byKey(const ValueKey<String>('rename-cut-text-field'));
+      expect(field, findsNothing);
+      await pressKeyOf(tester, EditorActionIds.cutRename);
+      expect(field, findsOneWidget);
+    });
+
+    testWidgets('makes what its row makes: a layer, and a cut', (tester) async {
+      await pumpApp(tester);
+      expect(
+        rowOf(timelineRows(tester), EditorActionIds.layerDuplicate).enabled,
+        isTrue,
+        reason: '⛔premise: a layer is in hand',
+      );
+      final layers = layersOf(tester);
+      await pressKeyOf(tester, EditorActionIds.layerDuplicate);
+      expect(layersOf(tester), layers + 1);
+
+      final cuts = cutsOf(tester);
+      await pressKeyOf(tester, EditorActionIds.cutNew);
+      expect(cutsOf(tester), cuts + 1);
+    });
+
+    testWidgets('🚨presses the row of the panel being worked in: the layer '
+        'menu is the timeline\'s, and from the storyboard its key does '
+        'nothing', (tester) async {
+      await pumpApp(tester);
+      final session = sessionOf(tester);
+      expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔premise');
+      final layers = layersOf(tester);
+
+      session.claimStoryboardRow();
+      await tester.pumpAndSettle();
+      expect(session.workingPanel, WorkingPanel.storyboard);
+      expect(
+        rowOf(
+          TimelineBarMenus(
+            session: session,
+            panel: StoryboardToolbarPanelContext(session),
+          ).rows(contextOf(tester)),
+          EditorActionIds.layerDuplicate,
+        ).enabled,
+        isFalse,
+        reason: '⛔premise: the storyboard\'s layer menu shows the row dim',
+      );
+      await pressKeyOf(tester, EditorActionIds.layerDuplicate);
+      expect(layersOf(tester), layers);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('⛔does nothing where its row is dim', (tester) async {
+      await pumpApp(tester);
+      // Two cuts, standing on the first: it has nowhere to step left — and a
+      // key that pressed anyway would have a cut to move.
+      sessionOf(tester).cutVerbs.createCut();
+      await tester.pumpAndSettle();
+      final order = cutIdsOf(tester);
+      expect(order, hasLength(2), reason: '⛔premise');
+      sessionOf(tester).selectCut(order.first);
+      await tester.pumpAndSettle();
+      expect(
+        rowOf(timelineRows(tester), EditorActionIds.cutMoveLeft).enabled,
+        isFalse,
+        reason: '⛔premise: the first cut has nowhere to step left',
+      );
+      expect(
+        rowOf(timelineRows(tester), EditorActionIds.cutMoveRight).enabled,
+        isTrue,
+        reason: '⛔premise: and the same key on the other row would move it',
+      );
+
+      await pressKeyOf(tester, EditorActionIds.cutMoveLeft);
+      expect(cutIdsOf(tester), order);
+      expect(tester.takeException(), isNull);
+
+      await pressKeyOf(tester, EditorActionIds.cutMoveRight);
+      expect(cutIdsOf(tester), order.reversed.toList(), reason: '⛔LIVENESS');
+    });
+
+    testWidgets('flips the frame pill\'s switch, as its button does', (
+      tester,
+    ) async {
+      await pumpApp(tester);
+      bool on() => AppInput.settings.value.autoCreateFrameOnDraw;
+      final before = on();
+      // The setting is app-wide; whatever happens below, the next test finds
+      // it as this one did. (On the notifier: the app is gone by teardown.)
+      addTearDown(
+        () => AppInput.settings.value = AppInput.settings.value.copyWith(
+          autoCreateFrameOnDraw: before,
+        ),
+      );
+
+      await pressKeyOf(tester, EditorActionIds.frameAutoCreate);
+      expect(on(), !before);
+
+      final button = find
+          .byKey(const ValueKey<String>('auto-frame-toggle-button'))
+          .first;
+      await tester.ensureVisible(button);
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(on(), before, reason: 'the button and the key flip one switch');
+    });
+  });
+
+  group('the cut pill\'s ＋', () {
+    testWidgets('and its band\'s first row are one action, lit together and '
+        'dim together', (tester) async {
+      await pumpApp(tester);
+      final session = sessionOf(tester);
+      PanelFlyoutItem newCut() => cutAddEntries(
+        session,
+      ).whereType<PanelFlyoutItem>().firstWhere(
+        (row) => row.shortcuts.contains(EditorActionIds.cutNew),
+      );
+      expect(session.cutPlacement.canCreateCut, isTrue, reason: '⛔premise');
+      expect(newCut().enabled, isTrue);
+
+      // A range over the cut that is there is nowhere to make one.
+      final track = session.repository.requireProject().tracks.first;
+      session.trackFrameRangeSelection.value = TrackFrameRangeSelection(
+        trackId: track.id,
+        anchorRow: TrackRowAddress(track.id),
+        startFrame: 0,
+        endFrameExclusive: 2,
+      );
+      await tester.pumpAndSettle();
+      expect(session.cutPlacement.canCreateCut, isFalse, reason: '⛔premise');
+      expect(newCut().enabled, isFalse);
+
+      final cuts = cutsOf(tester);
+      await pressKeyOf(tester, EditorActionIds.cutNew);
+      expect(cutsOf(tester), cuts, reason: 'and the key is the row\'s');
+    });
+  });
+}

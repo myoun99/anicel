@@ -5,10 +5,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
-import '../../models/attached_mode.dart';
-import '../../models/attached_placement.dart';
-import '../../models/layer_effect.dart';
-import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
@@ -19,17 +15,14 @@ import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import 'instance_editor_commands.dart' show autoNameWithWindow;
-import 'layer_label_controls.dart'
-    show layerKindDisplayName, layerKindIcon;
-import 'rasterize_reference_rows.dart';
 import 'timeline_section_policy.dart';
+import 'timeline_bar_menus.dart';
 import 'toolbar_panel_context.dart';
 import '../../services/cel_pixel_overwrite.dart';
 import '../theme/app_theme.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
-import '../text/model_vocabulary.dart';
 import '../widgets/app_window.dart';
 import '../widgets/frame_count_field.dart';
 
@@ -275,259 +268,10 @@ class TimelineActionToolbar extends StatelessWidget {
   /// after the shared selection rungs.
   bool get _canCreateInstance => panelContext.canCreateInstance;
 
-  /// The key suffix each kind's Add entry has always used — spelled out
-  /// rather than derived from `kind.name`, so a rename of the enum cannot
-  /// silently move a widget key the tests aim at.
-  static String _addLayerKeySuffix(LayerKind kind) => switch (kind) {
-    LayerKind.animation => 'animation',
-    LayerKind.storyboard => 'storyboard',
-    LayerKind.image => 'image',
-    LayerKind.se => 'se',
-    LayerKind.instruction => 'instruction',
-    LayerKind.adjustment => 'adjustment',
-    LayerKind.folder => 'folder',
-    LayerKind.camera => 'camera',
-    LayerKind.transition => 'transition',
-  };
-
-  List<PanelFlyoutEntry> _addLayerEntries() {
-    return [
-      PanelFlyoutHeader(editorActionLabel(EditorActionIds.layerAdd)),
-      // ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12:
-      // 「레이어 +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」).
-      // The `＋` itself makes an animation layer now, so an entry meaning
-      // "whatever is selected" answered a question nothing asks.
-      //
-      // ★EVERY entry wears its kind's own icon, and they come from
-      // [layerKindIcon] rather than being chosen here (유저: 「레이어 생성,
-      // 아이콘이 있고없고 그러는데, 다 아이콘 앞에 붙임」). Three of these
-      // used to carry a hand-picked glyph and the rest carried none — which
-      // is how the list came to disagree with the rail it creates rows for.
-      // One table, so the menu and the row can never show different pictures
-      // of the same noun.
-      for (final kind in const [
-        LayerKind.animation,
-        LayerKind.storyboard,
-        LayerKind.image,
-        LayerKind.se,
-        LayerKind.instruction,
-        // R6b: the row that filters everything below it. It lands above the
-        // active layer like every other kind, which is what puts the rows it
-        // grades underneath it.
-        LayerKind.adjustment,
-        // R5 #14: a FOLDER is something you add, empty, and then fill by
-        // dropping rows on it — the file-manager shape, replacing "group the
-        // active layer into a folder".
-        LayerKind.folder,
-        // Neither the camera nor the transition is offered — a cut owns
-        // exactly one camera and the transition row belongs to the track.
-      ])
-        PanelFlyoutItem(
-          keyValue: 'add-layer-kind-${_addLayerKeySuffix(kind)}',
-          // The kind's ONE name ([layerKindDisplayName]) — the rail's and
-          // the kind flyout's. ↩️This menu kept a switch of its own over the
-          // same table, which answered the same until a kind was added.
-          label: layerKindDisplayName(kind),
-          icon: layerKindIcon(kind),
-          // R9 #7: one storyboard row per cut — the entry greys out once the
-          // cut has it, instead of accepting the tap and doing nothing.
-          // B8: and the PANEL answers first — on the storyboard only the S
-          // row is this rail's to add, so the cut-scoped kinds grey out.
-          enabled: panelContext.canAddLayerOfKind(kind),
-          onSelected: () => panelContext.addLayerOfKind(kind),
-        ),
-      // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
-      // Layer menu has — own cels riding the base's FX. FREE authors its
-      // own timeline; SYNCED mirrors the base's exposures (ghost rows).
-      const PanelFlyoutDivider(),
-      // ① (유저 확정): the SAME glyph the rail draws on an attached row
-      // ([LayerAttachArrowCell]), flipped the same way for the above
-      // placement. These used to be `north_east`/`south_east` — a second
-      // vocabulary for attachment, so the menu that MAKES the row and the
-      // row it makes did not look like the same idea.
-      PanelFlyoutItem(
-        keyValue: 'add-layer-attach-free-above',
-        label: AppText.strings.tlAttachFreeAbove,
-        icon: Icons.subdirectory_arrow_right,
-        iconFlipY: true,
-        enabled: panelContext.canAddAttachedLayer,
-        onSelected: () => panelContext.addAttachedLayer(
-          AttachedPlacement.above,
-          mode: AttachedMode.free,
-        ),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-attach-free-below',
-        label: AppText.strings.tlAttachFreeBelow,
-        icon: Icons.subdirectory_arrow_right,
-        enabled: panelContext.canAddAttachedLayer,
-        onSelected: () => panelContext.addAttachedLayer(
-          AttachedPlacement.below,
-          mode: AttachedMode.free,
-        ),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-attach-above',
-        label: AppText.strings.tlAttachSyncedAbove,
-        icon: Icons.subdirectory_arrow_right,
-        iconFlipY: true,
-        enabled: panelContext.canAddAttachedLayer,
-        onSelected: () =>
-            panelContext.addAttachedLayer(AttachedPlacement.above),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'add-layer-attach-below',
-        label: AppText.strings.tlAttachSyncedBelow,
-        icon: Icons.subdirectory_arrow_right,
-        enabled: panelContext.canAddAttachedLayer,
-        onSelected: () =>
-            panelContext.addAttachedLayer(AttachedPlacement.below),
-      ),
-    ];
-  }
-
-  /// The EFFECTS button's list (R5 #6): add one of each kind, and take away
-  /// the ones this row already carries.
-  ///
-  /// Adding one changes nothing until a value moves — the work happens in
-  /// the row's FX lanes, which is why this is a menu and not a control on
-  /// an already crowded row.
-  List<PanelFlyoutEntry> _effectEntries() {
-    // B8: the chain shown and edited here is the CUT's active layer's — the
-    // timeline panel's noun. On the storyboard every entry greys out
-    // honestly (its rows' chains have no add entrance on this pill yet, and
-    // a lit entry would edit a row that panel is not showing).
-    final serves = panelContext.servesActiveLayerVerbs;
-    // ⛔NO REMOVE ENTRIES (F-87, 유저 2026-09-12: 「fx 헤더 선택범위로 선택한채로
-    // 삭제누르면 해당 fx 삭제. 그리고 fx버튼에 있는 해당 fx 삭제버튼은
-    // 필요없으니 삭제하고 관련로직 싹 제거」): an effect is removed by a range
-    // over its header and the one Delete.
-    return [
-      PanelFlyoutHeader(AppText.strings.tlEffects),
-      // ⛔EVERY KIND IS LISTED, ALWAYS; the ones this row cannot take are
-      // DIMMED. Same rule the two pixel verbs on the shared pill follow
-      // ("Dimmed with nothing to act on, never hidden") — a menu that grew
-      // and shrank under the pointer would make the artist look for an
-      // entry that is simply not there today.
-      for (final kind in EffectKind.values)
-        PanelFlyoutItem(
-          keyValue: 'add-effect-${kind.jsonValue}',
-          label: AppText.strings.tlAddEffectTemplate.replaceAll(
-            '{name}',
-            kind.labelFor(AppText.language),
-          ),
-          icon: Icons.auto_fix_high_outlined,
-          enabled: serves && session.effectsAndFx.canAddEffectToActiveLayer,
-          onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),
-        ),
-    ];
-  }
-
-  /// A track's fixture row takes no row verb from here
-  /// ([LayerKind.isTrackFixture]) — selecting the transition row must not
-  /// light up duplicate.
-  ///
-  /// A getter because ① moved rename OUT of the menu: the pill's button and
-  /// the entries that stayed behind have to answer the same question, and
-  /// two copies of this line would eventually stop agreeing.
-  bool get _canEditActiveLayer {
-    final active = session.activeLayer;
-    return active != null && !active.kind.isTrackFixture;
-  }
-
-  List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
-    final active = session.activeLayer;
-    // B8: every verb below acts on the CUT's active layer — the timeline
-    // panel's noun — so the storyboard's menu greys them all out honestly
-    // instead of editing a row that panel is not showing.
-    final serves = panelContext.servesActiveLayerVerbs;
-    final editable = serves && _canEditActiveLayer;
-    return [
-      // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
-      // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
-      // MENU and onto that pill, which is where 컷 삭제 went for the same
-      // sentence; it does not mean the shared pill, whose residents 확정 #11
-      // fixes at four.
-      PanelFlyoutItem(
-        keyValue: 'duplicate-layer-button',
-        label: AppText.strings.tlDuplicateLayer,
-        icon: Icons.copy_outlined,
-        enabled: editable,
-        onSelected: session.layerVerbs.duplicateActiveLayer,
-      ),
-      // ⛔COPY AND PASTE ARE NOT HERE, AND NEITHER IS 「링크해서 복제」
-      // (I-77, 유저 2026-10-06: 「복사/붙여넣기버튼 레이어도 연결 … 그러고
-      // 레이어버튼의 레이어복사/붙여넣기는 필요없으니 삭제」 · 「링크해서
-      // 복제도 필요없어지니 삭제」). The shared pill's copy takes the selected
-      // rows and its two pastes put them down — independent, or linked.
-      // R5 #5: the row-order STEP verbs are gone, session methods and all
-      // (user: "단축키로도 남기지마 일단"). The drag is the whole answer
-      // now; the one thing the step could reach that a drop cannot — the
-      // inside of an EMPTY folder — is the drop mode this round adds
-      // instead, where dropping ON a folder row puts the layer in it.
-      // 분리 (P3). MAKING an attach is the drag's alone: dropping a row
-      // strictly inside a group mounts it, and R5 #15 gave the one case a gap
-      // cannot reach — the first rider on a base — its own door, dropping ON
-      // the row. The two "위/아래 레이어에 장착" entries that used to stand
-      // here were that door before it existed, so R5 deleted them rather than
-      // keep a second way to say the same thing.
-      //
-      // The RELEASE stays: it must not be a one-way door (user 2026-08-07).
-      PanelFlyoutItem(
-        keyValue: 'timeline-detach-layer-button',
-        label: AppText.strings.tlDetachLayer,
-        icon: Icons.link_off,
-        enabled: serves && session.folders.canDetachActiveLayer,
-        onSelected: session.folders.detachActiveLayer,
-      ),
-      // R5 #5: IMPORT AUDIO left. The media pool is the one entrance —
-      // it links an audio asset onto a frame block, which is the shape the
-      // work actually has; this entry offered a second, thinner door.
-      const PanelFlyoutDivider(),
-      // R5 #6: the EFFECT chain moved out to a button of its own — the
-      // effect list is going to be what that button shows, so it stopped
-      // being a tail on the layer menu.
-      //
-      // R5 #14: and the two FOLDER-making commands went with it. "Group
-      // into folder" wrapped the active layer; a folder is made EMPTY from
-      // the Add Layer menu now and filled by dropping rows on it, which is
-      // how every other app this user works in behaves. "New attach folder"
-      // goes for the same reason — the drag makes those too.
-      PanelFlyoutItem(
-        keyValue: 'timeline-rasterize-layer-button',
-        label: AppText.strings.layerRasterizeLabel,
-        icon: Icons.texture_outlined,
-        enabled: serves && session.editingCanvas.canRasterizeActiveLayer,
-        // A movie reference is decoded frame by frame behind the wait
-        // window ([rasterizeActiveRow]); every other row is the session's
-        // own verb, unchanged.
-        onSelected: () => unawaited(rasterizeActiveRow(context, session)),
-      ),
-      // 'SE name tag…' opened a window. R5 #7 put every control it held on
-      // the SE row's Name Tag lane group, so the entry would only lead
-      // somewhere that changes the same thing a second way.
-      // ↩️「링크 해제」 stood here. 🗣️I-25 (유저 2026-09-14): 「레이어 버튼의
-      // 링크해제는 필요없어졌으니 삭제」 — the link badge on the row opens the
-      // link window, and its button unlinks.
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'toggle-storyboard-layer-button',
-        label: AppText.strings.tlStoryboardLayer,
-        icon: Icons.auto_stories_outlined,
-        enabled: serves && session.layerSwitches.canToggleTargetLayerKind,
-        checked: active?.kind == LayerKind.storyboard,
-        onSelected: session.layerSwitches.toggleTargetLayerKind,
-      ),
-      // R5 #5: the SE and CAMERA section switches left. The legend's own
-      // sections cell has shown and hidden both since UI-R7, so this pair
-      // was a second door to one setting — and the one further from where
-      // the rows are.
-      // ⛔The layer DELETE left this menu (유저 2026-08-12: 「밖에 딜리트
-      // 레이어있으니 버튼내부에있는 딜리트레이어 삭제」) — and then left the
-      // bar entirely, because delete is ONE verb now that asks what is
-      // selected. See the shared pill and [EditorSessionManager.deleteSubject].
-    ];
-  }
+  /// The bar's menus for this panel — the lists these pills open, and the
+  /// ones a key presses a row of ([TimelineBarMenus]).
+  TimelineBarMenus get _menus =>
+      TimelineBarMenus(session: session, panel: panelContext);
 
   // ⛔The two PROJECT-axis dropdowns (fps, audio sample rate) LEFT this bar
   // (유저 확정, 2026-08-10). They print project values and nothing about the
@@ -535,57 +279,6 @@ class TimelineActionToolbar extends StatelessWidget {
   // in the middle of the frame verbs — so they are entries of the settings
   // pill then, and are the project settings of the top strip's ⚙ now
   // ([ProjectSettingsMenu]).
-
-  List<PanelFlyoutEntry> _frameEntries() {
-    return [
-      // ⛔EDIT INSTANCE IS NOT HERE — ① moved it onto the frame pill (유저
-      // 확정: 「프레임 알약 밖으로: 딜리트 · Edit Instance」). The delete half
-      // of that sentence went further, to the shared pill, but ⑰ sent it
-      // there — 「밖으로」 on its own means out of the menu.
-      // ⛔COPY AND THE PASTES ARE NOT HERE — ㉕ put them on the SHARED pill
-      // (확정 #11), beside the one delete. They belong to no noun: what they
-      // act on is whatever is selected, which is exactly the sentence that
-      // pill exists to say.
-      // ⛔DELETE IS NOT HERE EITHER (T24, 유저 2026-08-13: 「프레임알약
-      // 삭제버튼 … 일단 삭제. 공통버튼에 존재하니까」). It was the last
-      // duplicate: the shared pill's one delete falls through to this exact
-      // verb when nothing else is selected, so the menu item reached
-      // `deleteCellAtCurrentFrame` by a second road under a second gate.
-      //
-      // ⚠️The ladder is the difference, and it is the confirmed law rather
-      // than a loss: with rows selected the one delete deletes ROWS
-      // (확정 D2, 컷 > 레이어 > 셀), so deleting just the cell now means
-      // clearing the row selection first. That is what "하나의 딜리트"
-      // means — the button asks what is selected instead of the reach
-      // deciding for it.
-      //
-      // ⛔THE FRAME'S DUPLICATE PAIR IS GONE (유저 2026-09-01, F-62):
-      // 「프레임 버튼 안에 있는 **복제/링크복제 버튼삭제. 쓸일없음.**
-      // 잔재도제거」.
-      //
-      // ⚠️This REVERSES 유저 확정 2026-08-13 (「복제는 현재 액티브인 대상을
-      // 상대로 적용하는 것 … 각각 독립복제 / 링크복제」, per noun) and T24's
-      // 「남기고 나중에 기능추가할거야」 — kept here rather than deleted
-      // silently, because the next reader would otherwise find the old
-      // decision and put the pair back.
-      //
-      // ⚠️`duplicateActiveBlock` STAYS. It is not the button's leftover: the
-      // splice tests drive it directly, and F-62's other half (「프레임
-      // 복사후 독립붙여넣기시 그림이 복제되지 않는다」) is about the same
-      // machinery. A verb with no button is not dead code here — it is the
-      // verb the paste path needs.
-      // D40: the whole-row select. ⛔NOT gated on servesActiveLayerVerbs —
-      // the storyboard half is the point (컷블록도 동일 작동): each panel
-      // context resolves its OWN standing row, cut row included.
-      PanelFlyoutItem(
-        keyValue: 'select-row-span-button',
-        label: AppText.strings.tlSelectRowSpan,
-        icon: Icons.select_all,
-        enabled: panelContext.canSelectRowSpan,
-        onSelected: panelContext.selectRowSpan,
-      ),
-    ];
-  }
 
   /// R26 #42: the app's standard icon button (the canvas bottom bar's
   /// style, promoted) — this toolbar used to size its own.
@@ -764,7 +457,7 @@ class TimelineActionToolbar extends StatelessWidget {
       session.layerVerbs.canDeleteActiveLayer,
       // ①: the rename button lives here now, so its gate has to be part of
       // what wakes this group up.
-      _canEditActiveLayer,
+      _menus.canEditActiveLayer,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-layer-group'),
@@ -772,7 +465,7 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'timeline-layer-menu-button',
         label: AppText.strings.tlLayer,
         tooltip: AppText.strings.tlLayerCommands,
-        entriesBuilder: () => _layerEntries(context),
+        entriesBuilder: () => _menus.layer(context),
       ),
       children: [
         const PillDivider(),
@@ -791,7 +484,7 @@ class TimelineActionToolbar extends StatelessWidget {
           // B8: WHICH one kind is the panel's word — the timeline's context
           // says animation, the storyboard's says the S row it can grow.
           onPressed: panelContext.addLayer,
-          entriesBuilder: _addLayerEntries,
+          entriesBuilder: _menus.addLayer,
         ),
         // ⛔THE LAYER RENAME IS GONE FROM HERE TOO — T25 (유저 2026-08-14:
         // 「레이어 이름변경 버튼 필요없어지니 삭제」).
@@ -1100,7 +793,7 @@ class TimelineActionToolbar extends StatelessWidget {
       keyValue: 'timeline-frame-menu-button',
       label: AppText.strings.tlFrame,
       tooltip: AppText.strings.tlFrameCommands,
-      entriesBuilder: _frameEntries,
+      entriesBuilder: _menus.frame,
     ),
     children: [
       const PillDivider(),
@@ -1164,7 +857,10 @@ class TimelineActionToolbar extends StatelessWidget {
               valueListenable: AppInput.settings,
               builder: (context, input, _) => _iconButton(
                 key: const ValueKey<String>('auto-frame-toggle-button'),
-                tooltip: AppText.strings.tlAutoFrame,
+                // 🗣️I-40: an action now, so it wears that action's name and
+                // shows its key — as the buttons either side of it do.
+                tooltip: editorActionLabel(EditorActionIds.frameAutoCreate),
+                shortcuts: const [EditorActionIds.frameAutoCreate],
                 icon: Icons.auto_awesome,
                 // ⛔NOT `accent:` — that flag is [AppColors.addGlyph] and
                 // 유저 확정 reserved it for the ＋ glyph 「＋가 있는 모든
@@ -1176,11 +872,8 @@ class TimelineActionToolbar extends StatelessWidget {
                 // F-191: through the setting's own door, which writes it
                 // down. ↩️It set the live notifier alone, so the toggle came
                 // back off (or on) with every restart.
-                onPressed: () => session.setInputSettings(
-                  input.copyWith(
-                    autoCreateFrameOnDraw: !input.autoCreateFrameOnDraw,
-                  ),
-                ),
+                // The press is [toggleAutoCreateFrameOnDraw] — its key's too.
+                onPressed: () => toggleAutoCreateFrameOnDraw(session),
               ),
             ),
             _iconButton(
@@ -1321,7 +1014,7 @@ class TimelineActionToolbar extends StatelessWidget {
         // the same reason it needs no AppStrings key.
         label: 'Fx',
         tooltip: AppText.strings.tlEffects,
-        entriesBuilder: _effectEntries,
+        entriesBuilder: _menus.effects,
       ),
     ),
   );

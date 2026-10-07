@@ -21,7 +21,8 @@ import 'package:anicel/src/services/media/video_decode_worker.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
 import 'package:anicel/src/ui/media/media_asset_pool_state.dart';
-import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/layer_reference_popover.dart';
 import 'package:anicel/src/ui/timeline/rasterize_reference_rows.dart';
 
@@ -192,7 +193,7 @@ void main() {
     );
     expect(
       buttonLabel(tester),
-      contains(AppText.strings.layerRasterizeLabel),
+      contains(editorActionLabel(EditorActionIds.layerRasterize)),
       reason: 'the bake is still the popover own action',
     );
   });

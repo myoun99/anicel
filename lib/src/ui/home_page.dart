@@ -73,6 +73,7 @@ import 'timeline/instance_editor_commands.dart'
 import 'timeline/layer_name_commands.dart' show deleteRowSelectionWithDialog;
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
+import 'timeline/timeline_bar_menus.dart';
 import 'timeline/toolbar_panel_context.dart';
 import 'text/app_strings.dart';
 import 'canvas/flip_hud_controller.dart' show FlipHudController;
@@ -86,6 +87,7 @@ import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'timeline/memo_token.dart' show ByList;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 import 'widgets/cursor_notice.dart';
+import 'widgets/panel_flyout.dart' show pressFlyoutRow;
 
 /// The editor shell: a slim top menu strip (menu bar + quick actions —
 /// the AppBar retired so the editor keeps the vertical space) plus the
@@ -341,8 +343,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _shortcuts.setPanelActions(panelActionsOf(_panelsMenu.entries));
 
   /// The top strip as it is on screen — and as a KEY presses it: a menu
-  /// row's action is pressed through this same strip
-  /// ([EditorTopStrip.pressMenuRow]), so a key and its row cannot be handed
+  /// row's action is pressed among this same strip's rows
+  /// ([EditorTopStrip.menuRows]), so a key and its row cannot be handed
   /// different things.
   EditorTopStrip _topStrip() => EditorTopStrip(
     projects: _projects,
@@ -912,11 +914,20 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       _brushKeys.press(press);
       return;
     }
-    // 🗣️I-40 (유저 2026-09-18): 「설정의 패널 열기 닫기같은거든 뭐든 모든
-    // 버튼」 — a row of the strip's menus is pressed AS the row: built the way
-    // the menu builds it, and pressed only where the menu would let it be.
+    // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록.
+    // 타임라인 버튼같은거나. 설정의 패널 열기 닫기같은거든 뭐든 모든 버튼」 —
+    // a row of a menu is pressed AS the row: built the way its menu builds
+    // it, and pressed only where the menu would let it be. The rows are the
+    // top strip's and the timeline bar's, the bar's built for the panel
+    // being worked in — as every key on that bar speaks to it.
     if (definition?.menuRow ?? false) {
-      _topStrip().pressMenuRow(context, actionId);
+      pressFlyoutRow([
+        ..._topStrip().menuRows(context),
+        ...TimelineBarMenus(
+          session: _session,
+          panel: _workingPanel,
+        ).rows(context),
+      ], actionId);
       return;
     }
     if (definition?.pixelVerb case final verb?) {
@@ -1028,6 +1039,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (panel.canToggleMark) {
           panel.toggleMark();
         }
+      // I-40: the frame pill's standing switch, by key — its button's press.
+      case EditorActionIds.frameAutoCreate:
+        toggleAutoCreateFrameOnDraw(_session);
       case EditorActionIds.timelinePushBlocks:
         final row = _workingPanel.shiftCurrentRow;
         if (_session.blockShift.canPushBlocks(currentRow: row)) {
