@@ -202,7 +202,7 @@ double _reachOf(CelTextScene scene, Offset local, Offset centre) =>
 /// top (유저 2026-10-02) — leaving out the one in [tool]'s hand.
 CelText? _textAt(CelTextTool tool, CelTextCel cel, Offset artwork) {
   final inHand = tool.session?.textId;
-  for (final text in celTextsInReach(_pictureOf(cel)).toList().reversed) {
+  for (final text in tool.takeableOn(cel).reversed) {
     if (text.id == inHand) {
       continue;
     }

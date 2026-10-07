@@ -298,6 +298,30 @@ void main() {
       expect(begun, hasLength(1));
     });
 
+    test('🚨a text let go of TO BECOME DRAWING is nobody\'s to take while '
+        'its last want is still being set: a press on it is a press on '
+        'nothing', () {
+      final (:tool, :scene, baker: _, :begun, traced: _) = table(
+        texts: [carried(4, says('ab'))],
+      );
+      tool
+        ..takeText(scene.cel!, textOf(scene, 4))
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      tool.letters!.value = const TextEditingValue(
+        text: 'abc',
+        selection: TextSelection.collapsed(offset: 3),
+      );
+      tool.turnIntoDrawing();
+      expect(tool.holdsAnything, isTrue, reason: '⛔fixture: on its way');
+      expect(textsOn(scene), [(4, 'ab')], reason: '⛔fixture: on the cel');
+
+      final down = press(scene, 12, 12)!;
+      up(scene, down, 12, 12);
+
+      expect(tool.session, isNull);
+      expect(begun, hasLength(1), reason: 'a click on nothing begins a text');
+    });
+
     test('🚨where two overlap it takes the one ON TOP — the newest', () {
       final (:tool, :scene, baker: _, begun: _, traced: _) = table(
         texts: [

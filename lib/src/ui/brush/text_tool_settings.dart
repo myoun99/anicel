@@ -28,7 +28,7 @@ import 'tool_settings_section.dart';
 /// hand and its delete · **글자** — face, size, tracking, bold, colour,
 /// outline, outline width, and the smoothing of their edges (유저: 「2차에서
 /// 스위치로 넣음」) · **상자** — alignment, box width, line spacing,
-/// background.
+/// background · and at the foot 「그림으로 굳히기」.
 ///
 /// What every row reads and writes is ONE law, and it is not in this file
 /// ([TextToolSettingsValues]): the text in hand by the letters a setting
@@ -85,6 +85,7 @@ class TextToolSettings extends StatelessWidget {
           ),
           ToolSettingsGroupHeader(strings.textToolBox),
           _BoxRows(values: values, currentColorOf: currentColorOf),
+          _IntoDrawingButton(commands: commands),
         ],
       );
     },
@@ -163,6 +164,35 @@ class _TextInHandRow extends StatelessWidget {
         ),
       ),
   ];
+}
+
+/// 「그림으로 굳히기」: the text in hand becomes its cel's drawing
+/// ([CelTextTool.turnIntoDrawing]).
+///
+/// 🗣️유저 2026-10-06: 「나중에 도구설정에 등장시키기로. 동작은 **텍스트
+/// 선택하면 해당 버튼 활성화색**」 — at the foot of the settings, where the
+/// drawing taken that day has it: ALWAYS THERE (⛔없다가 생기는 UI 금지), and
+/// lit only while a text is in hand. The filled button the transform tool's
+/// 적용 is, grey the same way when it has nothing to do.
+class _IntoDrawingButton extends StatelessWidget {
+  const _IntoDrawingButton({required this.commands});
+
+  final CelTextCommands? commands;
+
+  @override
+  Widget build(BuildContext context) {
+    final commands = this.commands;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: FilledButton(
+        key: const ValueKey<String>('text-tool-into-drawing'),
+        onPressed: commands != null && commands.holdsText
+            ? commands.turnIntoDrawing
+            : null,
+        child: Text(AppText.strings.textToolIntoDrawing),
+      ),
+    );
+  }
 }
 
 /// A number of the letters that a bar sets.

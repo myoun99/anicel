@@ -1420,6 +1420,7 @@ enum AppStrings {
   String get textToolWidthFixed => _s('textToolWidthFixed');
   String get textToolLineHeight => _s('textToolLineHeight');
   String get textToolBackground => _s('textToolBackground');
+  String get textToolIntoDrawing => _s('textToolIntoDrawing');
 
   /// The ＋ over the list of faces, and a brought face's own delete.
   String get textToolFontImport => _s('textToolFontImport');
@@ -2504,6 +2505,7 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixed',
     'textToolLineHeight': 'Line spacing',
     'textToolBackground': 'Background',
+    'textToolIntoDrawing': 'Rasterize',
     'textToolFontImport': 'Import a font file',
     'textToolFontDelete': 'Delete font',
     'textToolFontsOfProject': 'Fonts in this project',
@@ -3770,6 +3772,7 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行間',
     'textToolBackground': '背景',
+    'textToolIntoDrawing': 'ラスタライズ',
     'textToolFontImport': 'フォントファイルを読み込み',
     'textToolFontDelete': 'フォントを削除',
     'textToolFontsOfProject': 'このプロジェクトのフォント',
@@ -5132,6 +5135,7 @@ enum AppStrings {
     'textToolWidthFixed': '고정',
     'textToolLineHeight': '줄 간격',
     'textToolBackground': '배경',
+    'textToolIntoDrawing': '그림으로 굳히기',
     'textToolFontImport': '글꼴 파일 가져오기',
     'textToolFontDelete': '글꼴 삭제',
     'textToolFontsOfProject': '이 프로젝트의 글꼴',
@@ -6585,6 +6589,7 @@ enum AppStrings {
     'textToolWidthFixed': 'Fixe',
     'textToolLineHeight': 'Interligne',
     'textToolBackground': 'Fond',
+    'textToolIntoDrawing': 'Pixelliser',
     'textToolFontImport': 'Importer un fichier de police',
     'textToolFontDelete': 'Supprimer la police',
     'textToolFontsOfProject': 'Polices de ce projet',
@@ -7894,6 +7899,7 @@ enum AppStrings {
     'textToolWidthFixed': '固定',
     'textToolLineHeight': '行距',
     'textToolBackground': '背景',
+    'textToolIntoDrawing': '栅格化',
     'textToolFontImport': '导入字体文件',
     'textToolFontDelete': '删除字体',
     'textToolFontsOfProject': '此项目的字体',

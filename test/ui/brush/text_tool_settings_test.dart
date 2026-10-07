@@ -26,7 +26,8 @@ import '../../helpers/cel_text_hand.dart';
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
 /// face, size, tracking, bold, colour, outline, outline width, the
 /// smoothing of the letters' edges · 상자 —
-/// alignment, box width, line spacing, background.
+/// alignment, box width, line spacing, background · and at the foot
+/// 「그림으로 굳히기」.
 ///
 /// What a row reads and writes is `TextToolSettingsValues`'s, measured
 /// there. Here: every row is there, shows what it should, and a hand on it
@@ -108,6 +109,10 @@ void main() {
         ),
       );
 
+  /// 「그림으로 굳히기」, as the button it is.
+  FilledButton intoDrawing(WidgetTester tester) =>
+      tester.widget<FilledButton>(row('into-drawing'));
+
   BooleanDot boldRing(WidgetTester tester) => tester.widget<BooleanDot>(
     find.descendant(of: row('bold'), matching: find.byType(BooleanDot)),
   );
@@ -133,6 +138,8 @@ void main() {
       'box-width',
       'line-height',
       'background',
+      // 유저 2026-10-06: at the foot of the settings.
+      'into-drawing',
     ];
 
     Future<List<double>> tops() async => [
@@ -217,6 +224,20 @@ void main() {
       expect(
         (delete.icon as Icon).color,
         AppColors.deleteGlyph(enabled: false),
+      );
+    });
+
+    testWidgets('「그림으로 굳히기」 keeps its seat and is OUT: there is no '
+        'text to turn', (tester) async {
+      await pumpSettings(tester);
+
+      expect(intoDrawing(tester).onPressed, isNull);
+      expect(
+        find.descendant(
+          of: row('into-drawing'),
+          matching: find.text(AppText.strings.textToolIntoDrawing),
+        ),
+        findsOneWidget,
       );
     });
 
@@ -671,6 +692,31 @@ void main() {
     });
   });
 
+  // 유저 2026-10-06: 「동작은 텍스트 선택하면 해당 버튼 활성화색」.
+  testWidgets('🚨「그림으로 굳히기」 is LIT while a text is in hand, and '
+      'pressed it turns that text into its cel\'s drawing — one step, the '
+      'hand free, and the button out again', (tester) async {
+    final hand = await pumpSettings(tester, text: said([run('ab')]));
+    expect(pictureUnder(hand.cel).tiles, isEmpty, reason: '⛔fixture');
+    expect(intoDrawing(tester).onPressed, isNotNull);
+
+    await tester.ensureVisible(row('into-drawing'));
+    await tester.pump();
+    await tester.tap(row('into-drawing'));
+    await tester.pump();
+
+    final picture = pictureUnder(hand.cel);
+    expect(picture.texts, isEmpty);
+    expect(picture.tiles, isNotEmpty, reason: 'its pixels are the drawing');
+    expect(hand.tool.session, isNull);
+    expect(hand.host.ran.single.description, 'Text to drawing');
+    expect(intoDrawing(tester).onPressed, isNull);
+    expect(
+      tester.widget<PanelFlyoutButton>(row('selected-text')).label,
+      isEmpty,
+    );
+  });
+
   group('🚨the list of the cel\'s texts — 유저: 「거기서 다른 텍스트 '
       '선택할수있게 리스트 고르는 … 텍스트의 이름은 그냥 텍스트 글자대로. '
       '그리고 옆에 삭제버튼 있고」', () {
@@ -934,5 +980,6 @@ void main() {
           .onChanged,
       isNull,
     );
+    expect(intoDrawing(tester).onPressed, isNull);
   });
 }

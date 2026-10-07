@@ -10,6 +10,7 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/services/commands/cel_text_edit_command.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,9 +18,10 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/cel_text_fixture.dart';
 
 /// R9-rest (the text tool): one edit of the texts a cel carries is ONE step
-/// of history — a text set, a text set differently, a text taken off — and
-/// the step is the cel's picture before and after, so an undo puts the
-/// letters, their settings and their pixels back together.
+/// of history — a text set, a text set differently, a text taken off, a
+/// text turned into drawing — and the step is the cel's picture before and
+/// after, so an undo puts the letters, their settings and their pixels back
+/// together.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -208,6 +210,119 @@ void main() {
     });
   });
 
+  group('a text turned into drawing', () {
+    CelTextEditCommand turn(
+      BrushFrameEditingCoordinator coordinator,
+      int id,
+    ) => CelTextEditCommand.intoDrawing(
+      coordinator: coordinator,
+      frameKey: key,
+      id: id,
+    );
+
+    test('🚨is off the cel as a text and in its drawing, as ONE step: one '
+        'undo gives the text back — the very picture — and one redo turns '
+        'it again', () {
+      final (:coordinator, :history) = cel(
+        texts: [
+          textOf(3, words: 'kept', plate: {a: red, b: blue}),
+        ],
+      );
+      final before = coordinator.currentSurfaceOf(key);
+
+      history.execute(turn(coordinator, 3));
+
+      final after = coordinator.currentSurfaceOf(key);
+      expect(after.texts, isEmpty);
+      expect(pixelOf(after, a, 2, 2), [200, 0, 0, 255], reason: 'its ink');
+      expect(pixelOf(after, a, 1, 1), [9, 9, 9, 255], reason: 'the drawing');
+      expect(pixelOf(after, b, 3, 3), [0, 0, 200, 255], reason: 'bare paper');
+      expect(after, celSurfaceWithTextAsDrawing(before, 3));
+      expect(history.undoCount, 1);
+
+      history.undo();
+      expect(coordinator.currentSurfaceOf(key), before);
+      expect(textsOn(coordinator).single.plate[a], same(red));
+
+      history.redo();
+      expect(coordinator.currentSurfaceOf(key), after);
+    });
+
+    test('the texts it does not cover stay, where they stood', () {
+      final (:coordinator, :history) = cel(
+        texts: [
+          textOf(1, words: 'under', plate: {b: blue}),
+          textOf(2, words: 'turned', plate: {a: red}),
+          textOf(3, words: 'over', plate: {a: blue}),
+        ],
+      );
+
+      history.execute(turn(coordinator, 2));
+
+      expect([for (final text in textsOn(coordinator)) text.id], [1, 3]);
+      history.undo();
+      expect([for (final text in textsOn(coordinator)) text.id], [1, 2, 3]);
+    });
+
+    test('a text the cel no longer carries is no step: nothing is held', () {
+      final (:coordinator, :history) = cel(
+        texts: [
+          textOf(3, plate: {a: red}),
+        ],
+      );
+      final standing = coordinator.currentSurfaceOf(key);
+      final command = turn(coordinator, 9);
+
+      history.execute(command);
+
+      expect(command.surfaces, isNull);
+      expect(command.estimatedRetainedBytes(undone: false), 0);
+      expect(coordinator.currentSurfaceOf(key), same(standing));
+    });
+
+    test('🚨into the cel AS IT STANDS when the step lands — over what was '
+        'drawn meanwhile', () {
+      final (:coordinator, :history) = cel(
+        texts: [
+          textOf(3, plate: {a: red}),
+        ],
+      );
+      final command = turn(coordinator, 3);
+      // The cel is drawn on between the step being made and its landing.
+      final drawnOn = coordinator.currentSurfaceOf(key).putTiles([
+        (coord: b, tile: blue),
+      ]);
+      coordinator.restoreSurfaceSnapshot(key, drawnOn);
+
+      history.execute(command);
+
+      final landed = coordinator.currentSurfaceOf(key);
+      expect(landed.tileAt(b), same(blue), reason: 'what was drawn meanwhile');
+      expect(landed.texts, isEmpty);
+      expect(pixelOf(landed, a, 2, 2), [200, 0, 0, 255]);
+      history.undo();
+      expect(coordinator.currentSurfaceOf(key), drawnOn);
+    });
+
+    test('the store hears of it', () {
+      final (:coordinator, history: _) = cel(
+        texts: [
+          textOf(3, plate: {a: red}),
+        ],
+      );
+      final revision = coordinator.frameStore
+          .getOrCreateFrame(key)
+          .sourceRevision;
+
+      turn(coordinator, 3).execute();
+
+      expect(
+        coordinator.frameStore.getOrCreateFrame(key).sourceRevision,
+        greaterThan(revision),
+      );
+    });
+  });
+
   group('where it lands', () {
     test('🚨on the cel AS IT STANDS when the step lands — what was drawn '
         'meanwhile stays', () {
@@ -280,6 +395,14 @@ void main() {
           id: 1,
         ).description,
         'Delete text',
+      );
+      expect(
+        CelTextEditCommand.intoDrawing(
+          coordinator: coordinator,
+          frameKey: key,
+          id: 1,
+        ).description,
+        'Text to drawing',
       );
     });
   });

@@ -93,6 +93,12 @@ class _Holding {
   /// ⛔THE HOLD'S, AND SO GONE WITH IT: a text let go of and taken again
   /// has its cross in the middle, with nothing anywhere to put back.
   Offset crossOffCentre = Offset.zero;
+
+  /// Whether this text was let go of TO BECOME DRAWING
+  /// ([CelTextTool.turnIntoDrawing]): once it has landed it is laid into
+  /// its cel's drawing, and for the tool it is no text from the moment
+  /// this is set ([CelTextTool.takeableOn]).
+  bool becomesDrawing = false;
 }
 
 /// Tells of one thing, and holds nothing.
@@ -205,19 +211,45 @@ class CelTextTool extends ChangeNotifier {
   List<CelTextBox> restingBoxesOn(BrushFrameKey key, BitmapSurface cel) {
     final leaving = [
       for (final holding in _leaving)
-        if (holding.session.key == key) holding.session,
+        if (holding.session.key == key) holding,
     ];
     final held = _held?.session;
     final spokenFor = {
-      for (final session in leaving) session.textId,
+      for (final holding in leaving) holding.session.textId,
       if (held != null && held.key == key) held.textId,
     };
     return [
       for (final text in celTextsInReach(cel))
         if (!spokenFor.contains(text.id)) celTextBoxOf(text.content),
-      for (final session in leaving)
-        // A text with no letters is not there, shown or landed.
-        if (!session.shown.content.isEmpty) session.shown.layout.onCanvas,
+      for (final _Holding(:session, :becomesDrawing) in leaving)
+        // A text with no letters is not there, shown or landed — and one
+        // on its way into the drawing is no text of the tool's any more
+        // ([takeableOn]).
+        if (!session.shown.content.isEmpty && !becomesDrawing)
+          session.shown.layout.onCanvas,
+    ];
+  }
+
+  /// The texts of [cel] a hand can take hold of now, bottom to top: the
+  /// ones in reach ([celTextsInReach]) but for those let go of to become
+  /// drawing ([turnIntoDrawing]) whose last want is still being set.
+  ///
+  /// 🚨FOR THE TOOL SUCH A TEXT IS DRAWING ALREADY — it wears no box
+  /// ([restingBoxesOn]), a press finds nothing of it and the settings'
+  /// list has no row for it. Taken in hand again it would be a text under
+  /// the hand at the moment the drawing took it, and what the hand then
+  /// landed would set it on the cel a second time, over its own pixels.
+  List<CelText> takeableOn(CelTextCel cel) {
+    final turning = {
+      for (final holding in _leaving)
+        if (holding.becomesDrawing && holding.session.key == cel.key)
+          holding.session.textId,
+    };
+    return [
+      for (final text in celTextsInReach(
+        cel.coordinator.currentSurfaceOf(cel.key),
+      ))
+        if (!turning.contains(text.id)) text,
     ];
   }
 
@@ -523,6 +555,30 @@ class CelTextTool extends ChangeNotifier {
     _changed();
   }
 
+  /// Turns the text in hand into DRAWING and lets go of it: its pixels are
+  /// the cel's drawing from then on, and it is no text any more.
+  ///
+  /// 🗣️유저 2026-10-06: 「텍스트 그림으로 굳히기 아이디어 좋네. … 나중에
+  /// 도구설정에 등장시키기로. 동작은 텍스트 선택하면 해당 버튼 활성화색」.
+  ///
+  /// ★TWO STEPS, NOT ONE, where the text had something to land. Leaving
+  /// the hand is [confirm] — what was typed or set lands first, the step a
+  /// visit to a text always is — and turning into drawing is the step
+  /// after it: one Ctrl+Z gives the text back AS A TEXT, as it was when
+  /// the button was pressed, and not the cel as it was before the visit.
+  ///
+  /// A text whose last want is still being set turns once it is set: what
+  /// turns is a whole text, as what lands is ([_landHeld]). A text with no
+  /// letters is simply let go of.
+  void turnIntoDrawing() {
+    final held = _held;
+    if (held == null) {
+      return;
+    }
+    held.becomesDrawing = true;
+    confirm();
+  }
+
   /// Lands everything this tool holds AS IT IS SHOWN, now — for whoever
   /// cannot wait a frame: a step of history about to be taken, a panel
   /// going away. A want still being set is given up; what the person saw
@@ -554,11 +610,14 @@ class CelTextTool extends ChangeNotifier {
     _dropLetters();
     final held = _held;
     _held = null;
-    for (final holding in [..._leaving, ?held]) {
-      _land(holding);
-      _retire(holding.session);
+    // In the order they were let go of, the one in hand last — and each
+    // out of [_leaving] before it lands, as [_landOut] asks.
+    if (held != null) {
+      _leaving.add(held);
     }
-    _leaving.clear();
+    while (_leaving.isNotEmpty) {
+      _landOut(_leaving.removeAt(0));
+    }
   }
 
   /// Whether anything is in hand or still owed a landing — what a step of
@@ -577,9 +636,10 @@ class CelTextTool extends ChangeNotifier {
       _held = null;
     }
     if (held.session.settled) {
-      _land(held);
       if (letGo) {
-        _retire(held.session);
+        _landOut(held);
+      } else {
+        _land(held);
       }
       return;
     }
@@ -607,12 +667,74 @@ class CelTextTool extends ChangeNotifier {
       // on, and lands when it ends.
       return;
     }
-    _land(held);
     if (leaving >= 0) {
       _leaving.removeAt(leaving);
-      _retire(held.session);
+      _landOut(held);
+    } else {
+      _land(held);
     }
     _changed();
+  }
+
+  /// THE WAY OUT OF THE HAND: lands [holding] — let go of, and out of
+  /// [_leaving] — as it is shown, turns it into its cel's drawing where it
+  /// was let go of for that ([turnIntoDrawing]), and is done with it.
+  void _landOut(_Holding holding) {
+    _land(holding);
+    if (holding.becomesDrawing) {
+      _turnIntoDrawing(holding);
+    }
+    _retire(holding.session);
+  }
+
+  /// Turns [holding]'s text — landed, so on its cel as it was shown — into
+  /// the cel's drawing, as one step.
+  ///
+  /// 🚨THE TEXTS UNDER IT THAT IT COVERS GO WITH IT
+  /// (`celSurfaceWithTextAsDrawing`), and one of those can be in this hand
+  /// or still owed its landing. Each is put on the cel AS IT IS SHOWN first
+  /// — what turns into drawing is what the person was looking at — and one
+  /// the drawing then took is let go of with nothing more: no text is left
+  /// for what it still wanted to be set on.
+  void _turnIntoDrawing(_Holding holding) {
+    final _Holding(:session, :cel) = holding;
+    final standing = session.standing;
+    if (standing == null) {
+      // No letters: its landing took it off the cel, or it never was on it.
+      return;
+    }
+    final beside = [
+      for (final other in [..._leaving, ?_held])
+        if (other.session.key == session.key) other,
+    ];
+    for (final other in beside) {
+      _land(other);
+    }
+    host.run(
+      CelTextEditCommand.intoDrawing(
+        coordinator: cel.coordinator,
+        frameKey: cel.key,
+        id: standing.id,
+        cacheInvalidationSink: cel.cacheInvalidationSink,
+      ),
+    );
+    final left = {
+      for (final text in cel.coordinator.currentSurfaceOf(cel.key).texts)
+        text.id,
+    };
+    for (final other in beside) {
+      final id = other.session.textId;
+      if (id == null || left.contains(id)) {
+        continue;
+      }
+      if (identical(other, _held)) {
+        _dropLetters();
+        _held = null;
+      } else {
+        _leaving.remove(other);
+      }
+      _retire(other.session);
+    }
   }
 
   /// Puts [holding]'s text on its cel as it is shown, as one step, and

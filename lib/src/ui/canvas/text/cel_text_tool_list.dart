@@ -40,7 +40,7 @@ class CelTextList {
       // A text that is not on its cel yet will be the topmost when it is.
       if (inHand != null && inHand.standing == null && !typed!.isEmpty)
         (id: null, text: typed.text, inHand: true),
-      for (final text in _inReach(cel).reversed)
+      for (final text in _tool.takeableOn(cel).reversed)
         if (inHand != null && text.id == inHand.textId)
           (id: text.id, text: typed!.text, inHand: true)
         else
@@ -60,7 +60,10 @@ class CelTextList {
       _tool.stopTyping();
       return;
     }
-    final text = _inReach(cel).where((text) => text.id == id).firstOrNull;
+    final text = _tool
+        .takeableOn(cel)
+        .where((text) => text.id == id)
+        .firstOrNull;
     if (text != null) {
       _tool.takeText(cel, text);
     }
@@ -80,11 +83,6 @@ class CelTextList {
       _takeOff(cel, id);
     }
   }
-
-  /// The texts of [cel] the tool can reach now, bottom to top
-  /// ([celTextsInReach]).
-  static List<CelText> _inReach(CelTextCel cel) =>
-      celTextsInReach(cel.coordinator.currentSurfaceOf(cel.key)).toList();
 
   /// Whether the listed text [id] of [cel] is the one in hand — a new text
   /// that is not on its cel yet is listed with no id, and has none.

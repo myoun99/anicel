@@ -1,5 +1,6 @@
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
+import 'package:anicel/src/services/cel_text_laying.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -59,13 +60,13 @@ void main() {
     return c;
   }
 
-  /// Presses the row [name] of the settings, scrolled to first: the panel
-  /// is shorter than its rows, and a row far enough down is not even built
-  /// until the list reaches it.
+  /// Brings the row [name] of the settings on screen: the panel is shorter
+  /// than its rows, and a row far enough down is not even built until the
+  /// list reaches it.
   ///
   /// ⚠️The list is MOVED, not dragged: a drag that starts on a bar is the
   /// bar's (the press law), and the middle of this list is bars.
-  Future<void> press(WidgetTester tester, String name) async {
+  Future<void> reach(WidgetTester tester, String name) async {
     if (row(name).evaluate().isEmpty) {
       final list = tester
           .state<ScrollableState>(
@@ -82,6 +83,11 @@ void main() {
     }
     await tester.ensureVisible(row(name));
     await pumpFrames(tester);
+  }
+
+  /// Presses the row [name] of the settings, brought on screen first.
+  Future<void> press(WidgetTester tester, String name) async {
+    await reach(tester, name);
     await tester.tap(row(name));
     await pumpFrames(tester);
   }
@@ -198,6 +204,84 @@ void main() {
     await pumpFrames(tester);
 
     expect(celOf(tester).texts.single.content.text, 'hi');
+  });
+
+  // 🗣️유저 2026-10-06: 「텍스트 그림으로 굳히기 아이디어 좋네 … 나중에
+  // 도구설정에 등장시키기로. 동작은 텍스트 선택하면 해당 버튼 활성화색」.
+  group('「그림으로 굳히기」', () {
+    FilledButton button(WidgetTester tester) =>
+        tester.widget<FilledButton>(row('into-drawing'));
+
+    testWidgets('🚨pressed, the text in hand is its cel\'s DRAWING: the '
+        'canvas shows what it showed, to the byte, the hand is free — and '
+        'one undo gives the text back', (tester) async {
+      final c = await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      final showed = celSurfaceWithTextsLaid(celOf(tester));
+      final x = c.dx.toInt() + 2;
+      final y = c.dy.toInt() + 2;
+      expect(celOf(tester).tiles, isEmpty, reason: '⛔fixture: bare paper');
+      expect(shownPixel(showed, x, y)![3], 255, reason: '⛔fixture: its ink');
+      await reach(tester, 'into-drawing');
+      expect(button(tester).onPressed, isNotNull, reason: 'lit');
+
+      await press(tester, 'into-drawing');
+
+      final cel = celOf(tester);
+      expect(cel.texts, isEmpty);
+      expect(cel.tiles, isNotEmpty, reason: 'its pixels are the drawing');
+      expect(celSurfaceWithTextsLaid(cel), showed);
+      expect(canvasShows(tester), showed);
+      expect(textToolOf(tester).session, isNull);
+      expect(history.undoCount, steps + 1);
+      expect(button(tester).onPressed, isNull, reason: 'out again');
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts.single.content.text, 'hi');
+      expect(celOf(tester).tiles, isEmpty);
+      expect(celSurfaceWithTextsLaid(celOf(tester)), showed);
+    });
+
+    testWidgets('🚨pressed while the text is TYPED INTO, what was typed '
+        'lands first — a step of its own — and one undo gives back the '
+        'text as it was typed', (tester) async {
+      await pumpWithSettings(tester);
+      final history = sessionOf(tester).historyManager;
+      final c = canvasPixelInView(tester);
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'hi');
+      final steps = history.undoCount;
+      expect(celOf(tester).texts, isEmpty, reason: '⛔fixture: not landed');
+      expect(textToolOf(tester).letters, isNotNull, reason: '⛔fixture');
+
+      await press(tester, 'into-drawing');
+
+      expect(celOf(tester).texts, isEmpty);
+      expect(celOf(tester).tiles, isNotEmpty);
+      expect(textToolOf(tester).session, isNull);
+      expect(textField(), findsNothing);
+      expect(history.undoCount, steps + 2);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts.single.content.text, 'hi');
+      expect(celOf(tester).tiles, isEmpty);
+    });
+
+    testWidgets('with nothing in hand it is there, and out', (tester) async {
+      await pumpWithSettings(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+
+      await press(tester, 'into-drawing');
+
+      expect(button(tester).onPressed, isNull);
+      expect(history.undoCount, steps);
+    });
   });
 
   group('the list of the cel\'s texts', () {

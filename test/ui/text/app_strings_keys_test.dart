@@ -677,6 +677,7 @@ void main() {
     'textToolWidthFixed': (s) => s.textToolWidthFixed,
     'textToolLineHeight': (s) => s.textToolLineHeight,
     'textToolBackground': (s) => s.textToolBackground,
+    'textToolIntoDrawing': (s) => s.textToolIntoDrawing,
     'textToolFontImport': (s) => s.textToolFontImport,
     'textToolFontDelete': (s) => s.textToolFontDelete,
     'textToolFontsOfProject': (s) => s.textToolFontsOfProject,

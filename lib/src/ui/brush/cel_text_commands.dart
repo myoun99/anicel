@@ -105,6 +105,10 @@ class CelTextCommands extends ChangeNotifier {
   /// Takes the text in hand off its cel.
   void deleteText() => _tool?.deleteText();
 
+  /// Turns the text in hand into its cel's drawing
+  /// ([CelTextTool.turnIntoDrawing]).
+  void turnIntoDrawing() => _tool?.turnIntoDrawing();
+
   /// Whether the letters being typed have a step to take back — and to put
   /// back ([CelTextEditingController]).
   bool get canUndoLetters => _tool?.letters?.canUndo ?? false;

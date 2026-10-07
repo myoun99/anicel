@@ -28,6 +28,7 @@ import 'dart:typed_data';
 
 import '../models/bitmap_surface.dart';
 import '../models/bitmap_tile.dart';
+import '../models/cel_text.dart';
 import '../models/tile_coord.dart';
 import 'brush_stamp_span_kernel.dart';
 
@@ -61,6 +62,96 @@ BitmapSurface celSurfaceWithTextsLaid(BitmapSurface surface) {
   _laidSurfaces[surface] = result;
   return result;
 }
+
+/// [surface] with the text [id] it carries TURNED INTO DRAWING: no text of
+/// the surface any more, its pixels the drawing's own where they lay.
+/// [surface] itself when it carries no such text.
+///
+/// 🗣️유저 2026-10-06: 「텍스트 그림으로 굳히기 아이디어 좋네 … 나중에
+/// 도구설정에 등장시키기로」.
+///
+/// 🚨★★★WHAT THE CEL SHOWS DOES NOT CHANGE BY A BYTE — this is the header's
+/// promise kept, 「turning a text into drawing is keeping this result」:
+/// the drawing it leaves IS the laying of the texts turned
+/// ([celSurfaceWithTextsLaid]), with the others set over it again.
+///
+/// ⚠️WHICH IS WHY A TEXT UNDER IT THAT IT COVERS GOES WITH IT. The drawing
+/// is under every text (유저 2026-10-02: 「그림/텍스트/텍스트」). Turned
+/// alone, a text that stood OVER another would be under it from then on
+/// wherever the two share a pixel — behind its letters, or gone behind the
+/// box drawn at its back. So the texts turned are [id]'s and, under it,
+/// every one that shares a pixel of ink with one already turned
+/// ([_turnedWith]); a text that shares none stays a text, as does every
+/// text above.
+///
+/// (🧭Whether the covered ones go with it, or the one named goes alone and
+/// the picture changes there, is asked of 유저 as `R9-rest-Q5`; this is the
+/// answer this session recommended.)
+BitmapSurface celSurfaceWithTextAsDrawing(BitmapSurface surface, int id) {
+  final turned = _turnedWith(surface.texts, id);
+  if (turned.isEmpty) {
+    return surface;
+  }
+  final gone = {for (final text in turned) text.id};
+  return celSurfaceWithTextsLaid(surface.withTexts(turned)).withTexts([
+    for (final text in surface.texts)
+      if (!gone.contains(text.id)) text,
+  ]);
+}
+
+/// The texts of [texts] — bottom → top — that turn into drawing with the
+/// text [id]: itself and, under it, every text that shares a pixel of ink
+/// with one of these. Bottom → top; none when no text is [id].
+///
+/// Read DOWNWARD from [id], once: by the time a text is asked, every text
+/// over it has its answer — and only one over it can cover it.
+List<CelText> _turnedWith(List<CelText> texts, int id) {
+  final at = texts.indexWhere((text) => text.id == id);
+  if (at < 0) {
+    return const [];
+  }
+  final turned = [texts[at]];
+  for (var under = at - 1; under >= 0; under -= 1) {
+    final text = texts[under];
+    if (turned.any((over) => _shareInk(text.plate, over.plate))) {
+      turned.insert(0, text);
+    }
+  }
+  return turned;
+}
+
+/// Whether two plates have ink in one pixel: a pixel where laying one and
+/// then the other is not laying the other and then the one.
+bool _shareInk(
+  Map<TileCoord, BitmapTile> one,
+  Map<TileCoord, BitmapTile> other,
+) {
+  for (final entry in one.entries) {
+    final over = other[entry.key];
+    if (over != null && _tilesShareInk(entry.value, over)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Whether two tiles of one grid have ink in one pixel — ink being alpha,
+/// as it is for the stamp that lays them: a colour behind alpha 0 lands
+/// nowhere.
+bool _tilesShareInk(BitmapTile one, BitmapTile other) => one.readPixels(
+  (_, mine) => other.readPixels((_, theirs) {
+    for (
+      var alpha = BitmapTile.bytesPerPixel - 1;
+      alpha < mine.length;
+      alpha += BitmapTile.bytesPerPixel
+    ) {
+      if (mine[alpha] != 0 && theirs[alpha] != 0) {
+        return true;
+      }
+    }
+    return false;
+  }),
+);
 
 /// The plates laid over each coordinate of [surface], bottom → top — every
 /// text's tile there, in the texts' order. Null when it carries no text.

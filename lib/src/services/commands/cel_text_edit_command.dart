@@ -1,17 +1,20 @@
 import '../../core/collection_equality.dart';
+import '../../models/bitmap_surface.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/cel_text.dart';
 import '../../models/tile_coord.dart';
 import '../brush_frame_editing_coordinator.dart';
 import '../cache_invalidation_executor.dart';
+import '../cel_text_laying.dart';
 import '../command.dart';
 import '../undo_surface_snapshot.dart';
 import 'cel_snapshot_step.dart';
 
 /// ONE EDIT OF THE TEXTS A CEL CARRIES, as one undoable step (R9-rest, the
 /// text tool): a text set on the cel — a new one, or one it already carries
-/// set differently — or a text taken off it.
+/// set differently — or a text taken off it: gone, or turned into the
+/// cel's drawing.
 ///
 /// The text tool writes NOTHING while a text is being typed or dragged: it
 /// shows the cel with the edit laid in, held by the panel, the way a move
@@ -39,7 +42,8 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
     this.cacheInvalidationSink,
     this.description = 'Set text',
   }) : _textId = id,
-       _put = (content: content, plate: plate);
+       _put = (content: content, plate: plate),
+       _leavesItsPixels = false;
 
   /// Takes the text [id] off [frameKey]'s cel.
   CelTextEditCommand.remove({
@@ -49,7 +53,22 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
     this.cacheInvalidationSink,
     this.description = 'Delete text',
   }) : _textId = id,
-       _put = null;
+       _put = null,
+       _leavesItsPixels = false;
+
+  /// Turns the text [id] of [frameKey]'s cel into its DRAWING: off the cel
+  /// as a text, its pixels the drawing's where they lay — with the texts
+  /// under it that it covers, so that what the cel shows is the same to
+  /// the byte ([celSurfaceWithTextAsDrawing]).
+  CelTextEditCommand.intoDrawing({
+    required this.coordinator,
+    required this.frameKey,
+    required int id,
+    this.cacheInvalidationSink,
+    this.description = 'Text to drawing',
+  }) : _textId = id,
+       _put = null,
+       _leavesItsPixels = true;
 
   @override
   final BrushFrameEditingCoordinator coordinator;
@@ -69,6 +88,10 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
   /// is pixels, and from then on the pair holds them where the budget can
   /// weigh and park them. Null for a `remove`.
   ({CelTextContent content, Map<TileCoord, BitmapTile> plate})? _put;
+
+  /// Whether the text taken off the cel leaves its pixels to the drawing
+  /// ([CelTextEditCommand.intoDrawing]).
+  final bool _leavesItsPixels;
 
   /// Diagnostic for the accumulation guard, as
   /// `BrushStrokeHistoryCommand.retainsCommitPayload` is.
@@ -90,14 +113,14 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
     }
     _landed = true;
     final before = coordinator.currentSurfaceOf(frameKey);
-    final texts = _edited(before.texts);
+    final edited = _edited(before);
     _put = null;
-    if (listEquals(texts, before.texts)) {
+    if (identical(edited, before)) {
       return;
     }
     coordinator.restoreSurfaceSnapshot(
       frameKey,
-      before.withTexts(texts),
+      edited,
       cacheInvalidationSink: cacheInvalidationSink,
     );
     _surfaces = UndoSurfacePair(
@@ -107,8 +130,19 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
     );
   }
 
-  /// [texts] as this edit leaves them.
-  List<CelText> _edited(List<CelText> texts) {
+  /// [before] as this edit leaves it — [before] itself where it changes
+  /// nothing.
+  BitmapSurface _edited(BitmapSurface before) {
+    if (_leavesItsPixels) {
+      return celSurfaceWithTextAsDrawing(before, _textId!);
+    }
+    final texts = _textsEdited(before.texts);
+    return listEquals(texts, before.texts) ? before : before.withTexts(texts);
+  }
+
+  /// [texts] as a text set on the cel, or one taken off it and gone,
+  /// leaves them.
+  List<CelText> _textsEdited(List<CelText> texts) {
     final put = _put;
     if (put == null) {
       return [

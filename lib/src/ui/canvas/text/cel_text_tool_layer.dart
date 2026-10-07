@@ -182,7 +182,7 @@ class _CelTextToolLayerState extends State<CelTextToolLayer> {
   /// The faces letters are set in are others — one arrived in the engine,
   /// one left the device: which texts the tool can reach, and where their
   /// boxes stand, is read again, here and by whoever lists them
-  /// ([celTextsInReach]).
+  /// ([CelTextTool.takeableOn]).
   void _facesChanged() => _tool.celTextsChanged();
 
   /// The keyboard is the text's while its letters are held, and the caret
