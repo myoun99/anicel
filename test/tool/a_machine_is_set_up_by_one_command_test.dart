@@ -365,6 +365,45 @@ void main() {
     });
   });
 
+  // 2026-10-07, the Surface: the first commit of the first lane was refused
+  // — 「Author identity unknown」. A machine nobody has committed from has
+  // no author, and setting one by hand was a step no list named.
+  group('a clone with no commit author is given the trunk\'s', () {
+    Map<String, String> given({String name = '', String email = ''}) =>
+        authorGiven(
+          name: name,
+          email: email,
+          trunkName: 'Trunk Person\n',
+          trunkEmail: ' trunk@users.noreply.example ',
+        );
+
+    test('both, where it has neither — as the trunk writes them', () {
+      expect(given(), {
+        'user.name': 'Trunk Person',
+        'user.email': 'trunk@users.noreply.example',
+      });
+    });
+
+    test('⛔what a person set is theirs: only the missing one is given, and '
+        'a clone that has both is given nothing', () {
+      expect(given(name: 'Someone'), {
+        'user.email': 'trunk@users.noreply.example',
+      });
+      expect(given(email: 'someone@example.com'), {
+        'user.name': 'Trunk Person',
+      });
+      expect(given(name: 'Someone', email: 'someone@example.com'), isEmpty);
+    });
+
+    test('⛔a trunk that names no author gives nothing — an empty name is '
+        'not a name', () {
+      expect(
+        authorGiven(name: '', email: '', trunkName: '', trunkEmail: ' '),
+        isEmpty,
+      );
+    });
+  });
+
   // 2026-10-07, the Surface: the second clone showed `.claude/` as work to
   // commit. The first machine had hidden it with files only it has — its
   // global ignore and its clone's info/exclude — and a commit on a machine

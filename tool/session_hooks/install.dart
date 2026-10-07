@@ -1,6 +1,9 @@
 // Sets up THIS MACHINE'S clone for its sessions: the hooks, the memory
 // folder and the board's address, written into `.claude/settings.local.json`
 // — the one settings file that is this machine's alone (git ignores it).
+// And two things in the clone's own git settings: where its git hooks are,
+// and — only where the clone has none — the author it commits as, the
+// trunk's ([authorGiven]).
 //
 //   dart run tool/session_hooks/install.dart --board <folder> --memory <folder>
 //       [--home <http://host:4321>] [--old-memory <folder>] [--dry]
@@ -238,6 +241,29 @@ Map<String, dynamic> settingsWith(
   );
 }
 
+/// The git settings this clone is GIVEN so it can commit: for each of the
+/// author's name and address it does not have, the one the trunk's commits
+/// carry.
+///
+/// 2026-10-07, the Surface: a machine nobody has committed from has no
+/// author, and git refused the first commit of its first lane (「Author
+/// identity unknown」). ⚠️Only what is MISSING, never what is there: a name
+/// or an address a person set — in this clone or for the whole machine — is
+/// theirs. And the trunk's own, not one written here: every commit this
+/// machine sends is rebased onto that trunk, and a second address in its
+/// history is one more thing published.
+Map<String, String> authorGiven({
+  required String name,
+  required String email,
+  required String trunkName,
+  required String trunkEmail,
+}) => {
+  if (name.trim().isEmpty && trunkName.trim().isNotEmpty)
+    'user.name': trunkName.trim(),
+  if (email.trim().isEmpty && trunkEmail.trim().isNotEmpty)
+    'user.email': trunkEmail.trim(),
+};
+
 /// [path] the way a POSIX shell and a settings file both read it.
 String slashed(String path) {
   final forward = path.replaceAll('\\', '/');
@@ -287,19 +313,29 @@ void main(List<String> args) {
   final kept = File('${setup.board}/.settings.local.json.before-install');
   if (file.existsSync() && !kept.existsSync()) kept.writeAsStringSync(before);
   file.writeAsStringSync(after);
-  Process.runSync('git', [
-    '-C',
-    setup.repo,
-    'config',
-    'core.hooksPath',
-    '.githooks',
-  ]);
+  String git(List<String> asked) =>
+      '${Process.runSync('git', ['-C', setup.repo, ...asked]).stdout}'.trim();
+  git(['config', 'core.hooksPath', '.githooks']);
+  final trunk = git(['log', '-1', '--format=%an%n%ae', 'master']).split('\n');
+  final given = authorGiven(
+    name: git(['config', '--get', 'user.name']),
+    email: git(['config', '--get', 'user.email']),
+    trunkName: trunk.first,
+    trunkEmail: trunk.length > 1 ? trunk[1] : '',
+  );
+  for (final entry in given.entries) {
+    git(['config', '--local', entry.key, entry.value]);
+  }
 
   stdout.writeln('install: ${file.path}');
   stdout.writeln('  이 기계      ${name.isEmpty ? '보드를 가진 기계' : name}');
   stdout.writeln('  보드 폴더    ${setup.board}');
   stdout.writeln('  메모리 폴더  ${setup.memory}');
   stdout.writeln('  보드 주소    ${boardAddressOf(setup)}');
+  if (given.isNotEmpty) {
+    stdout.writeln('  커밋 작성자  ${given.values.join(' · ')} — 이 클론에 '
+        '없어서, 본진의 커밋과 같은 것을 이 클론에만 넣었습니다.');
+  }
   if (setup.home != null &&
       !File('${setup.board}/.board-token').existsSync()) {
     stdout.writeln('⚠️비밀값 파일이 아직 없습니다 — 보드를 가진 기계의 보드 '
