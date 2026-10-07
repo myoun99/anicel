@@ -8,6 +8,7 @@ import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timesheet_ink_keys.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/canvas_selection_shape.dart';
@@ -181,6 +182,27 @@ void main() {
     expect(identical(projects.active, only), isFalse);
     expect(identical(workspaceOf(tester).session, projects.active), isTrue);
     expect(find.text(untitled(2)), findsOneWidget);
+  });
+
+  // 🗣️F-211 (유저 2026-09-28): 「… 1번인덱스에 프레임도 만들어서 키자마자
+  // 그리는게 가능하도록」 — of a NEW project, whichever door makes it. (The
+  // app's own opening is `the_app_opens_on_a_cel_to_draw_on_test`.)
+  testWidgets('F-211: a new project has layer A\'s first cel — from the menu, '
+      'and where the last tab closed', (tester) async {
+    final projects = await pumpApp(tester);
+    List<int> celsOnTheDrawingRows() => [
+      for (final layer in projects.active.requireActiveCut.layers)
+        if (layer.kind == LayerKind.animation) layer.frames.length,
+    ];
+    expect(celsOnTheDrawingRows(), [0], reason: 'premise: the bare project');
+
+    await newProject(tester);
+    expect(celsOnTheDrawingRows(), [1], reason: 'File ▸ New');
+
+    await tapKey(tester, 'project-tab-close-1');
+    await tapKey(tester, 'project-tab-close-0');
+    expect(projects.sessions, hasLength(1));
+    expect(celsOnTheDrawingRows(), [1], reason: 'the last tab closed');
   });
 
   testWidgets('the marquee is the PROJECT\'s: a selection made in one tab is '
