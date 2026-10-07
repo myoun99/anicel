@@ -26,8 +26,8 @@ enum PlaybackMode {
 
   /// The clock stands until what lies ahead is there — every frame the run
   /// will play, or as much of it as the allowance holds — before it starts,
-  /// and again whenever the playhead reaches a frame that is not (Clip
-  /// Studio's 「재생 전에 렌더링」). A film is not baked whole: 1500 cuts are
+  /// and again whenever the playhead reaches a frame that is not (유저:
+  /// 「클튜처럼 재생전굽기」). A film is not baked whole: 1500 cuts are
   /// hundreds of gigabytes of pictures, so what fills is the window.
   renderFirst,
 }

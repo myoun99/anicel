@@ -321,8 +321,16 @@ void main() {
 
     // The ruler is dragged onto a frame whose picture is not there.
     missing.add(7);
+    final stoodAt = device.positionSamples;
     controller.seekToGlobalFrame(7);
     expect(controller.isWaiting, isTrue, reason: '⛔premise');
+    expect(
+      (device.positionSamples - stoodAt).abs(),
+      lessThan(4800),
+      reason: 'the device stands where it was stopped. Armed at frame 7 '
+          '(sample 33600) and stopped in the same breath, it sounds a blip '
+          'of the frame the run is waiting to show',
+    );
     expect(await _waitFor(() => !device.isPlaying), isTrue);
     expect(
       transport.clockStatus(),

@@ -205,6 +205,23 @@ void main() {
     opened.dispose();
   });
 
+  test('a file that says nothing of the playback mode plays as a new '
+      'project does — whatever the session played by before', () async {
+    File(projectPath).writeAsBytesSync(
+      buildAnicelArchiveBytes(project: twoCuts(), cels: const []),
+    );
+
+    final opened = await openedSession(
+      projectPath,
+      before: (session) => session.playbackRig.setPlaybackMode(
+        PlaybackMode.values.firstWhere((mode) => mode != defaultPlaybackMode),
+      ),
+    );
+
+    expect(opened.playbackRig.playbackMode, defaultPlaybackMode);
+    opened.dispose();
+  });
+
   test('🚨the playback mode comes back with the file — and picking it is no '
       'edit: no undo step, no unsaved mark (유저 답 playback-quality-undo-Q1 '
       '「언두 안 됨 — 보기 설정처럼(저장은 됨)」, of the setting whose seat it '

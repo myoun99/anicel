@@ -150,13 +150,14 @@ class PlaybackRig implements PlaybackRun {
   /// playback quality whose seat it took was (유저 답
   /// playback-quality-undo-Q1 「언두 안 됨 — 보기 설정처럼(저장은 됨)」):
   /// picking one is no edit.
-  PlaybackMode playbackMode = defaultPlaybackMode;
+  PlaybackMode get playbackMode => _playbackMode;
+  PlaybackMode _playbackMode = defaultPlaybackMode;
 
   void setPlaybackMode(PlaybackMode mode) {
-    if (playbackMode == mode) {
+    if (_playbackMode == mode) {
       return;
     }
-    playbackMode = mode;
+    _playbackMode = mode;
     // A run that waits under the old mode may not wait under the new one.
     playback.lookAgain();
     _changes.notifyChanged();

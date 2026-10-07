@@ -18,6 +18,7 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
@@ -134,6 +135,19 @@ void main() {
       },
       hasLength(PlaybackMode.values.length),
       reason: 'three modes, three names',
+    );
+    expect(
+      {
+        for (final preset in PlaybackMode.values)
+          preset: ProjectSettingsMenu.playbackModeLabel(preset),
+      },
+      {
+        PlaybackMode.skipFrames: AppText.strings.playbackModeSkipFrames,
+        PlaybackMode.everyPicture: AppText.strings.playbackModeEveryPicture,
+        PlaybackMode.renderFirst: AppText.strings.playbackModeRenderFirst,
+      },
+      reason: 'each under its own: swapped, a row picks one mode and says '
+          'another',
     );
 
     await tester.tap(
