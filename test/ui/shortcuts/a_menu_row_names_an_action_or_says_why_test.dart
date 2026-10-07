@@ -69,7 +69,8 @@ const ledger = <String, Why>{
   "menu/project_settings_menu.dart | 'project-settings-camera-size'":
       Why.owed,
   "menu/project_settings_menu.dart | 'project-settings-fps'": Why.owed,
-  "menu/project_settings_menu.dart | 'project-settings-quality'": Why.owed,
+  "menu/project_settings_menu.dart | 'project-settings-playback-mode'":
+      Why.owed,
   // One row per tab that did not fit the strip: picking it shows that
   // panel, which a panel's own action also does.
   "panels/editor_panel_tabs.dart | 'panel-tab-overflow-item-\${tab.id}'":
