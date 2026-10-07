@@ -22,6 +22,7 @@ import 'cel_text_editing_controller.dart';
 import 'cel_text_session.dart';
 
 part 'cel_text_tool_list.dart';
+part 'cel_text_tool_way_out.dart';
 
 /// A cel a text can be set on: its key, what holds its picture, the canvas
 /// it is cut for, and who is told when it changes.
@@ -175,9 +176,9 @@ class CelTextTool extends ChangeNotifier {
   Listenable get crossCarried => _crossCarried;
   final _Telling _crossCarried = _Telling();
 
-  /// Texts let go of whose last want was still being set: shown until it
-  /// is, landed then, and gone.
-  final List<_Holding> _leaving = [];
+  /// The way out of the hand: the landing of what it lets go of, and the
+  /// texts let go of that still owe theirs ([_CelTextWayOut]).
+  late final _CelTextWayOut _wayOut = _CelTextWayOut(this);
 
   bool _disposed = false;
 
@@ -188,7 +189,7 @@ class CelTextTool extends ChangeNotifier {
   /// cel that differs from what the cel carries.
   BitmapSurface? shownSurfaceFor(BrushFrameKey key, BitmapSurface cel) {
     var surface = cel;
-    for (final leaving in _leaving) {
+    for (final leaving in _wayOut.leaving) {
       if (leaving.session.key == key) {
         surface = leaving.session.shownOver(surface);
       }
@@ -210,7 +211,7 @@ class CelTextTool extends ChangeNotifier {
   /// one in hand wears its own ([session]), which says it is the one.
   List<CelTextBox> restingBoxesOn(BrushFrameKey key, BitmapSurface cel) {
     final leaving = [
-      for (final holding in _leaving)
+      for (final holding in _wayOut.leaving)
         if (holding.session.key == key) holding,
     ];
     final held = _held?.session;
@@ -241,7 +242,7 @@ class CelTextTool extends ChangeNotifier {
   /// landed would set it on the cel a second time, over its own pixels.
   List<CelText> takeableOn(CelTextCel cel) {
     final turning = {
-      for (final holding in _leaving)
+      for (final holding in _wayOut.leaving)
         if (holding.becomesDrawing && holding.session.key == cel.key)
           holding.session.textId,
     };
@@ -366,7 +367,7 @@ class CelTextTool extends ChangeNotifier {
     if (!_dropLetters()) {
       return;
     }
-    _landHeld(thenLetGo: false);
+    _wayOut.landHeld(thenLetGo: false);
     _changed();
   }
 
@@ -420,7 +421,7 @@ class CelTextTool extends ChangeNotifier {
   void landEdit() {
     _editGoesOn = false;
     if (_letters == null) {
-      _landHeld(thenLetGo: false);
+      _wayOut.landHeld(thenLetGo: false);
     }
   }
 
@@ -527,7 +528,7 @@ class CelTextTool extends ChangeNotifier {
       return;
     }
     _dropLetters();
-    _landHeld(thenLetGo: true);
+    _wayOut.landHeld(thenLetGo: true);
     _changed();
   }
 
@@ -568,8 +569,8 @@ class CelTextTool extends ChangeNotifier {
   /// the button was pressed, and not the cel as it was before the visit.
   ///
   /// A text whose last want is still being set turns once it is set: what
-  /// turns is a whole text, as what lands is ([_landHeld]). A text with no
-  /// letters is simply let go of.
+  /// turns is a whole text, as what lands is ([_CelTextWayOut.landHeld]). A
+  /// text with no letters is simply let go of.
   void turnIntoDrawing() {
     final held = _held;
     if (held == null) {
@@ -584,7 +585,7 @@ class CelTextTool extends ChangeNotifier {
   /// going away. A want still being set is given up; what the person saw
   /// is what lands.
   void landNow() {
-    _landAll();
+    _wayOut.landAll();
     _changed();
   }
 
@@ -598,177 +599,11 @@ class CelTextTool extends ChangeNotifier {
   ///
   /// Answers whether anything landed. (Whoever draws the canvas hears of it
   /// from the text itself, which then stands on what the cel carries.)
-  bool landShown() {
-    var landed = false;
-    for (final holding in [..._leaving, ?_held]) {
-      landed = _land(holding) || landed;
-    }
-    return landed;
-  }
-
-  void _landAll() {
-    _dropLetters();
-    final held = _held;
-    _held = null;
-    // In the order they were let go of, the one in hand last — and each
-    // out of [_leaving] before it lands, as [_landOut] asks.
-    if (held != null) {
-      _leaving.add(held);
-    }
-    while (_leaving.isNotEmpty) {
-      _landOut(_leaving.removeAt(0));
-    }
-  }
+  bool landShown() => _wayOut.landShown();
 
   /// Whether anything is in hand or still owed a landing — what a step of
   /// history asks before it is taken.
-  bool get holdsAnything => _held != null || _leaving.isNotEmpty;
-
-  void _landHeld({required bool thenLetGo}) {
-    final held = _held;
-    if (held == null) {
-      return;
-    }
-    // A text with no letters is nothing to go on holding: landing takes it
-    // off its cel ([CelTextSession.landing]).
-    final letGo = thenLetGo || held.session.content.isEmpty;
-    if (letGo) {
-      _held = null;
-    }
-    if (held.session.settled) {
-      if (letGo) {
-        _landOut(held);
-      } else {
-        _land(held);
-      }
-      return;
-    }
-    // Its last want is still being set: it stays on screen until that is,
-    // and lands then — a step holds a whole text.
-    if (letGo) {
-      _leaving.add(held);
-    }
-    unawaited(_landOnceSettled(held));
-  }
-
-  Future<void> _landOnceSettled(_Holding held) async {
-    await held.session.whenSettled();
-    if (_disposed) {
-      return;
-    }
-    final stillHeld = identical(_held, held);
-    final leaving = _leaving.indexOf(held);
-    if (!stillHeld && leaving < 0) {
-      // Landed already by [landNow], or deleted.
-      return;
-    }
-    if (stillHeld && _letters != null) {
-      // The letters were taken up again before it settled: this visit goes
-      // on, and lands when it ends.
-      return;
-    }
-    if (leaving >= 0) {
-      _leaving.removeAt(leaving);
-      _landOut(held);
-    } else {
-      _land(held);
-    }
-    _changed();
-  }
-
-  /// THE WAY OUT OF THE HAND: lands [holding] — let go of, and out of
-  /// [_leaving] — as it is shown, turns it into its cel's drawing where it
-  /// was let go of for that ([turnIntoDrawing]), and is done with it.
-  void _landOut(_Holding holding) {
-    _land(holding);
-    if (holding.becomesDrawing) {
-      _turnIntoDrawing(holding);
-    }
-    _retire(holding.session);
-  }
-
-  /// Turns [holding]'s text — landed, so on its cel as it was shown — into
-  /// the cel's drawing, as one step.
-  ///
-  /// 🚨THE TEXTS UNDER IT THAT IT COVERS GO WITH IT
-  /// (`celSurfaceWithTextAsDrawing`), and one of those can be in this hand
-  /// or still owed its landing. Each is put on the cel AS IT IS SHOWN first
-  /// — what turns into drawing is what the person was looking at — and one
-  /// the drawing then took is let go of with nothing more: no text is left
-  /// for what it still wanted to be set on.
-  void _turnIntoDrawing(_Holding holding) {
-    final _Holding(:session, :cel) = holding;
-    final standing = session.standing;
-    if (standing == null) {
-      // No letters: its landing took it off the cel, or it never was on it.
-      return;
-    }
-    final beside = [
-      for (final other in [..._leaving, ?_held])
-        if (other.session.key == session.key) other,
-    ];
-    for (final other in beside) {
-      _land(other);
-    }
-    host.run(
-      CelTextEditCommand.intoDrawing(
-        coordinator: cel.coordinator,
-        frameKey: cel.key,
-        id: standing.id,
-        cacheInvalidationSink: cel.cacheInvalidationSink,
-      ),
-    );
-    final left = {
-      for (final text in cel.coordinator.currentSurfaceOf(cel.key).texts)
-        text.id,
-    };
-    for (final other in beside) {
-      final id = other.session.textId;
-      if (id == null || left.contains(id)) {
-        continue;
-      }
-      if (identical(other, _held)) {
-        _dropLetters();
-        _held = null;
-      } else {
-        _leaving.remove(other);
-      }
-      _retire(other.session);
-    }
-  }
-
-  /// Puts [holding]'s text on its cel as it is shown, as one step, and
-  /// stands the session on what the cel then carries. Whether there was
-  /// anything to put.
-  bool _land(_Holding holding) {
-    final _Holding(:session, :cel) = holding;
-    final command = session.landing(
-      coordinator: cel.coordinator,
-      cacheInvalidationSink: cel.cacheInvalidationSink,
-    );
-    if (command == null) {
-      return false;
-    }
-    // The first landing of a text whose press made its cel takes the cel
-    // with it; every later one is a step of its own.
-    final celMadeSince = holding.celMadeSince;
-    holding.celMadeSince = null;
-    host.run(
-      command,
-      withCelMadeSince: celMadeSince,
-      // What is shown is what lands ([CelTextSession.landing]) — and a
-      // text with no letters is in no face.
-      setIn: {
-        for (final span in session.shown.content.spans) ?span.style.fontFamily,
-      },
-    );
-    final id = command.textId;
-    final texts = cel.coordinator.currentSurfaceOf(cel.key).texts;
-    session.standOn(
-      id == null ? null : texts.where((text) => text.id == id).firstOrNull,
-    );
-    return true;
-  }
+  bool get holdsAnything => _held != null || _wayOut.leaving.isNotEmpty;
 
   void _retire(CelTextSession session) {
     session
@@ -790,7 +625,7 @@ class CelTextTool extends ChangeNotifier {
   void dispose() {
     // ⚠️Told nobody: the panel this would redraw is the one going away.
     _disposed = true;
-    _landAll();
+    _wayOut.landAll();
     _crossCarried.dispose();
     super.dispose();
   }

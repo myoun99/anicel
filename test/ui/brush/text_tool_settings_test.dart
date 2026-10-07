@@ -53,11 +53,13 @@ void main() {
 
   Finder row(String name) => find.byKey(ValueKey<String>('text-tool-$name'));
 
-  /// The settings over a hand that holds [text] by its box, or nothing.
+  /// The settings over a hand that holds [text] by its box, or nothing —
+  /// in a box [height] tall: as tall as their rows unless a test says less.
   Future<TextHand> pumpSettings(
     WidgetTester tester, {
     CelTextContent? text,
     TextToolOptions next = const TextToolOptions(letters: plain),
+    double height = 640,
   }) async {
     final hand = textHand(bake: bakesAtOnce, text: text, next: next);
     final commands = CelTextCommands()..bind(hand.tool);
@@ -69,7 +71,7 @@ void main() {
           body: Center(
             child: SizedBox(
               width: 260,
-              height: 640,
+              height: height,
               child: TextToolSettings(
                 options: hand.options,
                 commands: commands,
@@ -734,6 +736,54 @@ void main() {
       tester.widget<PanelFlyoutButton>(row('selected-text')).label,
       isEmpty,
     );
+  });
+
+  // The press law (CLAUDE.md): 「컨트롤 위에서 시작한 제스처는 그 컨트롤의
+  // 것이다. 스크롤은 그 외에서 일어난다」.
+  testWidgets('🚨a press on 「그림으로 굳히기」 that WOBBLES is still the '
+      'button\'s: the text turns, and the settings do not scroll', (
+    tester,
+  ) async {
+    final hand = await pumpSettings(
+      tester,
+      text: said([run('ab')]),
+      height: 320,
+    );
+    final list = tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey<String>('tool-settings-text')),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position;
+    expect(list.maxScrollExtent, greaterThan(0), reason: '⛔fixture: it scrolls');
+    // The button is at the foot of the list, and not built until the list
+    // is there — where a hand dragging DOWN has all of it to scroll.
+    list.jumpTo(list.maxScrollExtent);
+    await tester.pump();
+    final scrolledTo = list.pixels;
+    final button = tester.getRect(row('into-drawing'));
+    expect(button.height, greaterThan(24), reason: '⛔fixture: room to wobble');
+
+    // Down at its top, and past a finger's slop (18) before it comes up —
+    // inside the button all the way.
+    final finger = await tester.startGesture(
+      button.topCenter + const Offset(0, 2),
+    );
+    await tester.pump();
+    await finger.moveBy(const Offset(0, 11));
+    await tester.pump();
+    await finger.moveBy(const Offset(0, 11));
+    await tester.pump();
+    await finger.up();
+    await tester.pump();
+
+    expect(list.pixels, scrolledTo);
+    expect(pictureUnder(hand.cel).texts, isEmpty);
+    expect(hand.host.ran.single.description, 'Text to drawing');
   });
 
   group('🚨the list of the cel\'s texts — 유저: 「거기서 다른 텍스트 '

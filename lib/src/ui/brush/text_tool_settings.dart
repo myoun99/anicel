@@ -6,6 +6,7 @@ import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinFontSize;
 import '../canvas/text/cel_text_tool.dart';
 import '../dialogs/app_confirm_dialog.dart' show showAppNotice;
+import '../input/control_press_claim.dart' show ControlPressClaim, silentPress;
 import '../text/app_strings.dart';
 import '../text/canvas_letter_faces.dart';
 import '../text/imported_fonts.dart';
@@ -174,6 +175,10 @@ class _TextInHandRow extends StatelessWidget {
 /// drawing taken that day has it: ALWAYS THERE (⛔없다가 생기는 UI 금지), and
 /// lit only while a text is in hand. The filled button the transform tool's
 /// 적용 is, grey the same way when it has nothing to do.
+///
+/// The press is the button's own (`control_press_claim`): it stands in a
+/// list that scrolls, and a press that wobbles on it turns the text all the
+/// same — it never scrolls the settings.
 class _IntoDrawingButton extends StatelessWidget {
   const _IntoDrawingButton({required this.commands});
 
@@ -182,14 +187,18 @@ class _IntoDrawingButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final commands = this.commands;
+    final turn = commands != null && commands.holdsText
+        ? commands.turnIntoDrawing
+        : null;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
-      child: FilledButton(
-        key: const ValueKey<String>('text-tool-into-drawing'),
-        onPressed: commands != null && commands.holdsText
-            ? commands.turnIntoDrawing
-            : null,
-        child: Text(AppText.strings.textToolIntoDrawing),
+      child: ControlPressClaim(
+        onPressed: turn,
+        child: FilledButton(
+          key: const ValueKey<String>('text-tool-into-drawing'),
+          onPressed: silentPress(turn),
+          child: Text(AppText.strings.textToolIntoDrawing),
+        ),
       ),
     );
   }

@@ -95,7 +95,7 @@ class CelTextList {
   void _takeOff(CelTextCel cel, int id) {
     // A text let go of that still owed a landing does not come back with
     // it: what it owed goes with the text.
-    _tool._leaving.removeWhere((leaving) {
+    _tool._wayOut.leaving.removeWhere((leaving) {
       final gone =
           leaving.session.key == cel.key && leaving.session.textId == id;
       if (gone) {
