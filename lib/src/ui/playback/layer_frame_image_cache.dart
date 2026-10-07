@@ -289,11 +289,22 @@ class LayerFrameImageCache {
     // decoded in the shared cache, so the post-stroke rebuild draws existing
     // tile images instead of assembling + uploading the whole canvas — cost
     // follows the CHANGED tiles, not the canvas.
+    //
+    // 🚨★★★ONE WAIT AN IMAGE, AT ANY LEVEL. Below the full level the compose
+    // is the first step of a chain — whole, halved, halved again, cut — and
+    // only the chain's LAST step is the snapshot that is kept: every step
+    // before it is rastered deferred and drawn straight into the next, the
+    // way the synchronous road has always chained them ([_composedNow]).
+    // ↩️Each step was a snapshot waited for until 2026-10-07 — up to three
+    // waits for a half image and four for a quarter, the first of them the
+    // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
+    // 무거워지는거같은데 맞나?」).
     final positioned = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
       shouldAbort: shouldAbort,
       over: inkAtFull,
+      deferred: quality.level > 0,
     );
     if (positioned == null) {
       return null;
@@ -311,7 +322,12 @@ class LayerFrameImageCache {
     // on one engine and not the other.
     var image = positioned.image;
     for (var i = 0; i < quality.level; i += 1) {
-      final halved = await _halved(image);
+      // The last step when nothing is cut out after it.
+      final kept = texels == null && i == quality.level - 1;
+      final halved = kept
+          ? await _halved(image)
+          : _halvedNow(image, snapshot: false).deferred;
+      // The halving keeps what it drew; only the handle is ours to drop.
       image.dispose();
       image = halved;
     }
@@ -799,7 +815,8 @@ ui.Rect _worldRectOfTexels(ui.Rect whole, ui.Rect texels, int level) {
 Future<ui.Image> _cutOut(ui.Image whole, ui.Rect texels) async {
   final picture = recordInkCutOut(whole, texels).endRecording();
   try {
-    return await picture.toImage(
+    return await waitedSnapshot(
+      picture,
       texels.width.round(),
       texels.height.round(),
     );
@@ -844,7 +861,7 @@ Future<ui.Image> _halved(ui.Image source) async {
   final size = halvedSize(source.width, source.height);
   final picture = halvingPicture([(image: source, at: ui.Offset.zero)]);
   try {
-    return await picture.toImage(size.width, size.height);
+    return await waitedSnapshot(picture, size.width, size.height);
   } finally {
     picture.dispose();
   }

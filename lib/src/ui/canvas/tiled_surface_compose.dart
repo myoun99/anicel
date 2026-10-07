@@ -213,6 +213,7 @@ Future<ui.Image?> composeTiledSurfaceImage(
   shouldAbort: shouldAbort,
   missing: missing,
   over: surface.canvasSize.canvasRect,
+  deferred: false,
 );
 
 /// THE tile compose, async: draw every tile 1:1 at its integer offset and
@@ -223,12 +224,18 @@ Future<ui.Image?> composeTiledSurfaceImage(
 /// positioned, each async and sync — and they differed only in the origin,
 /// the extent, and whether the raster awaits. Four copies of a recorder
 /// lifetime is four chances to leak one.
+///
+/// [deferred] is how the recording is rastered: false waits for its plain
+/// snapshot — what a holder keeps; true rasters it deferred on the GPU and
+/// waits for nothing — a step of a chain whose LAST step is the snapshot
+/// ([composePositionedSurfaceImage] says when).
 Future<ui.Image?> _composeAsync(
   BitmapSurface surface, {
   required BitmapTileImageCache? reuse,
   required bool Function()? shouldAbort,
   required MissingTilePictures missing,
   required ui.Rect over,
+  required bool deferred,
 }) async {
   final recorder = ui.PictureRecorder();
   final canvas = ui.Canvas(recorder);
@@ -271,10 +278,11 @@ Future<ui.Image?> _composeAsync(
       if (shouldAbort?.call() ?? false) {
         return null;
       }
-      return await picture.toImage(
-        over.width.round(),
-        over.height.round(),
-      );
+      final width = over.width.round();
+      final height = over.height.round();
+      return deferred
+          ? picture.toImageSync(width, height)
+          : await waitedSnapshot(picture, width, height);
     } finally {
       picture.dispose();
     }
@@ -282,6 +290,9 @@ Future<ui.Image?> _composeAsync(
     if (!recorderClosed) {
       recorder.endRecording().dispose();
     }
+    // After the snapshot has landed — or, for a deferred raster, at once:
+    // the deferred image keeps the recording, and the recording keeps every
+    // picture it drew (`raster_picture.dart`), so only the handles go here.
     for (final image in transient) {
       image.dispose();
     }
@@ -381,12 +392,19 @@ ui.Image composeTiledSurfaceImageNow(
 /// pixels that holds every tile ([surfaceInkWorldRect]). Each tile lands
 /// texel for texel where it lands in the whole image, so what comes back is
 /// that image's pixels over [over] — without the rest being drawn first.
+///
+/// [deferred] hands back the recording rastered DEFERRED, with nothing
+/// waited for — for a caller that draws it into the next step of a chain
+/// and keeps only the chain's last step, a plain snapshot. ⛔Never an image
+/// to keep: a deferred image pins every tile picture it drew for as long as
+/// it lives (`raster_picture.dart`).
 Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
   BitmapSurface surface, {
   BitmapTileImageCache? reuse,
   bool Function()? shouldAbort,
   MissingTilePictures missing = MissingTilePictures.madeInTurn,
   ui.Rect? over,
+  bool deferred = false,
 }) async {
   final worldRect = _composedOver(surface, over);
   final image = await _composeAsync(
@@ -395,6 +413,7 @@ Future<PositionedSurfaceImage?> composePositionedSurfaceImage(
     shouldAbort: shouldAbort,
     missing: missing,
     over: worldRect,
+    deferred: deferred,
   );
   return image == null
       ? null
