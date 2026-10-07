@@ -241,7 +241,13 @@ void main() {
   /// the registry's label now: the row left the table and the count sees a
   /// literal. All seventeen are answered in the other four languages by id,
   /// with the words their menu rows already had.
-  const untranslatedElsewhere = 95;
+  ///
+  /// 96 (I-69, 2026-10-08): the English row of the shape tool's registry
+  /// action, Shape Tool — answered in the other four languages by id
+  /// (`shortcutAction.tool-shape`). Its tiles add none: they are generated
+  /// (`_shapeTileActions`) and their label is composed from the table. The
+  /// text tool's shape (91).
+  const untranslatedElsewhere = 96;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
