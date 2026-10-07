@@ -123,22 +123,15 @@ part 'canvas_panel/canvas_panel_viewport.dart';
 part 'canvas_panel/viewport_bottom_bar_build.dart';
 part 'canvas_panel/canvas_panel_build.dart';
 
-/// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
-/// whenever [token] changes between widget updates the panel reframes the
-/// viewport around [rect] (canvas space) — Fit-style when [panOnly] is
-/// false (the timesheet's page turn), or a minimal zoom-preserving pan
-/// that just brings [rect] into view when true (continuous-view scroll
-/// following the playhead row).
+/// A reframe request for [BrushCanvasPanel.autoFrame]: whenever [token]
+/// changes between widget updates the panel fits the viewport around
+/// [rect] (canvas space) — the media viewer's framing of a document it
+/// opens.
 class CanvasAutoFrameRequest {
-  const CanvasAutoFrameRequest({
-    required this.token,
-    required this.rect,
-    this.panOnly = false,
-  });
+  const CanvasAutoFrameRequest({required this.token, required this.rect});
 
   final Object token;
   final Rect rect;
-  final bool panOnly;
 }
 
 /// What stands under a canvas panel whose document runs in time — the
@@ -666,7 +659,7 @@ class BrushCanvasPanel extends StatefulWidget {
   /// nothing else does, because nothing else was being buried.
   final double floorBottomOverlaySpan;
 
-  /// Playback-follow reframing: when the request's token changes between
+  /// Host-driven reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
   /// [CanvasAutoFrameRequest]). Null never reframes — the user owns the
   /// viewport.

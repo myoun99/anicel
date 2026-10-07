@@ -143,8 +143,6 @@ void main() {
             return (
               () => TimesheetTabHost(
                 session: session,
-                continuous: false,
-                onContinuousChanged: (_) {},
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: brushAllowed.value,

@@ -36,14 +36,13 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
     // The face the sheet prints in — the strata's painter reads the same
     // ambient style.
     final face = appFaceOf(DefaultTextStyle.of(context).style);
-    // The memo band repeats on every paper page; the continuous strip has
-    // one, and page view (R26 #41) shows one at a time.
+    // The memo band repeats on every paper page.
     return SheetTextEditLayer(
       viewport: viewport,
       fieldKey: 'timesheet-header-edit-field',
       barrierKey: 'timesheet-header-edit-barrier',
       targets: [
-        for (final page in layout.visiblePageIndexes)
+        for (final page in layout.pageIndexes)
           SheetTextTarget(
             keyValue: 'timesheet-memo-edit-p$page',
             box: layout.memoBandRect(page),

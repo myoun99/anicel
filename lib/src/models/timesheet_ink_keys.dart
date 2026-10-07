@@ -30,7 +30,7 @@ String _stripFramePrefix(CutId cutId) => 'sheet-strip-${cutId.value}-b';
 String _pageFramePrefix(CutId cutId) => 'sheet-page-${cutId.value}-p';
 
 /// Frame-anchored ink: one surface per page BAND of frame rows, so writing
-/// follows its frames through the paged and the continuous view alike.
+/// follows its frames.
 BrushFrameKey timesheetInkStripKey(CutId cutId, int band) {
   return BrushFrameKey(
     projectId: timesheetInkProjectId,

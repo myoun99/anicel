@@ -65,13 +65,9 @@ void main() {
   Future<int> inkedUnder(
     WidgetTester tester,
     TimesheetDocument document, {
-    required bool continuous,
     required int half,
   }) async {
-    final layout = TimesheetDocumentLayout(
-      document: document,
-      continuous: continuous,
-    );
+    final layout = TimesheetDocumentLayout(document: document);
     final painter = TimesheetDocumentPainter(
       document: document,
       layout: layout,
@@ -96,9 +92,9 @@ void main() {
     }))!;
     picture.dispose();
 
-    final rows = continuous
-        ? document.rowCount
-        : layout.halfStrips.singleWhere((strip) => strip.half == half).rowCount;
+    final rows = layout.halfStrips
+        .singleWhere((strip) => strip.half == half)
+        .rowCount;
     final gridBottom =
         layout.halfRowsTop(0) + rows * TimesheetDocumentLayout.rowHeight;
     var inked = 0;
@@ -107,9 +103,7 @@ void main() {
       if (kind != TimesheetColumnKind.camera) {
         continue;
       }
-      final left =
-          layout.halfLeft(0, continuous ? 0 : half) +
-          layout.columnLeftInHalf(column);
+      final left = layout.halfLeft(0, half) + layout.columnLeftInHalf(column);
       final right = left + layout.columnWidthFor(kind);
       // A few pixels clear of the grid's own last line (the cut's red end
       // line is a value, and the cut ends on the page's last row).
@@ -133,7 +127,6 @@ void main() {
       await inkedUnder(
         tester,
         document({0: const InstructionEvent(instructionId: 'tb', length: 144)}),
-        continuous: false,
         half: 0,
       ),
       0,
@@ -152,17 +145,8 @@ void main() {
       await inkedUnder(
         tester,
         document(atTheEnd),
-        continuous: false,
         half: 1,
       ),
-      0,
-    );
-  });
-
-  testWidgets('the same in the continuous view: above the strip\'s last '
-      'line', (tester) async {
-    expect(
-      await inkedUnder(tester, document(atTheEnd), continuous: true, half: 0),
       0,
     );
   });
@@ -180,7 +164,6 @@ void main() {
         document({
           0: const InstructionEvent(instructionId: 'long', length: 72),
         }, defs: (id) => id == 'long' ? long : null),
-        continuous: false,
         half: 0,
       ),
       0,

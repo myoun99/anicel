@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -17,17 +15,16 @@ import 'timesheet_document_painter.dart';
 import 'timesheet_ink_bands.dart';
 import 'timesheet_ink_controller.dart';
 
-/// Computes the ink windows for the current view mode, bottom-of-stack
-/// first: page ink lies under the strip windows, so a stroke started on
-/// the column grid goes to the frame-anchored strip plane and one started
-/// anywhere else (header, memo band, margins, gaps) to the page plane —
-/// each kept to what its window shows ([sheetInkRegions]).
+/// Computes the ink windows, bottom-of-stack first: page ink lies under the
+/// strip windows, so a stroke started on the column grid goes to the
+/// frame-anchored strip plane and one started anywhere else (header, memo
+/// band, margins, gaps) to the page plane — each kept to what its window
+/// shows ([sheetInkRegions]).
 ///
-/// [pages] are the pages of the page view to lay windows for — every
-/// page the layout prints when null.
+/// [pages] are the pages to lay windows for — every page the layout
+/// prints when null.
 List<SheetInkWindow> timesheetInkWindows({
   required TimesheetDocumentLayout layout,
-  required TimesheetDocumentLayout pagedLayout,
   required CutId cutId,
   Iterable<int>? pages,
 }) {
@@ -35,7 +32,7 @@ List<SheetInkWindow> timesheetInkWindows({
   final windows = <SheetInkWindow>[];
   const rowHeight = TimesheetDocumentLayout.rowHeight;
   // A pixel of the ink is a pixel of the paper (F-294).
-  final scale = pagedLayout.paperScale;
+  final scale = layout.paperScale;
   SheetInkWindow window(
     String id,
     BrushFrameKey key,
@@ -85,37 +82,7 @@ List<SheetInkWindow> timesheetInkWindows({
     }
   }
 
-  if (layout.continuous) {
-    // Page ink: page 1's surface over the identical header/memo geometry
-    // (later pages' page ink is paged-view only).
-    windows.add(
-      window(
-        'page-0-continuous',
-        timesheetInkPageKey(cutId, 0),
-        Rect.fromLTWH(
-          layout.paperLeft,
-          layout.pageTop(0),
-          pagedLayout.paperWidth,
-          pagedLayout.paperHeight,
-        ),
-      ),
-    );
-    // Strip ink: the bands stacked seamlessly down the single strip.
-    final bands = (document.rowCount + bandFrames - 1) ~/ bandFrames;
-    for (var band = 0; band < bands; band += 1) {
-      final first = band * bandFrames;
-      strip(
-        'strip-$band-continuous',
-        first: first,
-        rows: math.min(bandFrames, document.rowCount - first),
-        left: layout.halfLeft(0, 0),
-        top: layout.halfRowsTop(0) + first * rowHeight,
-      );
-    }
-    return windows;
-  }
-
-  final visiblePages = pages ?? layout.visiblePageIndexes;
+  final visiblePages = pages ?? layout.pageIndexes;
   for (final pageIndex in visiblePages) {
     windows.add(
       window(
@@ -151,7 +118,6 @@ class TimesheetInkLayer extends StatelessWidget {
     super.key,
     required this.controller,
     required this.layout,
-    required this.pagedLayout,
     required this.cutId,
     required this.brushToolState,
     required this.historyManager,
@@ -162,7 +128,6 @@ class TimesheetInkLayer extends StatelessWidget {
 
   final TimesheetInkController controller;
   final TimesheetDocumentLayout layout;
-  final TimesheetDocumentLayout pagedLayout;
   final CutId cutId;
   /// Forwarded to [SheetInkLayer.brushToolState] — heard, not handed over.
   final ValueListenable<BrushToolState> brushToolState;
@@ -182,18 +147,15 @@ class TimesheetInkLayer extends StatelessWidget {
     builder: (context, box) => _windowsOver(box.biggest),
   );
 
-  /// The layer for a [box] of the panel: in the page view, windows for
-  /// the pages on screen only — the pages off it keep their ink on their
-  /// surfaces (the sheet's strata print it), they just have no window
-  /// to draw through. Every page's three would be a brush view each.
+  /// The layer for a [box] of the panel: windows for the pages on screen
+  /// only — the pages off it keep their ink on their surfaces (the sheet's
+  /// strata print it), they just have no window to draw through. Every
+  /// page's three would be a brush view each.
   Widget _windowsOver(Size box) {
     final windows = timesheetInkWindows(
       layout: layout,
-      pagedLayout: pagedLayout,
       cutId: cutId,
-      pages: layout.continuous
-          ? null
-          : layout.pageStack.pagesMeeting(canvasRectShown(viewport, box)),
+      pages: layout.pageStack.pagesMeeting(canvasRectShown(viewport, box)),
     );
     return SheetInkLayer(
       windows: windows,

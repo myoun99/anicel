@@ -100,7 +100,7 @@ void main() {
     final layout = TimesheetDocumentLayout(document: document);
     expect(layout.paperScale, greaterThan(1), reason: 'fixture: a paper');
     expectCanvasGrade(
-      timesheetInkWindows(layout: layout, pagedLayout: layout, cutId: cutId),
+      timesheetInkWindows(layout: layout, cutId: cutId),
       paperScale: layout.paperScale,
     );
   });

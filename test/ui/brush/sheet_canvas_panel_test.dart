@@ -81,7 +81,6 @@ void main() {
       WidgetTester tester, {
       ValueNotifier<CanvasViewport?>? view,
       ValueNotifier<int>? reading,
-      CanvasAutoFrameRequest? autoFrame,
     }) async {
       CanvasViewport? received;
       await tester.pumpWidget(
@@ -99,7 +98,6 @@ void main() {
               book: reading == null
                   ? null
                   : CanvasBook(pages: pages, reading: reading),
-              autoFrame: autoFrame,
               drawingOn: false,
               content: (context, viewport) {
                 received = viewport;
@@ -118,28 +116,17 @@ void main() {
 
     testWidgets('everything a host says in its units reaches the canvas '
         'panel in pixels — the canvas, what Fit frames, where the view '
-        'stops, an auto-frame, the book', (tester) async {
+        'stops, the book', (tester) async {
       expect(pages.size, const Size(148, 380), reason: 'fixture');
       final reading = ValueNotifier<int>(0);
       addTearDown(reading.dispose);
 
-      final (:shell, content: _) = await pump(
-        tester,
-        reading: reading,
-        autoFrame: const CanvasAutoFrameRequest(
-          token: 'row',
-          rect: Rect.fromLTWH(24, 60, 100, 18),
-          panOnly: true,
-        ),
-      );
+      final (:shell, content: _) = await pump(tester, reading: reading);
 
       expect(shell.canvasSize, const CanvasSize(width: 370, height: 950));
       expect(shell.fitFocusRect, const Rect.fromLTWH(60, 60, 250, 375));
       expect(shell.unframedFit, const Rect.fromLTWH(60, 60, 250, 375));
       expect(shell.viewLimit, const Rect.fromLTRB(60, 60, 310, 890));
-      expect(shell.autoFrame!.rect, const Rect.fromLTWH(60, 150, 250, 45));
-      expect(shell.autoFrame!.token, 'row');
-      expect(shell.autoFrame!.panOnly, isTrue);
       final book = shell.book!;
       expect(identical(book.reading, reading), isTrue);
       expect(book.pages.length, 2);

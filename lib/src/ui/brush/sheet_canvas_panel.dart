@@ -27,11 +27,11 @@ CanvasViewport sheetUnitsView(CanvasViewport paperView, double paperScale) =>
 /// coordinator, no frame keys, a host-local invalidation sink, a view that
 /// never rotates, and a viewport snapped ONCE before any stratum reads it.
 ///
-/// ONE recipe for the four sheet panels (the timesheet's paged and gap
+/// ONE recipe for the four sheet panels (the timesheet's sheet and gap
 /// panels, the conte, the cut envelope), which each typed it out and each
 /// carried the P8 decision below. What differs are values: the paper's
-/// size, the bars' contents, the fit rect, an auto-frame request, the
-/// stroke gate, and the [content] Stack a host lays over the snapped view.
+/// size, the bars' contents, the fit rect, the stroke gate, and the
+/// [content] Stack a host lays over the snapped view.
 ///
 /// 🚨★★★THE CANVAS IS THE PAPER'S PIXELS; THE SHEET SPEAKS ITS OWN UNITS
 /// (F-294, 유저 2026-10-05: 「타임시트 용지패널 용지크기 너무 작음」 · 「이런
@@ -80,7 +80,6 @@ class SheetCanvasPanel extends StatefulWidget {
     this.bottomBarHostToken,
     this.fitFocusRect,
     this.unframedFit,
-    this.autoFrame,
     required this.viewLimit,
     this.book,
     this.strokeHold,
@@ -118,7 +117,6 @@ class SheetCanvasPanel extends StatefulWidget {
   /// What a view nobody has framed yet is fitted to
   /// ([BrushCanvasPanel.unframedFit]) — the conte's page in its book.
   final Rect? unframedFit;
-  final CanvasAutoFrameRequest? autoFrame;
 
   /// The sheet's paper, where the view stops ([BrushCanvasPanel.viewLimit],
   /// F-201). ⚠️Required, so a sheet cannot forget to say it: null only
@@ -195,18 +193,6 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
     height: (widget.sheetSize.height * widget.paperScale).ceil(),
   );
 
-  /// The host's auto-frame request, on the paper's pixels.
-  CanvasAutoFrameRequest? get _autoFrameOnPaper {
-    final request = widget.autoFrame;
-    return request == null
-        ? null
-        : CanvasAutoFrameRequest(
-            token: request.token,
-            rect: _onPaper(request.rect)!,
-            panOnly: request.panOnly,
-          );
-  }
-
   /// The sheet's book, its pages on the paper's pixels — the reader's page
   /// is the host's own notifier still.
   CanvasBook? get _bookOnPaper {
@@ -264,7 +250,6 @@ class _SheetCanvasPanelState extends State<SheetCanvasPanel> {
           : (widget.bottomBarHostToken, widget.brushSwitch?.allowed),
       fitFocusRect: _onPaper(widget.fitFocusRect),
       unframedFit: _onPaper(widget.unframedFit),
-      autoFrame: _autoFrameOnPaper,
       viewLimit: _onPaper(widget.viewLimit),
       book: _bookOnPaper,
       contentStrokeActive: widget.drawingOn ? widget.strokeHold : null,

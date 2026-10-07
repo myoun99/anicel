@@ -40,11 +40,9 @@ class _WorkspaceDocumentViews {
 
   final ValueNotifier<double> _cameraDimOpacity = ValueNotifier(0.5);
 
-  /// Timesheet tab view state: paper page-split ⟷ continuous, the page
-  /// read in page view (F-201), the sheet viewport (zoom/pan) and the
-  /// brush switch — owned here so they survive tab switches.
-  final ValueNotifier<bool> _timesheetContinuous = ValueNotifier(false);
-
+  /// Timesheet tab view state: the page read (F-201), the sheet viewport
+  /// (zoom/pan) and the brush switch — owned here so they survive tab
+  /// switches.
   final ValueNotifier<int> _timesheetPage = ValueNotifier(0);
 
   final ValueNotifier<CanvasViewport?> _timesheetViewport = ValueNotifier(null);
@@ -126,7 +124,6 @@ class _WorkspaceDocumentViews {
     _eyedropperSource.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
-    _timesheetContinuous.dispose();
     _timesheetPage.dispose();
     _timesheetViewport.dispose();
     _timesheetBrushAllowed.dispose();

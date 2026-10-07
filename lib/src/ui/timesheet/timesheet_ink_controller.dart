@@ -14,14 +14,12 @@ import 'timesheet_ink_bands.dart';
 enum TimesheetInkPlane {
   /// Frame-anchored ink over the half's column area: X = within-half
   /// offset, Y = frame row axis. One surface per PAGE BAND of frames
-  /// (`sheet-strip-<cut>-b<n>`), so annotations follow their frames and
-  /// switch losslessly between the paged and continuous views.
+  /// (`sheet-strip-<cut>-b<n>`), so annotations follow their frames.
   strip,
 
   /// Paper-anchored ink over the whole page (header fields, Direction
   /// memo band, margins) — one surface per page
-  /// (`sheet-page-<cut>-p<n>`); the continuous view shows page 1's in its
-  /// identical header geometry.
+  /// (`sheet-page-<cut>-p<n>`).
   page;
 
   /// The plane [key]'s ink lives on — its layer says; the ink walk and the
@@ -79,19 +77,18 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
   /// ([TimesheetDocumentLayout.paperScale]).
   CanvasSize? get stripBandSurfaceSize => _strip.size;
 
-  /// The whole PAGED paper, pixel for pixel
+  /// The whole paper, pixel for pixel
   /// ([TimesheetDocumentLayout.paperPixelSize]).
   CanvasSize? get pageSurfaceSize => _page.size;
 
-  /// Adopts the sheet geometry from the PAGED layout (both view modes
-  /// share it — the paper never resizes with the view toggle). Geometry
-  /// changes rebuild the ink sessions from their durable commands with
-  /// stroke coordinates preserved (top-left anchored, like canvas resize).
+  /// Adopts the sheet geometry from [layout]. Geometry changes rebuild the
+  /// ink sessions from their durable commands with stroke coordinates
+  /// preserved (top-left anchored, like canvas resize).
   ///
   /// Never notifies: callers run this during build.
-  void syncGeometry(TimesheetDocumentLayout pagedLayout) {
-    final document = pagedLayout.document;
-    final scale = pagedLayout.paperScale;
+  void syncGeometry(TimesheetDocumentLayout layout) {
+    final document = layout.document;
+    final scale = layout.paperScale;
     _strip.syncTo(
       CanvasSize(
         width: (timesheetInkStripWidth(document) * scale).ceil(),
@@ -102,6 +99,6 @@ class TimesheetInkController extends SheetInkController<TimesheetInkPlane> {
                 .ceil(),
       ),
     );
-    _page.syncTo(pagedLayout.paperPixelSize);
+    _page.syncTo(layout.paperPixelSize);
   }
 }

@@ -1138,22 +1138,6 @@ void main() {
       );
     });
 
-    testWidgets('page mode toggle flips paged and continuous views', (
-      tester,
-    ) async {
-      await openTimesheet(tester);
-
-      // Paged by default — the toggle offers the continuous view.
-      expect(find.byTooltip('Continuous View'), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('timesheet-page-mode-toggle-button')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byTooltip('Page View'), findsOneWidget);
-    });
-
     testWidgets('the work settings window, from the top strip\'s ⚙, edits '
         'the work\'s words', (tester) async {
       // 유저 09-25: 「작품명/화수는 이제 타임시트패널같은곳에서 편집안하게 …

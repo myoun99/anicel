@@ -271,8 +271,6 @@ void main() {
                 key: boundary,
                 child: TimesheetTabHost(
                   session: session,
-                  continuous: false,
-                  onContinuousChanged: (_) {},
                   viewport: CanvasViewport(),
                   onViewportChanged: (_) {},
                 ),

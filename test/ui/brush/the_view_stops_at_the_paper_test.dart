@@ -414,8 +414,6 @@ void main() {
         tester,
         TimesheetTabHost(
           session: session,
-          continuous: false,
-          onContinuousChanged: (_) {},
         ),
       );
       // The desk round the paper is the stack's margin, in the paper's

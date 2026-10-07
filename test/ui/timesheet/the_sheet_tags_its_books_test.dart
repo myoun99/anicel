@@ -87,55 +87,49 @@ void main() {
     }
   });
 
-  for (final continuous in [false, true]) {
-    test('the painter lays each tag there — a blue box right of its leader '
-        'line, the line running down to the grid${continuous ? ' (the '
-              'continuous strip: once)' : ''}', () {
-      final layout = TimesheetDocumentLayout(
-        document: _document,
-        continuous: continuous,
-      );
-      final laid = _Laid();
-      TimesheetDocumentPainter(
-        words: timesheetWordsIn(AppLanguage.en),
-        face: const TextStyle(),
-        document: _document,
-        layout: layout,
-        layers: const {SheetPaintLayer.content},
-      ).paint(laid, layout.documentSize);
+  test('the painter lays each tag there — a blue box right of its leader '
+      'line, the line running down to the grid', () {
+    final layout = TimesheetDocumentLayout(document: _document);
+    final laid = _Laid();
+    TimesheetDocumentPainter(
+      words: timesheetWordsIn(AppLanguage.en),
+      face: const TextStyle(),
+      document: _document,
+      layout: layout,
+      layers: const {SheetPaintLayer.content},
+    ).paint(laid, layout.documentSize);
 
-      final halves = continuous ? const [0] : const [0, 1];
-      final boxes = [
-        for (final rect in laid.rects)
-          if (rect.color.toARGB32() == _tagBlue.toARGB32()) rect.rect,
-      ];
-      expect(boxes, hasLength(halves.length * 2));
-      for (final half in halves) {
-        for (final tag in layout.bookTags(0, half)) {
-          final box = boxes.singleWhere(
-            (box) =>
-                (box.bottom - tag.bottom).abs() < 1e-6 &&
-                box.left > tag.x &&
-                box.left - tag.x < 8,
-          );
-          expect(
-            laid.lines,
-            contains((
-              from: Offset(tag.x, box.center.dy),
-              to: Offset(
-                tag.x,
-                layout.memoBandRect(0).bottom +
-                    TimesheetDocumentLayout.headerGap,
-              ),
-            )),
-            reason:
-                'the leader line: from the tag down across the gap under '
-                'the memo band, to the grid',
-          );
-        }
+    const halves = [0, 1];
+    final boxes = [
+      for (final rect in laid.rects)
+        if (rect.color.toARGB32() == _tagBlue.toARGB32()) rect.rect,
+    ];
+    expect(boxes, hasLength(halves.length * 2));
+    for (final half in halves) {
+      for (final tag in layout.bookTags(0, half)) {
+        final box = boxes.singleWhere(
+          (box) =>
+              (box.bottom - tag.bottom).abs() < 1e-6 &&
+              box.left > tag.x &&
+              box.left - tag.x < 8,
+        );
+        expect(
+          laid.lines,
+          contains((
+            from: Offset(tag.x, box.center.dy),
+            to: Offset(
+              tag.x,
+              layout.memoBandRect(0).bottom +
+                  TimesheetDocumentLayout.headerGap,
+            ),
+          )),
+          reason:
+              'the leader line: from the tag down across the gap under '
+              'the memo band, to the grid',
+        );
       }
-    });
-  }
+    }
+  });
 }
 
 class _Laid implements Canvas {

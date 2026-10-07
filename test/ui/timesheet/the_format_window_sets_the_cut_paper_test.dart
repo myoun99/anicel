@@ -67,8 +67,6 @@ void main() {
         home: Scaffold(
           body: TimesheetTabHost(
             session: session,
-            continuous: false,
-            onContinuousChanged: (_) {},
             viewport: CanvasViewport(),
             onViewportChanged: (_) {},
             inkController: ink,

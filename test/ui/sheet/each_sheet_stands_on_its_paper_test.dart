@@ -44,8 +44,6 @@ void main() {
 
   Widget timesheet(EditorSessionManager session) => TimesheetTabHost(
     session: session,
-    continuous: false,
-    onContinuousChanged: (_) {},
   );
 
   /// The default project, its one cut [frames] long and its canvas [canvas].

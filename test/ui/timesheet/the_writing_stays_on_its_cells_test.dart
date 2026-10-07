@@ -71,7 +71,6 @@ Offset _cell(TimesheetDocumentLayout layout, int column, int frame) {
 (String, Offset) _pixel(TimesheetDocumentLayout layout, Offset paper) {
   final window = timesheetInkWindows(
     layout: layout,
-    pagedLayout: layout,
     cutId: _cutId,
   ).singleWhere(
     (window) =>
@@ -159,7 +158,6 @@ void main() {
     final three = _layout(TimesheetSheetKind.threeSeconds);
     final window = timesheetInkWindows(
       layout: three,
-      pagedLayout: three,
       cutId: _cutId,
     ).firstWhere((window) => window.plane == TimesheetInkPlane.strip);
     final placement = window.placement;
@@ -182,7 +180,6 @@ void main() {
     final six = _layout(TimesheetSheetKind.sixSeconds);
     final plain = timesheetInkWindows(
       layout: six,
-      pagedLayout: six,
       cutId: _cutId,
     ).firstWhere((window) => window.plane == TimesheetInkPlane.strip);
     expect(plain.viewLaidBy(panel), isNull);
@@ -252,7 +249,6 @@ void main() {
               child: TimesheetInkLayer(
                 controller: controller,
                 layout: three,
-                pagedLayout: three,
                 cutId: _cutId,
                 brushToolState: ValueNotifier(BrushToolState.defaults),
                 historyManager: HistoryManager(),
@@ -269,7 +265,6 @@ void main() {
     bool inkUnder(TimesheetDocumentLayout layout, Offset paper) {
       final window = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: _cutId,
       ).singleWhere(
         (window) =>

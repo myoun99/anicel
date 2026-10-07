@@ -50,8 +50,6 @@ void main() {
           body: StatefulBuilder(
             builder: (context, setState) => TimesheetTabHost(
               session: session,
-              continuous: false,
-              onContinuousChanged: (_) {},
               viewport: CanvasViewport(),
               onViewportChanged: (_) {},
               inkController: inkController,

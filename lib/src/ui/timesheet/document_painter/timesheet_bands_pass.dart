@@ -180,11 +180,6 @@ class _TimesheetBandsPass {
       return;
     }
     final line = _painter.layout.cutEndLineFor(frameCount);
-    // In page view the cut may end on a page that isn't on screen (R26
-    // #41) — its row geometry belongs to another sheet, so nothing prints.
-    if (!_painter.layout.visiblePageIndexes.contains(line.page)) {
-      return;
-    }
     final left = _painter.layout.halfLeft(line.page, line.half);
     canvas.drawLine(
       Offset(left, line.y),

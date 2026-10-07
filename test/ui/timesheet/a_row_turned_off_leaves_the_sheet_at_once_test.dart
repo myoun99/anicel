@@ -121,8 +121,6 @@ void main() {
               listenable: session,
               builder: (context, _) => TimesheetTabHost(
                 session: session,
-                continuous: false,
-                onContinuousChanged: (_) {},
                 inkController: ink,
                 brushToolState: brushTool,
                 brushAllowed: false,

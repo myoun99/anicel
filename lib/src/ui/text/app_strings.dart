@@ -144,13 +144,6 @@ enum AppStrings {
   /// The timeline/timesheet gap empty state.
   String get noCutSelected => _s('noCutSelected');
 
-  /// The timesheet panel-frame position label: page view prints
-  /// '`<pageLabel>` N'.
-  String get pageLabel => _s('pageLabel');
-
-  /// The continuous-view position label.
-  String get continuousLabel => _s('continuousLabel');
-
   /// R26 #35/#13 — the shared CURSOR NOTICES: every refused action says
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
@@ -692,8 +685,6 @@ enum AppStrings {
   String get conteBlankPage => _s('conteBlankPage');
   String get sheetModeNotation => _s('sheetModeNotation');
   String get sheetModeData => _s('sheetModeData');
-  String get sheetViewPage => _s('sheetViewPage');
-  String get sheetViewContinuous => _s('sheetViewContinuous');
 
   // --- The instruction vocabulary and its events ---
   String get instructionsTitle => _s('instructionsTitle');
@@ -1692,8 +1683,6 @@ enum AppStrings {
     'programLanguageHelp': 'Menus, panels and labels.',
     'notationLanguageHelp': 'What prints on the timesheet and exports.',
     'noCutSelected': 'No cut selected',
-    'pageLabel': 'Page',
-    'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
     'noticeNothingToCut': 'There is nothing to cut',
     'noticeNoConteLayer': 'This cut has no storyboard layer',
@@ -2121,8 +2110,6 @@ enum AppStrings {
     'conteBlankPage': 'Blank page',
     'sheetModeNotation': 'Notation Sheet (repeat/hold words)',
     'sheetModeData': 'Data Sheet (as exported)',
-    'sheetViewPage': 'Page View',
-    'sheetViewContinuous': 'Continuous View',
     'instructionsTitle': 'Instructions',
     'instructionEditTooltip': 'Edit instruction',
     'instructionDeleteTooltip': 'Delete instruction',
@@ -2809,8 +2796,6 @@ enum AppStrings {
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
     'notationLanguageHelp': 'タイムシートなど提出物に印字される言語。',
     'noCutSelected': 'カット未選択',
-    'pageLabel': 'ページ',
-    'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
     'noticeNothingToCut': '切り取る対象がありません',
     'noticeNoConteLayer': 'このカットには絵コンテレイヤーがありません',
@@ -3244,8 +3229,6 @@ enum AppStrings {
     'conteBlankPage': '白紙',
     'sheetModeNotation': '表記シート（リピート・止めの文字）',
     'sheetModeData': 'データシート（書き出しのまま）',
-    'sheetViewPage': 'ページ表示',
-    'sheetViewContinuous': '連続表示',
     'instructionsTitle': '指示記号',
     'instructionEditTooltip': '指示記号を編集',
     'instructionDeleteTooltip': '指示記号を削除',
@@ -4187,8 +4170,6 @@ enum AppStrings {
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
     'notationLanguageHelp': '타임시트 등 제출물에 인쇄되는 언어.',
     'noCutSelected': '선택된 컷 없음',
-    'pageLabel': '페이지',
-    'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
     'noticeNothingToCut': '잘라낼 대상이 존재하지 않습니다',
     'noticeNoConteLayer': '콘티 레이어가 존재하지 않습니다',
@@ -4620,8 +4601,6 @@ enum AppStrings {
     'conteBlankPage': '빈 용지',
     'sheetModeNotation': '표기 시트(반복·止め 글자)',
     'sheetModeData': '데이터 시트(내보내는 그대로)',
-    'sheetViewPage': '페이지 보기',
-    'sheetViewContinuous': '콘티너스 보기',
     'instructionsTitle': '지시 기호',
     'instructionEditTooltip': '지시 기호 편집',
     'instructionDeleteTooltip': '지시 기호 삭제',
@@ -5558,8 +5537,6 @@ enum AppStrings {
     'programLanguageHelp': 'Menus, panneaux et libellés.',
     'notationLanguageHelp': 'Ce qui s\'imprime sur la feuille d\'exposition.',
     'noCutSelected': 'Aucun plan sélectionné',
-    'pageLabel': 'Page',
-    'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
     'noticeNothingToCut': 'Rien à couper',
     'noticeNoConteLayer': 'Ce plan n\'a pas de calque storyboard',
@@ -6028,8 +6005,6 @@ enum AppStrings {
     'conteBlankPage': 'Page blanche',
     'sheetModeNotation': 'Feuille de notation (répétition / maintien)',
     'sheetModeData': "Feuille de données (telle qu'exportée)",
-    'sheetViewPage': 'Vue page',
-    'sheetViewContinuous': 'Vue continue',
     'instructionsTitle': 'Indications',
     'instructionEditTooltip': "Modifier l'indication",
     'instructionDeleteTooltip': "Supprimer l'indication",
@@ -7012,8 +6987,6 @@ enum AppStrings {
     'programLanguageHelp': '菜单、面板与标签的语言。',
     'notationLanguageHelp': '打印在摄影表等提交物上的语言。',
     'noCutSelected': '未选择镜头',
-    'pageLabel': '页',
-    'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
     'noticeNothingToCut': '没有可剪切的内容',
     'noticeNoConteLayer': '该镜头没有分镜图层',
@@ -7412,8 +7385,6 @@ enum AppStrings {
     'conteBlankPage': '空白页',
     'sheetModeNotation': '标注表（重复·保持文字）',
     'sheetModeData': '数据表（与导出一致）',
-    'sheetViewPage': '分页视图',
-    'sheetViewContinuous': '连续视图',
     'instructionsTitle': '指示记号',
     'instructionEditTooltip': '编辑指示记号',
     'instructionDeleteTooltip': '删除指示记号',

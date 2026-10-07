@@ -22,7 +22,7 @@ class _TimesheetInstructionPass {
   /// the mark.
   ///
   /// [rows] are the top and the bottom of the grid this row is printed in —
-  /// its half page, or the continuous strip — which the writing stays on.
+  /// its half page — which the writing stays on.
   void paintInstructionRow(
     Canvas canvas, {
     required TimesheetCell cell,

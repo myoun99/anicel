@@ -1006,7 +1006,6 @@ class ExportDialogState extends State<ExportDialog> {
     final windows = [
       for (final window in timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: task.cut.id,
       ))
         if (window.documentRect.overlaps(page)) window.mark,

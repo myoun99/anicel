@@ -67,31 +67,26 @@ part 'document_painter/timesheet_books_pass.dart';
 /// ↩️The form WAS the paper — B4's shape, 1096×1574 of its own units on a
 /// 24fps sheet, shown a unit a pixel.
 ///
-/// The continuous mode keeps the SAME paper width and header band as the
-/// paged form (the paper size never changes with the view toggle — user
-/// rule) and swaps only the body below: ONE half-structure strip with every
-/// row in sequence (global frame numbers) growing downward, in page half
-/// 0's exact geometry so ink coordinates stay stable across the toggle.
+/// ↩️There was a CONTINUOUS view beside the pages — one strip of every row
+/// on the page's paper width. The user had it deleted with every trace of
+/// it (2026-10-08, F-252-Q1: 「이어보기를 분명 삭제하라 했던거같은데 …
+/// 삭제. 잔재 싹 삭제」): the sheet is its pages.
 class TimesheetDocumentLayout {
-  TimesheetDocumentLayout({
-    required this.document,
-    this.continuous = false,
-  });
+  TimesheetDocumentLayout({required this.document});
 
   final TimesheetDocument document;
-  final bool continuous;
 
-  /// Page indexes this layout prints, in order: the single strip in
-  /// continuous view, every page one under another otherwise.
+  /// Page indexes this layout prints, in order: every page one under
+  /// another.
   ///
   /// ↩️R26 #41 (07-23) printed ONE sheet at a time in page view and turned
   /// the page by swapping the paper under a view that never moved. F-201
   /// (유저 2026-09-27, F-201-timesheet-pages-Q1: 「타임시트 페이지 보기도
   /// 쌓는다」) lays them one under another again, as the conte's and the
   /// viewer's: a turn scrolls to the page (`CanvasBook`).
-  List<int> get visiblePageIndexes => continuous
-      ? const [0]
-      : [for (final page in document.pages) page.index];
+  List<int> get pageIndexes => [
+    for (final page in document.pages) page.index,
+  ];
 
   static const double rowHeight = 18;
   static const double actionColumnWidth = 24;
@@ -225,7 +220,7 @@ class TimesheetDocumentLayout {
   }
 
   /// The printed form's width: its strips, the gap between them and the
-  /// padding round them — one in BOTH modes.
+  /// padding round them.
   double get formWidth =>
       pagePadding * 2 +
       (frameNumberGutterWidth + halfWidth) * _strips +
@@ -236,20 +231,13 @@ class TimesheetDocumentLayout {
   static const double _formHeadHeight =
       pagePadding * 2 + headerBandHeight + memoBandHeight + headerGap;
 
-  /// The PAGED form's height — what the paper is fitted round in both
-  /// modes, so the view toggle moves nothing on it.
-  double get _pagedFormHeight => _formHeadHeight + _pagedBodyHeight;
+  /// The printed form's height: its head and a page's body.
+  double get formHeight => _formHeadHeight + _bodyHeight;
 
-  /// The printed form's height: a page's in page view, the one strip's with
-  /// every row in continuous view.
-  double get formHeight => continuous
-      ? _formHeadHeight + columnsHeaderHeight + document.rowCount * rowHeight
-      : _pagedFormHeight;
-
-  /// The paged form on the timesheet's paper (`SheetPaper.timesheet`): as
-  /// large as fits, centred.
+  /// The form on the timesheet's paper (`SheetPaper.timesheet`): as large
+  /// as fits, centred.
   late final SheetPaperFit _onPaper = SheetPaper.timesheet.around(
-    Size(formWidth, _pagedFormHeight),
+    Size(formWidth, formHeight),
   );
 
   /// THE PAPER'S PIXELS A SHEET UNIT TAKES (F-294) — what the panel shows
@@ -269,8 +257,7 @@ class TimesheetDocumentLayout {
   /// on, pixel for pixel.
   CanvasSize get paperPixelSize => SheetPaper.timesheet.pixelSize;
 
-  /// One fixed paper width in BOTH modes — the view toggle never resizes
-  /// the paper (or the header band that spans its form).
+  /// The paper's width: the sheet's.
   double get paperWidth => _onPaper.sheet.width;
 
   /// Rows in the given half of a page (the second half takes the odd
@@ -293,48 +280,32 @@ class TimesheetDocumentLayout {
   int get _maxHalfRows =>
       halfRowCount(0) > halfRowCount(1) ? halfRowCount(0) : halfRowCount(1);
 
-  double get _pagedBodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
+  double get _bodyHeight => columnsHeaderHeight + _maxHalfRows * rowHeight;
 
-  /// The paper's height: the sheet's in page view; in continuous view the
-  /// one strip's form and, over and under it, the margin the paged form has
-  /// — the form starts where it starts on a page.
-  double get paperHeight => continuous
-      ? formHeight + 2 * _onPaper.inset.dy
-      : _onPaper.sheet.height;
+  /// The paper's height: the sheet's.
+  double get paperHeight => _onPaper.sheet.height;
 
   double get paperLeft => documentMargin;
 
-  /// The form on the paper of a page (the strip's in continuous view).
+  /// The form on the paper of a page.
   Rect formRect(int pageIndex) =>
       (pageRect(pageIndex).topLeft + _onPaper.inset) &
       Size(formWidth, formHeight);
 
-  /// Top of a page's paper — the strip's in continuous view.
-  double pageTop(int pageIndex) =>
-      continuous ? documentMargin : _stack.pageRect(pageIndex).top;
+  /// Top of a page's paper.
+  double pageTop(int pageIndex) => _stack.pageRect(pageIndex).top;
 
-  /// The paper rect of a page (the whole strip in continuous mode).
-  Rect pageRect(int pageIndex) {
-    if (continuous) {
-      return Rect.fromLTWH(paperLeft, documentMargin, paperWidth, paperHeight);
-    }
-    return Rect.fromLTWH(
-      paperLeft,
-      pageTop(pageIndex),
-      paperWidth,
-      paperHeight,
-    );
-  }
+  /// The paper rect of a page.
+  Rect pageRect(int pageIndex) =>
+      Rect.fromLTWH(paperLeft, pageTop(pageIndex), paperWidth, paperHeight);
 
   /// Left edge of a half's column area (past its number gutter).
-  double halfLeft(int pageIndex, int half) {
-    final first =
-        paperLeft + _onPaper.inset.dx + pagePadding + frameNumberGutterWidth;
-    if (continuous) {
-      return first;
-    }
-    return first + half * (frameNumberGutterWidth + halfWidth + halfGap);
-  }
+  double halfLeft(int pageIndex, int half) =>
+      paperLeft +
+      _onPaper.inset.dx +
+      pagePadding +
+      frameNumberGutterWidth +
+      half * (frameNumberGutterWidth + halfWidth + halfGap);
 
   /// Top of a half's first row.
   double halfRowsTop(int pageIndex) =>
@@ -447,12 +418,8 @@ class TimesheetDocumentLayout {
     return Rect.fromLTWH(band.left, band.bottom, band.width, memoBandHeight);
   }
 
-  /// Where a global frame lands: page, half and row within the half. The
-  /// continuous strip is a single half per "page block".
+  /// Where a global frame lands: page, half and row within the half.
   ({int page, int half, int row}) positionOfFrame(int frameIndex) {
-    if (continuous) {
-      return (page: 0, half: 0, row: frameIndex);
-    }
     final page = frameIndex ~/ document.pageFrameCount;
     final local = frameIndex % document.pageFrameCount;
     final half = math.min(local ~/ document.halfFrameCount, _strips - 1);
@@ -496,20 +463,16 @@ class TimesheetDocumentLayout {
   /// [pageCount] overrides the document's sheet count for a paint that is
   /// following a cut-length drag (F-88) — the paper itself still re-flows
   /// on the release.
-  String pageLabel(int pageIndex, {int? pageCount}) => continuous
-      ? '1/1'
-      : '${pageIndex + 1}/${pageCount ?? document.pages.length}';
+  String pageLabel(int pageIndex, {int? pageCount}) =>
+      '${pageIndex + 1}/${pageCount ?? document.pages.length}';
 
   /// The paper the document lays out — every page and the gaps between
   /// them, inside the margin round the whole: where the panel's view stops
   /// (F-201).
-  Rect get paper => continuous ? pageRect(0) : _stack.paper;
+  Rect get paper => _stack.paper;
 
-  /// Logical size of the whole document — the one strip in continuous
-  /// view, the stack otherwise.
-  Size get documentSize => continuous
-      ? Size(documentMargin * 2 + paperWidth, documentMargin * 2 + paperHeight)
-      : _stack.size;
+  /// Logical size of the whole document: the stack of its pages.
+  Size get documentSize => _stack.size;
 }
 
 /// Clips to the panel and enters DOCUMENT SPACE — the prologue every
@@ -800,50 +763,30 @@ class TimesheetDocumentPainter extends CustomPainter
         ? null
         : canvasRectShown(resolvedViewport, size);
 
-    if (layout.continuous) {
-      _bands.paintPaper(canvas, 0);
-      _bands.paintHeaderBand(canvas, 0);
-      if (_drawContent) {
-        _bands.paintMemoBand(canvas, 0);
+    // Every page, one under another.
+    for (final page in document.pages) {
+      // A whole page off screen costs nothing at all — this is where the
+      // stacked multi-page document stops being O(document).
+      final pageBounds = layout.pageRect(page.index);
+      if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
+        continue;
       }
-      _cells.paintHalf(
-        canvas,
-        pageIndex: 0,
-        half: 0,
-        startFrame: 0,
-        rowCount: document.rowCount,
-      );
+      _bands.paintPaper(canvas, page.index);
+      _bands.paintHeaderBand(canvas, page.index);
       if (_drawContent) {
-        _books.paintHalf(canvas, pageIndex: 0, half: 0);
+        _bands.paintMemoBand(canvas, page.index);
       }
-    } else {
-      // Every page, one under another.
-      for (final pageIndex in layout.visiblePageIndexes) {
-        final page = document.pages[pageIndex];
-        // A whole page off screen costs nothing at all — this is where
-        // the stacked multi-page document stops being O(document).
-        final pageBounds = layout.pageRect(page.index);
-        if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
-          continue;
-        }
-        _bands.paintPaper(canvas, page.index);
-        _bands.paintHeaderBand(canvas, page.index);
+      for (final strip in layout.halfStrips) {
+        _cells.paintHalf(
+          canvas,
+          pageIndex: page.index,
+          half: strip.half,
+          startFrame:
+              page.startFrame + (strip.half == 0 ? 0 : document.halfFrameCount),
+          rowCount: strip.rowCount,
+        );
         if (_drawContent) {
-          _bands.paintMemoBand(canvas, page.index);
-        }
-        for (final strip in layout.halfStrips) {
-          _cells.paintHalf(
-            canvas,
-            pageIndex: page.index,
-            half: strip.half,
-            startFrame:
-                page.startFrame +
-                (strip.half == 0 ? 0 : document.halfFrameCount),
-            rowCount: strip.rowCount,
-          );
-          if (_drawContent) {
-            _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
-          }
+          _books.paintHalf(canvas, pageIndex: page.index, half: strip.half);
         }
       }
     }
@@ -1027,7 +970,6 @@ class TimesheetDocumentPainter extends CustomPainter
 
   @override
   Object get props => (
-    layout.continuous,
     viewport,
     face,
     // Null means ALL strata, which is a different input from an empty set,
@@ -1135,12 +1077,6 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
     // the same CODE now, not a second copy kept in step by hand.
     _enterDocumentSpace(canvas, size, viewport, effectiveRatio);
     final position = layout.positionOfFrame(frame);
-    // Page view (R26 #41): the playhead highlights nothing while the user
-    // is looking at another page.
-    if (!layout.visiblePageIndexes.contains(position.page)) {
-      canvas.restore();
-      return;
-    }
     final left = layout.halfLeft(position.page, position.half);
     canvas.drawRect(
       Rect.fromLTWH(
@@ -1157,7 +1093,6 @@ class TimesheetPlayheadPainter extends CustomPainter with RepaintOnProps {
   @override
   Object get props => (
     ByIdentity(document),
-    layout.continuous,
     viewport,
     effectiveRatio,
   );

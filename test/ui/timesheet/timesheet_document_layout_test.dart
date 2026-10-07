@@ -46,49 +46,6 @@ void main() {
     expect(layout.documentSize, stack.size);
   });
 
-  group('TimesheetDocumentLayout continuous mode', () {
-    test('keeps the paged paper width and header geometry (user rule: the '
-        'view toggle never resizes the paper)', () {
-      final document = _document();
-      final paged = TimesheetDocumentLayout(document: document);
-      final continuous = TimesheetDocumentLayout(
-        document: document,
-        continuous: true,
-      );
-
-      expect(continuous.paperWidth, paged.paperWidth);
-
-      final pagedRect = paged.pageRect(0);
-      final continuousRect = continuous.pageRect(0);
-      expect(continuousRect.left, pagedRect.left);
-      expect(continuousRect.top, pagedRect.top);
-      expect(continuousRect.width, pagedRect.width);
-    });
-
-    test('only the body below the header changes: one strip in page half '
-        '0\'s geometry, extending with the row count', () {
-      final document = _document();
-      final paged = TimesheetDocumentLayout(document: document);
-      final continuous = TimesheetDocumentLayout(
-        document: document,
-        continuous: true,
-      );
-
-      expect(continuous.halfLeft(0, 0), paged.halfLeft(0, 0));
-      expect(continuous.halfRowsTop(0), paged.halfRowsTop(0));
-      expect(
-        continuous.paperHeight,
-        greaterThan(paged.paperHeight),
-        reason: 'the 288-row strip runs down a single page block',
-      );
-      expect(continuous.positionOfFrame(200), (page: 0, half: 0, row: 200));
-      expect(
-        continuous.frameRowTop(1) - continuous.frameRowTop(0),
-        TimesheetDocumentLayout.rowHeight,
-      );
-    });
-  });
-
   group('TimesheetDocumentLayout memo band', () {
     test('sits under the header band and pushes the rows down', () {
       final layout = TimesheetDocumentLayout(document: _document());
@@ -127,19 +84,6 @@ void main() {
       final pageTwo = layout.headerBandRect(1);
       expect(pageTwo.left, layout.halfLeft(1, 0));
     });
-
-    test(
-      'continuous mode keeps the same left alignment on the fixed paper',
-      () {
-        final layout = TimesheetDocumentLayout(
-          document: _document(),
-          continuous: true,
-        );
-
-        expect(layout.headerBandRect(0).left, layout.halfLeft(0, 0));
-        expect(layout.memoBandRect(0).left, layout.halfLeft(0, 0));
-      },
-    );
   });
 
   group('TimesheetDocumentLayout header field boxes', () {
@@ -222,20 +166,6 @@ void main() {
       expect(
         boundary.cutEndLine.y,
         boundary.halfRowsTop(0) + 72 * TimesheetDocumentLayout.rowHeight,
-      );
-    });
-
-    test('continuous mode maps it onto the single strip', () {
-      final layout = TimesheetDocumentLayout(
-        document: _document(),
-        continuous: true,
-      );
-
-      expect(layout.cutEndLine.page, 0);
-      expect(layout.cutEndLine.half, 0);
-      expect(
-        layout.cutEndLine.y,
-        layout.halfRowsTop(0) + 150 * TimesheetDocumentLayout.rowHeight,
       );
     });
   });

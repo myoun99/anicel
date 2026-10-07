@@ -35,7 +35,6 @@ import '../../helpers/sheet_paper_view.dart';
 const _twoPageDuration = 150;
 
 const _dataModeKey = ValueKey<String>('timesheet-data-mode-toggle-button');
-const _pageModeKey = ValueKey<String>('timesheet-page-mode-toggle-button');
 const _prevKey = ValueKey<String>('timesheet-previous-page-button');
 const _nextKey = ValueKey<String>('timesheet-next-page-button');
 const _pageLabelKey = ValueKey<String>('timesheet-page-readout');
@@ -76,7 +75,7 @@ void main() {
       final layout = TimesheetDocumentLayout(document: document);
       expect(document.pages, hasLength(2), reason: '⛔전제');
 
-      expect(layout.visiblePageIndexes, [0, 1]);
+      expect(layout.pageIndexes, [0, 1]);
       expect(layout.pageRect(1).top, greaterThan(layout.pageRect(0).bottom));
       expect(layout.pageRect(0), layout.pageStack.pageRect(0));
       expect(layout.pageRect(1), layout.pageStack.pageRect(1));
@@ -97,16 +96,6 @@ void main() {
       expect(layout.pageLabel(book.page), '2/2');
     });
 
-    test('continuous view is one strip — no sheets', () {
-      final layout = TimesheetDocumentLayout(
-        document: _document(),
-        continuous: true,
-      );
-
-      expect(layout.visiblePageIndexes, [0]);
-      expect(layout.pageLabel(0), '1/1');
-    });
-
     test('ink windows are laid for the pages asked — every page when none '
         'are named', () {
       final document = _document();
@@ -114,7 +103,6 @@ void main() {
 
       final second = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: const CutId('cut-1'),
         pages: const [1],
       );
@@ -127,7 +115,6 @@ void main() {
 
       final all = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: const CutId('cut-1'),
       );
       expect(all, hasLength(6));
@@ -146,11 +133,7 @@ void main() {
       ),
     );
 
-    Future<void> pumpHost(
-      WidgetTester tester, {
-      bool continuous = false,
-      CanvasViewport? render,
-    }) async {
+    Future<void> pumpHost(WidgetTester tester, {CanvasViewport? render}) async {
       session = EditorSessionManager(initialProject: _twoPageProject());
       addTearDown(session.dispose);
       final inkController = TimesheetInkController();
@@ -163,35 +146,29 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      var isContinuous = continuous;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: StatefulBuilder(
-              builder: (context, setState) => TimesheetTabHost(
-                session: session,
-                continuous: isContinuous,
-                onContinuousChanged: (next) =>
-                    setState(() => isContinuous = next),
-                reading: reading,
-                // [render] is said in the sheet's units; the host keeps
-                // its view in the paper's pixels (F-294).
-                viewport: seedFromRender(
-                  tester,
-                  paperViewShowing(
-                    render ?? CanvasViewport(),
-                    layoutOf().paperScale,
-                  ),
+            body: TimesheetTabHost(
+              session: session,
+              reading: reading,
+              // [render] is said in the sheet's units; the host keeps its
+              // view in the paper's pixels (F-294).
+              viewport: seedFromRender(
+                tester,
+                paperViewShowing(
+                  render ?? CanvasViewport(),
+                  layoutOf().paperScale,
                 ),
-                onViewportChanged: (_) {},
-                inkController: inkController,
-                brushToolState: brushTool,
-                // Drawing ON: the sheet's ink windows are what follow the
-                // pages on screen (the brush switch starts off since
-                // 2026-09-25).
-                brushAllowed: true,
-                onBrushAllowedChanged: (_) {},
               ),
+              onViewportChanged: (_) {},
+              inkController: inkController,
+              brushToolState: brushTool,
+              // Drawing ON: the sheet's ink windows are what follow the
+              // pages on screen (the brush switch starts off since
+              // 2026-09-25).
+              brushAllowed: true,
+              onBrushAllowedChanged: (_) {},
             ),
           ),
         ),
@@ -235,7 +212,7 @@ void main() {
         pillBandOf(tester) +
         layoutOf().pageStack.gap / 2 * painted(tester).zoom;
 
-    testWidgets('the MODES stay in the pill and the PAGES stand on the left '
+    testWidgets('the MODE stays in the pill and the PAGES stand on the left '
         'edge, above / n-N / below', (tester) async {
       // 유저 확정 ⑥ (2026-08-13) split what used to be one row. The two mode
       // toggles are things you press while reading and stayed in the pill;
@@ -245,19 +222,15 @@ void main() {
       // them on was losing the lot.
       await pumpHost(tester);
 
-      final xs = <Key, double>{
-        for (final key in [_dataModeKey, _pageModeKey])
-          key: tester.getCenter(find.byKey(key)).dx,
-      };
       // R2 #13: the panbar is its own capsule on the top edge now, so what
-      // the cluster is left of is FIT — the head of the view controls it
+      // the mode is left of is FIT — the head of the view controls it
       // shares the pill with.
       final fitX = tester
           .getCenter(find.byKey(const ValueKey<String>('canvas-viewport-fit')))
           .dx;
 
-      expect(xs[_dataModeKey], lessThan(xs[_pageModeKey]!));
-      expect(xs[_pageModeKey], lessThan(fitX));
+      final modeX = tester.getCenter(find.byKey(_dataModeKey)).dx;
+      expect(modeX, lessThan(fitX));
 
       // The page cluster reads DOWNWARD in its own capsule, and the whole
       // capsule sits left of the pill it left.
@@ -292,7 +265,7 @@ void main() {
               ),
             )
             .dx,
-        lessThan(xs[_dataModeKey]!),
+        lessThan(modeX),
       );
     });
 
@@ -347,17 +320,6 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(reading.value, 0);
-    });
-
-    testWidgets('continuous view keeps the cluster mounted but inert (one '
-        'strip has no pages to turn)', (tester) async {
-      await pumpHost(tester, continuous: true);
-
-      expect(find.byKey(_prevKey), findsOneWidget);
-      expect(find.byKey(_nextKey), findsOneWidget);
-      expect(enabled(tester, _prevKey), isFalse);
-      expect(enabled(tester, _nextKey), isFalse);
-      expect(pageText(tester), '1/1');
     });
 
     testWidgets('the ink windows are the pages\' on screen: scrolling to the '

@@ -201,47 +201,14 @@ class _CanvasPanelViewport {
   }
 
   void _autoFrame(CanvasAutoFrameRequest request) {
-    final visible = _resolvedVisibleRect();
-    final next = request.panOnly
-        ? _viewportRevealing(request.rect, visible)
-        : _state._fittedInto(visible, canvasRect: request.rect);
+    final next = _state._fittedInto(
+      _resolvedVisibleRect(),
+      canvasRect: request.rect,
+    );
     if (next == _viewport) {
       return;
     }
     setViewport(next);
-  }
-
-  /// The minimal zoom-preserving pan that brings [rect] (canvas space)
-  /// into the viewport with a small margin; when the rect cannot fully
-  /// fit, its top-left edge wins. Under rotation/flip the rect's mapped
-  /// AABB is what must land inside.
-  CanvasViewport _viewportRevealing(Rect rect, Rect visible) {
-    const margin = 24.0;
-    var panX = _viewport.panX;
-    var panY = _viewport.panY;
-    // The rect's mapped AABB with the pan taken out — the one projection
-    // the pan bars and the view's limit read too ([viewportSpan]).
-    final across = viewportSpan(Axis.horizontal, _viewport, rect);
-    final down = viewportSpan(Axis.vertical, _viewport, rect);
-    final minX = across.start;
-    final maxX = across.start + across.extent;
-    final minY = down.start;
-    final maxY = down.start + down.extent;
-    // Reveal into the window, not into the box: the 24px breathing room is
-    // worthless if it is measured against an edge that is covered.
-    if (maxY + panY > visible.bottom - margin) {
-      panY = visible.bottom - margin - maxY;
-    }
-    if (minY + panY < visible.top + margin) {
-      panY = visible.top + margin - minY;
-    }
-    if (maxX + panX > visible.right - margin) {
-      panX = visible.right - margin - maxX;
-    }
-    if (minX + panX < visible.left + margin) {
-      panX = visible.left + margin - minX;
-    }
-    return _viewport.copyWith(panX: panX, panY: panY);
   }
 
   void rememberEditorViewportSize(Size size) {

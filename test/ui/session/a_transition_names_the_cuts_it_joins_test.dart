@@ -143,8 +143,6 @@ void main() {
           home: Scaffold(
             body: TimesheetTabHost(
               session: s,
-              continuous: false,
-              onContinuousChanged: (_) {},
             ),
           ),
         ),

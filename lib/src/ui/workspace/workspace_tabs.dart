@@ -1160,7 +1160,6 @@ class _WorkspaceTabs {
             // jank. Only the ink overlay consumes the tool state, through
             // its own boundary builder inside the host.
             listenable: Listenable.merge([
-              _state._views._timesheetContinuous,
               _state._views._timesheetViewport,
               _state._views._timesheetBrushAllowed,
               // F-90: a crossing, played or dragged over, turns the sheet
@@ -1171,10 +1170,6 @@ class _WorkspaceTabs {
             ]),
             host: (context) => TimesheetTabHost(
               session: _state.widget.session,
-              continuous: _state._views._timesheetContinuous.value,
-              onContinuousChanged: (continuous) {
-                _state._views._timesheetContinuous.value = continuous;
-              },
               // The host hears the page itself — the panel moves it.
               reading: _state._views._timesheetPage,
               viewportController: _state._views._timesheetViewport,

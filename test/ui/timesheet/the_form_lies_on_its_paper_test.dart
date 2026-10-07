@@ -58,7 +58,7 @@ void main() {
         layout.paperPixelSize,
         const CanvasSize(width: 1754, height: 2480),
       );
-      for (final page in layout.visiblePageIndexes) {
+      for (final page in layout.pageIndexes) {
         final paper = layout.pageRect(page);
         expect(
           paper.width * layout.paperScale,
@@ -127,42 +127,5 @@ void main() {
     final short = TimesheetDocumentLayout(document: document(fps: 12));
     expect(short.formRect(0).left, short.pageRect(0).left);
     expect(short.formRect(0).top, greaterThan(short.pageRect(0).top));
-  });
-
-  test('the view toggle moves nothing on the paper: the one strip keeps the '
-      'page\'s width, its form the page form\'s corner, and the paper its '
-      'pixels a unit', () {
-    for (final fps in rates) {
-      final sheet = document(fps: fps);
-      final paged = TimesheetDocumentLayout(document: sheet);
-      final strip = TimesheetDocumentLayout(document: sheet, continuous: true);
-      final reason = '$fps fps';
-
-      expect(strip.paperScale, paged.paperScale, reason: reason);
-      expect(strip.paperWidth, paged.paperWidth, reason: reason);
-      expect(strip.formWidth, paged.formWidth, reason: reason);
-      expect(
-        strip.formRect(0).topLeft,
-        paged.formRect(0).topLeft,
-        reason: reason,
-      );
-      expect(strip.headerBandRect(0), paged.headerBandRect(0), reason: reason);
-      expect(strip.memoBandRect(0), paged.memoBandRect(0), reason: reason);
-      // The strip's paper keeps the margin the page has over and under its
-      // form.
-      final over = strip.formRect(0).top - strip.pageRect(0).top;
-      expect(
-        strip.pageRect(0).bottom - strip.formRect(0).bottom,
-        closeTo(over, 1e-9),
-        reason: reason,
-      );
-      expect(
-        strip.formHeight,
-        paged.formHeight +
-            (sheet.rowCount - paged.halfRowCount(0)) *
-                TimesheetDocumentLayout.rowHeight,
-        reason: '$reason: the strip is every row long',
-      );
-    }
   });
 }

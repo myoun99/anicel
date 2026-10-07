@@ -58,7 +58,6 @@ void main() {
       final layout = TimesheetDocumentLayout(document: document);
       final windows = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: _cutId,
       );
 
@@ -119,7 +118,6 @@ void main() {
 
       final windows = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: _cutId,
       );
       final strips = windows
@@ -136,48 +134,12 @@ void main() {
       );
     });
 
-    test('continuous: page 1 ink in the paged paper geometry + the bands '
-        'stacked down the strip', () {
-      final document = _document();
-      final layout = TimesheetDocumentLayout(
-        document: document,
-        continuous: true,
-      );
-      final pagedLayout = TimesheetDocumentLayout(document: document);
-      final windows = timesheetInkWindows(
-        layout: layout,
-        pagedLayout: pagedLayout,
-        cutId: _cutId,
-      );
-
-      expect(windows, hasLength(3));
-      expect(windows[0].plane, TimesheetInkPlane.page);
-      expect(windows[0].documentRect.height, pagedLayout.paperHeight);
-      expect(windows[0].documentRect.width, pagedLayout.paperWidth);
-
-      final bandHeight =
-          document.pageFrameCount * TimesheetDocumentLayout.rowHeight;
-      expect(windows[1].plane, TimesheetInkPlane.strip);
-      expect(
-        windows[1].documentRect.topLeft,
-        Offset(layout.halfLeft(0, 0), layout.halfRowsTop(0)),
-      );
-      expect(
-        windows[2].documentRect.top,
-        layout.halfRowsTop(0) + bandHeight,
-        reason: 'band 2 continues seamlessly below band 1',
-      );
-      expect(windows[1].inkOffset, Offset.zero);
-      expect(windows[2].inkOffset, Offset.zero);
-    });
-
     test('inkViewport composes the panel transform, window placement and '
         'ink scale into one exact mapping', () {
       final document = _document();
       final layout = TimesheetDocumentLayout(document: document);
       final windows = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: _cutId,
       );
       final panel = CanvasViewport(zoom: 2, panX: 7, panY: 9);
@@ -318,7 +280,6 @@ void main() {
                 child: TimesheetInkLayer(
                   controller: controller,
                   layout: layout,
-                  pagedLayout: layout,
                   cutId: _cutId,
                   brushToolState: ValueNotifier(BrushToolState.defaults),
                   historyManager: historyManager,

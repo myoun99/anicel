@@ -90,7 +90,6 @@ void main() {
       strokeActive.addListener(() => holds.add(strokeActive.value));
       windows = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: cutId,
       );
       final size = layout.documentSize;
@@ -112,7 +111,6 @@ void main() {
                     TimesheetInkLayer(
                       controller: controller,
                       layout: layout,
-                      pagedLayout: layout,
                       cutId: cutId,
                       brushToolState:
                           brush ?? ValueNotifier(BrushToolState.defaults),
@@ -165,7 +163,6 @@ void main() {
       );
       windows = timesheetInkWindows(
         layout: layout,
-        pagedLayout: layout,
         cutId: cutId,
       );
       final regions = sheetInkRegions(windows);
@@ -205,43 +202,6 @@ void main() {
       );
       expect(
         regions[right]!.containsPoint(CanvasPoint(x: 30, y: seam + 1)),
-        isTrue,
-      );
-
-      // The continuous view is the same law over its own windows: page 1's
-      // paper under the one long strip.
-      final continuous = TimesheetDocumentLayout(
-        document: layout.document,
-        continuous: true,
-      );
-      final strip = timesheetInkWindows(
-        layout: continuous,
-        pagedLayout: layout,
-        cutId: cutId,
-      );
-      final stripRegions = sheetInkRegions(strip);
-      final paper = strip.indexWhere(
-        (window) => window.id == 'page-0-continuous',
-      );
-      final band = strip.indexWhere(
-        (window) => window.id == 'strip-0-continuous',
-      );
-      final onTheStrip = Offset(
-        continuous.halfLeft(0, 0) + 30,
-        continuous.halfRowsTop(0) + 30,
-      );
-      expect(
-        stripRegions[paper]!.containsPoint(pixelIn(strip[paper], onTheStrip)),
-        isFalse,
-      );
-      expect(
-        stripRegions[band]!.containsPoint(pixelIn(strip[band], onTheStrip)),
-        isTrue,
-      );
-      final onTheMemoToo =
-          continuous.memoBandRect(0).topLeft + const Offset(30, 30);
-      expect(
-        stripRegions[paper]!.containsPoint(pixelIn(strip[paper], onTheMemoToo)),
         isTrue,
       );
     });

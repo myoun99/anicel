@@ -61,7 +61,6 @@ void main() {
     final band = timesheetInkStripKey(cutId, 0);
     final windows = timesheetInkWindows(
       layout: layout,
-      pagedLayout: layout,
       cutId: cutId,
     );
     final size = layout.documentSize;

@@ -185,8 +185,8 @@ class _TimesheetCellsPass {
     }
 
     // Gutter frame numbers on even frames, bare on the paper left of the
-    // half — page-local on paper, global in the continuous strip. On each
-    // second's LAST frame row (24, 48, …) the second index prints BOLD in
+    // half, counted from the page's first frame. On each second's LAST
+    // frame row (24, 48, …) the second index prints BOLD in
     // place of the frame number — the paper convention (A-1 form).
     _paintRowNumbers(canvas, sheet);
 
@@ -206,9 +206,7 @@ class _TimesheetCellsPass {
   void _paintRowNumbers(Canvas canvas, _HalfFrame sheet) {
     for (var row = sheet.firstRow; row < sheet.lastRow; row += 1) {
       final frame = sheet.startFrame + row;
-      final printed = _painter.layout.continuous
-          ? frame + 1
-          : frame % _painter.document.pageFrameCount + 1;
+      final printed = frame % _painter.document.pageFrameCount + 1;
       final rowTop = sheet.rowsTop + row * TimesheetDocumentLayout.rowHeight;
       if (printed % _painter.document.fps == 0) {
         _painter._text(

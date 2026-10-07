@@ -104,15 +104,11 @@ void main() {
   /// The pixels [layers] print of the document, the whole of it.
   Future<Uint8List> printed(
     WidgetTester tester,
-    Set<SheetPaintLayer> layers, {
-    required bool continuous,
-  }) async {
+    Set<SheetPaintLayer> layers,
+  ) async {
     final painter = TimesheetDocumentPainter(
       document: document,
-      layout: TimesheetDocumentLayout(
-        document: document,
-        continuous: continuous,
-      ),
+      layout: TimesheetDocumentLayout(document: document),
       face: const TextStyle(
         fontFamily: AppTypography.bundledFamily,
         fontFamilyFallback: AppTypography.bundledFallback,
@@ -148,35 +144,19 @@ void main() {
     return count;
   }
 
-  for (final continuous in [false, true]) {
-    final view = continuous ? 'the continuous view' : 'the pages';
-    testWidgets('$view: the values print in the content stratum', (
-      tester,
-    ) async {
-      expect(
-        inked(
-          await printed(
-            tester,
-            SheetStratum.content.layers,
-            continuous: continuous,
-          ),
-        ),
-        greaterThan(0),
-        reason: 'LIVENESS: the sheet has values to print',
-      );
-    });
+  testWidgets('the values print in the content stratum', (tester) async {
+    expect(
+      inked(await printed(tester, SheetStratum.content.layers)),
+      greaterThan(0),
+      reason: 'LIVENESS: the sheet has values to print',
+    );
+  });
 
-    for (final stratum in [SheetStratum.ink, SheetStratum.picture]) {
-      testWidgets('🎯$view: the ${stratum.name} stratum prints none of the '
-          'values — no cell, no instruction, no SE line, no memo', (
-        tester,
-      ) async {
-        expect(
-          inked(await printed(tester, stratum.layers, continuous: continuous)),
-          0,
-        );
-      });
-    }
+  for (final stratum in [SheetStratum.ink, SheetStratum.picture]) {
+    testWidgets('🎯the ${stratum.name} stratum prints none of the values — '
+        'no cell, no instruction, no SE line, no memo', (tester) async {
+      expect(inked(await printed(tester, stratum.layers)), 0);
+    });
   }
 
   // The cut envelope bakes the same strata through the same shell: held to
