@@ -52,6 +52,14 @@ void main() {
       ]);
     });
 
+    test('the shape tool marks the cel and drags on the selection layer', () {
+      expect(canvasToolDrawsShapes(CanvasTool.shape), isTrue);
+      expect(canvasToolMarksCel(CanvasTool.shape), isTrue);
+      expect(canvasToolSelects(CanvasTool.shape), isTrue);
+      expect(canvasToolPaints(CanvasTool.shape), isFalse);
+      expect(canvasToolRailGroup(CanvasTool.shape), CanvasTool.shape);
+    });
+
     test('a tool that traces nothing speaks none', () {
       for (final tool in CanvasTool.values) {
         final traces =
@@ -256,6 +264,24 @@ void main() {
       expect(choice.fillShape, isNull);
       expect(choice.drawShape, isNull);
       expect(choice.shapeBlendMode, BrushBlendMode.multiply);
+    });
+
+    test('resuming puts back what the shape tool was left on', () {
+      final left = PaintToolStateNotifier(
+        BrushToolState.defaults.copyWith(
+          drawShape: CanvasShapeKind.line,
+          shapeBlendMode: BrushBlendMode.multiply,
+        ),
+      );
+      addTearDown(left.dispose);
+      final choice = ToolChoice.fromJson(toolChoiceOf(left).toJson());
+
+      final resumed = PaintToolStateNotifier(BrushToolState.defaults);
+      addTearDown(resumed.dispose);
+      resumeToolChoice(resumed, choice, brushFor: (_, _, _) => null);
+
+      expect(resumed.value.drawShape, CanvasShapeKind.line);
+      expect(resumed.value.shapeBlendMode, BrushBlendMode.multiply);
     });
 
     test('a shape the verb speaks still reads', () {

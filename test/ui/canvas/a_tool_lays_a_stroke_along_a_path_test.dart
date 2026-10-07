@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -74,6 +75,90 @@ void main() {
     steadied.stroker!(corner);
 
     expect(_look(steadied.committed.single), _look(plain.committed.single));
+  });
+
+  testWidgets('⛔nothing snaps it: under a perspective guide that bends a '
+      'hand\'s stroke onto its rays, a path is laid where it was told', (
+    tester,
+  ) async {
+    final guides = CutGuides(
+      guides: [
+        DrawingGuide(
+          id: const GuideId('p1'),
+          name: 'p1',
+          shape: PerspectiveShape(
+            vanishingPoints: [VanishingPointAt(p(150, 60))],
+            eyeLevel: GuideAxis(origin: p(80, 60), angleDegrees: 0),
+            snapEnabled: true,
+          ),
+        ),
+      ],
+    );
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.stroker!(corner);
+
+    final guided = _Host();
+    await _pump(tester, guided, _brush(), guides: guides);
+    guided.stroker!(corner);
+    // Fixture: the guide does bend a hand's stroke through the same points.
+    await _byMouse(tester, const [
+      Offset(10, 10),
+      Offset(100, 10),
+      Offset(100, 50),
+    ]);
+
+    expect(guided.committed, hasLength(2));
+    expect(_look(guided.committed.first), _look(plain.committed.single));
+    expect(
+      _look(guided.committed.last),
+      isNot(_look(plain.committed.single)),
+      reason: 'fixture: the hand\'s stroke was snapped',
+    );
+  });
+
+  testWidgets('symmetry copies it as it copies a stroke: every dab, the '
+      'first included', (tester) async {
+    final plain = _Host();
+    await _pump(tester, plain, _brush());
+    plain.stroker!([p(10, 10), p(60, 10), p(60, 50)]);
+
+    final mirrored = _Host();
+    await _pump(
+      tester,
+      mirrored,
+      _brush(),
+      guides: CutGuides(
+        guides: [
+          DrawingGuide(
+            id: const GuideId('s1'),
+            name: 's1',
+            shape: SymmetryShape(
+              axis: GuideAxis(origin: p(80, 32), angleDegrees: 90),
+            ),
+          ),
+        ],
+        activeSymmetryId: const GuideId('s1'),
+      ),
+    );
+    mirrored.stroker!([p(10, 10), p(60, 10), p(60, 50)]);
+
+    final dabs = mirrored.committed.single;
+    expect(dabs.length, plain.committed.single.length * 2);
+    expect(
+      dabs.where((dab) => dab.center.x > 80).length,
+      plain.committed.single.length,
+      reason: 'one copy across the axis for each dab on this side',
+    );
+    expect(
+      dabs.any(
+        (dab) =>
+            (dab.center.x - 150).abs() < 1e-6 &&
+            (dab.center.y - 10).abs() < 1e-6,
+      ),
+      isTrue,
+      reason: 'the first dab\'s copy: (10,10) across x = 80',
+    );
   });
 
   testWidgets('its first dab is turned the way the stroke sets off — a tool '
@@ -214,6 +299,7 @@ Future<void> _pump(
   bool editable = true,
   bool rowAcceptsStrokes = true,
   bool? celAnswer,
+  CutGuides? guides,
 }) => tester.pumpWidget(
   MaterialApp(
     home: Scaffold(
@@ -229,6 +315,7 @@ Future<void> _pump(
           inputSettings: () => settings,
           editable: editable,
           rowAcceptsStrokes: rowAcceptsStrokes,
+          guides: guides,
           onPressNeedsCel: celAnswer == null
               ? null
               : () {

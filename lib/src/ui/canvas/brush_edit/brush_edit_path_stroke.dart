@@ -16,8 +16,8 @@ part of '../interactive_brush_edit_canvas_view.dart';
 ///
 /// What differs is only what a pen brings and a tool does not: no pointer,
 /// no pressure to read (the stroke is laid at full pressure the whole
-/// way), no hand to steady and no ray to snap to
-/// ([_BrushEditStroke.beginToolStroke]).
+/// way), no hand to steady and no ray to snap to — its points go straight
+/// to the stroke's advance ([_BrushEditStroke.beginToolStroke]).
 class _BrushEditPathStroke {
   _BrushEditPathStroke(this._state);
 

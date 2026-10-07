@@ -58,7 +58,6 @@ class _BrushEditStroke {
       // a stroke is one window's now (H49, 09-30), and the press still
       // decides its dice.
       dice: Object.hash(event.pointer, event.timeStamp),
-      byHand: true,
     );
     // A press off the pasteboard lays nothing down; the stroke's first dab
     // comes where a move crosses in.
@@ -75,9 +74,14 @@ class _BrushEditStroke {
 
   /// A stroke the TOOL lays begins at [canvasPosition], heading [towards]
   /// its next point (I-69) — no pointer under it and no pen: the pressure
-  /// rests at full ([_BrushEditPressure.restInput]), nothing is steadied
-  /// and nothing snaps ([_arm]'s `byHand`), and its first dab goes out at
-  /// once, already knowing which way the stroke sets off.
+  /// rests at full ([_BrushEditPressure.restInput]), and its first dab goes
+  /// out at once, already knowing which way the stroke sets off.
+  ///
+  /// ⚠️Nothing steadies it and nothing snaps it, and not because anything
+  /// here says so: its points go straight to [advanceStrokeTo], past the
+  /// stabiliser and the perspective snap a pen's samples pass through
+  /// ([takeSample], [advanceStrokeThroughGuides]). A stroke the tool lays
+  /// goes where it was told.
   ///
   /// ⚠️[_toolsOwnStroke] stands in for the pointer for the length of the
   /// ONE call that lays the stroke and lands it ([_BrushEditPathStroke]):
@@ -99,7 +103,6 @@ class _BrushEditStroke {
       at: canvasPosition,
       startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
-      byHand: false,
     );
     if (startsInsidePasteboard) {
       _paintPress(
@@ -114,19 +117,14 @@ class _BrushEditStroke {
 
   /// THE STROKE IS ARMED — everything a stroke stands on before its first
   /// dab, whoever begins it: the host hears that one is in flight, the
-  /// symmetry, the dynamics and the ground mixer are made for it from
-  /// [strokeSettings], and the overlay opens in its blend.
-  ///
-  /// [byHand] is whether a hand is drawing it: only then is there a line
-  /// to steady (the stabiliser) and a ray to find from how it sets off
-  /// (the perspective snap). A stroke the tool lays goes where it was
-  /// told.
+  /// stabiliser, the snap, the symmetry, the dynamics and the ground mixer
+  /// are made for it from [strokeSettings], and the overlay opens in its
+  /// blend.
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
     required bool startsInsidePasteboard,
     required int dice,
-    required bool byHand,
   }) {
     final canvasPosition = at;
     _state.widget.onActiveStrokeChanged?.call(true);
@@ -134,7 +132,7 @@ class _BrushEditStroke {
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
     final stabilizerStrength = strokeSettings.stabilizerStrength;
-    _state._stabilizer = byHand && stabilizerStrength > 0
+    _state._stabilizer = stabilizerStrength > 0
         ? StrokeStabilizer(
             ropeLength: stabilizerStrength / _state.widget.viewport.zoom,
             start: canvasPosition,
@@ -143,14 +141,12 @@ class _BrushEditStroke {
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
     // line that is already down.
-    _state._snapSession = byHand
-        ? PerspectiveSnapSession.maybeStart(
-            guides: _state.widget.guides,
-            start: canvasPosition,
-            zoom: _state.widget.viewport.zoom,
-            space: _state.widget.guideSpace,
-          )
-        : null;
+    _state._snapSession = PerspectiveSnapSession.maybeStart(
+      guides: _state.widget.guides,
+      start: canvasPosition,
+      zoom: _state.widget.viewport.zoom,
+      space: _state.widget.guideSpace,
+    );
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
         ? const []
