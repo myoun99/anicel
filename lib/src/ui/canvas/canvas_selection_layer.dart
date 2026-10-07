@@ -1380,9 +1380,19 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// releasing here would have left the origin erased and the floating
   /// pixels gone — which is exactly why the seek was refused instead.
   void _carrySessionToAnotherCel() {
-    final wasDragging = _drag != null;
+    // 🚨A SHAPE BEING TRACED BELONGS TO NO CEL UNTIL IT IS DRAWN (I-69), so
+    // the walk does not take it out of the hand. And the cel it asked for
+    // at its press ([CanvasSelectionLayer.onPressNeedsCel]) arrives as
+    // exactly this — another frame under the layer. 🔬The Windows app,
+    // 2026-10-08, 「프레임 자동 생성」 on: the block was made, the drag ended
+    // with its arrival, and no shape was drawn.
+    final tracesAShape =
+        widget.tool == CanvasSelectionTool.drawShape && _drag is MarqueeDrag;
+    final wasDragging = _drag != null && !tracesAShape;
     setState(() {
-      _endDrag(cancelled: true, notify: false);
+      if (!tracesAShape) {
+        _endDrag(cancelled: true, notify: false);
+      }
       _letGoOfSession();
       _shapeNeedsLift = _region != null;
     });

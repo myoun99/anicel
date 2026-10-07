@@ -31,9 +31,12 @@ void main() {
     WidgetTester tester, {
     required bool? celAnswer,
     CanvasSelectionTool tool = CanvasSelectionTool.drawShape,
+    Object frameToken = 'frame',
+    List<DrawnShapePath>? drawnSoFar,
+    List<String>? logSoFar,
   }) async {
-    final drawn = <DrawnShapePath>[];
-    final log = <String>[];
+    final drawn = drawnSoFar ?? <DrawnShapePath>[];
+    final log = logSoFar ?? <String>[];
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -48,7 +51,8 @@ void main() {
                 shapeKind: CanvasShapeKind.rect,
                 viewport: CanvasViewport(),
                 canvasSize: const CanvasSize(width: 400, height: 300),
-                frameToken: 'frame',
+                frameToken: frameToken,
+                onShapeCommitted: (before, after) => log.add('selected'),
                 onDrawShape: (path) {
                   drawn.add(path);
                   log.add('drawn');
@@ -95,6 +99,73 @@ void main() {
     await dragOut(tester, gesture);
     expect(host.log, ['asked', 'drawn'], reason: 'asked once');
     expect(host.drawn.single.closed, isTrue);
+  });
+
+  // 🔬The Windows app, 2026-10-08: the cel the press asked for arrives as
+  // another frame under the layer, a frame later — and a frame change
+  // drops a drag. The block was made and no shape was drawn.
+  testWidgets('🚨the cel that arrives under a shape being traced does not '
+      'take it out of the hand', (tester) async {
+    final host = await pumpLayer(
+      tester,
+      celAnswer: true,
+      frameToken: 'no cel here',
+    );
+    final gesture = await press(tester, const Offset(40, 40));
+    await gesture.moveBy(const Offset(40, 30));
+    await tester.pump();
+
+    // The frame that brings the cel: another frame under the layer, and
+    // nothing left to ask.
+    await pumpLayer(
+      tester,
+      celAnswer: null,
+      frameToken: 'the cel',
+      drawnSoFar: host.drawn,
+      logSoFar: host.log,
+    );
+    await dragOut(tester, gesture);
+
+    expect(host.log, ['asked', 'drawn']);
+    expect(
+      host.drawn.single.points.first.x,
+      closeTo(40, 0.01),
+      reason: 'from where the pen went down',
+    );
+  });
+
+  testWidgets('⛔a selection being dragged out is still dropped when the '
+      'frame under it changes', (tester) async {
+    // Fixture: left alone, the same drag selects.
+    final left = await pumpLayer(
+      tester,
+      celAnswer: null,
+      tool: CanvasSelectionTool.select,
+    );
+    await dragOut(tester, await press(tester, const Offset(40, 40)));
+    expect(left.log, ['selected']);
+
+    await tester.pumpWidget(const SizedBox());
+    final host = await pumpLayer(
+      tester,
+      celAnswer: null,
+      tool: CanvasSelectionTool.select,
+      frameToken: 'one frame',
+    );
+    final gesture = await press(tester, const Offset(40, 40));
+    await gesture.moveBy(const Offset(40, 30));
+    await tester.pump();
+    await pumpLayer(
+      tester,
+      celAnswer: null,
+      tool: CanvasSelectionTool.select,
+      frameToken: 'another',
+      drawnSoFar: host.drawn,
+      logSoFar: host.log,
+    );
+    await dragOut(tester, gesture);
+
+    expect(host.log, isEmpty);
   });
 
   testWidgets('⛔a press refused a cel traces nothing', (tester) async {
@@ -158,7 +229,7 @@ void main() {
       return asked;
     }
 
-    Future<void> dragOnThePanel(WidgetTester tester) async {
+    Future<TestGesture> pressOnThePanel(WidgetTester tester) async {
       final origin = tester.getTopLeft(
         find.byKey(const ValueKey<String>('canvas-selection-layer')),
       );
@@ -168,19 +239,18 @@ void main() {
         buttons: kPrimaryButton,
       );
       await tester.pump();
-      await gesture.moveBy(const Offset(120, 80));
-      await tester.pump();
-      await gesture.up();
-      await tester.pump();
+      return gesture;
     }
 
     testWidgets('on a frame with no cel the shape tool\'s press is the one '
         'that asks — once', (tester) async {
       final asked = await pumpPanel(tester, celEditable: false);
 
-      await dragOnThePanel(tester);
+      final gesture = await pressOnThePanel(tester);
+      expect(asked, ['asked'], reason: 'at the press: the layer asked');
 
-      expect(asked, ['asked']);
+      await dragOut(tester, gesture);
+      expect(asked, ['asked'], reason: 'and nobody asks again at the release');
     });
 
     testWidgets('⛔where a cel is there nobody under the panel asks', (
@@ -188,7 +258,7 @@ void main() {
     ) async {
       final asked = await pumpPanel(tester, celEditable: true);
 
-      await dragOnThePanel(tester);
+      await dragOut(tester, await pressOnThePanel(tester));
 
       expect(asked, isEmpty);
     });
@@ -205,6 +275,6 @@ void main() {
     final gesture = await press(tester, const Offset(40, 40));
     await dragOut(tester, gesture);
 
-    expect(host.log, isEmpty);
+    expect(host.log, ['selected'], reason: 'it selected, and asked nobody');
   });
 }
