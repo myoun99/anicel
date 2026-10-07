@@ -47,6 +47,11 @@ import '../../helpers/temp_dir.dart';
 /// answer, and the line that says which order this export takes. Every
 /// OS's road is driven from the Windows workstation through the OS seam.
 void main() {
+  /// What a hand-over's window is asked when it is backed out of
+  /// (`a_backed_out_hand_over_is_asked_about_test` has the law).
+  const question = ValueKey<String>('hand-over-pending-dialog');
+  const everyTime = 1 << 30;
+
   late Directory temp;
   late Directory placed;
 
@@ -176,17 +181,47 @@ void main() {
       null;
 
   /// The iOS export picker: moves whatever it is handed into [placed],
-  /// writing down what it was handed.
-  List<List<String>> iosPickerPlaces() {
+  /// writing down what it was handed — once it has been backed out of
+  /// [backedOut] times.
+  List<List<String>> iosPickerPlaces({int backedOut = 0}) {
     final handed = <List<String>>[];
     FolderPicker.debugFilesExporter = (sourcePaths) async {
       handed.add(namesOf(sourcePaths));
+      if (handed.length <= backedOut) {
+        return const FolderGrant.cancelled();
+      }
       for (final source in sourcePaths) {
         moveIntoFolder(source, placed.path);
       }
       return FolderGrant.granted(path: placed.path);
     };
     return handed;
+  }
+
+  /// Starts [run] and comes back once [reached] — in real time, as a run
+  /// writes its files — with the future of the whole of it: a run that
+  /// stops at a window of its own to be answered.
+  Future<({Future<void> whole})> begun(
+    WidgetTester tester,
+    Future<void> Function() run,
+    bool Function() reached,
+  ) async {
+    late Future<void> whole;
+    await tester.runAsync(() async {
+      whole = run();
+      while (!reached()) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    });
+    await tester.pump();
+    await tester.pump();
+    return (whole: whole);
+  }
+
+  /// Lets [whole] run to its end.
+  Future<void> ended(WidgetTester tester, Future<void> whole) async {
+    await tester.runAsync(() => whole);
+    await tester.pump();
   }
 
   group('asked FIRST, where the platform can be asked before the files '
@@ -585,17 +620,52 @@ void main() {
       expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
     });
 
-    testWidgets('a hand-over the user backs out of lets the outputs go, and '
-        'says so', (tester) async {
-      FolderPicker.debugFilesExporter = (sourcePaths) async =>
-          const FolderGrant.cancelled();
+    testWidgets('🎯a hand-over the user backs out of is ASKED about, the '
+        'outputs still in the run\'s room — and 다시 고르기 hands them to '
+        'the same window, where they are placed (F-221-Q6)', (tester) async {
+      final handed = iosPickerPlaces(backedOut: 1);
       final state = await open(tester, 'ios');
       await pickPngSequence(tester);
 
-      await tester.runAsync(state.export);
-      await tester.pump();
+      final (whole: exporting) = await begun(
+        tester,
+        state.export,
+        () => handed.length == 1,
+      );
+
+      expect(find.byKey(question), findsOneWidget);
+      expect(namesOf(filesWrittenUnder(outbox())), [
+        'frame_0001.png',
+        'frame_0002.png',
+      ], reason: 'backing out let nothing go');
+      await tapKey(tester, 'hand-over-pending-pick-again');
+      await ended(tester, exporting);
+
+      expect(handed, [
+        ['frame_0001.png', 'frame_0002.png'],
+        ['frame_0001.png', 'frame_0002.png'],
+      ]);
+      expect(filesWrittenUnder(placed), ['frame_0001.png', 'frame_0002.png']);
+      expect(leftIn(outbox()), isEmpty);
+      expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
+    });
+
+    testWidgets('버리기 at that question lets the outputs go, and the run '
+        'says so', (tester) async {
+      final handed = iosPickerPlaces(backedOut: everyTime);
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+
+      final (whole: exporting) = await begun(
+        tester,
+        state.export,
+        () => handed.length == 1,
+      );
+      await tapKey(tester, 'hand-over-pending-discard');
+      await ended(tester, exporting);
 
       expect(status(tester), AppText.strings.exHandOverDeclined);
+      expect(handed, hasLength(1), reason: 'the window was not opened again');
       expect(leftIn(outbox()), isEmpty);
       expect(filesWrittenUnder(placed), isEmpty);
     });
@@ -777,17 +847,47 @@ void main() {
       expect(leftIn(outbox()), isEmpty);
     });
 
-    testWidgets('a queue whose hand-over is backed out of says so', (
-      tester,
-    ) async {
-      FolderPicker.debugFilesExporter = (sourcePaths) async =>
-          const FolderGrant.cancelled();
+    testWidgets('🎯a queue whose hand-over is backed out of is asked ONCE, '
+        'for every job\'s outputs — 다시 고르기 hands them all to one window '
+        'again', (tester) async {
+      final handed = iosPickerPlaces(backedOut: 1);
+      final state = await open(tester, 'ios');
+      await pickPngSequence(tester);
+      await tapKey(tester, 'export-queue-add-button');
+      await tester.tap(find.byKey(const ValueKey<String>('export-tab-image')));
+      await tester.pump();
+      await tapKey(tester, 'export-queue-add-button');
+
+      final (whole: running) = await begun(
+        tester,
+        state.runQueue,
+        () => handed.length == 1,
+      );
+
+      expect(find.byKey(question), findsOneWidget);
+      await tapKey(tester, 'hand-over-pending-pick-again');
+      await ended(tester, running);
+
+      const all = ['Project.png', 'frame_0001.png', 'frame_0002.png'];
+      expect(handed, [all, all]);
+      expect(filesWrittenUnder(placed), all);
+      expect(leftIn(outbox()), isEmpty);
+      expect(status(tester), isNot(AppText.strings.exHandOverDeclined));
+    });
+
+    testWidgets('a queue let go at that question says so', (tester) async {
+      final handed = iosPickerPlaces(backedOut: everyTime);
       final state = await open(tester, 'ios');
       await pickPngSequence(tester);
       await tapKey(tester, 'export-queue-add-button');
 
-      await tester.runAsync(state.runQueue);
-      await tester.pump();
+      final (whole: running) = await begun(
+        tester,
+        state.runQueue,
+        () => handed.length == 1,
+      );
+      await tapKey(tester, 'hand-over-pending-discard');
+      await ended(tester, running);
 
       expect(status(tester), AppText.strings.exHandOverDeclined);
       expect(leftIn(outbox()), isEmpty);

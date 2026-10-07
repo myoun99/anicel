@@ -331,6 +331,36 @@ Future<bool?> askConfirm(
       confirmWindow(context, question, accept: accept, decline: decline),
 );
 
+/// [askConfirm] for the question that STANDS UNTIL IT IS ANSWERED: the
+/// barrier, escape and the system's back leave the window where it is, and
+/// only its two buttons take it down ([showDialogVerb]).
+///
+/// For the question where walking away would itself be one of the answers
+/// and nobody chose it — a finished export that is still to be handed over
+/// (F-221-Q6, 유저 2026-10-07: 「고르거나 버릴 때까지 그 확인 창이 떠
+/// 있다」). Both answers are named: such a window has no 「cancel」 to
+/// default to.
+///
+/// ⚠️Null is still an answer the CALLER can get — torn down while the
+/// window stood, or the window taken down from outside (a pop meant for
+/// another route). Neither is the user's.
+///
+/// A door of its own rather than a flag on [askConfirm]: what stays is the
+/// ROUTE, so it is decided where the window is opened — a question that
+/// carried it would be ignored by every flow that builds [confirmWindow]
+/// inside a dialog of its own.
+Future<bool?> askUntilAnswered(
+  BuildContext context,
+  ConfirmQuestion question, {
+  required ConfirmChoice accept,
+  required ConfirmChoice decline,
+}) => showDialogVerb<bool>(
+  context,
+  (context) =>
+      confirmWindow(context, question, accept: accept, decline: decline),
+  staysUntilAnswered: true,
+);
+
 /// The two-button confirm window itself, so a verb that wants the window
 /// inside a dialog flow of its own builds it without asking — the delete
 /// and reset verbs do, through `confirmThenCommit`.

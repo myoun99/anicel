@@ -1848,8 +1848,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// their runs through it alike.
   ///
   /// What was handed over is gone from the room afterwards — and so is
-  /// what the user declined or what failed to arrive: nothing asks for it
-  /// again.
+  /// what the user let go, or what failed to arrive. Backing out of the
+  /// window is neither: the hand-over asks about it, and opens the window
+  /// again, before it answers here ([placedOrLetGo]).
   Future<String?> _handOverOutboxes(List<String> outboxes) async {
     try {
       final outputs = _outputsUnderNamesOfTheirOwn(outboxes);

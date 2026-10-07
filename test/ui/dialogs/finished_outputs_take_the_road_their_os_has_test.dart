@@ -9,12 +9,17 @@ import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import '../../helpers/temp_dir.dart';
 
 /// [handOverFilesForUser] on each road (drive-folder-windows-Q1 · F-221):
-/// what the window answered becomes placed or declined, and what was placed
-/// stands where the window said. Every road is reached from the Windows
-/// workstation through the OS seam.
+/// which window a road opens, what that window needs before it can, and
+/// that what it placed stands where it said. Every road is reached from the
+/// Windows workstation through the OS seam.
 ///
 /// A desktop has no road — it is asked before anything is made — and that
-/// is pinned where the roads are named (`folder_pick_flow_test.dart`).
+/// is pinned where the roads are named (`folder_pick_flow_test.dart`). A
+/// window that is BACKED OUT OF is asked about on every road alike, and
+/// that law has its own file (`a_backed_out_hand_over_is_asked_about_test`)
+/// — iOS's road among them, which the export window drives besides
+/// (`finished_outputs_are_handed_over_test`). Here a backed-out window is
+/// only ever let go ([letGo]), to see what it left.
 void main() {
   late Directory temp;
   late Directory picked;
@@ -39,15 +44,19 @@ void main() {
     deleteTempQuietly(temp);
   });
 
+  /// What the hand-over answered, once it has — null while a window of its
+  /// own still waits for the user.
+  HandOver? handed;
+
   /// Hands [paths] over from a mounted context and answers what came of it.
   Future<HandOver?> handOver(WidgetTester tester, List<String> paths) async {
-    HandOver? result;
+    handed = null;
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
           builder: (context) => TextButton(
             onPressed: () async {
-              result = await handOverFilesForUser(context, paths: paths);
+              handed = await handOverFilesForUser(context, paths: paths);
             },
             child: const Text('hand over'),
           ),
@@ -56,7 +65,16 @@ void main() {
     );
     await tester.tap(find.text('hand over'));
     await tester.pumpAndSettle();
-    return result;
+    return handed;
+  }
+
+  /// Lets the outputs of a backed-out window go, at the question it is
+  /// asked.
+  Future<void> letGo(WidgetTester tester) async {
+    await tester.tap(
+      find.byKey(const ValueKey<String>('hand-over-pending-discard')),
+    );
+    await tester.pumpAndSettle();
   }
 
   /// Android's windows, counted: the save window that takes one file, and
@@ -84,29 +102,14 @@ void main() {
     return (saved: saved, askedFolder: askedFolder);
   }
 
-  testWidgets('iOS: backing out of the export picker declines', (
+  testWidgets('Android: ONE file goes through the save window', (
     tester,
   ) async {
-    debugOperatingSystemOverride = 'ios';
-    FolderPicker.debugFilesExporter = (sourcePaths) async =>
-        const FolderGrant.cancelled();
-
-    expect(await handOver(tester, [file, folder]), HandOver.declined);
-  });
-
-  testWidgets('Android: ONE file goes through the save window, and backing '
-      'out of it declines', (tester) async {
     final windows = androidWindows();
 
     expect(await handOver(tester, [file]), HandOver.placed);
     expect(windows.saved, [file]);
     expect(windows.askedFolder, isEmpty, reason: 'one file asks no folder');
-
-    FolderPicker.debugFileExporter = ({
-      required String sourcePath,
-      String? suggestedName,
-    }) async => const FolderGrant.cancelled();
-    expect(await handOver(tester, [file]), HandOver.declined);
   });
 
   testWidgets('🎯Android: ONE file is handed over with NO All-Files grant — '
@@ -130,24 +133,8 @@ void main() {
   ) async {
     final windows = androidWindows();
     AppStorage.debugAllFilesAccessOverride = false;
-    HandOver? result;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Builder(
-          builder: (context) => TextButton(
-            onPressed: () async {
-              result = await handOverFilesForUser(
-                context,
-                paths: [file, folder],
-              );
-            },
-            child: const Text('hand over'),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('hand over'));
-    await tester.pumpAndSettle();
+
+    await handOver(tester, [file, folder]);
 
     expect(
       find.byKey(const ValueKey<String>('storage-grant-dialog')),
@@ -155,8 +142,9 @@ void main() {
     );
     await tester.tap(find.byKey(const ValueKey<String>('storage-grant-cancel')));
     await tester.pumpAndSettle();
+    await letGo(tester);
 
-    expect(result, HandOver.declined);
+    expect(handed, HandOver.declined);
     expect(windows.askedFolder, isEmpty, reason: 'the window never opened');
     expect(File(file).existsSync(), isTrue);
   });
@@ -177,15 +165,18 @@ void main() {
     expect(Directory(folder).existsSync(), isFalse);
   });
 
-  testWidgets('Android: backing out of the folder window declines and moves '
-      'nothing', (tester) async {
+  testWidgets('Android: a folder window backed out of has moved nothing', (
+    tester,
+  ) async {
     androidWindows(folderBackedOut: true);
     // What a backed-out folder window says about Google Drive is said once
     // a session, and is its own law's (`folder_pick_drive_notice_test`).
     debugDriveNoticeShown = true;
 
-    expect(await handOver(tester, [file, folder]), HandOver.declined);
+    await handOver(tester, [file, folder]);
+    await letGo(tester);
 
+    expect(handed, HandOver.declined);
     expect(File(file).existsSync(), isTrue);
     expect(File('$folder/0001.png').existsSync(), isTrue);
     expect(picked.listSync(), isEmpty);

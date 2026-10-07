@@ -1110,6 +1110,9 @@ enum AppStrings {
   String get exChannels => _s('exChannels');
   String get exAudio => _s('exAudio');
   String get exHandOverDeclined => _s('exHandOverDeclined');
+  String get exHandOverPending => _s('exHandOverPending');
+  String get exHandOverPickAgain => _s('exHandOverPickAgain');
+  String get exHandOverDiscard => _s('exHandOverDiscard');
   String get exSavePreset => _s('exSavePreset');
   String get exPresetNameEmpty => _s('exPresetNameEmpty');
   String get exBaseName => _s('exBaseName');
@@ -2294,6 +2297,9 @@ enum AppStrings {
     'exChannels': 'Channels',
     'exAudio': 'Audio',
     'exHandOverDeclined': 'Not handed over — the outputs were let go.',
+    'exHandOverPending': 'The outputs have not been handed over yet.',
+    'exHandOverPickAgain': 'Pick again',
+    'exHandOverDiscard': 'Discard',
     'exSavePreset': 'Save preset',
     'exPresetNameEmpty': 'Preset name cannot be empty.',
     'exBaseName': 'Base name',
@@ -3532,6 +3538,9 @@ enum AppStrings {
     'exChannels': 'チャンネル',
     'exAudio': '音声',
     'exHandOverDeclined': '渡さなかったため、書き出した結果は破棄しました。',
+    'exHandOverPending': '書き出した結果をまだ渡していません。',
+    'exHandOverPickAgain': '選び直す',
+    'exHandOverDiscard': '破棄',
     'exSavePreset': 'プリセットを保存',
     'exPresetNameEmpty': 'プリセット名を空にはできません。',
     'exBaseName': 'ベース名',
@@ -4895,6 +4904,9 @@ enum AppStrings {
     'exChannels': '채널',
     'exAudio': '오디오',
     'exHandOverDeclined': '넘기지 않아 내보낸 결과물을 버렸습니다.',
+    'exHandOverPending': '결과물을 아직 넘기지 않았습니다.',
+    'exHandOverPickAgain': '다시 고르기',
+    'exHandOverDiscard': '버리기',
     'exSavePreset': '프리셋 저장',
     'exPresetNameEmpty': '프리셋 이름은 비울 수 없습니다.',
     'exBaseName': '기본 이름',
@@ -6300,6 +6312,9 @@ enum AppStrings {
     'exChannels': 'Canaux',
     'exAudio': 'Audio',
     'exHandOverDeclined': 'Non transmis — les fichiers exportés ont été abandonnés.',
+    'exHandOverPending': 'Les fichiers exportés n’ont pas encore été transmis.',
+    'exHandOverPickAgain': 'Choisir à nouveau',
+    'exHandOverDiscard': 'Abandonner',
     'exSavePreset': 'Enregistrer le préréglage',
     'exPresetNameEmpty': 'Le nom du préréglage ne peut pas être vide.',
     'exBaseName': 'Nom de base',
@@ -7652,6 +7667,9 @@ enum AppStrings {
     'exChannels': '声道',
     'exAudio': '音频',
     'exHandOverDeclined': '未交出，导出的结果已丢弃。',
+    'exHandOverPending': '导出的结果尚未交出。',
+    'exHandOverPickAgain': '重新选择',
+    'exHandOverDiscard': '丢弃',
     'exSavePreset': '保存预设',
     'exPresetNameEmpty': '预设名称不能为空。',
     'exBaseName': '基础名称',

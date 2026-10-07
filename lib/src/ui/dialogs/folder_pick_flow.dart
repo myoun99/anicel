@@ -352,7 +352,8 @@ enum HandOver {
   /// document a save window made. What was handed over is spent.
   placed,
 
-  /// The user backed out, or no window could open.
+  /// The user let them go — backing out of the window is not that, it is
+  /// asked about ([placedOrLetGo]) — or the caller was torn down.
   declined,
 }
 
@@ -516,41 +517,125 @@ OutputPlaceWindows _systemPlaceWindows(BuildContext context) => (
 /// all a platform that cannot be asked first can do, and the one way an
 /// export reaches Google Drive on iOS. The road is [handOverRoadFor]'s.
 ///
+/// Backing out of the window lets nothing go: it is opened again until the
+/// outputs are placed or the user says to let them go ([placedOrLetGo]).
+///
 /// The caller owns [paths] afterwards: gone when [HandOver.placed] (moved,
-/// or poured and theirs to clear).
+/// or poured and theirs to clear), and theirs to let go when
+/// [HandOver.declined].
 Future<HandOver> handOverFilesForUser(
   BuildContext context, {
   required List<String> paths,
 }) async {
+  final placed = await placedOrLetGo(
+    context,
+    () => _placedThroughItsRoad(context, paths),
+  );
+  return placed == null ? HandOver.declined : HandOver.placed;
+}
+
+/// [paths] through the window their road opens, once: where they landed,
+/// or null when nothing was placed — the user backed out of the window, or
+/// was told why it could not take them.
+Future<Object?> _placedThroughItsRoad(
+  BuildContext context,
+  List<String> paths,
+) async {
   final oneFile =
       paths.length == 1 && FileSystemEntity.isFileSync(paths.single);
   switch (handOverRoadFor(_operatingSystem, oneFile: oneFile)) {
     case HandOverRoad.exportPicker:
       final grant = await FolderPicker.exportFiles(paths);
       if (!context.mounted) {
-        return HandOver.declined;
+        return null;
       }
-      return await _spokenFor(context, grant) == null
-          ? HandOver.declined
-          : HandOver.placed;
+      return _spokenFor(context, grant);
     case HandOverRoad.saveWindow:
-      final placed = await exportFileForUser(
+      return exportFileForUser(
         context,
         sourcePath: paths.single,
         // Handed over, and never written again.
         keepsSavingThere: false,
       );
-      return placed == null ? HandOver.declined : HandOver.placed;
     case HandOverRoad.folderWindow:
       final folder = await pickFolderForUser(context);
       if (folder == null) {
-        return HandOver.declined;
+        return null;
       }
       for (final path in paths) {
         moveIntoFolder(path, folder);
       }
-      return HandOver.placed;
+      return folder;
   }
+}
+
+/// A FINISHED OUTPUT IS ASKED ITS PLACE UNTIL IT HAS ONE, OR THE USER LETS
+/// IT GO (F-221-Q6, 유저 2026-10-07: 「취소하면 바로 묻는다 — [다시 고르기]
+/// · [버리기]」).
+///
+/// [window] opens the window the output is handed over through and answers
+/// where it landed — or null when nothing was placed: the user backed out,
+/// was told why what they chose cannot be used, or would not give Android
+/// the grant its folder window needs. The output is still where it was
+/// made then, and it took a whole run to make — so nothing but the answer
+/// to [_wouldPickAgain] lets it go, and 「다시 고르기」 opens the same
+/// window again.
+///
+/// Null when the user let it go — or the caller was torn down, and what it
+/// made goes with it.
+///
+/// ↩️Backing out of the window used to BE letting go: one stray press of
+/// its cancel, or a grant the user had to leave the app to give, and the
+/// export had to be run again (F-221-Q2).
+///
+/// ⚠️What [window] THROWS is not asked about — a move that failed half way
+/// has placed some of what it was handed, and that is the caller's to say.
+Future<T?> placedOrLetGo<T extends Object>(
+  BuildContext context,
+  Future<T?> Function() window,
+) async {
+  while (true) {
+    final placed = await window();
+    if (placed != null || !context.mounted) {
+      return placed;
+    }
+    if (!await _wouldPickAgain(context)) {
+      return null;
+    }
+  }
+}
+
+/// The question a backed-out hand-over is put: the window again, or let
+/// what was made go. It stands until one of the two is pressed — walking
+/// away from it would be a third answer, and that one throws the output
+/// away without anyone having said so.
+///
+/// True for 「다시 고르기」. ⛔ONLY 「버리기」 ANSWERS FALSE while the caller
+/// stands: a window taken down from outside (a pop meant for some other
+/// route) answered nothing, and the window is opened again rather than the
+/// output let go.
+Future<bool> _wouldPickAgain(BuildContext context) async {
+  final strings = AppText.strings;
+  final again = await askUntilAnswered(
+    context,
+    ConfirmQuestion(
+      keys: (
+        window: const ValueKey<String>('hand-over-pending-dialog'),
+        decline: const ValueKey<String>('hand-over-pending-discard'),
+        accept: const ValueKey<String>('hand-over-pending-pick-again'),
+      ),
+      // The export window's own name and mark: this is still that export.
+      title: strings.exExport,
+      titleIcon: Icons.upload_file_outlined,
+      message: strings.exHandOverPending,
+    ),
+    accept: ConfirmChoice(strings.exHandOverPickAgain),
+    decline: ConfirmChoice(
+      strings.exHandOverDiscard,
+      emphasis: AppWindowActionEmphasis.danger,
+    ),
+  );
+  return again != false && context.mounted;
 }
 
 /// ONE FILE's place through the system save window — the DESKTOP half of
@@ -789,7 +874,9 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
 }
 
 /// Hands the user a file called [suggestedName], written by [write], and
-/// answers where it landed — or null when they cancelled or it failed.
+/// answers where it landed — or null when it failed, or the user would not
+/// have it: backed out of the save window that asks before it is made, or
+/// let it go once it was ([placedOrLetGo]).
 ///
 /// 🚨★★★**THE SAME TWO HALVES AS SAVE AS, WITHOUT THE PROJECT.** Save As
 /// grew both roads and then wrapped them in project-specific work — staging
@@ -855,7 +942,7 @@ Future<String?> handWrittenFileToUser(
 /// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
 /// directory of its own via [write], hands it to the OS picker, and
 /// answers the grant for wherever it landed — or null when [write] failed,
-/// the window went away, or the user cancelled.
+/// the caller went away, or the user would not have it placed.
 ///
 /// ⛔The staged copy is deleted on the desktop road and MOVED on this one,
 /// so neither leaves a second copy behind (유저 08-27: 「사본 남으면 진짜
@@ -875,13 +962,17 @@ Future<String?> handWrittenFileToUser(
 /// invented kind.
 ///
 /// [keepsSavingThere] answers ONE question — will the caller go on saving
-/// into what it placed? Only Save As does, and two things follow from the
-/// answer. Android's storage grant is asked of that caller alone
-/// ([exportFileForUser]). And where the picker answered with a document
-/// that has no filesystem path (PICK-7, Drive on Android), the staged file
-/// is poured into it and then either becomes that document's working copy
-/// — moved, never copied, and answered as a path — or goes with the
-/// staging folder like any other placed file.
+/// into what it placed? Only Save As does, and three things follow from
+/// the answer. Android's storage grant is asked of that caller alone
+/// ([exportFileForUser]). Where the picker answered with a document that
+/// has no filesystem path (PICK-7, Drive on Android), the staged file is
+/// poured into it and then either becomes that document's working copy —
+/// moved, never copied, and answered as a path — or goes with the staging
+/// folder like any other placed file. And what will NOT be saved again is
+/// a finished output, with nothing of it anywhere but this staging folder:
+/// backing out of its window is asked about before it is let go
+/// ([placedOrLetGo]). Save As backs out to a project that is still open,
+/// and is asked nothing.
 Future<FolderGrant?> placeStagedFileForUser(
   BuildContext context, {
   required String suggestedName,
@@ -901,12 +992,15 @@ Future<FolderGrant?> placeStagedFileForUser(
     _discardStaging(stagingDirectory);
     return null;
   }
-  final grant = await exportFileForUser(
+  Future<FolderGrant?> window() => exportFileForUser(
     context,
     sourcePath: staged.path,
     suggestedName: suggestedName,
     keepsSavingThere: keepsSavingThere,
   );
+  final grant = keepsSavingThere
+      ? await window()
+      : await placedOrLetGo(context, window);
   final document = grant?.document;
   final placed = keepsSavingThere && document != null
       ? FolderGrant.granted(
@@ -915,8 +1009,9 @@ Future<FolderGrant?> placeStagedFileForUser(
         )
       : grant;
   // On success the staged file was MOVED out and only the empty directory
-  // is left; on cancel it is still in it — and poured into a document it
-  // is still in it too, unless it became the working copy. Same cleanup.
+  // is left; backed out of or let go it is still in it — and poured into a
+  // document it is still in it too, unless it became the working copy.
+  // Same cleanup.
   _discardStaging(stagingDirectory);
   return placed;
 }

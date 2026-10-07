@@ -20,11 +20,25 @@ import 'package:flutter/material.dart';
 /// down while it was open — the single question every site collapsed with
 /// `||`. Use this directly when the flow continues past the answer; use
 /// [askThenCommit] when the answer is simply applied.
+///
+/// [staysUntilAnswered] is for the window whose every way out is one of its
+/// own buttons: the barrier, escape and the system's back leave it standing.
+/// Null is then the torn-down caller alone — unless something else took the
+/// route down, which answers nothing either.
 Future<T?> showDialogVerb<T extends Object>(
   BuildContext context,
-  WidgetBuilder dialog,
-) async {
-  final answer = await showDialog<T>(context: context, builder: dialog);
+  WidgetBuilder dialog, {
+  bool staysUntilAnswered = false,
+}) async {
+  final answer = await showDialog<T>(
+    context: context,
+    // Escape goes with the barrier: the route's dismiss action is only
+    // enabled where the barrier dismisses.
+    barrierDismissible: !staysUntilAnswered,
+    builder: staysUntilAnswered
+        ? (context) => PopScope(canPop: false, child: dialog(context))
+        : dialog,
+  );
   return context.mounted ? answer : null;
 }
 
