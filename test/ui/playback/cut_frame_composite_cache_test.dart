@@ -502,6 +502,24 @@ void main() {
     });
   });
 
+  testWidgets('among pictures wanted equally, the one used longest ago '
+      'goes first', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+      await cache.prepareComposite(cut: cut(), frameIndex: 0);
+      await cache.prepareComposite(cut: cut(), frameIndex: 30);
+      // The first is asked again: the second is the one used longest ago.
+      cache.validCompositeOrNull(cut: cut(), frameIndex: 0);
+
+      cache.enforceBudget(maxBytes: 8 * 8 * 4);
+
+      expect(cache.validCompositeOrNull(cut: cut(), frameIndex: 0), isNotNull);
+      expect(cache.validCompositeOrNull(cut: cut(), frameIndex: 30), isNull);
+      cache.dispose();
+    });
+  });
+
   // Where a row lies is laid on at composite time, and until this nothing
   // in the file moved one: every picture above is the same with the
   // placement left out.

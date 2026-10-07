@@ -703,10 +703,25 @@ void main() {
           beforeCompose: (_, frameIndex) async => made.add(frameIndex),
         );
 
-        scheduler.follow(run(lead: (_) => 2));
+        final askedWith = <Duration>[];
+        scheduler.follow(
+          run(
+            lead: (composeTime) {
+              askedWith.add(composeTime);
+              return 2;
+            },
+          ),
+        );
         await rested(scheduler);
 
         expect(made, [2, 3, 0, 1], reason: 'two frames on, then the lap');
+        expect(askedWith.first, Duration.zero, reason: 'nothing made yet');
+        expect(
+          askedWith.last,
+          greaterThan(Duration.zero),
+          reason: 'the lead is asked with how long a picture has been taking',
+        );
+        expect(askedWith.last, scheduler.composeTime);
         scheduler.dispose();
         f.composites.dispose();
       });

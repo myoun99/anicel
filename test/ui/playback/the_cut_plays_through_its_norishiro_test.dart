@@ -150,6 +150,27 @@ void main() {
     );
   });
 
+  testWidgets('a cut playing alone wants its own frames and no other '
+      'cut\'s — and, played once, only what is left of it', (tester) async {
+    final s = session(overlapped: true);
+    addTearDown(s.dispose);
+    s.playbackRig.playback.loopMode = PlaybackLoopMode.once;
+    final read = await whilePlaying(tester, s, PlaybackScope.activeCut, () {
+      s.playbackRig.playback.seekToGlobalFrame(10);
+      final demand = s.playbackRig.demand!;
+      return (
+        length: demand.length,
+        last: demand.stepOf(leaving, 29),
+        behind: demand.stepOf(leaving, 5),
+        other: demand.stepOf(arriving, 15),
+      );
+    });
+    expect(read.length, 20, reason: 'thirty frames drawn, ten behind');
+    expect(read.last, 19);
+    expect(read.behind, isNull, reason: 'played once, it is not shown again');
+    expect(read.other, isNull, reason: 'the run does not show the next cut');
+  });
+
   testWidgets('the warmer follows the run it plays: the film\'s frames, '
       'one walk', (tester) async {
     final s = session(overlapped: true);
