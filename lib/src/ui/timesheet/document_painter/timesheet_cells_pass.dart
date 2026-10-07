@@ -132,14 +132,26 @@ class _TimesheetCellsPass {
     // the table's outer edges stay), so interior lines draw in segments
     // skipping the SE ranges.
     if (!_painter._drawForm) {
-      // Content-only: skip the grid entirely and print the cells.
-      _paintHalfCells(
-        canvas,
-        left: left,
-        rowsTop: rowsTop,
-        startFrame: startFrame,
-        rowCount: rowCount,
-      );
+      // No form: no grid — and the cells only where the values are printed,
+      // as the form's own branch below asks.
+      //
+      // 🚨F-269 (유저 2026-10-03): 「off해서 껐는데 글자가 남아있고, 글자가
+      // 연하게 됬을뿐」 · 「다른탭 갔다 돌아오면 정상적으로 사라져있음」. This
+      // branch was written when a sheet had two strata, form and content, so
+      // 「not the form」 meant the values. The ink stratum (09-26) is not the
+      // form either, and printed every cell a second time — into a bake that
+      // re-records for the ink alone, so a value turned off stayed in it
+      // until the panel was built again. The export printed them a third
+      // time, once a stratum.
+      if (_painter._drawContent) {
+        _paintHalfCells(
+          canvas,
+          left: left,
+          rowsTop: rowsTop,
+          startFrame: startFrame,
+          rowCount: rowCount,
+        );
+      }
       return;
     }
     _paintRowLines(canvas, sheet);
