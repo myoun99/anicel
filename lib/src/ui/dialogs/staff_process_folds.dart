@@ -12,11 +12,14 @@ import '../widgets/app_window.dart';
 ///
 /// ⛔EVERY label gets a field, including 用紙's worker: leaving one out
 /// would be a 「~는 제외한다」 rule nobody asked for.
+/// ↩️The user has asked since (2026-10-05, F-291: 「용지라는 스태프는
+/// 없음」): every label but 用紙's — paper is nobody's work.
 Map<LayerMark, TextEditingController> staffFieldsOf(
   String Function(LayerMark mark) nameOf,
 ) => {
   for (final mark in everyLayerMark())
-    if (!mark.isNone) mark: TextEditingController(text: nameOf(mark)),
+    if (!mark.isNone && mark.process != LayerProcess.paper)
+      mark: TextEditingController(text: nameOf(mark)),
 };
 
 /// The words a folded section shows beside its title: what it holds.
@@ -64,7 +67,10 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final process in LayerProcess.values) _fold(process, strings),
+        // A process with no field has no fold (用紙 — [staffFieldsOf]).
+        for (final process in LayerProcess.values)
+          if (widget.fields.keys.any((mark) => mark.process == process))
+            _fold(process, strings),
       ],
     );
   }

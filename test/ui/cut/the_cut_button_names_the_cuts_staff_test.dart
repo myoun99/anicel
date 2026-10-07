@@ -53,6 +53,11 @@ void main() {
       find.byKey(const ValueKey<String>('cut-settings-window')),
       findsOneWidget,
     );
+    expect(
+      fieldOf(const LayerMark(process: LayerProcess.paper)),
+      findsNothing,
+      reason: '용지라는 스태프는 없음 (유저 2026-10-05, F-291)',
+    );
     final field = tester.widget<TextField>(fieldOf(key));
     expect(field.controller!.text, isEmpty, reason: 'the cut names nobody');
     expect(field.decoration!.hintText, 'Work Genga');

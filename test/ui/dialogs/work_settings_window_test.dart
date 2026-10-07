@@ -100,25 +100,28 @@ void main() {
   });
 
   testWidgets('the staff is the colour labels\': every process a fold of its '
-      'worker and the corrections it references', (tester) async {
+      'worker and the corrections it references — but 用紙, nobody\'s work', (
+    tester,
+  ) async {
     await openWindow(tester, TimesheetInfo.empty, (_) {});
     await toggle(tester, 'work-settings-staff');
 
     for (final mark in everyLayerMark()) {
-      if (mark.isNone) {
+      if (mark.isNone || mark.process == LayerProcess.paper) {
         continue;
       }
       expect(rowOf(mark), findsOneWidget, reason: mark.keySlug);
     }
+    // 유저 2026-10-05 (F-291): 「용지라는 스태프는 없음」.
+    for (final mark in everyLayerMark()) {
+      if (mark.process == LayerProcess.paper) {
+        expect(rowOf(mark), findsNothing, reason: mark.keySlug);
+      }
+    }
     expect(
-      rowOf(
-        const LayerMark(
-          process: LayerProcess.paper,
-          revise: LayerRevise.direction,
-        ),
-      ),
+      find.byKey(const ValueKey<String>('work-settings-process-paper')),
       findsNothing,
-      reason: '用紙 references no correction (revisesFor)',
+      reason: 'and no fold of its own',
     );
   });
 
