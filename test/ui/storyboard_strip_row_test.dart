@@ -602,27 +602,42 @@ void main() {
     testWidgets('a CONTE block: the name of the drawing it shows — the '
         'frame block\'s own editor, on the cell it is', (tester) async {
       await _openStoryboard(tester);
+      final field = find.byKey(
+        const ValueKey<String>('rename-frame-text-field'),
+      );
+      Future<void> nameIt(String name) async {
+        await tester.enterText(field, name);
+        await tester.tap(
+          find.byKey(const ValueKey<String>('rename-frame-ok-button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.pump(kDoubleTapTimeout * 2);
+      }
+
+      // The cut's FIRST panel is named first, so the name the editor opens
+      // with says which block it opened.
+      await clickTwice(tester, _stripPoint(tester, 11));
+      await nameIt('HEAD');
 
       // Global 16 is cut 2's local 6: its second panel, [4, 10).
       await clickTwice(tester, _stripPoint(tester, 16));
 
       expect(frameName, findsOneWidget);
       expect(cutName, findsNothing);
-      await tester.enterText(
-        find.byKey(const ValueKey<String>('rename-frame-text-field')),
-        'B2',
+      expect(
+        tester.widget<TextField>(field).controller?.text,
+        '',
+        reason: 'the block clicked is the one in hand when the editor '
+            'opens — not the head of its cut',
       );
-      await tester.tap(
-        find.byKey(const ValueKey<String>('rename-frame-ok-button')),
-      );
-      await tester.pumpAndSettle();
+      await nameIt('B2');
       final row = cutOf(
         tester,
         'cut-2',
       ).layers.firstWhere((layer) => layer.id == const LayerId('cut-2-sb'));
       expect(
         {for (final frame in row.frames) frame.id.value: frame.name},
-        {'cut-2-0': null, 'cut-2-4': 'B2'},
+        {'cut-2-0': 'HEAD', 'cut-2-4': 'B2'},
       );
       expect(
         sessionOf(tester).storyboardStandingRow,

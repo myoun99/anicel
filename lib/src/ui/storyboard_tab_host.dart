@@ -360,15 +360,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
 
   /// …and a CONTE block's: the frame block's own double tap
   /// ([activateCellOnDoubleTap]) on the cell it is — its cut's storyboard
-  /// row at the cut's own frame, picked the way the timeline's cell is
-  /// (the frame, then the row).
+  /// row at the cut's own frame. The press that lands is the whole pick:
+  /// standing on a cut seats its conte row (F-187, 「컷에서면 콘티레이어가
+  /// 있다면 콘티레이어에 서도록」), so the cell is in hand the way the
+  /// timeline's is when its double tap opens it.
   Future<void> _editConteBlock(
     TrackId trackId,
     LayerId layerId,
     int globalFrame,
   ) {
     _pressRowFrameHere(TrackRowAddress(trackId), globalFrame);
-    _session.standOnRow(LayerRowAddress(layerId));
     return activateCellOnDoubleTap(
       context,
       _session,
