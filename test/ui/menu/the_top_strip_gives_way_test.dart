@@ -78,8 +78,27 @@ double narrowestOf(WidgetTester tester, Key key) => tester
     .widget<FieldSlider>(inStrip(key))
     .narrowestIn(tester.element(inStrip(key)));
 
-/// Narrows the window a pixel at a time from [from] to [to], asking [at]
-/// of every width, and returns the standings in the order they came.
+/// The widths a sweep stops at, wide to narrow: EVERY PIXEL where the
+/// standings change hands, every tenth elsewhere.
+///
+/// The bars start to narrow under 770 in any language and at any text size
+/// (the strip's fixed parts and the tabs' place are not words), and the
+/// group becomes the button no lower than the narrowest pair of names lets
+/// it — 727 in Korean, measured 2026-10-07. 780 down to 690 holds both with
+/// room; a pair of names short enough to pass 690 would fail 「went all the
+/// way to its narrowest」 below, which is the cue to widen this.
+Iterable<double> widthsDown(double from, double to) sync* {
+  for (
+    var width = from;
+    width >= to;
+    width -= width <= 780 && width > 690 ? 1 : 10
+  ) {
+    yield width;
+  }
+}
+
+/// Narrows the window from [from] to [to] ([widthsDown]), asking [at] of
+/// every width, and returns the standings in the order they came.
 ///
 /// ⚠️Never to under 480: at 437 the CANVAS panel's bottom bar runs over by
 /// two thirds of a pixel (`viewport_bottom_bar_build.dart`, found 2026-10-07
@@ -92,7 +111,7 @@ Future<List<Standing>> sweep(
   required void Function(double width, Standing standing) at,
 }) async {
   final seen = <Standing>[];
-  for (var width = from; width >= to; width -= 1) {
+  for (final width in widthsDown(from, to)) {
     await narrowTo(tester, width);
     expect(tester.takeException(), isNull, reason: 'at $width');
     expect(
