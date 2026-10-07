@@ -20,12 +20,12 @@ import '../helpers/lane_script.dart';
 /// is — 「this commit was measured」 — so it stands behind the same refusal.
 ///
 /// ⚠️These pin WHERE the script asks, not what it does next — the suite
-/// spawns no process (tests_do_not_race_the_code_test). What it does was
-/// run by hand in scratch repositories, with a `flutter` that edited,
-/// committed or failed during analyze: a land refused all three (and the
-/// script before refusal 7 landed all three), and a gate stamped nothing
-/// for any of them (2026-10-08, 56 checks; the script before that change
-/// fails 31 of them).
+/// spawns no process (tests_do_not_race_the_code_test). What it DOES is
+/// `bash tool/lane_test.sh`, by hand: scratch repositories, and a `flutter`
+/// that writes down every call and can edit, commit or fail during
+/// analyze. A land refuses all three (the script before refusal 7 landed
+/// all three), and a gate stamps nothing for any of them (2026-10-08: 70
+/// checks; the script before these changes fails 38 of them).
 void main() {
   final codeOf = LaneScript(File('tool/lane.sh').readAsStringSync()).codeOf;
   int at(List<String> code, String text) =>
