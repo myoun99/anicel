@@ -55,6 +55,7 @@ import 'brush/canvas_view_commands.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import 'menu/editor_top_strip.dart';
+import 'menu/project_open_door.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/playback_actuation_gate.dart';
@@ -1347,6 +1348,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                 Expanded(
                                   child: EditorWorkspace(
                                     session: _session,
+                                    onProjectFilesDropped: (paths) =>
+                                        unawaited(_openDroppedProjects(paths)),
                                     layoutStore: widget.layoutStore,
                                     presetFileService: widget.presetFileService,
                                     tipLibraryService: widget.tipLibraryService,
@@ -1476,6 +1479,23 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
     }
     return ensureUnsavedWorkSettled(context, session);
+  }
+
+  /// Project files dropped on the window (F-247): through the Open door —
+  /// the one the Project menu and the Recent rows use — one after another,
+  /// each in a tab of its own.
+  Future<void> _openDroppedProjects(List<String> paths) async {
+    final door = ProjectOpenDoor(_projects);
+    for (final path in paths) {
+      if (!mounted) {
+        return;
+      }
+      await door.open(context, (
+        path: path,
+        folderBookmark: null,
+        placed: false,
+      ));
+    }
   }
 
   /// A tab's close button: the same question the window asks, for that

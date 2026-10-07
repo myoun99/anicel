@@ -73,6 +73,7 @@ import 'shortcuts/editor_action_registry.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
 import 'export/export_frame_renderer.dart';
 import 'import/import_dialog.dart';
+import 'menu/project_open_door.dart' show opensAsProject;
 import '../services/import/import_layer_spot.dart';
 import 'media/media_asset_drag_data.dart';
 import 'media/media_asset_drop_target.dart';
@@ -194,6 +195,7 @@ class EditorWorkspace extends StatefulWidget {
   const EditorWorkspace({
     super.key,
     required this.session,
+    required this.onProjectFilesDropped,
     this.presetFileService,
     this.tipLibraryService,
     this.fontLibraryService,
@@ -220,6 +222,11 @@ class EditorWorkspace extends StatefulWidget {
   });
 
   final EditorSessionManager session;
+
+  /// Project files dropped on the window (F-247), handed to the shell's
+  /// Open door — the shell holds the tabs a project opens into. The
+  /// workspace only tells them from the rest ([opensAsProject]).
+  final void Function(List<String> paths) onProjectFilesDropped;
 
   /// The active-tool notifier, owned by the shell (HomePage) so the tool
   /// shortcuts and the workspace panels drive one state. Null keeps a
@@ -1952,12 +1959,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
   /// import/placement window opens with the dropped paths — never an
   /// instant import. Folders drop too (the cut-folder parser's entrance).
+  ///
+  /// ↩️F-247 (유저 2026-09-30): 「anicel이면 배치창이아니라 새 프로젝트로
+  /// 열도록. tvpp도 똑같이」 — a file 「열기」 opens is not imported: it opens
+  /// through that door ([EditorWorkspace.onProjectFilesDropped]), each in a
+  /// tab of its own. Everything else still comes in through the window.
+  /// When one drop holds both, the window comes first — its files go into
+  /// the project the drop landed on, which an open would take off the
+  /// screen — and the projects open once it is closed.
   void _onOsFilesDropped(DropDoneDetails details) {
     final paths = [for (final file in details.files) file.path];
-    if (paths.isEmpty) {
+    final projects = [for (final path in paths) if (opensAsProject(path)) path];
+    final rest = [for (final path in paths) if (!opensAsProject(path)) path];
+    void openProjects() {
+      if (projects.isNotEmpty) {
+        widget.onProjectFilesDropped(projects);
+      }
+    }
+
+    if (rest.isEmpty) {
+      openProjects();
       return;
     }
-    _openImportWindow(initialPaths: paths);
+    _openImportWindow(initialPaths: rest, onClosed: openProjects);
   }
 
   /// A reference row shows [path] instead of its file (I-47) — no window:
@@ -1984,12 +2008,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// [poolOnly] is the media pool's ＋: it starts on the pool because
   /// registering for later is what that panel is for, and the other
   /// destinations stay on offer because it is the same window. [spot] is
-  /// where a drop put the file — the window shows it locked.
+  /// where a drop put the file — the window shows it locked. [onClosed] runs
+  /// once the window is gone: an OS drop that also held project files opens
+  /// them then (F-247).
   void _openImportWindow({
     List<String> initialPaths = const [],
     bool poolOnly = false,
     bool placeOnly = false,
     ImportLayerSpot? spot,
+    VoidCallback? onClosed,
   }) {
     unawaited(
       showDialog<void>(
@@ -2001,7 +2028,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           placeOnly: placeOnly,
           spot: spot,
         ),
-      ),
+      ).then((_) => onClosed?.call()),
     );
   }
 

@@ -8,6 +8,7 @@ import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
 import '../../helpers/temp_dir.dart';
 
 /// PICK-6: the project open and Save-As flows, now that a project is ONE

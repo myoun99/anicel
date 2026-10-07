@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/provider_documents.dart';
 import 'package:anicel/src/ui/dialogs/app_confirm_dialog.dart';
 import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
+import 'package:anicel/src/ui/menu/project_open_door.dart' show ProjectPick;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
