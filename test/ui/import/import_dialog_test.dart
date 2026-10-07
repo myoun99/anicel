@@ -800,20 +800,23 @@ void main() {
       );
     });
 
-    testWidgets('expanding a PSD locks its BAKE on — one of them baked means '
-        'all of them are — and leaves how the file is kept alone', (
-      tester,
-    ) async {
+    testWidgets('an expanded PSD locks its BAKE on — one of them baked means '
+        'all of them are — and leaves how the file is kept alone; merged, '
+        'the bake is its own question again', (tester) async {
       final psd = await tester.runAsync(() => writePsd('BG.psd'));
       await pump(tester, [psd!]);
 
-      expect(cellText(tester, 'psd', psd), 'Merge');
-      expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
+      expect(
+        cellText(tester, 'psd', psd),
+        'Expand',
+        reason: 'a PSD comes in as its layers (F-306-Q1)',
+      );
+      expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
       expect(cellText(tester, 'file', psd), 'Keep');
 
-      await pickCell(tester, column: 'psd', path: psd, option: 'expand');
+      await pickCell(tester, column: 'psd', path: psd, option: 'merge');
 
-      expect(cellText(tester, 'bake', psd), AppText.strings.commonOn);
+      expect(cellText(tester, 'bake', psd), AppText.strings.commonOff);
       expect(cellText(tester, 'file', psd), 'Keep');
     });
 
