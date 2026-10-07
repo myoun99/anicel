@@ -70,9 +70,16 @@ String boardAddressOf(MachineSetup setup) =>
     setup.home ?? 'http://localhost:4321';
 
 /// The variables a session's commands read the board by.
+///
+/// 🆕`ANICEL_BOARD_FOLDER` (2026-10-07, the letters): the tools a session
+/// runs find, in this machine's board folder, which 담당 the session
+/// answers to (`tool/board_me.dart`). ⚠️Its own variable, not the folder of
+/// the secret's file: where the secret is kept and where the machine's
+/// flags are kept are two questions that happen to have one answer today.
 Map<String, String> environmentFor(MachineSetup setup) => {
   'ANICEL_BOARD': boardAddressOf(setup),
   'ANICEL_BOARD_TOKEN_FILE': '${setup.board}/.board-token',
+  'ANICEL_BOARD_FOLDER': setup.board,
 };
 
 /// The hooks of a session on this machine — all of them.
@@ -127,6 +134,19 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'command': run('autorun_arm.sh', [setup.board]),
             'timeout': 10,
           },
+          // What other sessions left for this one — at the start of a turn
+          // here, and at its end below. Asked of the SERVER on every
+          // machine: taking a letter marks it read, and the server is the
+          // one hand that writes the board.
+          {
+            'type': 'command',
+            'command': run('session_letters.sh', [
+              setup.board,
+              boardAddressOf(setup),
+              'start',
+            ]),
+            'timeout': 10,
+          },
         ],
       },
     ],
@@ -163,6 +183,16 @@ Map<String, dynamic> hooksFor(MachineSetup setup) {
             'command': run('guard_memory_conflicts.sh', [setup.memory]),
             'timeout': 10,
             'statusMessage': '메모리 충돌 사본 확인',
+          },
+          {
+            'type': 'command',
+            'command': run('session_letters.sh', [
+              setup.board,
+              boardAddressOf(setup),
+              'stop',
+            ]),
+            'timeout': 10,
+            'statusMessage': '다른 세션의 전달 확인',
           },
           if (setup.oldMemory case final old?)
             {

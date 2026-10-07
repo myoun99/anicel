@@ -409,6 +409,26 @@ Future<void> _handle(HttpRequest req) async {
     return;
   }
 
+  // 🆕WHAT WAITS FOR A SESSION, TAKEN (유저 2026-10-07,
+  // the-board-is-one-server-for-both-machines-Q2): the letters left for the
+  // 담당 named in `to`, as the text its hook puts in front of it — and marked
+  // read by the same request ([takeLetters] says why it is one act). A POST:
+  // it writes. Nothing waits → an empty body, which is what a hook prints
+  // nothing for.
+  if (req.method == 'POST' && path == '/letters/take') {
+    final taken = takeLetters(
+      File(_recordsPath),
+      req.uri.queryParameters['to'] ?? '',
+      DateTime.now(),
+    );
+    req.response
+      ..headers.contentType = ContentType.text
+      ..headers.set('Cache-Control', 'no-store')
+      ..write(taken);
+    await req.response.close();
+    return;
+  }
+
   if (req.method == 'POST') {
     final body =
         jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
@@ -1583,7 +1603,59 @@ Future<Map<String, Object?>> _boardJson() async {
     ],
     'ghOk': gh.ok,
     'bad': badLines,
+    'letters': lettersShown(entries, DateTime.now()),
   };
+}
+
+/// What the 「전달」 view reads: every letter still waiting for the 담당 it
+/// names, and the others of the last two weeks.
+///
+/// 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2): 「「전달」
+/// 보기는 그것을 모아 보여 주기만 한다」 — so this is READ OFF THE CARDS each
+/// time the board is drawn, and the view keeps nothing of its own. A row
+/// names the card whose story the letter stands in, and opens it.
+///
+/// ⚠️A notice to everyone is never 「waiting」 here: who everyone is, is not
+/// something the board knows. Its readers are listed instead.
+List<Map<String, Object?>> lettersShown(List<BoardCard> entries, DateTime now) {
+  final since = now.subtract(_doneShows);
+  return [
+    for (final letter in lettersOf(entries))
+      if (_letterShows(letter.entry, since))
+        {
+          'card': letter.card.foldedInto ?? letter.card.id,
+          'title': letter.card.title,
+          'ts': letter.entry.ts,
+          'to': letter.entry.to,
+          'from': letter.entry.from,
+          'text': letter.entry.text,
+          'waits': _letterWaits(letter.entry),
+          'readBy': [
+            for (final reader in letter.entry.readBy.entries)
+              {'who': reader.key, 'ts': reader.value},
+          ],
+        },
+  ];
+}
+
+bool _letterWaits(BoardLog letter) =>
+    letter.to != kEveryone && !letter.readBy.containsKey(letter.to);
+
+bool _letterShows(BoardLog letter, DateTime since) {
+  if (_letterWaits(letter)) return true;
+  final at = DateTime.tryParse(letter.ts);
+  return at != null && !at.isBefore(since);
+}
+
+/// A letter's two chips in its card's story: whom it is for and who wrote
+/// it, and whether it has been read.
+String _letterChips(BoardLog letter) {
+  final readers = letter.readBy.length;
+  final (word, cls) = letter.to == kEveryone
+      ? (readers == 0 ? '안 읽음' : '읽음 $readers', readers == 0 ? 'run' : 'ok')
+      : (_letterWaits(letter) ? ('안 읽음', 'run') : ('읽음', 'ok'));
+  return '<span class="chip">${_esc(letter.to)} ← ${_esc(letter.from)}</span>'
+      '<span class="chip $cls">$word</span>';
 }
 
 /// Finished cards older than the 완료 list, found by search — the list stays
@@ -2142,10 +2214,16 @@ String _entryRow(BoardCard e, int i, {required bool open}) {
           '${answered ? '답함' : '대기'}</span>'}'
       '${!check ? '' : '<span class="chip ${checked ? 'ok' : 'run'}">'
           '${checked ? '확인함' : '대기'}</span>'}'
+      '${!entry.isLetter ? '' : _letterChips(entry)}'
       '${entry.pr == null ? '' : _prChip(entry.pr!)}'
       '<span class="when">${_esc(_day(entry.ts))}</span></summary>');
   if (ask == null) {
     b.writeln('<p class="d">${_esc(entry.text)}</p>');
+    // A letter says who has read it, and when — the mark each reader left.
+    for (final reader in entry.readBy.entries) {
+      b.writeln('<p class="d">읽음 — ${_esc(reader.key)} · '
+          '${_esc(_day(reader.value))}</p>');
+    }
   } else {
     // 🚨★★★AN ENTRY WITH A TITLE OF ITS OWN KEEPS IT WHEN OPENED (유저
     // 2026-08-31: 「질문 항목처럼 타이틀이 별개로 있는 건 **펼친다고 해서
@@ -2303,7 +2381,8 @@ var STATUS = {triage:'분류 대기', backlog:'백로그', discussion:'대화 �
 var PRIOS = ['긴급', '높음', '보통', '낮음', ''];
 var VIEWS = [['me','나에게 온 것'], ['doing','진행 중'], ['todo','할 일'],
   ['discussion','대화 중'], ['backlog','백로그'], ['triage','분류 대기'],
-  ['known','알려진 문제'], ['done','완료'], ['system','시스템']];
+  ['known','알려진 문제'], ['done','완료'], ['letters','전달'],
+  ['system','시스템']];
 var PAGE = 60;
 
 function esc(s){
@@ -2429,6 +2508,8 @@ function groupsFor(view){
 
 function countFor(view){
   if (view === 'system') return DATA.checkouts.length;
+  // What still waits for the session it was left for.
+  if (view === 'letters') return DATA.letters.filter(function(l){ return l.waits; }).length;
   var seen = {};
   groupsFor(view).forEach(function(g){ g.rows.forEach(function(c){ seen[c.id] = 1; }); });
   return Object.keys(seen).length;
@@ -2510,6 +2591,7 @@ function pickControls(g, i){
 function renderList(){
   var list = document.getElementById('list');
   if (S.view === 'system' && !S.q) { list.innerHTML = systemHtml(); return; }
+  if (S.view === 'letters' && !S.q) { list.innerHTML = lettersHtml(); return; }
   var groups = groupsFor(S.view);
   var title = S.q ? '찾기 — 「' + esc(S.q) + '」' : VIEWS.filter(function(v){ return v[0] === S.view; })[0][1];
   var html = '<div class="vhead"><h2>' + title + '</h2>';
@@ -2536,6 +2618,41 @@ function renderList(){
   });
   list.innerHTML = html;
   list._groups = groups;
+}
+
+// 「전달」 — what one session left for another (유저 2026-10-07: 「글은 카드의
+// 흐름에 적고, 「전달」 보기는 그것을 모아 보여 주기만 한다」). Every row is
+// an entry of some card's story, gathered here by the 담당 it was left for;
+// nothing is kept in this view, and a row opens the card it stands in.
+function lettersHtml(){
+  var by = {};
+  DATA.letters.slice().sort(newest('ts')).forEach(function(l){
+    (by[l.to] = by[l.to] || []).push(l);
+  });
+  var names = Object.keys(by).sort();
+  var h = '<div class="vhead"><h2>전달</h2><span class="state"></span></div>';
+  if (!names.length) h += '<section class="grp"><p class="none">없음</p></section>';
+  names.forEach(function(n){
+    var rows = by[n];
+    var waiting = rows.filter(function(l){ return l.waits; }).length;
+    h += '<section class="grp"><div class="gh"><span class="gt">' + esc(n) + ' 앞</span>' +
+      '<span class="gn">' + rows.length + '</span>' +
+      (waiting ? '<span class="note warn">안 읽음 ' + waiting + '</span>' : '') + '</div>';
+    h += rows.map(function(l){
+      var readers = l.readBy.map(function(r){ return r.who; }).join(' · ');
+      var chip = l.waits ? '<span class="chip run">안 읽음</span>'
+        : (readers ? '<span class="chip ok">읽음 · ' + esc(readers) + '</span>' : '');
+      var a = age(l.ts);
+      return '<div class="row" tabindex="0" data-id="' + esc(l.card) + '" aria-selected="' + (S.sel === l.card) + '">' +
+        '<span class="dot s-' + (l.waits ? 'doing' : 'done') + '"></span>' +
+        '<span class="rid">' + esc(l.card) + '</span>' +
+        '<span class="rt"><span class="tt">' + esc(l.text.split('\n')[0]) + '</span>' + chip + '</span>' +
+        '<span class="rm"><span class="own">' + esc(l.from) + '</span>' +
+        '<span class="age" title="' + esc(l.ts) + '">' + day(l.ts) + ' · ' + (a === null ? '-' : a) + '일</span></span></div>';
+    }).join('');
+    h += '</section>';
+  });
+  return h;
 }
 
 function systemHtml(){
@@ -2935,6 +3052,7 @@ font-variant-numeric:tabular-nums}
 .s-doing{background:var(--live)}.s-verify{background:var(--run)}
 .s-known{background:var(--bad)}.s-done{background:var(--ok)}
 .s-canceled{background:var(--line2)}.s-system{background:var(--line2)}
+.s-letters{background:var(--live)}
 .facet h3{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--ink3);font-weight:600}
 .facet .chips{display:flex;flex-wrap:wrap;gap:4px}
 .fchip{border:1px solid var(--line2);background:var(--card);border-radius:999px;

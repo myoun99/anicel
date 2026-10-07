@@ -98,7 +98,40 @@ String originOfId(String id, File records) {
 /// of it, then what I worked out.
 class BoardLog {
   BoardLog(this.ts, this.at, this.text,
-      {this.byUser = false, this.pr, this.how = '', this.ask, this.ref = ''});
+      {this.byUser = false,
+      this.pr,
+      this.how = '',
+      this.ask,
+      this.ref = '',
+      this.to = '',
+      this.from = ''});
+
+  /// 🚨★★★ONE SESSION'S WORD TO ANOTHER IS AN ENTRY ON A CARD — [to] names
+  /// the 담당 it is left for ([kEveryone] for all of them), [from] the 담당
+  /// who wrote it (유저 2026-10-07,
+  /// the-board-is-one-server-for-both-machines-Q2: 「글은 카드의 흐름에 적고,
+  /// 「전달」 보기는 그것을 모아 보여 주기만 한다」).
+  ///
+  /// ⛔Not a list of its own. The first shape proposed kept these in a store
+  /// beside the cards, and the law that ended that shape for answers stands
+  /// here too: 「별개로 두는것좀 절대로 없게해. 싹 다 타임라인흐름이야」
+  /// (유저 2026-08-31). A letter stands in its card's story at the moment it
+  /// was written; the 「전달」 view is a reading of these entries and holds
+  /// nothing.
+  ///
+  /// Why it exists at all: two machines run sessions under two accounts, and
+  /// a session's own messages do not cross accounts. The board is the one
+  /// thing both reach.
+  final String to;
+  final String from;
+
+  /// Who has read this letter, and when — each 담당 once, by the 읽음 line
+  /// that named this entry ([kReadMark]). ⚠️Filled on the letter itself and
+  /// not added as an entry: a mark is not a stage of the card, and a story
+  /// with a 「읽음」 row under every letter would bury the letters.
+  final Map<String, String> readBy = {};
+
+  bool get isLetter => to.isNotEmpty;
 
   /// 🚨★★★THE QUESTION THIS ENTRY IS, when it is one (유저 2026-08-31:
   /// 「질문 자체를 대분류로 옮기고, 새로운 카드 만들어서 참조가 아니라,
@@ -304,10 +337,42 @@ List<int> badLines = const [];
 /// remember, which is the defect. `a_record_says_nothing_unread_test` reads
 /// the `json['…']` sites out of this file and fails if they disagree.
 const kReadFields = <String>{
-  'answer', 'answerNote', 'at', 'care', 'how', 'id', 'kind', 'note', 'of',
-  'options', 'owner', 'pr', 'priority', 'recommend', 'ref', 'rest', 'said',
-  'state', 'tag', 'tags', 'think', 'title', 'ts', 'under', 'where', 'why',
+  'answer', 'answerNote', 'at', 'care', 'from', 'how', 'id', 'kind', 'note',
+  'of', 'options', 'owner', 'pr', 'priority', 'recommend', 'ref', 'rest',
+  'said', 'state', 'tag', 'tags', 'think', 'title', 'to', 'ts', 'under',
+  'where', 'why',
 };
+
+/// The stage a letter stands under in its card's story when its line names
+/// no other — see [BoardLog.to].
+const kLetterStage = '전달';
+
+/// The `at` of the line a reader leaves on a letter — see [BoardLog.readBy].
+const kReadMark = '읽음';
+
+/// The `to` that means every 담당: a notice, read by each of them once.
+const kEveryone = '모두';
+
+/// One session's word to another, with the card whose story it stands in.
+typedef BoardLetter = ({BoardCard card, BoardLog entry});
+
+/// Every letter on the board, in the order the cards and their stories hold
+/// them. ⚠️A READING of the cards, built each time it is asked for: nothing
+/// keeps letters apart from the stories they are entries of.
+List<BoardLetter> lettersOf(Iterable<BoardCard> cards) => [
+      for (final card in cards)
+        for (final entry in card.log)
+          if (entry.isLetter) (card: card, entry: entry),
+    ];
+
+/// Whether [letter] still waits for [reader]: it was left for them or for
+/// everyone, somebody else wrote it, and they have not marked it read.
+bool letterWaitsFor(BoardLog letter, String reader) =>
+    letter.isLetter &&
+    reader.isNotEmpty &&
+    (letter.to == reader || letter.to == kEveryone) &&
+    letter.from != reader &&
+    !letter.readBy.containsKey(reader);
 
 /// The `kind` values a reader treats specially. Anything else is a plain card
 /// — which is usually a typo, and always silent.
@@ -383,8 +448,22 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       return BoardCard(id, kind);
     });
     if (kind.isNotEmpty) e.kind = kind;
-    // Last line wins: the head shows when this card last moved.
     final ts = '${json['ts'] ?? ''}';
+    // 🚨A 읽음 IS A MARK ON THE LETTER IT NAMES, and nothing of the card's:
+    // `ref` is that letter's stamp, `from` the 담당 who read it. ⚠️Taken
+    // before `updated` on purpose — being read is not the card moving, and a
+    // card that jumped to the top of a list each time somebody read a letter
+    // on it would be sorted by its readers.
+    if ('${json['at'] ?? ''}'.trim() == kReadMark) {
+      final reader = '${json['from'] ?? ''}'.trim();
+      final named = '${json['ref'] ?? ''}';
+      for (final entry in e.log) {
+        if (!entry.isLetter || entry.ts != named || reader.isEmpty) continue;
+        entry.readBy.putIfAbsent(reader, () => ts);
+      }
+      continue;
+    }
+    // Last line wins: the head shows when this card last moved.
     if (ts.isNotEmpty) e.updated = ts;
     if (ts.isNotEmpty && e.created.isEmpty) e.created = ts;
     // ⚠️Recorded BEFORE `note` is merged, so the list keeps what each line
@@ -412,7 +491,12 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
     final stageHow = (linePr != null || at == '구현')
         ? '${json['how'] ?? ''}'.trim()
         : '';
-    void stage(String text, String fallback, {bool byUser = false}) {
+    // A line that names a 담당 in `to` is that line's note LEFT FOR them —
+    // see [BoardLog.to].
+    final letterTo = '${json['to'] ?? ''}'.trim();
+    final letterFrom = '${json['from'] ?? ''}'.trim();
+    void stage(String text, String fallback,
+        {bool byUser = false, bool letter = false}) {
       if (text.isEmpty) return;
       // 🚨★★★THE DEDUPE MUST NOT EAT THE SECTION WORD. It used to clear `at`
       // BEFORE this check, so a line whose text repeated an earlier entry
@@ -428,14 +512,19 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       // 🧪Measured: buttons went 3 → 2 → 1 → 1 and the card never left.
       // What makes them different is `ref`: WHICH entry each one answers.
       final ref = '${json['ref'] ?? ''}';
-      if (e.log.any((l) => l.text == text && l.ref == ref)) return;
+      // ⚠️A LETTER IS NEVER A REPEAT. The same words left for a second 담당,
+      // or left twice, are two tellings — each has its own reader to reach,
+      // and the dedupe would have delivered only the first.
+      if (!letter && e.log.any((l) => l.text == text && l.ref == ref)) return;
       final label = at.isEmpty ? fallback : at;
       at = '';
       // ⚠️The PR rides the FIRST stage this line opens, not all of them: it
       // shipped once, however many things the line had to say about it.
       e.log.add(BoardLog(ts, label, text,
           byUser: byUser, pr: prLeft, how: prLeft == null ? '' : stageHow,
-          ref: ref));
+          ref: ref,
+          to: letter ? letterTo : '',
+          from: letter ? letterFrom : ''));
       prLeft = null;
     }
 
@@ -462,7 +551,9 @@ List<BoardCard> readBoard(File file, {DateTime? now}) {
       }
     }
     stage('${json['said'] ?? ''}'.trim(), '유저 메모', byUser: true);
-    stage('${json['note'] ?? ''}'.trim(), '작업 기록');
+    stage('${json['note'] ?? ''}'.trim(),
+        letterTo.isEmpty ? '작업 기록' : kLetterStage,
+        letter: letterTo.isNotEmpty);
     stage('${json['think'] ?? ''}'.trim(), 'AI 판단');
     // 🚨★★★남은 것 IS A STAGE, not a banner recomputed from the field (유저
     // 2026-08-26: 「남은것도 하나의 공정흐름중 하나고 그렇단건 기록해야할거란

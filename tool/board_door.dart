@@ -265,3 +265,48 @@ String turnedAwayAdvice(BoardServer server) => server.secret == null
     ? '이 기계가 아닌 곳에서는 비밀값이 있어야 합니다 — '
           '$kDoorSecretFileVariable 가 비밀값 파일을 가리키게 하세요.'
     : '서버가 이 비밀값을 받지 않았습니다 — 본진의 값이 바뀌었는지 보세요.';
+
+// ──────────────────────────────────────────────────── who is asking
+
+/// The variable that names this machine's board folder: its flags, and on
+/// the machine that holds the board, the records.
+const kBoardFolderVariable = 'ANICEL_BOARD_FOLDER';
+
+/// The variable Claude Code hands every command of a session: that
+/// session's id. A hook is handed the same id in its payload.
+const kSessionIdVariable = 'CLAUDE_CODE_SESSION_ID';
+
+/// The folder, inside a machine's board folder, where each of its sessions
+/// keeps the 담당 it answers to — one file a session, named by its id.
+const kSessionNamesFolder = '.session-names';
+
+/// Where THIS session's 담당 is kept, or null when the environment does not
+/// say which machine folder or which session this is.
+///
+/// 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2): a letter
+/// is left for a 담당, and a session is shown the ones left for its own. Which
+/// 담당 a session answers to is a fact of the machine it runs on — nothing
+/// in a session's id says it, and two machines hold different sessions — so
+/// it is kept with that machine's flags and never on the board.
+String? sessionNameFile(Map<String, String> environment) {
+  final folder = environment[kBoardFolderVariable]?.trim() ?? '';
+  final session = environment[kSessionIdVariable]?.trim() ?? '';
+  if (folder.isEmpty || session.isEmpty) return null;
+  return '${folder.replaceAll('\\', '/')}/$kSessionNamesFolder/$session';
+}
+
+/// The 담당 this session registered (`tool/board_me.dart`), or null.
+String? sessionNameOf(
+  Map<String, String> environment, {
+  String? Function(String path)? read,
+}) {
+  final path = sessionNameFile(environment);
+  if (path == null) return null;
+  final readFile = read ??
+      (path) {
+        final file = File(path);
+        return file.existsSync() ? file.readAsStringSync() : null;
+      };
+  final name = readFile(path)?.trim() ?? '';
+  return name.isEmpty ? null : name;
+}
