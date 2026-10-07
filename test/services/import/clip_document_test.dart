@@ -95,6 +95,12 @@ void main() {
     ],
   );
 
+  /// [track]'s clips as nested lists — a record holding a list compares
+  /// that list by identity, so the pieces are spelled out for `equals`.
+  List<Object> shape(ClipTrack track) => [
+    for (final piece in track.pieces) [piece.span, piece.cels],
+  ];
+
   CmtSpec document(List<CmtSpec> clips) =>
       CmtSpec('celsysdocument', 'null', children: clips);
 
@@ -158,10 +164,12 @@ void main() {
         ),
       ),
       // Timeline 3, A: a clip stretched to twice its motion — 60 ticks of
-      // keys over 120 of timeline, so a key at tick 30 lands on frame 24.
+      // keys over 120 of timeline, so a key at tick 30 lands on frame 24 —
+      // and, written FIRST, a second clip after a gap.
       externalId(14): trackDataBytes(
         cmtDocumentBytes(
           document([
+            clip(time: [150, 180], motion: [0, 30], keys: [0], cels: ['2']),
             clip(
               time: [0, 120],
               motion: [0, 60],
@@ -350,12 +358,22 @@ void main() {
   test('every timeline in its chain, each layer\'s track by its uuid', () {
     final document = readClipDocument(fixture(), scratch: folder);
     final [first, second, third] = document.timelines;
-    expect(
-      third.tracks[uuidA.replaceAll('-', '')]!.cels,
-      [(frame: 0, cel: '1'), (frame: 24, cel: '2')],
-      reason: 'a stretched clip spreads its keys by the stretch',
-    );
     final key = uuidA.replaceAll('-', '');
+    expect(
+      shape(third.tracks[key]!),
+      [
+        [
+          (start: 0, end: 48),
+          [(frame: 0, cel: '1'), (frame: 24, cel: '2')],
+        ],
+        [
+          (start: 60, end: 72),
+          [(frame: 60, cel: '2')],
+        ],
+      ],
+      reason: 'a stretched clip spreads its keys by the stretch; each clip '
+          'keeps its own keys, and the clips come in order of frame',
+    );
 
     expect(document.currentTimeline, 1);
     expect((first.name, first.fps, first.start, first.end), (
@@ -365,24 +383,33 @@ void main() {
       48,
     ));
     expect(first.tracks[key]!.kind, 2000);
-    expect(first.tracks[key]!.spans, [(start: 0, end: 48)]);
     expect(
-      first.tracks[key]!.cels,
-      [(frame: 0, cel: '1'), (frame: 12, cel: '2'), (frame: 24, cel: '1')],
+      shape(first.tracks[key]!),
+      [
+        [
+          (start: 0, end: 48),
+          [(frame: 0, cel: '1'), (frame: 12, cel: '2'), (frame: 24, cel: '1')],
+        ],
+      ],
       reason: 'the double document — the single one keys 「2」 alone',
     );
     expect(first.tracks[key]!.labels, [6], reason: 'a breakdown only');
     expect(second.name, 'cut 2');
-    expect(second.tracks[key]!.spans, [(start: 10, end: 24)]);
     expect(
-      second.tracks[key]!.cels,
-      [(frame: 10, cel: '2'), (frame: 22, cel: '1')],
+      shape(second.tracks[key]!),
+      [
+        [
+          (start: 10, end: 24),
+          [(frame: 10, cel: '2'), (frame: 22, cel: '1')],
+        ],
+      ],
       reason: 'a moved clip: its keys count from its motion\'s start',
     );
     final bg = second.tracks[uuidBg.replaceAll('-', '')]!;
     expect(bg.kind, 2001);
-    expect(bg.spans, [(start: 0, end: 24)]);
-    expect(bg.cels, isEmpty);
+    expect(shape(bg), [
+      [(start: 0, end: 24), isEmpty],
+    ]);
     expect(document.warnings, isEmpty);
   });
 

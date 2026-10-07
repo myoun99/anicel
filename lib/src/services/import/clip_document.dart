@@ -111,6 +111,10 @@ final class ClipLayer {
   bool get isFolder => folderFlags != 0 || kind == ClipLayerKind.root;
   bool get isCollapsed => folderFlags & 16 != 0;
 
+  /// Whether a picture of it is stored: a render, or a dropped picture's
+  /// original. A vector, a text or a paper layer stores none.
+  bool get hasPicture => render != null || original != null;
+
   /// This layer and every layer under it, this one first.
   Iterable<ClipLayer> get everyLayer sync* {
     yield this;
@@ -127,12 +131,16 @@ typedef ClipSpan = ({int start, int end});
 /// A cel shown from [frame] on — until the next key, or its clip's end.
 typedef ClipCelKey = ({int frame, String cel});
 
+/// One clip of a track: where it shows its layer, and the cels it keys
+/// (in order of frame). A key holds until the next one or the clip's end,
+/// never into the next clip — the gap between two clips shows nothing.
+typedef ClipPiece = ({ClipSpan span, List<ClipCelKey> cels});
+
 /// One layer's track on one timeline.
 final class ClipTrack {
   const ClipTrack({
     required this.kind,
-    required this.spans,
-    required this.cels,
+    required this.pieces,
     required this.labels,
   });
 
@@ -140,11 +148,8 @@ final class ClipTrack {
   /// 2003 paper · 4001 sound.
   final int kind;
 
-  /// Where the layer is shown at all; outside them it is not.
-  final List<ClipSpan> spans;
-
-  /// An animation folder's cels, in order of frame.
-  final List<ClipCelKey> cels;
+  /// Its clips, in order of frame; outside them the layer is not shown.
+  final List<ClipPiece> pieces;
 
   /// The frames a label (`LabelType` 1 — a breakdown) stands on.
   final List<int> labels;
@@ -509,20 +514,15 @@ final class _DocumentReader {
         ? _text(track['TrackActionMixer2'])
         : _text(track['TrackActionMixer']);
     final mixer = container.externals[mixerId];
-    final spans = <ClipSpan>[];
-    final cels = <ClipCelKey>[];
+    final pieces = <ClipPiece>[];
     if (mixer != null) {
       final document = cmtDocumentOfTrackData(readClipPlace(file, mixer));
       for (final clip in document.everyNode) {
-        if (clip.name != 'ActionNodeClip') {
-          continue;
+        if (clip.name == 'ActionNodeClip') {
+          if (_clip(clip, fps) case final piece?) {
+            pieces.add(piece);
+          }
         }
-        final placed = _clip(clip, fps);
-        if (placed == null) {
-          continue;
-        }
-        spans.add(placed.span);
-        cels.addAll(placed.cels);
       }
     }
     final labelFrames = <int>[];
@@ -538,11 +538,9 @@ final class _DocumentReader {
       }
       labelId = _int(label['LabelNextIndex']);
     }
-    cels.sort((a, b) => a.frame.compareTo(b.frame));
     return ClipTrack(
       kind: kind,
-      spans: spans,
-      cels: cels,
+      pieces: pieces..sort((a, b) => a.span.start.compareTo(b.span.start)),
       labels: labelFrames..sort(),
     );
   }
@@ -554,7 +552,7 @@ final class _DocumentReader {
   /// (MotionClip.End − MotionClip.Start)` (1 when the motion has no
   /// length) — memory `csp-clip-format-notes` §3. A key holds until the
   /// next one; the last one holds to the clip's end.
-  ({ClipSpan span, List<ClipCelKey> cels})? _clip(CmtNode clip, double fps) {
+  ClipPiece? _clip(CmtNode clip, double fps) {
     final time = clip.child('TimeClip');
     final motion = clip.child('MotionClip');
     if (time == null) {
@@ -604,6 +602,7 @@ final class _DocumentReader {
         }
       }
     }
+    cels.sort((a, b) => a.frame.compareTo(b.frame));
     return (span: span, cels: cels);
   }
 

@@ -28,7 +28,8 @@ void main() {
   /// ★A NEW WARNING ADDS ITS KEY HERE. The keys are the raising sites'
   /// own — `psd*` the Photoshop reader and its layer plan, `folder*` the
   /// cut folder's parse and plan, `tvp*`/`tvpp*` the TVPaint planner,
-  /// parser and converter, and the last three the .tvpp door itself.
+  /// parser and converter, three the .tvpp door itself, and `clip*` the
+  /// CLIP STUDIO planner.
   const keys = [
     'psdBitDepth',
     'psdVectorMask',
@@ -57,6 +58,20 @@ void main() {
     'celUnreadable',
     'stagedCopy',
     'soundMissing',
+    'clipRead',
+    'clipFps',
+    'clipShownInPart',
+    'clipUnplaced',
+    'clipNoSuchCel',
+    'clipCelLayers',
+    'clipSpread',
+    'clipVector',
+    'clipText',
+    'clipPaper',
+    'clipFill',
+    'clipSound',
+    'clipUnknownLayer',
+    'clipBlend',
   ];
 
   for (final language in translated) {

@@ -3586,6 +3586,20 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}: 描画モード「{mode}」に相当するものがAnicelにありません — 通常として取り込みました。',
     'importWarning.tvppHoldNoDrawing': '{name}: フレーム{frame}のホールドが受け継ぐ絵がありません。',
     'importWarning.tvppChunkBroken': 'クリップ{n}: @{at} でチャンクの連なりが切れました — 以降のデータは捨てます。',
+    'importWarning.clipRead': 'ファイルの一部をたどれませんでした: {detail}',
+    'importWarning.clipFps': 'タイムラインごとにフレームレートが違います — プロジェクトは最初のタイムラインの {fps} fps にしました。',
+    'importWarning.clipShownInPart': '{name}: {cut} の一部の区間にだけ表示されていました — ここではカット全体に表示します。',
+    'importWarning.clipUnplaced': '{name}: どのタイムラインにも置かれていないセルが{count}枚あります — 取り込みませんでした。',
+    'importWarning.clipNoSuchCel': '{name}: フォルダーにないセルを指すキーが{count}個あります。',
+    'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
+    'importWarning.clipSpread': '{name}: {count}枚のセルで、フォルダーの不透明度や合成モードを中の各レイヤーに分けて付けました — レイヤーが重なる所は見え方が変わることがあります。',
+    'importWarning.clipVector': '{name}: ベクターレイヤー — 描画していません。',
+    'importWarning.clipText': '{name}: テキストレイヤー — 描画していません。',
+    'importWarning.clipPaper': '{name}: 用紙レイヤー — 色は適用していません。',
+    'importWarning.clipFill': '{name}: 塗りつぶしレイヤー — 描画していません。',
+    'importWarning.clipSound': '{name}: 音声レイヤーは取り込みませんでした。',
+    'importWarning.clipUnknownLayer': '{name}: この取り込みでは読めない種類のレイヤーです。',
+    'importWarning.clipBlend': '{name}: 合成モード {mode} に相当するものがありません — 通常にしました。',
     'exclusionReason.processSubfolder': '工程サブフォルダー（アーカイブ）',
     'exclusionReason.subfolderNonCel': 'サブフォルダーのセル以外',
     'exclusionReason.unrecognized': '認識できない名前',
@@ -4959,6 +4973,20 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}: 블렌딩 모드 "{mode}" 에 해당하는 것이 Anicel 에 없습니다 — 보통으로 가져왔습니다.',
     'importWarning.tvppHoldNoDrawing': '{name}: {frame}프레임의 홀드가 이어받을 그림이 없습니다.',
     'importWarning.tvppChunkBroken': '클립 {n}: @{at} 에서 청크 열이 끊겼습니다 — 이후 데이터는 버립니다.',
+    'importWarning.clipRead': '파일의 일부를 따라가지 못했습니다: {detail}',
+    'importWarning.clipFps': '타임라인마다 프레임 레이트가 다릅니다 — 프로젝트는 첫 타임라인의 {fps} fps 로 했습니다.',
+    'importWarning.clipShownInPart': '{name}: {cut} 의 일부 구간에만 보이던 레이어입니다 — 여기서는 컷 전체에 보입니다.',
+    'importWarning.clipUnplaced': '{name}: 어느 타임라인에도 놓이지 않은 셀 {count}장은 가져오지 않았습니다.',
+    'importWarning.clipNoSuchCel': '{name}: 폴더에 없는 셀을 가리키는 키가 {count}개 있습니다.',
+    'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
+    'importWarning.clipSpread': '{name}: 셀 {count}장에서 폴더의 불투명도나 합성 모드를 안의 레이어마다 나눠 줬습니다 — 레이어가 겹치는 자리는 다르게 보일 수 있습니다.',
+    'importWarning.clipVector': '{name}: 벡터 레이어 — 그리지 않았습니다.',
+    'importWarning.clipText': '{name}: 텍스트 레이어 — 그리지 않았습니다.',
+    'importWarning.clipPaper': '{name}: 용지 레이어 — 색은 적용하지 않았습니다.',
+    'importWarning.clipFill': '{name}: 채우기 레이어 — 그리지 않았습니다.',
+    'importWarning.clipSound': '{name}: 소리 레이어는 가져오지 않았습니다.',
+    'importWarning.clipUnknownLayer': '{name}: 이 가져오기가 읽지 못하는 종류의 레이어입니다.',
+    'importWarning.clipBlend': '{name}: 합성 모드 {mode} 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'exclusionReason.processSubfolder': '공정 하위 폴더(보관)',
     'exclusionReason.subfolderNonCel': '하위 폴더의 셀 아님',
     'exclusionReason.unrecognized': '알 수 없는 이름',
@@ -6410,6 +6438,38 @@ enum AppStrings {
     'importWarning.tvppChunkBroken':
         'Clip {n} : la chaîne de blocs s\'est rompue à @{at} — tout ce qui '
         'suit est abandonné.',
+    'importWarning.clipRead':
+        'Une partie du fichier n\'a pas pu être suivie : {detail}',
+    'importWarning.clipFps':
+        'Les timelines n\'ont pas la même cadence — le projet prend celle de '
+        'la première, {fps} i/s.',
+    'importWarning.clipShownInPart':
+        '{name} : visible sur une partie de {cut} seulement — ici, il l\'est '
+        'partout.',
+    'importWarning.clipUnplaced':
+        '{name} : {count} cellulo(s) ne figurent sur aucune timeline — non '
+        'importé(s).',
+    'importWarning.clipNoSuchCel':
+        '{name} : {count} clé(s) désignent un cellulo absent du dossier.',
+    'importWarning.clipCelLayers':
+        '{name} : les calques de ses cellulos sont devenus des rangées selon '
+        'leur place depuis le haut — leurs noms et leurs dossiers ne sont '
+        'pas conservés.',
+    'importWarning.clipSpread':
+        '{name} : dans {count} cellulo(s), l\'opacité ou le mode de fusion '
+        'd\'un dossier a été donné à chacun de ses calques — là où ils se '
+        'chevauchent, le rendu peut différer.',
+    'importWarning.clipVector': '{name} : calque vectoriel — non dessiné.',
+    'importWarning.clipText': '{name} : calque de texte — non dessiné.',
+    'importWarning.clipPaper':
+        '{name} : calque papier — sa couleur n\'est pas appliquée.',
+    'importWarning.clipFill': '{name} : calque de remplissage — non dessiné.',
+    'importWarning.clipSound': '{name} : calque son non importé.',
+    'importWarning.clipUnknownLayer':
+        '{name} : un type de calque que cet import ne lit pas.',
+    'importWarning.clipBlend':
+        '{name} : le mode de fusion {mode} n\'a pas d\'équivalent — réglé '
+        'sur normal.',
     'exclusionReason.processSubfolder': 'sous-dossier de process (archive)',
     'exclusionReason.subfolderNonCel': 'sous-dossier, non cellulo',
     'exclusionReason.unrecognized': 'non reconnu',
@@ -7738,6 +7798,20 @@ enum AppStrings {
     'importWarning.tvpBlend': '{name}：混合模式“{mode}”在 Anicel 中没有对应项——按正常导入。',
     'importWarning.tvppHoldNoDrawing': '{name}：第 {frame} 帧的保持没有可承接的画。',
     'importWarning.tvppChunkBroken': '片段 {n}：块链在 @{at} 处中断——其后的数据被丢弃。',
+    'importWarning.clipRead': '文件的一部分无法读取：{detail}',
+    'importWarning.clipFps': '各时间轴的帧率不同——项目采用第一条时间轴的 {fps} fps。',
+    'importWarning.clipShownInPart': '{name}：原本只在 {cut} 的一部分区间显示——这里在整个镜头中显示。',
+    'importWarning.clipUnplaced': '{name}：有 {count} 张赛璐珞不在任何时间轴上——未导入。',
+    'importWarning.clipNoSuchCel': '{name}：有 {count} 个关键帧指向文件夹中不存在的赛璐珞。',
+    'importWarning.clipCelLayers': '{name}：赛璐珞中的图层按从上往下的位置分成了行——各自的名称和文件夹不保留。',
+    'importWarning.clipSpread': '{name}：在 {count} 张赛璐珞中，文件夹的不透明度或混合模式分给了其中的每个图层——图层重叠处看起来可能不同。',
+    'importWarning.clipVector': '{name}：矢量图层——未绘制。',
+    'importWarning.clipText': '{name}：文字图层——未绘制。',
+    'importWarning.clipPaper': '{name}：纸张图层——未应用其颜色。',
+    'importWarning.clipFill': '{name}：填充图层——未绘制。',
+    'importWarning.clipSound': '{name}：未导入声音图层。',
+    'importWarning.clipUnknownLayer': '{name}：此导入无法读取的图层类型。',
+    'importWarning.clipBlend': '{name}：混合模式 {mode} 没有对应项——已设为正常。',
     'exclusionReason.processSubfolder': '工序子文件夹（存档）',
     'exclusionReason.subfolderNonCel': '子文件夹中的非赛璐珞',
     'exclusionReason.unrecognized': '无法识别',
