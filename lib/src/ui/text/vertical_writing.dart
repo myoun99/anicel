@@ -186,6 +186,14 @@ const Set<String> verticalNoColumnEndChars = {
 /// before a character of [verticalNoColumnStartChars]; not after one of
 /// [verticalNoColumnEndChars]; and not inside a NUMBER.
 ///
+/// ⚠️WHITE SPACE BEFORE A MARK is where a column and a line part ways, and
+/// knowingly. 🔬Measured 2026-10-07: a line exactly full, then a space,
+/// then a full stop, is broken after the space — the stop heading the next
+/// line (「ああああ 。あ」) — while a letter shorter the last letter goes down
+/// with the space and the stop (「あああ 。あ」). That is no law of the
+/// engine's to keep to but two answers a letter apart; a column gives the
+/// second everywhere, by the two rules above as they stand.
+///
 /// ⚠️A number stays whole for the table's own sake too: digits pair up by
 /// how many stand together ([verticalTateChuYokoDigits]), so a run cut in
 /// two by a column's end would be read as two other runs the day a break

@@ -194,6 +194,20 @@ void main() {
       expect(letter(layout, 3), at(-40, 0, 20, 20));
     });
 
+    // 🔬Measured 2026-10-07: here a LINE does two things, a letter apart.
+    // 「ああああ 。あ」 (four letters fill the line) breaks after the space,
+    // and the full stop heads the next line; 「あああ 。あ」 takes its third
+    // letter down with the space and the stop. A column keeps to the second
+    // wherever it happens: white space does not head a column, and neither
+    // does the mark after it.
+    test('🚨white space, then a mark that may not head a column: the '
+        'letter before the space goes down with both', () {
+      final layout = set([run('あい 。う')], wrapWidth: 40);
+
+      // あ | い␣。 | う — and not あい | ␣。 | う.
+      expect(layout.wrapPlaces, [1, 4]);
+    });
+
     test('🚨a NUMBER does not part across two columns — so a break typed '
         'where a column ended can never make two of its digits a pair', () {
       final layout = set([run('あ1234')], wrapWidth: 60);
@@ -286,6 +300,26 @@ void main() {
       expect(caret.width, 0);
       expect(caret.height, greaterThan(0));
       expect(caret.left, letter(layout, 1).left);
+    });
+
+    test('🚨a word, or a pair, that is NOT the text\'s first cell is '
+        'measured on ITS OWN letters: its caret, its letters\' places and '
+        'the place under a press', () {
+      // 「abc」 lies down under 「あ」, from 20: a letter is 20 of its length.
+      final word = set([run('あabc')]);
+
+      expect(word.caretRect(const TextPosition(offset: 3)), at(-20, 60, 20, 0));
+      expect(letter(word, 2), at(-20, 40, 20, 20));
+      expect(placeAt(word, -10, 58), 3);
+
+      // 「12」 side by side under 「あ」: between them is the middle of
+      // their cell.
+      final pair = set([run('あ12')]);
+      final caret = pair.caretRect(const TextPosition(offset: 2));
+
+      expect(caret.width, 0);
+      expect(caret.left, -10);
+      expect(letter(pair, 2).left, -10);
     });
 
     test('a text with NO letters has one: across a column as wide as the '

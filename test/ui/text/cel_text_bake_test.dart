@@ -176,6 +176,43 @@ void main() {
     });
   });
 
+  // Three digits, each a cell of its own, tracked by a whole tile.
+  test('🚨a standing letter\'s TRACKING is room after it and no part of '
+      'where it is drawn: its ink is at the HEAD of its room, across the '
+      'whole of its column — a tile, and the tile after it empty', () async {
+    final plate = await baked(
+      said(
+        [
+          CelTextSpan(
+            text: '123',
+            style: const TextLetterStyle(
+              fontSize: 8,
+              color: 0xFF0A141E,
+              letterSpacing: 8,
+            ),
+          ),
+        ],
+        x: 16,
+        y: 0,
+        vertical: true,
+      ),
+    );
+
+    // 「1」 at the anchor's left, a tile of room, 「2」 — and nothing of
+    // either in the tile between them, or in the columns beside them.
+    final one = TileCoord(x: 1, y: 0);
+    final two = TileCoord(x: 1, y: 2);
+    expect(
+      {
+        for (final coord in plate.keys)
+          if (coord.y <= 2) coord,
+      },
+      {one, two},
+    );
+    expect(plate[one]!.pixels, tileFilledWith(ink).pixels);
+    expect(plate[two]!.pixels, tileFilledWith(ink).pixels);
+  });
+
   test('a break typed into a text in columns opens the next one to the '
       'LEFT, and a word lying down runs down its column', () async {
     final plate = await baked(said([run('7\nab')], x: 24, vertical: true));

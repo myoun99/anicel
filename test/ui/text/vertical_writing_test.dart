@@ -729,6 +729,15 @@ void main() {
       'あ', '漢', 'ア', '한',
     ];
 
+    test('white space is not what a column ends BEFORE — it hangs at the '
+        'foot of its column, as a line\'s does — and a column may end '
+        'after it', () {
+      for (final space in [' ', '　']) {
+        expect(verticalMayBreakBetween('あ', space), isFalse);
+        expect(verticalMayBreakBetween(space, 'あ'), isTrue);
+      }
+    });
+
     test('⛔CONTROL: the engine IS asked, and answers both ways', () {
       expect(keptOffAHead('あ'), isFalse);
       expect(keptOffAnEnd('あ'), isFalse);
