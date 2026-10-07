@@ -50,6 +50,11 @@ set -u
 
 MEM="${1:-}"
 [ -d "$MEM" ] || exit 0
+# 🪟The folder as WINDOWS spells it. It goes into PowerShell's own text below
+# (whose server is this, start this exe), and PowerShell cannot read a
+# `/c/…` path — it answers nothing and exits 0. The installer hands the
+# Windows form already; a hand that types the other one gets the same script.
+MEM="$(cygpath -m "$MEM")"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -W)"
 AWAY="$(git -C "$REPO" config --get anicel.machine 2>/dev/null || true)"
 SRC="$REPO/tool/board_server.dart"
@@ -60,20 +65,40 @@ GH="C:/Program Files/GitHub CLI/gh.exe"
 [ -x "$GH" ] || GH="$(cygpath -m "$(command -v gh 2>/dev/null)" 2>/dev/null)"
 PORT=4321
 
-listening() {
+# 🚨★★★THIS FOLDER'S SERVER IS THE ONLY ONE THIS SCRIPT MAY END (2026-10-07,
+# board `board-up-stops-whatever-listens-on-the-port`).
+# ⛔`stop` ended WHATEVER LISTENED ON THE PORT, and the last lines started a
+# server on the folder the script was handed. So on the machine that holds
+# the board, this script — or the gate, which runs it — pointed at any other
+# folder (a throwaway one, to try a hook) would have taken the live board
+# down and put that folder's records on its port. It never happened: it was
+# read before it was run, and until now 「be careful」 was the only guard.
+# ⇒ A server is THIS board's when it is this folder's exe — the same file the
+# rebuild below needs out of the way, which is the one reason a stop exists.
+# Anything else on the port is left alone, whoever it is.
+#
+# ⚠️The comparing is done INSIDE PowerShell (it ignores case and reads either
+# slash) and only a plain word comes back: a path printed out would cross a
+# code page on the way.
+
+# Who listens on the board's port: `ours`, `other`, or nothing.
+listener() {
   powershell -NoProfile -Command \
-    "if (Get-NetTCPConnection -LocalPort $PORT -State Listen -EA 0) {'yes'}" \
+    "\$c = Get-NetTCPConnection -LocalPort $PORT -State Listen -EA 0 | Select-Object -First 1; if (\$c) { if ((Get-Process -Id \$c.OwningProcess -EA 0).Path -eq [IO.Path]::GetFullPath('$EXE')) {'ours'} else {'other'} }" \
     2>/dev/null | tr -d '\r '
 }
 
+# Ends this folder's server, listening or not.
 stop() {
-  local pid
-  pid=$(powershell -NoProfile -Command \
-    "(Get-NetTCPConnection -LocalPort $PORT -State Listen -EA 0).OwningProcess" \
-    2>/dev/null | tr -d '\r ')
-  [ -n "$pid" ] && powershell -NoProfile -Command \
-    "Stop-Process -Id $pid -Force -EA 0" >/dev/null 2>&1
+  powershell -NoProfile -Command \
+    "Get-Process -Name board_server -EA 0 | Where-Object { \$_.Path -eq [IO.Path]::GetFullPath('$EXE') } | Stop-Process -Force -EA 0" \
+    >/dev/null 2>&1
 }
+
+# Never silent about failing: a board that did not come up, or a binary that
+# could not be built, must leave a trace — or the next person to look assumes
+# it is fine.
+note() { echo "$(date '+%F %T') board_up: $1" >> "$MEM/.board_up.log"; }
 
 # ⚠️ONE READER FOR 「이 exe 가 이 소스인가」 -- this function, used for both
 # binaries AND by the server itself, which compares the same copy to decide
@@ -111,11 +136,16 @@ built_from() { [ -f "$2" ] && stamp_of "$1" | cmp -s - "$2"; }
 # code. ⚠️The stamp is written only after a compile that EXITED 0, so a
 # failed build leaves the old stamp and is retried next turn instead of being
 # recorded as done.
+# 🆕And a failed build is SAID (`note`). `stop` ends only what it can tell is
+# this folder's server; one it could not tell (the same folder reached by
+# another spelling) keeps the exe open, the build fails on it, and the old
+# code would go on serving with nothing written anywhere.
 if [ -z "$AWAY" ] && [ -f "$SRC" ] && command -v dart >/dev/null 2>&1; then
   if [ ! -f "$EXE" ] || ! built_from "$SRC" "$EXE.srcs"; then
     stop
     if (cd "$(dirname "$SRC")/.." && dart compile exe "$SRC" -o "$EXE") >/dev/null 2>&1
-    then stamp_of "$SRC" > "$EXE.srcs"; fi
+    then stamp_of "$SRC" > "$EXE.srcs"
+    else note "could not build $EXE -- what was there goes on"; fi
   fi
 fi
 
@@ -132,13 +162,21 @@ if [ -f "$CHECK_SRC" ] && command -v dart >/dev/null 2>&1; then
   if [ ! -f "$CHECK_EXE" ] || ! built_from "$CHECK_SRC" "$CHECK_EXE.srcs"; then
     if (cd "$(dirname "$CHECK_SRC")/.." \
         && dart compile exe "$CHECK_SRC" -o "$CHECK_EXE") >/dev/null 2>&1
-    then stamp_of "$CHECK_SRC" > "$CHECK_EXE.srcs"; fi
+    then stamp_of "$CHECK_SRC" > "$CHECK_EXE.srcs"
+    else note "could not build $CHECK_EXE -- what was there goes on"; fi
   fi
 fi
 
 [ -z "$AWAY" ] || exit 0
 [ -f "$EXE" ] || exit 0
-[ "$(listening)" = "yes" ] && exit 0
+case "$(listener)" in
+  ours) exit 0 ;;
+  # Another board's server, or another program: not this script's to end, and
+  # a second server cannot have the port.
+  other)
+    note "port $PORT is held by something that is not $EXE -- left alone"
+    exit 0 ;;
+esac
 
 # 🆕2026-10-07 — THE DOOR TO THE HOME NETWORK. 유저: 「서피스는 집에서만
 # 쓸거야. 컴은 랜선 서피스들은 같은 모뎀?에서 흘러오는 와이파이」 (card
@@ -173,11 +211,11 @@ launch() {
 
 # Launch, then CONFIRM, then launch once more. The first attempt after a
 # rebuild lost a race with the freshly written exe and failed silently -- the
-# script reported success and no server was running. Each `listening` call
+# script reported success and no server was running. Each `listener` call
 # costs a couple of hundred milliseconds, which doubles as the settle time.
 up() {
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    [ "$(listening)" = "yes" ] && return 0
+    [ "$(listener)" = "ours" ] && return 0
   done
   return 1
 }
@@ -187,8 +225,5 @@ up && exit 0
 launch
 up && exit 0
 
-# Never silent about failing: a board that did not come up must leave a trace,
-# or the next person to look assumes it is fine and finds an empty bookmark.
-echo "$(date '+%F %T') board_up: server did not come up on port $PORT" \
-  >> "$MEM/.board_up.log"
+note "server did not come up on port $PORT"
 exit 0

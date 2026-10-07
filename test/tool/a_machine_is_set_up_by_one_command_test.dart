@@ -85,6 +85,7 @@ void main() {
         {
           'autorun_test.sh',
           'board_gate_test.sh',
+          'board_up_test.sh',
           'guard_git_add_test.sh',
           'hook_says_test.sh',
           'session_letters_test.sh',
@@ -203,6 +204,35 @@ void main() {
         at(r'AWAY="$(git -C "$REPO" config --get anicel.machine'),
         isNot(-1),
         reason: 'the one question tool/lane.sh asks too',
+      );
+    });
+
+    test('🚨the start-up hook ends only the server of the folder it was '
+        'handed — never whatever holds the port (what it does with the '
+        'answer is board_up_test.sh, by hand)', () {
+      // ⛔It took the pid that LISTENED and ended it. Pointed at any other
+      // folder on the machine that holds the board, that was the live board
+      // (board `board-up-stops-whatever-listens-on-the-port`).
+      final up = const LineSplitter().convert(scripts['board_up.sh']!);
+      final asked = [
+        for (final line in up)
+          if (!line.trimLeft().startsWith('#') &&
+              (line.contains('Stop-Process') ||
+                  line.contains('Get-NetTCPConnection')))
+            line,
+      ];
+      expect(asked, hasLength(2), reason: 'one question, one ending');
+      for (final line in asked) {
+        expect(
+          line,
+          contains(r"[IO.Path]::GetFullPath('$EXE')"),
+          reason: 'each is about this folder\'s exe',
+        );
+      }
+      expect(
+        asked.where((line) => line.contains('Stop-Process')).single,
+        isNot(contains('OwningProcess')),
+        reason: 'the port\'s owner is asked about, never ended',
       );
     });
 
