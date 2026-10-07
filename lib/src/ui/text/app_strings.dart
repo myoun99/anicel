@@ -327,8 +327,8 @@ enum AppStrings {
   String get deleteLayerTitle => _s('deleteLayerTitle');
 
   /// '{name}' is replaced with the layer name.
-  String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
-  String get deleteLayerHeldHeading => _s('deleteLayerHeldHeading');
+  String get deleteLayersMessage => _s('deleteLayersMessage');
+  String get deleteLayersHeading => _s('deleteLayersHeading');
   String get frameNameConflictTitle => _s('frameNameConflictTitle');
 
   /// Reads right for one frame or many (I-18: 「단일 변경만 대응하는게
@@ -849,6 +849,7 @@ enum AppStrings {
   /// 나눠 쓰지 않고 「fx」 하나로 말한다.
   String get tlAttachDropsFxTitle => _s('tlAttachDropsFxTitle');
   String get tlAttachDropsFxBody => _s('tlAttachDropsFxBody');
+  String get tlAttachDropsFxRows => _s('tlAttachDropsFxRows');
 
   /// ⛔No trailing '…' on a BAR BUTTON's writing (B9, 유저 2026-08-17:
   /// 「심플하게 編集」) — this one and [tlSetCommasN] wore it and read as
@@ -1811,8 +1812,8 @@ enum AppStrings {
     'cutNoteTitle': 'Edit cut note',
     'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
-    'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
-    'deleteLayerHeldHeading': 'Layers inside',
+    'deleteLayersMessage': 'Delete the layers below?',
+    'deleteLayersHeading': 'Layers to delete',
     'frameNameConflictTitle': 'Frame name already exists',
     'frameNameConflictBody':
         'Each frame listed takes a name another frame on its layer already '
@@ -2798,6 +2799,7 @@ enum AppStrings {
     'tlDropAttachFreeTemplate': 'attach to {name} (free)',
     'tlDropDetachAttach': 'detach',
     'tlDetachLayer': 'Detach from base',
+    'tlAttachDropsFxRows': 'Layers that lose their fx',
     'tlAttachDropsFxTitle': 'Attaching drops its fx',
     'tlAttachDropsFxBody':
         'An attached layer keeps no fx of its own. Continuing discards the existing fx. Continue?',
@@ -2940,8 +2942,8 @@ enum AppStrings {
     'cutNoteTitle': 'カットメモの編集',
     'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
-    'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
-    'deleteLayerHeldHeading': '中のレイヤー',
+    'deleteLayersMessage': '下のレイヤーを削除しますか？',
+    'deleteLayersHeading': '削除するレイヤー',
     'frameNameConflictTitle': '同じフレーム名が既にあります',
     'frameNameConflictBody':
         '一覧のフレームには、同じレイヤーの別のフレームが既に使っている名前が付きます。'
@@ -4175,6 +4177,7 @@ enum AppStrings {
     'tlDropAttachFreeTemplate': '{name} にアタッチ（フリー）',
     'tlDropDetachAttach': 'アタッチを解除',
     'tlDetachLayer': 'アタッチを解除',
+    'tlAttachDropsFxRows': 'fx を失うレイヤー',
     'tlAttachDropsFxTitle': 'アタッチすると fx が失われます',
     'tlAttachDropsFxBody': 'アタッチレイヤーは自分の fx を持ちません。続けると既存の fx は失われます。実行しますか？',
     'tlAdd': '追加',
@@ -4315,8 +4318,8 @@ enum AppStrings {
     'cutNoteTitle': '컷 메모 편집',
     'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
-    'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
-    'deleteLayerHeldHeading': '안에 든 레이어',
+    'deleteLayersMessage': '아래 레이어를 삭제할까요?',
+    'deleteLayersHeading': '삭제할 레이어',
     'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
     'frameNameConflictBody':
         '목록의 프레임에 붙을 이름을 같은 레이어의 다른 프레임이 이미 쓰고 '
@@ -5542,6 +5545,7 @@ enum AppStrings {
     'tlDropAttachFreeTemplate': '{name}에 어태치 (프리)',
     'tlDropDetachAttach': '어태치 해제',
     'tlDetachLayer': '어태치 해제',
+    'tlAttachDropsFxRows': 'fx 가 사라지는 레이어',
     'tlAttachDropsFxTitle': '어태치하면 fx 가 사라집니다',
     'tlAttachDropsFxBody':
         '어태치된 레이어는 자기 fx 를 갖지 않습니다. 계속하면 기존 fx 가 사라집니다. 실행하겠습니까?',
@@ -5687,8 +5691,8 @@ enum AppStrings {
     'cutNoteTitle': 'Modifier la note du plan',
     'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
-    'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
-    'deleteLayerHeldHeading': 'Calques contenus',
+    'deleteLayersMessage': 'Supprimer les calques ci-dessous ?',
+    'deleteLayersHeading': 'Calques à supprimer',
     'frameNameConflictTitle': "Ce nom d'image existe déjà",
     'frameNameConflictBody':
         'Chaque image listée prend un nom déjà utilisé par une autre image de '
@@ -6987,6 +6991,7 @@ enum AppStrings {
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
     'tlDetachLayer': 'Détacher de la base',
+    'tlAttachDropsFxRows': 'Calques qui perdent leur fx',
     'tlAttachDropsFxTitle': 'Le fx sera perdu',
     'tlAttachDropsFxBody':
         'Une couche attachée ne garde pas son propre fx. Continuer supprimera le fx existant. Continuer ?',
@@ -7129,8 +7134,8 @@ enum AppStrings {
     'cutNoteTitle': '编辑镜头备注',
     'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',
-    'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
-    'deleteLayerHeldHeading': '其中的图层',
+    'deleteLayersMessage': '要删除下列图层吗？',
+    'deleteLayersHeading': '要删除的图层',
     'frameNameConflictTitle': '帧名称已存在',
     'frameNameConflictBody':
         '列表中的帧将使用同一图层中另一帧已在使用的名称。是否链接到使用该名称的帧？'
@@ -8277,6 +8282,7 @@ enum AppStrings {
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
     'tlDetachLayer': '解除附属',
+    'tlAttachDropsFxRows': '将失去 fx 的图层',
     'tlAttachDropsFxTitle': '附属后将失去 fx',
     'tlAttachDropsFxBody': '附属图层不保留自身的 fx。继续将丢弃现有的 fx。要继续吗？',
     'tlAdd': '添加',

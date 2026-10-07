@@ -671,6 +671,14 @@ void main() {
       findsOneWidget,
       reason: 'A carries a transform the mount would throw away',
     );
+    // F-303: and it says WHICH rows, in the shared list under its sentence
+    // — closed, since here the sentence is the point.
+    expect(
+      find.text('${AppText.strings.tlAttachDropsFxRows} (1)'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey<String>('app-notice-details-list')),
+        findsNothing);
     expect(
       _layerOf(session, 'a').attachedToLayerId,
       isNull,

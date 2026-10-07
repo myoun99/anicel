@@ -34,8 +34,8 @@ import '../editor_session_manager.dart';
 /// it lived on moved.
 ///
 /// The dialog names what is going, so a multi-row delete cannot read as a
-/// single-row one — the names ARE the message, and no new string is invented
-/// to say a number the names already say.
+/// single-row one. ↩️「The names ARE the message」: they were joined into its
+/// sentence until F-303, and are the window's list now ([_deleteWindowFor]).
 Future<void> deleteRowSelectionWithDialog(
   BuildContext context,
   EditorSessionManager session,
@@ -66,20 +66,24 @@ Future<void> deleteActiveLayerWithDialog(
   );
 }
 
-/// The delete window for [ids]: their names in its sentence, and the rows
-/// they take along listed under it — a folder's ([LayerVerbs.rowsHeldBy],
-/// F-305). One window for the selection's delete and the standing row's.
+/// The delete window for [ids]: every row that goes, listed under its one
+/// sentence as the rail lists them — the rows named and the rows they take
+/// along ([LayerVerbs.rowsHeldBy]: a folder's, F-305; a base's attach rows).
+/// One window for the selection's delete and the standing row's, for one
+/// row and for many (F-303).
 DeleteLayerDialog _deleteWindowFor(
   EditorSessionManager session,
   List<LayerId> ids,
 ) {
-  final byId = {for (final layer in session.layers) layer.id: layer};
+  final going = {
+    ...ids,
+    for (final row in session.layerVerbs.rowsHeldBy(ids)) row.id,
+  };
   return DeleteLayerDialog(
-    layerName: [
-      for (final id in ids)
-        if (byId[id] case final layer?) layer.name,
-    ].join(', '),
-    held: [for (final row in session.layerVerbs.rowsHeldBy(ids)) row.name],
+    rows: [
+      for (final row in session.layers.reversed)
+        if (going.contains(row.id)) row.name,
+    ],
   );
 }
 

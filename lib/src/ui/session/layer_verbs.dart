@@ -80,16 +80,31 @@ class LayerVerbs {
     ];
   }
 
-  /// What a delete of [ids] takes BESIDES them: every row a folder among
-  /// them holds, as the rail lists them — top first (F-305: 「내용물도
-  /// 삭제리스트에 보여지게」). A row named by [ids] itself is not repeated.
+  /// What a delete of [ids] takes BESIDES them, as the rail lists them —
+  /// top first: every row a folder among them holds (F-305: 「내용물도
+  /// 삭제리스트에 보여지게」), and the attach rows and organizer folders that
+  /// go with a base (the coordinator's cascade — 「neither can stand
+  /// alone」). A row named by [ids] itself is not repeated.
+  ///
+  /// ↩️A base's attach rows were left out until F-303: the window listed
+  /// only what a FOLDER held, so a base went and took rows the list never
+  /// showed — and the hand-off stood on one of them ([_standAfterDeleting]).
   List<Layer> rowsHeldBy(Iterable<LayerId> ids) {
     final named = ids.toSet();
     final rows = _project.layers;
+    final going = {
+      ...named,
+      for (final row in rows)
+        if (named.any((id) => rows.isInsideFolder(row.folderId, id))) row.id,
+    };
+    bool ridesOneThatGoes(Layer row) =>
+        going.contains(
+          row.attachedToLayerId ?? attachOrganizerBaseOf(row, rows),
+        );
     return [
       for (final row in rows.reversed)
         if (!named.contains(row.id) &&
-            named.any((id) => rows.isInsideFolder(row.folderId, id)))
+            (going.contains(row.id) || ridesOneThatGoes(row)))
           row,
     ];
   }

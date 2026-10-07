@@ -112,7 +112,9 @@ void main() {
     await _tapKey(tester, _deleteButtonKey);
 
     expect(find.byKey(_dialogKey), findsOneWidget);
-    expect(find.text('Delete layer "A"?'), findsOneWidget);
+    // F-303: one sentence, and the row in the list under it.
+    expect(find.text('Delete the layers below?'), findsOneWidget);
+    expect(find.text('Layers to delete (1)'), findsOneWidget);
 
     await _tapKey(tester, _cancelButtonKey);
 

@@ -271,12 +271,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.text('${AppText.strings.deleteLayerHeldHeading} (4)'),
+      find.text('${AppText.strings.deleteLayersHeading} (5)'),
       findsOneWidget,
-      reason: 'the list stands OPEN under the question, with its count',
+      reason: 'the list stands OPEN under the question, with its count — '
+          'the folder and the four rows it holds (F-303: ↩️the folder\'s '
+          'name stood in the sentence, and the list counted 4)',
     );
-    for (final name in ['G', 'c', 'b', 'a']) {
-      expect(find.text(name), findsOneWidget, reason: 'held row $name');
+    for (final name in ['F', 'G', 'c', 'b', 'a']) {
+      expect(find.text(name), findsOneWidget, reason: 'row $name');
     }
     expect(_stack(session), hasLength(7), reason: 'nothing goes before Yes');
 
@@ -288,7 +290,10 @@ void main() {
     expect(_stack(session), ['under', 'over']);
   });
 
-  testWidgets('a plain row\'s window has no list', (tester) async {
+  testWidgets('a plain row\'s window is the same window: its list holds '
+      'that row alone', (tester) async {
+    // ↩️「has no list」 until F-303 — one row was named in the sentence and
+    // several were not, which is the law split by count.
     final session = _session(_nested());
     session.selectLayer(const LayerId('over'));
     await tester.pumpWidget(
@@ -307,10 +312,11 @@ void main() {
     await tester.tap(find.text('delete'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('over'), findsOneWidget);
+    expect(find.text(AppText.strings.deleteLayersMessage), findsOneWidget);
     expect(
-      find.textContaining(AppText.strings.deleteLayerHeldHeading),
-      findsNothing,
+      find.text('${AppText.strings.deleteLayersHeading} (1)'),
+      findsOneWidget,
     );
+    expect(find.text('over'), findsOneWidget);
   });
 }

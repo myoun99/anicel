@@ -1578,6 +1578,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ),
         title: strings.tlAttachDropsFxTitle,
         message: strings.tlAttachDropsFxBody,
+        // F-303: WHICH rows — the request has always carried their names,
+        // and the window never showed them.
+        details: request.rowNames,
+        detailsHeading: strings.tlAttachDropsFxRows,
       ),
       accept: ConfirmChoice(strings.commonApply),
     );
