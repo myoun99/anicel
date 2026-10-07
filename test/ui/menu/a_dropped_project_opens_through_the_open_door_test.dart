@@ -29,6 +29,9 @@ void main() {
 
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_dropped_project_');
+    // Every test's folder goes, not only the two that open a project out of
+    // it: the others left theirs in the temp (2026-10-08).
+    deleteAfterSessionEnds(folder);
     AppRecent.projects.value = const RecentProjects();
     RecentProjectsStore().save(const RecentProjects());
   });
@@ -129,7 +132,6 @@ void main() {
 
   testWidgets('🎯a dropped .anicel opens in a tab of its own — the import '
       'window never comes up', (tester) async {
-    deleteAfterSessionEnds(folder);
     final path = await projectNamed(tester, 'Cut 12.anicel');
     final projects = await pumpApp(tester);
 
@@ -176,7 +178,6 @@ void main() {
 
   testWidgets('one drop that holds both takes its files in first, and opens '
       'the project once that window is closed', (tester) async {
-    deleteAfterSessionEnds(folder);
     final project = await projectNamed(tester, 'Cut 12.anicel');
     final picture = fileNamed('picture.png');
     final projects = await pumpApp(tester);
