@@ -173,6 +173,28 @@ void main() {
     expect(rig.demand, isNot(isA<PlayingDemand>()));
   });
 
+  test('🚨a run that ends is let go AT ONCE, by the rig — not when the '
+      'session next says what is wanted', () {
+    // The session says so on most stops: its seek to the frame the playhead
+    // lands on warms that cut. Not on all of them — a run that ends over a
+    // gap parks with no cut to warm, and one that ends a voice take says
+    // nothing until the take has landed — and a run that is followed has no
+    // idle gate: left followed, its pictures would be made under the pen.
+    final rig = playbackRigOf(session);
+    final wantedAsItEnded = <FrameDemand?>[];
+    rig.playback.isActiveListenable.addListener(() {
+      if (!rig.playback.isActive) {
+        wantedAsItEnded.add(rig.demand);
+      }
+    });
+
+    rig.playback.play(scope: PlaybackScope.activeCut);
+    expect(rig.demand, isA<PlayingDemand>(), reason: '⛔premise');
+    rig.playback.stop();
+
+    expect(wantedAsItEnded, [null]);
+  });
+
   testWidgets('🚨the playhead moving on is what wakes the warmer: under an '
       'allowance of one picture, the picture held follows a seek', (
     tester,
