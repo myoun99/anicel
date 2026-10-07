@@ -189,7 +189,17 @@ void main() {
   /// transform tool's one switch, read where a value lands. 🔬The lane's
   /// scan against master (`bdb2136ad`, at 380) named that one added and
   /// nothing gone.
-  const wideSignatures = 381;
+  ///
+  /// ⚠️381 → 382 on 2026-10-07, one named as the rule above asks
+  /// (F-289-Q21, a video run holds the rows its held pictures are made
+  /// of): `ExportFrameRenderer._composite` (five) took `rows` — where a
+  /// held canvas-size picture's row pictures come from — beside the output
+  /// size and the name tags the picture route already passed. The other
+  /// route of that one render (`renderComposite`) hands none, so the one
+  /// body serves both rather than a second copy of it. 🔬The lane's scan
+  /// against master (`7916affa5`, at 381) named that one added and nothing
+  /// gone.
+  const wideSignatures = 382;
 
   /// ⚠️437 → 436 on 2026-09-25, following one down: the storyboard panel's
   /// head became a step of its own (the in-between mark round), which took
@@ -438,7 +448,18 @@ void main() {
   /// relative `'lib'` — the diff tool, handed an absolute root, read one
   /// class fewer on both trees — and `appDartFiles` answers for both now
   /// (ratchet-dev-exclusion-relative-root).
-  const longClasses = 59;
+  ///
+  /// ⚠️59 → 60 on 2026-10-07, ONE name: `CutFrameCompositeCache` crossed
+  /// (589 → 605) in F-289-Q21 — an export run borrows playback's line of the
+  /// memory allowance, and may hold no more than the caches will give back.
+  /// What the composites will not give back is what `enforceBudget` never
+  /// evicts, so its predicate came out of that method into one place
+  /// (`_isProtected`) that the eviction and the new count
+  /// (`protectedBytes`) both read — a second spelling of 「protected」 is the
+  /// thing the round would not write. 🔬`clean_code_diff` between master
+  /// and the lane names this one and no other class. ⛔Not split to fit:
+  /// the cache's eviction and what it holds back are one question.
+  const longClasses = 60;
 
   late CleanCodeScan scan;
   setUpAll(() {

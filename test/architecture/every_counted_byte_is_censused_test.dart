@@ -177,6 +177,9 @@ const _notCensused = <String, String>{
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
       'a CEILING. What is actually held is counted by the two playback '
       'caches the census already reads',
+  'lib/src/ui/session/playback_cache_budget.dart → lendableBytes':
+      'a CEILING — how much an export run may hold on playback\'s line; '
+      'what it holds is lentBytes, which the census reads',
 
   // — On DISK, not in RAM. The census is a RAM readout.
   'lib/src/services/brush_frame_store.dart → coldBakedBytes':

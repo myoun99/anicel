@@ -108,7 +108,29 @@ class PlaybackCacheBudget {
   void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
     protect: _playbackProtectedRanges(),
     reservedForDisplayBytes: _renderCaches.layerFrameImageCache.pinnedBytes,
+    lentBytes: _lentBytes,
   );
+
+  /// What an export run holds on this line while it goes — the row
+  /// pictures its held cut pictures are made of (F-289-Q21, 유저 2026-10-07:
+  /// 「붙든다 — 재생 줄의 허용치 안에서」). Playback rests while a run goes,
+  /// so the run borrows the line and the playback caches give way to it;
+  /// they fill again, as they are asked, once it is lent no more.
+  int get lentBytes => _lentBytes;
+  int _lentBytes = 0;
+
+  /// How much of the line a run may hold now — all of it but what the
+  /// playback caches will not give back.
+  int get lendableBytes => _playbackCacheBudgetEnforcer.lendableBytes(
+    protect: _playbackProtectedRanges(),
+  );
+
+  /// A run holds [bytes] on this line from now on, and the playback caches
+  /// give way to it at once — 0 when its last row is let go.
+  void lend(int bytes) {
+    _lentBytes = bytes;
+    enforcePlaybackCacheBudget();
+  }
 
   /// The OS memory warning, the playback caches' share: the enforcer
   /// lowers its cap, and the trim runs against the lowered cap at once.

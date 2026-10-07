@@ -229,7 +229,11 @@ MemoryCensus collectMemoryCensus(Iterable<EditorSessionManager> sessions) {
       MemoryCensusItem(
         id: 'layerImages',
         bytes: sum(
-          (session) => session.renderCaches.layerFrameImageCache.estimatedBytes,
+          (session) =>
+              session.renderCaches.layerFrameImageCache.estimatedBytes +
+              // An export run's row pictures, held on this line while the
+              // run goes (F-289-Q21) — layer images too, the full ones.
+              session.playbackRig.playbackCache.lentBytes,
         ),
         detail: sum(
           (session) => session.renderCaches.layerFrameImageCache.pinnedBytes,

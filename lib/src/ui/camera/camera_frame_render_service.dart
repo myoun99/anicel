@@ -153,6 +153,12 @@ class CameraFrameRenderService {
   /// 안티low 필터같은거 동일적용한거맞나?」). ↩️It was one bilinear draw
   /// down to a quarter and less, which samples 2×2 of each 4×4 and lets a
   /// line a pixel wide vanish between them.
+  ///
+  /// [rows] keeps the rows' pictures from one render to the next — a video
+  /// run's (F-289-Q21). Each row's picture is asked of it, and what it
+  /// hands out is its own: this render draws it and never lets it go.
+  /// Without it every row is composed here and let go when the render is
+  /// done.
   Future<ui.Image> renderThroughCamera({
     List<CutFrameCompositeLayer> layers = const [],
     List<CompositeNode<CutFrameCompositeLayer>>? nodes,
@@ -161,10 +167,14 @@ class CameraFrameRenderService {
     CanvasSize? outputSize,
     void Function(ui.Canvas canvas)? overlayPass,
     bool displayLevels = false,
+    RowPictures? rows,
   }) async {
     final tree = nodes ?? [for (final layer in layers) CompositeLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
     final layerImages = <CutFrameCompositeLayer, PositionedSurfaceImage>{};
+    // What this render made, and so lets go of when it is done: every row's
+    // picture that [rows] does not keep, and every halving's.
+    final madeHere = <ui.Image>[];
     Future<void> composeImages(
       List<CompositeNode<CutFrameCompositeLayer>> list,
     ) async {
@@ -193,7 +203,7 @@ class CameraFrameRenderService {
             // Cost is proportional to what is actually there: the positioned
             // compose only rasters a bigger rect when pasteboard tiles
             // exist, so a project that never parks artwork pays nothing.
-            layerImages[layer] =
+            Future<PositionedSurfaceImage> compose() async =>
                 // Non-null without shouldAbort (on-demand render, never
                 // abandoned).
                 //
@@ -205,6 +215,13 @@ class CameraFrameRenderService {
                   reuse: BitmapTileImageCache.instance,
                   missing: MissingTilePictures.madeAtOnce,
                 ))!;
+            if (rows != null) {
+              layerImages[layer] = await rows.of(layer.surface, compose);
+            } else {
+              final composed = await compose();
+              madeHere.add(composed.image);
+              layerImages[layer] = composed;
+            }
           case CompositeGroup(:final children):
             await composeImages(children);
           case CompositeAdjustment(:final children):
@@ -223,7 +240,18 @@ class CameraFrameRenderService {
     if (displayLevels) {
       final level = displayLevelOf(cameraRasterScale);
       for (final layer in [...layerImages.keys]) {
-        layerImages[layer] = await _halved(layerImages[layer]!, level);
+        final composed = layerImages[layer]!;
+        final halved = await _halved(composed, level);
+        if (identical(halved.image, composed.image)) {
+          continue;
+        }
+        // A row this render made goes the moment it is halved, as it always
+        // has; a kept one stays its keeper's.
+        if (madeHere.remove(composed.image)) {
+          composed.image.dispose();
+        }
+        madeHere.add(halved.image);
+        layerImages[layer] = halved;
       }
     }
     final leafQuality = displayLevels
@@ -378,17 +406,30 @@ class CameraFrameRenderService {
       return await picture.toImage(resolvedOutput.width, resolvedOutput.height);
     } finally {
       picture.dispose();
-      for (final composed in layerImages.values) {
-        composed.image.dispose();
+      for (final image in madeHere) {
+        image.dispose();
       }
     }
   }
 }
 
+/// Where a render's row pictures come from when they are kept between
+/// renders ([CameraFrameRenderService.renderThroughCamera]'s `rows`).
+///
+/// [of] hands back the picture [surface] composes to — one kept from an
+/// earlier render, or [compose]'s — and it is the keeper's either way.
+abstract interface class RowPictures {
+  Future<PositionedSurfaceImage> of(
+    BitmapSurface surface,
+    Future<PositionedSurfaceImage> Function() compose,
+  );
+}
+
 /// [composed] with its image halved [level] times over the same canvas
 /// rect — each time the exact mean of a 2×2 block of the one above
 /// ([halvingPicture]), as the display's own levels are made. The images
-/// it passes through are let go of; the one it hands back is the caller's.
+/// it passes through are let go of; [composed]'s own is its owner's, and
+/// the one it hands back is the caller's.
 Future<PositionedSurfaceImage> _halved(
   PositionedSurfaceImage composed,
   int level,
@@ -403,7 +444,9 @@ Future<PositionedSurfaceImage> _halved(
     } finally {
       picture.dispose();
     }
-    image.dispose();
+    if (!identical(image, composed.image)) {
+      image.dispose();
+    }
     image = halved;
   }
   return PositionedSurfaceImage(image: image, worldRect: composed.worldRect);

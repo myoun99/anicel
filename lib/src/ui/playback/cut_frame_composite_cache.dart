@@ -548,26 +548,10 @@ class CutFrameCompositeCache {
     if (_estimatedBytes <= maxBytes) {
       return;
     }
-    bool isProtected(_CompositeEntry entry) {
-      for (final key in entry.indexKeys) {
-        // A pinned frame is on screen through a holder's clone —
-        // playback's held frame, the parked track stack. Evicting it
-        // returns no bytes and re-composites the exact picture being
-        // shown.
-        if (_pins.isPinned(key)) {
-          return true;
-        }
-        for (final range in protect) {
-          if (range.contains(key.$1, key.$2, key.$3)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-
     final evictable =
-        _images.values.where((entry) => !isProtected(entry)).toList()
+        _images.values
+            .where((entry) => !_isProtected(entry, protect))
+            .toList()
           ..sort((a, b) => a.lastUsed.compareTo(b.lastUsed));
     for (final candidate in evictable) {
       if (_estimatedBytes <= maxBytes) {
@@ -577,6 +561,38 @@ class CutFrameCompositeCache {
         _releaseIndexEntry(key);
       }
     }
+  }
+
+  /// The bytes [enforceBudget] never gives back under [protect].
+  int protectedBytes({List<PlaybackProtectedRange> protect = const []}) {
+    var total = 0;
+    for (final entry in _images.values) {
+      if (_isProtected(entry, protect)) {
+        total += estimatedImageBytes(entry.image.width, entry.image.height);
+      }
+    }
+    return total;
+  }
+
+  bool _isProtected(
+    _CompositeEntry entry,
+    List<PlaybackProtectedRange> protect,
+  ) {
+    for (final key in entry.indexKeys) {
+      // A pinned frame is on screen through a holder's clone —
+      // playback's held frame, the parked track stack. Evicting it
+      // returns no bytes and re-composites the exact picture being
+      // shown.
+      if (_pins.isPinned(key)) {
+        return true;
+      }
+      for (final range in protect) {
+        if (range.contains(key.$1, key.$2, key.$3)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   void dispose() {

@@ -345,6 +345,87 @@ void main() {
     });
   });
 
+  /// 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」 — an
+  /// export run borrows this line for the rows it keeps, playback resting
+  /// while it goes. What it holds comes off the caches' share, and it may
+  /// hold no more than they will give back.
+  group('a run borrows the line, and the caches give way to it', () {
+    // Every tier in both caches: 336 bytes each, as above.
+    const allTiers = 256 + 64 + 16;
+
+    Future<({LayerFrameImageCache layers, CutFrameCompositeCache composites})>
+    filled() async {
+      final c = caches();
+      addTearDown(() {
+        c.composites.dispose();
+        c.layers.dispose();
+      });
+      for (final quality in PlaybackQuality.values) {
+        await c.composites.prepareComposite(
+          cut: cut(),
+          frameIndex: 0,
+          quality: quality,
+        );
+      }
+      expect(c.layers.estimatedBytes + c.composites.estimatedBytes, 672);
+      return c;
+    }
+
+    testWidgets('🎯what is lent comes off the caches — the same budget with '
+        'nothing lent keeps them whole', (tester) async {
+      await tester.runAsync(() async {
+        for (final lent in [0, 600]) {
+          final c = await filled();
+          PlaybackCacheBudgetEnforcer(
+            layerImages: c.layers,
+            composites: c.composites,
+            maxBytes: 1024,
+          ).enforce(lentBytes: lent);
+          final held = c.layers.estimatedBytes + c.composites.estimatedBytes;
+          if (lent == 0) {
+            expect(held, 2 * allTiers, reason: 'LIVENESS: room for all');
+          } else {
+            expect(held, lessThanOrEqualTo(1024 - lent));
+          }
+        }
+      });
+    });
+
+    testWidgets('🚨what may be lent is the line less what the caches never '
+        'give back — the composites kept warm and the pictures a screen '
+        'shows', (tester) async {
+      await tester.runAsync(() async {
+        final c = await filled();
+        final enforcer = PlaybackCacheBudgetEnforcer(
+          layerImages: c.layers,
+          composites: c.composites,
+          maxBytes: 1024,
+        );
+        expect(enforcer.lendableBytes(), 1024, reason: 'all of it gives way');
+
+        const warm = [
+          PlaybackProtectedRange(
+            cutId: CutId('cut'),
+            startFrame: 0,
+            endFrame: 3,
+            quality: PlaybackQuality.full,
+          ),
+        ];
+        expect(enforcer.lendableBytes(protect: warm), 1024 - fullImageBytes);
+
+        c.layers.retainPin(
+          frameKey(cut(), const LayerId('layer'), const FrameId('frame-a')),
+          PlaybackQuality.full,
+        );
+        expect(
+          enforcer.lendableBytes(protect: warm),
+          1024 - 2 * fullImageBytes,
+          reason: 'and the layer image on screen',
+        );
+      });
+    });
+  });
+
   /// 🚨★★★**THE LARGEST CACHE IN THE APP USED TO BE THE DEAF ONE.**
   ///
   /// `EditorSessionManager.respondToMemoryPressure` always ended by calling

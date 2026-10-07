@@ -102,6 +102,23 @@ void main() {
     expect(made, hasLength(1));
   });
 
+  test('🎯each picture let go is said by its key, as it goes — what was held '
+      'WITH it goes with it (the rows a cut\'s picture is made of)', () async {
+    final heard = <Object>[];
+    final own = HeldPictures(onLetGo: heard.add);
+    await own.of('a', render);
+    own.nextFrame();
+    await own.of('b', render);
+    expect(heard, isEmpty, reason: 'a is the frame before\'s, still held');
+
+    own.nextFrame();
+    expect(heard, ['a']);
+    expect(made.first.debugDisposed, isTrue);
+
+    own.dispose();
+    expect(heard, ['a', 'b']);
+  });
+
   test('dispose lets go of this frame\'s and the frame before\'s', () async {
     final a = await pictures.of('a', render);
     pictures.nextFrame();

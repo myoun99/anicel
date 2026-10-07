@@ -47,6 +47,7 @@ import '../../services/se_name_tag_plan.dart';
 import '../timeline/memo_token.dart';
 import 'export_plan.dart';
 import 'held_pictures.dart';
+import 'held_rows.dart';
 import 'offscreen_raster.dart';
 
 /// The ground a frame is rendered on unless a caller names another — what
@@ -107,12 +108,27 @@ class ExportFrameRenderer {
   /// (F-289, measured 2026-10-07 on the user's own film: of its 1,857
   /// frames 1,687 show the composite the frame before them showed, and
   /// 1,483 are that frame's picture, camera and all).
-  final HeldPictures _pictures = HeldPictures();
+  late final HeldPictures _pictures = HeldPictures(onLetGo: _rows.letGoOf);
+
+  /// The rows the cut pictures in [_pictures] are made of, each held while
+  /// a picture made of it is — so the picture a frame changes on composes
+  /// only the rows that changed (F-289-Q21). Their room is lent by
+  /// playback's line of the memory allowance, whose caches give way to
+  /// them while the run goes.
+  late final HeldRows _rows = HeldRows(
+    room: () => session.playbackRig.playbackCache.lendableBytes,
+    onHeld: session.playbackRig.playbackCache.lend,
+  );
 
   /// How many pictures this renderer has had to make (test hook) — a frame
   /// that is the picture before it makes none.
   @visibleForTesting
   int get debugPicturesMade => _pictures.made;
+
+  /// How many row pictures this renderer has composed (test hook) — a row a
+  /// held picture is made of composes once.
+  @visibleForTesting
+  int get debugRowsMade => _rows.made;
 
   /// Starts the next frame: what the frame before the last one read is let
   /// go, and what the last one read is kept for one more.
@@ -125,9 +141,12 @@ class ExportFrameRenderer {
     _pictures.nextFrame();
   }
 
-  /// Lets go of the pictures a video run held. The run's to call when its
-  /// last frame is out.
-  void dispose() => _pictures.dispose();
+  /// Lets go of the pictures a video run held, and the rows they were made
+  /// of. The run's to call when its last frame is out.
+  void dispose() {
+    _pictures.dispose();
+    _rows.dispose();
+  }
 
   /// Keeps the cels [signature]'s picture is made of for one more frame.
   ///
@@ -337,12 +356,14 @@ class ExportFrameRenderer {
   /// [renderComposite] inside a frame that has already started, through
   /// [view], with [nameTags] drawn over the picture — handed in resolved,
   /// so a caller that keys the picture ([_canvasPicture]) keys it by the
-  /// very tags that are drawn.
+  /// very tags that are drawn — and its rows from [rows] when a held
+  /// picture keeps them ([_cutPicture]).
   Future<ui.Image> _composite(
     ExportFrameTask task,
     CameraView view, {
     CanvasSize? outputSize,
     List<ResolvedSeNameTag> nameTags = const [],
+    RowPictures? rows,
   }) async {
     final cut = task.cut;
     await _hydrate(cut, task.frameIndex);
@@ -351,6 +372,7 @@ class ExportFrameRenderer {
       pose: view.pose,
       cameraFrameSize: view.frameSize,
       outputSize: outputSize,
+      rows: rows,
       overlayPass: nameTags.isEmpty
           ? null
           : (canvas) => paintSeNameTags(
@@ -440,8 +462,9 @@ class ExportFrameRenderer {
 
   /// [cut]'s whole picture at [frameIndex] as [route] draws it, held
   /// ([_pictures]) under the signature of what it is made of — and the
-  /// cels it is made of kept with it ([_carryCelsOf]). The renderer's own:
-  /// nobody it is handed to disposes it.
+  /// cels it is made of kept with it ([_carryCelsOf]), and the row
+  /// pictures [render] made it of ([_rows]). The renderer's own: nobody it
+  /// is handed to disposes it.
   ///
   /// [route] is whatever of [render] the signature does not say: which of
   /// the two canvas-space renders it is, and what is drawn over it.
@@ -449,11 +472,12 @@ class ExportFrameRenderer {
     Cut cut,
     int frameIndex, {
     required Object route,
-    required Future<ui.Image> Function() render,
+    required Future<ui.Image> Function(RowPictures rows) render,
   }) {
     final signature = _signatureOf(cut, frameIndex);
     _carryCelsOf(cut.id, signature);
-    return _pictures.of((route, signature), render);
+    final key = (route, signature);
+    return _pictures.of(key, () => _rows.during(key, render));
   }
 
   /// [cut]'s picture at [frameIndex] over its whole canvas, on this
@@ -467,10 +491,11 @@ class ExportFrameRenderer {
     cut,
     frameIndex,
     route: ('canvas', seNameTagSignature(nameTags)),
-    render: () => _composite(
+    render: (rows) => _composite(
       ExportFrameTask(cut: cut, frameIndex: frameIndex),
       _viewFor(cut, frameIndex, ExportSizeMode.canvas),
       nameTags: nameTags,
+      rows: rows,
     ),
   );
 
@@ -781,9 +806,10 @@ class ExportFrameRenderer {
       cut,
       position.localFrameIndex,
       route: 'stack',
-      render: () async {
+      render: (rows) async {
         await _hydrate(cut, position.localFrameIndex);
         return _stackRenderService.renderThroughCamera(
+          rows: rows,
           nodes: planCutFrameCompositeTree(
             cut: _cutForRender(cut),
             frameIndex: position.localFrameIndex,

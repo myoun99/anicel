@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/export/held_rows.dart';
 
 /// 🚨★★★**AN EXPORT HOLDS THE CELS OF TWO FRAMES, NOT OF ITS CUT** (card
 /// `render-reads-thaw-into-hot`).
@@ -402,6 +403,90 @@ void main() {
             reason: 'a1 once, b1, b2 — a1 is not read again at frame 2, where '
                 'only B changes after a frame that read nothing',
           );
+        });
+      });
+
+      // 🗣️F-289-Q21 (유저 2026-10-07): 「붙든다 — 재생 줄의 허용치 안에서」.
+      testWidgets('🎯$door: the row that holds while another changes is '
+          'COMPOSED once — a held picture keeps the rows it is made of', (
+        tester,
+      ) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+
+          for (final index in [0, 1, 2, 3]) {
+            (await frameAt(index)).dispose();
+          }
+          expect(
+            renderer.debugRowsMade,
+            3,
+            reason: 'a1 once, b1, b2 — frame 2 composes b2 alone',
+          );
+        });
+      });
+
+      testWidgets('🚨$door: a frame drawn with held rows is the frame drawn '
+          'without them, byte for byte — and a line with no room holds '
+          'none', (tester) async {
+        await tester.runAsync(() async {
+          Future<List<Uint8List>> run({required bool room}) async {
+            final s = sessionOf([cut()]);
+            addTearDown(s.dispose);
+            parkEvery(s);
+            if (!room) {
+              s.playbackRig.playbackCache.debugSetPlaybackCacheBudgetBytes(0);
+            }
+            final (:renderer, :frameAt) = over(s);
+            final frames = <Uint8List>[];
+            for (final index in [0, 1, 2, 3]) {
+              final image = await frameAt(index);
+              frames.add(
+                (await image.toByteData(
+                  format: ui.ImageByteFormat.rawRgba,
+                ))!.buffer.asUint8List(),
+              );
+              image.dispose();
+            }
+            expect(
+              renderer.debugRowsMade,
+              room ? 3 : 4,
+              reason: 'LIVENESS: no room, and a1 is composed again',
+            );
+            return frames;
+          }
+
+          final held = await run(room: true);
+          final none = await run(room: false);
+          expect(held, none);
+        });
+      });
+
+      testWidgets('$door: the rows are held on playback\'s line while the run '
+          'goes — each as long as a held picture is made of it — and it is '
+          'all handed back when the run ends', (tester) async {
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+          final line = s.playbackRig.playbackCache;
+          final heldBefore = HeldRows.debugHeld;
+          const row = 8 * 8 * 4;
+
+          (await frameAt(0)).dispose();
+          expect(line.lentBytes, 2 * row, reason: 'a1 and b1');
+          (await frameAt(2)).dispose();
+          expect(line.lentBytes, 3 * row, reason: 'b1 is the frame before\'s');
+          (await frameAt(3)).dispose();
+          expect(line.lentBytes, 2 * row, reason: 'two frames on: b1 goes');
+          expect(HeldRows.debugHeld - heldBefore, 2);
+
+          renderer.dispose();
+          expect(line.lentBytes, 0);
+          expect(HeldRows.debugHeld, heldBefore);
         });
       });
 

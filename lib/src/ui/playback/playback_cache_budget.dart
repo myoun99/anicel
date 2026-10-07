@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import '../../models/playback_quality.dart';
 import '../../services/memory_pressure_budget.dart';
 import 'cut_frame_composite_cache.dart';
@@ -91,19 +93,37 @@ class PlaybackCacheBudgetEnforcer {
   /// way the cel store cools after halving.
   bool respondToMemoryPressure() => _budget.respondToMemoryPressure();
 
+  /// [lentBytes] is what a borrower holds on this line — an export run's
+  /// row pictures (F-289-Q21) — and comes off the caches' share first:
+  /// they give way to it, and take it back when it is lent no more.
   void enforce({
     List<PlaybackProtectedRange> protect = const [],
     int reservedForDisplayBytes = 0,
+    int lentBytes = 0,
   }) {
     // ⚠️Half, and no more: a 500-layer stack asks for gigabytes, and a
     // reserve that big would starve the warm to buy cache nothing can hold
     // anyway. Past the clamp the layer cache's own LRU decides which of the
     // stack stays, which is the right answer to "more than fits".
     final reserve = reservedForDisplayBytes.clamp(0, maxBytes ~/ 2);
-    composites.enforceBudget(maxBytes: maxBytes - reserve, protect: protect);
-    final remaining = maxBytes - composites.estimatedBytes;
+    composites.enforceBudget(
+      maxBytes: maxBytes - reserve - lentBytes,
+      protect: protect,
+    );
+    final remaining = maxBytes - lentBytes - composites.estimatedBytes;
     layerImages.evictLeastRecentlyUsed(
       targetBytes: remaining < reserve ? reserve : remaining,
     );
   }
+
+  /// How much of the line a borrower may hold: all of it, less what
+  /// [enforce] never takes back — the composites [protect] keeps or a
+  /// screen shows, and the layer images a screen shows.
+  int lendableBytes({List<PlaybackProtectedRange> protect = const []}) =>
+      math.max(
+        0,
+        maxBytes -
+            composites.protectedBytes(protect: protect) -
+            layerImages.pinnedBytes,
+      );
 }
