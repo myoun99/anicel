@@ -760,6 +760,29 @@ void main() {
     });
   });
 
+  test('the way of writing, and a column\'s two ends, are said in EVERY '
+      'language — a word one language lacks is English there, silently', () {
+    expect(
+      {
+        for (final language in AppLanguage.values)
+          language: [
+            AppStrings.of(language).textToolWriting,
+            AppStrings.of(language).textToolWritingLines,
+            AppStrings.of(language).textToolWritingColumns,
+            AppStrings.of(language).textToolAlignTop,
+            AppStrings.of(language).textToolAlignBottom,
+          ],
+      },
+      {
+        AppLanguage.en: ['Direction', 'Horizontal', 'Vertical', 'Top', 'Bottom'],
+        AppLanguage.ja: ['文字方向', '横書き', '縦書き', '上', '下'],
+        AppLanguage.ko: ['쓰기 방향', '가로', '세로', '위', '아래'],
+        AppLanguage.fr: ['Direction', 'Horizontale', 'Verticale', 'Haut', 'Bas'],
+        AppLanguage.zhHans: ['文字方向', '横排', '竖排', '上', '下'],
+      },
+    );
+  });
+
   test('「그림으로 굳히기」 is said in EVERY language — in Korean as the '
       'layout 유저 took wrote it, elsewhere by the app\'s own word for a '
       'layer made pixels', () {
