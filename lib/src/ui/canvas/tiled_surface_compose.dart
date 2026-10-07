@@ -109,10 +109,14 @@ enum MissingTilePictures {
   /// 2340×1654 and 2540×1654 — board F-296): the decode rounds were 55–78%
   /// of a whole cut's warm with its cels in memory and over 90% of its
   /// first warm off the file — 0.3–1.3 ms a tile, 500–3,700 tiles a cut —
-  /// where the door makes a picture in 0.04 ms. A cut of 35 pictures warmed
-  /// in 0.96 s by rounds and 0.65 s through the door at full quality, 1.59
-  /// and 0.90 s at half; with other work loading the machine, 5–8 s and
-  /// 2–3 s — a round waits its turn on two busy threads, three times a tile.
+  /// where the door makes a picture in 0.04 ms. The two roads taken turn
+  /// about in one run of the app, three times each: a cut of 40 pictures
+  /// warmed in 0.51 s by rounds and 0.42 s by this road at full quality,
+  /// 0.92 and 0.69 s at half, and for the first time off the file in 1.12
+  /// and 0.72 s. With other work loading the machine — a round waits its
+  /// turn on two busy threads, three times a tile — a cut of 35 pictures
+  /// took 6.6 s by rounds and 1.9 s by this road at full, 9.2 and 2.8 s at
+  /// half. What is left of a warm is its rasters.
   madeInTurn,
 
   /// All of them at once — for a render somebody is WAITING for and nobody
