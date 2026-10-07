@@ -100,6 +100,7 @@ import 'timeline/timeline_double_tap.dart'
         TimelineLabelDoubleClick,
         timelineCellDoubleTapActivation,
         timelineCellDoubleTapRecord,
+        timelineDoubleTapAim,
         timelineLabelDoubleTapDetector;
 import 'timeline/lane_row_slice.dart';
 import 'timeline/timeline_drag_preview.dart';
@@ -5258,7 +5259,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                         timelineCellDoubleTapActivation(
                           row: cell.row,
                           cells: cell.cells,
-                          onActivate: cell.open,
+                          onActivate: (_) => cell.open(),
                         )(details);
                       }
                     },
@@ -5480,56 +5481,45 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// tap names; anywhere else on a cut block, the CUT — a cell of the
   /// track's row. So the two never answer for each other, and neither
   /// answers for a block of another row.
-  ({
-    TimelineRowAddress row,
-    TimelineDoubleTapCells cells,
-    void Function(int frame) open,
-  })?
+  ({TimelineRowAddress row, TimelineDoubleTapCells cells, VoidCallback open})?
   _doubleClickCellAt(Offset localPosition) {
-    double cellExtent() => timelineScale.pixelsPerFrame;
+    TimelineDoubleTapCells cellAt(int? frame) => (
+      frameAt: (_) => frame,
+      axis: Axis.horizontal,
+      cellExtent: () => timelineScale.pixelsPerFrame,
+    );
+    // Aimed FIRST, the way the gate aims a cell narrower than a pixel
+    // ([timelineDoubleTapAim]): the paper, the row and the frame are all
+    // read off the ONE aimed spot, so a pixel that straddles two cuts names
+    // one block and not a row of one with a frame of the other.
+    final frame = _frameAtX(
+      timelineDoubleTapAim(localPosition, cellAt(null)).dx,
+    );
     final conteSlot = StoryboardCutBlocksPainter.conteBlockBandOf(laneHeight);
     final strip =
         localPosition.dy >= conteSlot.top &&
             localPosition.dy < conteSlot.top + conteSlot.height
-        ? _stripAt(_frameAtX(localPosition.dx))
+        ? _stripAt(frame)
         : null;
-    final onEditConteBlock = this.onEditConteBlock;
     if (strip != null) {
-      final start = strip.entry.startFrame;
+      final onEditConteBlock = this.onEditConteBlock;
       return onEditConteBlock == null
           ? null
           : (
               row: LayerRowAddress(strip.layer.id),
-              cells: (
-                // The cut's own frames — and none of the next cut's, which a
-                // sub-pixel aim may step onto.
-                frameAt: (at) {
-                  final frame = _frameAtX(at.dx);
-                  return _stripAt(frame)?.layer.id == strip.layer.id
-                      ? frame - start
-                      : null;
-                },
-                axis: Axis.horizontal,
-                cellExtent: cellExtent,
-              ),
-              open: (frame) =>
-                  onEditConteBlock(track.id, strip.layer.id, start + frame),
+              cells: cellAt(frame - strip.entry.startFrame),
+              open: () => onEditConteBlock(track.id, strip.layer.id, frame),
             );
     }
     final onEditCutBlock = this.onEditCutBlock;
-    if (onEditCutBlock == null) {
+    // A frame no cut covers is no cell: a gap holds no block.
+    if (onEditCutBlock == null || _cutAtFrame(frame) == null) {
       return null;
     }
     return (
       row: TrackRowAddress(track.id),
-      cells: (
-        // A frame no cut covers is no cell: a gap holds no block.
-        frameAt: (at) =>
-            _cutAtFrame(_frameAtX(at.dx)) == null ? null : _frameAtX(at.dx),
-        axis: Axis.horizontal,
-        cellExtent: cellExtent,
-      ),
-      open: (frame) => onEditCutBlock(track.id, frame),
+      cells: cellAt(frame),
+      open: () => onEditCutBlock(track.id, frame),
     );
   }
 
