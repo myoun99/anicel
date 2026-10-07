@@ -9,6 +9,7 @@ import '../../tool/board_check.dart';
 import '../../tool/board_door.dart';
 import '../../tool/board_say.dart';
 import '../../tool/board_server.dart';
+import '../helpers/temp_dir.dart';
 
 /// 유저 2026-10-07 (card the-board-is-one-server-for-both-machines, 답 「집
 /// 네트워크에서 보드 서버를 연다」): a second machine at home reads and writes
@@ -112,7 +113,7 @@ void main() {
 
   tearDownAll(() async {
     await server.close(force: true);
-    dir.deleteSync(recursive: true);
+    deleteTempQuietly(dir);
   });
 
   group('the door a launch gets', () {
