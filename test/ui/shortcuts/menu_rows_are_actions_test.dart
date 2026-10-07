@@ -12,6 +12,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/brush_group.dart';
+import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/panels/workspace_panels_menu.dart';
 import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
@@ -23,6 +25,7 @@ import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/widgets/app_window.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 import '../../helpers/project_scratch_folder.dart';
 
@@ -159,15 +162,21 @@ void main() {
       var told = 0;
       bindings.addListener(() => told += 1);
 
+      // The brushes first, so the order below is the list's and not the
+      // order they were told in.
+      bindings.setBrushActions(
+        brushActionsOf(const [
+          BrushGroup(id: BrushGroupId('inks'), name: 'Inks'),
+        ], const []),
+      );
+      told = 0;
       bindings.setPanelActions(panelActionsOf(entries));
       expect(told, 1);
-      bindings.setBrushActions(brushActionsOf(const [], const []));
-      expect(told, 1, reason: 'no brushes are no rows');
       expect(
         bindings.definitions
             .skip(editorActionDefinitions.length)
             .map((row) => row.id),
-        ['panel-timesheet', 'panel-media'],
+        ['panel-timesheet', 'panel-media', 'brush-group-inks'],
       );
 
       bindings.setPanelActions(
@@ -210,6 +219,62 @@ void main() {
         bindings.activatorsFor('panel-timesheet').single.trigger,
         k,
       );
+    });
+  });
+
+  group('a key and its menu row', () {
+    final pressed = <String>[];
+    List<PanelFlyoutEntry> menu() => [
+      PanelFlyoutItem(
+        keyValue: 'open',
+        label: 'Open',
+        shortcuts: const ['open'],
+        onSelected: () => pressed.add('open'),
+      ),
+      const PanelFlyoutDivider(),
+      PanelFlyoutItem(
+        keyValue: 'dim',
+        label: 'Dim',
+        shortcuts: const ['dim'],
+        enabled: false,
+        onSelected: () => pressed.add('dim'),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'more',
+        label: 'More',
+        submenuBuilder: () => [
+          PanelFlyoutItem(
+            keyValue: 'under',
+            label: 'Under',
+            shortcuts: const ['under'],
+            onSelected: () => pressed.add('under'),
+          ),
+        ],
+      ),
+    ];
+    setUp(pressed.clear);
+
+    test('the rows are the menu\'s, a second level\'s after the row that '
+        'opens it', () {
+      expect(flyoutRowsOf(menu()).map((row) => row.keyValue), [
+        'open',
+        'dim',
+        'more',
+        'under',
+      ]);
+    });
+
+    test('a key runs the row that names its action — one level down too', () {
+      pressFlyoutRow(flyoutRowsOf(menu()), 'open');
+      pressFlyoutRow(flyoutRowsOf(menu()), 'under');
+      expect(pressed, ['open', 'under']);
+    });
+
+    test('⛔a row the menu would not let be pressed is not pressed by key, '
+        'and an action no row names presses nothing', () {
+      pressFlyoutRow(flyoutRowsOf(menu()), 'dim');
+      pressFlyoutRow(flyoutRowsOf(menu()), 'no-such-action');
+      expect(pressed, isEmpty);
     });
   });
 

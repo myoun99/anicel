@@ -315,6 +315,36 @@ extension PanelFlyoutValueChoices<T> on Iterable<T> {
   ];
 }
 
+/// Every row among [entries] as the menu would show them right now — a
+/// second level's rows after the row that opens it.
+Iterable<PanelFlyoutItem> flyoutRowsOf(List<PanelFlyoutEntry> entries) sync* {
+  for (final entry in entries.whereType<PanelFlyoutItem>()) {
+    yield entry;
+    if (entry.submenuBuilder case final under?) {
+      yield* flyoutRowsOf(under());
+    }
+  }
+}
+
+/// Presses the row of [rows] that IS [actionId] — the one that names it
+/// ([PanelFlyoutItem.shortcuts]) — where the menu would let it be pressed.
+///
+/// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
+/// 모든 버튼」. ★A KEY AND ITS MENU ROW ARE ONE PRESS: the rows are built the
+/// way the menu builds them and the key runs the row's own `onSelected` — so
+/// a row that is dim does nothing by key either, and a row given its
+/// action's name is reachable by key with nothing more written. ⛔Not a
+/// second call to what the row calls: 저장 had one in the shell, and two
+/// roads to one verb are what drift apart.
+void pressFlyoutRow(Iterable<PanelFlyoutItem> rows, String actionId) {
+  final row = rows
+      .where((row) => row.shortcuts.contains(actionId))
+      .firstOrNull;
+  if (row != null && row.enabled) {
+    row.onSelected?.call();
+  }
+}
+
 /// Shows the shared flyout anchored under [anchorContext]'s widget and runs
 /// the picked item's [PanelFlyoutItem.onSelected] after the menu closes.
 ///

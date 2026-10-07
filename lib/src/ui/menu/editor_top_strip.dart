@@ -172,32 +172,15 @@ class EditorTopStrip extends StatelessWidget {
   /// So a row that is dim does nothing by key either, and a row added to a
   /// menu with its action's name is reachable by key with no more written.
   /// [context] is where a row's window opens: the shell's own.
-  void pressMenuRow(BuildContext context, String actionId) {
-    final row = menuRows(
-      context,
-    ).where((row) => row.shortcuts.contains(actionId)).firstOrNull;
-    if (row != null && row.enabled) {
-      row.onSelected?.call();
-    }
-  }
+  void pressMenuRow(BuildContext context, String actionId) =>
+      pressFlyoutRow(menuRows(context), actionId);
 
-  /// Every row of the strip's two menus as they would open right now — a
-  /// second level's rows after the row that opens it.
-  List<PanelFlyoutItem> menuRows(BuildContext context) => _rowsOf([
+  /// Every row of the strip's two menus as they would open right now
+  /// ([flyoutRowsOf]).
+  List<PanelFlyoutItem> menuRows(BuildContext context) => flyoutRowsOf([
     ..._projectEntries(context),
     ..._settingsEntries(context),
   ]).toList();
-
-  static Iterable<PanelFlyoutItem> _rowsOf(
-    List<PanelFlyoutEntry> entries,
-  ) sync* {
-    for (final entry in entries.whereType<PanelFlyoutItem>()) {
-      yield entry;
-      if (entry.submenuBuilder case final under?) {
-        yield* _rowsOf(under());
-      }
-    }
-  }
 
   // --- File -----------------------------------------------------------------
 
