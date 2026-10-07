@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show File, FileSystemException;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -26,6 +27,7 @@ import '../../models/brush_shape.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
+import '../widgets/anchored_popup.dart';
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../../models/import/import_warning.dart';
@@ -1009,27 +1011,187 @@ class EditorTopStrip extends StatelessWidget {
         _FloorSwitch(panelsMenu: panelsMenu),
         const SizedBox(width: 6),
         Expanded(
-          child: _ProjectTabRow(projects: projects, onClose: onCloseProject),
+          child: _TabsAndBrushGroup(
+            tabs: _ProjectTabRow(projects: projects, onClose: onCloseProject),
+            brushTool: brushTool,
+          ),
         ),
-        // 유저 확정 order, left to right: blend + its lock, a rule, then
-        // size and opacity each with their pressure curve, then the colour.
-        // The rule is what makes the first two read as one group rather
-        // than as a button that has wandered next to a slider.
-        if (brushTool != null) ...[
-          _BlendModeControl(brushTool: brushTool!),
-          const SizedBox(width: 6),
-          const _StripGroupRule(),
-          const SizedBox(width: 6),
-          _BrushValueBars(brushTool: brushTool!),
-          // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
-          // the one surface that opened DOWNWARD out of a strip; as a rail
-          // group it opens sideways like everything else, and the swatch
-          // goes with it — the rail button IS the pair now. 42px back.
-        ],
         const SizedBox(width: 3),
       ],
     );
   }
+}
+
+/// The strip's flexible stretch: the project tabs, then the brush's group at
+/// its end — and the ORDER THEY GIVE WAY IN when the window narrows.
+///
+/// 🗣️top-strip-narrow-overflow-Q1 (유저 2026-10-01): 「줄이지 않고 바로 ⋯
+/// 목록으로」, corrected a minute later — 「답변 정정. 막대 먼저 줄어들고 다음
+/// 목록으로」. The answer's own words: 「크기 · 불투명도 막대가 140px에서 이름과
+/// 숫자가 막대 안에 들어가는 최소 폭까지 줄어든다. 그래도 안 들어가면 오른쪽
+/// 브러시 묶음(혼합 모드 · 막대 · 필압 버튼)이 띠 끝의 ⋯ 버튼 하나로 들어가고,
+/// 누르면 그 묶음이 팝오버로 뜬다. 탭 목록 버튼 자리는 끝까지 남는다. 탭
+/// 줄이 이미 따르는 「줄이고 → 넘긴다」를 띠 전체에 같은 법으로」.
+///
+/// ⛔The group stood in the strip's row at its full width whatever the
+/// window was, so under 770px — an iPad mini held upright is 744 — the tabs'
+/// place fell below what one tab asks and the strip ran off its end
+/// (measured 2026-10-01: 10px over at 760, 70 at 700, 46 + 34 at 640).
+///
+/// So the tabs give way first, as they always have (their own law: names
+/// shorten, then tabs leave for the list button, which keeps its place);
+/// with the tabs down to that place the two bars narrow, each as far as its
+/// own writing allows ([FieldSlider.narrowestIn]); and past that the group
+/// is one button.
+///
+/// 🔬Measured 2026-10-07 in the app's faces at 1×, one project open: the
+/// bars stand at 140 down to a 770 window and narrow from there; the group
+/// is the button under 740 in English and in Japanese, under 727 in Korean,
+/// under 750 in French. An iPad mini held upright (744) leaves the two bars
+/// 254 between them, so it keeps its bars in the first three.
+///
+/// Each bar goes to its OWN narrowest for that reason, not only because the
+/// answer's words are each bar's: held to one width — the wider writing's,
+/// English 「Size … 2000.0 px」 at 127.6 — the pair would ask for 255.2 of
+/// those 254.
+class _TabsAndBrushGroup extends StatelessWidget {
+  const _TabsAndBrushGroup({required this.tabs, required this.brushTool});
+
+  final Widget tabs;
+  final ValueNotifier<BrushToolState>? brushTool;
+
+  @override
+  Widget build(BuildContext context) {
+    final tool = brushTool;
+    if (tool == null) {
+      return tabs;
+    }
+    final narrowest = _BrushValueBars.narrowestIn(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bars = _BrushValueBars.widthsIn(
+          // What the two bars may take between them once the tabs hold
+          // only their list button's place and the group's fixed parts
+          // stand.
+          constraints.maxWidth -
+              _ProjectTabRow._minTabWidth -
+              _BrushGroup.fixedWidth,
+          narrowest,
+        );
+        return Row(
+          children: [
+            Expanded(child: tabs),
+            if (bars != null)
+              _BrushGroup(brushTool: tool, bars: bars)
+            else
+              _BrushGroupButton(brushTool: tool),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// How wide the size bar and the opacity bar each stand.
+typedef _BarWidths = ({double size, double opacity});
+
+/// The brush's group as the strip shows it.
+class _BrushGroup extends StatelessWidget {
+  const _BrushGroup({required this.brushTool, required this.bars});
+
+  final ValueNotifier<BrushToolState> brushTool;
+  final _BarWidths bars;
+
+  static const double _gap = 6;
+
+  /// Everything of the group that is not a bar.
+  static const double fixedWidth =
+      _BlendModeControl._buttonWidth +
+      _gap +
+      _StripGroupRule.width +
+      _gap +
+      _BrushValueBars.fixedWidth;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      // 유저 확정 order, left to right: blend + its lock, a rule, then
+      // size and opacity each with their pressure curve, then the colour.
+      // The rule is what makes the first two read as one group rather
+      // than as a button that has wandered next to a slider.
+      _BlendModeControl(brushTool: brushTool),
+      const SizedBox(width: _gap),
+      const _StripGroupRule(),
+      const SizedBox(width: _gap),
+      _BrushValueBars(brushTool: brushTool, widths: bars),
+      // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
+      // the one surface that opened DOWNWARD out of a strip; as a rail
+      // group it opens sideways like everything else, and the swatch
+      // goes with it — the rail button IS the pair now. 42px back.
+    ],
+  );
+}
+
+/// The brush's group as ONE button, for a strip with no room for the group:
+/// pressed, the same controls open under it, one to a line — a window this
+/// narrow has no width to lay them side by side in.
+///
+/// ⚠️The bars' own note stands (below): a popover closes on the first press
+/// outside it, so here a value is set by open → set → close → draw. That is
+/// the cost the answer was shown and took, for windows too narrow for the
+/// narrowed bars.
+class _BrushGroupButton extends StatelessWidget {
+  const _BrushGroupButton({required this.brushTool});
+
+  final ValueNotifier<BrushToolState> brushTool;
+
+  static const double _padding = 8;
+  static const double _lineGap = 6;
+
+  @override
+  Widget build(BuildContext context) => RailButton(
+    keyValue: 'top-strip-brush-group-button',
+    // The names of what is under it, in the words those controls wear.
+    tooltip:
+        '${AppText.strings.brBlend} · ${AppText.strings.brSize} · '
+        '${AppText.strings.brOpacity}',
+    icon: Icons.more_horiz,
+    selected: false,
+    onPressed: () => unawaited(
+      showAnchoredPopup<void>(
+        context,
+        label: 'top-strip-brush-group-popup',
+        width:
+            _padding * 2 +
+            _BrushValueBars.fullBar +
+            _BrushValueBars._gap +
+            PressureCurveButton.slotWidth,
+        height: _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
+        builder: (context, _) => Padding(
+          padding: const EdgeInsets.all(_padding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: _BrushValueBars._barHeight,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _BlendModeControl(brushTool: brushTool),
+                ),
+              ),
+              const SizedBox(height: _lineGap),
+              _BrushValueBars(
+                brushTool: brushTool,
+                widths: _BrushValueBars.full,
+                axis: Axis.vertical,
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 /// Size and opacity, each followed by its pressure curve button.
@@ -1048,12 +1210,109 @@ class EditorTopStrip extends StatelessWidget {
 /// Its own listener: a size drag must not rebuild the popover buttons or
 /// re-read the project name beside them.
 class _BrushValueBars extends StatelessWidget {
-  const _BrushValueBars({required this.brushTool});
+  const _BrushValueBars({
+    required this.brushTool,
+    required this.widths,
+    this.axis = Axis.horizontal,
+  });
 
   final ValueNotifier<BrushToolState> brushTool;
 
-  static const double _barWidth = 140;
+  /// How wide the two bars stand — [full] where there is room.
+  final _BarWidths widths;
+
+  /// Side by side in the strip; one over the other in the group's popover.
+  final Axis axis;
+
+  static const double fullBar = 140;
+  static const _BarWidths full = (size: fullBar, opacity: fullBar);
   static const double _barHeight = 42;
+  static const double _gap = 4;
+
+  /// Everything beside the two bars when they stand side by side: a
+  /// pressure button after each, and the gaps.
+  static const double fixedWidth =
+      _gap +
+      PressureCurveButton.slotWidth +
+      _gap +
+      _gap +
+      PressureCurveButton.slotWidth;
+
+  /// The size bar as the strip writes it — the one the strip shows, and the
+  /// one [narrowestIn] measures.
+  static FieldSlider _sizeBar({
+    required double value,
+    required ValueChanged<double>? onChanged,
+  }) => FieldSlider(
+    key: const ValueKey<String>('top-strip-size-bar'),
+    label: AppText.strings.brSize,
+    value: value,
+    min: BrushToolState.minSize,
+    max: BrushToolState.maxSize,
+    // Equal travel multiplies the value, so the left half covers the small
+    // sizes where a pixel matters.
+    scale: FieldSliderScale.exponential,
+    unit: ' px',
+    height: _barHeight,
+    onChanged: onChanged,
+  );
+
+  /// The opacity bar as the strip writes it — as [_sizeBar].
+  static FieldSlider _opacityBar({
+    required double value,
+    required ValueChanged<double>? onChanged,
+  }) => FieldSlider.opacity(
+    key: const ValueKey<String>('top-strip-opacity-bar'),
+    label: AppText.strings.brOpacity,
+    value: value,
+    height: _barHeight,
+    onChanged: onChanged,
+  );
+
+  /// The narrowest each bar goes: where it still writes its name and its
+  /// widest number whole ([FieldSlider.narrowestIn]).
+  ///
+  /// Each its OWN: the answer's words are 「이름과 숫자가 막대 안에 들어가는
+  /// 최소 폭」, and the two bars do not write the same words.
+  ///
+  /// Never past [fullBar]: where the writing asks for more than the full
+  /// bar (a long name under a large OS text size) there is nothing to
+  /// narrow, and the bar cuts its name short at 140 as it always has.
+  static _BarWidths narrowestIn(BuildContext context) {
+    double of(FieldSlider bar) =>
+        math.min(fullBar, bar.narrowestIn(context));
+    return (
+      size: of(_sizeBar(value: BrushToolState.maxSize, onChanged: null)),
+      opacity: of(_opacityBar(value: 1, onChanged: null)),
+    );
+  }
+
+  /// The two bars' widths where [room] is what they may take between them:
+  /// [full] where there is room; where there is not, each gives up the same
+  /// share of what it can spare, so both reach their [narrowest] together;
+  /// and null where even those do not fit.
+  ///
+  /// In whole pixels, rounded down — a bar's edge stays on the grid, and
+  /// the two never take more than [room]. (The pixel that rounding can take
+  /// from a bar at its narrowest comes out of the breath between its name
+  /// and its number, never out of either.)
+  static _BarWidths? widthsIn(double room, _BarWidths narrowest) {
+    final short = fullBar * 2 - room;
+    if (short <= 0) {
+      return full;
+    }
+    final spare = fullBar * 2 - narrowest.size - narrowest.opacity;
+    if (short > spare) {
+      return null;
+    }
+    final share = short / spare;
+    double narrowed(double least) =>
+        (fullBar - (fullBar - least) * share).floorToDouble();
+    return (
+      size: narrowed(narrowest.size),
+      opacity: narrowed(narrowest.opacity),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1102,53 +1361,58 @@ class _BrushValueBars extends StatelessWidget {
           );
         }
 
-        return Row(
+        final sizeLine = [
+          SizedBox(
+            width: widths.size,
+            height: _barHeight,
+            child: _sizeBar(
+              value: BrushToolState.clampSize(state.size),
+              onChanged: sizeOn
+                  ? (value) => brushTool.value = brushTool.value.copyWith(
+                      size: value,
+                    )
+                  : null,
+            ),
+          ),
+          const SizedBox(width: _gap),
+          pressure(BrushPressureTarget.size, AppText.strings.brSize),
+        ];
+        final opacityLine = [
+          SizedBox(
+            width: widths.opacity,
+            height: _barHeight,
+            child: _opacityBar(
+              // TP1: the ACTIVE tool's opacity — the fill and the stamp
+              // keep their own, so this bar stops being the brush's alone
+              // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
+              // 채워지게).
+              value: BrushToolState.clampOpacity(state.activeOpacity),
+              onChanged: opacityOn
+                  ? (value) => brushTool.value = brushTool.value
+                        .withActiveOpacity(value)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: _gap),
+          pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+        ];
+        if (axis == Axis.horizontal) {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ...sizeLine,
+              const SizedBox(width: _gap),
+              ...opacityLine,
+            ],
+          );
+        }
+        return Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: _barWidth,
-              height: _barHeight,
-              child: FieldSlider(
-                key: const ValueKey<String>('top-strip-size-bar'),
-                label: AppText.strings.brSize,
-                value: BrushToolState.clampSize(state.size),
-                min: BrushToolState.minSize,
-                max: BrushToolState.maxSize,
-                // Equal travel multiplies the value, so the left half covers
-                // the small sizes where a pixel matters.
-                scale: FieldSliderScale.exponential,
-                unit: ' px',
-                height: _barHeight,
-                onChanged: sizeOn
-                    ? (value) => brushTool.value = brushTool.value.copyWith(
-                        size: value,
-                      )
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 4),
-            pressure(BrushPressureTarget.size, AppText.strings.brSize),
-            const SizedBox(width: 4),
-            SizedBox(
-              width: _barWidth,
-              height: _barHeight,
-              child: FieldSlider.opacity(
-                key: const ValueKey<String>('top-strip-opacity-bar'),
-                label: AppText.strings.brOpacity,
-                // TP1: the ACTIVE tool's opacity — the fill and the stamp
-                // keep their own, so this bar stops being the brush's alone
-                // (유저: 툴마다 기억하게해서 필 툴도 불투명도 설정하면 그걸로
-                // 채워지게).
-                value: BrushToolState.clampOpacity(state.activeOpacity),
-                height: _barHeight,
-                onChanged: opacityOn
-                    ? (value) => brushTool.value = brushTool.value
-                          .withActiveOpacity(value)
-                    : null,
-              ),
-            ),
-            const SizedBox(width: 4),
-            pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+            Row(mainAxisSize: MainAxisSize.min, children: sizeLine),
+            const SizedBox(height: _BrushGroupButton._lineGap),
+            Row(mainAxisSize: MainAxisSize.min, children: opacityLine),
           ],
         );
       },
@@ -1161,10 +1425,12 @@ class _BrushValueBars extends StatelessWidget {
 class _StripGroupRule extends StatelessWidget {
   const _StripGroupRule();
 
+  static const double width = 1;
+
   @override
   Widget build(BuildContext context) {
     return VerticalDivider(
-      width: 1,
+      width: width,
       thickness: 1,
       indent: 6,
       endIndent: 6,
