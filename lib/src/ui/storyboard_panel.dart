@@ -5253,10 +5253,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onDoubleTapDown: (details) {
-                      final cell = _doubleClickCellAt(
-                        details.localPosition,
-                        blocksPainter,
-                      );
+                      final cell = _doubleClickCellAt(details.localPosition);
                       if (cell != null) {
                         timelineCellDoubleTapActivation(
                           row: cell.row,
@@ -5488,10 +5485,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     TimelineDoubleTapCells cells,
     void Function(int frame) open,
   })?
-  _doubleClickCellAt(
-    Offset localPosition,
-    StoryboardCutBlocksPainter blocksPainter,
-  ) {
+  _doubleClickCellAt(Offset localPosition) {
     double cellExtent() => timelineScale.pixelsPerFrame;
     final conteSlot = StoryboardCutBlocksPainter.conteBlockBandOf(laneHeight);
     final strip =
@@ -5523,13 +5517,13 @@ class _StoryboardTrackRow extends StatelessWidget {
             );
     }
     final onEditCutBlock = this.onEditCutBlock;
-    if (onEditCutBlock == null ||
-        blocksPainter.blockAt(localPosition) == null) {
+    if (onEditCutBlock == null) {
       return null;
     }
     return (
       row: TrackRowAddress(track.id),
       cells: (
+        // A frame no cut covers is no cell: a gap holds no block.
         frameAt: (at) =>
             _cutAtFrame(_frameAtX(at.dx)) == null ? null : _frameAtX(at.dx),
         axis: Axis.horizontal,
@@ -5549,8 +5543,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     // The frame block's activation law, RECORD half: which cell this press
     // hit, whatever the device and whatever the press goes on to do — the
     // recogniser reports only the second tap.
-    if (_doubleClickCellAt(event.localPosition, blocksPainter)
-        case final cell?) {
+    if (_doubleClickCellAt(event.localPosition) case final cell?) {
       timelineCellDoubleTapRecord(
         row: cell.row,
         cells: cell.cells,

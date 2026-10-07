@@ -1,7 +1,8 @@
 import 'dart:collection';
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kDoubleTapTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart'
@@ -41,6 +42,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_double_tap.dart'
+    show TimelineDoubleTapGate;
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import '../helpers/fixed_thumbnails.dart';
@@ -93,6 +96,54 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(selectedCutIds, isEmpty);
+    });
+
+    // 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대 … 콘티블록이나
+    // 컷블록에도 통일적용」 — what the PANEL says of a double click: the
+    // block it was on, and nothing where no block stands.
+    testWidgets('F-255: a double click names the cut block it is on by its '
+        'track and the frame clicked — and a GAP names no block', (
+      tester,
+    ) async {
+      TimelineDoubleTapGate.reset();
+      final cuts = <(TrackId, int)>[];
+      final contes = <(TrackId, LayerId, int)>[];
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          // A 10-frame gap sits before cut-b.
+          _cut('cut-b', name: 'Cut B').copyWith(leadingGapFrames: 10),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        onEditCutBlock: (track, frame) => cuts.add((track, frame)),
+        onEditConteBlock: (track, layer, frame) =>
+            contes.add((track, layer, frame)),
+      );
+      Future<void> clickTwice(Offset at) async {
+        await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tapAt(at, kind: PointerDeviceKind.mouse);
+        await tester.pumpAndSettle();
+        await tester.pump(kDoubleTapTimeout * 2);
+      }
+
+      // 8 px/frame: cut-a spans frames 0..23, the gap 24..33.
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
+      await clickTwice(blockA.topLeft + const Offset(8 * 28.0 + 4, 10));
+      expect(cuts, isEmpty, reason: 'a gap holds no block');
+
+      await clickTwice(blockA.topLeft + const Offset(8 * 5.0 + 4, 10));
+      expect(cuts, [(const TrackId('track-a'), 5)]);
+
+      // No storyboard row: the plate is all the cut's paper.
+      await clickTwice(blockA.centerLeft + const Offset(8 * 7.0 + 4, 0));
+      expect(cuts, [
+        (const TrackId('track-a'), 5),
+        (const TrackId('track-a'), 7),
+      ]);
+      expect(contes, isEmpty);
     });
 
     testWidgets('cut selection works across multiple tracks', (tester) async {
@@ -1979,6 +2030,9 @@ Future<void> _pumpStoryboardPanel(
   bool showSeconds = false,
   ProjectFrameRate projectFrameRate = ProjectFrameRate.fps24,
   ScrollBehavior? scrollBehavior,
+  void Function(TrackId trackId, int globalFrame)? onEditCutBlock,
+  void Function(TrackId trackId, LayerId layerId, int globalFrame)?
+  onEditConteBlock,
 }) async {
   // The rail matches the timeline's — 372 in UI-R5, 434 since the user
   // unified the two widths (2026-08-04), 443 since the OPAC column widened
@@ -2030,6 +2084,8 @@ Future<void> _pumpStoryboardPanel(
           pixelsPerFrame: pixelsPerFrame,
           showSeconds: showSeconds,
           projectFrameRate: projectFrameRate,
+          onEditCutBlock: onEditCutBlock,
+          onEditConteBlock: onEditConteBlock,
         ),
       ),
     ),

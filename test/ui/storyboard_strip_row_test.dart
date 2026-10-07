@@ -686,13 +686,32 @@ void main() {
         'clicks', (tester) async {
       await _openStoryboard(tester);
 
-      await clickTwice(tester, _bandPoint(tester, 13), _stripPoint(tester, 13));
+      // Frame 3 of cut 1, which starts the track: the track's frame 3 and
+      // the cut's own are one number, so only the ROW tells the two cells
+      // apart.
+      await clickTwice(tester, _bandPoint(tester, 3), _stripPoint(tester, 3));
       expect(cutName, findsNothing);
       expect(frameName, findsNothing);
       await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 100));
 
-      await clickTwice(tester, _stripPoint(tester, 13), _bandPoint(tester, 13));
+      await clickTwice(tester, _stripPoint(tester, 3), _bandPoint(tester, 3));
       expect(cutName, findsNothing);
+      expect(frameName, findsNothing);
+    });
+
+    testWidgets('the cut\'s LOWER band is the cut\'s too', (tester) async {
+      await _openStoryboard(tester);
+      final row = _cutRowRect(tester);
+
+      await clickTwice(
+        tester,
+        Offset(
+          row.left + 13.5 * _pixelsPerFrame(tester),
+          row.bottom - StoryboardCutBlocksPainter.bandHeight / 2,
+        ),
+      );
+
+      expect(cutName, findsOneWidget);
       expect(frameName, findsNothing);
     });
 
