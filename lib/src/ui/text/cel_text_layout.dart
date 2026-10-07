@@ -153,6 +153,13 @@ class CelTextLayout {
   void dispose() => _setting.dispose();
 }
 
+/// The axis a text's letters run along — down its columns, or along its
+/// lines: what a length or a point of its box is turned by
+/// (`axis_turn.dart`, the app's one spelling of 「along an axis, and
+/// across it」).
+Axis celTextLettersAxis({required bool vertical}) =>
+    vertical ? Axis.vertical : Axis.horizontal;
+
 /// A mark drawn beside letters, in the text's own frame — a hairline from
 /// one point to another ([CelTextLayout.marksBeside]).
 typedef CelTextMark = ({ui.Offset from, ui.Offset to});

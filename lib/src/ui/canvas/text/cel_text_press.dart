@@ -10,6 +10,7 @@ import '../../../models/cel_text.dart';
 import '../../../services/cel_text_box_edits.dart';
 import '../../../services/transform_box_law.dart';
 import '../../text/cel_text_layout.dart';
+import '../../timeline/axis_turn.dart' show extentAlong;
 import '../box_press.dart';
 import 'cel_text_session.dart';
 import 'cel_text_stage.dart';
@@ -567,7 +568,10 @@ final class _EmptyPress extends CelTextPress {
     scene.onBegin(
       celTextWholePixel(columns ? traced.topRight : traced.topLeft),
       wrapWidth: math.max(
-        (columns ? traced.height : traced.width).roundToDouble(),
+        extentAlong(
+          celTextLettersAxis(vertical: columns),
+          traced.size,
+        ).roundToDouble(),
         celTextMinWrapWidth,
       ),
     );

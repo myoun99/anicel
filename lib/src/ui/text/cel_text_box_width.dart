@@ -6,6 +6,7 @@ import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import '../../services/cel_text_box_edits.dart' show celTextMinWrapWidth;
 import '../../services/cel_text_edits.dart';
+import '../timeline/axis_turn.dart' show extentAlong, offsetAlong;
 import 'cel_text_layout.dart';
 
 /// A TEXT THAT GROWS, AND A BOX — SWAPPED (R9-rest).
@@ -49,7 +50,11 @@ CelTextContent celTextBoxed(CelTextContent content) {
   final layout = layoutCelText(content);
   final block = layout.block;
   final room = math.max(
-    (content.vertical ? block.height : block.width).floorToDouble() + 1,
+    extentAlong(
+          celTextLettersAxis(vertical: content.vertical),
+          block.size,
+        ).floorToDouble() +
+        1,
     celTextMinWrapWidth,
   );
   final corner = layout.toCanvas(_boxCornerOf(content, block, room));
@@ -116,7 +121,11 @@ CelTextContent celTextUnboxed(CelTextContent content) {
     TextCelAlign.right => width,
   };
   final about = layout.toCanvas(
-    content.vertical ? Offset(0, along) : Offset(along, 0),
+    offsetAlong(
+      celTextLettersAxis(vertical: content.vertical),
+      along: along,
+      across: 0,
+    ),
   );
   layout.dispose();
   return broken.copyWith(
@@ -150,7 +159,10 @@ CelTextContent celTextWrittenAs(
     wrapWidth: content.wrapWidth == null
         ? null
         : math.max(
-            (vertical ? block.height : block.width).ceilToDouble(),
+            extentAlong(
+              celTextLettersAxis(vertical: vertical),
+              block.size,
+            ).ceilToDouble(),
             celTextMinWrapWidth,
           ),
   );
