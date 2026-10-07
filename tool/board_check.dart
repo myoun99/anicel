@@ -508,6 +508,14 @@ const _kSubStage = <String>{
   '확인할 것',
   '착수 근거',
   '확정',
+  // 🆕One session's word to another (2026-10-07): the stage a letter stands
+  // under, and the word of the mark its reader leaves on it. ⚠️BY THE
+  // MODEL'S OWN NAMES. On the day the letters landed neither was in this
+  // list, and the first letter any session read — a mark the hook writes,
+  // which nobody can 「fix」 on the board — turned every session's gate red
+  // until the two cards it stood on were acked by hand.
+  kLetterStage,
+  kReadMark,
 };
 
 /// When these rules started applying. ⛔Not retroactive: 1500 lines of
