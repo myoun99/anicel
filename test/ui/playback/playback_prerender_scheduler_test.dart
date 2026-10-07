@@ -949,6 +949,10 @@ void main() {
 
         scheduler.follow(run());
         await rested(scheduler);
+        // ⛔Handed back BEFORE anything is expected: a failed expectation is
+        // reported through this same door, and a collector left on it
+        // swallows the failure — the pin could not fail.
+        FlutterError.onError = previous;
 
         expect(there(composites), [true, false, true, true]);
         expect(reported, hasLength(1), reason: 'the failure is said, once');
