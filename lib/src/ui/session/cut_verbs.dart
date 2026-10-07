@@ -490,7 +490,12 @@ class CutVerbs {
       replacedDrawings: [
         for (final MapEntry(key: layerId, value: frames)
             in plan.replacedFrames.entries)
-          ...drawingPlaceLines(project, layerId, frames),
+          ...drawingPlaceLines(
+            project,
+            layerId,
+            frames,
+            framePlace: _project.framePlaceLabel,
+          ),
       ],
       joiningFrameCount: plan.joiningFrameCount,
       linksAnything: plan.linksAnything,

@@ -874,8 +874,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         ceiling: _storyboardLaneCeiling(context),
       );
 
-  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
-  final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
+  /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation) —
+  /// the app's ([EditorAppSettings.showSecondsDisplay]).
+  ValueNotifier<bool> get _showSecondsDisplay =>
+      widget.session.appSettings.showSecondsDisplay;
 
   /// Each frame panel's layer-rail WINDOW size, set by its splitter.
   ///
@@ -1608,7 +1610,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
     _storyboardTrackLaneHeight.dispose();
-    _showSecondsDisplay.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
     for (final controller in _railScrollControllers.values) {

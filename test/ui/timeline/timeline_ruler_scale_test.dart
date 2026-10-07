@@ -241,6 +241,68 @@ void main() {
     });
   });
 
+  // F-284 (유저 2026-10-04): 「S1의 15. 이런식으로 15번 인덱스나. 이런
+  // 표기는 초+코마 표기로 바꾼거에 대응하도록 법 통일」 — a list names a
+  // frame by what the ruler writes over it, so the two are compared here
+  // and not each to a number.
+  group('a frame\'s place is what the ruler writes over it', () {
+    test('its number, as the ruler counts it', () {
+      for (final frame in [0, 14, 23, 24, 100]) {
+        expect(
+          timelineFramePlaceLabel(
+            frameIndex: frame,
+            framesPerSecond: 24,
+            showSeconds: false,
+          ),
+          scale().frameNumberLabel(frame),
+        );
+      }
+      expect(
+        timelineFramePlaceLabel(
+          frameIndex: 14,
+          framesPerSecond: 24,
+          showSeconds: false,
+        ),
+        '15',
+      );
+    });
+
+    test('under the seconds display: the second it lies in, then the number '
+        'the ruler writes there', () {
+      for (final fps in [24, 12, 30]) {
+        final seconds = scale(showSeconds: true, framesPerSecond: fps);
+        for (final frame in [0, 14, fps - 1, fps, 3 * fps + 5]) {
+          final second = timelineRulerSecondOf(
+            frameIndex: frame,
+            framesPerSecond: fps,
+          );
+          expect(
+            timelineFramePlaceLabel(
+              frameIndex: frame,
+              framesPerSecond: fps,
+              showSeconds: true,
+            ),
+            '$second+${seconds.frameNumberLabel(frame)}',
+            reason: 'frame $frame at $fps',
+          );
+        }
+      }
+      String place(int frame, {int fps = 24}) => timelineFramePlaceLabel(
+        frameIndex: frame,
+        framesPerSecond: fps,
+        showSeconds: true,
+      );
+      expect(place(14), '0+15');
+      expect(place(24), '1+1');
+      expect(
+        place(23),
+        '0+24',
+        reason: 'a place, not a length: 24 frames LONG is 1+0',
+      );
+      expect(place(14, fps: 12), '1+3');
+    });
+  });
+
   // The ruler and the rail wrote the same two sentences, one with the frame
   // axis across and one with it down. They live on the scale now, so these
   // ask the transposed question and demand the transposed answer.

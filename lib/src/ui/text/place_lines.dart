@@ -28,23 +28,42 @@ String rowPlaceLine({required String ownerName, required String layerName}) =>
 /// carry (C-save-percent), the uses of a media pool file (F-118) and the
 /// frames a link takes (I-18, [drawingPlaceLines]) — so a frame on a row
 /// reads the same in all of them.
-String celPlaceLine(CelPlace place) {
+///
+/// 🗣️F-284 (유저 2026-10-04): 「링크된 오디오 링크버튼눌러서 쓰는곳
+/// 확인할때, 인덱스도 표시. 예를들어 se는 지금 S1 등 트랙이름까지만
+/// 표시되는데, S1의 15 … 프레임 링크된거 보여줄때도 동일하게 해서 링크된거
+/// 보여주는 창 다 법 통일해서 적용」 — a drawing's line ends with WHERE its
+/// blocks start, each as [framePlace] writes a frame's place
+/// ([FramePlaceLabel]). ↩️It ended with the name, and a sound has none.
+String celPlaceLine(CelPlace place, {required FramePlaceLabel framePlace}) {
   final strings = AppText.strings;
   return switch (place) {
     // An unnamed drawing writes no name on every kind but animation's
     // ([LayerKind.unnamedDrawingIsInbetween], 유저 2026-09-26: 「애니메이션
     // 이외 레이어는 이름없으면 진짜 이름없도록」), so its row names it alone.
     // ↩️The image row's alone until then — the layer's name is the picture's.
-    DrawingCelPlace(:final ownerName, :final layerName, :final celName) => [
-      rowPlaceLine(ownerName: ownerName, layerName: layerName),
-      if (celName.isNotEmpty) celName,
-    ].join(' · '),
+    DrawingCelPlace(
+      :final ownerName,
+      :final layerName,
+      :final celName,
+      :final blockStarts,
+    ) =>
+      [
+        rowPlaceLine(ownerName: ownerName, layerName: layerName),
+        if (celName.isNotEmpty) celName,
+        if (blockStarts.isNotEmpty) blockStarts.map(framePlace).join(', '),
+      ].join(' · '),
     ConteRowInkPlace(:final cutName, :final celName) =>
       '${strings.panelConte} · $cutName · $celName',
     EnvelopeInkPlace(:final cutName) => '${strings.panelEnvelope} · $cutName',
     GoneCelPlace() => strings.saveCelsLostGone,
   };
 }
+
+/// How a list writes a frame's place on its row — the app's one notation,
+/// which follows the seconds display: the session's
+/// (`ProjectAccess.framePlaceLabel`).
+typedef FramePlaceLabel = String Function(int frameIndex);
 
 /// [layerId]'s drawings [frameIds], each as [celPlaceLine] names it, in the
 /// order given — none for a row [project] does not hold, or for a drawing
@@ -56,23 +75,22 @@ String celPlaceLine(CelPlace place) {
 List<String> drawingPlaceLines(
   Project project,
   LayerId layerId,
-  Iterable<FrameId> frameIds,
-) {
+  Iterable<FrameId> frameIds, {
+  required FramePlaceLabel framePlace,
+}) {
   final owned = _rowOf(project, layerId);
   if (owned == null) {
     return const [];
   }
+  final row = RowDrawingPlaces(
+    track: owned.track,
+    cut: owned.cut,
+    layer: owned.layer,
+  );
   return [
     for (final frameId in frameIds)
       if (owned.layer.frameById(frameId) case final frame?)
-        celPlaceLine(
-          DrawingCelPlace.at(
-            track: owned.track,
-            cut: owned.cut,
-            layer: owned.layer,
-            frame: frame,
-          ),
-        ),
+        celPlaceLine(row.of(frame), framePlace: framePlace),
   ];
 }
 
@@ -100,7 +118,10 @@ List<String> rowPlaceLines(Project project, LayerId layerId) => [
 /// One use of a media pool file as a line of the list the pool shows: a
 /// picture of the work where it is set, a row by its cut and its name, a
 /// frame as [celPlaceLine] names it.
-String mediaAssetUseLine(MediaAssetUse use) => switch (use) {
+String mediaAssetUseLine(
+  MediaAssetUse use, {
+  required FramePlaceLabel framePlace,
+}) => switch (use) {
   WorkPictureMediaUse(:final picture) =>
     '${AppText.strings.workSettingsTitle} · '
         '${AppText.strings.workPictureName(picture)}',
@@ -108,7 +129,7 @@ String mediaAssetUseLine(MediaAssetUse use) => switch (use) {
     ownerName: ownerName,
     layerName: layerName,
   ),
-  FrameMediaUse(:final place) => celPlaceLine(place),
+  FrameMediaUse(:final place) => celPlaceLine(place, framePlace: framePlace),
 };
 
 /// The rows that [layerId] in [cutId] shares its pictures with — every

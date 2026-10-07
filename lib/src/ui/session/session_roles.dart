@@ -41,6 +41,16 @@ abstract interface class ProjectAccess {
   ProjectRepository get repository;
   Track? trackById(TrackId trackId);
   int get activeCutGlobalStartFrame;
+
+  /// How a frame's place on its row is WRITTEN wherever a list names one:
+  /// the number the ruler writes over it ([timelineFramePlaceLabel]), which
+  /// follows the seconds display.
+  ///
+  /// 🗣️F-284 (유저 2026-10-04): 「이런 표기는 초+코마 표기로 바꾼거에
+  /// 대응하도록 법 통일 … 링크된거 보여주는 창 다 법 통일해서 적용」. ⛔One
+  /// answer for the session — a list that wrote its own would be the second
+  /// notation.
+  String framePlaceLabel(int frameIndex);
   CutId? get activeCutId;
   Cut? get activeCutOrNull;
   Cut? cutById(CutId cutId);

@@ -894,6 +894,7 @@ Future<void> _renameSelectedFrame(
         session.repository.requireProject(),
         layer.id,
         [frame.id],
+        framePlace: session.framePlaceLabel,
       ),
       join: session.frameVerbs.linkSelectedFrame,
       decline: null,

@@ -2259,7 +2259,7 @@ void _tellWhatTheSaveCouldNotCarry(
           session.repository.requireProject(),
           lost,
         ))
-          celPlaceLine(place),
+          celPlaceLine(place, framePlace: session.framePlaceLabel),
       ],
       detailsHeading: strings.saveCelsLostHeading,
       windowKey: const ValueKey<String>('save-cels-lost-notice'),

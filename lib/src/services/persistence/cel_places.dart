@@ -1,4 +1,5 @@
 import '../../models/brush_frame_key.dart';
+import '../../models/cel_bank_lanes.dart' show laneBlockStarts;
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
@@ -38,18 +39,8 @@ final class DrawingCelPlace extends CelPlace {
     required this.ownerName,
     required this.layerName,
     required this.celName,
+    required this.blockStarts,
   });
-
-  /// [frame] on [layer], held by [cut] — or by [track] when the track owns
-  /// the row.
-  DrawingCelPlace.at({
-    required Track track,
-    required Cut? cut,
-    required Layer layer,
-    required Frame frame,
-  }) : ownerName = rowOwnerName(track: track, cut: cut),
-       layerName = layer.name,
-       celName = celNumberOrMark(frame.name, kind: layer.kind);
 
   final String ownerName;
   final String layerName;
@@ -57,6 +48,41 @@ final class DrawingCelPlace extends CelPlace {
   /// What the timeline prints where the drawing's block starts
   /// ([celNumberOrMark]).
   final String celName;
+
+  /// The frames its blocks start on, on its row's own axis, in order
+  /// ([laneBlockStarts]) — a cut's frames, or the track's for a row the
+  /// track owns: the frames the ruler over that row counts. Where a person
+  /// finds it on the row (F-284): an SE block has no name to be found by,
+  /// and a name shown on several blocks does not say which. Empty for a
+  /// drawing no block shows.
+  final List<int> blockStarts;
+}
+
+/// The drawings of ONE row, each as [DrawingCelPlace] names it: [layer],
+/// held by [cut] — or by [track] when the track owns the row.
+///
+/// A row's object and not a function of a row and a drawing, because where
+/// a drawing's blocks start is ONE walk of the row's lane however many of
+/// its drawings are asked for — a save that could not carry a row's
+/// thousand pictures asks a thousand times.
+final class RowDrawingPlaces {
+  RowDrawingPlaces({
+    required Track track,
+    required Cut? cut,
+    required Layer layer,
+  }) : _ownerName = rowOwnerName(track: track, cut: cut),
+       _layer = layer;
+
+  final String _ownerName;
+  final Layer _layer;
+  late final _blockStarts = laneBlockStarts(_layer.timeline);
+
+  DrawingCelPlace of(Frame frame) => DrawingCelPlace(
+    ownerName: _ownerName,
+    layerName: _layer.name,
+    celName: celNumberOrMark(frame.name, kind: _layer.kind),
+    blockStarts: _blockStarts[frame.id] ?? const [],
+  );
 }
 
 /// Conte handwriting of one storyboard block: its cut, and the drawing the
@@ -115,13 +141,13 @@ class _CelPlaceIndex {
         );
       }
       final drawings = <FrameId, DrawingCelPlace>{};
+      final row = RowDrawingPlaces(
+        track: owned.track,
+        cut: cut,
+        layer: owned.layer,
+      );
       for (final frame in owned.layer.frames) {
-        final drawing = DrawingCelPlace.at(
-          track: owned.track,
-          cut: cut,
-          layer: owned.layer,
-          frame: frame,
-        );
+        final drawing = row.of(frame);
         _drawings[(owned.layer.id, frame.id)] = (
           plane: _Plane.drawing,
           position: _drawings.length,

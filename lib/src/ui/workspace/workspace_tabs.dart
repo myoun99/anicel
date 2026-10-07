@@ -723,7 +723,12 @@ class _WorkspaceTabs {
               // remove's question all read the session's answer.
               usesOf: (path) => _state.widget.session.mediaPool
                   .mediaAssetUses(path)
-                  .map(mediaAssetUseLine),
+                  .map(
+                    (use) => mediaAssetUseLine(
+                      use,
+                      framePlace: _state.widget.session.framePlaceLabel,
+                    ),
+                  ),
               onImportRequested: () => _state._openImportWindow(poolOnly: true),
               onRenameAsset: _state.widget.session.mediaPool.renameMediaAsset,
               onRelinkAsset: (oldPath, newPath, grants) {

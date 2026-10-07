@@ -62,6 +62,50 @@ String timelineRulerSecondOf({
   return '${frameIndex ~/ safeFps}';
 }
 
+/// The NUMBER the ruler writes at [frameIndex]: absolute and 1-based, or
+/// 1..fps repeating per second under [showSeconds] — beside
+/// [timelineRulerSecondOf], the other line of the same scale.
+String timelineRulerFrameNumberOf({
+  required int frameIndex,
+  required int framesPerSecond,
+  required bool showSeconds,
+}) => showSeconds
+    ? '${frameIndex % timelineSecondFrames(framesPerSecond) + 1}'
+    : '${frameIndex + 1}';
+
+/// A FRAME'S PLACE as one word — what the ruler writes over it: its number,
+/// and under the seconds display the second it lies in before it (`15`,
+/// `0+15`, `1+1`).
+///
+/// 🗣️F-284 (유저 2026-10-04): 「se는 지금 S1 등 트랙이름까지만 표시되는데,
+/// S1의 15. 이런식으로 15번 인덱스나. 이런 표기는 초+코마 표기로 바꾼거에
+/// 대응하도록 법 통일」.
+///
+/// ⛔Built from the ruler's two lines and from nothing else: a place written
+/// by a formula of its own would be the copy [timelineRulerSecondsLabel]
+/// was made one function to end, and it would not be the number standing
+/// over the block. It is no LENGTH either (see there): frame 24 of a
+/// 24-frame second is `0+24`, where 24 frames long is `1+0`.
+String timelineFramePlaceLabel({
+  required int frameIndex,
+  required int framesPerSecond,
+  required bool showSeconds,
+}) {
+  final number = timelineRulerFrameNumberOf(
+    frameIndex: frameIndex,
+    framesPerSecond: framesPerSecond,
+    showSeconds: showSeconds,
+  );
+  if (!showSeconds) {
+    return number;
+  }
+  final second = timelineRulerSecondOf(
+    frameIndex: frameIndex,
+    framesPerSecond: framesPerSecond,
+  );
+  return '$second+$number';
+}
+
 /// The least a digit of a frame number is narrowed to, in ems: HALF-WIDTH.
 ///
 /// 🗣️ruler-digits-in-the-app-face-Q1 (유저 2026-09-24, 「룰러번호 추천대로」 —
@@ -707,13 +751,11 @@ final class TimelineRulerScale {
 
   /// The bottom-line number at [frameIndex]: absolute and 1-based, or
   /// 1..fps repeating per second in [showSeconds] mode.
-  String frameNumberLabel(int frameIndex) {
-    if (!showSeconds) {
-      return '${frameIndex + 1}';
-    }
-    final safeFps = timelineSecondFrames(framesPerSecond);
-    return '${frameIndex % safeFps + 1}';
-  }
+  String frameNumberLabel(int frameIndex) => timelineRulerFrameNumberOf(
+    frameIndex: frameIndex,
+    framesPerSecond: framesPerSecond,
+    showSeconds: showSeconds,
+  );
 
   /// The last frame before [endIndexExclusive] carrying the WIDEST number
   /// this strip writes: in [showSeconds] the frame whose label is the fps

@@ -42,6 +42,7 @@ Future<void> pasteLinkedAskingFirst(
             session.repository.requireProject(),
             row.layerId,
             row.held,
+            framePlace: session.framePlaceLabel,
           ),
       ],
       join: (_) =>

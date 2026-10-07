@@ -288,7 +288,20 @@ void main() {
     final plan = naming.plan(naming.timelineTargets!, from: 1);
 
     expect(plan.hasJoins, isTrue);
-    expect(plan.joinLines, hasLength(2), reason: 'both collisions listed');
+    // F-284: each where its block stands, written the session's way.
+    final where = '${s.requireActiveCut.name} · ${rowOf(s, row).name}';
+    expect(
+      plan.joinLines,
+      ['$where · 3 · 3', '$where · 4 · 4'],
+      reason: 'both collisions listed',
+    );
+    s.appSettings.showSecondsDisplay.value = true;
+    expect(
+      naming.plan(naming.timelineTargets!, from: 1).joinLines,
+      ['$where · 3 · 0+3', '$where · 4 · 0+4'],
+      reason: 'the notice follows the seconds display',
+    );
+    s.appSettings.showSecondsDisplay.value = false;
     expect(plan.rows.single.joins, {three: one, four: two});
     expect(reads(s, row, 4), ['1', '2', '3', '4'], reason: 'nothing written');
 

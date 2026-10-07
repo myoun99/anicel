@@ -85,6 +85,8 @@ import 'brush/canvas_selection_commands.dart' show CanvasSelectionDocument;
 // uses — the rail's own drawn row list.
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
+import 'timeline/timeline_frame_ruler_painter.dart'
+    show timelineFramePlaceLabel;
 import 'session/live_stroke_landing.dart';
 import 'session/pixel_editing.dart';
 import 'session/session_roles.dart';
@@ -1146,6 +1148,13 @@ class EditorSessionManager extends ChangeNotifier
   @override
   int get activeCutGlobalStartFrame =>
       cutGlobalStartFrameIn(activeTrack, editingSession.activeCutId) ?? 0;
+
+  @override
+  String framePlaceLabel(int frameIndex) => timelineFramePlaceLabel(
+    frameIndex: frameIndex,
+    framesPerSecond: projectSettings.projectFrameRate.countingBase,
+    showSeconds: appSettings.showSecondsDisplay.value,
+  );
 
   // ── the track SE display: its own object, in its own file ───────────
   //
