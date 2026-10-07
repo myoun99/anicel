@@ -106,6 +106,7 @@ void main() {
   Future<(Heard, Offset)> mountSelected(
     WidgetTester tester, {
     bool moveBegins = true,
+    bool rowHolds = false,
     double rowHeight = 52,
   }) async {
     final heard = Heard();
@@ -136,7 +137,7 @@ void main() {
               }) => heard.selects.add((anchorIndex, headIndex)),
           onClear: () => heard.clears += 1,
           move: TimelineRangeMoveCallbacks(
-            holds: (_) => false,
+            holds: (_) => rowHolds,
             onBegin: (_) {
               heard.begins.add(heard.steps.length);
               return moveBegins;
@@ -273,6 +274,46 @@ void main() {
       expect(heard.begins, [0], reason: 'asked once');
       expect(heard.steps, isEmpty);
       expect(heard.selects.last, (1, 2), reason: 'anchored where it pressed');
+    });
+
+    // 🗣️F-263-Q1 (유저 2026-10-07): 「옮길 수 없는 행을 누르면 아무 일도 안
+    // 일어난다」 — 「이동도 새 선택도 만들지 않습니다. 선택은 그대로 남고」.
+    // At the same first step a move would take, and as short as that step:
+    // one cell here is eight pixels, inside the twelve a tap may travel.
+    testWidgets('F-263-Q1: on a row that is no grip the same drag is '
+        'nobody\'s — no move is asked for, nothing is swept, and its '
+        'release is no tap', (tester) async {
+      final (heard, inside) = await mountSelected(tester, rowHolds: true);
+
+      final gesture = await tester.startGesture(
+        inside,
+        kind: PointerDeviceKind.stylus,
+      );
+      await creep(tester, gesture, cell.toInt());
+      await gesture.up();
+      await tester.pump();
+
+      expect(heard.begins, isEmpty, reason: 'the move is not asked');
+      expect(heard.steps, isEmpty);
+      expect(heard.ends, 0);
+      expect(heard.selects, isEmpty, reason: 'no new selection');
+      expect(heard.clears, 0, reason: 'the selection is not let go');
+      expect(
+        heard.settled,
+        0,
+        reason: 'nor by the cells under it: a drag is no tap',
+      );
+    });
+
+    testWidgets('F-263-Q1: …and a press there that never becomes a drag is '
+        'the tap it always was', (tester) async {
+      final (heard, inside) = await mountSelected(tester, rowHolds: true);
+
+      await tester.tapAt(inside, kind: PointerDeviceKind.mouse);
+      await tester.pump();
+
+      expect(heard.clears, 1, reason: 'a tap lets the selection go');
+      expect(heard.settled, 1);
     });
 
     testWidgets('🚨F-238: a pen SELECT starts where it leaves the pressed '
