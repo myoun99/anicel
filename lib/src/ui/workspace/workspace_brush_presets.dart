@@ -269,15 +269,6 @@ class _WorkspaceBrushPresets {
     );
   }
 
-  /// The brush row's press for a KEY (I-56): the brush of [id], while the
-  /// library holds one.
-  void takeUp(BrushPresetId id) {
-    final preset = _presetNamed(id);
-    if (preset != null) {
-      _applyPreset(preset);
-    }
-  }
-
   /// [from] holding [preset]'s brush for [tool]. H25: the brush as the hand
   /// last left it with THIS tool, or nothing — in which case the brush's own
   /// file speaks.

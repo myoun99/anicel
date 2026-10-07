@@ -172,6 +172,7 @@ part 'workspace/workspace_rail.dart';
 part 'workspace/workspace_flip_hud.dart';
 part 'workspace/workspace_brush_presets.dart';
 part 'workspace/workspace_brush_groups.dart';
+part 'workspace/workspace_brush_keys.dart';
 part 'workspace/workspace_document_views.dart';
 
 /// The editor workspace: side docks and the canvas' center dock over the
@@ -795,6 +796,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // groups.dart) — beside the presets, which take the brush up.
   late final _WorkspaceBrushGroups _brushGroups = _WorkspaceBrushGroups(this);
 
+  // What the library lends to the shell's keys (I-56, workspace/workspace_
+  // brush_keys.dart).
+  late final _WorkspaceBrushKeys _brushKeys = _WorkspaceBrushKeys(this);
+
   // The document views' state (Round 6): what each panel shows and how.
   late final _WorkspaceDocumentViews _views = _WorkspaceDocumentViews();
 
@@ -804,9 +809,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   // mounted by the shell. Nothing in the workspace reads a colour any more.
 
   late final BrushPresetLibrary _presetLibrary;
-
-  void _showLibraryToKeys() =>
-      widget.brushKeys?.show(_presetLibrary.groups, _presetLibrary.presets);
   late final BrushTipLibrary _tipLibrary;
 
   /// The fonts this device was brought — the text tool's faces beside the
@@ -1075,10 +1077,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     // 🗣️I-56: the library's groups and brushes are shortcut rows, and a key
     // presses what the tab or the brush row does.
-    _presetLibrary.addListener(_showLibraryToKeys);
-    widget.brushKeys
-      ?..takeUp = _brushPresets.takeUp
-      ..openGroup = _brushGroups.openGroup;
+    _brushKeys.attach();
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read. And the bank
     // before the opening brush is taken up, so that brush wears what the
@@ -1607,12 +1606,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushPresets._brushHandSettingsSave!.cancel();
       _brushPresets.saveHandSettings();
     }
-    _presetLibrary.removeListener(_showLibraryToKeys);
-    if (widget.brushKeys?.takeUp == _brushPresets.takeUp) {
-      widget.brushKeys
-        ?..takeUp = null
-        ..openGroup = null;
-    }
+    _brushKeys.detach();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
     if (widget.canvasTextCommands?.landingWith == _landingWithItsFaces) {
