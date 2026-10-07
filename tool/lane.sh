@@ -435,10 +435,11 @@ cmd_sync() {
 
 # (away) Let go of the lanes that landed. A lane this machine sent, whose
 # offer is no longer on the mirror, is ASKED ABOUT — and dropped here only
-# when the trunk holds every commit of it and it has not grown since it was
-# sent. Everything else stays and says why: commits written after the send
-# exist nowhere else, and neither does a lane whose offer left the mirror
-# without landing.
+# when the trunk holds every commit of it, it has not grown since it was
+# sent, and its worktree holds nothing uncommitted. Everything else stays
+# and says why: commits written after the send exist nowhere else, neither
+# does work typed into the worktree and never committed, and neither does a
+# lane whose offer left the mirror without landing.
 # ⚠️Silent and harmless when the mirror cannot be asked: a lane is only
 # ever looked at on the mirror's own word that the offer is gone.
 #
@@ -451,7 +452,7 @@ landed_lanes_leave() {
   offers="$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
     ls-remote --heads "$MIRROR" "refs/heads/sent/$MACHINE/*" 2>/dev/null)" \
     || return 0
-  local ref name sent
+  local ref name sent p
   git -C "$ROOT" for-each-ref --format='%(refname:short)' \
     "refs/heads/work/$MACHINE/*" | while read -r ref; do
       name="${ref#work/}"
@@ -462,6 +463,21 @@ landed_lanes_leave() {
         echo "lane: ⚠️$name is no longer offered on $MIRROR, and $TRUNK does not hold it." >&2
         echo "lane:   It was taken back or turned down (or landed with its conflicts resolved by hand): the lane is kept." >&2
       elif [ "$(git -C "$ROOT" rev-parse "$ref")" = "$sent" ]; then
+        # ⛔ITS COMMITS LANDED; WHAT WAS TYPED INTO ITS WORKTREE SINCE DID
+        # NOT. The tip only says no commit was added, and a drop removes the
+        # worktree with --force. 2026-10-08, the second machine: a session
+        # kept working in a lane it had sent, uncommitted; the lane landed,
+        # ANOTHER session's `open` ran this, and two files went with the
+        # worktree (card a-landed-lane-is-dropped-with-its-uncommitted-work).
+        # So the worktree is asked, through the one check a land asks — new
+        # files count. It stays asked about: once it is clean it is let go,
+        # and once its edits are committed it is 「has commits since」, below.
+        p="$(lane_path "$name")"
+        if [ -f "$p/.git" ] && ! lane_is_clean "$p"; then
+          echo "lane: ⚠️$name landed, and its worktree holds changes nobody committed (above) — it is kept." >&2
+          echo "lane:   They are in no commit and on no other machine: commit them, or move them to a new lane." >&2
+          continue
+        fi
         echo "lane: $name landed — letting go of it here"
         (cmd_drop "$name") >/dev/null 2>&1
       else

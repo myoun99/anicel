@@ -203,6 +203,38 @@ void main() {
       );
     });
 
+    test('🚨its WORKTREE is asked before it is let go: a lane whose commits '
+        'landed is kept while it holds work nobody committed — through the '
+        'check a land asks, new files and all', () {
+      // 2026-10-08, the second machine: a session kept working in a lane it
+      // had sent, uncommitted; the lane landed, ANOTHER session's `open` ran
+      // this, and two files went with the worktree — the tip only says no
+      // COMMIT was added (card
+      // a-landed-lane-is-dropped-with-its-uncommitted-work).
+      final same = at(leave, r'rev-parse "$ref")" = "$sent"');
+      final where = at(leave, r'p="$(lane_path "$name")"');
+      final asked = at(
+        leave,
+        r'if [ -f "$p/.git" ] && ! lane_is_clean "$p"; then',
+      );
+      final drop = at(leave, 'cmd_drop');
+      expect([same, where, asked, drop], everyElement(isNot(-1)));
+      expect(where, inExclusiveRange(same, asked));
+      expect(asked, lessThan(drop));
+      final kept = leave.sublist(asked, drop);
+      expect(
+        kept.any((line) => line.trim() == 'continue'),
+        isTrue,
+        reason: 'a lane that holds something is passed over, not dropped',
+      );
+      expect(
+        kept.join('\n'),
+        isNot(contains('config --unset')),
+        reason: 'and it stays asked about — clean, it is let go at the next '
+            'sync; committed, it is 「has commits since」',
+      );
+    });
+
     test('a lane that was never sent is not asked about at all', () {
       final sent = at(leave, r'config --get "branch.$ref.sent"');
       expect(sent, isNot(-1));
