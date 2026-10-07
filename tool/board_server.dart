@@ -10,8 +10,10 @@
 // two inputs:
 //
 //   1. a records file (JSONL) -- one line per fact, append-only, later lines
-//      win. It lives beside the memory notes: recording a fact and updating
-//      the board are the same act.
+//      win. Recording a fact and updating the board are the same act. (It
+//      lived beside the memory notes until 2026-10-07; the notes moved to a
+//      folder two machines see, and the records stayed on this one, in its
+//      board folder.)
 //   2. `gh` -- pull requests, live. Anything GitHub already knows is never
 //      written down: an open PR IS an in-flight item, a merged PR IS a landed
 //      one, and neither needs a record to exist.
@@ -149,8 +151,10 @@ List<File> sourcesOfEntry(File entry) {
 /// 🚨★★★A NEW FILE NAME, and that is the whole point. `.src` held a COPY OF
 /// THE ENTRY FILE; this holds the concatenation of every source. Those two
 /// answers to 「what is this exe made of」 cannot both live in one path,
-/// because the writer (`board_up.sh`, in the memory folder) and the reader
-/// (this file, in the repo) **cannot land in the same instant**.
+/// because the writer (`board_up.sh`, in the memory folder then — in the
+/// repository since 2026-10-07, which changes nothing here: a running exe
+/// is still the old reader) and the reader (this file, in the repo)
+/// **cannot land in the same instant**.
 ///
 /// 🧪2026-08-31, and I did it to the live board: I patched the shell first,
 /// the Stop hook ran it, and the running server — still comparing the entry
@@ -206,12 +210,17 @@ bool _sourceMoved() {
 /// ⛔The rule for WHEN to rebuild is not repeated here. `board_up.sh` owns it,
 /// the Stop hook calls the same script, and a second copy of the test is how
 /// this bug happened the first time.
+///
+/// ↩️Until 2026-10-07 the script was looked for BESIDE THE RECORDS: the
+/// hooks sat in that folder. They are in the repository now
+/// (`tool/session_hooks/`, so a second machine runs the same ones), and the
+/// folder the records are in is what the script is handed.
 Never _relaunch() {
-  final up = File('${File(_recordsPath).parent.path}/board_up.sh');
+  final up = File('$_gitRoot/tool/session_hooks/board_up.sh');
   if (up.existsSync()) {
     unawaited(Process.start(
       'bash',
-      [up.path],
+      [up.path, File(_recordsPath).parent.path],
       mode: ProcessStartMode.detached,
       runInShell: true,
     ));
