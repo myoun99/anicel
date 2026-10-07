@@ -351,6 +351,27 @@ void main() {
       expect(second, findsNothing);
     });
 
+    testWidgets('playback started while the reader is on another sheet takes '
+        'the reader to the playhead\'s at once — before the playhead leaves '
+        'its sheet', (tester) async {
+      await pumpHost(tester, render: CanvasViewport());
+      await tester.tap(find.byKey(_nextKey));
+      await tester.pumpAndSettle();
+      expect(reading.value, 1, reason: '⛔전제: reading the second sheet');
+
+      session.playbackRig.playback.play(scope: PlaybackScope.allCuts);
+      await tester.pump();
+      await tester.pump();
+
+      expect(reading.value, 0);
+      expect(pageText(tester), '1/2');
+
+      session.playbackRig.playback.stop();
+      session.playbackRig.prerenderScheduler.cancel();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('playback crossing into the next sheet moves the view to it '
         '— the reader goes where the playhead is', (tester) async {
       await pumpHost(tester, render: CanvasViewport());

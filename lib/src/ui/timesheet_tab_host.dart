@@ -588,7 +588,12 @@ class _TimesheetPlayheadScope extends StatefulWidget {
 }
 
 class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
-  late Object _token = _deriveToken();
+  /// 🚨Taken at MOUNT ([initState]). It was a lazy `late` initializer, so
+  /// the first signal derived the token it was compared against from the
+  /// state that signal brought — equal by construction, and swallowed:
+  /// playback started on another sheet turned nothing until the playhead
+  /// crossed a page.
+  late Object _token;
 
   Object _deriveToken() {
     final session = widget.session;
@@ -615,6 +620,7 @@ class _TimesheetPlayheadScopeState extends State<_TimesheetPlayheadScope> {
   @override
   void initState() {
     super.initState();
+    _token = _deriveToken();
     final session = widget.session;
     session.editingFrameCursor.addListener(_handlePlayheadSignal);
     session.frameSeekCommitted.addListener(_handlePlayheadSignal);
