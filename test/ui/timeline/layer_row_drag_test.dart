@@ -680,6 +680,12 @@ void main() {
     expect(find.byKey(const ValueKey<String>('app-notice-details-list')),
         findsNothing);
     expect(
+      tester.takeException(),
+      isNull,
+      reason: 'a heading wider than its window wraps; it does not run off '
+          'the edge (in this font it is wider)',
+    );
+    expect(
       _layerOf(session, 'a').attachedToLayerId,
       isNull,
       reason: 'the drop is held while the question is on screen',
