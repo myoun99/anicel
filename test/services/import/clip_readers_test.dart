@@ -283,7 +283,9 @@ void main() {
       );
       final rgba = clipColourRgba(shape, {
         0: colourBlock((x, y) => (x, y, 200, 128)),
-        // Block 1 (top right) was never stored — transparent.
+        // Block 1 is column 1 of row 0 — the one block whose column and
+        // row differ, so a block put by the wrong one lands elsewhere.
+        1: colourBlock((x, y) => (60, 70, 80, 90)),
         2: null,
         3: colourBlock((x, y) => (10, 20, 30, x == 0 && y == 0 ? 255 : 99)),
       })!;
@@ -300,7 +302,8 @@ void main() {
         reason: 'R · G · B, not B · G · R',
       );
       expect(at(255, 255), (255, 255, 200, 128));
-      expect(at(256, 0), (0, 0, 0, 0), reason: 'a block never stored');
+      expect(at(256, 0), (60, 70, 80, 90), reason: 'block 1, top right');
+      expect(at(299, 255), (60, 70, 80, 90), reason: 'cut at the edge too');
       expect(at(0, 256), (0, 0, 0, 0), reason: 'a block stored empty');
       expect(at(256, 256), (10, 20, 30, 255), reason: 'block 3 starts here');
       expect(at(299, 259), (10, 20, 30, 99), reason: 'and is cut at the edge');
