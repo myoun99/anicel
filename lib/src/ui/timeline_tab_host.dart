@@ -1113,6 +1113,12 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   /// I-77: they answer for ROWS as well as the frame axis now. The token
   /// read the session's frame-axis getters, which a copy of rows does not
   /// move — the two pastes stayed dark behind it.
+  ///
+  /// Measured (mutation, 2026-10-07): all three reading the frame axis is
+  /// what `home_frame_and_clipboard_test` kills. Any ONE of them doing so
+  /// survives, because a copy of rows moves the other two with it — they
+  /// are listed by the token's contract, each for the button that reads
+  /// it, not because a test tells them apart.
   TimelineToolbarPanelContext get _pill =>
       TimelineToolbarPanelContext(widget.session);
 
