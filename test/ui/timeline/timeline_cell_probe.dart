@@ -22,6 +22,17 @@ TimelineRowCellsPainter timelineRowCellsPainterFor(
   return paint.painter! as TimelineRowCellsPainter;
 }
 
+/// Whether [rrect] is an in-between MARK and no box of the row: round all
+/// the way (`inbetweenMarkShape`), which no paper and no line of the grid
+/// is.
+///
+/// For the spies that hold a row's BOXES to its substrate. The dot is a
+/// letter of its block (F-297, 유저 2026-10-05: 「중간나누기 점도 하나의
+/// 글자로 인식해서」) — a round BOX on the canvas only because that is the
+/// one filled shape a tile bakes — and a spy that counted it would hold the
+/// row's writing to its paper.
+bool isInbetweenMarkShape(RRect rrect) => rrect.isStadium;
+
 /// The painter-resolved model of one cell (glyph, exposure state, ghost /
 /// dim flags) — the successor of reading TimelineFrameCell's fields.
 TimelineRowCellModel timelineCellModel(
