@@ -15,7 +15,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/models/composite_tree.dart';
-import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart';
 
 import '../helpers/awaited_uploads.dart';
 
@@ -418,8 +418,8 @@ void main() {
       final awaited = countAwaitedUploads();
       final surface = surfaceWithRedPixelAt(1, 2);
 
-      (await composePositionedSurfaceImage(surface))!.image.dispose();
-      expect(awaited(), 1, reason: 'LIVENESS: the warm road awaits this tile');
+      (await uploadRawRgba(Uint8List(4), width: 1, height: 1)).dispose();
+      expect(awaited(), 1, reason: 'LIVENESS: an awaited upload is counted');
 
       final image = await service.renderThroughCamera(
         layers: [CutFrameCompositeLayer(surface: surface, opacity: 1)],

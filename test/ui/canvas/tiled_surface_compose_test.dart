@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -6,6 +7,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
@@ -45,6 +47,29 @@ void main() {
     return surface;
   }
 
+  /// A cel of [count] small tiles in a row, each with ink and none with a
+  /// picture.
+  BitmapSurface rowOfTiles(int count) {
+    const size = 8;
+    var surface = BitmapSurface(
+      canvasSize: CanvasSize(width: size * count, height: size),
+      tileSize: size,
+    );
+    for (var x = 0; x < count; x += 1) {
+      surface = surface.putTiles([
+        (
+          coord: TileCoord(x: x, y: 0),
+          tile: BitmapTile(
+            size: size,
+            pixels: Uint8List(size * size * 4)
+              ..fillRange(0, size * size * 4, 0xFF),
+          ),
+        ),
+      ]);
+    }
+    return surface;
+  }
+
   Future<Uint8List> bytesOf(ui.Image image) async {
     final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
@@ -72,7 +97,7 @@ void main() {
       final reference = await bytesOf(await bitmapSurfaceToImage(surface));
 
       final cold = await bytesOf((await composeTiledSurfaceImage(surface))!);
-      expect(cold, reference, reason: 'transient-decode path');
+      expect(cold, reference, reason: 'transient pictures, made in turn');
 
       final cache = BitmapTileImageCache();
       await seedCache(cache, surface);
@@ -247,13 +272,13 @@ void main() {
         const CanvasSize(width: 300, height: 200),
       );
 
-      // Abort immediately: no tile decodes, no raster, null out.
+      // Abort immediately: no tile pictured, no raster, null out.
       expect(
         await composeTiledSurfaceImage(surface, shouldAbort: () => true),
         isNull,
       );
 
-      // Abort partway: the check runs before EVERY transient decode.
+      // Abort partway: the check runs before EVERY transient picture.
       var checks = 0;
       expect(
         await composeTiledSurfaceImage(
@@ -314,25 +339,23 @@ void main() {
     });
   }, tags: 'benchmark');
 
-  testWidgets('🚨a compose somebody WAITS for makes a missing picture at '
-      'once — the same picture, no decode round awaited, nothing kept', (
-    tester,
-  ) async {
+  testWidgets('🚨no compose waits a decode round for a tile: a missing '
+      'picture comes through the door on both roads — the same picture, '
+      'nothing kept', (tester) async {
     await tester.runAsync(() async {
       final surface = patternedSurface(
         const CanvasSize(width: 300, height: 200),
       );
       final awaited = countAwaitedUploads();
+      (await uploadRawRgba(Uint8List(4), width: 1, height: 1)).dispose();
+      expect(awaited(), 1, reason: 'LIVENESS: an awaited upload is counted');
 
-      // The warm road: a decode round a tile.
-      final inTurn = await bytesOf((await composeTiledSurfaceImage(surface))!);
-      expect(
-        awaited(),
-        surface.tiles.length,
-        reason: 'LIVENESS: the road in turn awaits every tile',
-      );
-
+      // The road in turn — the warm's, a filled-in row's.
       final cache = BitmapTileImageCache();
+      final inTurn = await bytesOf(
+        (await composeTiledSurfaceImage(surface, reuse: cache))!,
+      );
+      // The road of a render somebody waits for.
       final atOnce = await bytesOf(
         (await composeTiledSurfaceImage(
           surface,
@@ -340,21 +363,101 @@ void main() {
           missing: MissingTilePictures.madeAtOnce,
         ))!,
       );
-      expect(awaited(), surface.tiles.length, reason: 'not one more');
+      expect(awaited(), 1, reason: 'not one more, on either road');
       expect(atOnce, inTurn);
       expect(
         surface.tiles.values.every((tile) => cache.imageFor(tile) == null),
         isTrue,
-        reason: 'the pictures were the compose\'s own, and went with it',
+        reason: 'the pictures were each compose\'s own, and went with it',
       );
 
-      // The positioned road answers to the same word.
-      final positioned = (await composePositionedSurfaceImage(
+      // The positioned road answers to the same words.
+      for (final missing in MissingTilePictures.values) {
+        (await composePositionedSurfaceImage(
+          surface,
+          missing: missing,
+        ))!.image.dispose();
+      }
+      expect(awaited(), 1);
+    });
+  });
+
+  testWidgets('🚨the road in turn GIVES WAY between runs of pictures: what '
+      'was waiting in the event queue is heard before the compose is done — '
+      'and a compose somebody waits for does not stop for it', (tester) async {
+    await tester.runAsync(() async {
+      // One picture more than a run makes: the queue gets its turn once.
+      final surface = rowOfTiles(tilePicturesInARun + 1);
+      var heard = false;
+      Timer.run(() => heard = true);
+      expect(
+        await composeTiledSurfaceImage(surface, shouldAbort: () => heard),
+        isNull,
+        reason: 'what was waiting was let in after the first run, and it '
+            'stood the compose down',
+      );
+      expect(heard, isTrue);
+
+      // A whole run is made before the first giving way.
+      var heardInARun = false;
+      Timer.run(() => heardInARun = true);
+      final oneRun = await composeTiledSurfaceImage(
+        rowOfTiles(tilePicturesInARun),
+        shouldAbort: () => heardInARun,
+      );
+      expect(
+        oneRun,
+        isNotNull,
+        reason: 'a run is made in one go: nothing was let in before its '
+            'last picture, nor before the raster after it',
+      );
+      oneRun!.dispose();
+
+      // And the road of a render somebody waits for never gives way.
+      var heardAtOnce = false;
+      Timer.run(() => heardAtOnce = true);
+      final atOnce = await composeTiledSurfaceImage(
         surface,
         missing: MissingTilePictures.madeAtOnce,
-      ))!;
-      positioned.image.dispose();
-      expect(awaited(), surface.tiles.length);
+        shouldAbort: () => heardAtOnce,
+      );
+      expect(atOnce, isNotNull);
+      atOnce!.dispose();
+    });
+  });
+
+  testWidgets('it gives way once a RUN, not once a picture — the turn the '
+      'old road waited for every tile', (tester) async {
+    await tester.runAsync(() async {
+      // Every turn of the event queue from here on is counted: each one,
+      // when it comes, asks for the next.
+      var turns = 0;
+      var counting = true;
+      void count() {
+        if (counting) {
+          turns += 1;
+          Timer.run(count);
+        }
+      }
+
+      Timer.run(count);
+      var turnsAtTheLastCheck = -1;
+      final image = await composeTiledSurfaceImage(
+        // Three whole runs, and one picture more.
+        rowOfTiles(tilePicturesInARun * 3 + 1),
+        shouldAbort: () {
+          turnsAtTheLastCheck = turns;
+          return false;
+        },
+      );
+      counting = false;
+      image!.dispose();
+      expect(
+        turnsAtTheLastCheck,
+        3,
+        reason: 'the queue had its turn after each of the three runs, and '
+            'at no other picture',
+      );
     });
   });
 }

@@ -174,8 +174,8 @@ class LayerFrameImageCache {
   /// Returns a valid image, rebuilding it when missing or stale. `null` when
   /// the frame has no drawn content — or, with [shouldAbort] (the warm path,
   /// R13-4), when the build was abandoned mid-way: aborts cache nothing and
-  /// the abort checks bracket the two big slices (the display-cache replay
-  /// and each tile decode via [composePositionedSurfaceImage]).
+  /// the abort checks bracket the two big slices (the cel's thaw and each
+  /// tile picture [composePositionedSurfaceImage] makes).
   ///
   /// [inkSuffices] is whether the route draws this row exactly from its ink
   /// alone (`inkCropDrawsTheSame`): an image is stored as its ink only then,
@@ -234,9 +234,13 @@ class LayerFrameImageCache {
     }
     final revision = drawing.sourceRevision;
 
-    // The display-cache replay is the one monolithic CPU slice on this
-    // path (it grows with the cel's stroke count) — never START it when
-    // the editor just went hot.
+    // The cel's thaw is the one slice on this path nothing can stand down:
+    // a cel still cold, or still in the file, is read and inflated inside
+    // this call (🔬1.4–17 ms a cel on the Windows app, 2026-10-07 — board
+    // F-296) — never START it when the editor just went hot.
+    // 🪦It said 「the display-cache replay … grows with the cel's stroke
+    // count」 until then; no stroke has been replayed since the baked raster
+    // became the cel (R19 P3b, `BrushFrameDisplayCacheService`).
     if (shouldAbort?.call() ?? false) {
       return null;
     }
