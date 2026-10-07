@@ -353,6 +353,12 @@ const kReadMark = '읽음';
 /// The `to` that means every 담당: a notice, read by each of them once.
 const kEveryone = '모두';
 
+/// The ONE card a notice goes on when it is about no card (유저 2026-10-07,
+/// the option chosen: 「카드와 무관한 알림은 「세션 알림」 카드 하나에
+/// 적는다(담당마다가 아니라 전체에 하나)」). A card like any other — its
+/// story is where those notices stand.
+const kNoticesCard = 'session-notes';
+
 /// One session's word to another, with the card whose story it stands in.
 typedef BoardLetter = ({BoardCard card, BoardLog entry});
 

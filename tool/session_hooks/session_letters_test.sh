@@ -52,8 +52,13 @@ out="$(hook s start)"
 chk "받은 것이 있으면 · 시작 → 덧붙임 한 줄"             "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
 chk "글이 줄바꿈 · 따옴표째 실린다"                       "$(printf '%s' "$out" | grep -c '전달 1건\\n\\n━ 관제 → 보드/통합 · 카드 W\\n\\"sync\\" 했습니다"}}$')" 1
 chk "보드에 한 번 물었다"                                 "$(calls)" 1
-chk "받는 담당을 이름으로 묻는다(줄 끝의 CR 없이)"         "$(grep -c -- '--data-urlencode to=보드/통합$' "$STUB/argv")" 1
-chk "쓰는 요청으로 묻는다"                                "$(grep -c -- '-X POST -G' "$STUB/argv")" 1
+chk "받는 담당을 이름으로 묻는다(줄 끝의 CR 없이)"         "$(grep -c '^data-urlencode = "to=보드/통합"$' "$STUB/stdin")" 1
+chk "쓰는 요청으로, 이름은 주소에 실어 묻는다"            "$(grep -c -x -e 'request = "POST"' -e 'get' "$STUB/stdin")" 2
+# A Windows program is handed its command line in the machine's code page:
+# a Korean name there arrives as something else (session_letters.sh says
+# what that cost). ⚠️This stand-in is a shell script and would never have
+# noticed — the check is on WHERE the name travels.
+chk "🚨이름은 명령줄에 없다 — 명령줄에는 옵션뿐이다"       "$(cat "$STUB/argv")" "-s -f -m 5 -K -"
 chk "묻는 길은 받기 길이다(주소 끝의 빗금은 하나로)"       "$(grep -c '^url = "http://board.test:4321/letters/take"$' "$STUB/stdin")" 1
 chk "🚨비밀값은 명령줄에 없다"                            "$(grep -c 'made-up-secret' "$STUB/argv")" 0
 chk "비밀값은 표준 입력으로 간다"                         "$(grep -c '^header = "Authorization: Bearer made-up-secret"$' "$STUB/stdin")" 1

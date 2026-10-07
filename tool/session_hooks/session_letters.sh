@@ -23,8 +23,10 @@
 # IT ASKS THE SERVER, never the records: taking a letter marks it read, and
 # the server is the one hand that writes the board. The letters come back as
 # text and are marked by that same request (`takeLetters` says why it is one
-# act). The door's secret goes to curl on its standard input, not on its
-# command line — a command line is something other processes can read.
+# act). Everything curl is told goes in on its standard input and nothing on
+# its command line: the door's secret because a command line is something
+# other processes can read, the 담당's name because a command line does not
+# carry Korean intact on Windows (below).
 #
 # THIS RUNS ON EVERY PROMPT, so a session with no name costs no process: the
 # id is cut out of the payload and the name file is read by the shell itself.
@@ -33,9 +35,9 @@
 set -u
 
 MEM="${1:-}"
+[ -d "$MEM" ] || exit 0
 BOARD="${2:-}"
 WHEN="${3:-start}"
-[ -d "$MEM" ] || exit 0
 [ -n "$BOARD" ] || exit 0
 
 payload=$(cat)
@@ -64,7 +66,7 @@ if [ -z "$name" ]; then
   . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
   say_context UserPromptSubmit "📨 이 세션은 보드에 담당 이름을 등록하지 않았습니다 — 다른 세션이 이 세션 앞으로 남긴 전달을 받으려면 한 번 등록하세요:
   dart run tool/board_me.dart <담당 이름>   (예: 보드/통합 · 타임라인/콘티 · 캔버스 베이스 패널)
-담당이 없는 세션이면 그대로 두면 됩니다. 이 안내는 다시 나오지 않습니다."
+등록하면 남기는 법도 그 명령이 알려 줍니다. 담당이 없는 세션이면 그대로 두면 됩니다. 이 안내는 다시 나오지 않습니다."
   exit 0
 fi
 
@@ -74,11 +76,23 @@ if [ -s "$MEM/.board-token" ]; then
   IFS= read -r secret < "$MEM/.board-token" || true
   secret="${secret%$'\r'}"
 fi
+# 🚨THE NAME GOES IN ON STANDARD INPUT TOO, and not for secrecy: a Windows
+# program is handed its command line in the machine's own code page, and a
+# Korean 담당 on curl's command line arrived as something else — the server
+# was asked for the letters of a name nobody has, and answered, correctly,
+# that there were none. 🧪2026-10-07, against a real server: a letter left
+# for 「타임라인/콘티」 was never delivered, while a notice to everyone was
+# (that one matches any reader), so it looked half alive. What curl reads
+# from a file it takes byte for byte.
+quoted="${name//\\/\\\\}"
+quoted="${quoted//\"/\\\"}"
 text=$(
   {
     [ -n "$secret" ] && printf 'header = "Authorization: Bearer %s"\n' "$secret"
+    printf 'request = "POST"\nget\n'
+    printf 'data-urlencode = "to=%s"\n' "$quoted"
     printf 'url = "%s/letters/take"\n' "${BOARD%/}"
-  } | curl -s -f -m 5 -X POST -G --data-urlencode "to=$name" -K - 2>/dev/null
+  } | curl -s -f -m 5 -K - 2>/dev/null
 ) || exit 0
 [ -n "$text" ] || exit 0
 

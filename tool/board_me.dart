@@ -64,4 +64,7 @@ void main(List<String> args) {
     ..writeAsStringSync('$name\n');
   stdout.writeln('board_me: 이 세션은 「$name」 입니다 — 이 담당 앞으로 남은 '
       '전달이 턴의 처음과 끝에 보입니다.');
+  stdout.writeln('  다른 세션 앞으로 남길 때는 기록 줄에 `to` 를 적습니다: '
+      '{"id":"<카드>","to":"<담당>","note":"…"} — 모든 담당 앞은 '
+      '"to":"$kEveryone", 카드와 무관한 알림은 카드 「$kNoticesCard」 에.');
 }

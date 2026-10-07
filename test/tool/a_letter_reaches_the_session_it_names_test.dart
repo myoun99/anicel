@@ -221,7 +221,11 @@ void main() {
   });
 
   group('a mark must name a letter that waits for its reader', () {
-    String? marking({required String ref, required String by, String id = 'W'}) {
+    String? marking({
+      required String ref,
+      required String by,
+      String id = 'W',
+    }) {
       boardHolds([card, letter(t1)]);
       return sayToRecords(records, [
         line({'id': id, 'at': kReadMark, 'ref': ref, 'from': by}),

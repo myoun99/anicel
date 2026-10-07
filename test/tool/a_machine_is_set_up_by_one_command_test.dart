@@ -87,6 +87,7 @@ void main() {
           'board_gate_test.sh',
           'guard_git_add_test.sh',
           'hook_says_test.sh',
+          'session_letters_test.sh',
           // Read in by every hook that speaks, never run by itself
           // (a_hook_speaks_through_one_mouth_test).
           'hook_says.sh',
@@ -153,6 +154,7 @@ void main() {
         'board_gate.sh',
         'autorun_arm.sh',
         'autorun_gate.sh',
+        'session_letters.sh',
       ]) {
         final text = scripts[name]!;
         final handed = text.indexOf('MEM="\${1:-}"\n[ -d "\$MEM" ] || exit 0');
@@ -230,7 +232,35 @@ void main() {
       expect(environmentFor(holder), {
         'ANICEL_BOARD': 'http://localhost:4321',
         'ANICEL_BOARD_TOKEN_FILE': 'C:/local/board/.board-token',
+        'ANICEL_BOARD_FOLDER': 'C:/local/board',
       });
+    });
+
+    // 유저 2026-10-07 (the-board-is-one-server-for-both-machines-Q2):
+    // 「세션은 턴이 시작하고 끝날 때 자기 앞의 안 읽은 줄을 훅이 보여
+    // 준다」. Taking a letter marks it read, so it is asked of the server
+    // on the machine that holds the records too — the one hand that writes
+    // them.
+    test('🚨what other sessions left is asked for at both ends of a turn — '
+        'of the SERVER on either machine, in this machine\'s board '
+        'folder', () {
+      for (final (setup, address) in [
+        (holder, 'http://localhost:4321'),
+        (away, 'http://MYOUN_HOME.local:4321'),
+      ]) {
+        final asked = commandsOf(hooksFor(setup));
+        final handed = '/session_letters.sh" "${setup.board}" "$address"';
+        expect(
+          asked['UserPromptSubmit'],
+          contains(endsWith('$handed "start"')),
+          reason: address,
+        );
+        expect(
+          asked['Stop'],
+          contains(endsWith('$handed "stop"')),
+          reason: address,
+        );
+      }
     });
 
     test('the two folders are kept the same only where the memory was moved '
@@ -278,6 +308,7 @@ void main() {
       expect(environmentFor(away), {
         'ANICEL_BOARD': 'http://MYOUN_HOME.local:4321',
         'ANICEL_BOARD_TOKEN_FILE': 'D:/local/board/.board-token',
+        'ANICEL_BOARD_FOLDER': 'D:/local/board',
       });
     });
   });
@@ -312,6 +343,7 @@ void main() {
         'THEIRS': 'kept',
         'ANICEL_BOARD': 'http://MYOUN_HOME.local:4321',
         'ANICEL_BOARD_TOKEN_FILE': 'D:/local/board/.board-token',
+        'ANICEL_BOARD_FOLDER': 'D:/local/board',
       });
     });
 
