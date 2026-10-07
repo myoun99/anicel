@@ -20,8 +20,10 @@ import '../helpers/lane_script.dart';
 /// is · the trunk's machine lists, receives and lands it, and offer and copy
 /// leave the mirror · the away `sync` lets go of the landed lane, keeps one
 /// that grew since it was sent, and refuses a master that holds a commit of
-/// its own · neither machine pushes the other's lanes. Two faults were found
-/// that way and are pinned below by name.
+/// its own · neither machine pushes the other's lanes · an offer that left
+/// without landing keeps its lane · a lane the trunk rebased is still known
+/// to have landed. Two faults were found that way and a third by reading,
+/// before any machine used it; all three are pinned below by name.
 void main() {
   final lane = LaneScript(File('tool/lane.sh').readAsStringSync());
   int at(List<String> code, String text) =>
@@ -132,16 +134,43 @@ void main() {
       );
     });
 
+    test('🚨「the offer is gone」 is not 「it landed」: the trunk is asked '
+        'first, and a lane it does not hold is KEPT — an offer also leaves '
+        'by being taken back or turned down, and that lane\'s work is '
+        'nowhere else (read 2026-10-07, before any machine used it)', () {
+      final asked = at(leave, r'if ! trunk_holds "$sent"; then');
+      final held = at(leave, 'elif');
+      final drop = at(leave, 'cmd_drop');
+      expect([asked, held, drop], everyElement(isNot(-1)));
+      expect(asked, lessThan(held));
+      expect(drop, greaterThan(held), reason: 'no drop where it is not held');
+      expect(
+        leave.sublist(asked, held).join('\n'),
+        contains('config --unset'),
+        reason: 'the kept lane stops being asked about, and says why',
+      );
+    });
+
+    test('🚨whether the trunk holds a lane is asked by PATCH — `land` '
+        'rebases, so what landed carries other hashes than what was sent',
+        () {
+      final holds = lane.codeOf('trunk_holds').join('\n');
+      expect(holds, contains(r'cherry "$TRUNK" "$1"'));
+      expect(holds, contains("! printf '%s\\n' \"\$missing\" | grep -q '^+'"));
+      expect(holds, contains('|| return 1'), reason: 'unasked is not held');
+    });
+
     test('🚨a lane that grew since it was sent is KEPT: it is dropped only '
         'when its tip is still what was sent', () {
       final same = at(leave, r'rev-parse "$ref")" = "$sent"');
       final drop = at(leave, 'cmd_drop');
-      final other = at(leave, 'else');
-      expect(same, isNot(-1));
+      final other = leave.indexWhere((line) => line.trim() == 'else');
+      expect([same, other], everyElement(isNot(-1)));
+      expect(leave[same], contains('elif'));
       expect(drop, inExclusiveRange(same, other));
       expect(
-        at(leave, 'config --unset'),
-        greaterThan(other),
+        leave.sublist(other).join('\n'),
+        contains('config --unset'),
         reason: 'the kept lane stops being asked about, and says why',
       );
     });
@@ -222,6 +251,40 @@ void main() {
             'the lanes this machine only received',
       );
       expect(all, isNot(contains('refs/heads/sent/')), reason: 'nor offers');
+    });
+
+    test('🚨an away backup takes the trunk before it copies — whether a '
+        'lane landed is asked of THIS machine\'s master, which has to be the '
+        'trunk\'s first', () {
+      final backup = lane.codeOf('cmd_backup');
+      final synced = at(backup, '(cmd_sync) || true');
+      expect(synced, isNot(-1));
+      expect(
+        synced,
+        lessThan(at(backup, r'"+refs/heads/work/$MACHINE/*:')),
+      );
+      expect(
+        backup.join('\n'),
+        isNot(contains('landed_lanes_leave')),
+        reason: 'the sweep runs inside sync, after the trunk is taken — a '
+            'second call here would ask a stale master',
+      );
+    });
+
+    test('🚨an offer is taken back from the machine that made it, and only '
+        'the offer goes', () {
+      final unsend = lane.codeOf('cmd_unsend');
+      final all = unsend.join('\n');
+      expect(at(unsend, 'away || die'), isNot(-1));
+      expect(at(unsend, 'away || die'), lessThan(at(unsend, 'push')));
+      expect(all, contains(r'--delete "sent/$name"'));
+      expect(all, isNot(contains('"work/')), reason: 'the lane stays');
+      expect(all, isNot(contains('cmd_drop')));
+      expect(
+        at(unsend, r'config --unset "branch.work/$name.sent"'),
+        greaterThan(at(unsend, '--delete')),
+        reason: 'and it stops being asked about',
+      );
     });
 
     test('🚨a landed lane leaves the mirror — its offer and its copy — '

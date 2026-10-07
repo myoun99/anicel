@@ -11,6 +11,7 @@
 #   bash tool/lane.sh sweep            delete the empty shells left by Windows
 #   bash tool/lane.sh sync             (away) make this machine's master the trunk's
 #   bash tool/lane.sh send  <name>     (away) put a finished lane on the mirror
+#   bash tool/lane.sh unsend <name>    (away) take that offer back
 #   bash tool/lane.sh receive <machine>/<name>   take a sent lane, ready to land
 #   bash tool/lane.sh incoming         what other machines sent that is not here
 #
@@ -128,8 +129,10 @@
 # only there, and `land` takes it away. With one place for both, a lane
 # that was merely backed up half-done would look exactly like one waiting
 # to be landed (found running the commands for real, 2026-10-07). An offer
-# that has left the mirror is how an away machine knows its lane landed:
-# its next `sync` lets go of the lane, unless it grew since it was sent.
+# that has left the mirror is how an away machine knows to LOOK: its next
+# `sync` asks the trunk whether it holds the lane's commits, and lets go of
+# the lane only then — an offer can also leave because it was taken back
+# (`unsend`) or turned down, and those lanes hold work that is nowhere else.
 #
 # ⚠️LANDING A CHANGE TO THIS FILE: run the land through a COPY.
 #   cp tool/lane.sh tool/.lane_run.sh && bash tool/.lane_run.sh land <name>
@@ -329,9 +332,13 @@ cmd_backup() {
   mirror_trunk
   git -C "$ROOT" remote get-url "$MIRROR" >/dev/null 2>&1 || return 0
   if away; then
-    # First let go of what landed: a lane the trunk already has, pushed
-    # again, is a copy of nothing.
-    landed_lanes_leave
+    # First take the trunk and let go of what landed there — a lane the
+    # trunk already has, pushed again, is a copy of nothing. `sync` does
+    # both, and in that order: whether a lane landed is asked of THIS
+    # machine's master, which has to be the trunk's before the answer means
+    # anything. A master `sync` refuses is said, and is no reason not to
+    # back up.
+    (cmd_sync) || true
     git -C "$ROOT" push --quiet "$MIRROR" \
       "+refs/heads/work/$MACHINE/*:refs/heads/work/$MACHINE/*" \
       || echo "lane: ⚠️the open lanes did not reach $MIRROR." >&2
@@ -379,11 +386,18 @@ cmd_sync() {
 }
 
 # (away) Let go of the lanes that landed. A lane this machine sent, whose
-# offer is no longer on the mirror, was landed by the trunk's machine (or
-# turned down there) — and it is dropped here, UNLESS it grew since it was
-# sent: those commits exist nowhere else, so the lane stays and says so.
+# offer is no longer on the mirror, is ASKED ABOUT — and dropped here only
+# when the trunk holds every commit of it and it has not grown since it was
+# sent. Everything else stays and says why: commits written after the send
+# exist nowhere else, and neither does a lane whose offer left the mirror
+# without landing.
 # ⚠️Silent and harmless when the mirror cannot be asked: a lane is only
-# ever dropped on the mirror's own word that the offer is gone.
+# ever looked at on the mirror's own word that the offer is gone.
+#
+# ⛔「THE OFFER IS GONE」 IS NOT 「IT LANDED」. The first version dropped on
+# that alone, and an offer leaves the mirror three ways — `land`, `unsend`,
+# and somebody deleting the branch. Two of the three would have thrown away
+# the only copy of the work (2026-10-07, read before any machine used it).
 landed_lanes_leave() {
   local offers
   offers="$(GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=Never git -C "$ROOT" \
@@ -395,7 +409,11 @@ landed_lanes_leave() {
       name="${ref#work/}"
       sent="$(git -C "$ROOT" config --get "branch.$ref.sent" 2>/dev/null)" || continue
       printf '%s\n' "$offers" | grep -q "refs/heads/sent/$name\$" && continue
-      if [ "$(git -C "$ROOT" rev-parse "$ref")" = "$sent" ]; then
+      if ! trunk_holds "$sent"; then
+        git -C "$ROOT" config --unset "branch.$ref.sent"
+        echo "lane: ⚠️$name is no longer offered on $MIRROR, and $TRUNK does not hold it." >&2
+        echo "lane:   It was taken back or turned down (or landed with its conflicts resolved by hand): the lane is kept." >&2
+      elif [ "$(git -C "$ROOT" rev-parse "$ref")" = "$sent" ]; then
         echo "lane: $name landed — letting go of it here"
         (cmd_drop "$name") >/dev/null 2>&1
       else
@@ -404,6 +422,16 @@ landed_lanes_leave() {
         echo "lane:   They are on no other machine: rebase the lane onto $TRUNK and send it again." >&2
       fi
     done
+}
+
+# Does the trunk hold every commit that leads to $1? Asked by PATCH, not by
+# name: `land` rebases a lane before it merges, so what landed carries other
+# hashes than what was sent. A `+` from `git cherry` is a commit whose patch
+# the trunk does not have; none of them means all of it landed.
+trunk_holds() {
+  local missing
+  missing="$(git -C "$ROOT" cherry "$TRUNK" "$1" 2>/dev/null)" || return 1
+  ! printf '%s\n' "$missing" | grep -q '^+'
 }
 
 # (away) Put a finished lane on the mirror for the trunk's machine.
@@ -429,6 +457,18 @@ cmd_send() {
   git -C "$ROOT" config "branch.work/$name.sent" "$(git -C "$p" rev-parse HEAD)"
   echo "lane: sent work/$name at $(git -C "$p" rev-parse --short HEAD)"
   echo "lane:   on the trunk's machine: bash tool/lane.sh receive $name"
+}
+
+# (away) Take an offer back — sent by mistake, or not ready after all. The
+# lane itself is not touched, and it stops being asked about.
+cmd_unsend() {
+  away || die "unsend is for an away machine — offers are made there"
+  local name="${1:-}"; [ -n "$name" ] || die "unsend needs a name"
+  name="$(lane_named "$name")" || exit 1
+  git -C "$ROOT" push --quiet "$MIRROR" --delete "sent/$name" 2>/dev/null \
+    || die "nothing sent as $name on $MIRROR"
+  git -C "$ROOT" config --unset "branch.work/$name.sent" 2>/dev/null
+  echo "lane: took back the offer of work/$name — the lane is as it was"
 }
 
 # Take a lane another machine sent. It comes in as a worktree furnished
@@ -707,7 +747,8 @@ case "${1:-}" in
   sweep) shift; cmd_sweep "$@" ;;
   sync) shift; cmd_sync "$@" ;;
   send) shift; cmd_send "$@" ;;
+  unsend) shift; cmd_unsend "$@" ;;
   receive) shift; cmd_receive "$@" ;;
   incoming) shift; cmd_incoming "$@" ;;
-  *) sed -n '2,16p' "$0"; exit 2 ;;
+  *) sed -n '2,17p' "$0"; exit 2 ;;
 esac
