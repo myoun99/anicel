@@ -1507,6 +1507,10 @@ Map<String, Object?> _headOf(BoardCard e, Set<int> openPrs) {
     ],
     'checks': waiting.length,
     'since': waiting.isEmpty ? '' : waiting.first,
+    // A check is waiting while the card's own status is not 검증: one part
+    // landed and another is still to do. The list words it for where the
+    // row stands (`flagsOf` in the page's script).
+    'workLeft': waiting.isNotEmpty && status != BoardStatus.verify,
     'user': turn.user,
     'me': turn.me,
     'arrival': _arrivalOf(e),
@@ -2465,7 +2469,7 @@ function groupsFor(view){
     var checks = pool.filter(function(c){ return live(c) && !c.q.length && c.checks > 0; }).sort(oldest('since'));
     var out = [{t:'결정 필요', rows: decide, skip: ['decide']}];
     verifyGroups(checks).forEach(function(x){
-      x.t = '검증 · ' + x.t; x.pick = true; x.skip = ['check']; out.push(x);
+      x.t = '검증 · ' + x.t; x.pick = true; out.push(x);
     });
     return out;
   }
@@ -2521,10 +2525,17 @@ function countFor(view){
 // 🆕The 실기 대기 chip (유저 2026-10-02: 「실기확인 눈에 안띄니까 질문처럼 답함
 // 대기 이런 태그 붙이고싶어」): a check still waiting on a card that has moved
 // on is folded inside its story, so the row says so.
-function flagsOf(c){
+// 🆕ONE FACT, WORDED FOR WHERE THE ROW STANDS (유저 2026-10-08, on F-283:
+// 「이 카드 왜 검증에있지? 작업끝난건가?」 — and, asked, 「그 줄에 칩 하나 —
+// 작업 남음」). The 검증 groups hold every card that waits on a check,
+// whatever its status, and skipped this chip as their own name repeated; so
+// a card with one part landed and another still to do read there exactly
+// like a finished one. The fact is the head's (`workLeft`): in the card's
+// own list the news is the check, in the 검증 list it is the work.
+function flagsOf(c, g){
   var f = [];
   if (c.q.length) f.push(['decide', '결정 필요' + (c.q.length > 1 ? ' ' + c.q.length : ''), 'run']);
-  if (c.checks && c.status !== 'verify') f.push(['check', '실기 대기', 'run']);
+  if (c.workLeft) f.push(['check', g && g.pick ? '작업 남음' : '실기 대기', 'run']);
   if (c.me && c.status !== 'triage') f.push(['me', '제 차례', 'live']);
   if (c.arrival) f.push(['arrival', c.arrival, c.arrival === '대답' ? 'ok' : 'bad']);
   if (c.gap) f.push(['gap', '카드 없음', 'bad']);
@@ -2533,7 +2544,8 @@ function flagsOf(c){
 
 function rowHtml(c, g){
   var skip = g.skip || [];
-  var chips = flagsOf(c).filter(function(f){ return skip.indexOf(f[0]) < 0; })
+  var chips = flagsOf(c, g)
+    .filter(function(f){ return skip.indexOf(f[0]) < 0; })
     .map(function(f){ return '<span class="chip ' + f[2] + '">' + esc(f[1]) + '</span>'; }).join('');
   var when = c.checks ? c.since : c.updated;
   var a = age(when);

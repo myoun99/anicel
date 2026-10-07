@@ -305,6 +305,47 @@ void main() {
       expect(boardHeads(cards).map((h) => h['id']), ['W']);
     });
 
+    // 유저 2026-10-08, on F-283: 「이 카드 왜 검증에있지? 작업끝난건가?」 — one
+    // part of it had landed and waited on its check, another was still to
+    // do, and the 검증 list showed it like a finished card. Asked how the
+    // row should say so: 「그 줄에 칩 하나 — 작업 남음」.
+    test('🚨a head says when a card waits on a check while work on it is '
+        'left', () {
+      Map<String, Object?> headOf(List<String> lines) =>
+          boardHeads(read(lines)).firstWhere((head) => head['id'] == 'W');
+
+      expect(headOf([tried])['status'], 'verify', reason: '⛔premise');
+      expect(headOf([tried])['workLeft'], isFalse);
+
+      final reopened = moved([tried], '할 일');
+      expect(headOf(reopened)['checks'], 1, reason: '⛔premise: it waits');
+      expect(headOf(reopened)['status'], 'todo', reason: '⛔premise');
+      expect(headOf(reopened)['workLeft'], isTrue);
+
+      expect(headOf([work])['workLeft'], isFalse, reason: 'no check at all');
+    });
+
+    test('the list words that for where the row stands: 「작업 남음」 in the '
+        '검증 groups, which no longer skip the chip, and 「실기 대기」 '
+        'everywhere else', () {
+      final script = boardScript();
+      expect(
+        script,
+        contains(
+          "if (c.workLeft) f.push(['check', "
+          "g && g.pick ? '작업 남음' : '실기 대기', 'run']);",
+        ),
+      );
+      expect(script, contains('flagsOf(c, g)'));
+      expect(script, contains('x.pick = true; out.push(x);'));
+      expect(script, isNot(contains("x.skip = ['check']")));
+      expect(
+        script,
+        isNot(contains("c.status !== 'verify') f.push")),
+        reason: 'the page does not work the fact out a second time',
+      );
+    });
+
     test('a head carries the axes the list groups by', () {
       const tagged = '{"kind":"item","id":"W","tags":["피드백","보드"],'
           '"ts":"2026-10-01T09:05:00"}';
