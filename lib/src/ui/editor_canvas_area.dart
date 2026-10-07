@@ -604,25 +604,32 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// parked contentOverride, the scrub preview's gap branch (both on the gap
   /// parking) and ALL-CUTS playback (on the clock's global frame, R3a).
   ///
-  /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
+  /// 🚨The camera view is the CROP, and it belongs to PLAYBACK alone (user
   /// 2026-08-11). The parked canvas has always shown the whole canvas with the
   /// camera frame drawn OVER it, and a storyboard ruler drag parks per move
   /// (`scrubGlobalFrame` parks the moment the frame belongs to another cut) —
   /// so cropping here made the drag look nothing like the state it started
-  /// from. Two mounts pass false and the answer is the same one the eye
-  /// already had: preview = canvas + overlay, playback = crop.
+  /// from. The parked mounts never crop, and the answer is the same one the
+  /// eye already had: preview = canvas + overlay, playback = crop.
+  ///
+  /// [ofTheRun] is the mount ALL-CUTS playback shows: it follows the run's
+  /// clock, answers the camera toggle, and leaves its pictures to the
+  /// warmer, repainting as they land. The parked mounts follow the gap
+  /// parking and make their own.
   Widget _buildTrackStackView(
     EditorSessionManager session,
     CanvasViewport viewport, {
-    ValueListenable<int?>? globalFrame,
-    bool cameraView = false,
-    Listenable? picturesLanded,
+    bool ofTheRun = false,
   }) => _trackStack(session, viewport, (
-    globalFrame: globalFrame ?? session.editingSession.gapParkingListenable,
+    globalFrame: ofTheRun
+        ? session.playbackRig.playback.globalFrameIndexListenable
+        : session.editingSession.gapParkingListenable,
     positionsOf: session.rowSpans.trackStackContributionsAt,
     paintsFloor: true,
-    cameraView: cameraView,
-    picturesLanded: picturesLanded,
+    cameraView: ofTheRun && widget.cameraViewEnabled.value,
+    picturesLanded: ofTheRun
+        ? session.playbackRig.prerenderScheduler.landings
+        : null,
     key: const ValueKey<String>('canvas-track-stack-view'),
   ));
 
@@ -815,18 +822,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           // single-cut frame (the editing context).
           trackStack:
               session.playbackRig.playback.scope == PlaybackScope.allCuts
-              ? _buildTrackStackView(
-                  session,
-                  viewport,
-                  globalFrame:
-                      session.playbackRig.playback.globalFrameIndexListenable,
-                  // Playback is the one place the crop
-                  // belongs, and there it answers the toggle.
-                  cameraView: widget.cameraViewEnabled.value,
-                  // The run's pictures are the warmer's to make.
-                  picturesLanded:
-                      session.playbackRig.prerenderScheduler.landings,
-                )
+              ? _buildTrackStackView(session, viewport, ofTheRun: true)
               : null,
         ),
         RecordingStreamerOverlay(session: session),

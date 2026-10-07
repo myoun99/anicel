@@ -94,11 +94,12 @@ void main() {
   });
 
   testWidgets('Settings: the project\'s settings are one level in, beside '
-      'the work\'s — FPS, audio, camera frame, playback quality', (
+      'the work\'s — FPS, audio, camera frame, playback mode', (
     tester,
   ) async {
     // 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」: the sill's ⚙
-    // rows, moved.
+    // rows, moved. ↩️The last was the playback QUALITY until the option
+    // went (유저 2026-10-08); the playback MODE has its seat.
     await pumpHome(tester);
 
     await openStrip(tester, 'top-strip-settings-button');
@@ -112,7 +113,7 @@ void main() {
       'project-settings-fps',
       'project-settings-audio-rate',
       'project-settings-camera-size',
-      'project-settings-quality',
+      'project-settings-playback-mode',
     ]) {
       expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
     }

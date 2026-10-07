@@ -625,6 +625,20 @@ void main() {
       expect(log, ['start a.wav @400ms']);
     });
 
+    test('dragged BACK onto a frame that is not there, nothing is started '
+        'only to be stopped — a jump is not answered on a frame the run '
+        'waits on', () {
+      controller.play(scope: PlaybackScope.activeCut);
+      // Frame 5: a.wav alone is sounding (b.wav begins on 6).
+      controller.seekToGlobalFrame(5);
+      log.clear();
+
+      missing.add(1);
+      controller.seekToGlobalFrame(1);
+      expect(controller.isWaiting, isTrue, reason: '⛔premise');
+      expect(log, ['stop a.wav']);
+    });
+
     test('dragged off the frame it waits on, onto one that is there, the '
         'sound starts once — the going-on has one owner', () {
       controller.play(scope: PlaybackScope.activeCut);

@@ -412,6 +412,7 @@ void main() {
           c.enforcer.makeRoomFor(
             bytes: fullImageBytes,
             step: 5,
+            within: c.enforcer.roomForComposites(),
             demand: fromFrameZero(),
           ),
           isFalse,
@@ -424,6 +425,7 @@ void main() {
           c.enforcer.makeRoomFor(
             bytes: fullImageBytes,
             step: 0,
+            within: c.enforcer.roomForComposites(),
             demand: fromFrameZero(),
           ),
           isTrue,
@@ -447,6 +449,7 @@ void main() {
           c.enforcer.makeRoomFor(
             bytes: fullImageBytes,
             step: 0,
+            within: c.enforcer.roomForComposites(),
             demand: fromFrameZero(),
           ),
           isFalse,

@@ -129,10 +129,8 @@ class PlaybackCacheBudget implements PictureRoom {
       _playbackCacheBudgetEnforcer.makeRoomFor(
         bytes: bytes,
         step: step,
+        within: this.bytes,
         demand: _run.demand,
-        reservedForDisplayBytes:
-            _renderCaches.layerFrameImageCache.pinnedBytes,
-        lentBytes: _lentBytes,
       );
 
   /// What an export run holds on this line while it goes — the row

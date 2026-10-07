@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -158,20 +160,8 @@ void main() {
     );
   }
 
-  /// The frame's own painter — the bar at the view's foot paints too.
-  PlaybackFramePainter painterOf(WidgetTester tester) {
-    for (final paint in tester.widgetList<CustomPaint>(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-        matching: find.byType(CustomPaint),
-      ),
-    )) {
-      if (paint.painter case final PlaybackFramePainter painter) {
-        return painter;
-      }
-    }
-    throw StateError('the playback view paints no frame');
-  }
+  PlaybackFramePainter painterOf(WidgetTester tester) =>
+      playbackFramePainter(tester);
 
   testWidgets('shows the warmed composite for the playback frame', (
     tester,

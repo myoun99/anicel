@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
@@ -635,16 +637,7 @@ void main() {
         ),
       );
 
-      final paint = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-          matching: find.byType(CustomPaint),
-        ),
-      );
-      expect(
-        (paint.painter! as PlaybackFramePainter).devicePixelRatio,
-        1.25,
-      );
+      expect(playbackFramePainter(tester).devicePixelRatio, 1.25);
     });
   });
 }

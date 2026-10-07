@@ -140,22 +140,17 @@ class PlaybackCacheBudgetEnforcer {
   }
 
   /// Makes room among the composites for one more of [bytes], wanted [step]
-  /// frames on, by letting go of composites wanted LATER than it — never of
-  /// one wanted sooner, nor of one a screen shows. False when that leaves
-  /// no room: what is held is the window.
+  /// frames on, [within] the bytes they may hold ([roomForComposites]) — by
+  /// letting go of composites wanted LATER than it, never of one wanted
+  /// sooner, nor of one a screen shows. False when that leaves no room:
+  /// what is held is the window.
   bool makeRoomFor({
     required int bytes,
     required int step,
+    required int within,
     FrameDemand? demand,
-    int reservedForDisplayBytes = 0,
-    int lentBytes = 0,
   }) => composites.enforceBudget(
-    maxBytes:
-        roomForComposites(
-          reservedForDisplayBytes: reservedForDisplayBytes,
-          lentBytes: lentBytes,
-        ) -
-        bytes,
+    maxBytes: within - bytes,
     stepOf: demand?.stepOf,
     laterThan: step,
   );

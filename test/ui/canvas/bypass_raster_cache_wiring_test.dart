@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/playback_frame_paint.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -240,13 +242,7 @@ void main() {
         ),
       );
 
-      final paint = tester.widget<CustomPaint>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('canvas-playback-view')),
-          matching: find.byType(CustomPaint),
-        ),
-      );
-      expect(paint.painter, isA<PlaybackFramePainter>());
+      final paint = playbackFramePaint(tester);
       expect(
         paint.willChange,
         isFalse,

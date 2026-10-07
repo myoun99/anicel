@@ -174,6 +174,10 @@ const _notCensused = <String, String>{
       'census reads',
 
   // — Budgets, not holdings. A ceiling is not memory in use.
+  'lib/src/ui/playback/cut_frame_composite_cache.dart → lastComposeLayerBytes':
+      'a size to leave room for — what the picture composed last was made '
+      'of — not a holding: the layer images themselves are '
+      'LayerFrameImageCache.estimatedBytes, which the census reads',
   'lib/src/ui/playback/playback_cache_budget.dart → maxBytes':
       'a CEILING. What is actually held is counted by the two playback '
       'caches the census already reads',

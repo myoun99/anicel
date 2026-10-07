@@ -9,6 +9,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/playback/sleeping_ticker.dart';
 
 /// 유저 2026-10-08: 「3 화면을 프레임만큼만 다시그리도록」.
 ///
@@ -105,7 +106,7 @@ void main() {
 
       await tester.pump(
         frameTime -
-            CanvasPlaybackController.wakeAhead -
+            SleepingTicker.wakeAhead -
             const Duration(milliseconds: 1),
       );
       expect(vsync.ticks, 1, reason: 'not yet');
@@ -120,7 +121,7 @@ void main() {
         reason: '…and it stays awake for the tick that changes it',
       );
 
-      await tester.pump(CanvasPlaybackController.wakeAhead);
+      await tester.pump(SleepingTicker.wakeAhead);
       expect(c.position!.localFrameIndex, 1);
       expect(vsync.ticks, 3);
       expect(asksForAFrame(tester), isFalse, reason: 'asleep again');
@@ -204,7 +205,7 @@ void main() {
       );
 
       heard = 1;
-      await tester.pump(CanvasPlaybackController.deviceAskEvery);
+      await tester.pump(SleepingTicker.askEvery);
       expect(c.position!.localFrameIndex, 1);
       expect(vsync.ticks, 2);
       expect(asksForAFrame(tester), isFalse, reason: 'asleep again');
@@ -232,10 +233,55 @@ void main() {
       expect(vsync.ticks, 2, reason: '⛔premise: it ticked unasked');
       final askedByThen = asked;
 
-      await tester.pump(CanvasPlaybackController.deviceAskEvery * 10);
+      await tester.pump(SleepingTicker.askEvery * 10);
       expect(asked - askedByThen, 10);
       c.stop();
       c.detachTicker();
+    });
+
+    // 🚨Two ways a clock ends that did not take its waker with them: they
+    // disposed the ticker by hand, and the device went on being asked
+    // every few milliseconds for good.
+    testWidgets('a view that goes away takes the asker with it', (
+      tester,
+    ) async {
+      final vsync = _CountingVSync();
+      final c = controller()..attachTicker(vsync);
+      addTearDown(c.dispose);
+      var asked = 0;
+      c.resolveAudioClock = () {
+        asked += 1;
+        return const AudioClockStatus(globalFrame: 0);
+      };
+
+      c.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      c.detachTicker();
+      final askedByThen = asked;
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(asked, askedByThen);
+      c.stop();
+    });
+
+    testWidgets('a controller that is disposed asks nobody after', (
+      tester,
+    ) async {
+      final vsync = _CountingVSync();
+      final c = controller()..attachTicker(vsync);
+      var asked = 0;
+      c.resolveAudioClock = () {
+        asked += 1;
+        return const AudioClockStatus(globalFrame: 0);
+      };
+
+      c.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      c.dispose();
+      final askedByThen = asked;
+
+      await tester.pump(const Duration(seconds: 1));
+      expect(asked, askedByThen);
     });
 
     testWidgets('a device that ran out wakes the ticker, though it says the '
@@ -252,7 +298,7 @@ void main() {
       expect(c.isActive, isTrue, reason: '⛔premise');
 
       status = const AudioClockStatus(globalFrame: 3, ended: true);
-      await tester.pump(CanvasPlaybackController.deviceAskEvery);
+      await tester.pump(SleepingTicker.askEvery);
       expect(c.isActive, isFalse);
       c.detachTicker();
     });
@@ -291,7 +337,7 @@ void main() {
       c.play(scope: PlaybackScope.activeCut);
       await tester.pump();
       heard = 1;
-      await tester.pump(CanvasPlaybackController.deviceAskEvery);
+      await tester.pump(SleepingTicker.askEvery);
       expect(c.isWaiting, isTrue, reason: '⛔premise');
       final askedByThen = asked;
 

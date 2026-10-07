@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
@@ -12,6 +10,7 @@ import '../../models/track_transitions.dart'
 import '../../services/playback/playback_frame_mapping.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'playback_transport.dart';
+import 'sleeping_ticker.dart';
 
 /// What plays: the active cut (timeline context) or every cut of the active
 /// track in sequence (storyboard context).
@@ -109,7 +108,10 @@ class CanvasPlaybackController extends ChangeNotifier
   void Function(int globalFrame)? onSeeked;
 
   TickerProvider? _vsync;
-  Ticker? _ticker;
+
+  /// The run's clock: a ticker that sleeps between the frames it has to
+  /// show ([SleepingTicker], where the reason and the measurements are).
+  late final SleepingTicker _clock = SleepingTicker(_onTick);
 
   final ValueNotifier<int?> _localFrameIndex = ValueNotifier<int?>(null);
 
@@ -243,14 +245,13 @@ class CanvasPlaybackController extends ChangeNotifier
   /// before or after attachment (ticking starts once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
-    if (isPlaying && !_waiting && _ticker == null) {
+    if (isPlaying && !_waiting && !_clock.isRunning) {
       _startTicker();
     }
   }
 
   void detachTicker() {
-    _ticker?.dispose();
-    _ticker = null;
+    _stopTicker();
     _vsync = null;
   }
 
@@ -381,8 +382,7 @@ class CanvasPlaybackController extends ChangeNotifier
 
   @override
   void dispose() {
-    _ticker?.dispose();
-    _ticker = null;
+    _stopTicker();
     _localFrameIndex.dispose();
     _globalFrameIndexNotifier.dispose();
     _isActiveNotifier.dispose();
@@ -445,21 +445,13 @@ class CanvasPlaybackController extends ChangeNotifier
     if (vsync == null) {
       return;
     }
-    _stopTicker();
     _baseGlobalFrame = _currentGlobalFrame;
-    final ticker = vsync.createTicker(_onTick);
-    _ticker = ticker;
-    unawaited(ticker.start());
+    _clock.start(vsync);
   }
 
-  void _stopTicker() {
-    // No waker outlives its ticker: every way a run's clock ends — stopped,
-    // dragged, stood on a frame to wait, its view gone — comes through here.
-    _waker?.cancel();
-    _waker = null;
-    _ticker?.dispose();
-    _ticker = null;
-  }
+  /// Every way a run's clock ends — stopped, dragged, stood on a frame to
+  /// wait, its view gone, the controller itself — comes through here.
+  void _stopTicker() => _clock.stop();
 
   void _onTick(Duration elapsed) {
     final playlist = _playlist;
@@ -470,7 +462,11 @@ class CanvasPlaybackController extends ChangeNotifier
     final audio = resolveAudioClock?.call();
     if (audio != null) {
       _onAudioClockTick(audio, total);
-      _sleepUntilTheDeviceMovesOn();
+      // ⚠️In the app this is the clock of every run, silent ones too: an
+      // empty schedule uploads like any other and rides the device. What
+      // the device counts is samples handed over, which climb a stair some
+      // 10ms to the step, so it cannot say when its next frame is due.
+      _clock.untilItSays(_theDeviceMovedOn);
       return;
     }
     final rate = resolveFrameRate();
@@ -485,103 +481,21 @@ class CanvasPlaybackController extends ChangeNotifier
       }
     }
     _goTo(frame, total);
-    _sleepUntilDue(rate.frameStart(played + 1) - elapsed);
+    _clock.untilDue(rate.frameStart(played + 1) - elapsed);
   }
 
-  /// 🚨THE SCREEN IS REDRAWN AS OFTEN AS THE FRAME CHANGES (유저 2026-10-08:
-  /// 「3 화면을 프레임만큼만 다시그리도록」).
-  ///
-  /// A ticker that runs asks the engine for a frame at every vsync, and the
-  /// engine composites one whether or not anything changed. At 24 frames a
-  /// second that is three screen frames in five drawn for nothing at 60Hz
-  /// and five in six at 144 — measured 2026-10-07 on Windows: 1452 app
-  /// frames in 11 seconds of playback, 8.5 of those seconds spent
-  /// rasterising, and the warmer underneath making its pictures at half
-  /// its idle speed for it.
-  ///
-  /// So between frames the run's ticker SLEEPS — muted: time goes on
-  /// running in a muted ticker — and is woken when the frame is about to
-  /// change. The tick that changes the frame is still the ticker's, on a
-  /// vsync, read off the clock it always read. How it is woken is the
-  /// clock's:
-  ///
-  /// - the wall clock knows when its next frame is due, and a timer wakes
-  ///   the ticker [wakeAhead] before that ([_sleepUntilDue]);
-  /// - the device does not. What it counts is samples handed over, which
-  ///   climb a stair some 10ms to the step, so it is ASKED — off the
-  ///   ticker, which costs no screen frame — and the ticker is woken when
-  ///   it says another frame ([_sleepUntilTheDeviceMovesOn]). ⚠️In the app
-  ///   this is the clock of every run, silent ones too: an empty schedule
-  ///   uploads like any other and rides the device.
-  ///
-  /// ⚠️`Ticker.muted` is by convention its provider's to write — a route
-  /// that is not shown silences its tickers through it. The two writers do
-  /// not fight: a ticker the provider un-silences ticks once, finds its
-  /// frame unchanged and sleeps again; one the provider silenced is woken
-  /// by its waker a tick a frame, which is less than it ticked before.
-  Timer? _waker;
-
-  /// How long before a frame is due the wall clock's ticker is woken for it.
-  ///
-  /// The wake is a timer, and a timer comes late where a vsync does not —
-  /// measured on Windows under load: 1.8ms at the median, 4.5 at the worst.
-  /// Woken too late for the vsync that would have changed the frame, the
-  /// frame changes on the next one: one screen frame late, and only when
-  /// that vsync fell within the lateness of the frame's boundary — where
-  /// which of the two shows it is a toss already. Woken early, one tick
-  /// finds the frame unchanged and it is drawn again.
-  @visibleForTesting
-  static const Duration wakeAhead = Duration(milliseconds: 4);
-
-  /// How often a sleeping ticker's device is asked what frame is heard:
-  /// twice within a screen frame of the fastest screens, so a frame changes
-  /// on the vsync it would have, or the one after.
-  @visibleForTesting
-  static const Duration deviceAskEvery = Duration(milliseconds: 3);
-
-  void _sleepUntilDue(Duration due) {
-    final sleep = due - wakeAhead;
-    if (sleep > Duration.zero) {
-      _sleep(() => Timer(sleep, _wake));
-    }
-  }
-
-  void _sleepUntilTheDeviceMovesOn() {
-    _sleep(
-      () => Timer.periodic(deviceAskEvery, (_) {
-        final playlist = _playlist;
-        final audio = resolveAudioClock?.call();
-        // Awake for whatever is not 「the same frame, still」: another
-        // frame, the end, or a device that no longer carries the run — the
-        // tick reads the clock again and does what it does.
-        if (playlist == null ||
-            audio == null ||
-            audio.ended ||
-            _heardFrame(audio, _playbackTotalFrames(playlist)) !=
-                _currentGlobalFrame) {
-          _wake();
-        }
-      }),
-    );
-  }
-
-  /// Silences the run's ticker — if it still has one: the tick that asks
-  /// may have ended the run, or stood it on a frame to wait — and keeps
-  /// what [wakes] it.
-  void _sleep(Timer Function() wakes) {
-    final ticker = _ticker;
-    if (ticker == null) {
-      return;
-    }
-    _waker?.cancel();
-    ticker.muted = true;
-    _waker = wakes();
-  }
-
-  void _wake() {
-    _waker?.cancel();
-    _waker = null;
-    _ticker?.muted = false;
+  /// Whether a sleeping clock has anything to wake for: whatever is not
+  /// 「the same frame, still」 — another frame, the end, or a device that no
+  /// longer carries the run. The tick reads the clock again and does what
+  /// it does.
+  bool _theDeviceMovedOn() {
+    final playlist = _playlist;
+    final audio = resolveAudioClock?.call();
+    return playlist == null ||
+        audio == null ||
+        audio.ended ||
+        _heardFrame(audio, _playbackTotalFrames(playlist)) !=
+            _currentGlobalFrame;
   }
 
   /// A run that plays once has run out: it stops on its last frame — once
