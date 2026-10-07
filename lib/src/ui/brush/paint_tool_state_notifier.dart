@@ -115,27 +115,37 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
     }
   }
 
+  /// Puts the brush [previous] held back in its owner's place, as it was
+  /// left: a painting tool's own, and — through the shape tool — the brush
+  /// tool's ([canvasToolBrushOwner]). A tool that holds no brush of anyone's
+  /// banks nothing.
+  void _bankBrushHeldBy(BrushToolState previous) {
+    final owner = canvasToolBrushOwner(previous.tool);
+    if (owner != null) {
+      _paintToolBank[owner] = previous;
+    }
+  }
+
+  /// The banked brush [tool] takes up — its owner's — or null when it holds
+  /// none, or none has been banked for it yet.
+  BrushToolState? _brushBankedFor(CanvasTool tool) =>
+      switch (canvasToolBrushOwner(tool)) {
+        null => null,
+        final owner => _paintToolBank[owner],
+      };
+
   @override
   set value(BrushToolState next) {
     final previous = value;
     if (next.tool != previous.tool) {
-      // The tool whose brush the outgoing tool held gets it back as it
-      // was left: a painting tool's own, and — through the shape tool — the
-      // brush tool's ([canvasToolBrushOwner]).
-      final lent = canvasToolBrushOwner(previous.tool);
-      if (lent != null) {
-        _paintToolBank[lent] = previous;
-      }
+      _bankBrushHeldBy(previous);
       // Restore ONLY on a pure tool switch (the caller changed nothing but
       // the tool) — an assignment that also carries new settings (a preset
       // application landing on the brush) must win over the bank, and so
       // must a brush taken up whole ([holdBrush]).
       final pureToolSwitch =
           !_holding && next.copyWith(tool: previous.tool) == previous;
-      final owner = canvasToolBrushOwner(next.tool);
-      final stored = pureToolSwitch && owner != null
-          ? _paintToolBank[owner]
-          : null;
+      final stored = pureToolSwitch ? _brushBankedFor(next.tool) : null;
       if (stored != null) {
         // 🚨★★★ 유저 #14 (2026-08-14): 「선택툴에서 올가미 선택하고 브러시가면
         // 초기화되는거」 — ⛔THE LIST RUNS THE OTHER WAY NOW.
