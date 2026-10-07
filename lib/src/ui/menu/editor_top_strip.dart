@@ -1150,48 +1150,54 @@ class _BrushGroupButton extends StatelessWidget {
   static const double _lineGap = 6;
 
   @override
-  Widget build(BuildContext context) => RailButton(
-    keyValue: 'top-strip-brush-group-button',
-    // The names of what is under it, in the words those controls wear.
-    tooltip:
+  Widget build(BuildContext context) {
+    // The names of what is under it, in the words those controls wear —
+    // what the button says, and what its popover is called (the popover's
+    // name is read out, so it is words and not a key).
+    final name =
         '${AppText.strings.brBlend} · ${AppText.strings.brSize} · '
-        '${AppText.strings.brOpacity}',
-    icon: Icons.more_horiz,
-    selected: false,
-    onPressed: () => unawaited(
-      showAnchoredPopup<void>(
-        context,
-        label: 'top-strip-brush-group-popup',
-        width:
-            _padding * 2 +
-            _BrushValueBars.fullBar +
-            _BrushValueBars._gap +
-            PressureCurveButton.slotWidth,
-        height: _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
-        builder: (context, _) => Padding(
-          padding: const EdgeInsets.all(_padding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: _BrushValueBars._barHeight,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _BlendModeControl(brushTool: brushTool),
+        '${AppText.strings.brOpacity}';
+    return RailButton(
+      keyValue: 'top-strip-brush-group-button',
+      tooltip: name,
+      icon: Icons.more_horiz,
+      selected: false,
+      onPressed: () => unawaited(
+        showAnchoredPopup<void>(
+          context,
+          label: name,
+          width:
+              _padding * 2 +
+              _BrushValueBars.fullBar +
+              _BrushValueBars._gap +
+              PressureCurveButton.slotWidth,
+          height:
+              _padding * 2 + _BrushValueBars._barHeight * 3 + _lineGap * 2,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.all(_padding),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: _BrushValueBars._barHeight,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: _BlendModeControl(brushTool: brushTool),
+                  ),
                 ),
-              ),
-              const SizedBox(height: _lineGap),
-              _BrushValueBars(
-                brushTool: brushTool,
-                widths: _BrushValueBars.full,
-                axis: Axis.vertical,
-              ),
-            ],
+                const SizedBox(height: _lineGap),
+                _BrushValueBars(
+                  brushTool: brushTool,
+                  widths: _BrushValueBars.full,
+                  axis: Axis.vertical,
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Size and opacity, each followed by its pressure curve button.
