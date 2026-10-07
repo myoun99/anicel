@@ -73,21 +73,23 @@ void main() {
   late ValueNotifier<bool> brushAllowed;
   late ValueNotifier<BrushToolState> brushTool;
 
-  BrushStrokeCommitData oneDab({double at = 20}) => BrushStrokeCommitData(
-    sourceDabs: [
-      BrushDab(
-        center: CanvasPoint(x: at, y: at),
-        color: 0xFF000000,
-        size: 4,
-        opacity: 1,
-        flow: 1,
-        hardness: 1,
-        tipShape: BrushTipShape.round,
-        pressure: 1,
-        sequence: 0,
-      ),
-    ],
-  );
+  /// One dab at ([at], [down]) — [down] is [at] unless it is said.
+  BrushStrokeCommitData oneDab({double at = 20, double? down}) =>
+      BrushStrokeCommitData(
+        sourceDabs: [
+          BrushDab(
+            center: CanvasPoint(x: at, y: down ?? at),
+            color: 0xFF000000,
+            size: 4,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ],
+      );
 
   /// The screen, at [pixelRatio] image pixels to a logical one.
   Future<_Shot> shoot(WidgetTester tester, {double pixelRatio = 1}) async {
@@ -148,13 +150,13 @@ void main() {
                 brushAllowed: brushAllowed.value,
               ),
               () {
-                // On the sheet's SECOND row, on clear paper — 20 of the
-                // sheet's units in from the strip's corner, in the ink's
-                // pixels (the paper's, F-294). ⛔Not on the first row: the
-                // playhead stands there, and its highlight is laid over
-                // the print and under the live windows — ink on that row is
-                // tinted with the brush off and not with it on, a question
-                // of its own (board: timesheet-playhead-row-over-ink).
+                // On the sheet's FIRST row, where the playhead stands — 20
+                // of the sheet's units in from the strip's corner and half
+                // a row down, in the ink's pixels (the paper's, F-294). Its
+                // highlight lies over the ink with the brush on as off
+                // (board: timesheet-playhead-row-over-ink): it lay over the
+                // print and under the live windows, and this dab sat on the
+                // second row to stay out of that question.
                 final cut = session.requireActiveCut;
                 final scale = TimesheetDocumentLayout(
                   document: TimesheetDocument.fromCut(
@@ -166,7 +168,10 @@ void main() {
                 ink.commitStroke(
                   plane: TimesheetInkPlane.strip,
                   key: timesheetInkStripKey(cut.id, 0),
-                  strokeData: oneDab(at: 20 * scale),
+                  strokeData: oneDab(
+                    at: 20 * scale,
+                    down: TimesheetDocumentLayout.rowHeight / 2 * scale,
+                  ),
                   historyManager: session.historyManager,
                 );
               },

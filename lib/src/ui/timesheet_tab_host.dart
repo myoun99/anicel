@@ -531,42 +531,6 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                     ),
                             ),
                           ),
-                          // The playhead row highlight repaints ALONE (R13-2):
-                          // cursor moves, seeks and playback ticks drive this
-                          // thin layer through its repaint listenable — the
-                          // sheet painter above never rebuilds for them.
-                          Positioned.fill(
-                            child: IgnorePointer(
-                              child: RepaintBoundary(
-                                child: CustomPaint(
-                                  key: const ValueKey<String>(
-                                    'timesheet-playhead-overlay',
-                                  ),
-                                  painter: TimesheetPlayheadPainter(
-                                    effectiveRatio:
-                                        EffectiveDevicePixelRatio.of(context),
-                                    document: document,
-                                    layout: layout,
-                                    viewport: viewport,
-                                    resolvePlayheadFrame: () =>
-                                        _resolvePlayheadFrame(session),
-                                    repaint: Listenable.merge([
-                                      session.editingFrameCursor,
-                                      session.frameSeekCommitted,
-                                      session
-                                          .editingSession
-                                          .gapParkingListenable,
-                                      session
-                                          .playbackRig
-                                          .playback
-                                          .globalFrameIndexListenable,
-                                    ]),
-                                  ),
-                                  child: const SizedBox.expand(),
-                                ),
-                              ),
-                            ),
-                          ),
                           // Under the ink windows: reachable exactly when the
                           // brush is off (the switch doubles as the edit-mode
                           // switch).
@@ -604,6 +568,51 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 cacheInvalidationSink: _cacheInvalidationSink,
                               ),
                             ),
+                          // The playhead row highlight repaints ALONE (R13-2):
+                          // cursor moves, seeks and playback ticks drive this
+                          // thin layer through its repaint listenable — the
+                          // sheet painter above never rebuilds for them.
+                          //
+                          // 🚨OVER EVERYTHING, the live ink windows included
+                          // (board: timesheet-playhead-row-over-ink). It lay
+                          // over the printed ink and under the live windows,
+                          // so writing on the playhead's row was tinted with
+                          // the brush off and not with it on — and the brush
+                          // switch changes nothing on a sheet (F-215, 유저
+                          // 2026-09-28: 「on하든off하든 바뀌는게 없어야」). It
+                          // takes no input, so the pen goes through it.
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: RepaintBoundary(
+                                child: CustomPaint(
+                                  key: const ValueKey<String>(
+                                    'timesheet-playhead-overlay',
+                                  ),
+                                  painter: TimesheetPlayheadPainter(
+                                    effectiveRatio:
+                                        EffectiveDevicePixelRatio.of(context),
+                                    document: document,
+                                    layout: layout,
+                                    viewport: viewport,
+                                    resolvePlayheadFrame: () =>
+                                        _resolvePlayheadFrame(session),
+                                    repaint: Listenable.merge([
+                                      session.editingFrameCursor,
+                                      session.frameSeekCommitted,
+                                      session
+                                          .editingSession
+                                          .gapParkingListenable,
+                                      session
+                                          .playbackRig
+                                          .playback
+                                          .globalFrameIndexListenable,
+                                    ]),
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       );
                     },
