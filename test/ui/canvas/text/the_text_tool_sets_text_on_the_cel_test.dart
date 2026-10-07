@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
@@ -438,6 +439,47 @@ void main() {
       );
       expect(chrome, paintsExactlyCountTimes(#drawLine, 2));
     });
+  });
+
+  // 🗣️TS9, 유저: 「1핑거가 플립모드인데도 선택툴고르고 터치하면 선택이
+  // 작동함. 드로잉모드가 아닌이상은 툴이 작동하면 안되지」 — said of the
+  // selection tool, and the law of every tool's layer
+  // (`AppInput.toolAcceptsPointer`).
+  testWidgets('🚨a FINGER begins a text only while one finger draws: in any '
+      'other mode the finger is the view\'s', (tester) async {
+    addTearDown(() => AppInput.settings.value = const AppInputSettings());
+    final c = await textToolInHand(tester);
+    // One finger moves the view (it draws, as the app starts).
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.navigate,
+    );
+    await pumpFrames(tester);
+    expect(AppInput.touchDraws, isFalse, reason: '⛔fixture');
+
+    Future<void> tapWithAFinger() async {
+      final finger = await tester.startGesture(
+        onScreen(tester, c.dx, c.dy),
+        kind: PointerDeviceKind.touch,
+      );
+      await tester.pump();
+      await finger.up();
+      await pumpFrames(tester);
+    }
+
+    await tapWithAFinger();
+
+    expect(textToolOf(tester).session, isNull);
+    expect(textField(), findsNothing);
+
+    // ⛔CONTROL: the very tap, once one finger draws, begins one.
+    AppInput.settings.value = AppInput.settings.value.copyWith(
+      touchDragOneFinger: CanvasTouchDragAction.draw,
+    );
+    await pumpFrames(tester);
+    await tapWithAFinger();
+
+    expect(textToolOf(tester).session, isNotNull);
+    expect(textField(), findsOneWidget);
   });
 
   testWidgets('🚨another frame taken lands the text on ITS cel — the one it '
