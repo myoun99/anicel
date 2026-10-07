@@ -305,7 +305,13 @@ void main() {
       );
       await Future<void>.delayed(const Duration(milliseconds: 150));
 
-      expect(scheduler.progress.value.cached, 0);
+      expect(
+        scheduler.progress.value,
+        const PrerenderProgress(cached: 0, total: 4),
+        reason: 'held behind the quiet window, it says how much is wanted. '
+            'A bar that read 「all made」 here would fall back the moment '
+            'the warm began',
+      );
       expect(
         f.composites.validCompositeOrNull(
           cut: cut(),
@@ -682,12 +688,6 @@ void main() {
 
         playhead = 2;
         scheduler.follow(run());
-        expect(
-          scheduler.progress.value,
-          const PrerenderProgress(cached: 0, total: 4),
-          reason: 'a new demand says at once how much is wanted — a run '
-              'that renders first reads this the moment it begins',
-        );
         await rested(scheduler);
 
         expect(made, [2, 3, 0, 1]);

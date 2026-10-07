@@ -212,6 +212,32 @@ void main() {
       c.detachTicker();
     });
 
+    testWidgets('a tick it did not ask for leaves one asker, not two', (
+      tester,
+    ) async {
+      final vsync = _CountingVSync();
+      final c = controller()..attachTicker(vsync);
+      addTearDown(c.dispose);
+      var asked = 0;
+      c.resolveAudioClock = () {
+        asked += 1;
+        return const AudioClockStatus(globalFrame: 0);
+      };
+
+      c.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      // Its provider un-silences it: a route come back into view.
+      vsync.last!.muted = false;
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(vsync.ticks, 2, reason: '⛔premise: it ticked unasked');
+      final askedByThen = asked;
+
+      await tester.pump(CanvasPlaybackController.deviceAskEvery * 10);
+      expect(asked - askedByThen, 10);
+      c.stop();
+      c.detachTicker();
+    });
+
     testWidgets('a device that ran out wakes the ticker, though it says the '
         'same frame: a run played once ends', (tester) async {
       final vsync = _CountingVSync();
