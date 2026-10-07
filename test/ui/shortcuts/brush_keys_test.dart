@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_group.dart';
 import 'package:anicel/src/models/brush_group_id.dart';
 import 'package:anicel/src/models/brush_preset.dart';
@@ -26,6 +27,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
     show LayerFoldTwirl;
 
@@ -291,6 +293,19 @@ void main() {
         expect(bindings.isTouchOverridden('no-such-action'), isFalse);
       });
     });
+  });
+
+  test('the brush category has a word in every language', () {
+    for (final language in AppLanguage.values) {
+      if (language == AppLanguage.en) {
+        continue;
+      }
+      expect(
+        AppStrings.of(language).shortcutCategory(brushActionCategory, ''),
+        isNotEmpty,
+        reason: language.name,
+      );
+    }
   });
 
   group('the port', () {

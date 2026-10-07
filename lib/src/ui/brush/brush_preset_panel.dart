@@ -1,4 +1,6 @@
 import '../widgets/app_tooltip.dart';
+import '../shortcuts/brush_actions.dart';
+import '../shortcuts/editor_shortcut_scope.dart';
 import '../widgets/app_icon_button.dart';
 import 'dart:async';
 
@@ -949,6 +951,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             final tab = _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
               label: group?.name ?? brushRootSectionLabel,
+              shortcuts: [if (group != null) brushGroupActionId(group.id)],
               icon: group?.icon,
               showIcon: _railShowIcon,
               showName: _railShowName,
@@ -1232,7 +1235,13 @@ class _BrushGroupTab extends StatelessWidget {
     this.showName = false,
     this.showTooltip = true,
     this.onEdit,
+    this.shortcuts = const [],
   });
+
+  /// The actions this tab is the button of (I-56) — a group's tab is its
+  /// group's shortcut row, and its tooltip wears that row's key as every
+  /// button's does. The root section's tab has none: it is not a group.
+  final List<String> shortcuts;
 
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
   /// a tab index while a brush is being dragged over it.
@@ -1380,7 +1389,7 @@ class _BrushGroupTab extends StatelessWidget {
     // switch groups under the finger.
     final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
     final face = showTooltip
-        ? AppTooltip(message: label, child: instant)
+        ? ShortcutTooltip(label: label, shortcuts: shortcuts, child: instant)
         : instant;
     return SizedBox(height: extent, child: face);
   }

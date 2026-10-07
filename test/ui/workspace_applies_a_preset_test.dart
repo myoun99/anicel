@@ -23,6 +23,7 @@ import 'package:anicel/src/ui/shortcuts/brush_actions.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/app_tooltip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import '../helpers/project_scratch_folder.dart';
 
@@ -938,6 +939,34 @@ void main() {
       );
       expect(tileOf(x[1]), findsOneWidget, reason: 'the tab itself is shown');
       expect(tileOf(y.first), findsNothing);
+    });
+
+    testWidgets('a group\'s tab wears its key, as every button does', (
+      tester,
+    ) async {
+      await pumpWithPresets(tester);
+      final [x, ...] = otherTabsWithAtLeast(tester, 2);
+      final group = groupOf(tester, x.first);
+      final name = panel(tester).groups
+          .firstWhere((candidate) => candidate.id == group)
+          .name;
+      String? tipOfTab() => tester
+          .widget<AppTooltip>(
+            find.ancestor(
+              of: find.byKey(
+                ValueKey<String>('brush-preset-tab-${group.value}'),
+              ),
+              matching: find.byType(AppTooltip),
+            ).first,
+          )
+          .message;
+      expect(tipOfTab(), name);
+
+      keys(tester).setActivators(brushGroupActionId(group), const [
+        SingleActivator(k),
+      ]);
+      await tester.pump();
+      expect(tipOfTab(), '$name (K)');
     });
 
     testWidgets('with a tool in hand that paints nothing, a group\'s key '
