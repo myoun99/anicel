@@ -50,6 +50,13 @@ typedef MachineSetup = ({
   String? oldMemory,
 });
 
+/// The settings file this writes — this machine's alone, so the repository
+/// ignores it by name (`.gitignore`). ⚠️On the first machine a global
+/// ignore of its own hid the file; the second clone had none, and showed it
+/// as work to commit (2026-10-07, the Surface).
+String settingsPathOf(MachineSetup setup) =>
+    '${setup.repo}/.claude/settings.local.json';
+
 /// The address every tool is handed as 「the board」 on this machine.
 ///
 /// ⚠️On the machine that holds it too: a session's record goes through the
@@ -261,7 +268,7 @@ void main(List<String> args) {
     exit(2);
   }
 
-  final file = File('${setup.repo}/.claude/settings.local.json');
+  final file = File(settingsPathOf(setup));
   final before = file.existsSync() ? file.readAsStringSync() : '{}';
   final settings = settingsWith(
     jsonDecode(before) as Map<String, dynamic>,

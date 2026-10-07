@@ -364,4 +364,31 @@ void main() {
       expect(ask(const []).refusal, isNotNull);
     });
   });
+
+  // 2026-10-07, the Surface: the second clone showed `.claude/` as work to
+  // commit. The first machine had hidden it with files only it has — its
+  // global ignore and its clone's info/exclude — and a commit on a machine
+  // that borrows the trunk is refused by its next `lane.sh sync`.
+  group('what the tools make on a machine, the repository ignores', () {
+    final ignored = {
+      for (final line in File('.gitignore').readAsLinesSync()) line.trim(),
+    };
+
+    test('the settings file the installer writes', () {
+      final path = settingsPathOf(holder);
+      expect(path, startsWith('${holder.repo}/'));
+      expect(ignored, contains(path.substring(holder.repo.length + 1)));
+    });
+
+    test('the folder the lane script keeps its worktrees in', () {
+      const head = r'LANES="$ROOT/';
+      final line = File('tool/lane.sh')
+          .readAsLinesSync()
+          .map((line) => line.trim())
+          .singleWhere((line) => line.startsWith(head));
+      final folder = line.substring(head.length, line.length - 1);
+      expect(folder, isNotEmpty);
+      expect(ignored, contains('$folder/'));
+    });
+  });
 }

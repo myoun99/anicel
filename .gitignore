@@ -57,3 +57,13 @@ app.*.map.json
 *.certSigningRequest
 *.mobileprovision
 AuthKey_*.p8
+
+# Each machine's own, made there by the repository's tools: the settings a
+# machine's sessions run by (tool/session_hooks/install.dart writes them)
+# and the lanes' worktrees (tool/lane.sh). ⚠️The first machine hid both with
+# files only it has — its global ignore and its clone's info/exclude — so a
+# second clone showed them as work to commit (2026-10-07, the Surface), and
+# a commit on a machine that borrows the trunk is refused by its next
+# `lane.sh sync`.
+.claude/settings.local.json
+.claude/worktrees/
