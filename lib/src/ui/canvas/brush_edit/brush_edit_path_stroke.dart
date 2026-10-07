@@ -33,7 +33,11 @@ class _BrushEditPathStroke {
     }
     if (!_state.widget.editable) {
       // Nothing to draw on: ask for the cel, as a press that draws does
-      // (I-10, [_BrushEditCelPress]).
+      // (I-10, [_BrushEditCelPress]). ⚠️The shape tool's own press has
+      // asked already and its cel is here by now
+      // (`CanvasSelectionLayer.onPressNeedsCel`); this is for a caller that
+      // did not, and its block is settled as a step of its own before the
+      // stroke can claim it.
       if (!(_state.widget.onPressNeedsCel?.call() ?? false)) {
         return false;
       }
@@ -56,7 +60,6 @@ class _BrushEditPathStroke {
     }
     _state._stroke.beginToolStroke(
       path.first,
-      towards: path[1],
       startsInsidePasteboard: _state._isInsidePasteboard(path.first),
       // One path, one roll: the same shape drawn again rolls the same
       // scatter and jitter.

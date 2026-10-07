@@ -78,6 +78,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onCutShape,
     this.onFillShape,
     this.onDrawShape,
+    this.onPressNeedsCel,
     this.symmetry,
     this.selectionCommands,
     this.onDragActiveChanged,
@@ -182,6 +183,21 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// ⚠️A PATH, not an outline: the line is two ends with no inside, so it
   /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).
   final ValueChanged<DrawnShapePath>? onDrawShape;
+
+  /// Asks the host for a cel to draw on, for a press of the SHAPE tool on a
+  /// frame that has none: true when one was made, false when none could be
+  /// — and then the host has said why. Null where a cel is already there,
+  /// or the host makes none.
+  ///
+  /// 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE DOES (I-10).
+  /// The shape tool's drag is this layer's, and this layer lies over the
+  /// drawing view — which stands down on an empty frame and would have
+  /// asked — so it asks in the view's stead, AT THE PRESS, as the text
+  /// tool's layer does. The cel is there by the release, so the shape lands
+  /// inside the event that lifts the pen and takes the block made for it
+  /// into its own step of undo; asked at the release, the block would be
+  /// settled as a step of its own before the shape could claim it.
+  final bool Function()? onPressNeedsCel;
 
   /// The symmetry guide acting right now, in CANVAS coordinates — an
   /// outline drawn here is copied by it the same way a stroke is.
@@ -2149,6 +2165,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // polygon is about to fold into — the PS/CSP read), and the RELEASE
       // records the combination as one undoable step. A pending move
       // session confirms first (R16-①: never revert, always confirm).
+      //
+      // The shape tool on a frame with no cel asks for one first
+      // ([CanvasSelectionLayer.onPressNeedsCel]). A press refused traces
+      // nothing: the host has said why, and there is nowhere to draw.
+      if (widget.tool == CanvasSelectionTool.drawShape &&
+          !(widget.onPressNeedsCel?.call() ?? true)) {
+        return;
+      }
       _confirmMoveSession();
       setState(() {
         _drag = MarqueeDrag(

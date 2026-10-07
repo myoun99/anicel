@@ -72,10 +72,13 @@ class _BrushEditStroke {
   /// numbers, which count up from zero.
   static const int _toolsOwnStroke = -1;
 
-  /// A stroke the TOOL lays begins at [canvasPosition], heading [towards]
-  /// its next point (I-69) — no pointer under it and no pen: the pressure
-  /// rests at full ([_BrushEditPressure.restInput]), and its first dab goes
-  /// out at once, already knowing which way the stroke sets off.
+  /// A stroke the TOOL lays begins at [canvasPosition] (I-69) — no pointer
+  /// under it and no pen: the pressure rests at full
+  /// ([_BrushEditPressure.restInput]), and nothing is laid here. Its first
+  /// dab is its first advance's, which finds no dab before it and lays the
+  /// start of its segment, turned the way the segment runs
+  /// ([advanceStrokeTo]). A pen's press lays a dab of its own because a pen
+  /// that never moves has still pressed; a path always goes on.
   ///
   /// ⚠️Nothing steadies it and nothing snaps it, and not because anything
   /// here says so: its points go straight to [advanceStrokeTo], past the
@@ -89,7 +92,6 @@ class _BrushEditStroke {
   /// pointer, and no pointer event is heard in between.
   void beginToolStroke(
     CanvasPoint canvasPosition, {
-    required CanvasPoint towards,
     required bool startsInsidePasteboard,
     required int dice,
   }) {
@@ -104,15 +106,6 @@ class _BrushEditStroke {
       startsInsidePasteboard: startsInsidePasteboard,
       dice: dice,
     );
-    if (startsInsidePasteboard) {
-      _paintPress(
-        canvasPosition,
-        directionDegrees: strokeDirectionDegrees(
-          from: canvasPosition,
-          to: towards,
-        ),
-      );
-    }
   }
 
   /// THE STROKE IS ARMED — everything a stroke stands on before its first
@@ -215,10 +208,8 @@ class _BrushEditStroke {
     paint();
   }
 
-  /// The stroke's FIRST dab, under the press. [directionDegrees] is which
-  /// way the stroke sets off when its beginner already knows (a stroke the
-  /// tool lays); a pen's is learnt from its first move.
-  void _paintPress(CanvasPoint canvasPosition, {double? directionDegrees}) {
+  /// The stroke's FIRST dab, under the press.
+  void _paintPress(CanvasPoint canvasPosition) {
     final initialDabs = _state._pressure.withPressureDynamics(
       const BrushDabInterpolator().interpolate(
         previous: null,
@@ -251,8 +242,7 @@ class _BrushEditStroke {
             firstSequence: _state._nextSequence,
             // Which way the stroke set off, once a move has said so; a tap
             // that never moved has no direction to follow.
-            directionDegrees:
-                directionDegrees ?? _state._opening.pressDirection,
+            directionDegrees: _state._opening.pressDirection,
           ),
         ),
         _state._symmetryTransforms,

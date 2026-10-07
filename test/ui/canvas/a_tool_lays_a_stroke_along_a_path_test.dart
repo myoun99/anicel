@@ -195,8 +195,8 @@ void main() {
     );
   });
 
-  testWidgets('its first dab is turned the way the stroke sets off — a tool '
-      'knows where it is going before it starts', (tester) async {
+  testWidgets('its first dab is turned the way the stroke sets off — it is '
+      'laid by the first advance, which knows the way', (tester) async {
     final host = _Host();
     await _pump(
       tester,

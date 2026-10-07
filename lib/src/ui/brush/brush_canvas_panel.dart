@@ -1816,6 +1816,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _fillDrawnShape,
               onDrawShape:
                   _drawTracedShape,
+              // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE
+              // DOES (I-10) — the text layer's wiring, word for word: on a
+              // frame with no cel this layer asks in the standing-down
+              // view's stead; where a cel IS there and its row takes no
+              // marks, or nothing stands here at all, the host's own
+              // listener speaks.
+              onPressNeedsCel:
+                  widget.coordinator != null && !widget.celEditable
+                  ? widget.onPressNeedsCel
+                  : null,
               // CANVAS space,
               // unmapped: this
               // layer never
