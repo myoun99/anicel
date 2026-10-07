@@ -575,6 +575,8 @@ class _TimesheetCellsPass {
         // X-sheet column verbatim: the mark owns the whole slot.cell width,
         // A/B center in their endpoint cells (frame-name style) and
         // the writing centers on the span's middle slot.row.
+        final rowsTop =
+            slot.cellTop - slot.row * TimesheetDocumentLayout.rowHeight;
         _painter._instructions.paintInstructionRow(
           canvas,
           cell: slot.cell,
@@ -582,6 +584,10 @@ class _TimesheetCellsPass {
           columnWidth: slot.columnWidth,
           centerX: slot.centerX,
           cellTop: slot.cellTop,
+          rows: (
+            top: rowsTop,
+            bottom: rowsTop + rowCount * TimesheetDocumentLayout.rowHeight,
+          ),
         );
       case TimesheetCellKind.empty:
         break;
