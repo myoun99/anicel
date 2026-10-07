@@ -6,15 +6,19 @@
 // that runs something names an action of the shortcut list, every such
 // action has its row, and a key recorded for one does what the row does,
 // only where the row can be pressed.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/working_panel.dart';
+import 'package:anicel/src/services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import 'package:anicel/src/ui/cut_command_group.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
@@ -50,6 +54,14 @@ const barRows = [
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
+];
+
+/// The shared pill's colour edit list — actions since 2026-09-13 and I-55,
+/// rows of the bar like the rest.
+final colourEditRows = [
+  for (final verb in CelPixelVerb.values) pixelVerbActionIdFor(verb),
+  for (final verb in PixelClipboardVerb.values)
+    pixelClipboardActionIdFor(verb),
 ];
 
 Future<void> pumpApp(WidgetTester tester) async {
@@ -128,6 +140,49 @@ void main() {
       );
     });
 
+    test('the colour edit list\'s seven are menu rows too — the third list '
+        'on the one rule', () {
+      expect(colourEditRows, hasLength(7), reason: '⛔premise');
+      for (final id in colourEditRows) {
+        expect(
+          editorActionDefinitions
+              .singleWhere((definition) => definition.id == id)
+              .menuRow,
+          isTrue,
+          reason: id,
+        );
+      }
+    });
+
+    test('⛔the shell keeps no road of its own to what a row runs', () {
+      // 저장 had one (I-40 ②), and the colour edit list had two: the row's
+      // gate and its verb written a second time in the shell's dispatch,
+      // which is the copy that drifts. A key presses the ROW.
+      final shell = File('lib/src/ui/home_page.dart').readAsStringSync();
+      expect(shell, contains('pressFlyoutRow('), reason: '⛔LIVENESS');
+      // The verbs the bar's rows run, by the names the rows call them by.
+      for (final verb in const [
+        'runPixelVerb(',
+        'runPixelClipboardVerb(',
+        'createCut',
+        'duplicateActiveCut',
+        'createLinkedCutFromActiveCut',
+        'renameActiveCutWithDialog',
+        'toggleActiveCutThumbnailFrame',
+        'moveActiveCutLeft',
+        'moveActiveCutRight',
+        'copyCameraAeKeyframes',
+        'duplicateActiveLayer',
+        'detachActiveLayer',
+        'rasterizeActiveRow',
+        'toggleTargetLayerKind',
+        'addAttachedLayer',
+        'selectRowSpan',
+      ]) {
+        expect(shell, isNot(contains(verb)), reason: verb);
+      }
+    });
+
     test('none ships with a key — nobody named one', () {
       for (final id in [...barRows, EditorActionIds.frameAutoCreate]) {
         expect(
@@ -149,8 +204,8 @@ void main() {
       final rows = timelineRows(tester);
       final named = {for (final row in rows) ...row.shortcuts};
 
-      expect(barRows.toSet().difference(named), isEmpty);
-      expect(named.difference(barRows.toSet()), isEmpty);
+      expect({...barRows, ...colourEditRows}.difference(named), isEmpty);
+      expect(named.difference({...barRows, ...colourEditRows}), isEmpty);
 
       final silent = [
         for (final row in rows)

@@ -930,18 +930,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       ], actionId);
       return;
     }
-    if (definition?.pixelVerb case final verb?) {
-      if (_session.pixelVerbs.canRunPixelVerb) {
-        _session.pixelVerbs.runPixelVerb(verb);
-      }
-      return;
-    }
-    if (definition?.pixelClipboardVerb case final verb?) {
-      if (_session.pixelVerbs.canRunPixelClipboardVerb(verb)) {
-        _session.pixelVerbs.runPixelClipboardVerb(verb);
-      }
-      return;
-    }
     // 🗣️I-31: a blend action picks what the strip's blend chooser picks, and
     // only where that chooser can — a tool that composites nothing keeps the
     // brush's blend untouched, and the eraser stays the erase blend.

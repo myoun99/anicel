@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../../models/app_frame_count_settings.dart';
 import '../../models/app_input_settings.dart' show AppInput, AppInputSettings;
 import '../input/control_press_claim.dart';
-import '../../models/pixel_clipboard_verb.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
@@ -18,7 +17,6 @@ import 'instance_editor_commands.dart' show autoNameWithWindow;
 import 'timeline_section_policy.dart';
 import 'timeline_bar_menus.dart';
 import 'toolbar_panel_context.dart';
-import '../../services/cel_pixel_overwrite.dart';
 import '../theme/app_theme.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
@@ -282,67 +280,6 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// R26 #42: the app's standard icon button (the canvas bottom bar's
   /// style, promoted) — this toolbar used to size its own.
-  /// The 색 편집 popover's four verbs, in the order the artist reaches for
-  /// them: the two that keep the drawing, then the two that take it away.
-  ///
-  /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
-  /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
-  /// 하고싶음」 — the buttons match the colour exactly, and the graded
-  /// version is the Delete Color / Keep Color EFFECT.
-  ///
-  /// ↩️The four were live whenever the head was — one gate for all of them.
-  /// I-55 put a second kind of verb in the list, so the head opens when any
-  /// row can run (`canOpenColourEdit`) and each row dims on its own gate:
-  /// the four on theirs, the clipboard rows on theirs.
-  ///
-  /// 🗣️I-55 (유저 2026-10-01): 「색편집버튼에 새 기능으로서 … 픽셀복사/픽셀
-  /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
-  List<PanelFlyoutEntry> _colourEditEntries() => [
-    PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
-    for (final verb in CelPixelVerb.values)
-      PanelFlyoutItem(
-        keyValue: switch (verb) {
-          // The retired buttons' own key strings, kept.
-          CelPixelVerb.replaceColour => 'shared-replace-colour-button',
-          CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
-          CelPixelVerb.deleteColour => 'shared-delete-colour-button',
-          CelPixelVerb.keepColour => 'shared-keep-colour-button',
-        },
-        // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그
-        // 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의
-        // 규칙이야」 — every verb here is an action, so every row wears its
-        // action's name and prints its key.
-        label: editorActionLabel(pixelVerbActionIdFor(verb)),
-        icon: switch (verb) {
-          CelPixelVerb.replaceColour => Icons.format_color_fill,
-          CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
-          CelPixelVerb.deleteColour => Icons.format_color_reset,
-          CelPixelVerb.keepColour => Icons.colorize_outlined,
-        },
-        shortcuts: [pixelVerbActionIdFor(verb)],
-        enabled: session.pixelVerbs.canRunPixelVerb,
-        onSelected: () => session.pixelVerbs.runPixelVerb(verb),
-      ),
-    const PanelFlyoutDivider(),
-    for (final verb in PixelClipboardVerb.values)
-      PanelFlyoutItem(
-        keyValue: switch (verb) {
-          PixelClipboardVerb.copy => 'shared-copy-pixels-button',
-          PixelClipboardVerb.pasteAbove => 'shared-paste-pixels-above-button',
-          PixelClipboardVerb.pasteBelow => 'shared-paste-pixels-below-button',
-        },
-        label: editorActionLabel(pixelClipboardActionIdFor(verb)),
-        icon: switch (verb) {
-          PixelClipboardVerb.copy => Icons.content_copy,
-          PixelClipboardVerb.pasteAbove => Icons.flip_to_front,
-          PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
-        },
-        shortcuts: [pixelClipboardActionIdFor(verb)],
-        enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
-        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
-      ),
-  ];
-
   Widget _iconButton({
     required ValueKey<String> key,
     required String tooltip,
@@ -778,7 +715,7 @@ class TimelineActionToolbar extends StatelessWidget {
             tooltip: AppText.strings.tlSharedColourEdit,
             icon: Icons.palette_outlined,
             onPressed: session.pixelVerbs.canOpenColourEdit
-                ? () => showPanelFlyout(context, entries: _colourEditEntries())
+                ? () => showPanelFlyout(context, entries: _menus.colourEdit())
                 : null,
           ),
         ),

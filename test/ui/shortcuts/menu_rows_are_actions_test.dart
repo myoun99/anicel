@@ -56,12 +56,14 @@ Future<void> pressKeyOf(WidgetTester tester, String actionId) async {
   await tester.pumpAndSettle();
 }
 
-/// The STRIP's menu rows among the registry's: every menu row but the
-/// timeline bar's, which `timeline_bar_rows_are_actions_test.dart` speaks
-/// for.
+/// The headings the STRIP's two menus fill. The rest of the registry's menu
+/// rows are the timeline bar's, which
+/// `timeline_bar_rows_are_actions_test.dart` speaks for.
+const stripCategories = {'File', 'Settings', 'Debug', 'Panels'};
+
 List<EditorActionDefinition> get menuActions => [
   for (final definition in editorActionDefinitions)
-    if (definition.menuRow && definition.category != 'Timeline')
+    if (definition.menuRow && stripCategories.contains(definition.category))
       definition,
 ];
 
@@ -332,7 +334,8 @@ void main() {
       // Each action of the registry, and each panel the workspace told of.
       final live = [
         for (final definition in keys(tester).definitions)
-          if (definition.menuRow && definition.category != 'Timeline')
+          if (definition.menuRow &&
+              stripCategories.contains(definition.category))
             definition.id,
       ];
       expect(live.where(isPanelActionId), isNotEmpty, reason: '⛔premise');

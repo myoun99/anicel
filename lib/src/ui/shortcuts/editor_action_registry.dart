@@ -83,10 +83,15 @@ class EditorActionDefinition {
   /// button finds its action by [toolActionIdFor].
   final ToolPress? toolPress;
 
-  /// The verb a row of the colour edit list runs, or null.
+  /// The verb a row of the colour edit list runs, or null — WHICH row the
+  /// action is, and how that row finds its action ([pixelVerbActionIdFor]).
+  /// The press is the row's own ([menuRow]).
   ///
   /// 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그 외
   /// 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의 규칙이야」.
+  ///
+  /// ↩️Until 2026-10-08 the shell ran the verb itself behind the row's gate
+  /// — the row's two lines written a second time, as 저장 had been.
   final CelPixelVerb? pixelVerb;
 
   /// The blend mode a BLEND action picks for the tool in hand, or null.
@@ -119,9 +124,10 @@ class EditorActionDefinition {
   /// made from it as it stands (`brushActionsOf`).
   final BrushPress? brushPress;
 
-  /// A row of a menu (I-40) — the top strip's two, or the timeline bar's:
-  /// the action IS that row, and a key presses it where the row can be
-  /// pressed (`pressFlyoutRow`, over the rows the shell gathers from both).
+  /// A row of a menu (I-40) — the top strip's two, or the timeline bar's
+  /// (the pills' menus and the colour edit list): the action IS that row,
+  /// and a key presses it where the row can be pressed (`pressFlyoutRow`,
+  /// over the rows the shell gathers from both).
   ///
   /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
   /// 열기 닫기같은거든 뭐든 모든 버튼」. ⛔A menu row's action has no road of
@@ -663,6 +669,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.replaceColour,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editClearPixels,
@@ -670,6 +677,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.backspace)],
     pixelVerb: CelPixelVerb.clearPixels,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editDeleteColour,
@@ -677,6 +685,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.deleteColour,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editKeepColour,
@@ -684,6 +693,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelVerb: CelPixelVerb.keepColour,
+    menuRow: true,
   ),
   // 🗣️I-55 (유저 2026-10-01): the list's clipboard rows, under the same rule
   // — actions, in the list's order. No key ships with them: none was named.
@@ -693,6 +703,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.copy,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsAbove,
@@ -700,6 +711,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteAbove,
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editPastePixelsBelow,
@@ -707,6 +719,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Edit',
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
+    menuRow: true,
   ),
   // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
   // 모든 버튼」 — the project menu's rows, in the menu's order. Each is the

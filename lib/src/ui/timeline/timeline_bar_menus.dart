@@ -7,6 +7,8 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/pixel_clipboard_verb.dart';
+import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart';
@@ -30,8 +32,9 @@ void toggleAutoCreateFrameOnDraw(EditorSessionManager session) {
 }
 
 /// The timeline bar's menus as they open, for ONE panel: the layer pill's
-/// two, the frame pill's and the effects' here, and with the cut pill's
-/// ([cutMenuEntries], [cutAddEntries]) every row of the bar ([rows]).
+/// two, the frame pill's, the shared pill's colour edit list and the
+/// effects' here, and with the cut pill's ([cutMenuEntries],
+/// [cutAddEntries]) every row of the bar ([rows]).
 ///
 /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록. 타임라인
 /// 버튼같은거나 … 뭐든 모든 버튼」. ★A KEY AND ITS MENU ROW ARE ONE PRESS
@@ -40,8 +43,11 @@ void toggleAutoCreateFrameOnDraw(EditorSessionManager session) {
 /// builder for both, so a key cannot act where its row is dim, and a row
 /// given its action's name is reachable by key with nothing more written.
 ///
-/// ↩️The four builders were private methods of the toolbar widget, which
-/// only a mounted bar could ask; they are the same lines, moved.
+/// ↩️The builders were private methods of the toolbar widget, which only a
+/// mounted bar could ask; they are the same lines, moved. The colour edit
+/// list's rows were actions before any of the others (2026-09-13) and the
+/// shell ran their verbs on a road of its own; they are pressed as rows now
+/// like the rest — the third list on the one rule.
 class TimelineBarMenus {
   const TimelineBarMenus({required this.session, required this.panel});
 
@@ -52,13 +58,15 @@ class TimelineBarMenus {
 
   /// Every row of the bar's menus as they would open right now
   /// ([flyoutRowsOf]) — the cut pill's two, then the layer pill's two, the
-  /// frame pill's and the effects'. [context] is where a row's window opens.
+  /// frame pill's, the shared pill's colour edit list and the effects'.
+  /// [context] is where a row's window opens.
   List<PanelFlyoutItem> rows(BuildContext context) => flyoutRowsOf([
     ...cutMenuEntries(context, session),
     ...cutAddEntries(session),
     ...layer(context),
     ...addLayer(),
     ...frame(),
+    ...colourEdit(),
     ...effects(),
   ]).toList();
 
@@ -379,4 +387,65 @@ class TimelineBarMenus {
       ),
     ];
   }
+
+  /// The 색 편집 popover's four verbs, in the order the artist reaches for
+  /// them: the two that keep the drawing, then the two that take it away.
+  ///
+  /// ⛔NO TOLERANCE KNOB HERE. 유저 2026-08-27 (I-8-Q2): 「허용차 같은
+  /// 고급설정은 fx의 색 제거 이펙트에서 하라하고 여기서는 간편하게만
+  /// 하고싶음」 — the buttons match the colour exactly, and the graded
+  /// version is the Delete Color / Keep Color EFFECT.
+  ///
+  /// ↩️The four were live whenever the head was — one gate for all of them.
+  /// I-55 put a second kind of verb in the list, so the head opens when any
+  /// row can run (`canOpenColourEdit`) and each row dims on its own gate:
+  /// the four on theirs, the clipboard rows on theirs.
+  ///
+  /// 🗣️I-55 (유저 2026-10-01): 「색편집버튼에 새 기능으로서 … 픽셀복사/픽셀
+  /// 아래 붙여넣기/픽셀 위 붙여넣기」 — after the four, as their own group.
+  List<PanelFlyoutEntry> colourEdit() => [
+    PanelFlyoutHeader(AppText.strings.tlSharedColourEdit),
+    for (final verb in CelPixelVerb.values)
+      PanelFlyoutItem(
+        keyValue: switch (verb) {
+          // The retired buttons' own key strings, kept.
+          CelPixelVerb.replaceColour => 'shared-replace-colour-button',
+          CelPixelVerb.clearPixels => 'shared-clear-pixels-button',
+          CelPixelVerb.deleteColour => 'shared-delete-colour-button',
+          CelPixelVerb.keepColour => 'shared-keep-colour-button',
+        },
+        // 🗣️유저 2026-09-13: 「색변환의 픽셀비우기를 백스페이스로 하란건, 그
+        // 외 같이있는 버튼들도 다 숏컷 지정가능하게 등록하란거는 앞으로의
+        // 규칙이야」 — every verb here is an action, so every row wears its
+        // action's name and prints its key.
+        label: editorActionLabel(pixelVerbActionIdFor(verb)),
+        icon: switch (verb) {
+          CelPixelVerb.replaceColour => Icons.format_color_fill,
+          CelPixelVerb.clearPixels => Icons.cleaning_services_outlined,
+          CelPixelVerb.deleteColour => Icons.format_color_reset,
+          CelPixelVerb.keepColour => Icons.colorize_outlined,
+        },
+        shortcuts: [pixelVerbActionIdFor(verb)],
+        enabled: session.pixelVerbs.canRunPixelVerb,
+        onSelected: () => session.pixelVerbs.runPixelVerb(verb),
+      ),
+    const PanelFlyoutDivider(),
+    for (final verb in PixelClipboardVerb.values)
+      PanelFlyoutItem(
+        keyValue: switch (verb) {
+          PixelClipboardVerb.copy => 'shared-copy-pixels-button',
+          PixelClipboardVerb.pasteAbove => 'shared-paste-pixels-above-button',
+          PixelClipboardVerb.pasteBelow => 'shared-paste-pixels-below-button',
+        },
+        label: editorActionLabel(pixelClipboardActionIdFor(verb)),
+        icon: switch (verb) {
+          PixelClipboardVerb.copy => Icons.content_copy,
+          PixelClipboardVerb.pasteAbove => Icons.flip_to_front,
+          PixelClipboardVerb.pasteBelow => Icons.flip_to_back,
+        },
+        shortcuts: [pixelClipboardActionIdFor(verb)],
+        enabled: session.pixelVerbs.canRunPixelClipboardVerb(verb),
+        onSelected: () => session.pixelVerbs.runPixelClipboardVerb(verb),
+      ),
+  ];
 }
