@@ -64,8 +64,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.globalFrameIndexListenable.value, 7);
 
-    // Out-of-range readings clamp instead of tearing down playback.
-    clock = const AudioClockStatus(globalFrame: 99);
+    // Out-of-range readings clamp instead of tearing down playback. (97,
+    // not 99: taken round the end instead of clamped, 99 lands on the last
+    // frame as well.)
+    clock = const AudioClockStatus(globalFrame: 97);
     await tester.pump(const Duration(milliseconds: 16));
     expect(controller.globalFrameIndexListenable.value, 9);
     controller.stop();

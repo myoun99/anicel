@@ -525,10 +525,17 @@ class CanvasPlaybackController extends ChangeNotifier
     // The frames on the way, in the order the run plays them, the clock's
     // own last. Either clock only ever moves on — a step back is the lap
     // wrapping — so the way from here to there is forwards, round the end.
+    //
+    // 🚨COUNTED, not walked 「until it gets there」: a frame outside the run
+    // is never got to, and that walk never ended — found by a mutant that
+    // took the clamp off the device's reading and hung its test, which in
+    // the app is a frozen window. However far the frame is, it is fewer
+    // steps ahead than the run has frames.
+    final ahead = (frame - from) % total;
     var landing = from;
     var passed = -1;
     var waits = false;
-    while (landing != frame && !waits) {
+    for (var step = 0; step < ahead && !waits; step += 1) {
       landing = (landing + 1) % total;
       passed += 1;
       waits = waitsOn?.call(landing, placed: false) ?? false;
