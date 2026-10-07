@@ -253,10 +253,12 @@ void main() {
       expect(coordinator.currentSurfaceOf(key), after);
     });
 
-    test('the texts it does not cover stay, where they stood', () {
+    // 유저 2026-10-07 (`R9-rest-Q5`): 「고른 텍스트만 굳힌다」.
+    test('🚨every other text stays, where it stood — the one under it that '
+        'it covers too', () {
       final (:coordinator, :history) = cel(
         texts: [
-          textOf(1, words: 'under', plate: {b: blue}),
+          textOf(1, words: 'under', plate: {a: red}),
           textOf(2, words: 'turned', plate: {a: red}),
           textOf(3, words: 'over', plate: {a: blue}),
         ],

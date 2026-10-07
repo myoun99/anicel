@@ -7,7 +7,12 @@ import '../helpers/cel_text_fixture.dart';
 
 /// R9-rest, 「그림으로 굳히기」 (유저 2026-10-06: 「텍스트 그림으로 굳히기
 /// 아이디어 좋네」): a text turned into DRAWING is no text of its cel any
-/// more, and the cel SHOWS, to the byte, what it showed.
+/// more — its ink is the drawing's — and it is THE TEXT PICKED, AND NO
+/// OTHER (유저 2026-10-07, `R9-rest-Q5`: 「고른 텍스트만 굳힌다」).
+///
+/// So the cel SHOWS, to the byte, what it showed — except where a text
+/// under the one picked shared a pixel with it: that text stays a text, and
+/// is over the ink from then on.
 ///
 /// 🚨THE ORACLE IS WHAT THE CEL SHOWED BEFORE (`celSurfaceWithTextsLaid` of
 /// the picture as it was), every tile of it — never a second spelling of
@@ -22,6 +27,18 @@ void main() {
       entry.key: entry.value.pixels,
   };
 
+  /// The pixels of tile [a] that [picture] shows otherwise than [was].
+  Set<(int, int)> shownOtherwise(BitmapSurface picture, BitmapSurface was) {
+    final now = shown(picture)[a]!;
+    final then = shown(was)[a]!;
+    return {
+      for (var at = 0; at < now.length; at += 4)
+        if (now.sublist(at, at + 4).join(',') !=
+            then.sublist(at, at + 4).join(','))
+          ((at ~/ 4) % celTextTestTileSize, (at ~/ 4) ~/ celTextTestTileSize),
+    };
+  }
+
   List<int> idsOf(BitmapSurface picture) => [
     for (final text in picture.texts) text.id,
   ];
@@ -33,8 +50,8 @@ void main() {
     (2, 0): [250, 240, 230, 77],
     (5, 5): [1, 2, 3, 200],
   });
-  // ⚠️NO RED in either of the two that meet at (1, 0): a share of ink is a
-  // share of ALPHA, and read off any other byte it would not be found here.
+  // The two meet at (1, 0), half see-through both: there, which of them is
+  // over the other shows.
   final lower = tileOf({
     (0, 0): [0, 200, 0, 255],
     (1, 0): [0, 200, 0, 128],
@@ -115,7 +132,8 @@ void main() {
     });
   });
 
-  group('beside the other texts of its cel', () {
+  // 🗣️유저 2026-10-07 (`R9-rest-Q5`): 「고른 텍스트만 굳힌다」.
+  group('beside the other texts of its cel, the one picked goes ALONE', () {
     test('a text OVER it stays a text — and shows over the drawing as it '
         'showed over the text', () {
       final over = textOf(2, plate: {a: upper});
@@ -131,31 +149,35 @@ void main() {
       expect(pixelOf(after, a, 0, 0), [0, 200, 0, 255], reason: 'liveness');
     });
 
-    test('🚨a text UNDER it that it covers goes with it: turned alone, the '
-        'one named would be under that one from then on', () {
+    test('🚨a text UNDER it that it covers STAYS A TEXT: the one picked is '
+        'laid on the drawing as if it were alone on the cel, and the other '
+        'is OVER its ink from then on — the picture changes where the two '
+        'share a pixel, and nowhere else', () {
       final under = textOf(1, plate: {a: lower});
-      final named = textOf(2, plate: {a: upper});
+      final picked = textOf(2, plate: {a: upper});
       final drawing = drawingOf({a: ground});
-      final before = drawing.withTexts([under, named]);
+      final before = drawing.withTexts([under, picked]);
 
       final after = celSurfaceWithTextAsDrawing(before, 2);
 
-      expect(after.texts, isEmpty);
-      expect(shown(after), shown(before));
-      // ⛔CONTROL: what the named one turned ALONE would show — its ink in
-      // the drawing, and the text it covered over it — is another picture.
-      final alone = celSurfaceWithTextsLaid(
-        drawing.withTexts([named]),
-      ).withTexts([under]);
+      expect(after.texts.single, same(under));
+      // The drawing: what the cel would show carrying the picked one alone.
       expect(
-        shown(alone),
-        isNot(shown(before)),
-        reason: '⛔fixture: where the two meet, their order shows',
+        {
+          for (final entry in after.tiles.entries)
+            entry.key: entry.value.pixels,
+        },
+        shown(drawing.withTexts([picked])),
       );
+      expect(pixelOf(after, a, 3, 0), [0, 0, 200, 255], reason: 'its ink');
+      expect(pixelOf(after, a, 0, 0), [10, 20, 30, 255], reason: 'no other');
+      // 유저 took this answer with its cost said: where they meet, the one
+      // that was under is over.
+      expect(shownOtherwise(after, before), {(1, 0)});
     });
 
-    test('a text under it that shares NO pixel of ink stays a text — on the '
-        'same tile, a pixel away', () {
+    test('a text under it that shares NO pixel of ink with it: the cel '
+        'shows what it showed — on the same tile, a pixel away', () {
       final beside = textOf(1, plate: {a: apart});
       final before = drawingOf({a: ground}).withTexts([
         beside,
@@ -168,43 +190,8 @@ void main() {
       expect(shown(after), shown(before));
     });
 
-    test('a colour behind alpha 0 is no ink: the text under it stays', () {
-      // The stamp lays nothing of such a pixel, so nothing there can come
-      // out in another order.
-      final ghost = tileOf({
-        (1, 0): [99, 99, 99, 0],
-        (7, 7): [99, 99, 99, 255],
-      });
-      final dot = tileOf({
-        (1, 0): [50, 60, 70, 255],
-      });
-      final before = drawingOf(const {}).withTexts([
-        textOf(1, plate: {a: dot}),
-        textOf(2, plate: {a: ghost}),
-      ]);
-
-      final after = celSurfaceWithTextAsDrawing(before, 2);
-
-      expect(idsOf(after), [1]);
-      expect(shown(after), shown(before));
-    });
-
-    test('texts on different tiles share nothing', () {
-      final before = drawingOf(const {}).withTexts([
-        textOf(1, plate: {a: lower}),
-        textOf(2, plate: {b: lower}),
-      ]);
-
-      final after = celSurfaceWithTextAsDrawing(before, 2);
-
-      expect(idsOf(after), [1]);
-      expect(shown(after), shown(before));
-    });
-
-    test('🚨the reach runs DOWN THE PILE: a text under one that goes with it '
-        'goes too, though the one named never touches it', () {
-      // 1 under 2 under 4; 4 meets 2 at (3, 3), 2 meets 1 at (0, 0), and 4
-      // has nothing at (0, 0). 3 lies between them and meets none.
+    test('however many it covers, down the pile, every one stays', () {
+      // 1 under 2 under 4; 4 meets 2 at (3, 3) and 2 meets 1 at (0, 0).
       final bottom = tileOf({
         (0, 0): [0, 200, 0, 128],
       });
@@ -215,39 +202,17 @@ void main() {
       final top = tileOf({
         (3, 3): [200, 0, 0, 128],
       });
-      final between = textOf(3, plate: {a: apart});
       final before = drawingOf({a: ground}).withTexts([
         textOf(1, plate: {a: bottom}),
         textOf(2, plate: {a: middle}),
-        between,
+        textOf(3, plate: {a: apart}),
         textOf(4, plate: {a: top}),
       ]);
 
       final after = celSurfaceWithTextAsDrawing(before, 4);
 
-      expect(after.texts.single, same(between));
-      expect(shown(after), shown(before));
-    });
-
-    test('a text over it that covers one under it takes nothing with it: '
-        'only what is turned reaches down', () {
-      // 3 covers 1 at (0, 0); 2 — the one named — meets neither.
-      final dot = tileOf({
-        (0, 0): [0, 200, 0, 128],
-      });
-      final cover = tileOf({
-        (0, 0): [0, 0, 200, 128],
-      });
-      final before = drawingOf({a: ground}).withTexts([
-        textOf(1, plate: {a: dot}),
-        textOf(2, plate: {a: apart}),
-        textOf(3, plate: {a: cover}),
-      ]);
-
-      final after = celSurfaceWithTextAsDrawing(before, 2);
-
-      expect(idsOf(after), [1, 3]);
-      expect(shown(after), shown(before));
+      expect(idsOf(after), [1, 2, 3]);
+      expect(shownOtherwise(after, before), {(3, 3)});
     });
 
     test('the texts left keep their order, and are the very texts', () {

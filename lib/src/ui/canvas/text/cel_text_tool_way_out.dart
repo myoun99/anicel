@@ -114,25 +114,16 @@ class _CelTextWayOut {
   /// Turns [holding]'s text — landed, so on its cel as it was shown — into
   /// the cel's drawing, as one step.
   ///
-  /// 🚨THE TEXTS UNDER IT THAT IT COVERS GO WITH IT
-  /// (`celSurfaceWithTextAsDrawing`), and one of those can be in this hand
-  /// or still owed its landing. Each is put on the cel AS IT IS SHOWN first
-  /// — what turns into drawing is what the person was looking at — and one
-  /// the drawing then took is let go of with nothing more: no text is left
-  /// for what it still wanted to be set on.
+  /// That text and no other (유저 2026-10-07, `R9-rest-Q5`: 「고른 텍스트만
+  /// 굳힌다」): whatever else the hand holds or still owes a landing — a text
+  /// under this one too — is none of this step's, and lands in its own
+  /// time as it would have.
   void _turnIntoDrawing(_Holding holding) {
     final _Holding(:session, :cel) = holding;
     final standing = session.standing;
     if (standing == null) {
       // No letters: its landing took it off the cel, or it never was on it.
       return;
-    }
-    final beside = [
-      for (final other in [...leaving, ?_tool._held])
-        if (other.session.key == session.key) other,
-    ];
-    for (final other in beside) {
-      land(other);
     }
     _tool.host.run(
       CelTextEditCommand.intoDrawing(
@@ -142,23 +133,6 @@ class _CelTextWayOut {
         cacheInvalidationSink: cel.cacheInvalidationSink,
       ),
     );
-    final left = {
-      for (final text in cel.coordinator.currentSurfaceOf(cel.key).texts)
-        text.id,
-    };
-    for (final other in beside) {
-      final id = other.session.textId;
-      if (id == null || left.contains(id)) {
-        continue;
-      }
-      if (identical(other, _tool._held)) {
-        _tool._dropLetters();
-        _tool._held = null;
-      } else {
-        leaving.remove(other);
-      }
-      _tool._retire(other.session);
-    }
   }
 
   /// Puts [holding]'s text on its cel as it is shown, as one step, and

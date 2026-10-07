@@ -57,9 +57,8 @@ class CelTextEditCommand with CelSnapshotStep implements Command {
        _leavesItsPixels = false;
 
   /// Turns the text [id] of [frameKey]'s cel into its DRAWING: off the cel
-  /// as a text, its pixels the drawing's where they lay — with the texts
-  /// under it that it covers, so that what the cel shows is the same to
-  /// the byte ([celSurfaceWithTextAsDrawing]).
+  /// as a text, its pixels the drawing's where they lay — that text and no
+  /// other ([celSurfaceWithTextAsDrawing]).
   CelTextEditCommand.intoDrawing({
     required this.coordinator,
     required this.frameKey,

@@ -781,9 +781,9 @@ void main() {
       expect(textsOn(cel), [(4, 'ab')]);
     });
 
-    // The texts under it that it covers go with it
-    // (`celSurfaceWithTextAsDrawing`) — and the hand may be holding one, or
-    // owe one its landing.
+    // 🗣️유저 2026-10-07 (`R9-rest-Q5`, asked whether the texts under it that
+    // it covers turn with it): 「고른 텍스트만 굳힌다」. So nothing else the
+    // hand holds is touched by the turning — a text under it least of all.
     group('with a text under it that it covers', () {
       /// A text over [said]'s tile that covers ONE pixel of it — so the
       /// drawing under it can be read beside that pixel.
@@ -797,9 +797,9 @@ void main() {
         },
       );
 
-      test('🚨one still OWED ITS LANDING is on the cel as it is SHOWN before '
-          'the drawing takes it — and what it still wanted is given up: '
-          'the engine\'s late answer sets no text a second time', () async {
+      test('🚨the one under it STAYS A TEXT of its cel, and nothing of it '
+          'is in the drawing — one still owed its landing lands in its own '
+          'time, a step of its own', () async {
         final (:tool, :host, :baker, :cel) = hand(
           texts: [carried(1, said([run('ab')])), covering(2)],
         );
@@ -816,21 +816,22 @@ void main() {
 
         tool.turnIntoDrawing();
 
-        expect(stepsOf(host), ['Set text', 'Text to drawing']);
-        expect(textsOn(cel), isEmpty);
-        expect(drawnAt(cel, 0, 0), [77, 0, 0, 255], reason: 'the one named');
-        expect(drawnAt(cel, 1, 1), [3, 0, 0, 255], reason: 'as it was SHOWN');
-        expect(tool.holdsAnything, isFalse);
-        final redrawn = host.redrawn;
+        expect(stepsOf(host), ['Text to drawing']);
+        expect(textsOn(cel), [(1, 'ab')], reason: 'not landed by this');
+        expect(drawnAt(cel, 0, 0), [77, 0, 0, 255], reason: 'the one picked');
+        expect(drawnAt(cel, 1, 1), [0, 0, 0, 0], reason: 'none of the other');
+        expect(tool.holdsAnything, isTrue, reason: 'the other is still owed');
 
         await baker.pending.answer();
 
-        expect(host.ran, hasLength(2));
-        expect(textsOn(cel), isEmpty);
-        expect(host.redrawn, redrawn, reason: 'it is done with: it tells none');
+        expect(stepsOf(host), ['Text to drawing', 'Set text']);
+        expect(textsOn(cel), [(1, 'abcd')]);
+        expect(drawnAt(cel, 1, 1), [0, 0, 0, 0]);
+        expect(tool.holdsAnything, isFalse);
       });
 
-      test('🚨one IN HAND is let go of when the drawing takes it', () async {
+      test('🚨one IN HAND stays in hand, its letters open, a text of its '
+          'cel', () async {
         final (:tool, host: _, :baker, :cel) = hand(
           texts: [carried(1, said([run('ab')])), covering(2)],
         );
@@ -847,79 +848,10 @@ void main() {
 
         await baker.pending.answer();
 
-        expect(textsOn(cel), isEmpty);
-        expect(tool.session, isNull);
-        expect(tool.letters, isNull);
-        expect(tool.holdsAnything, isFalse);
-      });
-
-      test('⛔CONTROL: one in hand that it does NOT cover stays in hand, a '
-          'text of its cel', () async {
-        final (:tool, host: _, :baker, :cel) = hand(
-          texts: [
-            carried(1, said([run('ab')], x: 16, y: 16)),
-            covering(2),
-          ],
-        );
-        tool
-          ..takeText(cel, pictureOf(cel).texts.last)
-          ..typeAt(const TextSelection.collapsed(offset: 2));
-        typeInto(tool, 'zzz');
-        tool.turnIntoDrawing();
-        tool.takeText(cel, pictureOf(cel).texts.first);
-
-        await baker.pending.answer();
-
         expect(textsOn(cel), [(1, 'ab')]);
+        expect(drawnAt(cel, 0, 0), [3, 0, 0, 255], reason: 'the one picked');
         expect(tool.session!.textId, 1);
-      });
-
-      test('a text in hand on ANOTHER cel — of the very id of one the '
-          'drawing took here — is none of THIS cel: it stays in hand', () async {
-        final (:tool, host: _, :baker, :cel) = hand(
-          texts: [carried(1, said([run('ab')])), covering(2)],
-        );
-        cel.coordinator.restoreSurfaceSnapshot(
-          elsewhere,
-          drawingOf(const {}).withTexts([carried(1, said([run('yy')]))]),
-        );
-        final CelTextCel there = (
-          key: elsewhere,
-          coordinator: cel.coordinator,
-          canvasSize: cel.canvasSize,
-          cacheInvalidationSink: null,
-        );
-        tool
-          ..takeText(cel, pictureOf(cel).texts.last)
-          ..typeAt(const TextSelection.collapsed(offset: 2));
-        typeInto(tool, 'zzz');
-        tool.turnIntoDrawing();
-        tool.takeText(there, pictureOf(there).texts.single);
-
-        await baker.pending.answer();
-
-        expect(textsOn(cel), isEmpty, reason: '⛔fixture: 1 went with 2');
-        expect(tool.session!.key, elsewhere);
-        expect(textsOn(there), [(1, 'yy')]);
-      });
-
-      test('a NEW text in hand, on no cel yet, is none the drawing took', () async {
-        final (:tool, host: _, :baker, :cel) = hand(
-          texts: [covering(2)],
-        );
-        tool
-          ..takeText(cel, pictureOf(cel).texts.single)
-          ..typeAt(const TextSelection.collapsed(offset: 2));
-        typeInto(tool, 'zzz');
-        tool.turnIntoDrawing();
-        tool.beginText(cel, at);
-        expect(tool.session!.textId, isNull, reason: '⛔fixture');
-
-        await baker.pending.answer();
-
-        expect(textsOn(cel), isEmpty);
-        expect(tool.session, isNotNull);
-        expect(tool.hold, CelTextHold.letters);
+        expect(tool.letters, isNotNull);
       });
     });
   });
