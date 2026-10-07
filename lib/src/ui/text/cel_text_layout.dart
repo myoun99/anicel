@@ -6,6 +6,7 @@ import 'package:flutter/painting.dart';
 import '../../models/cel_text.dart';
 import '../../models/text_cel_style.dart';
 import 'canvas_letter_faces.dart';
+import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 
 /// A text of a cel, SET: its letters as the engine lays them out, where that
@@ -29,11 +30,9 @@ class CelTextLayout {
     required this.block,
     required this.pad,
     required double reach,
-    required TextPainter fill,
-    required TextPainter? stroke,
+    required CanvasLetterPasses letters,
   }) : _reach = reach,
-       _fill = fill,
-       _stroke = stroke,
+       _letters = letters,
        _lettersAt = block.topLeft - _roomBeforeBlock(content);
 
   final CelTextContent content;
@@ -71,8 +70,12 @@ class CelTextLayout {
   /// How far past [block] anything of the text is drawn, in its own frame.
   final double _reach;
 
-  final TextPainter _fill;
-  final TextPainter? _stroke;
+  /// The letters, set for drawing — stroke under fill, smooth or hard.
+  final CanvasLetterPasses _letters;
+
+  /// The letters as the engine sets them: what the caret, a selection and a
+  /// press are measured on.
+  TextPainter get _fill => _letters.fill;
 
   late final _TextFrame _frame = _TextFrame.of(content);
 
@@ -109,13 +112,9 @@ class CelTextLayout {
     applyFrame(canvas);
     final background = content.backgroundColor;
     if (background != null) {
-      canvas.drawRect(box, ui.Paint()..color = ui.Color(background));
+      _letters.paintBoxBehind(canvas, box, background);
     }
-    // Stroke under fill, over the whole text — the timeline glyph outline
-    // recipe (#15: one rule on every surface). A letter's outline never
-    // covers its neighbour.
-    _stroke?.paint(canvas, _lettersAt);
-    _fill.paint(canvas, _lettersAt);
+    _letters.paint(canvas, _lettersAt, within: block.inflate(_reach));
     canvas.restore();
   }
 
@@ -169,10 +168,7 @@ class CelTextLayout {
     return places;
   }
 
-  void dispose() {
-    _fill.dispose();
-    _stroke?.dispose();
-  }
+  void dispose() => _letters.dispose();
 }
 
 /// The frame a text is set in: its origin at the text's anchor, its x along
@@ -310,29 +306,18 @@ CelTextLayout layoutCelText(
   TextLetterStyle nextLetterStyle = const TextLetterStyle(),
 }) {
   final lineHeight = content.lineHeight;
-  final fill = _painterOf(
-    content,
-    nextLetterStyle,
-    (letters) => canvasLetterTextStyle(letters, lineHeight: lineHeight),
+  final passes = CanvasLetterPasses.of(
+    [for (final span in content.spans) span.style],
+    (paintOf) => _painterOf(
+      content,
+      nextLetterStyle,
+      (letters) => canvasLetterTextStyle(
+        letters,
+        lineHeight: lineHeight,
+        foreground: paintOf(letters),
+      ),
+    ),
   );
-  final outlined = content.spans.any(
-    (span) => canvasLetterOutlinePaint(span.style) != null,
-  );
-  final stroke = outlined
-      ? _painterOf(
-          content,
-          nextLetterStyle,
-          (letters) => canvasLetterTextStyle(
-            letters,
-            lineHeight: lineHeight,
-            // ⚠️A run with no outline still names a paint, one that draws
-            // nothing: painted by its colour it would be drawn a second
-            // time under its own fill, and every soft edge of it would
-            // come out heavier.
-            foreground: canvasLetterOutlinePaint(letters) ?? _drawsNothing,
-          ),
-        )
-      : null;
   final letters = [
     if (content.isEmpty) nextLetterStyle,
     for (final span in content.spans) span.style,
@@ -346,11 +331,10 @@ CelTextLayout layoutCelText(
   final pad = content.backgroundColor == null ? 0.0 : largest * 0.25;
   return CelTextLayout._(
     content: content,
-    block: _blockOf(content, fill),
+    block: _blockOf(content, passes.fill),
     pad: pad,
     reach: pad + _widestOutlineOf(letters) / 2 + largest * _glyphReach,
-    fill: fill,
-    stroke: stroke,
+    letters: passes,
   );
 }
 
@@ -499,9 +483,6 @@ TextLetterStyle _paragraphLettersOf(
 /// fraction of that and a script's swash by most of it; what would need
 /// more is cut at the edge of the room.
 const double _glyphReach = 1.0;
-
-/// The paint of a run that has no outline, in the pass that strokes them.
-final ui.Paint _drawsNothing = ui.Paint()..color = const ui.Color(0x00000000);
 
 /// [rect]'s corners through [place]: top left, top right, bottom right,
 /// bottom left.

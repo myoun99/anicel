@@ -2,8 +2,9 @@ import 'dart:ui' show Color, Offset;
 
 /// THE LETTER HALF of the canvas-text vocabulary: what may differ from one
 /// letter to the next — the face, its size and weight, the tracking, the
-/// colour and the outline. Serializable like [MediaReference] — a style is
-/// document data, never a hardcoded TextStyle.
+/// colour, the outline and whether its edges are smoothed. Serializable
+/// like [MediaReference] — a style is document data, never a hardcoded
+/// TextStyle.
 ///
 /// 🗣️유저 2026-10-02 (R9-rest, the text tool): 「선택해서 그 상태에서
 /// 도구설정에서 폰트바꾸면 해당 텍스트박스 설정 자동으로 바꿈 … 텍스트를
@@ -23,6 +24,7 @@ class TextLetterStyle {
     this.color = 0xFF000000,
     this.outlineColor,
     this.outlineWidth = 0,
+    this.antialias = true,
   });
 
   /// Registered family name — null writes in the app's bundled face
@@ -49,6 +51,15 @@ class TextLetterStyle {
   final int? outlineColor;
   final double outlineWidth;
 
+  /// Whether the letters' edges are SMOOTHED. Off, a letter is drawn HARD:
+  /// every pixel it covers by half or more is its colour, whole, and every
+  /// other pixel is none of it — the two-value letter a cel's paint asks
+  /// for (`CanvasLetterPasses`).
+  ///
+  /// 🗣️유저 2026-10-06 (R9-rest, asked whether letters need the switch the
+  /// shape fill and the selection carry): 「권장대로. 2차에서 스위치로 넣음」.
+  final bool antialias;
+
   Color get colorValue => Color(color);
   Color? get outlineColorValue =>
       outlineColor == null ? null : Color(outlineColor!);
@@ -61,6 +72,7 @@ class TextLetterStyle {
     int? color,
     Object? outlineColor = _sentinel,
     double? outlineWidth,
+    bool? antialias,
   }) {
     return TextLetterStyle(
       fontFamily: identical(fontFamily, _sentinel)
@@ -74,6 +86,7 @@ class TextLetterStyle {
           ? this.outlineColor
           : outlineColor as int?,
       outlineWidth: outlineWidth ?? this.outlineWidth,
+      antialias: antialias ?? this.antialias,
     );
   }
 
@@ -85,6 +98,7 @@ class TextLetterStyle {
     'color': color,
     if (outlineColor != null) 'outlineColor': outlineColor,
     if (outlineWidth != 0) 'outlineWidth': outlineWidth,
+    if (!antialias) 'antialias': antialias,
   };
 
   factory TextLetterStyle.fromJson(Map<String, dynamic> json) {
@@ -96,6 +110,7 @@ class TextLetterStyle {
       color: json['color'] as int? ?? 0xFF000000,
       outlineColor: json['outlineColor'] as int?,
       outlineWidth: (json['outlineWidth'] as num?)?.toDouble() ?? 0,
+      antialias: json['antialias'] as bool? ?? true,
     );
   }
 
@@ -108,7 +123,8 @@ class TextLetterStyle {
       other.letterSpacing == letterSpacing &&
       other.color == color &&
       other.outlineColor == outlineColor &&
-      other.outlineWidth == outlineWidth;
+      other.outlineWidth == outlineWidth &&
+      other.antialias == antialias;
 
   /// ⚠️The same TYPE too: a [TextCelStyle] is a letter style with more to
   /// say, and one that happened to match letter for letter is still not
@@ -129,6 +145,7 @@ class TextLetterStyle {
     color,
     outlineColor,
     outlineWidth,
+    antialias,
   );
 
   static const Object _sentinel = Object();
@@ -151,6 +168,7 @@ class TextCelStyle extends TextLetterStyle {
     super.color = 0xFF202020,
     super.outlineColor,
     super.outlineWidth,
+    super.antialias,
     this.backgroundColor,
   });
 
@@ -173,6 +191,7 @@ class TextCelStyle extends TextLetterStyle {
     int? color,
     Object? outlineColor = TextLetterStyle._sentinel,
     double? outlineWidth,
+    bool? antialias,
     Object? backgroundColor = TextLetterStyle._sentinel,
   }) {
     return TextCelStyle(
@@ -188,6 +207,7 @@ class TextCelStyle extends TextLetterStyle {
           ? this.outlineColor
           : outlineColor as int?,
       outlineWidth: outlineWidth ?? this.outlineWidth,
+      antialias: antialias ?? this.antialias,
       backgroundColor: identical(backgroundColor, TextLetterStyle._sentinel)
           ? this.backgroundColor
           : backgroundColor as int?,
@@ -204,6 +224,7 @@ class TextCelStyle extends TextLetterStyle {
     'color': color,
     if (outlineColor != null) 'outlineColor': outlineColor,
     if (outlineWidth != 0) 'outlineWidth': outlineWidth,
+    if (!antialias) 'antialias': antialias,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
   };
 
@@ -217,6 +238,7 @@ class TextCelStyle extends TextLetterStyle {
       color: json['color'] as int? ?? 0xFF202020,
       outlineColor: json['outlineColor'] as int?,
       outlineWidth: (json['outlineWidth'] as num?)?.toDouble() ?? 0,
+      antialias: json['antialias'] as bool? ?? true,
       backgroundColor: json['backgroundColor'] as int?,
     );
   }

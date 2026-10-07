@@ -66,6 +66,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v8 (2026-10-07, the text tool's AA switch — R9-rest): a letter says
+/// whether its edges are smoothed (`TextLetterStyle.antialias`, written
+/// only where they are not). A v7 build reads a letter without the word:
+/// it opens the text as a smooth one, and the first edit of it bakes its
+/// pixels smooth and writes the letters back without the word — hard
+/// letters gone soft, and nothing said. The bump turns that into a refusal
+/// ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape is read for it, and the floor stays where it was
+/// ([anicelOldestReadFormatVersion]): a letter that does not say is a
+/// smooth one at THIS version too (`TextLetterStyle.toJson` leaves the
+/// word out), so a v7 file is such a document.
+///
 /// v7 (2026-10-07, the text tool's fonts — R9-rest): a project carries the
 /// font files its texts are set with — a `fonts` list in the document
 /// (`Project.fonts`) and an entry apiece under `fonts/`
@@ -127,7 +140,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 7;
+const int anicelFormatVersion = 8;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

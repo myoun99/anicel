@@ -4,6 +4,7 @@ import 'package:flutter/painting.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/text_cel_style.dart';
+import 'canvas_letter_passes.dart';
 import 'canvas_letter_style.dart';
 
 /// ONE canvas-text implementation (R5, ⓣ): the SE NAME TAG draws it live
@@ -28,13 +29,11 @@ class TextCelLayout {
   TextCelLayout._({
     required this.inkBounds,
     required this.topLeft,
-    required TextPainter fill,
-    required TextPainter? stroke,
+    required CanvasLetterPasses letters,
     required this.style,
     required this.pad,
     required this.textSize,
-  }) : _fill = fill,
-       _stroke = stroke;
+  }) : _letters = letters;
 
   /// The block's painted extent in canvas coordinates — text bounds plus
   /// the background box / outline, snapped to whole pixels so a bake's
@@ -52,36 +51,38 @@ class TextCelLayout {
   /// The text block's laid-out size.
   final ui.Size textSize;
 
-  final TextPainter _fill;
-  final TextPainter? _stroke;
+  /// The letters, set for drawing — stroke under fill, smooth or hard
+  /// (the passes a text on a cel is drawn in too).
+  final CanvasLetterPasses _letters;
 
   /// Draws at the layout's canvas coordinates — the caller sets up any
   /// viewport/camera transform first.
   void paint(ui.Canvas canvas) {
-    final backgroundColor = style.backgroundColorValue;
-    if (backgroundColor != null) {
+    final background = style.backgroundColor;
+    if (background != null) {
       // The アフレコ box: text bounds plus breathing room, the SE red-box
       // vocabulary.
-      canvas.drawRect(
+      _letters.paintBoxBehind(
+        canvas,
         ui.Rect.fromLTWH(
           topLeft.dx - pad,
           topLeft.dy - pad,
           textSize.width + pad * 2,
           textSize.height + pad * 2,
         ),
-        ui.Paint()..color = backgroundColor,
+        background,
       );
     }
-    // Stroke under fill — the timeline glyph outline recipe (#15: one
-    // rule on every surface).
-    _stroke?.paint(canvas, topLeft);
-    _fill.paint(canvas, topLeft);
+    // ⚠️A letter's size past the ink the layout counts: that box is the
+    // lines' own, and a glyph reaches out of its line.
+    _letters.paint(
+      canvas,
+      topLeft,
+      within: inkBounds.inflate(style.fontSize),
+    );
   }
 
-  void dispose() {
-    _fill.dispose();
-    _stroke?.dispose();
-  }
+  void dispose() => _letters.dispose();
 }
 
 /// A tag line's pitch, as a multiple of its letters' size.
@@ -129,29 +130,31 @@ TextCelLayout layoutTextCel({
     fill.dispose();
     fill = build(fontSize: drawnSize);
   }
-  final outline = canvasLetterOutlinePaint(style);
-  final stroke = outline == null
-      ? null
-      : build(fontSize: drawnSize, foreground: outline);
+  final textSize = ui.Size(fill.width, fill.height);
+  final outlined = canvasLetterOutlinePaint(style) != null;
+  // The tag is one run in one style. What was set to measure it is its
+  // fill pass, where its letters are smooth — the tag is set every frame.
+  final passes = CanvasLetterPasses.of(
+    [style],
+    (paintOf) => build(fontSize: drawnSize, foreground: paintOf(style)),
+    measured: fill,
+  );
 
   final anchor =
       content.position ??
-      ui.Offset(canvas.width / 2, (canvas.height - fill.height) / 2);
+      ui.Offset(canvas.width / 2, (canvas.height - textSize.height) / 2);
   final topLeft = ui.Offset(switch (style.align) {
     TextCelAlign.left => anchor.dx,
-    TextCelAlign.center => anchor.dx - fill.width / 2,
-    TextCelAlign.right => anchor.dx - fill.width,
+    TextCelAlign.center => anchor.dx - textSize.width / 2,
+    TextCelAlign.right => anchor.dx - textSize.width,
   }, anchor.dy);
 
   // The pad follows the DRAWN size, so a shrunk tag keeps its proportions.
   final pad = style.backgroundColor == null ? 0.0 : drawnSize * 0.25;
-  final outlineInflate = stroke == null ? 0.0 : style.outlineWidth / 2;
-  final ink = ui.Rect.fromLTWH(
-    topLeft.dx,
-    topLeft.dy,
-    fill.width,
-    fill.height,
-  ).inflate(pad > outlineInflate ? pad : outlineInflate);
+  final outlineInflate = outlined ? style.outlineWidth / 2 : 0.0;
+  final ink = (topLeft & textSize).inflate(
+    pad > outlineInflate ? pad : outlineInflate,
+  );
 
   return TextCelLayout._(
     inkBounds: ui.Rect.fromLTRB(
@@ -161,10 +164,9 @@ TextCelLayout layoutTextCel({
       ink.bottom.ceilToDouble(),
     ),
     topLeft: topLeft,
-    fill: fill,
-    stroke: stroke,
+    letters: passes,
     style: style,
     pad: pad,
-    textSize: ui.Size(fill.width, fill.height),
+    textSize: textSize,
   );
 }

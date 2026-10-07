@@ -149,6 +149,28 @@ void main() {
       expect(style.color, 0xFF000000);
       expect(style.fontSize, 48);
       expect(style.outlineColor, isNull);
+      expect(style.antialias, isTrue, reason: 'smooth until said otherwise');
+    });
+
+    test('🚨a smooth letter writes NO word of its edges: what a file written '
+        'before the switch says of a letter is what a smooth one says', () {
+      expect(
+        const TextLetterStyle().toJson().containsKey('antialias'),
+        isFalse,
+      );
+      expect(const TextLetterStyle(antialias: false).toJson(), {
+        'fontSize': 48.0,
+        'color': 0xFF000000,
+        'antialias': false,
+      });
+    });
+
+    test('a hard letter stays hard through a change of anything else', () {
+      const hard = TextLetterStyle(antialias: false);
+
+      expect(hard.copyWith(fontSize: 12).antialias, isFalse);
+      expect(hard.copyWith(antialias: true), const TextLetterStyle());
+      expect(hard.hashCode, isNot(const TextLetterStyle().hashCode));
     });
 
     final changes = <String, TextLetterStyle>{
@@ -159,6 +181,7 @@ void main() {
       'the colour': const TextLetterStyle(color: 0xFF112233),
       'the outline colour': const TextLetterStyle(outlineColor: 0xFFFFFFFF),
       'the outline width': const TextLetterStyle(outlineWidth: 2),
+      'the smoothing': const TextLetterStyle(antialias: false),
     };
 
     for (final entry in changes.entries) {
@@ -194,6 +217,20 @@ void main() {
       expect(bigger.fontSize, 72);
       expect(bigger.align, TextCelAlign.right);
       expect(bigger.backgroundColor, 0xFFAA0000);
+    });
+
+    test('🚨an SE tag style IS a letter style: it carries the smoothing of '
+        'its letters through a copy and through a file', () {
+      const hard = TextCelStyle(antialias: false);
+
+      expect(hard, isNot(const TextCelStyle()));
+      expect(hard.copyWith(fontSize: 72).antialias, isFalse);
+      expect(hard.copyWith(antialias: true), const TextCelStyle());
+      expect(TextCelStyle.fromJson(throughJson(hard.toJson())), hard);
+      expect(
+        const TextCelStyle().toJson().containsKey('antialias'),
+        isFalse,
+      );
     });
   });
 

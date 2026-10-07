@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
@@ -15,6 +16,7 @@ import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 import 'package:anicel/src/ui/widgets/pill_strip.dart';
+import 'package:anicel/src/ui/widgets/settings_rows.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,7 +24,8 @@ import '../../helpers/cel_text_hand.dart';
 
 /// R9-rest (the text tool): THE ROWS OF ITS SETTINGS — the layout 유저 took
 /// on 2026-10-06, top to bottom: the text in hand and its delete · 글자 —
-/// face, size, tracking, bold, colour, outline, outline width · 상자 —
+/// face, size, tracking, bold, colour, outline, outline width, the
+/// smoothing of the letters' edges · 상자 —
 /// alignment, box width, line spacing, background.
 ///
 /// What a row reads and writes is `TextToolSettingsValues`'s, measured
@@ -109,6 +112,11 @@ void main() {
     find.descendant(of: row('bold'), matching: find.byType(BooleanDot)),
   );
 
+  /// The ring of the switch that smooths the letters' edges.
+  BooleanDot smoothRing(WidgetTester tester) => tester.widget<BooleanDot>(
+    find.descendant(of: row('antialias'), matching: find.byType(BooleanDot)),
+  );
+
   testWidgets('🚨every row has its seat, in the order of the layout — with '
       'a text in hand or with none', (tester) async {
     const rows = [
@@ -120,6 +128,7 @@ void main() {
       'color',
       'outline',
       'outline-width',
+      'antialias',
       'align',
       'box-width',
       'line-height',
@@ -155,12 +164,14 @@ void main() {
             letterSpacing: 4,
             bold: true,
             color: 0xFF102030,
+            antialias: false,
           ),
           align: TextCelAlign.center,
           lineHeight: 1.5,
         ),
       );
 
+      expect(smoothRing(tester).value, isFalse);
       expect(written('size', '30.0 px'), findsOneWidget);
       expect(written('tracking', '4'), findsOneWidget);
       expect(
@@ -368,6 +379,65 @@ void main() {
         ),
       );
       expect(hand.host.ran, hasLength(2));
+    });
+
+    // 🗣️유저 2026-10-06 (asked whether letters need the switch the shape
+    // fill and the selection carry): 「권장대로. 2차에서 스위치로 넣음」.
+    testWidgets('🚨the smoothing switch is ON for letters as they have '
+        'always been — turned off, every letter of the text in hand is '
+        'HARD, as one step, and so will the next text\'s be', (tester) async {
+      final hand = await pumpSettings(
+        tester,
+        text: said([run('ab'), run('cd', red)]),
+      );
+      expect(smoothRing(tester).value, isTrue);
+      expect(smoothRing(tester).mixed, isFalse);
+      expect(
+        find.descendant(
+          of: row('antialias'),
+          matching: find.text(AppText.strings.brAntiAlias),
+        ),
+        findsOneWidget,
+        reason: 'under the word the shape fill and the selection say',
+      );
+
+      await tester.ensureVisible(row('antialias'));
+      await tester.pump();
+      await tester.tap(row('antialias'));
+      await tester.pump();
+
+      expect(
+        [for (final span in landedOn(hand.cel).spans) span.style.antialias],
+        [false, false],
+      );
+      expect(
+        [for (final span in landedOn(hand.cel).spans) span.style.color],
+        [plain.color, red.color],
+        reason: 'and nothing else of them is another',
+      );
+      expect(hand.host.ran, hasLength(1));
+      expect(smoothRing(tester).value, isFalse);
+      expect(hand.options.value.letters.antialias, isFalse);
+    });
+
+    testWidgets('letters that do not agree on it show its ring MIXED, and a '
+        'press smooths them all', (tester) async {
+      final hand = await pumpSettings(
+        tester,
+        text: said([
+          run('ab', const TextLetterStyle(fontSize: 16, antialias: false)),
+          run('cd'),
+        ]),
+      );
+      expect(smoothRing(tester).mixed, isTrue);
+      expect(smoothRing(tester).value, isFalse);
+
+      await tester.ensureVisible(row('antialias'));
+      await tester.pump();
+      await tester.tap(row('antialias'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel).spans.single.style.antialias, isTrue);
     });
 
     testWidgets('a mixed ring pressed turns every letter on', (tester) async {
@@ -853,5 +923,16 @@ void main() {
     expect(bar(tester, 'line-height').onChanged, isNull);
     expect(pill(tester, 'align-left').onTap, isNull);
     expect(tester.widget<PanelFlyoutButton>(row('font')).enabled, isFalse);
+    expect(
+      tester
+          .widget<SettingsSwitchRow>(
+            find.ancestor(
+              of: row('antialias'),
+              matching: find.byType(SettingsSwitchRow),
+            ),
+          )
+          .onChanged,
+      isNull,
+    );
   });
 }

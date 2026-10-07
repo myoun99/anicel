@@ -26,7 +26,8 @@ import 'tool_settings_section.dart';
 ///
 /// The layout is the one 유저 took on 2026-10-06, top to bottom: the text in
 /// hand and its delete · **글자** — face, size, tracking, bold, colour,
-/// outline, outline width · **상자** — alignment, box width, line spacing,
+/// outline, outline width, and the smoothing of their edges (유저: 「2차에서
+/// 스위치로 넣음」) · **상자** — alignment, box width, line spacing,
 /// background.
 ///
 /// What every row reads and writes is ONE law, and it is not in this file
@@ -235,7 +236,27 @@ class _LetterRows extends StatelessWidget {
           _LetterNumber.outlineWidth,
           live: outlined.mixed || outlined.value,
         ),
+        _smoothing(),
       ],
+    );
+  }
+
+  /// Whether the letters' edges are smoothed — the switch the shape fill
+  /// and the selection carry, under their word for it.
+  ///
+  /// 🗣️유저 2026-10-06 (asked whether letters need it): 「권장대로. 2차에서
+  /// 스위치로 넣음」 — in this group, so it is a setting of LETTERS: it
+  /// reaches the selected ones or, with none selected, the whole text.
+  Widget _smoothing() {
+    final smooth = values.letter((style) => style.antialias);
+    return SettingsSwitchRow(
+      tileKey: const ValueKey<String>('text-tool-antialias'),
+      label: AppText.strings.brAntiAlias,
+      value: !smooth.mixed && smooth.value,
+      mixed: smooth.mixed,
+      onChanged: values.writable
+          ? (on) => values.setLetters((style) => style.copyWith(antialias: on))
+          : null,
     );
   }
 

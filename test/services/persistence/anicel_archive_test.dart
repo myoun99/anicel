@@ -260,6 +260,18 @@ void main() {
           'file, not shorten it (R9-rest, 10-07)',
     );
   });
+
+  test('🚨a build that reads version 7 refuses what this one writes — a '
+      'letter says whether its edges are smoothed now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(7),
+      reason:
+          'a v7 build reads a hard letter as a smooth one, and the first '
+          'edit of its text bakes it smooth and writes it back that way — '
+          'it must refuse the file, not soften it (R9-rest, 10-07)',
+    );
+  });
 }
 
 /// The project manifest is compressed, and an old uncompressed one still
