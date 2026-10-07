@@ -192,7 +192,7 @@ class Machine {
         if (seen.add(parent)) ahead.add(parent);
       }
     }
-    return seen..remove(pid);
+    return seen;
   }
 
   Iterable<int> _launchersOf(int pid) sync* {
