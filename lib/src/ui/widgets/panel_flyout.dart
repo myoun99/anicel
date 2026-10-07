@@ -248,13 +248,11 @@ extension PanelFlyoutChoices<T extends Enum> on Iterable<T> {
     required String keyPrefix,
     required String Function(T value) labelOf,
     required ValueChanged<T> onPicked,
-    List<String> Function(T value)? shortcutsOf,
   }) => asFlyoutValueChoices(
     current: current,
     choiceOf: (value) => PanelFlyoutChoice(
       key: '$keyPrefix${value.name}',
       label: labelOf(value),
-      shortcuts: shortcutsOf?.call(value) ?? const [],
     ),
     onPicked: onPicked,
   );

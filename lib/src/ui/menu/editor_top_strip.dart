@@ -1240,13 +1240,15 @@ class _BlendModeControl extends StatelessWidget {
             // joining `toolHasBlendMode` is all it took: the eraser's
             // single-entry case is the `toolLocked` box above, so this
             // list needs no per-tool filter to obey that law.
-            entriesBuilder: () => BrushBlendMode.values.asFlyoutChoices(
+            entriesBuilder: () => BrushBlendMode.values.asFlyoutValueChoices(
               current: mode,
-              keyPrefix: 'brush-tool-blend-',
               // 🗣️I-31 made every mode an action (F1–F12); the row it is
               // picked from says so, as every button does (I-40).
-              shortcutsOf: (candidate) => [blendModeActionId(candidate)],
-              labelOf: (candidate) => candidate.labelFor(language),
+              choiceOf: (candidate) => PanelFlyoutChoice(
+                key: 'brush-tool-blend-${candidate.name}',
+                label: candidate.labelFor(language),
+                shortcuts: [blendModeActionId(candidate)],
+              ),
               // Writes to whichever drawer the armed tool owns — the
               // BRUSH's is its own shape, so the mode picked here is
               // the mode that brush keeps and exports. The button
