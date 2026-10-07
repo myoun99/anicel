@@ -1034,24 +1034,31 @@ void main() {
       );
     });
 
-    test('⛔but a base that cannot carry riders still refuses it', () {
-      // The base-side gate is untouched: an attach row is never itself a
-      // base ([canCarryAttachedLayers]).
+    test('⛔an attach row is never a base: the folder dropped on one rides '
+        'ITS base', () {
+      // ↩️It read `isNull` until F-312 — dropping on a rider asked to ride
+      // the rider, and the base-side gate ([canCarryAttachedLayers]) said
+      // no. The gate is untouched; the question changed: ON an attach row
+      // is 「join its group」, and a group has one base.
       final stack = [
         _row('base'),
         _row('rider', attachedTo: 'base'),
         folder('f'),
       ];
-      expect(
-        resolveLayerDropOnRow(
-          stack: stack,
-          movingId: const LayerId('f'),
-          targetId: const LayerId('rider'),
-        ),
-        isNull,
-        reason: '⛔the relation would chain, which is the one thing it may '
-            'never do',
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('f'),
+        targetId: const LayerId('rider'),
       );
+
+      expect(plan, isNotNull);
+      expect(
+        [for (final mount in plan!.attach.mounts) mount.baseId.value],
+        ['base'],
+        reason: '⛔never the rider — the relation would chain, which is the '
+            'one thing it may never do',
+      );
+      expect(plan.attach.mounts.single.layerId, const LayerId('f'));
     });
 
     test('a nested EMPTY folder is reachable too', () {
@@ -1069,6 +1076,385 @@ void main() {
       expect(plan, isNotNull);
       expect(plan!.folderIds, {const LayerId('a'): const LayerId('inner')});
       expect(_ids(plan.order), ['a', 'inner', 'outer']);
+    });
+  });
+
+  /// 🚨F-312 (유저 2026-10-06): 「어태치쪽에 가까우면 어태치, 아니면 사이 …
+  /// 위아래 어태치레이어가 있는 곳의, 기준레이어의 사이에 두고싶은건데 해당
+  /// 어태치레이어들의 기준레이어가 펼쳐져있으면 사이에 넣는거밖에 안되고
+  /// **어태치의 마지막/위어태치 이렇게 두는게 안됨**. 접혀있을땐 사이에
+  /// 두는게 안되고 **어태치에 넣는거밖에 안됨**」.
+  ///
+  /// The user's scene, bottom → top: two groups FACING each other, a loose
+  /// row on either side.
+  ///
+  /// ```
+  /// 7 p                     loose
+  /// 6 B2                    base
+  /// 5 b2d1  → B2, below
+  /// 4 b2d2  → B2, below     B2's last row
+  /// 3 b1u2  → B1, above     B1's top row
+  /// 2 b1u1  → B1, above
+  /// 1 B1                    base
+  /// 0 q                     loose
+  /// ```
+  ///
+  /// One seat — between b1u2 and b2d2 — and THREE things a row can be in
+  /// it: B2's last attach, B1's top attach, or nobody's.
+  group('F-312: a seat between two groups, said three ways', () {
+    List<Layer> facing() => [
+      _row('q'),
+      _row('B1'),
+      _row('b1u1', attachedTo: 'B1'),
+      _row('b1u2', attachedTo: 'B1'),
+      _row('b2d2', attachedTo: 'B2', placement: AttachedPlacement.below),
+      _row('b2d1', attachedTo: 'B2', placement: AttachedPlacement.below),
+      _row('B2'),
+      _row('p'),
+    ];
+
+    /// What a plan made of the run: `id>base:side` for a mount, `-id` for a
+    /// detach, `id~side` for a side change, and nothing for a plain move.
+    String attachOf(LayerDropPlan? plan) {
+      if (plan == null) {
+        return 'REFUSED';
+      }
+      final side = plan.attach.sideChange;
+      return [
+        for (final mount in plan.attach.mounts)
+          '${mount.layerId.value}>${mount.baseId.value}:'
+              '${mount.placement.name}',
+        for (final id in plan.attach.detachIds) '-${id.value}',
+        if (side != null) '${side.layerId.value}~${side.placement.name}',
+      ].join(' ');
+    }
+
+    LayerDropPlan? on(String moving, String target, {List<Layer>? stack}) =>
+        resolveLayerDropOnRow(
+          stack: stack ?? facing(),
+          movingId: LayerId(moving),
+          targetId: LayerId(target),
+        );
+
+    const pInTheSeat = ['q', 'B1', 'b1u1', 'b1u2', 'p', 'b2d2', 'b2d1', 'B2'];
+    const qInTheSeat = ['B1', 'b1u1', 'b1u2', 'q', 'b2d2', 'b2d1', 'B2', 'p'];
+
+    test('ON the upper group\'s last row: its new last attach — 「어태치의 '
+        '마지막」', () {
+      // From above and from below: the seat is the row's OUTER side either
+      // way. ⛔By the side the run came from (⑤'s rule, which is about a
+      // base's picture) a row arriving from above would land between b2d1
+      // and b2d2 and could never be the last.
+      final fromAbove = on('p', 'b2d2');
+      expect(attachOf(fromAbove), 'p>B2:below');
+      expect(_ids(fromAbove!.order), pInTheSeat);
+
+      final fromBelow = on('q', 'b2d2');
+      expect(attachOf(fromBelow), 'q>B2:below');
+      expect(_ids(fromBelow!.order), qInTheSeat);
+    });
+
+    test('ON the lower group\'s top row: its new top attach — 「위어태치」', () {
+      final fromAbove = on('p', 'b1u2');
+      expect(attachOf(fromAbove), 'p>B1:above');
+      expect(
+        _ids(fromAbove!.order),
+        pInTheSeat,
+        reason: 'the SAME seat as B2\'s last — what differs is whose it is',
+      );
+
+      final fromBelow = on('q', 'b1u2');
+      expect(attachOf(fromBelow), 'q>B1:above');
+      expect(_ids(fromBelow!.order), qInTheSeat);
+    });
+
+    test('the LINE between them: nobody\'s — 「아니면 사이」', () {
+      // Whichever row the pointer stands in. ⛔Splitting this line in half
+      // by the pointer's row (F-31②'s rule for a row LEAVING its group)
+      // would hand each half to a group and leave no way to put a row
+      // between two of them.
+      for (final inRow in [null, 'b1u2', 'b2d2']) {
+        final plan = resolveLayerDrop(
+          stack: facing(),
+          movingId: const LayerId('p'),
+          insertAt: 4,
+          pointerInRow: inRow == null ? null : LayerId(inRow),
+        );
+        expect(attachOf(plan), '', reason: 'pointer in $inRow');
+        expect(_ids(plan!.order), pInTheSeat);
+      }
+    });
+
+    test('ON a row that is not the edge: the seat on its outer side, which '
+        'is the gap a caret names anyway', () {
+      final under = on('p', 'b2d1');
+      expect(attachOf(under), 'p>B2:below');
+      expect(_ids(under!.order), [
+        'q', 'B1', 'b1u1', 'b1u2', 'b2d2', 'p', 'b2d1', 'B2', //
+      ]);
+
+      final over = on('q', 'b1u1');
+      expect(attachOf(over), 'q>B1:above');
+      expect(_ids(over!.order), [
+        'B1', 'b1u1', 'q', 'b1u2', 'b2d2', 'b2d1', 'B2', 'p', //
+      ]);
+    });
+
+    test('a row already at the edge joins WITHOUT moving', () {
+      // q stands directly under b: the seat it would take is the one it is
+      // in. The intent is still real (④ exempts a forced landing).
+      final stack = [
+        _row('q'),
+        _row('b', attachedTo: 'B', placement: AttachedPlacement.below),
+        _row('B'),
+      ];
+      final plan = on('q', 'b', stack: stack);
+      expect(attachOf(plan), 'q>B:below');
+      expect(_ids(plan!.order), ['q', 'b', 'B']);
+    });
+
+    test('a row of the OTHER group changes base, and nothing else', () {
+      final plan = on('b1u1', 'b2d2');
+      expect(attachOf(plan), 'b1u1>B2:below');
+      expect(_ids(plan!.order), [
+        'q', 'B1', 'b1u2', 'b1u1', 'b2d2', 'b2d1', 'B2', 'p', //
+      ]);
+    });
+
+    test('⛔and it is not ALSO told to change sides on the base it left', () {
+      // m rides under B1, and the seat under r touches B1's group from
+      // above. Read as 「still touching its own group」 the plan carried a
+      // side change for B1 next to the mount on B2 — two instructions for
+      // one row. The pointer is in r's row, and r is not B1's.
+      final stack = [
+        _row('m', attachedTo: 'B1', placement: AttachedPlacement.below),
+        _row('B1'),
+        _row('r', attachedTo: 'B2', placement: AttachedPlacement.below),
+        _row('B2'),
+      ];
+      final plan = on('m', 'r', stack: stack);
+      expect(attachOf(plan), 'm>B2:below');
+      expect(_ids(plan!.order), ['B1', 'm', 'r', 'B2']);
+    });
+
+    test('a row of the SAME group has nothing to join — the gap answers', () {
+      // Where it sits among its own is a move (F-31② splits the edge for
+      // it). ⛔Mounting it again would re-decide synced / free for a row
+      // that only moved.
+      expect(on('b2d1', 'b2d2'), isNull);
+      expect(on('b2d2', 'b2d1'), isNull);
+      expect(on('b1u1', 'b1u2'), isNull);
+    });
+
+    test('nor has the group\'s own ORGANIZER folder', () {
+      // The folder holds nothing but B's attaches, so it IS B's
+      // ([attachOrganizerBaseOf]) though the folder row itself names no
+      // base.
+      final stack = [
+        _row('B'),
+        _row('r', attachedTo: 'B'),
+        _row('m', attachedTo: 'B', folderId: 'ORG'),
+        _row('ORG', kind: LayerKind.folder),
+        _row('y'),
+      ];
+      expect(on('ORG', 'r', stack: stack), isNull);
+    });
+
+    test('a folder brings its members, as it does onto a base (⑦)', () {
+      final stack = [
+        _row('B'),
+        _row('r', attachedTo: 'B'),
+        _row('g', folderId: 'F'),
+        _row('F', kind: LayerKind.folder),
+      ];
+      final plan = on('F', 'r', stack: stack);
+      expect(attachOf(plan), 'g>B:above');
+      expect(_ids(plan!.order), ['B', 'r', 'g', 'F']);
+    });
+
+    test('⛔the mount rules still apply', () {
+      // A base that carries its own cannot ride (the relation would chain);
+      // a storyboard row rides nothing; a selection travels together or not
+      // at all.
+      expect(on('B1', 'b2d2'), isNull);
+      final withBoard = [...facing(), _row('S', kind: LayerKind.storyboard)];
+      expect(on('S', 'b2d2', stack: withBoard), isNull);
+      final withTwo = [...facing(), _row('p2')];
+      expect(
+        resolveLayerDropOnRow(
+          stack: withTwo,
+          movingId: const LayerId('p'),
+          targetId: const LayerId('b1u2'),
+          alsoMoving: {const LayerId('p'), const LayerId('p2')},
+        ),
+        isNull,
+      );
+      expect(
+        on('p', 'b1u2', stack: withTwo),
+        isNotNull,
+        reason: '⛔전제: alone, the same row joins',
+      );
+    });
+
+    test('a row whose base is gone names no group to join', () {
+      final stack = [_row('a'), _row('ghost', attachedTo: 'gone')];
+      expect(() => on('a', 'ghost', stack: stack), returnsNormally);
+      expect(on('a', 'ghost', stack: stack), isNull);
+    });
+  });
+
+  /// F-312's other half, and F-31's sentence finished (유저 2026-08-24):
+  /// 「보이는것중에서만 이동하도록」. A folded group is rows of the stack
+  /// with no row on screen, so a line drawn between two rows on screen has
+  /// to land clear of them.
+  group('F-312: a line beside a FOLDED group lands outside it', () {
+    List<Layer> facing() => [
+      _row('q'),
+      _row('B1'),
+      _row('b1u1', attachedTo: 'B1'),
+      _row('b1u2', attachedTo: 'B1'),
+      _row('b2d2', attachedTo: 'B2', placement: AttachedPlacement.below),
+      _row('b2d1', attachedTo: 'B2', placement: AttachedPlacement.below),
+      _row('B2'),
+      _row('p'),
+    ];
+
+    List<Layer> shown(List<Layer> stack, List<String> ids) => [
+      for (final id in ids) stack.firstWhere((layer) => layer.id.value == id),
+    ];
+
+    List<int?> seats(List<Layer> stack, List<String> onScreen) {
+      final rows = shown(stack, onScreen);
+      return [
+        for (var slot = 0; slot <= rows.length; slot += 1)
+          modelInsertionForSlot(stack: stack, displayRows: rows, slot: slot),
+      ];
+    }
+
+    test('between two folded groups the line is the seat BETWEEN them', () {
+      // ↩️The rail's line under B2 read 6 — directly under B2, which is
+      // over its own below riders: the run went in as B2's attach and
+      // 「사이에 두는게 안되고」.
+      expect(seats(facing(), ['p', 'B2', 'B1', 'q']), [8, 7, 4, 1, 0]);
+      // The sheet runs the other way and names the same seats.
+      expect(seats(facing(), ['q', 'B1', 'B2', 'p']), [0, 1, 4, 7, 8]);
+    });
+
+    test('and the run dropped on that line is nobody\'s attach', () {
+      final stack = facing();
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('p'),
+        insertAt: modelInsertionForSlot(
+          stack: stack,
+          displayRows: shown(stack, ['p', 'B2', 'B1', 'q']),
+          slot: 2,
+        )!,
+      );
+      expect(plan!.attach.isEmpty, isTrue);
+      expect(_ids(plan.order), [
+        'q', 'B1', 'b1u1', 'b1u2', 'p', 'b2d2', 'b2d1', 'B2', //
+      ]);
+    });
+
+    test('a NEW row may land on that line too', () {
+      // ↩️It answered null: the seat was inside B2's group, where a new row
+      // may not go, so the pool's file had no line to land on at all.
+      final stack = facing();
+      expect(
+        newRowInsertionForSlot(
+          stack: stack,
+          displayRows: shown(stack, ['p', 'B2', 'B1', 'q']),
+          slot: 2,
+        ),
+        4,
+      );
+    });
+
+    test('past the END row is past what it carries', () {
+      // A folded base at the foot of the rail, its below rider under it.
+      final foot = [
+        _row('d', attachedTo: 'B', placement: AttachedPlacement.below),
+        _row('B'),
+        _row('u', attachedTo: 'B'),
+        _row('t'),
+      ];
+      // ↩️The rail's last line read 1: between d and B, B's attach.
+      expect(seats(foot, ['t', 'B']), [4, 3, 0]);
+      // …and at the head of it, its above rider over it.
+      final head = [
+        _row('t'),
+        _row('d', attachedTo: 'B', placement: AttachedPlacement.below),
+        _row('B'),
+        _row('u', attachedTo: 'B'),
+      ];
+      // ↩️[3, 2, 0]: the first line between B and u, the second between d
+      // and B.
+      expect(seats(head, ['B', 't']), [4, 1, 0]);
+      // The sheet's two ends are the same seats.
+      expect(seats(head, ['t', 'B']), [0, 1, 4]);
+      expect(seats(foot, ['B', 't']), [0, 3, 4]);
+    });
+
+    test('a folded FOLDER is the same sentence', () {
+      // Members first, the folder row directly above them.
+      final stack = [
+        _row('a'),
+        _row('m1', folderId: 'F'),
+        _row('m2', folderId: 'F'),
+        _row('F', kind: LayerKind.folder),
+        _row('z'),
+      ];
+      expect(seats(stack, ['z', 'F', 'a']), [5, 4, 1, 0]);
+      expect(seats(stack, ['a', 'F', 'z']), [0, 1, 4, 5]);
+
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('z'),
+        insertAt: 1,
+      );
+      expect(plan!.joinedFolderId, isNull, reason: 'under F, not inside it');
+      expect(_ids(plan.order), ['a', 'z', 'm1', 'm2', 'F']);
+    });
+
+    test('an OPEN group is untouched: the line under its head is its inside',
+        () {
+      final folder = [
+        _row('a'),
+        _row('m1', folderId: 'F'),
+        _row('m2', folderId: 'F'),
+        _row('F', kind: LayerKind.folder),
+        _row('z'),
+      ];
+      expect(seats(folder, ['z', 'F', 'm2', 'm1', 'a']), [5, 4, 3, 2, 1, 0]);
+      expect(seats(folder, ['a', 'm1', 'm2', 'F', 'z']), [0, 1, 2, 3, 4, 5]);
+
+      final group = [
+        _row('x'),
+        _row('u', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+        _row('o', attachedTo: 'base'),
+        _row('y'),
+      ];
+      expect(seats(group, ['y', 'o', 'base', 'u', 'x']), [5, 4, 3, 2, 1, 0]);
+    });
+
+    test('a folded folder INSIDE an open one stays inside the open one', () {
+      final stack = [
+        _row('a', folderId: 'outer'),
+        _row('m', folderId: 'inner'),
+        _row('inner', kind: LayerKind.folder, folderId: 'outer'),
+        _row('outer', kind: LayerKind.folder),
+        _row('z'),
+      ];
+      // Rail: z, outer, inner (folded), a.
+      expect(seats(stack, ['z', 'outer', 'inner', 'a']), [5, 4, 3, 1, 0]);
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('z'),
+        insertAt: 1,
+      );
+      expect(plan!.joinedFolderId, const LayerId('outer'));
     });
   });
 }

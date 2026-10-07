@@ -23,8 +23,12 @@ import '../../helpers/library_source.dart';
 /// rail and the x-sheet each used to do this arithmetic themselves, and one
 /// of them being fixed alone is how the bug would come back.
 void main() {
-  Layer cel(String id) =>
-      Layer(id: LayerId(id), name: id.toUpperCase(), frames: const []);
+  Layer cel(String id, {String? folder}) => Layer(
+    id: LayerId(id),
+    name: id.toUpperCase(),
+    frames: const [],
+    folderId: folder == null ? null : LayerId(folder),
+  );
 
   TimelineDisplayRow layerRow(Layer layer, int layerIndex) =>
       TimelineDisplayRow.layer(layer, layerIndex: layerIndex);
@@ -39,14 +43,20 @@ void main() {
   group('a folded group is layers with no rows', () {
     // Model order, and the display list the grid hands down. The folder's
     // members are in the stack and NOT on screen.
+    //
+    // ↩️The folder stood UNDER its members here until F-312 — the one
+    // arrangement the stack never holds (members first, the folder row
+    // directly above them), and the one in which the seat directly under
+    // the upper row happens to be clear of them. Right way up, that seat is
+    // the top of the folded group.
     final a = cel('a');
+    final m1 = cel('m1', folder: 'f');
+    final m2 = cel('m2', folder: 'f');
+    final m3 = cel('m3', folder: 'f');
     final folder = createFolderLayer(id: const LayerId('f'), name: 'F');
-    final m1 = cel('m1');
-    final m2 = cel('m2');
-    final m3 = cel('m3');
     final z = cel('z');
-    final stack = [a, folder, m1, m2, m3, z];
-    final rows = [layerRow(a, 0), layerRow(folder, 1), layerRow(z, 5)];
+    final stack = [a, m1, m2, m3, folder, z];
+    final rows = [layerRow(a, 0), layerRow(folder, 4), layerRow(z, 5)];
 
     test('one rail row of travel steps over the WHOLE folded group', () {
       final caret = LayerRowCaret.of(rows, a.id)!;
@@ -60,7 +70,7 @@ void main() {
       expect(caret.slotFor(1), 2, reason: 'the gap past the folder row');
     });
 
-    test('and the landing is AFTER the members, not among them', () {
+    test('and the landing is CLEAR of the members, not among them', () {
       final caret = LayerRowCaret.of(rows, a.id)!;
 
       expect(
@@ -71,11 +81,26 @@ void main() {
         ),
         5,
         reason:
-            'model index 5 is just before z — past m1, m2 and m3. '
-            'Counted in the full layer list the same travel named slot 2, '
-            'which is the gap between the folder and its first member: '
-            'one row of travel would have dropped the row INSIDE the '
-            'folded group.',
+            'model index 5 is just before z — past m1, m2, m3 and the '
+            'folder row. Counted in the full layer list the same travel '
+            'named slot 2, which is the gap between m1 and m2: one row of '
+            'travel would have dropped the row INSIDE the folded group.',
+      );
+
+      // The line on the folder's other side, reached from z.
+      final back = LayerRowCaret.of(rows, z.id)!;
+      expect(back.slotFor(-1), 1, reason: '⛔전제: the gap between a and F');
+      expect(
+        modelInsertionForSlot(
+          stack: stack,
+          displayRows: back.layers,
+          slot: back.slotFor(-1),
+        ),
+        1,
+        reason:
+            'under ALL three members. ↩️4 until F-312 — the seat directly '
+            'under the folder row, which is the top of a group nobody can '
+            'see (유저 2026-10-06: 「접혀있을땐 사이에 두는게 안되고」)',
       );
     });
 
