@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
@@ -231,7 +230,6 @@ void main() {
             body: CanvasPlaybackView(
               controller: controller,
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               prerenderProgress: ValueNotifier(PrerenderProgress.none),
               cameraViewEnabled: false,
               cameraFrameSize: canvasSize,
@@ -292,7 +290,6 @@ void main() {
                 globalFrameIndex: globalFrame,
               ),
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>

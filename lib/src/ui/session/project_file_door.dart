@@ -48,8 +48,6 @@ import '../../services/persistence/open_project_file.dart';
 import '../../services/persistence/same_file.dart';
 import '../../services/project_lookup.dart'
     show cutPositionOf, projectAudioSourcePaths;
-import '../playback/playback_cache_budget.dart' show defaultPlaybackQuality;
-import 'playback_rig.dart';
 import 'project_resume.dart';
 import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
@@ -126,9 +124,7 @@ class ProjectFileDoor {
     required VisibilitySolo solo,
     required FailedSaveCopies failedCopies,
     required StandingLaw keepStandingShown,
-    required PlaybackRig playback,
   }) : _file = file,
-       _playback = playback,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -147,10 +143,6 @@ class ProjectFileDoor {
 
   final ProjectFile _file;
   final ProjectAccess _project;
-
-  /// Whose playback quality a save keeps and an open puts back
-  /// ([ProjectResume.playbackQuality]).
-  final PlaybackRig _playback;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -852,7 +844,6 @@ class ProjectFileDoor {
     layerId: _selection.activeLayerId,
     frameIndex: _selection.currentFrameIndex,
     tools: toolChoice?.read() ?? const {},
-    playbackQuality: _playback.playbackQuality,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1104,10 +1095,6 @@ class ProjectFileDoor {
     // what a file itself shuts — a folder — is not the view's to open.
     _keepStandingShown();
     _resumeTools(resume.tools);
-    // A file that says nothing previews as a new project does.
-    _playback.setPlaybackQuality(
-      resume.playbackQuality ?? defaultPlaybackQuality,
-    );
   }
 }
 

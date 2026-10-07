@@ -11,7 +11,6 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
@@ -76,7 +75,6 @@ void main() {
             globalFrameIndex: globalFrame,
           ),
           compositeCache: composites,
-          qualityOf: () => PlaybackQuality.full,
           cameraFrameSize: const CanvasSize(width: 4, height: 2),
           cameraViewEnabled: false,
           cameraPoseOf: (cut, frameIndex) =>
@@ -193,14 +191,12 @@ class _ComposesHeldBack extends CutFrameCompositeCache {
   ui.Image? validCompositeOrNull({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
   }) => _landed[frameIndex];
 
   @override
   Future<ui.Image?> prepareCompositeInterruptible({
     required Cut cut,
     required int frameIndex,
-    required PlaybackQuality quality,
     required bool Function() shouldAbort,
   }) {
     final done = Completer<ui.Image?>();

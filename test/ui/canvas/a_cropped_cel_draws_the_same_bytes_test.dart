@@ -783,100 +783,86 @@ void main() {
     });
   });
 
-  // The composite rasters at the tier's size, which is the canvas's rounded:
-  // on a canvas whose sides divide by four every tier lays each image down
-  // texel for texel and draws the ink as it is; on 150×101 a quarter is
-  // 38/150 of the canvas, not a quarter, every draw resamples, and the ink
-  // is laid back whole. Both roads, and both the same bytes as the whole.
-  for (final (size, copiesEveryTier) in const [
-    (CanvasSize(width: 152, height: 104), true),
-    (canvasSize, false),
-  ]) {
-    testWidgets('the playback composite composes the same bytes from the ink '
-        '— ${size.width}×${size.height}', (tester) async {
-      BrushFrameKey frameKeyOf(Cut cut, LayerId layerId, FrameId frameId) =>
-          BrushFrameKey(
-            projectId: const ProjectId('p'),
-            trackId: const TrackId('t'),
-            cutId: cut.id,
-            layerId: layerId,
-            frameId: frameId,
-          );
-      model.Layer layer(
-        String id, {
-        double opacity = 1,
-        LayerBlendMode blendMode = LayerBlendMode.normal,
-      }) => model.Layer(
-        id: LayerId(id),
-        name: id,
-        frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
-        timeline: {0: TimelineExposure.drawing(FrameId('$id-f'), length: 1)},
-        opacity: opacity,
-        blendMode: blendMode,
-      );
-      final cut = Cut(
-        id: const CutId('c'),
-        name: 'cut',
-        duration: 1,
-        canvasSize: size,
-        layers: [
-          layer('pasteboard'),
-          layer('interior', blendMode: LayerBlendMode.multiply),
-          layer('leftTop', opacity: 0.8),
-          layer('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.screen),
-          layer('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
-          layer('inner'),
-        ],
-      );
-      final store = storeWithCels(size);
-      await tester.runAsync(() async {
-        for (final quality in PlaybackQuality.values) {
-          Future<Uint8List> composed({required bool whole}) async {
-            final images = LayerFrameImageCache(frameStore: store)
-              ..debugStoresWholeContent = whole;
-            final cache = CutFrameCompositeCache(
-              layerImages: images,
-              frameStore: store,
-              frameKeyOf: frameKeyOf,
-            );
-            final image = await cache.prepareComposite(
-              cut: cut,
-              frameIndex: 0,
-              quality: quality,
-            );
-            final data = await image.toByteData(
-              format: ui.ImageByteFormat.rawRgba,
-            );
-            cache.dispose();
-            images.dispose();
-            return data!.buffer.asUint8List();
-          }
+  // The composite rasters at the canvas's own size, so every image is laid
+  // down texel for texel and the ink is drawn as it is — the same bytes as
+  // the whole. ↩️At a playback quality tier's size that was not always so:
+  // on 150×101 a quarter was 38/150 of the canvas, every draw resampled and
+  // the ink was laid back whole. The tiers went on 2026-10-08.
+  testWidgets('the playback composite composes the same bytes from the ink', (
+    tester,
+  ) async {
+    BrushFrameKey frameKeyOf(Cut cut, LayerId layerId, FrameId frameId) =>
+        BrushFrameKey(
+          projectId: const ProjectId('p'),
+          trackId: const TrackId('t'),
+          cutId: cut.id,
+          layerId: layerId,
+          frameId: frameId,
+        );
+    model.Layer layer(
+      String id, {
+      double opacity = 1,
+      LayerBlendMode blendMode = LayerBlendMode.normal,
+    }) => model.Layer(
+      id: LayerId(id),
+      name: id,
+      frames: [Frame(id: FrameId('$id-f'), duration: 1, strokes: const [])],
+      timeline: {0: TimelineExposure.drawing(FrameId('$id-f'), length: 1)},
+      opacity: opacity,
+      blendMode: blendMode,
+    );
+    final cut = Cut(
+      id: const CutId('c'),
+      name: 'cut',
+      duration: 1,
+      canvasSize: canvasSize,
+      layers: [
+        layer('pasteboard'),
+        layer('interior', blendMode: LayerBlendMode.multiply),
+        layer('leftTop', opacity: 0.8),
+        layer('rightBottom', opacity: 0.7, blendMode: LayerBlendMode.screen),
+        layer('sparse', opacity: 0.5, blendMode: LayerBlendMode.add),
+        layer('inner'),
+      ],
+    );
+    final store = storeWithCels(canvasSize);
+    await tester.runAsync(() async {
+      Future<Uint8List> composed({required bool whole}) async {
+        final images = LayerFrameImageCache(frameStore: store)
+          ..debugStoresWholeContent = whole;
+        final cache = CutFrameCompositeCache(
+          layerImages: images,
+          frameStore: store,
+          frameKeyOf: frameKeyOf,
+        );
+        final image = await cache.prepareComposite(cut: cut, frameIndex: 0);
+        final data = await image.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        cache.dispose();
+        images.dispose();
+        return data!.buffer.asUint8List();
+      }
 
-          final old = await composed(whole: true);
-          debugCropsLaidDown = 0;
-          debugWholesLaidBack = 0;
-          final ink = await composed(whole: false);
-          final copied = copiesEveryTier || quality != PlaybackQuality.quarter;
-          expect(
-            copied ? debugCropsLaidDown : debugWholesLaidBack,
-            greaterThan(0),
-            reason: 'fixture: at $quality the ink was '
-                '${copied ? 'drawn as it is' : 'laid back whole'}',
-          );
-          if (copiesEveryTier) {
-            // The multiply and the screen rows asked for their whole images,
-            // so nothing was stored as ink that had to be laid back.
-            expect(debugWholesLaidBack, 0, reason: '$quality');
-          }
-          var differing = 0;
-          for (var i = 0; i < old.length; i += 1) {
-            if (old[i] != ink[i]) {
-              differing += 1;
-            }
-          }
-          expect(differing, 0, reason: '$quality');
+      final old = await composed(whole: true);
+      debugCropsLaidDown = 0;
+      debugWholesLaidBack = 0;
+      final ink = await composed(whole: false);
+      expect(
+        debugCropsLaidDown,
+        greaterThan(0),
+        reason: 'fixture: the ink was drawn as it is',
+      );
+      // The multiply and the screen rows asked for their whole images, so
+      // nothing was stored as ink that had to be laid back.
+      expect(debugWholesLaidBack, 0);
+      var differing = 0;
+      for (var i = 0; i < old.length; i += 1) {
+        if (old[i] != ink[i]) {
+          differing += 1;
         }
-      });
+      }
+      expect(differing, 0);
     });
-  }
+  });
 }

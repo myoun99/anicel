@@ -16,7 +16,6 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -26,7 +25,6 @@ import '../playback/audio_scrubber.dart';
 import '../playback/audioplayers_clip_player.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../playback/canvas_playback_controller.dart';
-import '../playback/playback_cache_budget.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
 import 'editor_voice_recording.dart';
@@ -43,7 +41,6 @@ class PlaybackRig implements PlaybackRun {
   PlaybackRig({
     required ProjectAccess project,
     required SelectionAccess selection,
-    required ChangeSink changes,
     required TimelineAccess timeline,
     required EditorAppSettings appSettings,
     required ValueListenable<Set<LayerId>> soloedSeLayerIds,
@@ -62,7 +59,6 @@ class PlaybackRig implements PlaybackRun {
     onPlaylistWarmRequested,
   }) : _project = project,
        _selection = selection,
-       _changes = changes,
        _timeline = timeline,
        _appSettings = appSettings,
        _soloedSeLayerIds = soloedSeLayerIds,
@@ -77,7 +73,6 @@ class PlaybackRig implements PlaybackRun {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
-  final ChangeSink _changes;
   final TimelineAccess _timeline;
   final EditorAppSettings _appSettings;
 
@@ -101,8 +96,8 @@ class PlaybackRig implements PlaybackRun {
   // ── the playback cache budget: its own object ───────────────────────
   //
   // A collaborator (session/playback_cache_budget.dart). It reads the
-  // transport and the quality off this rig, which is why the rig builds
-  // it rather than being handed one.
+  // transport off this rig, which is why the rig builds it rather than
+  // being handed one.
   late final PlaybackCacheBudget playbackCache = PlaybackCacheBudget(
     project: _project,
     renderCaches: _renderCaches,
@@ -136,19 +131,6 @@ class PlaybackRig implements PlaybackRun {
         // A movie kept as a reference decodes before its frame composes.
         beforeCompose: _movieCels.hydrate,
       );
-
-  /// Playback preview quality (Premiere/AE monitor resolution analogue).
-  @override
-  PlaybackQuality playbackQuality = defaultPlaybackQuality;
-
-  void setPlaybackQuality(PlaybackQuality quality) {
-    if (playbackQuality == quality) {
-      return;
-    }
-    playbackQuality = quality;
-    _changes.warmActiveCut();
-    _changes.notifyChanged();
-  }
 
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).

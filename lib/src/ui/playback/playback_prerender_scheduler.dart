@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_warm_extent.dart';
-import '../../models/playback_quality.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../core/dev_profile.dart';
 import 'cut_frame_composite_cache.dart';
@@ -77,8 +76,7 @@ class PlaybackPrerenderScheduler {
   /// is the hot loop the sibling record exists to stop. The signature
   /// comes from the composite cache so "has this frame changed" stays
   /// one rule rather than two.
-  final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature>
-  _failedSignatures = {};
+  final Map<(CutId, int), CutFrameCompositeSignature> _failedSignatures = {};
 
   /// The store generation those records belong to. A project OPEN bumps
   /// it — the one moment a cel the filesystem refused can have become
@@ -131,7 +129,6 @@ class PlaybackPrerenderScheduler {
   /// run per debounced restart.
   void requestWarmCut({
     required CutId cutId,
-    required PlaybackQuality quality,
     int aroundFrameIndex = 0,
     CutId? followedByCutId,
   }) {
@@ -170,15 +167,12 @@ class PlaybackPrerenderScheduler {
         order.add((followedByCutId!, index));
       }
     }
-    _restart(order, quality);
+    _restart(order);
   }
 
   /// Warms a multi-cut playlist sequentially (play-all).
-  void requestWarmFrames({
-    required List<(CutId, int)> frames,
-    required PlaybackQuality quality,
-  }) {
-    _restart(List.of(frames), quality);
+  void requestWarmFrames({required List<(CutId, int)> frames}) {
+    _restart(List.of(frames));
   }
 
   /// Restarts the idle debounce; warming stays paused while edits are hot.
@@ -249,17 +243,13 @@ class PlaybackPrerenderScheduler {
     _progress.dispose();
   }
 
-  void _restart(List<(CutId, int)> queue, PlaybackQuality quality) {
+  void _restart(List<(CutId, int)> queue) {
     final generation = ++_generation;
     _progress.value = PrerenderProgress(cached: 0, total: queue.length);
-    _current = _run(generation, queue, quality);
+    _current = _run(generation, queue);
   }
 
-  Future<void> _run(
-    int generation,
-    List<(CutId, int)> queue,
-    PlaybackQuality quality,
-  ) async {
+  Future<void> _run(int generation, List<(CutId, int)> queue) async {
     _forgetStaleFailures();
     var cached = 0;
     for (final (cutId, frameIndex) in queue) {
@@ -279,17 +269,15 @@ class PlaybackPrerenderScheduler {
             composites.validCompositeOrNull(
               cut: cut,
               frameIndex: frameIndex,
-              quality: quality,
             ) !=
             null;
         if (alreadyValid) {
           break;
         }
-        final indexKey = (cutId, frameIndex, quality);
+        final indexKey = (cutId, frameIndex);
         final signature = composites.signatureOf(
           cut: cut,
           frameIndex: frameIndex,
-          quality: quality,
         );
         if (_failedSignatures[indexKey] == signature) {
           // This exact content already threw. Nothing about it changed,
@@ -313,7 +301,6 @@ class PlaybackPrerenderScheduler {
           image = await composites.prepareCompositeInterruptible(
             cut: cut,
             frameIndex: frameIndex,
-            quality: quality,
             shouldAbort: () => _isStale(generation) || !_isQuietNow(),
           );
         } catch (error, stack) {

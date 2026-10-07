@@ -10,7 +10,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -131,7 +130,6 @@ void main() {
         await s.renderCaches.cutFrameCompositeCache.prepareComposite(
           cut: cut,
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         );
       }
       expect(
@@ -170,7 +168,6 @@ void main() {
       Future<void> prepare(String id) => composites.prepareComposite(
         cut: s.cutById(CutId(id))!,
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       for (final (id, frameId) in [
         ('cut-2', 'frame-b'),
@@ -219,7 +216,6 @@ void main() {
       await composites.prepareComposite(
         cut: open,
         frameIndex: 0,
-        quality: s.playbackRig.playbackQuality,
       );
       expect(composites.estimatedBytes, greaterThan(0), reason: 'premise');
       expect(

@@ -10,7 +10,6 @@ import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -56,13 +55,11 @@ void main() {
   CutFrameCompositeSignature signature({
     Cut? forCut,
     int frameIndex = 0,
-    PlaybackQuality quality = PlaybackQuality.half,
     int Function(LayerId, FrameId)? revisionOf,
   }) {
     return computeCutFrameCompositeSignature(
       cut: forCut ?? cut(),
       frameIndex: frameIndex,
-      quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
     );
   }
@@ -103,7 +100,7 @@ void main() {
     );
   });
 
-  test('opacity, visibility, quality and canvas size change the signature', () {
+  test('opacity, visibility and canvas size change the signature', () {
     final base = signature();
 
     expect(
@@ -116,7 +113,6 @@ void main() {
       ),
       isNot(base),
     );
-    expect(signature(quality: PlaybackQuality.full), isNot(base));
   });
 
   test('layer order is part of the signature', () {

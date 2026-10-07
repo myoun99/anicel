@@ -9,7 +9,6 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -114,7 +113,6 @@ void main() {
               globalFrameIndex: globalFrame,
             ),
             compositeCache: composites,
-            qualityOf: () => PlaybackQuality.full,
             cameraFrameSize: cameraFrameSize,
             cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
@@ -159,7 +157,6 @@ void main() {
         await composites.prepareComposite(
           cut: cut,
           frameIndex: frameIndex,
-          quality: PlaybackQuality.full,
         );
       }
     });

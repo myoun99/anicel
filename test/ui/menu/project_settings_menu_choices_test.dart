@@ -5,18 +5,17 @@
 // change window. Two of those rows — the project audio sample rate and the
 // playback quality — asked the same question the same way and were one
 // body copied twice; G3 (2026-09-07) made them one `_editChoice` differing
-// only in values, and these are the pins that say the two branches still
-// behave. Without them the shared body could apply the wrong setting, or
-// the wrong preset, and nothing would say so.
+// only in values, and these are the pins that say it still behaves.
+// Without them the shared body could apply the wrong setting, or the wrong
+// preset, and nothing would say so. ↩️The playback quality left with its
+// option (2026-10-08), so the sample rate is the one row pinned here.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
-import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 void main() {
@@ -91,41 +90,6 @@ void main() {
     expect(session.projectAudio.projectAudioSampleRate, target);
   });
 
-  testWidgets('the quality row picks the quality the tapped preset says — the '
-      'SAME body, a different setting', (tester) async {
-    final before = session.playbackRig.playbackQuality;
-    final rateBefore = session.projectAudio.projectAudioSampleRate;
-    final target = PlaybackQuality.values.firstWhere(
-      (preset) => preset != before,
-    );
-
-    await pumpMenu(tester);
-    await openRow(tester, 'project-settings-quality');
-
-    for (final preset in PlaybackQuality.values) {
-      expect(
-        find.byKey(ValueKey<String>('playback-quality-${preset.name}')),
-        findsOneWidget,
-      );
-      expect(
-        find.text(PlaybackTransportControls.qualityLabel(preset)),
-        findsOneWidget,
-      );
-    }
-
-    await tester.tap(
-      find.byKey(ValueKey<String>('playback-quality-${target.name}')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(session.playbackRig.playbackQuality, target);
-    expect(
-      session.projectAudio.projectAudioSampleRate,
-      rateBefore,
-      reason: 'the shared body applied the quality, not the sample rate',
-    );
-  });
-
   testWidgets('the menu is a value row per setting, and the FPS row opens the '
       'presets with a rate of one\'s own', (tester) async {
     await pumpMenu(tester);
@@ -140,7 +104,6 @@ void main() {
       'project-settings-fps',
       'project-settings-audio-rate',
       'project-settings-camera-size',
-      'project-settings-quality',
     ]) {
       expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
     }

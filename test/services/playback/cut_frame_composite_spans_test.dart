@@ -7,7 +7,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_spans.dart';
@@ -42,13 +41,11 @@ void main() {
   List<CutFrameCompositeSpan> spans({
     Cut? forCut,
     int frameCount = 14,
-    PlaybackQuality quality = PlaybackQuality.half,
     int Function(LayerId, FrameId)? revisionOf,
   }) {
     return computeCutFrameCompositeSpans(
       cut: forCut ?? cut(),
       frames: (startIndex: 0, endIndexExclusive: frameCount),
-      quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
     );
   }
@@ -131,26 +128,12 @@ void main() {
     expect(afterTable[2].signature, beforeTable[2].signature);
   });
 
-  test('quality rides every span signature without moving a boundary', () {
-    final half = spans(quality: PlaybackQuality.half);
-    final full = spans(quality: PlaybackQuality.full);
-
-    expect(
-      full.map((span) => (span.start, span.endExclusive)),
-      half.map((span) => (span.start, span.endExclusive)),
-    );
-    for (var i = 0; i < half.length; i++) {
-      expect(full[i].signature, isNot(half[i].signature));
-    }
-  });
-
   test('a table can start at any frame — it is the whole table cut there',
       () {
     final whole = spans();
     final tail = computeCutFrameCompositeSpans(
       cut: cut(),
       frames: (startIndex: 3, endIndexExclusive: 14),
-      quality: PlaybackQuality.half,
       revisionOf: (_, _) => 7,
     );
 

@@ -2,13 +2,10 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
-import '../../models/playback_quality.dart';
 import '../../models/project_frame_rate.dart';
 import '../dialogs/camera_size_dialog.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
-import '../playback/playback_transport_controls.dart'
-    show PlaybackTransportControls;
 import '../text/app_strings.dart';
 import '../text/full_width_numerals.dart';
 import '../theme/app_theme.dart';
@@ -16,16 +13,17 @@ import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../input/control_press_claim.dart';
 
-/// The project's settings — its frame rate, its audio sample rate, its
-/// camera frame and the playback quality — as rows of the top strip's ⚙,
-/// one level in, beside the work's (유저 답 playback-quality-home-Q1
-/// 「프로젝트 설정으로 같이」, with 「다만 프로젝트 설정이랑 작품설정이랑
-/// 나누는게 깔끔할지도?」). ↩️They were the ⚙ on the frame panels' sill,
-/// beside the transport.
+/// The project's settings — its frame rate, its audio sample rate and its
+/// camera frame — as rows of the top strip's ⚙, one level in, beside the
+/// work's (유저 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」, with
+/// 「다만 프로젝트 설정이랑 작품설정이랑 나누는게 깔끔할지도?」). ↩️They were
+/// the ⚙ on the frame panels' sill, beside the transport. ↩️The playback
+/// quality was a row here too, until the option itself went (유저
+/// 2026-10-08: 「재생화질 옵션 자체가 … 그냥 없애고 원본재생으로만 두자」).
 ///
 /// 유저 2026-08-27: the menu is VALUE ROWS — 「FPS 24」, the sample
-/// rate, the camera frame, the quality — and each row opens its own small
-/// change window. The presets used to be inlined here, which made the one
+/// rate, the camera frame — and each row opens its own small change
+/// window. The presets used to be inlined here, which made the one
 /// menu as tall as all of its settings put together; a row that states its
 /// current value is the compact form, and the window it opens is where the
 /// choices live.
@@ -139,21 +137,6 @@ class ProjectSettingsMenu {
     }
   }
 
-  Future<void> _editQuality(BuildContext context) =>
-      _editChoice<PlaybackQuality>(
-        context,
-        (
-          windowKey: 'playback-quality-dialog',
-          title: AppText.strings.playbackQuality,
-          titleIcon: Icons.high_quality_outlined,
-          current: session.playbackRig.playbackQuality,
-          presets: PlaybackQuality.values,
-          keyValue: (preset) => 'playback-quality-${preset.name}',
-          label: PlaybackTransportControls.qualityLabel,
-          apply: session.playbackRig.setPlaybackQuality,
-        ),
-      );
-
   /// The rows, each stating its setting as it is now and opening the window
   /// that changes it.
   List<PanelFlyoutEntry> entries(BuildContext context) {
@@ -181,14 +164,6 @@ class ProjectSettingsMenu {
             .replaceAll('{h}', '${cameraSize.height}'),
         icon: Icons.videocam_outlined,
         onSelected: () => unawaited(_editCameraSize(context)),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'project-settings-quality',
-        label:
-            '${strings.playbackQuality} · '
-            '${PlaybackTransportControls.qualityLabel(session.playbackRig.playbackQuality)}',
-        icon: Icons.high_quality_outlined,
-        onSelected: () => unawaited(_editQuality(context)),
       ),
     ];
   }

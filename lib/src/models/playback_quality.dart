@@ -2,13 +2,16 @@ import 'dart:math' as math;
 
 import 'canvas_size.dart';
 
-/// Playback preview resolution presets, like the Premiere/AE monitor
-/// quality selector. The scale applies to the cached raster size; the view
-/// upscales back to canvas size on screen.
+/// A LEVEL of the display's pyramid ([level]): the editing canvas below
+/// 100% asks for the other layers' images at the level it composes at. The
+/// scale applies to the cached raster size.
 ///
-/// Since 2026-09-16 each preset is also a LEVEL of the display's pyramid
-/// ([level]): the editing canvas below 100% asks for the other layers'
-/// images at the level it composes at, so one cache serves both.
+/// ↩️It was the playback preview's resolution preset first — the Premiere/AE
+/// monitor quality selector — and a level of the pyramid as well since
+/// 2026-09-16, so one cache served both. The preset went on 2026-10-08
+/// (유저: 「재생화질 옵션 자체가 1/4재생소재 만드는게 손해니까 그냥 없애고
+/// 원본재생으로만 두자」): playback shows a cut's picture at its own size.
+/// ⚠️The name is the old use's; what is left is the level.
 enum PlaybackQuality {
   full(1.0),
   half(0.5),

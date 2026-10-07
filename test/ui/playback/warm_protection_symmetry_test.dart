@@ -7,7 +7,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -82,7 +81,6 @@ void main() {
       final s = session();
       addTearDown(s.dispose);
       final activeCut = s.activeCutOrNull!;
-      final quality = s.playbackRig.playbackQuality;
 
       final budget = budgetOf(s);
       final range = budget.debugPlaybackProtectedRanges().single;
@@ -92,18 +90,14 @@ void main() {
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
-        quality: quality,
       );
-      // The same frame at the OTHER tier: same pixels' worth of work, no
-      // protection — the anchor that says survival below is the range
-      // doing its job, not the budget being roomy.
-      final other = quality == PlaybackQuality.full
-          ? PlaybackQuality.half
-          : PlaybackQuality.full;
+      // A frame PAST the range: a picture's worth of work, no protection —
+      // the anchor that says survival below is the range doing its job, not
+      // the budget being roomy.
+      final past = range.endFrame + 10;
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
-        frameIndex: 5,
-        quality: other,
+        frameIndex: past,
       );
 
       s.renderCaches.cutFrameCompositeCache.enforceBudget(
@@ -115,7 +109,6 @@ void main() {
         s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
           frameIndex: 5,
-          quality: quality,
         ),
         isNotNull,
         reason: 'the warm just baked this — evicting it is the treadmill '
@@ -124,11 +117,10 @@ void main() {
       expect(
         s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
           cut: activeCut,
-          frameIndex: 5,
-          quality: other,
+          frameIndex: past,
         ),
         isNull,
-        reason: 'the unprotected tier goes, so the survival above is the '
+        reason: 'the unprotected picture goes, so the survival above is the '
             'range speaking',
       );
     });
@@ -143,7 +135,6 @@ void main() {
 
     s.playbackRig.prerenderScheduler.requestWarmCut(
       cutId: activeCut.id,
-      quality: s.playbackRig.playbackQuality,
     );
 
     expect(
@@ -206,7 +197,6 @@ void main() {
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: activeCut,
         frameIndex: 5,
-        quality: s.playbackRig.playbackQuality,
       );
       expect(ready(5), isTrue);
       expect(

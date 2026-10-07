@@ -363,7 +363,6 @@ void main() {
       () => composites.prepareComposite(
         cut: cut(inFolder: inFolder),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       ),
     ))!;
     final playback = PlaybackFramePainter(
@@ -496,7 +495,6 @@ void main() {
         () => composites.prepareComposite(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         ),
       ))!;
       final playback = PlaybackFramePainter(
@@ -520,56 +518,6 @@ void main() {
             'the render zoom (0.7) instead of the device scale (1.4).',
       );
       expect(diffingPixels(editingBytes, playbackBytes), 0);
-    },
-  );
-
-  testWidgets(
-    'a reduced-quality cache keeps its bilinear upscale (not the law\'s '
-    'subject)',
-    (tester) async {
-      // The parity law joins ONLY at the canvas-resolution draw. A
-      // Half/Quarter cache upscales inside the same drawImageRect, and
-      // that upscale keeps today's bilinear — nearest here would turn
-      // every degraded playback frame blocky, a look the editing canvas
-      // never produces. The oracle: bilinear leaves intermediate grays
-      // along the ink's edge; nearest leaves none.
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetDevicePixelRatio);
-      final store = storeWithInk();
-      final composites = CutFrameCompositeCache(
-        layerImages: LayerFrameImageCache(frameStore: store),
-        frameStore: store,
-        frameKeyOf: frameKey,
-      );
-      addTearDown(composites.dispose);
-      final half = (await tester.runAsync(
-        () => composites.prepareComposite(
-          cut: cut(),
-          frameIndex: 0,
-          quality: PlaybackQuality.half,
-        ),
-      ))!;
-      expect(half.width, lessThan(canvasSize.width));
-      final painter = PlaybackFramePainter(
-        image: half,
-        canvasSize: canvasSize,
-        viewport: CanvasViewport(),
-        devicePixelRatio: 1.0,
-        paperBackground: background,
-      );
-      final bytes = await rasterize(
-        tester,
-        painter,
-        logicalSize: const Size(8, 8),
-        dpr: 1.0,
-      );
-      expect(
-        blendedPixels(bytes),
-        greaterThan(0),
-        reason: 'the half cache\'s upscale must stay bilinear — zero '
-            'intermediate grays means the display law leaked into the '
-            'degraded tiers and playback at Half went blocky.',
-      );
     },
   );
 
@@ -612,7 +560,6 @@ void main() {
                 globalFrameIndex: globalFrame,
               ),
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               cameraFrameSize: canvasSize,
               cameraViewEnabled: false,
               cameraPoseOf: (cut, frameIndex) =>
@@ -678,7 +625,6 @@ void main() {
             body: CanvasPlaybackView(
               controller: controller,
               compositeCache: composites,
-              qualityOf: () => PlaybackQuality.full,
               prerenderProgress: ValueNotifier(PrerenderProgress.none),
               cameraViewEnabled: false,
               cameraFrameSize: canvasSize,

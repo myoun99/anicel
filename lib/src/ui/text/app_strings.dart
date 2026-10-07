@@ -1049,7 +1049,6 @@ enum AppStrings {
   String get shortcutRecordingHint => _s('shortcutRecordingHint');
 
   // --- Playback transport and the sheet page rail ---
-  String get playbackQuality => _s('playbackQuality');
   String get playbackStop => _s('playbackStop');
   String get sheetPreviousPage => _s('sheetPreviousPage');
   String get sheetNextPage => _s('sheetNextPage');
@@ -2233,7 +2232,6 @@ enum AppStrings {
     'shortcutConflictBanner':
         'Some actions share the same key — the highlighted bindings collide.',
     'shortcutRecordingHint': 'Press keys… (Esc cancels)',
-    'playbackQuality': 'Playback quality',
     'playbackStop': 'Stop',
     'sheetPreviousPage': 'Previous page',
     'sheetNextPage': 'Next page',
@@ -3471,7 +3469,6 @@ enum AppStrings {
         '同じキーを共有しているアクションがあります — 強調された割り当てが'
         '衝突しています。',
     'shortcutRecordingHint': 'キーを押してください…（Escで中止）',
-    'playbackQuality': '再生品質',
     'playbackStop': '停止',
     'sheetPreviousPage': '前のページ',
     'sheetNextPage': '次のページ',
@@ -4843,7 +4840,6 @@ enum AppStrings {
     'shortcutSearch': '동작 검색',
     'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
-    'playbackQuality': '재생 품질',
     'playbackStop': '정지',
     'sheetPreviousPage': '이전 페이지',
     'sheetNextPage': '다음 페이지',
@@ -6257,7 +6253,6 @@ enum AppStrings {
         'Certaines actions partagent la même touche — les assignations '
         'surlignées entrent en conflit.',
     'shortcutRecordingHint': 'Appuyez sur des touches… (Échap annule)',
-    'playbackQuality': 'Qualité de lecture',
     'playbackStop': 'Arrêter',
     'sheetPreviousPage': 'Page précédente',
     'sheetNextPage': 'Page suivante',
@@ -7621,7 +7616,6 @@ enum AppStrings {
     'shortcutSearch': '搜索动作',
     'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
     'shortcutRecordingHint': '请按键…（Esc 取消）',
-    'playbackQuality': '播放质量',
     'playbackStop': '停止',
     'sheetPreviousPage': '上一页',
     'sheetNextPage': '下一页',

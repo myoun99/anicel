@@ -1,19 +1,14 @@
 import 'dart:math' as math;
 
-import '../../models/playback_quality.dart';
 import '../../services/memory_pressure_budget.dart';
 import 'cut_frame_composite_cache.dart';
 import 'layer_frame_image_cache.dart';
 
 /// Playback render-cache policy constants (single source of truth).
 ///
-/// Half is the default playback quality, like the Premiere/AE monitors:
-/// full-resolution frames of a 2340×1654 canvas cost ~15.5 MB each, so a
-/// whole cut at Full can approach the budget by itself.
-const PlaybackQuality defaultPlaybackQuality = PlaybackQuality.half;
-
 /// Combined GPU-image byte budget across the layer-frame and cut-composite
-/// caches.
+/// caches. A cut's picture is the canvas's own size — ~15.5 MB for a
+/// 2340×1654 canvas — so a whole cut can approach the budget by itself.
 const int playbackCacheBudgetBytes = 600 * 1024 * 1024;
 
 /// 🚨WHERE PRESSURE PUTS IT — and until 2026-08-30 the answer was

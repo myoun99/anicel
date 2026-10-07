@@ -80,8 +80,8 @@ LayerPlacement placementOf(LayerPoseSample sample, CanvasSize canvasSize) =>
     );
 
 /// [placement] as the matrix a `Canvas` takes. [rasterScale] restates the
-/// same canvas-space placement in a scaled raster (the playback quality
-/// tiers): the raster's pixels are the canvas's times it, so what the
+/// same canvas-space placement in a scaled raster (a level of the display's
+/// pyramid, say): the raster's pixels are the canvas's times it, so what the
 /// placement does to a direction stays and where it sends the origin
 /// scales.
 Matrix4 placementMatrix(LayerPlacement placement, {double rasterScale = 1}) =>

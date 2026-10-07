@@ -231,7 +231,7 @@ void main() {
     });
   });
 
-  testWidgets('the playback composite copies each tier image', (
+  testWidgets('the playback composite copies each layer image', (
     tester,
   ) async {
     const canvasSize = CanvasSize(width: 8, height: 8);
@@ -290,23 +290,17 @@ void main() {
       ],
     );
     await tester.runAsync(() async {
-      for (final quality in [PlaybackQuality.full, PlaybackQuality.half]) {
-        final images = LayerFrameImageCache(frameStore: store);
-        final cache = CutFrameCompositeCache(
-          layerImages: images,
-          frameStore: store,
-          frameKeyOf: frameKey,
-        );
-        debugTexelCopies = 0;
-        await cache.prepareComposite(
-          cut: cut,
-          frameIndex: 0,
-          quality: quality,
-        );
-        expect(debugTexelCopies, greaterThan(0), reason: '$quality');
-        cache.dispose();
-        images.dispose();
-      }
+      final images = LayerFrameImageCache(frameStore: store);
+      final cache = CutFrameCompositeCache(
+        layerImages: images,
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      debugTexelCopies = 0;
+      await cache.prepareComposite(cut: cut, frameIndex: 0);
+      expect(debugTexelCopies, greaterThan(0));
+      cache.dispose();
+      images.dispose();
     });
   });
 

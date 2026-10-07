@@ -15,7 +15,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -138,7 +137,6 @@ void main() {
           body: CanvasPlaybackView(
             controller: controller,
             compositeCache: composites,
-            qualityOf: () => PlaybackQuality.full,
             prerenderProgress:
                 progress ?? ValueNotifier(PrerenderProgress.none),
             cameraViewEnabled: cameraViewEnabled,
@@ -176,12 +174,10 @@ void main() {
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 1,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -232,7 +228,6 @@ void main() {
       await hidden.composites.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
     });
     hidden.controller.play(scope: PlaybackScope.activeCut);
@@ -282,7 +277,6 @@ void main() {
       await composites.prepareComposite(
         cut: gapCut,
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -319,7 +313,6 @@ void main() {
       await f.composites.prepareComposite(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.full,
       );
     });
 
@@ -365,7 +358,6 @@ void main() {
           body: CanvasPlaybackView(
             controller: f.controller,
             compositeCache: f.composites,
-            qualityOf: () => PlaybackQuality.full,
             prerenderProgress: ValueNotifier(PrerenderProgress.none),
             cameraViewEnabled: false,
             cameraFrameSize: const CanvasSize(width: 4, height: 2),

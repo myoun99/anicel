@@ -12,7 +12,7 @@
 // nowhere to live.
 //
 // ⛔What is NOT here is the session's REACTION to a settled burst —
-// which cut to warm, around which frame, at which quality. That reads
+// which cut to warm, around which frame. That reads
 // the standing row, the timeline controller and the storyboard order, so
 // it stays with the session and arrives here as the [ChangeSink] verb it
 // always was. Keeping it out is also what keeps this acyclic: the

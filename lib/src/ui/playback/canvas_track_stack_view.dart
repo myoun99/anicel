@@ -10,7 +10,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_effect.dart' show LayerEffect;
-import '../../models/playback_quality.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
@@ -52,7 +51,6 @@ class CanvasTrackStackView extends StatefulWidget {
     required this.globalFrame,
     required this.positionsOf,
     required this.compositeCache,
-    required this.qualityOf,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
     this.cameraViewEnabled = true,
@@ -95,7 +93,6 @@ class CanvasTrackStackView extends StatefulWidget {
   final bool cameraViewEnabled;
 
   final CutFrameCompositeCache compositeCache;
-  final PlaybackQuality Function() qualityOf;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
 
@@ -179,9 +176,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   /// cuts' composites, which the non-playing protection range (the active
   /// cut only) never covered — without the pins the budget could evict
   /// the exact frames this widget is displaying.
-  final Map<CutId, (CutId, int, PlaybackQuality)> _heldPins = {};
+  final Map<CutId, (CutId, int)> _heldPins = {};
 
-  void _swapHeldPin(CutId cutId, (CutId, int, PlaybackQuality)? next) {
+  void _swapHeldPin(CutId cutId, (CutId, int)? next) {
     final previous = _heldPins[cutId];
     if (previous != null) {
       widget.compositeCache.releasePin(previous);
@@ -218,12 +215,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   /// Holds [composite] — [cut]'s picture at [frameIndex] — as what the view
   /// shows for the cut until a newer one lands: our own clone, and a pin on
   /// its cache slot. Cloning happens only when the source changes.
-  void _hold(
-    Cut cut,
-    int frameIndex,
-    PlaybackQuality quality,
-    ui.Image composite,
-  ) {
+  void _hold(Cut cut, int frameIndex, ui.Image composite) {
     if (identical(composite, _heldSources[cut.id])) {
       return;
     }
@@ -231,7 +223,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     _heldSources[cut.id] = composite;
     _heldFrames[cut.id] = composite.clone();
     _heldCanvasSizes[cut.id] = cut.canvasSize;
-    _swapHeldPin(cut.id, (cut.id, frameIndex, quality));
+    _swapHeldPin(cut.id, (cut.id, frameIndex));
   }
 
   @override
@@ -265,7 +257,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     }
   }
 
-  void _prepare(Cut cut, int frameIndex, PlaybackQuality quality) {
+  void _prepare(Cut cut, int frameIndex) {
     if (_inFlightFrame.containsKey(cut.id)) {
       return;
     }
@@ -274,7 +266,6 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         .prepareCompositeInterruptible(
           cut: cut,
           frameIndex: frameIndex,
-          quality: quality,
           shouldAbort: () => !mounted || !_wantedFrame.containsKey(cut.id),
         )
         .then(
@@ -285,7 +276,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             if (image != null &&
                 mounted &&
                 _wantedFrame.containsKey(cut.id)) {
-              _hold(cut, frameIndex, quality, image);
+              _hold(cut, frameIndex, image);
             }
             if (image != null) {
               widget.onFrameCached?.call();
@@ -349,7 +340,6 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       );
     }
 
-    final quality = widget.qualityOf();
     final layers = <Widget>[?floor];
     // The unit alpha of each contribution: its transition share times the
     // track's own opacity and fade. The weights that follow turn those into
@@ -370,12 +360,11 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       final composite = widget.compositeCache.validCompositeOrNull(
         cut: cut,
         frameIndex: localFrame,
-        quality: quality,
       );
       if (composite == null) {
-        _prepare(cut, localFrame, quality);
+        _prepare(cut, localFrame);
       } else {
-        _hold(cut, localFrame, quality, composite);
+        _hold(cut, localFrame, composite);
       }
 
       final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
@@ -435,9 +424,8 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
             // No cutPose/cutAnchorPoint: the V row has no transform. The
             // camera is what moves the picture on the stage.
-            // The V row's chain, on the cut's picture. rasterScale stays 1:
-            // the composite is drawn up to CANVAS space here, whatever
-            // quality it was cached at, and a blur radius is canvas pixels.
+            // The V row's chain, on the cut's picture — the canvas's own
+            // size, so a blur radius is canvas pixels as it stands.
             cutEffects: trackEffectsAt(
               widget.trackEffectsOf?.call(cut.id) ?? const [],
               globalFrame,

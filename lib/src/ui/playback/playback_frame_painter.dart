@@ -64,7 +64,7 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
          'Camera mode needs the camera frame size.',
        );
 
-  /// The composite at any cached quality; drawn stretched to canvas size.
+  /// The cut's picture — the canvas's own size — drawn onto the canvas.
   final ui.Image? image;
 
   final CanvasSize canvasSize;
@@ -274,18 +274,14 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
     final resolvedCutPose = cutPose;
     final composite = image;
     // The frames that STAND IN for the editing stack — canvas mode, no cut
-    // pose, a composite at canvas resolution (or none at all) — cut the
-    // canvas's boundary the way the editing stack cuts it
+    // pose — cut the canvas's boundary the way the editing stack cuts it
     // (`displayEdgeAntiAliased`, F-67-paper-edge), the paper and the
     // composite alike, or a scrub would switch the edge line on and off.
-    // Camera mode, a cut pose and the degraded tiers keep the anti-aliased
-    // edge they had: their interiors are filtered too.
-    final standsInForEditing =
-        pose == null &&
-        resolvedCutPose == null &&
-        (composite == null ||
-            (composite.width == canvasSize.width &&
-                composite.height == canvasSize.height));
+    // Camera mode and a cut pose keep the anti-aliased edge they had: their
+    // interiors are filtered too. ↩️A composite smaller than the canvas — a
+    // playback quality tier's — was a third such case until the tiers went
+    // (2026-10-08): a cut's picture is the canvas's own size.
+    final standsInForEditing = pose == null && resolvedCutPose == null;
     final edgeAntiAlias =
         resolvedViewport == null ||
         !standsInForEditing ||
@@ -325,13 +321,10 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       //
       // The law's premise is a canvas-resolution image (displayScaleOf's
       // premise: the image is at canvas resolution, so zoom × ratio is
-      // the scale it is resampled by). A Half/Quarter
-      // cache upscales to canvas size inside this same draw, and that
-      // upscale keeps its bilinear sampling — today's value for the
-      // degraded tiers, which can never be byte-equal to the editing
-      // canvas anyway. Camera mode (and the unexercised cut pose) project
-      // through transforms the editing canvas never renders, so they too
-      // keep the sampling they always had.
+      // the scale it is resampled by) — which a cut's picture is. Camera
+      // mode (and the unexercised cut pose) project through transforms the
+      // editing canvas never renders, so they keep the sampling they
+      // always had.
       final editingResample = standsInForEditing;
       final imagePaint = Paint()
         ..filterQuality = editingResample
@@ -350,11 +343,10 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
       // form, so a key that comes after painted state needs its own raster —
       // the same steps a group and a layer image already take.
       //
-      // ⚠️rasterScale 1 for the PAINT: the cut is drawn up to canvas space
+      // ⚠️rasterScale 1 for the PAINT: the cut is drawn in canvas space
       // here, so a blur radius is canvas pixels and Skia maps the sigma
-      // through the CTM. The STEPS are a different question — they raster the
-      // image at its OWN size, which a Half/Quarter cache makes smaller than
-      // the canvas, so they get that ratio instead.
+      // through the CTM. The STEPS raster the image at its own size, and
+      // read the ratio to the canvas off the image.
       final plan = resolveCompositeEffectPlan(cutEffects);
       plan.finalPaint.applyTo(imagePaint);
       final stepped = steppedForChain(
@@ -370,7 +362,6 @@ class PlaybackFramePainter extends CustomPainter with RepaintOnProps {
           stepped.width.toDouble(),
           stepped.height.toDouble(),
         ),
-        // The dst upscale is what shows Half/Quarter caches at canvas size.
         canvasRect,
         imagePaint,
       );

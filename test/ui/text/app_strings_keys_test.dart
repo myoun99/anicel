@@ -477,7 +477,6 @@ void main() {
     'shortcutSearch': (s) => s.shortcutSearch,
     'shortcutConflictBanner': (s) => s.shortcutConflictBanner,
     'shortcutRecordingHint': (s) => s.shortcutRecordingHint,
-    'playbackQuality': (s) => s.playbackQuality,
     'playbackStop': (s) => s.playbackStop,
     'sheetPreviousPage': (s) => s.sheetPreviousPage,
     'sheetNextPage': (s) => s.sheetNextPage,

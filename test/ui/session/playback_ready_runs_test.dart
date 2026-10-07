@@ -6,7 +6,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -78,7 +77,6 @@ void main() {
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: held,
         frameIndex: 0,
-        quality: s.playbackRig.playbackQuality,
       );
 
       expect(budget.playbackReadyRunsForCut(held, 0, 30), [
@@ -104,38 +102,6 @@ void main() {
     });
   });
 
-  testWidgets('the bar answers for the quality playback plays at', (
-    tester,
-  ) async {
-    await tester.runAsync(() async {
-      final s = session();
-      addTearDown(s.dispose);
-      final held = s.activeCutOrNull!;
-      final budget = budgetOf(s);
-      s.playbackRig.playbackQuality = PlaybackQuality.full;
-      await s.renderCaches.cutFrameCompositeCache.prepareComposite(
-        cut: held,
-        frameIndex: 0,
-        quality: PlaybackQuality.full,
-      );
-
-      expect(budget.playbackReadyRunsForCut(held, 0, 30), [
-        (startIndex: 0, endIndexExclusive: 30),
-      ]);
-      s.playbackRig.playbackQuality = PlaybackQuality.half;
-      expect(
-        budget.playbackReadyRunsForCut(held, 0, 30),
-        [(startIndex: 24, endIndexExclusive: 30)],
-        reason: 'nothing was baked at half — the full bake is another '
-            'picture',
-      );
-      s.playbackRig.playbackQuality = PlaybackQuality.full;
-      expect(budget.playbackReadyRunsForCut(held, 0, 30), [
-        (startIndex: 0, endIndexExclusive: 30),
-      ]);
-    });
-  });
-
   testWidgets('the timeline ruler reads the active cut', (tester) async {
     await tester.runAsync(() async {
       final s = session();
@@ -145,7 +111,6 @@ void main() {
       await s.renderCaches.cutFrameCompositeCache.prepareComposite(
         cut: held,
         frameIndex: 0,
-        quality: s.playbackRig.playbackQuality,
       );
 
       expect(budget.playbackReadyRuns(3, 30), [

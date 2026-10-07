@@ -6,7 +6,6 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
@@ -36,7 +35,6 @@ void main() {
     /// a, then a folder holding b and an adjustment holding c, then d.
     CutFrameCompositeSignature nested() => CutFrameCompositeSignature(
       canvasSize: const CanvasSize(width: 8, height: 8),
-      quality: PlaybackQuality.full,
       nodes: [
         CompositeLeafSignature(leaf('a')),
         CompositeGroupSignature(
@@ -65,7 +63,6 @@ void main() {
     test('a folder holding only a folder still reaches the leaf', () {
       final buried = CutFrameCompositeSignature(
         canvasSize: const CanvasSize(width: 8, height: 8),
-        quality: PlaybackQuality.full,
         nodes: [
           CompositeGroupSignature(
             opacity: 1,
@@ -86,7 +83,6 @@ void main() {
     test('an EMPTY folder yields nothing of its own', () {
       final empty = CutFrameCompositeSignature(
         canvasSize: const CanvasSize(width: 8, height: 8),
-        quality: PlaybackQuality.full,
         nodes: [
           CompositeGroupSignature(
             opacity: 1,

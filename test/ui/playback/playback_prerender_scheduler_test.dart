@@ -15,7 +15,6 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -135,7 +134,6 @@ void main() {
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
         aroundFrameIndex: 0,
       );
       await scheduler.idle;
@@ -144,7 +142,6 @@ void main() {
         f.composites.validCompositeOrNull(
           cut: runwayCut(),
           frameIndex: 6,
-          quality: PlaybackQuality.quarter,
         ),
         isNotNull,
         reason: 'a frame the warm never visits misses in the cache forever, '
@@ -175,7 +172,6 @@ void main() {
             f.composites.validCompositeOrNull(
               cut: asked,
               frameIndex: frameIndex,
-              quality: PlaybackQuality.quarter,
             ),
             isNull,
             reason: 'nothing is composed before the hook has answered',
@@ -186,7 +182,6 @@ void main() {
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
         aroundFrameIndex: 0,
       );
       await scheduler.idle;
@@ -197,7 +192,6 @@ void main() {
           f.composites.validCompositeOrNull(
             cut: cut(),
             frameIndex: frame,
-            quality: PlaybackQuality.quarter,
           ),
           isNotNull,
           reason: 'frame $frame was answered for, so it was warmed',
@@ -219,7 +213,6 @@ void main() {
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
         aroundFrameIndex: 2,
       );
       await scheduler.idle;
@@ -229,7 +222,6 @@ void main() {
           f.composites.validCompositeOrNull(
             cut: cut(),
             frameIndex: index,
-            quality: PlaybackQuality.quarter,
           ),
           isNotNull,
           reason: 'frame $index should be warmed',
@@ -262,7 +254,6 @@ void main() {
       scheduler.progress.addListener(() => reports += 1);
       void warm() => scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
 
       warm();
@@ -304,7 +295,6 @@ void main() {
       scheduler.notifyEditActivity();
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
       await Future<void>.delayed(const Duration(milliseconds: 150));
 
@@ -313,7 +303,6 @@ void main() {
         f.composites.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.quarter,
         ),
         isNull,
       );
@@ -335,11 +324,9 @@ void main() {
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
       scheduler.requestWarmFrames(
         frames: const [(CutId('cut'), 0), (CutId('cut'), 1)],
-        quality: PlaybackQuality.quarter,
       );
       await scheduler.idle;
 
@@ -363,7 +350,6 @@ void main() {
       scheduler.beginInputHold();
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
@@ -376,7 +362,6 @@ void main() {
         f.composites.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.quarter,
         ),
         isNull,
       );
@@ -389,7 +374,6 @@ void main() {
         f.composites.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.quarter,
         ),
         isNotNull,
         reason: 'released holds resume the SAME queue to completion',
@@ -412,13 +396,11 @@ void main() {
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
       await scheduler.idle;
       final before = f.composites.validCompositeOrNull(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.quarter,
       );
 
       // Edit: caches invalidate via revision, then re-warm.
@@ -441,21 +423,18 @@ void main() {
         f.composites.validCompositeOrNull(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.quarter,
         ),
         isNull,
       );
 
       scheduler.requestWarmCut(
         cutId: const CutId('cut'),
-        quality: PlaybackQuality.quarter,
       );
       await scheduler.idle;
 
       final after = f.composites.validCompositeOrNull(
         cut: cut(),
         frameIndex: 0,
-        quality: PlaybackQuality.quarter,
       );
       expect(after, isNotNull);
       expect(identical(before, after), isFalse);
@@ -531,7 +510,6 @@ void main() {
 
         scheduler.requestWarmCut(
           cutId: const CutId('cut'),
-          quality: PlaybackQuality.quarter,
           aroundFrameIndex: 2,
           followedByCutId: const CutId('cut-b'),
         );
@@ -545,7 +523,6 @@ void main() {
             f.composites.validCompositeOrNull(
               cut: nextCut(),
               frameIndex: index,
-              quality: PlaybackQuality.quarter,
             ),
             isNotNull,
             reason: 'next-cut frame $index warms on the same run — index 3 '
@@ -584,7 +561,6 @@ void main() {
 
         scheduler.requestWarmCut(
           cutId: const CutId('cut'),
-          quality: PlaybackQuality.quarter,
           followedByCutId: const CutId('cut'),
         );
         await scheduler.idle;
@@ -596,7 +572,6 @@ void main() {
 
         scheduler.requestWarmCut(
           cutId: const CutId('cut'),
-          quality: PlaybackQuality.quarter,
           followedByCutId: const CutId('gone'),
         );
         await scheduler.idle;

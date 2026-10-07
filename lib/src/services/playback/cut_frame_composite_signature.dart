@@ -7,7 +7,6 @@ import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
-import '../../models/playback_quality.dart';
 import '../cut_frame_composite_plan.dart';
 import '../layer_pose_matrix.dart' show LayerPlacement;
 
@@ -209,12 +208,10 @@ final class CompositeAdjustmentSignature extends CompositeNodeSignature {
 class CutFrameCompositeSignature {
   CutFrameCompositeSignature({
     required this.canvasSize,
-    required this.quality,
     required List<CompositeNodeSignature> nodes,
   }) : nodes = List.unmodifiable(nodes);
 
   final CanvasSize canvasSize;
-  final PlaybackQuality quality;
 
   /// The composite TREE, bottom → top, matching
   /// [planCutFrameCompositeTree] order.
@@ -244,22 +241,16 @@ class CutFrameCompositeSignature {
           // any walk over the layer nodes.
           other.hashCode == hashCode &&
           other.canvasSize == canvasSize &&
-          other.quality == quality &&
           listEquals(other.nodes, nodes);
 
   /// Hashed once: a signature never changes, and the readiness bar looks
   /// the same held ones up on every signal.
   @override
-  late final int hashCode = Object.hash(
-    canvasSize,
-    quality,
-    Object.hashAll(nodes),
-  );
+  late final int hashCode = Object.hash(canvasSize, Object.hashAll(nodes));
 
   @override
   String toString() =>
-      'CutFrameCompositeSignature(canvasSize: $canvasSize, '
-      'quality: $quality, nodes: $nodes)';
+      'CutFrameCompositeSignature(canvasSize: $canvasSize, nodes: $nodes)';
 }
 
 /// Computes the signature of the cut's picture at [frameIndex] from the
@@ -271,7 +262,6 @@ class CutFrameCompositeSignature {
 CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required Cut cut,
   required int frameIndex,
-  required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
 }) {
   List<CompositeNodeSignature> mapNodes(
@@ -326,7 +316,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
 
   return CutFrameCompositeSignature(
     canvasSize: cut.canvasSize,
-    quality: quality,
     nodes: mapNodes(
       resolveCutFrameCompositeTree(
         cut: cut,

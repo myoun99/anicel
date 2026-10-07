@@ -657,7 +657,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         positionsOf: mount.positionsOf,
         paintsFloor: mount.paintsFloor,
         compositeCache: session.renderCaches.cutFrameCompositeCache,
-        qualityOf: () => session.playbackRig.playbackQuality,
         cameraFrameSize: session.camera.cameraFrameSize,
         cameraViewEnabled: mount.cameraView,
         cameraPoseOf: session.camera.cameraPoseForCut,
@@ -787,7 +786,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         CanvasPlaybackView(
           controller: session.playbackRig.playback,
           compositeCache: session.renderCaches.cutFrameCompositeCache,
-          qualityOf: () => session.playbackRig.playbackQuality,
           prerenderProgress: session.playbackRig.prerenderScheduler.progress,
           cameraViewEnabled: widget.cameraViewEnabled.value,
           cameraFrameSize: session.camera.cameraFrameSize,

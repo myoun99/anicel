@@ -7,7 +7,6 @@ import '../../services/playback/cut_composite_structure.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../playback/cut_frame_composite_cache.dart';
 import '../playback/playback_cache_budget.dart';
-import '../../models/playback_quality.dart';
 import '../playback/canvas_playback_controller.dart';
 import 'render_caches.dart';
 import 'session_roles.dart';
@@ -19,7 +18,6 @@ import 'session_roles.dart';
 /// dependency direction: the budget knows about a run, not about a rig.
 abstract interface class PlaybackRun {
   CanvasPlaybackController get playback;
-  PlaybackQuality get playbackQuality;
 }
 
 /// The PLAYBACK CACHE BUDGET — how many bytes the playback cache may hold,
@@ -48,10 +46,9 @@ class PlaybackCacheBudget {
   PlaybackCacheBudgetEnforcer? _enforcer;
 
   /// [playbackReadyRunsForCut]'s memo: per cut instance, each structure's
-  /// full signature at one quality and one pixel revision.
+  /// full signature at one pixel revision.
   final Expando<
     ({
-      PlaybackQuality quality,
       int pixelRevision,
       Map<CutFrameCompositeSignature, CutFrameCompositeSignature> byStructure,
     })
@@ -163,7 +160,6 @@ class PlaybackCacheBudget {
             cutId: entry.cutId,
             startFrame: 0,
             endFrame: math.max(0, (drawn[entry.cutId] ?? entry.duration) - 1),
-            quality: _run.playbackQuality,
           ),
       ];
     }
@@ -177,7 +173,6 @@ class PlaybackCacheBudget {
         cutId: cut.id,
         startFrame: 0,
         endFrame: cutWarmFrameCount(cut) - 1,
-        quality: _run.playbackQuality,
       ),
     ];
   }
@@ -190,8 +185,8 @@ class PlaybackCacheBudget {
       _playbackProtectedRanges();
 
   /// The stretches of the active cut's frames in `[start, end)` that are
-  /// READY to play at the current quality — the timeline ruler's green
-  /// bar. None without an active cut.
+  /// READY to play — the timeline ruler's green bar. None without an active
+  /// cut.
   List<({int startIndex, int endIndexExclusive})> playbackReadyRuns(
     int start,
     int end,
@@ -233,8 +228,7 @@ class PlaybackCacheBudget {
     int end,
   ) {
     final composites = _renderCaches.cutFrameCompositeCache;
-    final quality = _run.playbackQuality;
-    final signed = _signedStructuresOf(cut, quality);
+    final signed = _signedStructuresOf(cut);
     bool isReady(CutFrameCompositeSignature structure, int frameIndex) {
       if (structure.nodes.isEmpty) {
         return true;
@@ -243,7 +237,6 @@ class PlaybackCacheBudget {
         signed[structure] ??= composites.signatureOf(
           cut: cut,
           frameIndex: frameIndex,
-          quality: quality,
         ),
       );
       if (held == null) {
@@ -278,22 +271,19 @@ class PlaybackCacheBudget {
     return runs;
   }
 
-  /// Each structure's full signature for [cut] at [quality], good until a
-  /// pixel moves: [BrushFrameStore.celPixelRevision] is the store's one
+  /// Each structure's full signature for [cut], good until a pixel
+  /// moves: [BrushFrameStore.celPixelRevision] is the store's one
   /// signal that a source revision may have changed (a whole-store swap
   /// opens a new project, so its cuts are new instances and miss here).
   Map<CutFrameCompositeSignature, CutFrameCompositeSignature>
-  _signedStructuresOf(Cut cut, PlaybackQuality quality) {
+  _signedStructuresOf(Cut cut) {
     final revision =
         _renderCaches.cutFrameCompositeCache.frameStore.celPixelRevision.value;
     final held = _signedStructures[cut];
-    if (held != null &&
-        held.quality == quality &&
-        held.pixelRevision == revision) {
+    if (held != null && held.pixelRevision == revision) {
       return held.byStructure;
     }
     final fresh = (
-      quality: quality,
       pixelRevision: revision,
       byStructure: <CutFrameCompositeSignature, CutFrameCompositeSignature>{},
     );

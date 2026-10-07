@@ -6,13 +6,10 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/playback/playback_cache_budget.dart'
-    show defaultPlaybackQuality;
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../../helpers/opened_session.dart';
@@ -203,31 +200,6 @@ void main() {
     expect(opened.activeCutId, firstCut.id);
     expect(opened.activeLayerId, firstCut.layers.first.id);
     expect(opened.currentFrameIndex, 0);
-    expect(opened.playbackRig.playbackQuality, defaultPlaybackQuality);
     opened.dispose();
-  });
-
-  test('🚨the playback quality comes back with the file — and picking it is '
-      'no edit: no undo step, no unsaved mark (유저 답 '
-      'playback-quality-undo-Q1 「언두 안 됨 — 보기 설정처럼(저장은 됨)」)',
-      () async {
-    final s = EditorSessionManager(initialProject: twoCuts());
-    final picked = PlaybackQuality.values.firstWhere(
-      (quality) => quality != defaultPlaybackQuality,
-    );
-
-    s.playbackRig.setPlaybackQuality(picked);
-
-    expect(s.historyManager.canUndo, isFalse);
-    expect(s.projectFile.hasUnsavedChanges, isFalse);
-    await s.projectDoor.saveProjectToFile(
-      projectPath,
-      asked: SaveAsked.byAPerson,
-    );
-    s.dispose();
-
-    final reopened = await openedSession(projectPath);
-    expect(reopened.playbackRig.playbackQuality, picked);
-    reopened.dispose();
   });
 }

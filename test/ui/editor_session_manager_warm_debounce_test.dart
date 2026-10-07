@@ -112,13 +112,11 @@ void main() {
     await session.renderCaches.cutFrameCompositeCache.prepareComposite(
       cut: activeCut,
       frameIndex: 0,
-      quality: session.playbackRig.playbackQuality,
     );
     expect(
       session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackRig.playbackQuality,
       ),
       isNotNull,
     );
@@ -151,7 +149,6 @@ void main() {
       session.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
         cut: activeCut,
         frameIndex: 0,
-        quality: session.playbackRig.playbackQuality,
       ),
       isNull,
       reason: 'only the RESTART is deferred — a stale composite must be '

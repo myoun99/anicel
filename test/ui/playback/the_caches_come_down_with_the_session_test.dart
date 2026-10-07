@@ -46,7 +46,6 @@ void main() {
     await session.renderCaches.cutFrameCompositeCache.prepareComposite(
       cut: cut,
       frameIndex: 0,
-      quality: session.playbackRig.playbackQuality,
     );
     expect(
       session.renderCaches.cutFrameCompositeCache.estimatedBytes,

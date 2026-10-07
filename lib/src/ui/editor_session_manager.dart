@@ -481,7 +481,6 @@ class EditorSessionManager extends ChangeNotifier
   late final PlaybackRig playbackRig = PlaybackRig(
     project: this,
     selection: this,
-    changes: this,
     timeline: this,
     appSettings: appSettings,
     soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
@@ -595,7 +594,6 @@ class EditorSessionManager extends ChangeNotifier
     final start = startGlobalFrame.clamp(0, frames.length - 1);
     playbackRig.prerenderScheduler.requestWarmFrames(
       frames: [...frames.sublist(start), ...frames.sublist(0, start)],
-      quality: playbackRig.playbackQuality,
     );
   }
 
@@ -1280,7 +1278,6 @@ class EditorSessionManager extends ChangeNotifier
     }
     playbackRig.prerenderScheduler.requestWarmCut(
       cutId: cut.id,
-      quality: playbackRig.playbackQuality,
       aroundFrameIndex:
           activeCutControllers.timelineController.currentFrameIndex,
       followedByCutId: storyboardRows.nextCutIdInStoryboardOrder(cut.id),
@@ -3293,7 +3290,6 @@ class EditorSessionManager extends ChangeNotifier
     solo: visibilitySolo,
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
-    playback: playbackRig,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

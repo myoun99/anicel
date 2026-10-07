@@ -187,41 +187,27 @@ void main() {
         (tester) async {
       await tester.runAsync(() async {
         final cache = compositeCache();
-        await cache.prepareComposite(
-          cut: cut(),
-          frameIndex: 0,
-          quality: PlaybackQuality.full,
-        );
-        await cache.prepareComposite(
-          cut: cut(),
-          frameIndex: 0,
-          quality: PlaybackQuality.half,
-        );
+        await cache.prepareComposite(cut: cut(), frameIndex: 0);
+        // Past the held drawing the cut composes to nothing — a second
+        // picture, and nobody shows it.
+        await cache.prepareComposite(cut: cut(), frameIndex: 2);
 
-        cache.retainPin((const CutId('cut'), 0, PlaybackQuality.full));
+        cache.retainPin((const CutId('cut'), 0));
         cache.enforceBudget(maxBytes: 0);
 
         expect(
-          cache.validCompositeOrNull(
-            cut: cut(),
-            frameIndex: 0,
-            quality: PlaybackQuality.full,
-          ),
+          cache.validCompositeOrNull(cut: cut(), frameIndex: 0),
           isNotNull,
           reason: 'the held frame is on screen through a clone — evicting '
               'it returns no bytes and re-composites the exact picture '
               'being shown',
         );
         expect(
-          cache.validCompositeOrNull(
-            cut: cut(),
-            frameIndex: 0,
-            quality: PlaybackQuality.half,
-          ),
+          cache.validCompositeOrNull(cut: cut(), frameIndex: 2),
           isNull,
-          reason: 'the unpinned tier goes',
+          reason: 'the unpinned picture goes',
         );
-        cache.releasePin((const CutId('cut'), 0, PlaybackQuality.full));
+        cache.releasePin((const CutId('cut'), 0));
         cache.dispose();
       });
     });
@@ -235,24 +221,22 @@ void main() {
         await cache.prepareComposite(
           cut: cut(),
           frameIndex: 0,
-          quality: PlaybackQuality.full,
         );
         await cache.prepareComposite(
           cut: cut(),
           frameIndex: 1,
-          quality: PlaybackQuality.full,
         );
 
-        cache.retainPin((const CutId('cut'), 0, PlaybackQuality.full));
-        cache.retainPin((const CutId('cut'), 1, PlaybackQuality.full));
+        cache.retainPin((const CutId('cut'), 0));
+        cache.retainPin((const CutId('cut'), 1));
         expect(
           cache.pinnedBytes,
           8 * 8 * 4,
           reason: 'two pinned keys, one image — the reserve must not '
               'double-bill content addressing',
         );
-        cache.releasePin((const CutId('cut'), 0, PlaybackQuality.full));
-        cache.releasePin((const CutId('cut'), 1, PlaybackQuality.full));
+        cache.releasePin((const CutId('cut'), 0));
+        cache.releasePin((const CutId('cut'), 1));
         cache.dispose();
       });
     });

@@ -11,7 +11,6 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
@@ -317,7 +316,6 @@ void main() {
         computeCutFrameCompositeSignature(
           cut: source,
           frameIndex: 0,
-          quality: PlaybackQuality.full,
           revisionOf: (layerId, frameId) => 1,
         );
 

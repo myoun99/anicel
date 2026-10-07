@@ -9,7 +9,6 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_effect.dart' show LayerEffect, ResolvedLayerEffect;
-import '../../models/playback_quality.dart';
 import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
@@ -36,7 +35,6 @@ class CanvasPlaybackView extends StatefulWidget {
     super.key,
     required this.controller,
     required this.compositeCache,
-    required this.qualityOf,
     required this.prerenderProgress,
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
@@ -57,7 +55,6 @@ class CanvasPlaybackView extends StatefulWidget {
 
   final CanvasPlaybackController controller;
   final CutFrameCompositeCache compositeCache;
-  final PlaybackQuality Function() qualityOf;
   final ValueListenable<PrerenderProgress> prerenderProgress;
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
@@ -137,9 +134,9 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
   /// for as long as the hold lasts — held pixels are declared pixels, so
   /// the budget stops evicting the very frame on screen and
   /// [CutFrameCompositeCache.pinnedBytes] can report it.
-  (CutId, int, PlaybackQuality)? _heldPin;
+  (CutId, int)? _heldPin;
 
-  void _swapHeldPin((CutId, int, PlaybackQuality)? next) {
+  void _swapHeldPin((CutId, int)? next) {
     final previous = _heldPin;
     if (previous != null) {
       widget.compositeCache.releasePin(previous);
@@ -194,18 +191,13 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       final composite = widget.compositeCache.validCompositeOrNull(
         cut: position.cut,
         frameIndex: position.localFrameIndex,
-        quality: widget.qualityOf(),
       );
       if (composite != null && !identical(composite, _heldSource)) {
         _heldFrame?.dispose();
         _heldSource = composite;
         _heldFrame = composite.clone();
         _heldCanvasSize = position.cut.canvasSize;
-        _swapHeldPin((
-          position.cut.id,
-          position.localFrameIndex,
-          widget.qualityOf(),
-        ));
+        _swapHeldPin((position.cut.id, position.localFrameIndex));
       }
     }
 

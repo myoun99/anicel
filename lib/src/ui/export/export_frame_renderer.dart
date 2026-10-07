@@ -41,7 +41,6 @@ import '../playback/transition_veil_paint.dart';
 import '../track_effect_paint_policy.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
-import '../../models/playback_quality.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../timeline/memo_token.dart';
@@ -58,8 +57,8 @@ const ui.Color exportFrameGround = ui.Color(0xFFFFFFFF);
 /// Where a cel stands in the project: its cut, its row, its drawing.
 typedef _CelAt = (CutId, LayerId, FrameId);
 
-/// Renders export output at full quality straight from the brush store, so
-/// exports never depend on the playback quality setting or its caches.
+/// Renders export output straight from the brush store, every cel at its
+/// own pixels, so exports never depend on the playback caches.
 ///
 /// It reads the store as a LOOK ([CelRead.look]) and holds only what the
 /// frame it draws and the one before it read ([_startFrame]).
@@ -450,8 +449,6 @@ class ExportFrameRenderer {
       computeCutFrameCompositeSignature(
         cut: _cutForRender(cut),
         frameIndex: frameIndex,
-        // What an export draws: every cel at its own pixels.
-        quality: PlaybackQuality.full,
         revisionOf: (layerId, frameId) =>
             session.renderCaches.brushFrameStore
                 .frameOrNull(session.brushFrameKeyForCut(cut, layerId, frameId))
