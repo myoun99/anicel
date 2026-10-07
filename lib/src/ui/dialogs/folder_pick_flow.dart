@@ -983,37 +983,41 @@ Future<FolderGrant?> placeStagedFileForUser(
   final stagingDirectory = Directory.systemTemp.createTempSync(
     'anicel_stage_',
   );
-  final staged = File('${stagingDirectory.path}/$suggestedName');
-  if (!await write(staged.path)) {
+  // 🚨EVERY WAY OUT TAKES THE ONE CLEANUP, A THROW INCLUDED (2026-10-08).
+  // It was written out on each road that returned, so a writer or a window
+  // that THREW left the whole staged file in the temp for good — the
+  // second copy 「사본 남으면 진짜 용서안할게」 forbids.
+  try {
+    final staged = File('${stagingDirectory.path}/$suggestedName');
+    if (!await write(staged.path)) {
+      return null;
+    }
+    if (!context.mounted) {
+      return null;
+    }
+    Future<FolderGrant?> window() => exportFileForUser(
+      context,
+      sourcePath: staged.path,
+      suggestedName: suggestedName,
+      keepsSavingThere: keepsSavingThere,
+    );
+    final grant = keepsSavingThere
+        ? await window()
+        : await placedOrLetGo(context, window);
+    final document = grant?.document;
+    return keepsSavingThere && document != null
+        ? FolderGrant.granted(
+            path: ProviderDocuments.adoptAsWorkingCopy(document, staged.path),
+            kind: GrantKind.file,
+          )
+        : grant;
+  } finally {
+    // On success the staged file was MOVED out and only the empty directory
+    // is left; backed out of or let go it is still in it — and poured into
+    // a document it is still in it too, unless it became the working copy.
+    // Same cleanup.
     _discardStaging(stagingDirectory);
-    return null;
   }
-  if (!context.mounted) {
-    _discardStaging(stagingDirectory);
-    return null;
-  }
-  Future<FolderGrant?> window() => exportFileForUser(
-    context,
-    sourcePath: staged.path,
-    suggestedName: suggestedName,
-    keepsSavingThere: keepsSavingThere,
-  );
-  final grant = keepsSavingThere
-      ? await window()
-      : await placedOrLetGo(context, window);
-  final document = grant?.document;
-  final placed = keepsSavingThere && document != null
-      ? FolderGrant.granted(
-          path: ProviderDocuments.adoptAsWorkingCopy(document, staged.path),
-          kind: GrantKind.file,
-        )
-      : grant;
-  // On success the staged file was MOVED out and only the empty directory
-  // is left; backed out of or let go it is still in it — and poured into a
-  // document it is still in it too, unless it became the working copy.
-  // Same cleanup.
-  _discardStaging(stagingDirectory);
-  return placed;
 }
 
 /// A leaked file must never fail an export — or a cancel, which is the path
