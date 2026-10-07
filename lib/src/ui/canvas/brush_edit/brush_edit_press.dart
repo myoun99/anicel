@@ -146,6 +146,20 @@ class _BrushEditPress {
     // requests is asynchronous, and the stroke starts now.
     _state._overlay.syncPenTailMapping();
     var mappedErase = _state._toolHolds.penTailErases;
+    // 🚨A PRESS THE PAN TAKES IS NOT THIS VIEW'S — the first reading of
+    // [canvasPressDraws], which the empty cel's press already made
+    // ([_BrushEditCelPress.pressAsksForACel]) and this one did not: one
+    // algorithm written twice, and the copies had parted.
+    // The 「이동」 key (I-15) stands this view down through `PanHoldGate`,
+    // and a gate takes effect a REBUILD after the key. A press in the same
+    // frame as the key still arrives here; it asked about mapped buttons
+    // and the primary contact and nothing about the key, so over a cel a
+    // stroke began — and the gesture layer above, seeing a stroke, did not
+    // pan (the-pan-key-then-an-instant-press-draws, 2026-10-08: found by
+    // the 타임라인/콘티 session when the app came to open ON a cel).
+    if (canvasPressPans(canvasPressButtons(event))) {
+      return;
+    }
     final mapping = canvasMappingFor(
       event,
       penTailActive: _state._toolHolds.penTail,
