@@ -143,21 +143,17 @@ void main() {
     }
   });
 
-  test('the ORDER is the OS\'s: the desktops are asked before, iOS never, '
-      'Android before for a folder and afterwards for one file', () {
-    for (final oneFile in const [true, false]) {
-      expect(outputsAskedTheirPlaceFirst('ios', oneFile: oneFile), isFalse);
+  test('the ORDER is the OS\'s. ONE file is asked first where a save window '
+      'answers with a path — the desktops, macOS among them — and SEVERAL '
+      'everywhere but iOS', () {
+    for (final os in const ['windows', 'linux', 'macos']) {
+      expect(outputsAskedTheirPlaceFirst(os, oneFile: true), isTrue);
+      expect(outputsAskedTheirPlaceFirst(os, oneFile: false), isTrue);
     }
     expect(outputsAskedTheirPlaceFirst('android', oneFile: false), isTrue);
     expect(outputsAskedTheirPlaceFirst('android', oneFile: true), isFalse);
-  });
-
-  test('a lone file is asked a save window where the road behind it is '
-      'laid — Windows and Linux; macOS still asks a folder', () {
-    expect(aLoneFileIsAskedThroughASaveWindow('windows'), isTrue);
-    expect(aLoneFileIsAskedThroughASaveWindow('linux'), isTrue);
-    for (final os in const ['macos', 'ios', 'android', 'fuchsia']) {
-      expect(aLoneFileIsAskedThroughASaveWindow(os), isFalse, reason: os);
+    for (final oneFile in const [true, false]) {
+      expect(outputsAskedTheirPlaceFirst('ios', oneFile: oneFile), isFalse);
     }
   });
 }

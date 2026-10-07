@@ -320,11 +320,17 @@ void main() {
       .widget<Text>(find.byKey(const ValueKey<String>('export-status')))
       .data;
 
-  /// The lone file of the tests below is asked the save window — which is
-  /// Windows' and Linux's, and not yet the host's on every runner.
+  /// The tests below run as Windows whatever the host: which window a lone
+  /// file is asked is the door's reading of the platform, and what the pick
+  /// grants is the picker's — two seams, and a macOS runner answers the
+  /// second differently (its file is made in a room and moved).
   void asWindows() {
     debugOperatingSystemOverride = 'windows';
-    addTearDown(() => debugOperatingSystemOverride = null);
+    FolderPicker.debugOperatingSystem = 'windows';
+    addTearDown(() {
+      debugOperatingSystemOverride = null;
+      FolderPicker.debugOperatingSystem = null;
+    });
   }
 
   testWidgets('🚨a queued job asked ONE file\'s place that has come to write '

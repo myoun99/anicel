@@ -20,6 +20,7 @@ import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/export/xdts_builder.dart';
 import '../../services/persistence/app_export_settings.dart';
 import '../../services/persistence/app_export_settings_store.dart';
+import '../../services/persistence/move_into_folder.dart';
 import '../../services/persistence/session_scratch.dart';
 import '../editor_session_manager.dart';
 import '../../models/export_overrides.dart';
@@ -164,16 +165,22 @@ class ExportDialogState extends State<ExportDialog> {
     _ => null,
   };
 
-  /// The file the run under way was asked a place for — its ONE file, at
-  /// the path the save window answered ([ExportToFile]); null for every
-  /// other run.
+  /// The path the run under way WRITES its one file at, when it was asked a
+  /// place for one ([ExportToFile]); null for every other run. The place
+  /// itself — or, where the place may only be moved onto
+  /// ([aPlacedFileIsMovedOntoItsPlaceHere]), the same name in the room the
+  /// run was given ([_runOutbox]), from which [_madeInARoomAndMovedOnto]
+  /// carries it there.
   ///
   /// ⛔READ ONLY WHERE A RUN WRITES ([_joinLocation], [_runImageExport],
   /// [_exportCurrentFrame]). [_destination] stays after its run ends, so a
   /// name field or a preview plate that read this would go on showing the
   /// last run's name — they say what the form names ([_singleFileName]).
   String? get _placedFile => switch (_destination) {
-    ExportToFile(:final path) => path,
+    ExportToFile(:final path) => switch (_runOutbox) {
+      final room? => '$room${Platform.pathSeparator}${fileNameOfPath(path)}',
+      null => path,
+    },
     _ => null,
   };
 
@@ -187,12 +194,15 @@ class ExportDialogState extends State<ExportDialog> {
   bool _presetsOpen = true;
   bool _queueOpen = true;
 
-  /// Where the run under way writes when it hands over — its own folder in
-  /// this run's room ([SessionScratch.outboxFolder]); null otherwise.
+  /// Where the run under way writes when what it makes is carried off
+  /// afterwards — handed over, or moved onto the one place it may be put
+  /// ([_madeInARoomAndMovedOnto]): a folder of its own in this run's room
+  /// ([SessionScratch.outboxFolder]). Null for a run that writes where it
+  /// was told.
   String? _runOutbox;
 
-  /// Where the run under way writes: its outbox when it hands over, the
-  /// chosen folder otherwise.
+  /// Where the run under way writes: its room when it has one, the chosen
+  /// folder otherwise.
   String get _outputDirectory => _runOutbox ?? _location!;
 
   final Map<String, bool> _expanded = {};
@@ -1761,15 +1771,21 @@ class ExportDialogState extends State<ExportDialog> {
   }
 
   /// [run] where the destination sends it: into [_location] — its lone file
-  /// at the place it was asked ([_placedFile]) — or, handing over, into an
-  /// outbox of its own, answered with the run's sentence so the caller
+  /// at the place it was asked, or made in a room and moved there where
+  /// that is all the place allows ([_placedFile]) — or, handing over, into
+  /// an outbox of its own, answered with the run's sentence so the caller
   /// hands the outbox over when its time comes (at once for Export, after
   /// the last job for the queue). A run that was stopped or failed leaves
   /// nothing to hand over.
   Future<({String message, String? outbox})> _runIntoDestination(
     Future<String> Function() run,
   ) async {
-    if (_destination is! ExportHandOver) {
+    final destination = _destination;
+    if (destination is ExportToFile && aPlacedFileIsMovedOntoItsPlaceHere) {
+      final message = await _madeInARoomAndMovedOnto(destination.path, run);
+      return (message: message, outbox: null);
+    }
+    if (destination is! ExportHandOver) {
       return (message: await run(), outbox: null);
     }
     final outbox = _freshOutbox();
@@ -1786,6 +1802,34 @@ class ExportDialogState extends State<ExportDialog> {
       rethrow;
     } finally {
       _runOutbox = null;
+    }
+  }
+
+  /// [run]'s one file, made in a room of the run's own and then moved onto
+  /// [place] — where the place is the one path the app may write, with no
+  /// folder to make around it and no temp file to put beside it (macOS's
+  /// sandbox, [aPlacedFileIsMovedOntoItsPlaceHere]). The writers each do
+  /// one or the other; a move does neither.
+  ///
+  /// A run that was stopped, or that made no file, moves nothing. The room
+  /// goes either way — and with it a file the move could not place, which
+  /// the run then ends on as its failure.
+  Future<String> _madeInARoomAndMovedOnto(
+    String place,
+    Future<String> Function() run,
+  ) async {
+    final room = _freshOutbox();
+    _runOutbox = room;
+    try {
+      final message = await run();
+      final made = File(_placedFile!);
+      if (!_cancelRequested && made.existsSync()) {
+        moveFileOnto(made.path, place);
+      }
+      return message;
+    } finally {
+      _runOutbox = null;
+      _discardOutboxes([room]);
     }
   }
 

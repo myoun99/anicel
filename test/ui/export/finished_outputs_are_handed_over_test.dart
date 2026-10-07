@@ -64,6 +64,7 @@ void main() {
   tearDown(() {
     AppExport.settings.value = AppExportSettings();
     debugOperatingSystemOverride = null;
+    FolderPicker.debugOperatingSystem = null;
     AppStorage.debugAllFilesAccessOverride = null;
     FolderPicker.debugFolderPicker = null;
     FolderPicker.debugFileExporter = null;
@@ -120,6 +121,10 @@ void main() {
     VideoExportService video = const VideoExportService(),
   }) async {
     debugOperatingSystemOverride = operatingSystem;
+    // Both seams: the door reads the first, and what a pick GRANTS is read
+    // from the picker's own. Inherited, the host would answer the second —
+    // and a macOS runner answers it differently from this workstation.
+    FolderPicker.debugOperatingSystem = operatingSystem;
     await tester.binding.setSurfaceSize(const Size(1120, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
@@ -417,6 +422,84 @@ void main() {
 
       expect(windows.names, ['Project.mp4']);
       expect(encoderArguments!.last, '${placed.path}/rush.mp4');
+    });
+
+    testWidgets('🎯macOS asks ONE file its save window first, as Windows '
+        'does — and the file, made in the run\'s room, is MOVED onto the '
+        'place the window answered, under the name given there', (
+      tester,
+    ) async {
+      final windows = desktopWindows(saveAs: 'renamed.png');
+      final state = await open(tester, 'macos');
+      await showTab(tester, 'image');
+      expect(orderLine(tester), AppText.strings.exOrderAsksFirst);
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(windows.names, ['Project.png']);
+      expect(windows.folders, isEmpty);
+      expect(windows.madeWhenAsked.single, isEmpty);
+      expect(filesWrittenUnder(placed), ['renamed.png']);
+      expect(leftIn(outbox()), isEmpty, reason: 'the room keeps nothing');
+      expect(status(tester), AppText.strings.exDoneFile('renamed.png'));
+    });
+
+    testWidgets('macOS: the place is the one path the app may write, so the '
+        'WRITERS are pointed at the run\'s room — a video\'s encoder is '
+        'handed a path there, under the name the file will wear', (
+      tester,
+    ) async {
+      desktopWindows(saveAs: 'rush.mp4');
+      List<String>? encoderArguments;
+      final state = await open(
+        tester,
+        'macos',
+        video: VideoExportService(
+          processStarter: (executable, arguments) async {
+            encoderArguments = arguments;
+            return FakeFfmpegProcess();
+          },
+        ),
+      );
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      final room = outbox().path.replaceAll(r'\', '/');
+      final handed = encoderArguments!.last.replaceAll(r'\', '/');
+      expect(handed, startsWith('$room/'));
+      expect(handed, endsWith('/rush.mp4'));
+      expect(leftIn(outbox()), isEmpty);
+    });
+
+    testWidgets('macOS: a run that is STOPPED puts nothing at the place — '
+        'what it had made so far goes with its room', (tester) async {
+      desktopWindows(saveAs: 'rush.mp4');
+      late ExportDialogState state;
+      state = await open(
+        tester,
+        'macos',
+        video: VideoExportService(
+          processStarter: (executable, arguments) async {
+            // What an encoder leaves when it is cut short: a file begun.
+            File(arguments.last).writeAsStringSync('half a movie');
+            return FakeFfmpegProcess(
+              onFrame: (framesSoFar) {
+                if (framesSoFar >= 1) {
+                  state.cancelExport();
+                }
+              },
+            );
+          },
+        ),
+      );
+
+      await tester.runAsync(state.export);
+      await tester.pump();
+
+      expect(filesWrittenUnder(placed), isEmpty);
+      expect(leftIn(outbox()), isEmpty);
     });
 
     testWidgets('backing out of the save window runs nothing — and says '

@@ -18,6 +18,7 @@ import '../../helpers/dart_sources.dart';
 void main() {
   tearDown(() {
     debugOperatingSystemOverride = null;
+    FolderPicker.debugOperatingSystem = null;
     FolderPicker.debugSaveDestinationPicker = null;
   });
 
@@ -82,15 +83,17 @@ void main() {
       );
     });
 
-    testWidgets('where the save window\'s road is not laid, one file is '
-        'asked a folder as several are (macOS, for now)', (tester) async {
+    testWidgets('macOS asks as Windows does (유저 2026-10-06: 「맥도 그럼 '
+        '윈도랑 통일할수있으면 통일」): one file, the save window', (
+      tester,
+    ) async {
       final one = await ask(tester, 'macos', lone: 'shot.png');
+      expect(one.opened, ['file shot.png, at D:/last']);
+      expect(one.said, const ExportToFile('D:/picked/renamed.png'));
 
-      expect(one.opened, ['folder, at D:/last']);
-      expect(
-        one.said,
-        const ExportIntoFolder('D:/picked'),
-      );
+      final several = await ask(tester, 'macos');
+      expect(several.opened, ['folder, at D:/last']);
+      expect(several.said, const ExportIntoFolder('D:/picked'));
     });
 
     testWidgets('where a place can only be asked of what is made, NO window '
@@ -114,13 +117,17 @@ void main() {
   });
 
   group('the save window\'s own door', () {
-    /// The door, asked to save [suggested], with the window answering
-    /// [typed].
+    /// The door, asked to save [suggested] on [os], with the window
+    /// answering [typed].
     Future<FolderGrant?> save(
       WidgetTester tester, {
       required String suggested,
       required String typed,
+      String os = 'windows',
     }) async {
+      // Pinned, not inherited: what the door does with a bare name is the
+      // platform's, and a macOS runner is one of them.
+      FolderPicker.debugOperatingSystem = os;
       FolderPicker.debugSaveDestinationPicker =
           ({required String suggestedName, String? initialDirectory}) async =>
               FolderGrant.granted(path: typed, kind: GrantKind.file);
@@ -156,6 +163,18 @@ void main() {
         typed: 'Q:/nowhere/TAKE.WAV',
       );
       expect(grant?.path, 'Q:/nowhere/TAKE.WAV');
+    });
+
+    testWidgets('🎯where the pick is a GRANT (macOS) the answer is taken as '
+        'it stands, bare name and all — the same name with a suffix is a '
+        'file the app was never handed', (tester) async {
+      final grant = await save(
+        tester,
+        suggested: 'Project.png',
+        typed: '/Users/me/Renders/still',
+        os: 'macos',
+      );
+      expect(grant?.path, '/Users/me/Renders/still');
     });
 
     testWidgets('what is written with no extension is asked for none', (

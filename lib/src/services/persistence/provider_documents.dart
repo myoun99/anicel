@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/path_names.dart';
 import 'app_documents.dart';
+import 'move_into_folder.dart';
 import 'session_scratch.dart';
 
 /// A document the OS handed over with no filesystem path behind it: the
@@ -186,13 +187,8 @@ abstract final class ProviderDocuments {
   /// in. Answers where it stands now.
   static String adoptAsWorkingCopy(ProviderDocument document, String staged) {
     final destination = _freshWorkingCopy(document.name);
-    try {
-      File(staged).renameSync(destination);
-    } on FileSystemException {
-      // Another volume: the room and the staging folder need not share one.
-      File(staged).copySync(destination);
-      File(staged).deleteSync();
-    }
+    // The room and the staging folder need not share a volume.
+    moveFileOnto(staged, destination);
     remember(document);
     _documentOfCopy[destination] = document.uri;
     return destination;

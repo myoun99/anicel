@@ -386,6 +386,31 @@ abstract final class FolderPicker {
   static bool coordinatorForPlatform(String operatingSystem) =>
       operatingSystem == 'ios' || operatingSystem == 'macos';
 
+  /// Whether [operatingSystem] has a SAVE WINDOW THAT ANSWERS WITH A PATH
+  /// and makes nothing — which is what lets a file be asked its place
+  /// before it exists ([pickSaveDestination]). The desktops have one, macOS
+  /// among them. iOS has none (Apple never built it), and Android's makes
+  /// the file the moment a place is picked.
+  ///
+  /// 🚨A DIFFERENT QUESTION from [grantsAreScoped], and macOS is the
+  /// platform that answers yes to both: its window answers with a path, and
+  /// that path — the one file, nothing beside it — is all the sandbox lets
+  /// the app write. So two things stay as they were there. Save As does not
+  /// ask through this window: a project goes on being saved where it lands,
+  /// and that needs the bookmark its own runner mints with the pick
+  /// ([exportFile]). And nothing may be written BESIDE the answer — no
+  /// suffix added to its name, no folder made around it, no temp file next
+  /// to it.
+  ///
+  /// ⚠️UNVERIFIED ON DEVICE for macOS: written on the Windows workstation.
+  /// It leans on the file_selector plugin's save panel handing the sandbox
+  /// the picked path, as it does for every sandboxed app that saves through
+  /// it.
+  static bool aSaveWindowAnswersAPathOn(String operatingSystem) =>
+      operatingSystem == 'windows' ||
+      operatingSystem == 'linux' ||
+      operatingSystem == 'macos';
+
   /// Asks the user for a folder.
   ///
   /// [initialDirectory] is a hint only; every platform is free to ignore it,
@@ -551,11 +576,12 @@ abstract final class FolderPicker {
   // could not be let go. Several files are asked a folder now, before they
   // are made (`outputsAskedTheirPlaceFirst`).
 
-  /// Save As on the platforms that HAVE a save dialog: the dialog answers
-  /// with a path — nothing is created and nothing moves. The save that
-  /// follows writes the file at that path itself (temp beside the
-  /// destination + rename, atomic against whatever it replaces), which is
-  /// what every surveyed desktop pro tool does.
+  /// The save window of the platforms that have one answering with a path
+  /// ([aSaveWindowAnswersAPathOn]): nothing is created and nothing moves —
+  /// whoever asked writes the file there itself. Save As on Windows and
+  /// Linux does (temp beside the destination + rename, atomic against
+  /// whatever it replaces — what every surveyed desktop pro tool does), and
+  /// so does everything that writes one file where it is told.
   ///
   /// [acceptedTypeGroups] reaches the dialog's file-type filter. ⚠️The
   /// Windows plugin passes the filter to the dialog but never calls
@@ -574,10 +600,10 @@ abstract final class FolderPicker {
         initialDirectory: initialDirectory,
       );
     }
-    if (grantsAreScoped) {
+    if (!aSaveWindowAnswersAPathOn(_operatingSystem)) {
       throw StateError(
-        'Scoped platforms have no save dialog; Save As goes through '
-        'exportFile there.',
+        '$_operatingSystem has no save window that answers with a path; a '
+        'file is made first and placed there (exportFile).',
       );
     }
     try {

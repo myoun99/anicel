@@ -88,4 +88,25 @@ void main() {
     );
     expect(file.readAsStringSync(), 'a');
   });
+
+  group('a file moved ONTO a named place', () {
+    test('lands at that path under THAT name, and is gone from where it '
+        'was', () {
+      final made = File('${from.path}/Project.png')..writeAsStringSync('a');
+
+      moveFileOnto(made.path, '${into.path}/renamed.png');
+
+      expect(contentsOf(into), {'renamed.png': 'a'});
+      expect(made.existsSync(), isFalse);
+    });
+
+    test('replaces the file standing there', () {
+      File('${into.path}/renamed.png').writeAsStringSync('old');
+      final made = File('${from.path}/Project.png')..writeAsStringSync('new');
+
+      moveFileOnto(made.path, '${into.path}/renamed.png');
+
+      expect(contentsOf(into), {'renamed.png': 'new'});
+    });
+  });
 }

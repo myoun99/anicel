@@ -405,42 +405,45 @@ HandOverRoad handOverRoadFor(
 ///
 /// The ORDER is the OS's (F-221, closed 2026-10-06 — 유저: 「최대한
 /// 멀티플랫폼 통일하고싶음」): a place is asked at the earliest moment the
-/// platform lets it be asked. The desktops ask before, whatever is written.
-/// Android asks before for a folder, and only afterwards for one file — its
-/// save window makes the file the moment a place is picked. iOS has no
-/// window that asks before: 「ios는 어차피 먼저 위치지정이 안된단거지」.
+/// platform lets it be asked.
+///
+/// - ONE FILE is asked first where a save window answers with a path and
+///   makes nothing ([FolderPicker.aSaveWindowAnswersAPathOn]): the
+///   desktops, macOS among them (유저: 「맥도 그럼 윈도랑 통일할수있으면
+///   통일」). Android's save window makes the file the moment a place is
+///   picked, and iOS has no window that asks before: 「ios는 어차피 먼저
+///   위치지정이 안된단거지」.
+/// - SEVERAL are asked a folder first everywhere but iOS, whose folder
+///   window cannot reach Google Drive — there everything is made first and
+///   handed over (F-221-Q2).
 ///
 /// Pure over the OS name, as [handOverRoadFor] is, so every platform's
 /// answer is pinned from the workstation this is written on.
 bool outputsAskedTheirPlaceFirst(
   String operatingSystem, {
   required bool oneFile,
-}) => switch (operatingSystem) {
-  'ios' => false,
-  'android' => !oneFile,
-  _ => true,
-};
+}) => oneFile
+    ? FolderPicker.aSaveWindowAnswersAPathOn(operatingSystem)
+    : operatingSystem != 'ios';
 
 /// [outputsAskedTheirPlaceFirst] on the machine the app runs on.
 bool outputsAskedTheirPlaceFirstHere({required bool oneFile}) =>
     outputsAskedTheirPlaceFirst(_operatingSystem, oneFile: oneFile);
 
-/// Whether ONE file that is asked its place first is asked through a SAVE
-/// WINDOW on [operatingSystem] — its own name in a folder — rather than
-/// through the folder window several files are asked.
+/// Whether a file asked its place through the save window is MADE
+/// ELSEWHERE AND MOVED ONTO IT on this machine, instead of written where it
+/// was told.
 ///
-/// The WINDOW is the count's (F-221-Q3, 유저 2026-10-06: 「한 장이면 파일
-/// 저장 창, 두 장부터 폴더 창」 — 「문제없고 입구만 통일하면 됨」), where
-/// the platform has the window.
+/// Where the pick is a grant — macOS's sandbox — the answer is the one path
+/// the app may write: no folder made around it, no temp file beside it. The
+/// writers do both, so the file is made in the run's room and one move puts
+/// it where the window said ([moveFileOnto]). Windows and Linux write
+/// straight at the place: a move there is a second copy across volumes for
+/// nothing.
 ///
-/// ⚠️macOS answers false FOR NOW, and that is a gap, not the law: it has a
-/// save window and is to ask like Windows (유저: 「맥도 그럼 윈도랑
-/// 통일할수있으면 통일」). What it lacks is the road behind the answer — its
-/// sandbox grants the picked file and nothing beside it, so the run cannot
-/// simply write where it was told — and until that road is laid a lone file
-/// is asked a folder there, as it was (board `F-221`).
-bool aLoneFileIsAskedThroughASaveWindow(String operatingSystem) =>
-    operatingSystem == 'windows' || operatingSystem == 'linux';
+/// ⚠️UNVERIFIED ON DEVICE: written on the Windows workstation
+/// ([FolderPicker.aSaveWindowAnswersAPathOn]).
+bool get aPlacedFileIsMovedOntoItsPlaceHere => FolderPicker.grantsAreScoped;
 
 /// The two windows [askWhereOutputsGo] opens, as functions: a folder
 /// window, and a save window offering a name — each answering null when
@@ -482,7 +485,7 @@ Future<ExportDestination?> askWhereOutputsGo(
     return const ExportHandOver();
   }
   final ask = windows ?? _systemPlaceWindows(context);
-  if (oneFile && aLoneFileIsAskedThroughASaveWindow(_operatingSystem)) {
+  if (oneFile) {
     final file = await ask.file(loneFileName, initialDirectory);
     return file == null ? null : ExportToFile(file);
   }
@@ -558,7 +561,8 @@ Future<HandOver> handOverFilesForUser(
 /// path, or null when the user backed out — of the window, or of the
 /// question below.
 ///
-/// The name the window answers with is not yet the file's:
+/// On Windows and Linux the name the window answers with is not yet the
+/// file's:
 ///
 /// 1. **THE SUFFIX IS THE CALLER'S.** Windows shows the type filter and
 ///    never appends the extension it names
@@ -570,6 +574,11 @@ Future<HandOver> handOverFilesForUser(
 ///    about — 「type Foo over an existing Foo.anicel」 was a silent
 ///    overwrite — so when the suffixed name is taken, the question is asked
 ///    about it.
+///
+/// ⚠️Where the pick is a GRANT (macOS's sandbox) the answer is taken as it
+/// stands, bare name and all: the path the window answered is the one path
+/// the app may write, and the same name with a suffix is a file it was
+/// never handed ([FolderPicker.aSaveWindowAnswersAPathOn]).
 ///
 /// ⛔THE ONE DOOR TO THE SAVE WINDOW. ↩️There was a barer one beside it
 /// (`pickSaveDestinationForUser`: the pick, said out loud, and no more),
@@ -599,7 +608,9 @@ Future<FolderGrant?> pickSaveFileForUser(
     return null;
   }
   final suffix = _suffixOf(suggestedName);
-  if (suffix.isEmpty || picked.toLowerCase().endsWith(suffix.toLowerCase())) {
+  if (suffix.isEmpty ||
+      picked.toLowerCase().endsWith(suffix.toLowerCase()) ||
+      FolderPicker.grantsAreScoped) {
     return grant;
   }
   final suffixed = '$picked$suffix';
