@@ -11,6 +11,8 @@ import '../editor_session_manager.dart';
 import '../timeline/layer_label_controls.dart'
     show LayerMarkEdit, layerKindShowsFxToggle, layerKindShowsOpacityControl;
 import '../timeline/layer_rail_columns.dart' show layerRailEyeIsOn;
+import '../timeline/property_lane_model.dart'
+    show laneGroupKey, parseLaneGroupKey;
 import '../timeline/timeline_lane_provider.dart' show timelineLanesForLayer;
 
 /// The rail rows' buttons wired to [session] as a PRESS on one row asks
@@ -170,12 +172,46 @@ class SessionRowButtonPresses {
       ToggleIdInSetCommand(
         notifier: expanded,
         layerId: id,
+        // F-302: every use of a linked row twirls with it.
+        alongWith: session.rowsFoldingWith(id),
         debugLabel: 'Toggle layer lanes',
       ),
     );
     if (closing) {
       session.handOffCurrentRowOnFold(id);
     }
+  }
+
+  /// A lane GROUP's twirl inside a row's twirl-down — Transform, an
+  /// effect's header — by its view-state key ([laneGroupKey]).
+  ///
+  /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기 … 공유.
+  /// 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태 공유하라는것. 법통일」 —
+  /// the same group of every use of a linked row opens and shuts with it: a
+  /// linked row's effects are one chain, so its groups are one too.
+  ///
+  /// ↩️It was the workspace's own, and wrote the pressed row's key alone.
+  void toggleLaneGroup(String groupKey) {
+    final expanded = session.railView.expandedLaneGroupKeys;
+    final next = Set<String>.of(expanded.value);
+    final row = parseLaneGroupKey(groupKey);
+    final everyUse = [
+      groupKey,
+      if (row != null)
+        for (final use in session.rowsFoldingWith(row.layerId))
+          laneGroupKey(use, row.laneId),
+    ];
+    if (next.contains(groupKey)) {
+      next.removeAll(everyUse);
+      // Closing: only this group's MEMBERS go, so the header is what
+      // swallows them and where the standing row lands (R5 #11).
+      if (row != null) {
+        session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
+      }
+    } else {
+      next.addAll(everyUse);
+    }
+    expanded.value = next;
   }
 
   bool? _groupOpen(LayerId id) {
@@ -224,6 +260,8 @@ class SessionRowButtonPresses {
       ToggleIdInSetCommand(
         notifier: folded,
         layerId: baseId,
+        // F-302: every use of a linked base folds its group with it.
+        alongWith: session.rowsFoldingWith(baseId),
         debugLabel: 'Toggle attach group',
       ),
     );

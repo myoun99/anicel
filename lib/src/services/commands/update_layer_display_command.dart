@@ -35,8 +35,13 @@ import '../project_repository.dart';
 /// 「겸용컷 블렌드모드도 공유하도록 하자 … 불투명도도 공유하도록 … 보이기만
 /// 독립적으로 하고」): they are the link group's again and have their own
 /// commands, `UpdateLayerBlendModeCommand` and `UpdateLayerOpacityCommand`.
-/// What is written here is what stayed each use's own — the eye, the twirl
-/// and an SE row's mix.
+/// What is written here is what stayed each use's own — the eye and an SE
+/// row's mix.
+///
+/// ↩️THE TWIRL LEFT TOO (유저 2026-10-05, F-302: 「겸용컷 … 폴더/어태치
+/// 접기/펼치기 버튼도 공유 … 펼친 상태 접힌 상태 공유하라는것. 법통일」): a
+/// folder's fold is the link group's, written by
+/// `UpdateLayerCollapsedCommand`.
 ///
 /// ⛔ONE LAYER. A sweep down the eye column, Solo and the master opacity
 /// bar all change many rows and must undo in ONE press (유저: 「일괄로 버튼
@@ -94,9 +99,11 @@ class UpdateLayerDisplayCommand implements Command {
         // its undo would leave the value where the edit put it.
         assert(
           applied.opacity == layer.opacity &&
-              applied.blendMode == layer.blendMode,
-          'The blend and the static opacity are the link group\'s (F-278): '
-          'UpdateLayerBlendModeCommand and UpdateLayerOpacityCommand write '
+              applied.blendMode == layer.blendMode &&
+              applied.collapsed == layer.collapsed,
+          'The blend, the static opacity and the fold are the link '
+          'group\'s (F-278 · F-302): UpdateLayerBlendModeCommand, '
+          'UpdateLayerOpacityCommand and UpdateLayerCollapsedCommand write '
           'them.',
         );
         return applied;
@@ -126,17 +133,16 @@ class UpdateLayerDisplayCommand implements Command {
 /// film SOUNDS like, which is the reason mute is here (유저 the same day:
 /// 「소리 … 선택범위 레이어 모두 적용. 언두하나」).
 ///
-/// ⛔The blend and the static opacity are not among them (F-278): other
-/// commands write those, through the link group, so a snapshot of either
-/// here would be a value this command never set putting itself back over
-/// one those commands did.
+/// ⛔The blend, the static opacity and the fold are not among them (F-278 ·
+/// F-302): other commands write those, through the link group, so a
+/// snapshot of one here would be a value this command never set putting
+/// itself back over one those commands did.
 class _DisplayState {
   const _DisplayState({
     required this.isVisible,
     required this.muted,
     required this.audioGain,
     required this.audioPan,
-    required this.collapsed,
   });
 
   factory _DisplayState.of(Layer layer) => _DisplayState(
@@ -144,20 +150,17 @@ class _DisplayState {
     muted: layer.muted,
     audioGain: layer.audioGain,
     audioPan: layer.audioPan,
-    collapsed: layer.collapsed,
   );
 
   final bool isVisible;
   final bool muted;
   final double audioGain;
   final double audioPan;
-  final bool collapsed;
 
   Layer restoreOnto(Layer layer) => layer.copyWith(
     isVisible: isVisible,
     muted: muted,
     audioGain: audioGain,
     audioPan: audioPan,
-    collapsed: collapsed,
   );
 }

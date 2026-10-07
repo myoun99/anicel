@@ -40,6 +40,22 @@ List<({CutId cutId, LayerId layerId})> linkMirrorTargets(
   ];
 }
 
+/// The ROWS of [linkMirrorTargets]: every use of the row, by the id the
+/// rail keeps its view state by — the twirls and the folds, which a linked
+/// row wears as one (F-302).
+List<LayerId> linkMirrorRows(
+  Project project, {
+  required CutId cutId,
+  required LayerId layerId,
+}) => [
+  for (final target in linkMirrorTargets(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+  ))
+    target.layerId,
+];
+
 /// The transform track ([cutId], [layerId]) keys: the row's own, except the
 /// CAMERA row's — the row is its cut's transform header (F-17), and its
 /// lanes live on [Cut.camera].

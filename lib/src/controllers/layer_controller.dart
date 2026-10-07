@@ -11,6 +11,7 @@ import '../services/command.dart';
 import '../services/editing/default_layer_helpers.dart';
 import '../services/commands/cut_command_input_planner.dart';
 import '../services/commands/update_layer_blend_mode_command.dart';
+import '../services/commands/update_layer_collapsed_command.dart';
 import '../services/commands/update_layer_display_command.dart';
 import '../services/commands/update_layer_opacity_command.dart';
 import '../services/history_manager.dart';
@@ -332,12 +333,18 @@ class LayerController {
     );
   }
 
-  /// The layer-list twirl: PER-USE, persisted like CSP. Folder rows use it
-  /// to swallow their members; the eye, static opacity and blend a folder
-  /// carries need no method of their own, because a folder IS a layer and
-  /// rides [toggleLayerVisibility] / [setLayerOpacity] /
-  /// [setLayerBlendMode] — the twirl and the eye per-use since T9, the
-  /// opacity and the blend its link group's (F-278).
+  /// The layer-list twirl, persisted like CSP — the LINK GROUP'S, one fold
+  /// for every use of the row. Folder rows use it to swallow their members;
+  /// the eye, static opacity and blend a folder carries need no method of
+  /// their own, because a folder IS a layer and rides
+  /// [toggleLayerVisibility] / [setLayerOpacity] / [setLayerBlendMode] —
+  /// the eye per-use since T9, the opacity and the blend its link group's
+  /// (F-278).
+  ///
+  /// ↩️It was per-use like the eye. 유저 2026-10-05 (F-302): 「겸용컷 …
+  /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
+  /// 상태 접힌 상태 공유하라는것. 법통일」 — the mirror is
+  /// [UpdateLayerCollapsedCommand]'s.
   ///
   /// 🚨UNDOABLE too (유저 2026-08-29: 「접기도 마찬가지야. 폴더든
   /// 어태치든」). ⛔I had argued the twirl was the one to leave out —
@@ -346,12 +353,20 @@ class LayerController {
   /// something you did and may want back. Attach rows need no separate
   /// answer: they fold through this same `collapsed` field.
   void toggleLayerCollapsed(LayerId layerId) {
+    final cutId = _cutId;
+    if (cutId == null) {
+      return; // Gap state: no rows ([layers] is empty there).
+    }
+    final collapsed = requireLayerAnywhere(
+      _repository.requireProject(),
+      layerId,
+    ).collapsed;
     _historyManager.execute(
-      UpdateLayerDisplayCommand(
+      UpdateLayerCollapsedCommand(
         repository: _repository,
+        cutId: cutId,
         layerId: layerId,
-        debugLabel: 'Toggle layer collapsed',
-        apply: (layer) => layer.copyWith(collapsed: !layer.collapsed),
+        collapsed: !collapsed,
       ),
     );
   }

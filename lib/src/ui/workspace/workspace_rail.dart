@@ -257,24 +257,8 @@ class _WorkspaceRail {
     );
   }
 
-  void _toggleLaneGroup(String groupKey) {
-    final expanded = _state.widget.session.railView.expandedLaneGroupKeys;
-    final next = Set<String>.of(expanded.value);
-    if (next.remove(groupKey)) {
-      // Closing: only this group's MEMBERS go, so the header is what
-      // swallows them and where the standing row lands (R5 #11).
-      final row = parseLaneGroupKey(groupKey);
-      if (row != null) {
-        _state.widget.session.handOffCurrentRowOnFold(
-          row.layerId,
-          laneId: row.laneId,
-        );
-      }
-    } else {
-      next.add(groupKey);
-    }
-    expanded.value = next;
-  }
+  void _toggleLaneGroup(String groupKey) =>
+      SessionRowButtonPresses(_state.widget.session).toggleLaneGroup(groupKey);
 
   /// Putting a panel somewhere OPENS that somewhere.
   ///

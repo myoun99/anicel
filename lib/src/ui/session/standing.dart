@@ -21,6 +21,9 @@ import '../timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../timeline/timeline_section_policy.dart'
     show timelineSectionForLayerKind;
+import '../../services/commands/link_mirror.dart'
+    show linkMirrorRows, linkMirrorTargets;
+import '../../services/commands/update_layer_collapsed_command.dart';
 import 'playback_rig.dart';
 import 'rail_view.dart';
 import 'active_cut_controllers.dart';
@@ -1079,11 +1082,24 @@ class Standing {
     if (shut.isEmpty) {
       return;
     }
+    final repository = _project.repository;
+    final cutId = _project.requireActiveCut.id;
     for (final folder in shut) {
-      _project.repository.updateLayer(
+      // Every use of the folder opens with it: its fold is the link
+      // group's (F-302), and a walk that opened this cut's alone would
+      // leave one folder folded two ways.
+      for (final use in linkMirrorTargets(
+        repository.requireProject(),
+        cutId: cutId,
         layerId: folder,
-        update: (layer) => layer.copyWith(collapsed: false),
-      );
+      )) {
+        UpdateLayerCollapsedCommand.writeCollapsed(
+          repository,
+          cutId: use.cutId,
+          layerId: use.layerId,
+          value: false,
+        );
+      }
     }
     _changes.notifyChanged();
   }
@@ -1211,7 +1227,18 @@ class Standing {
     final baseId = attachGroupBaseOf(layer, stack);
     final folded = _railView.collapsedAttachBaseIds.value;
     if (baseId != null && folded.contains(baseId)) {
-      _railView.collapsedAttachBaseIds.value = {...folded}..remove(baseId);
+      // Every use of the base unfolds with it (F-302).
+      final cutId = _project.activeCutId;
+      _railView.collapsedAttachBaseIds.value = {...folded}
+        ..removeAll(
+          cutId == null
+              ? [baseId]
+              : linkMirrorRows(
+                  _project.repository.requireProject(),
+                  cutId: cutId,
+                  layerId: baseId,
+                ),
+        );
     }
   }
 

@@ -141,8 +141,7 @@ import 'timeline/property_lane_model.dart'
     show
         TimelineDisplayRow,
         buildTimelineDisplayRows,
-        indexOfDisplayRow,
-        parseLaneGroupKey;
+        indexOfDisplayRow;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';

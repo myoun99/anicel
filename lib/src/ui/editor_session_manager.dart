@@ -68,6 +68,7 @@ import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import '../models/storyboard_timeline_layout.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/commands/link_mirror.dart' show linkMirrorRows;
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../native/qa_native_engine.dart';
 import 'canvas/tile_picture_budget.dart';
@@ -717,6 +718,25 @@ class EditorSessionManager extends ChangeNotifier
   /// project's (I-7).
   late final RailView railView = RailView();
 
+  /// Every use of [row] — the rows that twirl and fold as one with it: its
+  /// link group's, in whichever cuts they stand ([linkMirrorRows]), and
+  /// itself alone for a row that is not linked or that no cut holds (a
+  /// track's).
+  ///
+  /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기,
+  /// 폴더/어태치 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친
+  /// 상태 접힌 상태 공유하라는것. 법통일」.
+  List<LayerId> rowsFoldingWith(LayerId row) {
+    final cutId = activeCutId;
+    return cutId == null
+        ? [row]
+        : linkMirrorRows(
+            repository.requireProject(),
+            cutId: cutId,
+            layerId: row,
+          );
+  }
+
   /// The timeline zoom each of this project's cuts was left at (F-253) —
   /// held here, not on the window, because the cuts it names are this
   /// project's (I-7).
@@ -1221,6 +1241,9 @@ class EditorSessionManager extends ChangeNotifier
           preferredFrameIndex ??
           activeCutControllers.timelineController.currentFrameIndex,
     );
+    // F-302: a row the command linked wears its group's twirls and folds —
+    // BEFORE the standing law asks which rows the rail shows.
+    railView.followLinks(repository.requireProject().linkRegistry);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
       reveal: reveal,
