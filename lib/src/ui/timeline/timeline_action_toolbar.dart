@@ -293,7 +293,7 @@ class TimelineActionToolbar extends StatelessWidget {
 
   List<PanelFlyoutEntry> _addLayerEntries() {
     return [
-      PanelFlyoutHeader(AppText.strings.tlAddLayerHeader),
+      PanelFlyoutHeader(editorActionLabel(EditorActionIds.layerAdd)),
       // ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12:
       // 「레이어 +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」).
       // The `＋` itself makes an animation layer now, so an entry meaning
@@ -806,8 +806,11 @@ class TimelineActionToolbar extends StatelessWidget {
           buttonKey: 'timeline-toolbar-add-layer-button',
           menuKey: 'timeline-toolbar-add-layer-menu',
           icon: Icons.add,
-          tooltip: AppText.strings.tlAddLayerHeader,
           accent: true,
+          // 🗣️I-63 ③: this button IS the Add Layer action's entrance, so it
+          // wears that action's name and shows its key (I-19).
+          tooltip: editorActionLabel(EditorActionIds.layerAdd),
+          shortcuts: const [EditorActionIds.layerAdd],
           // ⑥: ONE kind, always — 유저 「선택된 레이어 기준이아니라 애니메이션
           // 레이어 생성」. Placement is unchanged (above the selected row, and
           // the top of the action section when that is not a legal home).

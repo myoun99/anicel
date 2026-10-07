@@ -718,7 +718,6 @@ enum AppStrings {
   String get systemStatusHelp => _s('systemStatusHelp');
 
   // --- The timeline action toolbar and its flyouts ---
-  String get tlAddLayerHeader => _s('tlAddLayerHeader');
   String get tlNoLayers => _s('tlNoLayers');
   String get tlLegendLayer => _s('tlLegendLayer');
   String get tlAllDisplayedOpacity => _s('tlAllDisplayedOpacity');
@@ -2699,7 +2698,6 @@ enum AppStrings {
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
     'tlSeNameTemplate': 'SE name {name}',
-    'tlAddLayerHeader': 'Add layer',
     'tlNoLayers': 'No layers',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
@@ -3334,7 +3332,8 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '3コマに設定',
     'shortcutAction.timeline-comma-4': '4コマに設定',
     'shortcutAction.timeline-comma-n': 'Nコマに設定…',
-    'shortcutAction.frame-new-drawing': '新規作画',
+    'shortcutAction.frame-new-drawing': 'フレームを追加',
+    'shortcutAction.layer-add': 'レイヤーを追加',
     'shortcutAction.frame-blank-exposure': '中割なし / ×',
     'shortcutAction.frame-toggle-mark': 'マークを切り替え',
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
@@ -4064,7 +4063,6 @@ enum AppStrings {
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
     'tlSeNameTemplate': 'SE名 {name}',
-    'tlAddLayerHeader': 'レイヤーを追加',
     'tlNoLayers': 'レイヤーがありません',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
@@ -4697,7 +4695,8 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '3코마로 설정',
     'shortcutAction.timeline-comma-4': '4코마로 설정',
     'shortcutAction.timeline-comma-n': 'N코마로 설정…',
-    'shortcutAction.frame-new-drawing': '새 그림',
+    'shortcutAction.frame-new-drawing': '프레임 추가',
+    'shortcutAction.layer-add': '레이어 추가',
     'shortcutAction.frame-blank-exposure': '중간 없음 / ×',
     'shortcutAction.frame-toggle-mark': '마크 토글',
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
@@ -5420,7 +5419,6 @@ enum AppStrings {
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
     'tlSeNameTemplate': 'SE 이름 {name}',
-    'tlAddLayerHeader': '레이어 추가',
     'tlNoLayers': '레이어 없음',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
@@ -6092,7 +6090,8 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
     'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
     'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
-    'shortcutAction.frame-new-drawing': 'Nouveau dessin',
+    'shortcutAction.frame-new-drawing': 'Ajouter une image',
+    'shortcutAction.layer-add': 'Ajouter un calque',
     'shortcutAction.frame-blank-exposure': 'Vide / X',
     'shortcutAction.frame-toggle-mark': 'Basculer le repère',
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
@@ -6857,7 +6856,6 @@ enum AppStrings {
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
     'tlSeNameTemplate': 'Nom SE {name}',
-    'tlAddLayerHeader': 'Ajouter un calque',
     'tlNoLayers': 'Aucun calque',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
@@ -7459,7 +7457,8 @@ enum AppStrings {
     'shortcutAction.timeline-comma-3': '设为 3 格',
     'shortcutAction.timeline-comma-4': '设为 4 格',
     'shortcutAction.timeline-comma-n': '设为 N 格…',
-    'shortcutAction.frame-new-drawing': '新建画稿',
+    'shortcutAction.frame-new-drawing': '添加帧',
+    'shortcutAction.layer-add': '添加图层',
     'shortcutAction.frame-blank-exposure': '空 / ×',
     'shortcutAction.frame-toggle-mark': '切换标记',
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
@@ -8135,7 +8134,6 @@ enum AppStrings {
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
     'tlSeNameTemplate': 'SE 名称 {name}',
-    'tlAddLayerHeader': '添加图层',
     'tlNoLayers': '没有图层',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',

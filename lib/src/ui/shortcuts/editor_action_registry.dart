@@ -164,9 +164,15 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
       category: 'Tools',
       defaultActivators: [
         // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
-        // 2026-10-02): W walks up now, and 「올가미를 z」.
+        // 2026-10-02): W walks up now, and 「올가미를 z」. ↩️I-63 (유저
+        // 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록. 언두 실수할때
+        // z만 누르거나하니까」 — so bare Z presses NOTHING, on purpose: it
+        // is the key a hand lands on when Ctrl slips off an undo.
         if (verb == CanvasTool.select && shape == CanvasShapeKind.lasso)
-          const SingleActivator(LogicalKeyboardKey.keyZ),
+          const SingleActivator(LogicalKeyboardKey.keyX),
+        // 🗣️I-63 ⑤ (유저 2026-10-04, F-279): 「올가미채우기를 y로」.
+        if (verb == CanvasTool.fillShape && shape == CanvasShapeKind.lasso)
+          const SingleActivator(LogicalKeyboardKey.keyY),
         // 🗣️I-53 (유저 2026-09-28): 「잘라내기도구에서 올가미 잘라내기를
         // 단축키 c로 두도록 변경하고, 스탬프를 v로」 — 「잘라내기를
         // 고르고싶으면 올가미 잘라내기의 단축키를 사용할 예정」.
@@ -318,8 +324,12 @@ abstract final class EditorActionIds {
   static const fileSaveAs = 'file-save-as';
 
   /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
-  /// ↩️The key is T since F-261.
+  /// ↩️The key is T since F-261. ↩️Q since I-63.
   static const layerVisibilitySolo = 'layer-visibility-solo';
+
+  /// 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
+  /// 기본값 등록하고싶음」 — the layer pill's ＋.
+  static const layerAdd = 'layer-add';
 
   /// 「캔버스 확대축소버튼. 키보드에서 shift+>(확대) shift+<(축소). 배율은
   /// 설정에 줌 스냅 설정한대로」. ↩️The keys are Shift+E and Shift+Q since
@@ -549,12 +559,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // key. The label is the button's own, and a bar button's writing carries
   // no '…' (B9).
   // 🗣️F-261: the Edit beside it — D, with the left hand's other keys (see
-  // the play key). ↩️X once D walked right (「편집을 x」).
+  // the play key). ↩️X once D walked right (「편집을 x」). ↩️I-63 (유저
+  // 2026-10-03): 「지금 편집버튼 x인데 쉬프트+f로」 — X is the lasso
+  // select's now.
   const EditorActionDefinition(
     id: EditorActionIds.editInstance,
     label: 'Edit',
     category: 'Edit',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyX)],
+    defaultActivators: [
+      SingleActivator(LogicalKeyboardKey.keyF, shift: true),
+    ],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.editAutoName,
@@ -805,7 +819,9 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Toggle Onion Skin',
     category: 'View',
     // 🗣️F-261 (유저 2026-10-02): 「우선 어니언스킨을 Q로」 — the left hand's.
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
+    // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동,
+    // 어니언스킨을 t로이동」 — the two trade places.
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
   ),
   const EditorActionDefinition(
     id: EditorActionIds.canvasRotateCcw,
@@ -888,9 +904,22 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // comma set above. Registering them is what makes them assignable at
   // all: the shortcut dialog lists the registry, so an unbound action is
   // still a row the user can put a key on.
+  // 🗣️I-63 ③ (유저 2026-10-03): 「프레임추가는 이름이 새 그림인데
+  // 그게아니라 프레임 추가로 하고」 — the row is named for the button it
+  // presses, the frame pill's ＋. ↩️It read 'New Drawing' (「새 그림」).
   const EditorActionDefinition(
     id: EditorActionIds.frameNewDrawing,
-    label: 'New Drawing',
+    label: 'Add Frame',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  // 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
+  // 기본값 등록하고싶음 … j말고 왼손쪽에 다른걸로 할당하고싶음」 — the
+  // layer pill's ＋ is a row now, beside Add Frame. Which key each takes is
+  // the user's to name; no key was said, so both wait unbound.
+  const EditorActionDefinition(
+    id: EditorActionIds.layerAdd,
+    label: 'Add Layer',
     category: 'Timeline',
     defaultActivators: [],
   ),
@@ -921,10 +950,12 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // 🗣️I-19: 「= 버튼은 활성레이어 솔로 버튼으로 연결」.
   // ↩️F-261 (유저 2026-10-02): 「활성레이어솔로도 옮길까 … 지워줘 … T로가자」
   // — T, the left hand's last free letter, and `=` binds nothing.
+  // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동, 어니언스킨을
+  // t로이동」 — Q, and the onion skin takes T.
   const EditorActionDefinition(
     id: EditorActionIds.layerVisibilitySolo,
     label: 'Solo active layer',
     category: 'Timeline',
-    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyT)],
+    defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
   ),
 ];

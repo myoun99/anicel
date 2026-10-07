@@ -967,6 +967,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         if (panel.canBlankExposure) {
           panel.blankExposure();
         }
+      // I-63 ③: the layer pill's ＋, pressed by key — the one kind the panel
+      // being worked in adds (the timeline an animation layer, the
+      // storyboard an S row), which is what that button's press is.
+      case EditorActionIds.layerAdd:
+        _workingPanel.addLayer();
       case EditorActionIds.frameToggleMark:
         final panel = _workingPanel;
         if (panel.canToggleMark) {

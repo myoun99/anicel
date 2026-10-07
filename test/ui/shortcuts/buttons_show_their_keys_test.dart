@@ -44,11 +44,13 @@ void main() {
       ('shared-paste-independent-button', 'Paste independent (Ctrl+V)'),
       ('shared-delete-button', 'Delete (Delete)'),
       // F-261: the left hand's — Edit, the onion, and the sill's transport.
-      ('shared-edit-button', 'Edit (X)'),
-      ('rail-onion-skin-button', 'Toggle Onion Skin (Q)'),
+      // ↩️I-63 (유저 2026-10-03): Edit left X for Shift+F, and the onion
+      // and the solo traded Q and T.
+      ('shared-edit-button', 'Edit (Shift+F)'),
+      ('rail-onion-skin-button', 'Toggle Onion Skin (T)'),
       ('playback-play-button', 'Play (Shift+X)'),
       ('playback-skip-to-start-button', 'To Start (Shift+Z)'),
-      ('rail-visibility-solo-button', 'Solo active layer (T)'),
+      ('rail-visibility-solo-button', 'Solo active layer (Q)'),
       ('undo-button', 'Undo (Ctrl+Z)'),
       ('redo-button', 'Redo (Ctrl+Shift+Z)'),
       ('tool-brush-button', 'Brush Tool (B)'),
@@ -103,6 +105,16 @@ void main() {
     ]);
     await tester.pumpAndSettle();
     expect(_tooltip(tester, _button('new-frame-button')), 'Add (N)');
+
+    // The layer pill's ＋ is a strap — its body wears its action's name and
+    // reads the same bindings (I-63 ③).
+    const addLayer = 'timeline-toolbar-add-layer-button';
+    expect(_tooltip(tester, _button(addLayer)), 'Add Layer');
+    bindings.setActivators(EditorActionIds.layerAdd, const [
+      SingleActivator(LogicalKeyboardKey.keyN, shift: true),
+    ]);
+    await tester.pumpAndSettle();
+    expect(_tooltip(tester, _button(addLayer)), 'Add Layer (Shift+N)');
 
     // And a control that is not an AppIconButton reads the same bindings.
     String commaTooltip() => tester
@@ -169,15 +181,16 @@ void main() {
   });
 
   testWidgets('a tool library tile prints its key at the row\'s end the way '
-      'a menu row does — the lasso\'s Z', (tester) async {
+      'a menu row does — the lasso\'s X', (tester) async {
     // 🗣️유저 2026-09-13: 「선택도구의 올가미 선택에 w로 두고싶어」 —
     // ↩️F-261 (유저 2026-10-02): W walks up the sheet now, and 「올가미를 z」.
+    // ↩️I-63 (유저 2026-10-03): 「올가미선택을 x로두고 z는 비워두도록」.
     await _pumpApp(tester);
     await tester.tap(_button('tool-select-button'));
     await tester.pumpAndSettle();
 
     final lasso = find.byKey(const ValueKey<String>('sub-tool-select-lasso'));
-    final key = find.descendant(of: lasso, matching: find.text('Z'));
+    final key = find.descendant(of: lasso, matching: find.text('X'));
     expect(key, findsOneWidget);
     expect(tester.widget<Text>(key).style!.color, AppColors.shortcutKeys);
     expect(

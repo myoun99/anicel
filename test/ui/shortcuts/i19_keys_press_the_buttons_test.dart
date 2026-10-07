@@ -167,7 +167,8 @@ void main() {
 
 
   // ↩️F-261 (유저 2026-10-02): 「활성레이어솔로도 옮길까 … 지워줘 … T로가자」.
-  testWidgets('T is the legend eye\'s 「Solo active layer」 — and `=` is '
+  // ↩️I-63 (유저 2026-10-03): 「활성레이어솔로 그냥 q로 이동」.
+  testWidgets('Q is the legend eye\'s 「Solo active layer」 — and `=` is '
       'nothing since F-261', (tester) async {
     await tester.pumpWidget(const AnicelApp());
     await tester.pumpAndSettle();
@@ -183,10 +184,10 @@ void main() {
       reason: '`=` left with F-261',
     );
 
-    await _press(tester, LogicalKeyboardKey.keyT);
+    await _press(tester, LogicalKeyboardKey.keyQ);
     expect(session.visibilitySolo.layerVisibilitySoloEnabled, isTrue);
 
-    await _press(tester, LogicalKeyboardKey.keyT);
+    await _press(tester, LogicalKeyboardKey.keyQ);
     expect(session.visibilitySolo.layerVisibilitySoloEnabled, isFalse);
   });
 

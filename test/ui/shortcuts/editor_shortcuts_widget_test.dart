@@ -120,7 +120,7 @@ void main() {
   });
 
   testWidgets('I enters the eyedropper (it stays armed, R11-②); F fills, G '
-      'guides, C cuts, W lassoes; Ctrl+T and Ctrl+Y transform in a mode', (
+      'guides, C cuts, X lassoes; Ctrl+T and Ctrl+Y transform in a mode', (
     tester,
   ) async {
     await pumpHome(tester);
@@ -168,8 +168,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.cutStamp);
 
-    // ↩️W until F-261: 「올가미를 z」.
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    // ↩️W until F-261: 「올가미를 z」. ↩️Z until I-63 (유저 2026-10-03):
+    // 「올가미선택을 x로두고 z는 비워두도록」.
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     expect(toolOf(), CanvasTool.select);
     expect(shapeOf(), CanvasShapeKind.lasso);
@@ -226,8 +227,8 @@ void main() {
     await tester.pump();
     expect(toolOf(), CanvasTool.brush);
 
-    // Z: the select tool, tracing its lasso (W until F-261).
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    // X: the select tool, tracing its lasso (W until F-261, Z until I-63).
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyX);
     await tester.pumpAndSettle();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.altLeft);
     await tester.pump();

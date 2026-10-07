@@ -36,6 +36,32 @@ void main() {
     }
   });
 
+  test('🗣️I-63 ③: the two ＋ rows read as the user named them — 「프레임 '
+      '추가」 (it was 「새 그림」) and 「레이어 추가」 beside it', () {
+    // 유저 2026-10-03: 「프레임 추가랑 레이어 추가버튼도 단축키 기본값
+    // 등록하고싶음. 프레임추가는 이름이 새 그림인데 그게아니라 프레임 추가로」.
+    final korean = AppStrings.of(AppLanguage.ko);
+    expect(
+      korean.shortcutLabel(EditorActionIds.frameNewDrawing, 'unnamed'),
+      '프레임 추가',
+    );
+    expect(
+      definitionFor(EditorActionIds.frameNewDrawing).label,
+      'Add Frame',
+      reason: 'the registry\'s wording IS the English row',
+    );
+    expect(
+      korean.shortcutLabel(EditorActionIds.layerAdd, 'unnamed'),
+      '레이어 추가',
+    );
+    final ids = [for (final it in editorActionDefinitions) it.id];
+    expect(
+      ids.indexOf(EditorActionIds.layerAdd),
+      ids.indexOf(EditorActionIds.frameNewDrawing) + 1,
+      reason: 'the shortcut list prints the registry in order',
+    );
+  });
+
   test('no action id is registered twice', () {
     final ids = editorActionDefinitions.map((d) => d.id).toList();
     expect(ids.toSet().length, ids.length);

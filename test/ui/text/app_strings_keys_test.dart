@@ -866,7 +866,6 @@ void main() {
     'tlRepeat': (s) => s.tlRepeat,
     'tlRepeatSelection': (s) => s.tlRepeatSelection,
     'tlSeNameTemplate': (s) => s.tlSeNameTemplate,
-    'tlAddLayerHeader': (s) => s.tlAddLayerHeader,
     'tlNoLayers': (s) => s.tlNoLayers,
     'tlLegendLayer': (s) => s.tlLegendLayer,
     'tlAllDisplayedOpacity': (s) => s.tlAllDisplayedOpacity,

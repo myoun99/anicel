@@ -20,6 +20,8 @@ import 'package:anicel/src/ui/editor_command_actions.dart'
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 
 import '../../helpers/home_page_probes.dart';
 
@@ -28,6 +30,7 @@ import '../../helpers/home_page_probes.dart';
 /// 편집버튼은 D로두자」 — and 「콘티패널에 포커스있으면 플립이 콘티패널기준
 /// 작동 … 그거랑 동일하게 법 통일해서 재생」. ↩️Same day, once WASD walked
 /// the sheet: 「올가미를 z, 편집을 x, 처음으로를 쉬프트z, 재생을 쉬프트x」.
+/// ↩️I-63 (유저 2026-10-03): 「지금 편집버튼 x인데 쉬프트+f로」.
 ///
 /// Each key is a BUTTON on the panel being worked in, so each test presses
 /// that panel's button first and asks the key to do the same — on both
@@ -160,8 +163,8 @@ void main() {
     }
   });
 
-  testWidgets('X opens the storyboard\'s Edit there — the cut\'s rename — and '
-      'not on the timeline, whose Edit never reaches for cuts (R5q1)', (
+  testWidgets('Shift+F opens the storyboard\'s Edit there — the cut\'s rename '
+      '— and not on the timeline, whose Edit never reaches for cuts (R5q1)', (
     tester,
   ) async {
     await _pump(tester, _twoCuts());
@@ -176,14 +179,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyF, shift: true);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsOneWidget);
     await _press(tester, LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
 
     await _workIn(tester, WorkingPanel.timeline);
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyF, shift: true);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing);
   });
@@ -191,7 +194,7 @@ void main() {
   // R5q1 (유저 2026-08-25): 「타임라인에서는 타임라인의 것을」 — asked of the
   // DOOR, not only of the gate: with a cut range standing, the timeline's
   // Edit renames the drawing under its playhead, never the cut.
-  testWidgets('X on the timeline with a cut range standing edits the '
+  testWidgets('Shift+F on the timeline with a cut range standing edits the '
       'timeline\'s own cel — never the cut (R5q1)', (tester) async {
     final session = await _pump(tester, createDefaultProject());
     await tapToolbarButton(
@@ -205,14 +208,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(session.workingPanel, WorkingPanel.timeline, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyF, shift: true);
     await tester.pumpAndSettle();
     expect(find.byType(RenameCutDialog), findsNothing);
     expect(find.byType(RenameFrameDialog), findsOneWidget, reason: 'LIVENESS');
   });
 
-  testWidgets('X on an X-sheet\'s SE block opens the dialog its button opens, '
-      'previewing down the page as the sheet runs', (tester) async {
+  testWidgets('Shift+F on an X-sheet\'s SE block opens the dialog its button '
+      'opens, previewing down the page as the sheet runs', (tester) async {
     final session = await _pump(tester, createDefaultProject());
     session.layerStack.addLayerOfKind(LayerKind.se);
     createActiveInstance(session);
@@ -225,7 +228,7 @@ void main() {
           .previewAxis;
     }
 
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyF, shift: true);
     await tester.pumpAndSettle();
     expect(previewAxis(), Axis.horizontal, reason: 'the timeline runs across');
     await _press(tester, LogicalKeyboardKey.escape);
@@ -244,8 +247,50 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SeInstanceDialog), findsNothing, reason: '⛔전제');
 
-    await _press(tester, LogicalKeyboardKey.keyX);
+    await _press(tester, LogicalKeyboardKey.keyF, shift: true);
     await tester.pumpAndSettle();
     expect(previewAxis(), Axis.vertical);
+  });
+
+  // 🗣️I-63 ③ (유저 2026-10-03): 「프레임 추가랑 레이어 추가버튼도 단축키
+  // 기본값 등록하고싶음」 — the layer pill's ＋ is an action. Which key it
+  // takes has not been named, so this records one the way the settings
+  // window does.
+  testWidgets('a key recorded on Add Layer adds what the layer pill\'s ＋ of '
+      'the panel being worked in adds — the timeline an animation layer, '
+      'the storyboard an S row', (tester) async {
+    final session = await _pump(tester, createDefaultProject());
+    EditorShortcutScope.peek(
+      tester.element(find.byType(EditorCanvasArea)),
+    )!.setActivators(EditorActionIds.layerAdd, const [
+      SingleActivator(LogicalKeyboardKey.keyN, shift: true),
+    ]);
+    await tester.pump();
+    (int, int) rows() => (
+      session.layers
+          .where((layer) => layer.kind == LayerKind.animation)
+          .length,
+      session.activeTrack.seLayers.length,
+    );
+    (int, int) grown((int, int) from, (int, int) to) =>
+        (to.$1 - from.$1, to.$2 - from.$2);
+
+    for (final (panel, adds) in const [
+      (WorkingPanel.timeline, (1, 0)),
+      (WorkingPanel.storyboard, (0, 1)),
+    ]) {
+      await _workIn(tester, panel);
+      final before = rows();
+      await tapToolbarButton(
+        tester,
+        const ValueKey<String>('timeline-toolbar-add-layer-button'),
+      );
+      final byButton = rows();
+      expect(grown(before, byButton), adds, reason: 'the $panel button');
+
+      await _press(tester, LogicalKeyboardKey.keyN, shift: true);
+      await tester.pumpAndSettle();
+      expect(grown(byButton, rows()), adds, reason: 'its key on the $panel');
+    }
   });
 }
