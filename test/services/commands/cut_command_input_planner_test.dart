@@ -13,42 +13,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/commands/cut_command_input_planner.dart';
 
 void main() {
-  group('planCreateCutCommandInput', () {
-    test('mints a cut id no other in this run has, and the first free layer '
-        'id, without mutation', () {
-      final project = _projectWithCuts([
-        _cut(
-          id: 'cut-1',
-          layers: [
-            _layer(id: 'layer-1'),
-            _layer(id: 'layer-3'),
-          ],
-        ),
-        _cut(id: 'cut-2', layers: const []),
-      ]);
-      final before = project.toJson();
-
-      final plan = planCreateCutCommandInput(project);
-
-      expect(_allCutIds(project), isNot(contains(plan.cutId)));
-      expect(project.toJson(), before);
-    });
-
-    test('🚨two cuts planned on the SAME project are two ids — an id free in '
-        'the project is not free in the session', () {
-      // An undone or deleted cut gives its id back to the project while the
-      // session keeps its sheets' handwriting under it (card
-      // `undone-paste-reuses-ids`).
-      final project = _projectWithCuts([_cut(id: 'cut-1', layers: const [])]);
-
-      expect(
-        planCreateCutCommandInput(project).cutId,
-        isNot(planCreateCutCommandInput(project).cutId),
-      );
-    });
-  });
-
-
   group('planDuplicateCutCommandInput', () {
     test('plans new IDs and complete maps without mutation', () {
       final source = _cut(

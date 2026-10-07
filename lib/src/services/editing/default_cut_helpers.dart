@@ -4,10 +4,10 @@ import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
-import '../../models/layer_mark.dart';
 import '../../models/layer_section_defaults.dart';
 import '../../core/timeline/timeline_defaults.dart';
 import 'default_layer_helpers.dart';
+import 'run_id_mint.dart' show mintFrameId;
 
 const defaultCutCanvasSize = CanvasSize(width: 2340, height: 1654);
 const defaultCutDuration = defaultCutDurationFrames;
@@ -58,6 +58,11 @@ Cut createBareCut({
 /// The bare cut ([createBareCut]) with a blank layer A over its fixtures —
 /// the cut a new PROJECT starts with, and the base an importer replaces the
 /// drawing row of ([importedCut]).
+///
+/// Layer A is the row Add Layer bears in that bare cut ([bornRowOfKind]) —
+/// its name and its kind's label (F-76) — which is what the first row of a
+/// NEW cut is too, now that the user makes it (F-211). ↩️It was a birth
+/// written out here a second time.
 Cut createDefaultCut({
   required CutId cutId,
   required String name,
@@ -69,10 +74,13 @@ Cut createDefaultCut({
     layers: [
       // First, so the drawing layer is the default active layer (selection
       // falls back to layers.first).
-      createDefaultAnimationLayer(
+      bornRowOfKind(
+        LayerKind.animation,
         layerId: layerId,
-        cut: bare.copyWith(layers: const []),
-      ).copyWith(mark: LayerMark.bornOfKind(LayerKind.animation)),
+        // Add Layer's own argument; an animation row never asks for it.
+        coveringFrameId: () => mintFrameId(layerId),
+        cut: bare,
+      ),
       ...bare.layers,
     ],
   );

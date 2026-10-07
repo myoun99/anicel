@@ -3,6 +3,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
@@ -133,6 +134,30 @@ void main() {
         (cut) => cut.id == first,
       );
       expect(drawingRows(kept).single.frames, hasLength(1));
+    });
+
+    test('the row ＋ layer makes in it is the row a project starts with — '
+        'its name, its kind, its label, and no cel', () {
+      final session = sessionOn(createDefaultProject());
+      final projects = drawingRows(session.requireActiveCut).single;
+
+      session.cutVerbs.createCut();
+      session.layerStack.addLayerOfKind(LayerKind.animation);
+
+      final added = drawingRows(session.requireActiveCut).single;
+      expect(added.id, isNot(projects.id), reason: '⛔전제: another row');
+      expect(
+        (added.name, added.kind, added.mark),
+        (projects.name, projects.kind, projects.mark),
+      );
+      expect(
+        projects.mark,
+        LayerMark.bornOfKind(LayerKind.animation),
+        reason: 'LIVENESS — its kind\'s label (F-76), not two bare rows '
+            'agreeing',
+      );
+      expect(added.frames, isEmpty);
+      expect(added.timeline, isEmpty);
     });
 
     test('one undo takes it back', () {

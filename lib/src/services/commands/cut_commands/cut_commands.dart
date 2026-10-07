@@ -43,7 +43,6 @@ class _CutCommands {
     CutId? cutId,
   }) {
     final project = _coordinator.repository.requireProject();
-    final plan = planCreateCutCommandInput(project, cutId: cutId);
     final anchor = placement == null
         ? _insertionAnchorFor(project, trackId)
         : (
@@ -54,7 +53,12 @@ class _CutCommands {
       repository: _coordinator.repository,
       editingSession: _coordinator.editingSession,
       trackId: trackId,
-      cutId: plan.cutId,
+      // The run's own id, unless one was named ahead ([mintCutId] says why
+      // not the project's first free one). ↩️A plan stood between, which
+      // named a layer id as well — for the blank layer A a new cut was
+      // born with. A new cut is bare now (F-211), and its id is all there
+      // is to name.
+      cutId: cutId ?? mintCutId(),
       name: nextCutNameAfter(project, anchor.referenceName),
       index: anchor.index,
       leadingGapFrames: placement?.leadingGapFrames ?? 0,

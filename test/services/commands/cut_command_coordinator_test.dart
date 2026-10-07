@@ -50,7 +50,43 @@ int seatAbove(Project project, String layerId) =>
 
 void main() {
   group('CutCommandCoordinator', () {
-    test('createCut mints a cut id of its own, the first free layer id, and '
+    test('🚨a cut made after one was UNDONE takes an id of its own — an id '
+        'free in the project is not free in the session', () {
+      // An undone or deleted cut gives its id back to the project while the
+      // session keeps its sheets' handwriting under it (card
+      // `undone-paste-reuses-ids`). ↩️Pinned on the create-cut plan, asked
+      // twice of one project; the plan held this one id once F-211 took
+      // its layer id, and went with it.
+      final fixture = _oneCutFixture();
+      const track = TrackId('track-1');
+      fixture.coordinator.createCut(trackId: track);
+      final undone = fixture.cutsFor(track).last.id;
+      fixture.historyManager.undo();
+      expect(
+        [for (final cut in fixture.cutsFor(track)) cut.id],
+        isNot(contains(undone)),
+        reason: '⛔전제: the id is free in the project again',
+      );
+
+      fixture.coordinator.createCut(trackId: track);
+
+      expect(fixture.cutsFor(track).last.id, isNot(undone));
+    });
+
+    test('a cut id named AHEAD is the id the cut takes (H44: the conte\'s '
+        'next cut is drawn into before it exists)', () {
+      final fixture = _oneCutFixture();
+      const track = TrackId('track-1');
+
+      fixture.coordinator.createCut(
+        trackId: track,
+        cutId: const CutId('named-ahead'),
+      );
+
+      expect(fixture.cutsFor(track).last.id, const CutId('named-ahead'));
+    });
+
+    test('createCut mints a cut id of its own, makes the cut BARE, and '
         'records undo/redo — the redo bringing back the SAME cut', () {
       final existingCut = _cut(
         id: 'cut-2',
@@ -2600,6 +2636,19 @@ void main() {
       );
     });
   });
+}
+
+/// A project of one track holding one cut, stood on.
+_Fixture _oneCutFixture() {
+  final cut = _cut(id: 'cut-2', name: 'Existing', layers: [_layer(id: 'l')]);
+  return _fixture(
+    _project(
+      tracks: [
+        _track(id: 'track-1', name: 'Video', cuts: [cut]),
+      ],
+    ),
+    activeCutId: cut.id,
+  );
 }
 
 _Fixture _fixture(Project project, {required CutId activeCutId}) {
