@@ -369,7 +369,8 @@ void main() {
       expect(neither.status, HttpStatus.badRequest);
     });
 
-    test('🚨the gate says through the server what it says to the file', () async {
+    test('🚨the gate says through the server what it says to the file',
+        () async {
       final judged = await boardCheckOf(BoardServer(base, secret: secret));
       expect(judged.refusal, isNull);
       expect(judged.complaints, contains('bogus'), reason: '⛔premise: the '
@@ -419,9 +420,14 @@ void main() {
       await gone.close(force: true);
 
       final said = await sayToServer(nobody, ['{"kind":"item","id":"T-5"}']);
-      expect(said.refusal, isNotNull);
+      expect(
+        said.refusal,
+        contains('닿지 못했습니다'),
+        reason: 'said as what it is — nobody answered — and not as an '
+            'answer that could not be read',
+      );
       final judged = await boardCheckOf(nobody);
-      expect(judged.refusal, isNotNull);
+      expect(judged.refusal, contains('닿지 못했습니다'));
       expect(judged.complaints, isEmpty);
     });
   });
