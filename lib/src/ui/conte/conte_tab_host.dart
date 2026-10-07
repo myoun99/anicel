@@ -33,7 +33,7 @@ import '../storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
 import '../storyboard_layer_policy.dart' show storyboardLayerForCut;
 import '../text/app_strings.dart';
 import '../widgets/page_turn_strip.dart';
-import '../widgets/panel_flyout.dart' show PanelFlyoutItem;
+import '../widgets/panel_flyout.dart' show PanelFlyoutEntry, PanelFlyoutItem;
 import 'conte_book_page.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -432,6 +432,24 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
+  /// The book's front in the panel's settings (I-59: 「콘티 용지패널의
+  /// 설정버튼안에」), kept with the work — and printed as shown, since the
+  /// export lays the same book.
+  List<PanelFlyoutEntry> _frontSettings(ConteSheetSource source) => [
+    PanelFlyoutItem(
+      keyValue: 'conte-cover-toggle',
+      label: AppText.strings.conteCoverPage,
+      checked: source.cover,
+      onSelected: () => _setFront(cover: !source.cover),
+    ),
+    PanelFlyoutItem(
+      keyValue: 'conte-blank-page-toggle',
+      label: AppText.strings.conteBlankPage,
+      checked: source.blankPage,
+      onSelected: () => _setFront(blankPage: !source.blankPage),
+    ),
+  ];
+
   /// The book's front as the work keeps it — one undo step.
   void _setFront({bool? cover, bool? blankPage}) {
     final info = _session.timesheetInfo;
@@ -472,22 +490,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
         page: viewerPage(pageIndex, pages.length),
         onTurnTo: book.turnTo,
       ),
-      // The book's front (I-59: 「콘티 용지패널의 설정버튼안에」), kept with
-      // the work — and printed as shown, since the export lays the same book.
-      bottomBarSettings: [
-        PanelFlyoutItem(
-          keyValue: 'conte-cover-toggle',
-          label: AppText.strings.conteCoverPage,
-          checked: source.cover,
-          onSelected: () => _setFront(cover: !source.cover),
-        ),
-        PanelFlyoutItem(
-          keyValue: 'conte-blank-page-toggle',
-          label: AppText.strings.conteBlankPage,
-          checked: source.blankPage,
-          onSelected: () => _setFront(blankPage: !source.blankPage),
-        ),
-      ],
+      bottomBarSettings: _frontSettings(source),
       bottomBarHostToken: (
         pageIndex,
         pages.length,
