@@ -25,7 +25,7 @@ void main() {
     try {
       build(db);
     } finally {
-      db.dispose();
+      db.close();
     }
     final bytes = File(path).readAsBytesSync();
     File(path).deleteSync();
@@ -157,6 +157,20 @@ void main() {
           doubles: false,
         ),
       ),
+      // Timeline 3, A: a clip stretched to twice its motion — 60 ticks of
+      // keys over 120 of timeline, so a key at tick 30 lands on frame 24.
+      externalId(14): trackDataBytes(
+        cmtDocumentBytes(
+          document([
+            clip(
+              time: [0, 120],
+              motion: [0, 60],
+              keys: [0, 30],
+              cels: ['1', '2'],
+            ),
+          ]),
+        ),
+      ),
     };
     final database = databaseBytes((db) {
       db.execute('''
@@ -221,12 +235,17 @@ void main() {
         int render = 0,
         int original = 0,
         int animation = 0,
-      }) => layer.execute([
-        id, name, type, folder, visibility, opacity, composite, uuid, x, y,
-        renderX, renderY, firstChild, next, render, original,
-        original == 0 ? null : Uint8List(184), original == 0 ? 0 : 20,
-        animation,
-      ]);
+      }) {
+        // A dropped picture carries its transform and draws to its original.
+        final placed = original != 0;
+        final transform = placed ? Uint8List(184) : null;
+        final drawTo = placed ? 20 : 0;
+        layer.execute([
+          id, name, type, folder, visibility, opacity, composite, uuid, x, y,
+          renderX, renderY, firstChild, next, render, original, transform,
+          drawTo, animation,
+        ]);
+      }
       // The root: paper · BG · A, bottom to top.
       row(1, '', type: 256, folder: 1, firstChild: 2);
       row(2, 'paper', type: 1584, next: 3);
@@ -240,7 +259,7 @@ void main() {
       row(7, 'lower', next: 8);
       row(8, 'upper');
       row(9, 'scan', type: 0, original: 101);
-      layer.dispose();
+      layer.close();
       db.execute('''
         INSERT INTO Mipmap(MainId, BaseMipmapInfo)
           VALUES (100, 200), (101, 210);
@@ -254,14 +273,15 @@ void main() {
         ..execute([300, attribute50, externalId(9)])
         ..execute([301, attribute100, externalId(1)])
         ..execute([302, attribute100, externalId(2)])
-        ..dispose();
+        ..close();
       db.execute('''
         INSERT INTO AnimationCutBank(MainId, FirstTimeLine, CurrentIndex)
           VALUES (1, 40, 1);
         INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
           StartFrame, EndFrame, FirstTrack) VALUES
           (40, 41, 'cut 1', 24.0, 0, 48, 50),
-          (41, 0, 'cut 2', 24.0, 0, 24, 52);
+          (41, 42, 'cut 2', 24.0, 0, 24, 52),
+          (42, 0, 'cut 3', 24.0, 0, 48, 54);
         INSERT INTO TimeLineLabel(MainId, LabelFrame, LabelType,
           LabelNextIndex) VALUES (70, 6, 1, 71), (71, 20, 2, 0);
       ''');
@@ -276,7 +296,8 @@ void main() {
         ])
         ..execute([52, 53, 2000, uuidBlob(uuidA), '', externalId(12), 0])
         ..execute([53, 0, 2001, uuidBlob(uuidBg), externalId(13), '', 0])
-        ..dispose();
+        ..execute([54, 0, 2000, uuidBlob(uuidA), '', externalId(14), 0])
+        ..close();
     });
     return write(database, externals);
   }
@@ -303,6 +324,8 @@ void main() {
     expect([for (final cel in a.children) cel.name], ['1', '2', 'scan']);
     expect(a.children[0].isShown, isFalse);
     expect(a.children[1].isFolder, isTrue);
+    expect(a.children[1].isCollapsed, isFalse, reason: 'LayerFolder 1: open');
+    expect(root.children[1].isShown, isTrue);
     expect(a.children[1].isAnimationFolder, isFalse);
     expect(
       [for (final layer in a.children[1].children) layer.name],
@@ -326,7 +349,12 @@ void main() {
 
   test('every timeline in its chain, each layer\'s track by its uuid', () {
     final document = readClipDocument(fixture(), scratch: folder);
-    final [first, second] = document.timelines;
+    final [first, second, third] = document.timelines;
+    expect(
+      third.tracks[uuidA.replaceAll('-', '')]!.cels,
+      [(frame: 0, cel: '1'), (frame: 24, cel: '2')],
+      reason: 'a stretched clip spreads its keys by the stretch',
+    );
     final key = uuidA.replaceAll('-', '');
 
     expect(document.currentTimeline, 1);

@@ -207,7 +207,7 @@ ClipDocument readClipDocument(String path, {required Directory scratch}) {
       try {
         return _DocumentReader(database, file, container).read();
       } finally {
-        database.dispose();
+        database.close();
       }
     } finally {
       copy.deleteSync();
