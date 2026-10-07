@@ -438,41 +438,104 @@ List<_ColumnCell> _columnCellsOf(CelTextContent content) {
 
 /// [cells] — measured — broken into columns: at every break typed into
 /// [content], and for a box wherever the next cells would run past its
-/// length.
+/// length ([_ColumnBreaker]).
+List<_Column> _columnsOf(
+  CelTextContent content,
+  List<_ColumnCell> cells,
+  TextLetterStyle nextLetterStyle,
+) {
+  final breaker = _ColumnBreaker(content, cells, nextLetterStyle);
+  var start = 0;
+  for (final paragraph in content.text.split('\n')) {
+    breaker.breakParagraph(start, start + paragraph.length);
+    start += paragraph.length + 1;
+  }
+  return breaker.columns;
+}
+
+/// Breaks a text's cells into columns, a paragraph at a time.
 ///
 /// ★WHERE A COLUMN MAY BREAK IS THE TABLE'S ([verticalMayBreakBetween]): a
 /// closing bracket or a full stop does not head a column and an opening
 /// bracket does not end one — what the engine keeps to on a line. Cells
 /// that may not part go to the next column together; white space hangs
 /// past a column's end rather than head the next.
-List<_Column> _columnsOf(
-  CelTextContent content,
-  List<_ColumnCell> cells,
-  TextLetterStyle nextLetterStyle,
-) {
-  final text = content.text;
-  final limit = content.wrapWidth;
-  final pitch = content.lineHeight;
-  final columns = <_Column>[];
-  var next = 0;
+class _ColumnBreaker {
+  _ColumnBreaker(this._content, this._cells, this._nextLetterStyle);
 
-  /// The style a column with no cell is as wide as: the letters at [place]
-  /// — the break that opened it — or, in a text with no letters at all,
-  /// what will be typed there.
-  TextLetterStyle lettersAt(int place) {
-    var at = 0;
-    for (final span in content.spans) {
-      at += span.text.length;
-      if (place < at || (place == at && place > 0)) {
-        return span.style;
+  final CelTextContent _content;
+  final List<_ColumnCell> _cells;
+  final TextLetterStyle _nextLetterStyle;
+
+  /// The columns broken so far, first — rightmost — to last.
+  final List<_Column> columns = [];
+
+  /// The first cell no column holds yet.
+  int _next = 0;
+
+  /// Breaks the paragraph of the letters from [start] up to [end] — the
+  /// break that ends it, or the text's end — into its columns: one at
+  /// least, though it holds no letter.
+  void breakParagraph(int start, int end) {
+    final limit = _content.wrapWidth;
+    var column = <_ColumnCell>[];
+    var columnStart = start;
+    var length = 0.0;
+    while (_next < _cells.length && _cells[_next].start < end) {
+      final unit = _unitFrom(_next, end);
+      final (:fits, :run) = _lengthsOf(unit);
+      if (limit != null && column.isNotEmpty && length + fits > limit) {
+        _close(column, columnStart, unit.first.start, wrapped: true);
+        column = [];
+        columnStart = unit.first.start;
+        length = 0;
       }
+      column.addAll(unit);
+      length += run;
+      _next += unit.length;
     }
-    return nextLetterStyle;
+    _close(column, columnStart, end, wrapped: false);
   }
 
-  void close(List<_ColumnCell> column, int start, int end, bool wrapped) {
+  /// The cells from [from] on that may not part, of a paragraph that ends
+  /// at [end].
+  List<_ColumnCell> _unitFrom(int from, int end) {
+    var unitEnd = from + 1;
+    while (unitEnd < _cells.length &&
+        _cells[unitEnd].start < end &&
+        !verticalMayBreakBetween(
+          _cells[unitEnd - 1].cell.text,
+          _cells[unitEnd].cell.text,
+        )) {
+      unitEnd += 1;
+    }
+    return _cells.sublist(from, unitEnd);
+  }
+
+  /// How far [unit] runs down a column, and how much of that has to FIT in
+  /// one: white space at its end hangs, and is not what has to fit.
+  ({double fits, double run}) _lengthsOf(List<_ColumnCell> unit) {
+    var fits = 0.0;
+    var run = 0.0;
+    for (final cell in unit) {
+      run += cell.advance;
+      if (!cell.isSpace) {
+        fits = run;
+      }
+    }
+    return (fits: fits, run: run);
+  }
+
+  /// Closes [column] — the letters from [start] up to [end] — as wide as
+  /// the pitch of its largest letter.
+  void _close(
+    List<_ColumnCell> column,
+    int start,
+    int end, {
+    required bool wrapped,
+  }) {
     final largest = column.isEmpty
-        ? lettersAt(start).fontSize
+        ? _lettersAt(start).fontSize
         : column.fold<double>(
             0,
             (size, cell) => math.max(size, cell.style.fontSize),
@@ -483,52 +546,24 @@ List<_Column> _columnsOf(
         start: start,
         end: end,
         wrapped: wrapped,
-        width: largest * pitch,
+        width: largest * _content.lineHeight,
       ),
     );
   }
 
-  var paragraphStart = 0;
-  for (final paragraph in text.split('\n')) {
-    final paragraphEnd = paragraphStart + paragraph.length;
-    var column = <_ColumnCell>[];
-    var columnStart = paragraphStart;
-    var length = 0.0;
-    while (next < cells.length && cells[next].start < paragraphEnd) {
-      // The cells from here that may not part.
-      var unitEnd = next + 1;
-      while (unitEnd < cells.length &&
-          cells[unitEnd].start < paragraphEnd &&
-          !verticalMayBreakBetween(
-            cells[unitEnd - 1].cell.text,
-            cells[unitEnd].cell.text,
-          )) {
-        unitEnd += 1;
+  /// The style a column with no cell is as wide as: the letters at [place]
+  /// — the break that opened it — or, in a text with no letters at all,
+  /// what will be typed there.
+  TextLetterStyle _lettersAt(int place) {
+    var at = 0;
+    for (final span in _content.spans) {
+      at += span.text.length;
+      if (place < at || (place == at && place > 0)) {
+        return span.style;
       }
-      final unit = cells.sublist(next, unitEnd);
-      // White space at its end hangs, and is not what has to fit.
-      var fits = 0.0;
-      var run = 0.0;
-      for (final cell in unit) {
-        run += cell.advance;
-        if (!cell.isSpace) {
-          fits = run;
-        }
-      }
-      if (limit != null && column.isNotEmpty && length + fits > limit) {
-        close(column, columnStart, unit.first.start, true);
-        column = [];
-        columnStart = unit.first.start;
-        length = 0;
-      }
-      column.addAll(unit);
-      length += run;
-      next = unitEnd;
     }
-    close(column, columnStart, paragraphEnd, false);
-    paragraphStart = paragraphEnd + 1;
+    return _nextLetterStyle;
   }
-  return columns;
 }
 
 /// Places [columns] — and their cells — in the text's own frame, and

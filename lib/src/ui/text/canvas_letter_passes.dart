@@ -47,6 +47,32 @@ class CanvasLetterPass {
 /// kind by the colour it covers in ([CanvasLetterPass.key]).
 enum _PassKind { fill, stroke, hardStroke, hardFill }
 
+/// The pass that fills the smooth letters, each in its own colour. A hard
+/// letter is not this pass's: it names a paint that draws nothing, as a run
+/// with no outline does in the outline's pass.
+final CanvasLetterPass _fillPass = CanvasLetterPass._(
+  (_PassKind.fill, null),
+  (letters) => letters.antialias ? null : _drawsNothing,
+);
+
+/// The pass that strokes the smooth letters' outlines, under their fills.
+///
+/// ⚠️A run with no outline still names a paint, one that draws nothing:
+/// painted by its colour it would be drawn a second time under its own
+/// fill, and every soft edge of it would come out heavier.
+final CanvasLetterPass _outlinePass = CanvasLetterPass._(
+  (_PassKind.stroke, null),
+  (letters) => letters.antialias
+      ? canvasLetterOutlinePaint(letters) ?? _drawsNothing
+      : _drawsNothing,
+);
+
+/// The pass that covers the hard letters' outlines of the colour [argb].
+CanvasLetterPass _hardOutlinePass(int argb) => CanvasLetterPass._(
+  (_PassKind.hardStroke, argb),
+  (letters) => _hardOutlineCover(letters, argb) ?? _drawsNothing,
+);
+
 /// THE PASSES A CANVAS TEXT'S LETTERS ARE DRAWN IN — outline under fill
 /// (#15: one rule on every surface), over the whole text, so a letter's
 /// outline never covers its neighbour — for the SE name tag
@@ -113,49 +139,20 @@ class CanvasLetterPasses<T extends Object> {
       if (measured != null) {
         letGo(measured);
       }
-      // A hard letter is not this pass's: it names a paint that draws
-      // nothing, as a run with no outline does in the outline's pass.
-      fill = set(
-        CanvasLetterPass._(
-          (_PassKind.fill, null),
-          (letters) => letters.antialias ? null : _drawsNothing,
-        ),
-      );
+      fill = set(_fillPass);
     }
     final outlined = styles.any(
       (style) => style.antialias && canvasLetterOutlinePaint(style) != null,
     );
     return CanvasLetterPasses._(
       fill: fill,
-      stroke: outlined
-          ? set(
-              CanvasLetterPass._(
-                (_PassKind.stroke, null),
-                (letters) => letters.antialias
-                    // ⚠️A run with no outline still names a paint, one
-                    // that draws nothing: painted by its colour it would
-                    // be drawn a second time under its own fill, and every
-                    // soft edge of it would come out heavier.
-                    ? canvasLetterOutlinePaint(letters) ?? _drawsNothing
-                    : _drawsNothing,
-              ),
-            )
-          : null,
+      stroke: outlined ? set(_outlinePass) : null,
       hardStrokes: [
         for (final argb in {
           for (final style in hard)
             if (canvasLetterOutlinePaint(style) != null) style.outlineColor!,
         })
-          (
-            argb: argb,
-            cover: set(
-              CanvasLetterPass._(
-                (_PassKind.hardStroke, argb),
-                (letters) =>
-                    _hardOutlineCover(letters, argb) ?? _drawsNothing,
-              ),
-            ),
-          ),
+          (argb: argb, cover: set(_hardOutlinePass(argb))),
       ],
       hardFills: [
         for (final argb in {for (final style in hard) style.color})
