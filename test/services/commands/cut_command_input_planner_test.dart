@@ -31,7 +31,6 @@ void main() {
       final plan = planCreateCutCommandInput(project);
 
       expect(_allCutIds(project), isNot(contains(plan.cutId)));
-      expect(plan.layerId, const LayerId('layer-2'));
       expect(project.toJson(), before);
     });
 

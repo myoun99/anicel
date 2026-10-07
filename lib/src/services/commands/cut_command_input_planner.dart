@@ -19,11 +19,12 @@ import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
 import 'link_mirror.dart';
 
+/// ↩️It planned a layer id too, for the blank layer A a new cut was born
+/// with. A new cut is bare now (F-211, `createBareCut`).
 class CreateCutCommandInputPlan {
-  const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
+  const CreateCutCommandInputPlan({required this.cutId});
 
   final CutId cutId;
-  final LayerId layerId;
 }
 
 
@@ -60,18 +61,12 @@ class DuplicateCutCommandInputPlan {
   final Map<FrameId, FrameId> frameIdMap;
 }
 
-/// The ids a new cut takes — [cutId] when it was named before it exists
+/// The id a new cut takes — [cutId] when it was named before it exists
 /// (the conte's next cut, drawn into ahead of its making).
 CreateCutCommandInputPlan planCreateCutCommandInput(
   Project project, {
   CutId? cutId,
-}) {
-  final ids = _ProjectIdSnapshot.fromProject(project);
-  return CreateCutCommandInputPlan(
-    cutId: cutId ?? mintCutId(),
-    layerId: LayerId(_firstAvailableId(prefix: 'layer', usedIds: ids.layerIds)),
-  );
-}
+}) => CreateCutCommandInputPlan(cutId: cutId ?? mintCutId());
 
 
 DuplicateCutCommandInputPlan planDuplicateCutCommandInput({

@@ -55,7 +55,6 @@ class _CutCommands {
       editingSession: _coordinator.editingSession,
       trackId: trackId,
       cutId: plan.cutId,
-      layerId: plan.layerId,
       name: nextCutNameAfter(project, anchor.referenceName),
       index: anchor.index,
       leadingGapFrames: placement?.leadingGapFrames ?? 0,

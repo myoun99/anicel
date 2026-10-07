@@ -106,81 +106,15 @@ class _TimelineDrawingFrames {
         'Timeline cell is already covered at index $frameIndex.',
       );
     }
-
-    var nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
-      before.timeline,
+    apply(
+      before,
+      layerWithDrawingFrameAt(before, frameIndex, (
+        frameId: frameId,
+        length: length,
+        name: _controller._names.normalizeFrameName(name),
+        seName: _controller._names.normalizeFrameName(seName),
+      )),
     );
-    final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
-    // D19/D20/D21: a GHOST-covered cell authors like an EMPTY one — the
-    // press makes a fresh 1-comma block (「원래 1칸 블록」), never a divide
-    // of the projection (dividing a ghost wrote ghost-flagged data the
-    // rederive pass silently deleted). The working copy sheds every ghost
-    // up front: an authored entry overlapping a stale ghost would trip
-    // the coverage invariant, ghost starts are not clamp walls, and the
-    // rederive choke point rebuilds the projection clamped around the new
-    // block right after this edit.
-    nextTimeline.removeWhere((_, exposure) => exposure.ghost);
-    final int clampedLength;
-    // AT A HEAD (F-151): the block, and whatever is GLUED behind it, moves
-    // back by the new drawing's length and the drawing takes the cells it
-    // left. ⛔Not a push of its own: it is the neighbour law the comma edge
-    // and the retime already share ([_BlockLayout.relayAfter] — 「a block
-    // glued to its predecessor's OLD end follows the NEW end, any other
-    // keeps its start unless the new end pushes it」), 유저's 「붙어있는거만
-    // 밀어냄 … 법 통일해서 사용」 by construction.
-    if (covering != null &&
-        !covering.entry.ghost &&
-        frameIndex == covering.startIndex) {
-      final layout = _BlockLayout.of(nextTimeline);
-      final pushed = layout.blocks.indexWhere(
-        (block) => block.startIndex == covering.startIndex,
-      );
-      layout.starts[pushed] += length;
-      layout.relayAfter(pushed);
-      nextTimeline = layout.toTimeline();
-      clampedLength = length;
-      nextTimeline[frameIndex] = TimelineExposure.drawing(
-        frameId,
-        length: clampedLength,
-      );
-    } else if (covering != null && !covering.entry.ghost) {
-      // INSIDE a block: the press divides it, and the new drawing takes
-      // over the rest of the hold — the frames do not move, the division
-      // does. (The user's rule 2026-07-27 — REAL blocks only.) THE division
-      // a paste landing there makes too (F-236: 「똑같은 법 통일」).
-      nextTimeline = blockRestTakenBy(
-        nextTimeline,
-        frameIndex,
-        TimelineExposure.drawing(frameId, length: 1),
-      );
-      clampedLength = nextTimeline[frameIndex]!.length!;
-    } else {
-      // Clamp against the WORKING copy: after a ghost shed, the next
-      // authored block is the honest wall (a ghost start is not one).
-      final nextBlock = nextDrawingBlockAfter(nextTimeline, frameIndex);
-      final maxLength = nextBlock == null
-          ? length
-          : nextBlock.startIndex - frameIndex;
-      clampedLength = length > maxLength ? maxLength : length;
-      nextTimeline[frameIndex] = TimelineExposure.drawing(
-        frameId,
-        length: clampedLength,
-      );
-    }
-    final after = before.copyWith(
-      frames: [
-        ...before.frames,
-        Frame(
-          id: frameId,
-          duration: clampedLength,
-          strokes: const [],
-          name: _controller._names.normalizeFrameName(name),
-          seName: _controller._names.normalizeFrameName(seName),
-        ),
-      ],
-      timeline: nextTimeline,
-    );
-    apply(before, after);
   }
 
   /// The same edit as [createDrawingFrameForLayer], handed back as a command
@@ -303,4 +237,108 @@ class _TimelineDrawingFrames {
     }
     return commands;
   }
+}
+
+/// The drawing a ＋ press makes: its cel's id, the frames it is held for,
+/// and the names it is born with.
+typedef DrawingToMake = ({
+  FrameId frameId,
+  int length,
+  String? name,
+  String? seName,
+});
+
+/// [before] with a drawing made at [frameIndex] — THE ONE BODY of the ＋
+/// press ([_TimelineDrawingFrames.createDrawingFrameForLayer]), as an edit
+/// of a row: the divide-a-held-block rule, the push at a head, the ghost
+/// shed and the clamp.
+///
+/// A function as well as a verb because a row can be BORN with a drawing —
+/// F-211 (유저 2026-09-28): 「1번인덱스에 프레임도 만들어서 키자마자 그리는게
+/// 가능하도록」. The new project's first cel is this press made on a row that
+/// has not been pressed yet (`newUntitledProject`), not a second way to
+/// spell a drawing.
+///
+/// ⛔It asks nothing: whether the cell MAY take a drawing is
+/// [_TimelineDrawingFrames.canCreateDrawingAt]'s, asked before it. The
+/// drawing's names arrive as they are to be kept.
+Layer layerWithDrawingFrameAt(
+  Layer before,
+  int frameIndex,
+  DrawingToMake drawing,
+) {
+  final (:frameId, :length, :name, :seName) = drawing;
+  var nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
+    before.timeline,
+  );
+  final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
+  // D19/D20/D21: a GHOST-covered cell authors like an EMPTY one — the
+  // press makes a fresh 1-comma block (「원래 1칸 블록」), never a divide
+  // of the projection (dividing a ghost wrote ghost-flagged data the
+  // rederive pass silently deleted). The working copy sheds every ghost
+  // up front: an authored entry overlapping a stale ghost would trip
+  // the coverage invariant, ghost starts are not clamp walls, and the
+  // rederive choke point rebuilds the projection clamped around the new
+  // block right after this edit.
+  nextTimeline.removeWhere((_, exposure) => exposure.ghost);
+  final int clampedLength;
+  // AT A HEAD (F-151): the block, and whatever is GLUED behind it, moves
+  // back by the new drawing's length and the drawing takes the cells it
+  // left. ⛔Not a push of its own: it is the neighbour law the comma edge
+  // and the retime already share ([_BlockLayout.relayAfter] — 「a block
+  // glued to its predecessor's OLD end follows the NEW end, any other
+  // keeps its start unless the new end pushes it」), 유저's 「붙어있는거만
+  // 밀어냄 … 법 통일해서 사용」 by construction.
+  if (covering != null &&
+      !covering.entry.ghost &&
+      frameIndex == covering.startIndex) {
+    final layout = _BlockLayout.of(nextTimeline);
+    final pushed = layout.blocks.indexWhere(
+      (block) => block.startIndex == covering.startIndex,
+    );
+    layout.starts[pushed] += length;
+    layout.relayAfter(pushed);
+    nextTimeline = layout.toTimeline();
+    clampedLength = length;
+    nextTimeline[frameIndex] = TimelineExposure.drawing(
+      frameId,
+      length: clampedLength,
+    );
+  } else if (covering != null && !covering.entry.ghost) {
+    // INSIDE a block: the press divides it, and the new drawing takes
+    // over the rest of the hold — the frames do not move, the division
+    // does. (The user's rule 2026-07-27 — REAL blocks only.) THE division
+    // a paste landing there makes too (F-236: 「똑같은 법 통일」).
+    nextTimeline = blockRestTakenBy(
+      nextTimeline,
+      frameIndex,
+      TimelineExposure.drawing(frameId, length: 1),
+    );
+    clampedLength = nextTimeline[frameIndex]!.length!;
+  } else {
+    // Clamp against the WORKING copy: after a ghost shed, the next
+    // authored block is the honest wall (a ghost start is not one).
+    final nextBlock = nextDrawingBlockAfter(nextTimeline, frameIndex);
+    final maxLength = nextBlock == null
+        ? length
+        : nextBlock.startIndex - frameIndex;
+    clampedLength = length > maxLength ? maxLength : length;
+    nextTimeline[frameIndex] = TimelineExposure.drawing(
+      frameId,
+      length: clampedLength,
+    );
+  }
+  return before.copyWith(
+    frames: [
+      ...before.frames,
+      Frame(
+        id: frameId,
+        duration: clampedLength,
+        strokes: const [],
+        name: name,
+        seName: seName,
+      ),
+    ],
+    timeline: nextTimeline,
+  );
 }

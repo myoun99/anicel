@@ -35,7 +35,6 @@ void main() {
           editingSession: editingSession,
           trackId: const TrackId('track-1'),
           cutId: const CutId('cut-new'),
-          layerId: const LayerId('layer-new'),
           name: 'New Cut',
           canvasSize: const CanvasSize(width: 640, height: 360),
         ),
@@ -67,17 +66,15 @@ void main() {
         editingSession: editingSession,
         trackId: const TrackId('track-1'),
         cutId: const CutId('cut-new'),
-        layerId: const LayerId('layer-new'),
         name: 'New Cut',
         index: 1,
       ).execute();
 
       expect(repository.requireProject().tracks.single.cuts, [
         cutA,
-        createDefaultCut(
+        createBareCut(
           cutId: const CutId('cut-new'),
           name: 'New Cut',
-          layerId: const LayerId('layer-new'),
         ),
         cutB,
       ]);
@@ -106,7 +103,6 @@ void main() {
             editingSession: editingSession,
             trackId: const TrackId('track-1'),
             cutId: const CutId('cut-new'),
-            layerId: const LayerId('layer-new'),
             name: 'New Cut',
           ),
         );
@@ -137,7 +133,6 @@ void main() {
         editingSession: editingSession,
         trackId: const TrackId('track-1'),
         cutId: const CutId('cut-new'),
-        layerId: const LayerId('layer-new'),
         name: 'New Cut',
         index: 1,
       );
@@ -165,7 +160,6 @@ void main() {
         editingSession: editingSession,
         trackId: const TrackId('track-1'),
         cutId: const CutId('cut-new'),
-        layerId: const LayerId('layer-new'),
         name: 'New Cut',
       );
 
@@ -184,7 +178,6 @@ void main() {
           editingSession: editingSession,
           trackId: const TrackId('missing'),
           cutId: const CutId('cut-new'),
-          layerId: const LayerId('layer-new'),
           name: 'New Cut',
         );
 
@@ -242,7 +235,6 @@ void main() {
           ),
           trackId: const TrackId('track-1'),
           cutId: const CutId('cut-new'),
-          layerId: const LayerId('layer-new'),
           name: 'New Cut',
           index: 1,
         ),
@@ -363,10 +355,10 @@ Layer _layer({required String id, required String name}) {
 }
 
 Cut _defaultCut() {
-  return createDefaultCut(
+  // F-211: a new cut is bare — its fixtures, and no drawing row.
+  return createBareCut(
     cutId: const CutId('cut-new'),
     name: 'New Cut',
-    layerId: const LayerId('layer-new'),
     canvasSize: const CanvasSize(width: 640, height: 360),
   );
 }
