@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/layout/device_grid_safe_area.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
@@ -215,6 +216,15 @@ void main() {
         .data!;
     expect(counterText(), '1');
 
+    // F-284 (유저 2026-10-04: 「이런 표기는 초+코마 표기로 바꾼거에
+    // 대응하도록 법 통일」): the lists that name a frame are written by the
+    // session, and this button is what they follow — one toggle, the app's.
+    String placeInALine() => tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session
+        .framePlaceLabel(14);
+    expect(placeInALine(), '15');
+
     await tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-time-display-toggle-button'),
@@ -222,12 +232,14 @@ void main() {
     // Frame 1 at 24fps in conte notation — bare digits, the sheet's own
     // (feedback #12); this used to read `0+01`.
     expect(counterText(), '0+1');
+    expect(placeInALine(), '0+15');
 
     await tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-time-display-toggle-button'),
     );
     expect(counterText(), '1');
+    expect(placeInALine(), '15');
   });
 
   testWidgets('xsheet frame axis: scrolling stays CLAMPED to the built '
