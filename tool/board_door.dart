@@ -90,6 +90,37 @@ InternetAddress doorListensOn(BoardDoor door) => switch (door) {
   LanDoor() => InternetAddress.anyIPv4,
 };
 
+/// Whether a write is asked by a tool or by the board's own page — and not
+/// by a page of some OTHER site, open in a browser that can reach the board.
+///
+/// 🚨A browser sends a simple POST across sites without asking anybody, and
+/// from the machine the board is on it arrives as that machine's own
+/// request: no secret is asked of it. Until 2026-10-07 the server answered
+/// it like any other (🧪measured that day: a POST naming
+/// `Origin: https://example.com` got 200), so any page open in the browser
+/// of that machine could have written records — it could not read the
+/// answer, and did not need to.
+///
+/// A browser says where a request comes from, and a tool says nothing:
+///  · [fetchSite] (`Sec-Fetch-Site`) — `same-origin` is the board's page,
+///    `none` is the person at the address bar. Anything else is another
+///    site, a neighbour on another port of this host included.
+///  · [origin] — when the browser sent no `Sec-Fetch-Site`, this has to be
+///    the very address the request was made to ([host]).
+///  · neither — not a browser's cross-site request. `curl`, `board_say`.
+bool asksFromTheBoardItself({
+  required String? fetchSite,
+  required String? origin,
+  required String? host,
+}) {
+  if (fetchSite != null) {
+    return fetchSite == 'same-origin' || fetchSite == 'none';
+  }
+  if (origin == null) return true;
+  return host != null &&
+      (origin == 'http://$host' || origin == 'https://$host');
+}
+
 /// Whether a request may come in.
 ///
 /// This machine always may — it is the one the records file is on, and a

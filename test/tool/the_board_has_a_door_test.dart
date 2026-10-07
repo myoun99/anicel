@@ -40,6 +40,7 @@ void main() {
     String? bearer,
     String? cookie,
     String? body,
+    Map<String, String> saying = const {},
   }) async {
     final client = HttpClient();
     try {
@@ -47,6 +48,7 @@ void main() {
       if (bearer != null) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $bearer');
       }
+      saying.forEach(request.headers.set);
       if (cookie != null) request.cookies.add(Cookie(kDoorCookie, cookie));
       if (body != null) request.add(utf8.encode(body));
       final response = await request.close();
@@ -387,6 +389,120 @@ void main() {
         final outside = await ask('GET', '/shot/$name', bearer: secret);
         expect(outside.status, HttpStatus.notFound, reason: name);
       }
+    });
+  });
+
+  group('a write asked by a page of another site', () {
+    // 🚨Found reading the server for the door (2026-10-07, card
+    // board-server-takes-posts-from-any-site): a browser sends a simple POST
+    // across sites without asking, and from the machine the board is on it
+    // arrives as that machine's own request. 🧪Measured that day on the
+    // live server: a POST naming `Origin: https://example.com` got 200.
+    bool own({String? fetchSite, String? origin}) => asksFromTheBoardItself(
+      fetchSite: fetchSite,
+      origin: origin,
+      host: 'localhost:4321',
+    );
+
+    test('🚨a browser says where it asks from, and only the board\'s own '
+        'page — or the person at the address bar — is the board\'s', () {
+      expect(own(fetchSite: 'same-origin'), isTrue);
+      expect(own(fetchSite: 'none'), isTrue);
+      expect(own(fetchSite: 'cross-site'), isFalse);
+      expect(
+        own(fetchSite: 'same-site'),
+        isFalse,
+        reason: 'a neighbour on another port of this host is another site',
+      );
+      expect(
+        own(fetchSite: 'cross-site', origin: 'http://localhost:4321'),
+        isFalse,
+        reason: 'what the browser says of the site outweighs an Origin '
+            'that happens to look right',
+      );
+    });
+
+    test('🚨a browser that names only an Origin has to name the very '
+        'address it asked', () {
+      expect(own(origin: 'http://localhost:4321'), isTrue);
+      expect(own(origin: 'https://localhost:4321'), isTrue);
+      expect(own(origin: 'https://example.com'), isFalse);
+      expect(own(origin: 'http://localhost:3000'), isFalse);
+      expect(own(origin: 'http://localhost'), isFalse);
+      expect(own(origin: 'null'), isFalse, reason: 'a sandboxed page');
+      expect(
+        asksFromTheBoardItself(
+          fetchSite: null,
+          origin: 'http://localhost:4321',
+          host: null,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a tool names neither, and is not a browser\'s cross-site request',
+        () {
+      expect(own(), isTrue);
+    });
+
+    test('🚨the server turns such a write away — 403, secret or no secret, '
+        'on every route that writes — and nothing is written', () async {
+      final before = records.readAsBytesSync();
+      final line =
+          '${jsonEncode({'kind': 'item', 'id': 'T-6', 'note': 'x'})}\n';
+      for (final (route, body) in [
+        ('/say', line),
+        ('/submit', '{"id":"T-1","memo":"from elsewhere"}'),
+        ('/intake', '{"kind":"idea","text":"from elsewhere"}'),
+        ('/enter', secret),
+      ]) {
+        for (final saying in const [
+          {'Origin': 'https://example.com'},
+          {'Sec-Fetch-Site': 'cross-site'},
+          {'Sec-Fetch-Site': 'same-site'},
+        ]) {
+          final answer = await ask(
+            'POST',
+            route,
+            bearer: secret,
+            body: body,
+            saying: saying,
+          );
+          expect(
+            answer.status,
+            HttpStatus.forbidden,
+            reason: '$route saying $saying',
+          );
+          expect(answer.cookies, isEmpty, reason: 'and no way in is handed');
+        }
+      }
+      expect(records.readAsBytesSync(), before, reason: 'not a byte');
+    });
+
+    test('the board\'s own page and a tool still write', () async {
+      final before = records.readAsLinesSync().length;
+      final line =
+          '${jsonEncode({'kind': 'item', 'id': 'T-7', 'note': 'x'})}\n';
+      final page = await ask(
+        'POST',
+        '/say',
+        bearer: secret,
+        body: line,
+        saying: {
+          'Sec-Fetch-Site': 'same-origin',
+          'Origin': 'http://127.0.0.1:${server.port}',
+        },
+      );
+      expect(page.status, HttpStatus.ok);
+      final olderBrowser = await ask(
+        'POST',
+        '/say',
+        bearer: secret,
+        body: line,
+        saying: {'Origin': 'http://127.0.0.1:${server.port}'},
+      );
+      expect(olderBrowser.status, HttpStatus.ok);
+      expect(records.readAsLinesSync(), hasLength(before + 2));
     });
   });
 

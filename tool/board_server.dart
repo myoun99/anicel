@@ -349,6 +349,19 @@ String? _flag(List<String> args, String name) {
 
 Future<void> _handle(HttpRequest req) async {
   final path = req.uri.path;
+  // Before the door, and for every write there is: a page of another site
+  // is not asked for a secret when it speaks through this machine's own
+  // browser — see [asksFromTheBoardItself].
+  if (req.method == 'POST' &&
+      !asksFromTheBoardItself(
+        fetchSite: req.headers.value('sec-fetch-site'),
+        origin: req.headers.value('origin'),
+        host: req.headers.value(HttpHeaders.hostHeader),
+      )) {
+    req.response.statusCode = HttpStatus.forbidden;
+    await req.response.close();
+    return;
+  }
   if (!await _letIn(req, path)) return;
 
   if (path.startsWith('/shot/') && req.method == 'GET') {
