@@ -294,6 +294,80 @@ void main() {
         {(6, 6), (6, 7)},
         reason: '↩️nothing until 18px, and then the head was already 8',
       );
+      expect(
+        heard.settled,
+        0,
+        reason: '🚨a select that left its cell is no tap: eight pixels of '
+            'travel read as one, and the tap dropped what it had selected',
+      );
+    });
+
+    for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
+      testWidgets('🚨a select that leaves a LOW row ($way) inside a tap\'s '
+          'slop is no tap either', (tester) async {
+        // Sixteen pixels of row: nine leave it from its middle.
+        final (heard, inside) = await mountSelected(tester, rowHeight: 16);
+
+        final gesture = await tester.startGesture(
+          inside + const Offset(cell * 5, 0),
+          kind: PointerDeviceKind.mouse,
+        );
+        for (var moved = 0; moved < 9; moved += 1) {
+          await gesture.moveBy(Offset(0, dy));
+          await tester.pump();
+        }
+        expect(heard.selects, isNotEmpty, reason: '⛔전제: a select began');
+        await gesture.up();
+        await tester.pump();
+
+        expect(heard.settled, 0);
+      });
+    }
+
+    testWidgets('🚨a move that hops a ROW inside a tap\'s slop is no tap', (
+      tester,
+    ) async {
+      // Twelve pixels of row: a hop is three quarters of one, nine.
+      final (heard, inside) = await mountSelected(tester, rowHeight: 12);
+
+      final gesture = await tester.startGesture(
+        inside,
+        kind: PointerDeviceKind.mouse,
+      );
+      for (var moved = 0; moved < 10; moved += 1) {
+        await gesture.moveBy(const Offset(0, 1));
+        await tester.pump();
+      }
+      expect(heard.begins, isNotEmpty, reason: '⛔전제: a move began');
+      await gesture.up();
+      await tester.pump();
+
+      expect(heard.settled, 0);
+    });
+
+    testWidgets('the press AFTER a drag is its own: a click that follows a '
+        'move settles', (tester) async {
+      final (heard, middle) = await mountSelected(tester);
+      final moved = await tester.startGesture(
+        middle - const Offset(2, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await creep(tester, moved, 8);
+      await moved.up();
+      await tester.pump();
+      expect(heard.settled, 0, reason: '⛔전제: the move was no tap');
+
+      final clicked = await tester.startGesture(
+        middle,
+        kind: PointerDeviceKind.mouse,
+      );
+      // One pixel: the hand is not a statue, and nothing starts.
+      await clicked.moveBy(const Offset(1, 0));
+      await tester.pump();
+      await clicked.up();
+      await tester.pump();
+
+      expect(heard.settled, 1);
     });
 
     for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
@@ -429,6 +503,12 @@ void main() {
       await gesture.up();
       await tester.pump();
       expect(heard.selects.toSet(), {(1, 1), (1, 2)});
+      expect(
+        heard.clears,
+        0,
+        reason: '🚨a select that left its cell is no tap — the band cleared '
+            'on the release that had just selected',
+      );
     });
   });
 
