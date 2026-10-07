@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:anicel/src/models/font_face_facts.dart';
 import 'package:anicel/src/services/font_library_service.dart';
+import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/temp_dir.dart';
@@ -332,7 +333,7 @@ void main() {
     // ⚠️Under a test it is a sandbox, never the developer's own fonts.
     expect(
       FontLibraryService.defaultFontDirectoryPath(),
-      contains('qa_test_fonts_'),
+      startsWith('${testContainerFolder()}/'),
     );
   });
 }

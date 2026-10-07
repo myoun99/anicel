@@ -6,6 +6,7 @@ import 'package:anicel/src/models/export_preset.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_support_path.dart';
 import '../../helpers/temp_dir.dart';
 
 void main() {
@@ -135,7 +136,7 @@ void main() {
     // must never read or write the user's real settings file.
     expect(
       AppExportSettingsStore.defaultFilePath(),
-      contains('qa_test_export_settings_'),
+      startsWith('${testContainerFolder()}/'),
     );
     expect(
       AppExportSettingsStore.defaultFilePath(),

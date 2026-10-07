@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import '../../helpers/temp_dir.dart';
@@ -182,7 +183,7 @@ void main() {
       // default path must never be the developer's own list.
       expect(
         RecentProjectsStore.defaultFilePath(),
-        contains('qa_test_recent_projects_'),
+        startsWith('${testContainerFolder()}/'),
       );
     });
   });

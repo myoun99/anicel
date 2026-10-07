@@ -11,6 +11,7 @@ import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
     show parseAnicelZipLayoutFile;
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
     show anicelFontEntryName;
+import 'package:anicel/src/services/persistence/app_support_path.dart';
 import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart';
@@ -365,6 +366,9 @@ void main() {
       session.fontLibrary.directoryPath,
       FontLibraryService.defaultFontDirectoryPath(),
     );
-    expect(session.fontLibrary.directoryPath, contains('qa_test_fonts_'));
+    expect(
+      session.fontLibrary.directoryPath,
+      startsWith('${testContainerFolder()}/'),
+    );
   });
 }

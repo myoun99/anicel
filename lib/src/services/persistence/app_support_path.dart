@@ -50,8 +50,8 @@ String appSupportFilePath(String fileName) {
   return '$normalizedBase/anicel/$fileName';
 }
 
-/// [appSupportFilePath], except that a test run gets its own sandbox under
-/// the temp directory: `<temp>/qa_test_<sandbox>_<pid>/<fileName>`.
+/// [appSupportFilePath], except that a test run gets its own sandbox inside
+/// [testContainerFolder]: `<temp>/qa_test_container_<pid>/<sandbox>/<fileName>`.
 ///
 /// Every store that resolves an app-support path goes through here rather
 /// than writing the `FLUTTER_TEST` branch out again. Tests reach these
@@ -63,10 +63,25 @@ String testRedirectedAppSupportPath(
   required String sandbox,
 }) {
   if (Platform.environment['FLUTTER_TEST'] == 'true') {
-    final temp = Directory.systemTemp.path.replaceAll('\\', '/');
-    return '$temp/qa_test_${sandbox}_$pid/$fileName';
+    return '${testContainerFolder()}/$sandbox/$fileName';
   }
   return appSupportFilePath(fileName);
+}
+
+/// The one folder every sandbox of [testRedirectedAppSupportPath] lives in:
+/// a test run's stand-in for the container.
+///
+/// 🚨**ONE FOLDER, SO THE RUN CAN END BY REMOVING ONE FOLDER** (2026-10-08).
+/// Each sandbox used to sit loose in the temp directory as
+/// `qa_test_<sandbox>_<pid>`, and nothing ever removed one: one machine's
+/// temp held 696 folders of test runs older than six hours, 309 of them
+/// sessions sandboxes and 180 diagnostics ones. The run that made it ends
+/// it — `test/flutter_test_config.dart` — and ⛔a list of sandbox names for
+/// the harness to delete would be a second spelling of the names the stores
+/// already pass here.
+String testContainerFolder() {
+  final temp = Directory.systemTemp.path.replaceAll('\\', '/');
+  return '$temp/qa_test_container_$pid';
 }
 
 /// The container's **유저설정** folder: `<container>/Settings/<fileName>`.
