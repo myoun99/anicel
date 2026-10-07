@@ -87,6 +87,18 @@ void main() {
     );
   });
 
+  test('a picture standing more than a tile off the canvas\'s left edge '
+      'makes no tile out there', () {
+    final tiles = bake(picture(), left: -200)!;
+
+    expect(
+      {for (final tile in tiles) tile.x},
+      {0},
+      reason: 'its last 100 columns are on the canvas; nothing left of 0',
+    );
+    expect(pixelAt(tiles, 0, 5), [200, 5, 7, 255], reason: 'picture 200, 5');
+  });
+
   test('a fainter cel is baked fainter, and a tile with no ink is not '
       'there', () {
     expect(pixelAt(bake(picture(), alpha: 0.5)!, 10, 10), [10, 10, 7, 128]);
