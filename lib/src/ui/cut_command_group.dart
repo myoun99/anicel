@@ -46,14 +46,16 @@ class CutCommandGroup extends StatefulWidget {
   State<CutCommandGroup> createState() => _CutCommandGroupState();
 }
 
+/// 「컷 메모」 is the memo on the timesheet's FIRST page — F-301-Q1 (유저
+/// 2026-10-08): 「봉투와 「컷 메모」 창은 1쪽 메모 … 구조만 통일하면됨」.
 Future<void> _editActiveCutNote(
   BuildContext context,
   EditorSessionManager session,
 ) => askAboutThenCommit<String, String>(
   context,
-  session.cutVerbs.activeCutNote,
+  session.cutVerbs.activeCutNoteOf(0),
   dialog: (note) => CutNoteDialog(initialNote: note),
-  commit: session.cutVerbs.updateActiveCutNote,
+  commit: (note) => session.cutVerbs.updateActiveCutNote(page: 0, note: note),
 );
 
 /// 컷 설정 on the cuts the pick is about — the range's, or the active cut

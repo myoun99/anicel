@@ -199,8 +199,11 @@ class CutCommandCoordinator {
     beforeGaps: beforeGaps,
     afterGaps: afterGaps,
   );
-  void updateCutNote({required CutId cutId, required String note}) =>
-      _cuts.updateCutNote(cutId: cutId, note: note);
+  void updateCutNote({
+    required CutId cutId,
+    required int page,
+    required String note,
+  }) => _cuts.updateCutNote(cutId: cutId, page: page, note: note);
   void setCutStaffNames({
     required List<CutId> cutIds,
     required Map<LayerMark, String> names,

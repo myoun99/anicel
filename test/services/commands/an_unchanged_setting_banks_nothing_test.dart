@@ -75,7 +75,7 @@ void main() {
 
     banksOnce(
       'updateCutNote',
-      (c) => c.updateCutNote(cutId: cutOf(c), note: 'a note'),
+      (c) => c.updateCutNote(cutId: cutOf(c), page: 0, note: 'a note'),
     );
     banksOnce(
       'updateCutThumbnailFrame',

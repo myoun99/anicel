@@ -186,6 +186,17 @@ void main() {
     );
   });
 
+  // F-301 (format 11): a v10 file's cuts each hold ONE note, which this
+  // build no longer reads — refused by its number rather than opened with
+  // every memo gone.
+  test('🚨a v10 file is refused by its number — its notes would open '
+      'gone', () {
+    expect(
+      () => decodeAnicelProjectDocument(documentSaying(10)),
+      refusesNaming('format 10,'),
+    );
+  });
+
   test('a newer formatVersion refuses to load with a clear error', () {
     final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),

@@ -1250,23 +1250,23 @@ void main() {
         activeCutId: cutA.id,
       );
 
-      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'General note');
+      fixture.coordinator.updateCutNote(cutId: cutA.id, page: 0, note: 'General note');
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
 
       fixture.historyManager.undo();
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, '');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), '');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 1);
 
       fixture.historyManager.redo();
 
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'General note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'General note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);
@@ -1276,7 +1276,7 @@ void main() {
       final cutA = _cut(
         id: 'cut-1',
         name: 'Cut A',
-        metadata: const CutMetadata(note: 'Same note'),
+        metadata: const CutMetadata(pageNotes: ['Same note']),
       );
       final fixture = _fixture(
         _project(
@@ -1288,10 +1288,10 @@ void main() {
       );
       final beforeJson = fixture.project.toJson();
 
-      fixture.coordinator.updateCutNote(cutId: cutA.id, note: 'Same note');
+      fixture.coordinator.updateCutNote(cutId: cutA.id, page: 0, note: 'Same note');
 
       expect(fixture.project.toJson(), beforeJson);
-      expect(requireCut(fixture.project, cutA.id).metadata.note, 'Same note');
+      expect(requireCut(fixture.project, cutA.id).metadata.noteOf(0), 'Same note');
       expect(fixture.editingSession.activeCutId, cutA.id);
       expect(fixture.historyManager.undoCount, 0);
       expect(fixture.historyManager.redoCount, 0);
@@ -1312,6 +1312,7 @@ void main() {
       expect(
         () => fixture.coordinator.updateCutNote(
           cutId: const CutId('cut-missing'),
+          page: 0,
           note: 'General note',
         ),
         throwsA(

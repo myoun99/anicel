@@ -290,7 +290,7 @@ void main() {
       tester,
     ) async {
       await pumpSheet(tester);
-      session.cutVerbs.updateActiveCutNote(words);
+      session.cutVerbs.updateActiveCutNote(page: 0, note: words);
       await tester.pumpAndSettle();
       final box = tester.getRect(
         find.byKey(const ValueKey<String>('timesheet-memo-edit-p0')),

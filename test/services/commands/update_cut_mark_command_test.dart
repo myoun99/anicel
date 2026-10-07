@@ -34,7 +34,7 @@ Cut _cut(CutId id, LayerId layerId, {LayerMark mark = LayerMark.none}) => Cut(
   layers: [Layer(id: layerId, name: 'A', frames: const [])],
   duration: 12,
   canvasSize: const CanvasSize(width: 400, height: 300),
-  metadata: CutMetadata(note: '${id.value} note', mark: mark),
+  metadata: CutMetadata(pageNotes: ['${id.value} note'], mark: mark),
 );
 
 /// cut-1 and cut-2 are 겸용 (their one layer shares a cel bank); cut-3 is on
@@ -91,7 +91,7 @@ void main() {
     expect(_markOf(repository, _cut2), _key, reason: 'the 겸용 sibling');
     expect(_markOf(repository, _cut3), LayerMark.none, reason: 'unlinked');
     expect(
-      requireCut(repository.requireProject(), _cut2).metadata.note,
+      requireCut(repository.requireProject(), _cut2).metadata.noteOf(0),
       'cut-2 note',
       reason: 'only the label changes',
     );
@@ -112,13 +112,13 @@ void main() {
     final labelled = requireCut(repository.requireProject(), _cut2).metadata;
     repository.updateCutMetadata(
       cutId: _cut2,
-      metadata: labelled.copyWith(note: 'written after the label'),
+      metadata: labelled.withPageNote(0, 'written after the label'),
     );
 
     command.undo();
     final restored = requireCut(repository.requireProject(), _cut2).metadata;
     expect(restored.mark, _layout);
-    expect(restored.note, 'written after the label');
+    expect(restored.noteOf(0), 'written after the label');
   });
 
   /// 🗣️「선택범위 한상태로 조작가능한거 물론이고」.

@@ -184,12 +184,12 @@ void main() {
   test('a cut\'s names travel with it through its file — but the conte\'s, '
       'which is the work\'s', () {
     final metadata = const CutMetadata(
-      note: 'n',
+      pageNotes: ['n'],
     ).withStaffName(key, '大川').withStaffName(layout, '清');
 
     expect(CutMetadata.fromJson(metadata.toJson()), metadata);
     expect(
-      CutMetadata.fromJson(const CutMetadata(note: 'n').toJson()).staff,
+      CutMetadata.fromJson(const CutMetadata(pageNotes: ['n']).toJson()).staff,
       isEmpty,
       reason: 'a cut naming no one writes nothing',
     );

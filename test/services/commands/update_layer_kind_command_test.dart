@@ -45,7 +45,7 @@ void main() {
         final cut = _cut(
           id: 'cut-1',
           layers: [layer],
-          metadata: const CutMetadata(note: 'Cut note'),
+          metadata: const CutMetadata(pageNotes: ['Cut note']),
         );
         final repository = ProjectRepository(initialProject: _project([cut]));
 
@@ -80,7 +80,7 @@ void main() {
         expect(updatedLayer.isVisible, isFalse);
         expect(updatedLayer.opacity, 0.42);
         expect(updatedFrame.strokes, [stroke]);
-        expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
+        expect(updatedCut.metadata, const CutMetadata(pageNotes: ['Cut note']));
       },
     );
 

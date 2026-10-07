@@ -21,7 +21,7 @@ void main() {
       name: 'Memo Cut',
       duration: 24,
       canvasSize: const CanvasSize(width: 640, height: 360),
-      metadata: const CutMetadata(note: 'N'),
+      metadata: const CutMetadata(pageNotes: ['N']),
       layers: [
         Layer(
           id: const LayerId('cel'),
@@ -54,6 +54,6 @@ void main() {
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
-    expect(document.memoText, 'N');
+    expect(document.memoTextOf(0), 'N');
   });
 }

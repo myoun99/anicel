@@ -464,8 +464,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                               ),
                               layout: layout,
                               viewport: viewport,
-                              onMemoCommitted:
-                                  session.cutVerbs.updateActiveCutNote,
+                              onMemoCommitted: (page, memo) => session.cutVerbs
+                                  .updateActiveCutNote(page: page, note: memo),
                             ),
                           ),
                           if (ink != null)

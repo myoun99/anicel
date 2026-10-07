@@ -5,7 +5,7 @@ import '../sheet/sheet_text_edit_layer.dart';
 import '../text/app_face.dart';
 import 'timesheet_document_painter.dart';
 
-/// Tap-to-edit for the sheet's Direction memo band (the per-cut note) —
+/// Tap-to-edit for the sheet's Direction memo bands (each page's memo) —
 /// the timesheet's target for [SheetTextEditLayer], the one in-place
 /// editor the sheets share.
 ///
@@ -28,15 +28,15 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
   /// applies).
   final CanvasViewport viewport;
 
-  /// Commits the edited Direction memo (the cut note).
-  final ValueChanged<String> onMemoCommitted;
+  /// Commits the Direction memo edited on page [page].
+  final void Function(int page, String memo) onMemoCommitted;
 
   @override
   Widget build(BuildContext context) {
     // The face the sheet prints in — the strata's painter reads the same
     // ambient style.
     final face = appFaceOf(DefaultTextStyle.of(context).style);
-    // The memo band repeats on every paper page.
+    // Every paper page has a memo band, and a memo of its own (F-301).
     return SheetTextEditLayer(
       viewport: viewport,
       fieldKey: 'timesheet-header-edit-field',
@@ -49,12 +49,12 @@ class TimesheetHeaderEditLayer extends StatelessWidget {
             textRect: TimesheetDocumentPainter.memoTextRect(
               layout.memoBandRect(page),
             ),
-            text: layout.document.memoText,
+            text: layout.document.memoTextOf(page),
             style: TimesheetDocumentPainter.wordsStyle(
               face,
               fontSize: TimesheetDocumentPainter.memoSize,
             ),
-            onCommitted: onMemoCommitted,
+            onCommitted: (memo) => onMemoCommitted(page, memo),
           ),
       ],
     );

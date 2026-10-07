@@ -42,7 +42,7 @@ void main() {
   });
 
   test('title falls back to the project name; the memo comes from the cut', () {
-    session.cutVerbs.updateActiveCutNote('PAN (A)→(B)');
+    session.cutVerbs.updateActiveCutNote(page: 0, note: 'PAN (A)→(B)');
 
     final source = buildCutEnvelopeSource(
       project: session.repository.requireProject(),

@@ -187,7 +187,7 @@ void main() {
       await tester.tapAt(paperOrigin + const Offset(5, 5));
       await tester.pumpAndSettle();
 
-      expect(session.cutVerbs.activeCutNote, 'カットO.L');
+      expect(session.cutVerbs.activeCutNoteOf(0), 'カットO.L');
     });
   });
 }

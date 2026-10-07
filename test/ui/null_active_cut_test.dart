@@ -133,7 +133,7 @@ void main() {
 
     // Every one of these used to require a cut — now a silent stand-down.
     s.cutVerbs.renameActiveCut('X');
-    s.cutVerbs.updateActiveCutNote('note');
+    s.cutVerbs.updateActiveCutNote(page: 0, note: 'note');
     s.cutVerbs.duplicateActiveCut();
     s.cutVerbs.deleteActiveCut();
     s.layerStack.addLayer();

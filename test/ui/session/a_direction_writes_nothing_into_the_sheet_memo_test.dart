@@ -39,7 +39,7 @@ void main() {
                 name: '12',
                 duration: 24,
                 canvasSize: const CanvasSize(width: 640, height: 360),
-                metadata: CutMetadata(note: note),
+                metadata: CutMetadata(pageNotes: [note]),
                 layers: [
                   Layer(
                     id: direction,
@@ -79,11 +79,11 @@ void main() {
         isNotNull,
         reason: 'LIVENESS: the span was laid',
       );
-      expect(s.cutVerbs.activeCutNote, note);
+      expect(s.cutVerbs.activeCutNoteOf(0), note);
 
       s.undo();
       expect(s.instructionVerbs.instructionSpanAt(direction, 0), isNull);
-      expect(s.cutVerbs.activeCutNote, note);
+      expect(s.cutVerbs.activeCutNoteOf(0), note);
     });
   }
 }

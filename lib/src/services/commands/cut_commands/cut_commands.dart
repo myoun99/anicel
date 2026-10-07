@@ -253,17 +253,21 @@ class _CutCommands {
     );
   }
 
-  void updateCutNote({required CutId cutId, required String note}) =>
-      _coordinator._executeIfChanged(
-        subject: _coordinator._requireCut(cutId),
-        value: note,
-        read: (cut) => cut.metadata.note,
-        command: (_) => UpdateCutNoteCommand(
-          repository: _coordinator.repository,
-          cutId: cutId,
-          note: note,
-        ),
-      );
+  void updateCutNote({
+    required CutId cutId,
+    required int page,
+    required String note,
+  }) => _coordinator._executeIfChanged(
+    subject: _coordinator._requireCut(cutId),
+    value: note,
+    read: (cut) => cut.metadata.noteOf(page),
+    command: (_) => UpdateCutNoteCommand(
+      repository: _coordinator.repository,
+      cutId: cutId,
+      page: page,
+      note: note,
+    ),
+  );
 
   /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
   /// siblings, as ONE undo step — the stages it does not name keep each

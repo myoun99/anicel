@@ -15,16 +15,19 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:anicel/src/ui/timesheet/timesheet_header_edit_layer.dart';
 
-TimesheetDocument _document({String note = ''}) {
+TimesheetDocument _document({
+  List<String> notes = const [],
+  int duration = 24,
+}) {
   return TimesheetDocument.fromCut(
     cut: Cut(
       id: const CutId('cut-1'),
       name: 'Cut 1',
       layers: const [],
-      duration: 24,
+      duration: duration,
       canvasSize: const CanvasSize(width: 1280, height: 720),
       metadata: CutMetadata(
-        note: note,
+        pageNotes: notes,
       ).withStaffName(const LayerMark(process: LayerProcess.roughKey), '大川'),
     ),
     projectName: 'Project',
@@ -36,12 +39,18 @@ TimesheetDocument _document({String note = ''}) {
 const _editorKey = ValueKey<String>('timesheet-header-edit-field');
 
 void main() {
-  late List<String> committedMemos;
+  late List<(int, String)> committedMemos;
   late Offset layerOrigin;
 
-  Future<void> pumpLayer(WidgetTester tester, {String note = ''}) async {
+  Future<void> pumpLayer(
+    WidgetTester tester, {
+    List<String> notes = const [],
+    int duration = 24,
+  }) async {
     committedMemos = [];
-    final layout = TimesheetDocumentLayout(document: _document(note: note));
+    final layout = TimesheetDocumentLayout(
+      document: _document(notes: notes, duration: duration),
+    );
     final documentSize = layout.documentSize;
 
     await tester.binding.setSurfaceSize(
@@ -60,7 +69,8 @@ void main() {
               child: TimesheetHeaderEditLayer(
                 layout: layout,
                 viewport: CanvasViewport(),
-                onMemoCommitted: committedMemos.add,
+                onMemoCommitted: (page, memo) =>
+                    committedMemos.add((page, memo)),
               ),
             ),
           ),
@@ -71,9 +81,9 @@ void main() {
   }
 
   group('TimesheetHeaderEditLayer', () {
-    testWidgets('tapping the memo band edits the cut note; tapping away '
+    testWidgets('tapping the memo band edits the page\'s memo; tapping away '
         'commits it', (tester) async {
-      await pumpLayer(tester, note: 'カットO.L');
+      await pumpLayer(tester, notes: ['カットO.L']);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('timesheet-memo-edit-p0')),
@@ -88,12 +98,32 @@ void main() {
       await tester.tapAt(layerOrigin + const Offset(5, 5));
       await tester.pumpAndSettle();
 
-      expect(committedMemos, ['A⋈B O.L']);
+      expect(committedMemos, [(0, 'A⋈B O.L')]);
       expect(find.byKey(_editorKey), findsNothing);
     });
 
+    // 🗣️F-301 (유저 2026-10-05): 「타임시트의 메모란은 페이지별로 다름 …
+    // 페이지별로 독립」.
+    testWidgets('🚨each page\'s band edits that page\'s memo — the second '
+        'shows its own and commits for itself', (tester) async {
+      await pumpLayer(tester, notes: ['One', 'Two'], duration: 200);
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timesheet-memo-edit-p1')),
+      );
+      await tester.pumpAndSettle();
+      final editor = tester.widget<TextField>(find.byKey(_editorKey));
+      expect(editor.controller!.text, 'Two', reason: 'its own, not page 1\'s');
+
+      await tester.enterText(find.byKey(_editorKey), 'Two!');
+      await tester.tapAt(layerOrigin + const Offset(5, 5));
+      await tester.pumpAndSettle();
+
+      expect(committedMemos, [(1, 'Two!')]);
+    });
+
     testWidgets('submitting unchanged text commits nothing', (tester) async {
-      await pumpLayer(tester, note: 'カットO.L');
+      await pumpLayer(tester, notes: ['カットO.L']);
 
       await tester.tap(
         find.byKey(const ValueKey<String>('timesheet-memo-edit-p0')),

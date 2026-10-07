@@ -137,16 +137,18 @@ class _TimesheetBandsPass {
 
   /// The Direction memo band under the header: COMPLETELY open handwriting
   /// space, exactly like the reference forms (R7-⑥ — the band outline and
-  /// the top-right memo box frame are both retired). The cut's Direction
-  /// memo (cut note) types into its top left, spanning the full width.
+  /// the top-right memo box frame are both retired). The page's Direction
+  /// memo types into its top left, spanning the full width (F-301: each
+  /// page its own).
   void paintMemoBand(Canvas canvas, int pageIndex) {
     final memo = TimesheetDocumentPainter.memoTextRect(
       _painter.layout.memoBandRect(pageIndex),
     );
-    if (_painter.document.memoText.isNotEmpty) {
+    final text = _painter.document.memoTextOf(pageIndex);
+    if (text.isNotEmpty) {
       final painter = TextPainter(
         text: TextSpan(
-          text: _painter.document.memoText,
+          text: text,
           style: TimesheetDocumentPainter.wordsStyle(
             _painter.face,
             fontSize: TimesheetDocumentPainter.memoSize,
@@ -158,10 +160,8 @@ class _TimesheetBandsPass {
       )..layout(maxWidth: memo.width);
       painter.paint(canvas, memo.topLeft);
     }
-    // NO derived instruction lines here anymore (R5-⑥): the shorthand
-    // ('A→B PAN …') writes itself INTO the cut note once when the
-    // instruction is created, so it prints above as ordinary — editable —
-    // note text.
+    // NO derived instruction lines here (R5-⑥), and since I-72 none written
+    // into the memo either: the memo is the person's alone.
   }
 
   /// The cut-end strikethrough at the bottom edge of the last row the

@@ -24,7 +24,9 @@ CutEnvelopeSource buildCutEnvelopeSource({
   return CutEnvelopeSource(
     title: info.title.isEmpty ? project.name : info.title,
     episode: info.episode,
-    note: cut.metadata.note,
+    // The timesheet's first page's memo — F-301-Q1 (유저 2026-10-08):
+    // 「봉투와 「컷 메모」 창은 1쪽 메모」.
+    note: cut.metadata.noteOf(0),
     cuts: [
       for (final line in _cutLines(project, cut))
         CutEnvelopeCutLine(

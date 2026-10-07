@@ -116,7 +116,7 @@ Project _projectWithLayer({
             name: 'Phase 73 Cut',
             duration: 2,
             canvasSize: const CanvasSize(width: 1280, height: 720),
-            metadata: const CutMetadata(note: 'cut note only'),
+            metadata: const CutMetadata(pageNotes: ['cut note only']),
             layers: [
               Layer(
                 id: _layerId,

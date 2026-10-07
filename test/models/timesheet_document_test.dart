@@ -685,13 +685,13 @@ void main() {
           layers: const [],
           duration: 48,
           canvasSize: const CanvasSize(width: 1280, height: 720),
-          metadata: const CutMetadata(note: 'カットO.L'),
+          metadata: const CutMetadata(pageNotes: ['カットO.L']),
         ),
         projectName: 'Project',
         fps: 24,
       );
 
-      expect(document.memoText, 'カットO.L');
+      expect(document.memoTextOf(0), 'カットO.L');
     });
 
     test('visibleHeaderFields keeps printing order minus hidden boxes', () {

@@ -52,7 +52,7 @@ void main() {
       name: '12',
       duration: 24,
       canvasSize: const CanvasSize(width: 1920, height: 1080),
-      metadata: const CutMetadata(note: 'O.L'),
+      metadata: const CutMetadata(pageNotes: ['O.L']),
       layers: [
         Layer(
           id: const LayerId('a'),

@@ -66,6 +66,19 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v11 (2026-10-08, F-301 — 유저 10-05 「타임시트의 메모란은 페이지별로
+/// 다름 … 페이지별로 독립」): a cut's memo is one per page of its timesheet
+/// (`CutMetadata.pageNotes`, a list written only when a page has one)
+/// where it was one per cut (`note`). A v10 build would open a v11 file
+/// without its memos and save it back with none — so the bump turns that
+/// into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⛔The one note is NOT read here (the save law), and with it goes every
+/// file older than this one ([anicelOldestReadFormatVersion]). What to
+/// carry when one is asked for: each cut's `note` becomes its first page's
+/// memo (`pageNotes: [note]`, left out when the note is empty) — the page
+/// the envelope and the cut-memo window show (F-301-Q1).
+///
 /// v10 (2026-10-08, F-252 — 유저 10-01 「잉크는 용지에 귀속됨」): a
 /// timesheet's ink is the paper's, one surface per page
 /// (`sheet-page-<cut>-p<n>`), and the frame-anchored plane over its column
@@ -165,7 +178,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 10;
+const int anicelFormatVersion = 11;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).
@@ -184,7 +197,8 @@ const int anicelFormatVersion = 10;
 ///
 /// 6: a scale's one number is no longer read (v6 above).
 /// 10: a timesheet's strip ink is no longer read (v10 above).
-const int anicelOldestReadFormatVersion = 10;
+/// 11: a cut's one note is no longer read (v11 above).
+const int anicelOldestReadFormatVersion = 11;
 
 /// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// `projectWithMediaMoved`), its baked cels in COLD form (headers parsed,

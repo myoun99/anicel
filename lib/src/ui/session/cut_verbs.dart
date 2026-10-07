@@ -243,12 +243,18 @@ class CutVerbs {
     _changes.notifyChanged();
   }
 
-  String? get activeCutNote => _project.activeCutOrNull?.metadata.note;
+  /// The active cut's memo on page [page] of its timesheet (F-301).
+  String? activeCutNoteOf(int page) =>
+      _project.activeCutOrNull?.metadata.noteOf(page);
 
-  void updateActiveCutNote(String note) => _activeCut.onActiveCut(
-    (cutId) =>
-        _project.cutCommandCoordinator.updateCutNote(cutId: cutId, note: note),
-  );
+  void updateActiveCutNote({required int page, required String note}) =>
+      _activeCut.onActiveCut(
+        (cutId) => _project.cutCommandCoordinator.updateCutNote(
+          cutId: cutId,
+          page: page,
+          note: note,
+        ),
+      );
 
   /// The cuts a pick in the cut button is about: the ones the storyboard's
   /// range covers, or — with no range up — the active cut. ONE list either

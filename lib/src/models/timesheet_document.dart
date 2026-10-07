@@ -291,7 +291,7 @@ class TimesheetDocument {
     required this.title,
     required this.episode,
     required this.artist,
-    required this.memoText,
+    required this.pageMemos,
     required this.visibleHeaderFields,
     required this.exposureBarThreshold,
     required this.seEmptyFill,
@@ -449,7 +449,7 @@ class TimesheetDocument {
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
       artist: cut.metadata.staffNameFor(sheetArtistMark),
-      memoText: cut.metadata.note,
+      pageMemos: cut.metadata.pageNotes,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,
       seEmptyFill: info.seEmptyFill,
@@ -560,11 +560,15 @@ class TimesheetDocument {
   final String episode;
   final String artist;
 
-  /// The cut's Direction memo (the cut note) printed in the memo band —
-  /// per-cut data, editable in place on the sheet. Instruction shorthand
-  /// lines land HERE (auto-written once at creation, R5-⑥) instead of a
-  /// derived read-only list.
-  final String memoText;
+  /// The Direction memo printed in each page's memo band, by page
+  /// ([CutMetadata.pageNotes]) — editable in place on the sheet, the
+  /// person's alone. ↩️A new direction wrote its shorthand into it
+  /// (R5-⑥) until I-72 took that out.
+  final List<String> pageMemos;
+
+  /// The memo on page [page], empty where none is written (F-301).
+  String memoTextOf(int page) =>
+      page >= 0 && page < pageMemos.length ? pageMemos[page] : '';
 
   /// The ACTION hold-bar setting mirrored from [TimesheetInfo]
   /// (null = bars off, N = bars from the (N+1)th comma of N+ holds).
