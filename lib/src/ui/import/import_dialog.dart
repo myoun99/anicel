@@ -631,7 +631,15 @@ class _ImportDialogState extends State<ImportDialog> {
       // has to become a path that reads — the same law the two open
       // doors go through. A cloud file arrives here as a placeholder
       // and would otherwise fail as if it were corrupt.
-      if (await _readableForImport(path) == null) {
+      //
+      // 🐞F-282 ④ (유저 2026-10-04: 「동영상을 잘라내서 임포트시,
+      // 미디어풀에 등록되는데, 그걸 다시 타임라인에 배치하려하면 파일을
+      // 읽지 못했다고 뜸」): bytes the PROJECT holds are not read from the
+      // file — every door reads the carry first — so there is no file to
+      // wait for. A piece cut on import and a voice take never had one; a
+      // carried file's original may be gone.
+      if (!widget.session.projectFile.projectHoldsMediaBytes(path) &&
+          await _readableForImport(path) == null) {
         tally.warnings.add(
           AppText.strings.imUnreadable(mediaFileName(path)),
         );
