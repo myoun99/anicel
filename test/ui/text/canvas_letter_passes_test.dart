@@ -266,6 +266,22 @@ void main() {
       expect({for (final pass in handed) pass.key}, hasLength(5));
     });
 
+    test('a hard outline and a hard fill of ONE colour are two passes, of '
+        'two keys', () {
+      const hardRinged = TextLetterStyle(
+        color: 0xFFAA0000,
+        outlineColor: 0xFFAA0000,
+        outlineWidth: 2,
+        antialias: false,
+      );
+
+      final handed = handedFor([hardRinged]);
+
+      // The fill (nothing of it to draw) · the hard outline · the hard fill.
+      expect(handed, hasLength(3));
+      expect({for (final pass in handed) pass.key}, hasLength(3));
+    });
+
     test('🚨the same pass of ANOTHER text has the same key — and paints a '
         'run of the same letters as the first did: with the letters, the '
         'key says all of it', () {

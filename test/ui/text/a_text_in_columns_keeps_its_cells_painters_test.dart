@@ -147,6 +147,37 @@ void main() {
       expect(counted(() => set(columns([run('あい')]))), (made: 0, gone: 0));
     });
 
+    test('the idle ones forgotten are DISPOSED, and made again when next '
+        'set', () {
+      layoutCelText(columns([run('あい')])).dispose();
+
+      expect(
+        counted(debugForgetIdleCelTextCellPainters),
+        (made: 0, gone: 2),
+      );
+      expect(counted(() => set(columns([run('あい')]))).made, 2);
+    });
+
+    test('🚨a painter still HELD is never disposed, however many others '
+        'are let go of meanwhile — let go of by one of two is not idle', () {
+      final first = layoutCelText(columns([run('あ')]));
+      final second = set(columns([run('あ')]));
+      first.dispose();
+      // 1100 letters, no two alike and none of them 「あ」.
+      final many = String.fromCharCodes([
+        for (var at = 0; at < 1100; at += 1) 0x4E00 + at,
+      ]);
+      final flood = layoutCelText(columns([run(many)]));
+
+      final letGo = counted(flood.dispose);
+
+      expect(letGo.gone, 1100 - 1024, reason: 'the flood\'s own, no other');
+      expect(second.block, const ui.Rect.fromLTWH(-10, 0, 10, 10));
+      final recorder = ui.PictureRecorder();
+      second.paint(ui.Canvas(recorder));
+      recorder.endRecording().dispose();
+    });
+
     test('🚨…but not for ever: past a thousand and twenty-four let go of '
         'since, the longest idle are disposed', () {
       // 1100 letters, no two alike.
@@ -161,6 +192,26 @@ void main() {
       // The LAST of them are the ones kept.
       final tail = many.substring(1100 - 1024);
       expect(counted(() => set(columns([run(tail)]))).made, 0);
+      // …and the first are GONE from the keeping: set again they are made
+      // again — never handed back disposed — and draw.
+      final head = set(columns([run(many.substring(0, 1100 - 1024))]));
+      final recorder = ui.PictureRecorder();
+      head.paint(ui.Canvas(recorder));
+      recorder.endRecording().dispose();
+    });
+
+    test('…and a cell that fell out of the keeping is MADE again', () {
+      final many = String.fromCharCodes([
+        for (var at = 0; at < 1100; at += 1) 0x4E00 + at,
+      ]);
+      layoutCelText(columns([run(many)])).dispose();
+
+      expect(
+        counted(
+          () => set(columns([run(many.substring(0, 1100 - 1024))])),
+        ).made,
+        1100 - 1024,
+      );
     });
 
     test('⛔CONTROL: a text in LINES keeps none — one paragraph, set again '
@@ -226,6 +277,20 @@ void main() {
         counted(() => set(columns([run('あ', hard), run('い')]))).made,
         1,
       );
+    });
+
+    test('🚨a hard letter outlined IN ITS OWN COLOUR has two covers of one '
+        'colour, its outline\'s and its fill\'s: each its own painter', () {
+      const hardRinged = TextLetterStyle(
+        fontSize: 10,
+        color: 0xFFAA0000,
+        outlineColor: 0xFFAA0000,
+        outlineWidth: 2,
+        antialias: false,
+      );
+
+      // What it is measured on · the outline's cover · the fill's cover.
+      expect(counted(() => set(columns([run('あ', hardRinged)]))).made, 3);
     });
 
     // ⚠️Not asked here: 「lying down or standing」, which is in the key too.
