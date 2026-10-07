@@ -134,6 +134,19 @@ void main() {
       expect(letter(layout, 1), at(-20, 25, 20, 25));
     });
 
+    test('🚨a PAIR of digits is tracked as the one cell it is: room after '
+        'it, and none between its digits — they are set as close as they '
+        'would be untracked', () {
+      final tracked = set([run('12', tracking: 8)]);
+      final plain = set([run('12')]);
+
+      // Side by side the pair is 40 across, fitted to its column at half:
+      // 10 of the column's length — and its tracking after it.
+      expect(plain.block, at(-20, 0, 20, 10));
+      expect(tracked.block, at(-20, 0, 20, 18));
+      expect(letter(tracked, 0).width, letter(plain, 0).width);
+    });
+
     test('a column a break opened and left EMPTY is as wide as the letters '
         'of the break', () {
       final layout = set([run('あ\n', size: 30), run('\nう')]);
