@@ -10,6 +10,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/straight_rgba_image.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/raster_picture.dart';
 import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 import '../../helpers/awaited_uploads.dart';
@@ -161,6 +162,39 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  testWidgets('🚨the compose in turn is a snapshot WAITED FOR unless its '
+      'caller takes it as a step of a chain: the canvas-sized one always, '
+      'the positioned one by its word — the same pixels either way', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final surface = patternedSurface(
+        const CanvasSize(width: 300, height: 200),
+      );
+      final waited = <(int, int)>[];
+      debugOnWaitedSnapshot = (width, height) => waited.add((width, height));
+      addTearDown(() => debugOnWaitedSnapshot = null);
+
+      final canvasSized = (await composeTiledSurfaceImage(surface))!;
+      expect(waited, [(300, 200)], reason: 'what a holder keeps');
+      canvasSized.dispose();
+
+      waited.clear();
+      final kept = (await composePositionedSurfaceImage(surface))!;
+      expect(waited, [(kept.image.width, kept.image.height)]);
+      final want = await bytesOf(kept.image);
+
+      waited.clear();
+      final step = (await composePositionedSurfaceImage(
+        surface,
+        deferred: true,
+      ))!;
+      expect(waited, isEmpty, reason: 'a step of a chain waits for nothing');
+      expect(step.worldRect, kept.worldRect);
+      expect(await bytesOf(step.image), want);
     });
   });
 
