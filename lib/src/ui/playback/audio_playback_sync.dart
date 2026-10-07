@@ -119,6 +119,7 @@ class AudioPlaybackSync {
   /// touches the platform channel when the value actually moves.
   final Map<int, double> _sentVolume = {};
   bool _wasActive = false;
+  bool _wasWaiting = false;
   int? _lastFrame;
   bool _attached = false;
 
@@ -156,6 +157,7 @@ class AudioPlaybackSync {
   /// existed for goes with it: a seek while rolling resyncs on the next tick.
   void _onControllerChanged() {
     final active = controller.isActive;
+    final waiting = controller.isWaiting;
 
     if (active && !_wasActive) {
       _schedule = (deviceCarriesPlayback?.call() ?? false)
@@ -176,12 +178,26 @@ class AudioPlaybackSync {
       _lastFrame = controller.globalFrameIndexListenable.value;
       // ⛔T28: no `if (playing)` guard. Becoming active IS starting to play,
       // so a transport that entered without rolling is a state that no
-      // longer exists.
-      _resyncAt(_lastFrame ?? 0);
+      // longer exists. A run that WAITS for its first picture is rolling
+      // with its clock stood still: its sound starts when it goes on.
+      if (!waiting) {
+        _resyncAt(_lastFrame ?? 0);
+      }
     } else if (!active && _wasActive) {
       _teardown();
+    } else if (active && waiting != _wasWaiting) {
+      // 🚨THE SOUND WAITS WITH THE CLOCK (유저 2026-10-08: 「그 자리에서
+      // 멈췃다가 구워지면 이어서 재생」): where the run waits for its picture
+      // the players stop, and where it goes on they start again at the
+      // frame it stands on.
+      if (waiting) {
+        _stopAll();
+      } else {
+        _resyncAt(controller.playlistFrame);
+      }
     }
     _wasActive = active;
+    _wasWaiting = waiting;
   }
 
   void _onFrameTick() {
@@ -197,9 +213,12 @@ class AudioPlaybackSync {
       // (schedule build + initial sync) happens in the controller listener.
       return;
     }
-    if (!controller.isPlaying) {
-      // Paused seek: live positions are stale now — stop them; resuming
-      // restarts whatever overlaps the (empty-pool) current frame.
+    if (controller.isWaiting || _wasWaiting) {
+      // The clock stands on this frame, or stood until this very change —
+      // a seek off the frame it waited on, which the controller says next.
+      // No clip starts here: going on restarts whatever overlaps the frame,
+      // ONCE, and that is [_onControllerChanged]'s to do. Answering the
+      // jump here as well started every clip twice in one turn.
       _stopAll();
       return;
     }

@@ -27,10 +27,10 @@ import '../listenable_rebind.dart';
 /// panel chrome (zoom buttons, panbars) keeps working during playback.
 ///
 /// Tapping anywhere cancels playback. Cache misses keep the last displayed
-/// frame on screen (the stale-frame policy the tile cache also uses) while a
-/// thin strip reports warming progress. With the camera view enabled the
-/// frame is projected through the cut's camera pose instead of shown in
-/// canvas space.
+/// frame on screen (the stale-frame policy the tile cache also uses) while
+/// the bar at its foot says how much of what the run wants is made. With
+/// the camera view enabled the frame is projected through the cut's camera
+/// pose instead of shown in canvas space.
 class CanvasPlaybackView extends StatefulWidget {
   const CanvasPlaybackView({
     super.key,
@@ -359,6 +359,12 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     ),
   );
 
+  /// How much of what the run wants ahead of its playhead is made: a bar
+  /// whose seat is always there (유저 답 F-296-Q5: 「자리를 늘 두는 막대로
+  /// 바꾼다」). While a run waits for its picture it is the one thing on the
+  /// canvas that moves. ↩️It was a strip that came with the English words
+  /// 「caching N/M」 while pictures were being made and went when they were
+  /// — 없다가 생기는 UI, and what it said the ruler's green bar said too.
   Widget _prerenderProgressBar(BuildContext context) {
     return Positioned(
       left: 0,
@@ -366,27 +372,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
       bottom: 0,
       child: ValueListenableBuilder<PrerenderProgress>(
         valueListenable: widget.prerenderProgress,
-        builder: (context, progress, _) {
-          if (progress.total == 0 || progress.isComplete) {
-            return const SizedBox.shrink();
-          }
-          return Column(
-            key: const ValueKey<String>('canvas-playback-progress'),
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'caching ${progress.cached}/${progress.total}',
-                textAlign: TextAlign.right,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-              LinearProgressIndicator(
-                value: progress.cached / progress.total,
-                minHeight: 2,
-              ),
-            ],
-          );
-        },
+        builder: (context, progress, _) => LinearProgressIndicator(
+          key: const ValueKey<String>('canvas-playback-progress'),
+          // Nothing asked for is nothing left to make.
+          value: progress.total == 0
+              ? 1.0
+              : (progress.cached / progress.total).clamp(0.0, 1.0),
+          minHeight: 2,
+        ),
       ),
     );
   }

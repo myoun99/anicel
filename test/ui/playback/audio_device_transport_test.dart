@@ -303,6 +303,70 @@ void main() {
     store.dispose();
   }, skip: skip);
 
+  /// 유저 2026-10-08: 「그 자리에서 멈췃다가 구워지면 이어서 재생」 — the
+  /// sound waits with the clock, or it would be heard ahead of its picture.
+  test('🚨a run that waits for its picture stops the device, and going on '
+      'arms it again at the frame the run stands on', () async {
+    final device = openNullDevice();
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = buildTransport(store);
+    final missing = <int>{};
+    controller.waitsOn = missing.contains;
+
+    controller.play(scope: PlaybackScope.activeCut);
+    expect(await _waitFor(() => device.positionSamples > 0), isTrue);
+
+    // The ruler is dragged onto a frame whose picture is not there.
+    missing.add(7);
+    controller.seekToGlobalFrame(7);
+    expect(controller.isWaiting, isTrue, reason: '⛔premise');
+    expect(await _waitFor(() => !device.isPlaying), isTrue);
+    expect(
+      transport.clockStatus(),
+      isNull,
+      reason: 'a clock that stands reads no device — and above all not '
+          '「ended」, which would stop a run that plays once',
+    );
+
+    missing.clear();
+    controller.lookAgain();
+    expect(controller.isWaiting, isFalse);
+    // Frame 7 at 10fps/48k = sample 33600.
+    expect(
+      await _waitFor(() => device.isPlaying && device.positionSamples >= 33600),
+      isTrue,
+    );
+    expect(transport.clockStatus()!.globalFrame, greaterThanOrEqualTo(7));
+    controller.stop();
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
+  test('a run that waits from its first frame arms nothing until it goes on',
+      () async {
+    final device = openNullDevice();
+    final store = _residentStore();
+    store.resultFor('tone.wav');
+    await pumpEventQueue();
+    final transport = buildTransport(store);
+    final missing = <int>{0};
+    controller.waitsOn = missing.contains;
+
+    controller.play(scope: PlaybackScope.activeCut);
+    expect(transport.carryingPlayback, isTrue, reason: 'the run is its own');
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(device.isPlaying, isFalse);
+
+    missing.clear();
+    controller.lookAgain();
+    expect(await _waitFor(() => device.positionSamples > 0), isTrue);
+    controller.stop();
+    transport.dispose();
+    store.dispose();
+  }, skip: skip);
+
   test('play-once: the device runs out and the clock reports the end',
       () async {
     final device = openNullDevice();

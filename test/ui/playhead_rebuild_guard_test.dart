@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/app_language.dart';
@@ -197,11 +198,12 @@ void main() {
 
     // ⛔The TRANSPORT is not on this bar any more (2026-08-10) — it rides the
     // 문턱, mounted by the workspace — so the two-group half of this guard
-    // went with it. What replaces it is the INVERSE guard: the values that
-    // left must no longer be able to reconstruct the toolbar.
+    // went with it. What replaces it is the INVERSE guard: the three values
+    // that left must no longer be able to reconstruct the toolbar.
     //
-    // 1-2. fps and audio sample rate are ENTRIES of the settings pill now,
-    // and a flyout builds its entries at OPEN time — so neither is a value
+    // 1-3. fps, audio sample rate and the playback mode (the playback
+    // quality, until 2026-10-08) are ENTRIES of the settings pill now, and a
+    // flyout builds its entries at OPEN time — so none of them is a value
     // this bar renders. A token that still carried them would reconstruct
     // ~20 buttons for a menu nobody has open.
     var before = toolbar();
@@ -210,12 +212,17 @@ void main() {
     session.projectAudio.setProjectAudioSampleRate(
       session.projectAudio.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
+    session.playbackRig.setPlaybackMode(
+      session.playbackRig.playbackMode == PlaybackMode.skipFrames
+          ? PlaybackMode.everyPicture
+          : PlaybackMode.skipFrames,
+    );
     await tester.pump();
     expect(session.projectSettings.projectFrameRate == oldRate, isFalse,
         reason: 'sanity: the fps mutation must actually change the rate');
     expect(identical(toolbar(), before), isTrue,
-        reason: 'the toolbar prints no project axis — it moved to the '
-            'settings pill and must not drag it along');
+        reason: 'the toolbar prints no project axis and no playback mode '
+            '— they moved to the settings pill and must not drag it along');
 
     // 4. Landing a drawing flips the cell-sensitive enablements (which the
     // comma buttons and the Add button read through their can* getters).

@@ -6,6 +6,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -37,6 +38,67 @@ void main() {
 
   tearDown(() => session.dispose());
 
+  const picture = 8 * 8 * 4;
+
+  /// A session on one cut of four frames and TWO pictures: a cel on frames
+  /// 0..1, another on 2..3.
+  EditorSessionManager twoPictures() => EditorSessionManager(
+    initialProject: Project(
+      id: const ProjectId('project'),
+      name: 'P',
+      createdAt: DateTime.utc(2026),
+      tracks: [
+        Track(
+          id: const TrackId('track'),
+          name: 'T',
+          cuts: [
+            Cut(
+              id: const CutId('cut'),
+              name: '1',
+              duration: 4,
+              canvasSize: const CanvasSize(width: 8, height: 8),
+              layers: [
+                Layer(
+                  id: const LayerId('layer'),
+                  name: 'A',
+                  frames: [
+                    Frame(
+                      id: const FrameId('a'),
+                      duration: 1,
+                      strokes: const [],
+                    ),
+                    Frame(
+                      id: const FrameId('b'),
+                      duration: 1,
+                      strokes: const [],
+                    ),
+                  ],
+                  timeline: {
+                    0: const TimelineExposure.drawing(FrameId('a'), length: 2),
+                    2: const TimelineExposure.drawing(FrameId('b'), length: 2),
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  /// The warmer at rest — or ten seconds gone, which the test then says.
+  Future<void> rested(PlaybackRig rig) => rig.prerenderScheduler.idle.timeout(
+    const Duration(seconds: 10),
+    onTimeout: () {},
+  );
+
+  bool held(EditorSessionManager s, int frameIndex) =>
+      s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
+        cut: s.activeCutOrNull!,
+        frameIndex: frameIndex,
+      ) !=
+      null;
+
   test('the transport is ATTACHED: the controller holds an audio clock to '
       'read, so a run can ride the samples instead of the wall clock', () {
     expect(
@@ -61,6 +123,30 @@ void main() {
           'a transport the session forgot to dispose keeps its ticker and '
           'every listener alive for the life of the app',
     );
+  });
+
+  test('the playback mode is a setting: it starts as every picture, a new '
+      'one lands and announces, the same one changes nothing', () {
+    var notices = 0;
+    session.addListener(() => notices += 1);
+    final rig = playbackRigOf(session);
+    expect(
+      rig.playbackMode,
+      PlaybackMode.everyPicture,
+      reason: '유저 2026-10-08: 「기본값 모든그림」',
+    );
+
+    rig.setPlaybackMode(PlaybackMode.renderFirst);
+    expect(rig.playbackMode, PlaybackMode.renderFirst);
+    expect(
+      notices,
+      greaterThan(0),
+      reason: 'the settings row reads the mode',
+    );
+
+    final after = notices;
+    rig.setPlaybackMode(PlaybackMode.renderFirst);
+    expect(notices, after, reason: 'the mode it already has is not an event');
   });
 
   /// 유저 2026-10-08, the playback rework: the warmer follows what a run
@@ -92,68 +178,143 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      // Two pictures: a cel on frames 0..1, another on 2..3.
-      Layer row() => Layer(
-        id: const LayerId('layer'),
-        name: 'A',
-        frames: [
-          Frame(id: const FrameId('a'), duration: 1, strokes: const []),
-          Frame(id: const FrameId('b'), duration: 1, strokes: const []),
-        ],
-        timeline: {
-          0: const TimelineExposure.drawing(FrameId('a'), length: 2),
-          2: const TimelineExposure.drawing(FrameId('b'), length: 2),
-        },
-      );
-      final s = EditorSessionManager(
-        initialProject: Project(
-          id: const ProjectId('project'),
-          name: 'P',
-          createdAt: DateTime.utc(2026),
-          tracks: [
-            Track(
-              id: const TrackId('track'),
-              name: 'T',
-              cuts: [
-                Cut(
-                  id: const CutId('cut'),
-                  name: '1',
-                  duration: 4,
-                  canvasSize: const CanvasSize(width: 8, height: 8),
-                  layers: [row()],
-                ),
-              ],
-            ),
-          ],
-        ),
-      );
+      final s = twoPictures();
       addTearDown(s.dispose);
       final rig = playbackRigOf(s);
-      rig.playbackCache.debugSetPlaybackCacheBudgetBytes(8 * 8 * 4);
-      Future<void> rested() => rig.prerenderScheduler.idle.timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {},
-      );
-      bool held(int frameIndex) =>
-          s.renderCaches.cutFrameCompositeCache.validCompositeOrNull(
-            cut: s.activeCutOrNull!,
-            frameIndex: frameIndex,
-          ) !=
-          null;
+      rig.playbackCache.debugSetPlaybackCacheBudgetBytes(picture);
 
       rig.playback.play(scope: PlaybackScope.activeCut);
-      await rested();
+      await rested(rig);
       expect(
-        [held(0), held(2)],
+        [held(s, 0), held(s, 2)],
         [true, false],
         reason: 'one picture fits: the one under the playhead',
       );
 
       rig.playback.seekToGlobalFrame(2);
-      await rested();
-      expect([held(0), held(2)], [false, true]);
+      await rested(rig);
+      expect([held(s, 0), held(s, 2)], [false, true]);
 
       rig.playback.stop();
+    });
+  });
+
+  /// 유저 2026-10-08: 「세개 두면 좋을거같긴하고」 · 「기본값 모든그림」 —
+  /// the three modes, through the session's own warmer.
+  group('how a run waits for its picture', () {
+    /// Whether the run waited, read as each picture landed.
+    Future<List<bool>> waitedAtEachLanding(
+      EditorSessionManager s, {
+      int budget = 16 * picture,
+    }) async {
+      final rig = playbackRigOf(s);
+      rig.playbackCache.debugSetPlaybackCacheBudgetBytes(budget);
+      final waited = <bool>[];
+      // After the rig's own listener, which is what lets the run go on.
+      rig.prerenderScheduler.landings.addListener(
+        () => waited.add(rig.playback.isWaiting),
+      );
+      rig.playback.play(scope: PlaybackScope.activeCut);
+      waited.insert(0, rig.playback.isWaiting);
+      await rested(rig);
+      return waited;
+    }
+
+    testWidgets('🚨every picture (the default): the run waits on its first '
+        'frame until THAT picture is made, and then goes', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+
+        final waited = await waitedAtEachLanding(s);
+
+        expect(
+          waited,
+          [true, false, false],
+          reason: 'at the press, nothing is made; one picture later it goes '
+              '— the second picture is not waited for',
+        );
+        expect(playbackRigOf(s).playback.isWaiting, isFalse);
+        expect(playbackRigOf(s).demand!.leadFor(const Duration(seconds: 1)), 0);
+        playbackRigOf(s).playback.stop();
+      });
+    });
+
+    testWidgets('🚨rendering first: the run waits until what lies ahead is '
+        'made — its first picture is not enough', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
+
+        final waited = await waitedAtEachLanding(s);
+
+        expect(
+          waited,
+          [true, true, true],
+          reason: 'still waiting as each of the two pictures lands: it goes '
+              'when the warmer has come to rest',
+        );
+        expect(playbackRigOf(s).playback.isWaiting, isFalse);
+        expect([held(s, 0), held(s, 2)], [true, true]);
+        playbackRigOf(s).playback.stop();
+      });
+    });
+
+    testWidgets('rendering first under an allowance of one picture: what is '
+        'held is all there is to wait for', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        playbackRigOf(s).setPlaybackMode(PlaybackMode.renderFirst);
+
+        await waitedAtEachLanding(s, budget: picture);
+
+        expect(
+          playbackRigOf(s).playback.isWaiting,
+          isFalse,
+          reason: 'a film is not baked whole: the window filled, and it goes',
+        );
+        expect([held(s, 0), held(s, 2)], [true, false]);
+        playbackRigOf(s).playback.stop();
+      });
+    });
+
+    testWidgets('skipping frames: the run never waits, and starts each '
+        'picture where the playhead will be when it lands', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s)..setPlaybackMode(PlaybackMode.skipFrames);
+
+        final waited = await waitedAtEachLanding(s);
+
+        expect(waited, everyElement(isFalse));
+        expect(
+          rig.demand!.leadFor(const Duration(seconds: 1)),
+          s.projectSettings.projectFrameRate.frameAtElapsed(
+            const Duration(seconds: 1),
+          ),
+          reason: 'a second to make a picture is a second\'s frames of lead',
+        );
+        rig.playback.stop();
+      });
+    });
+
+    testWidgets('a mode picked under a run that waits is looked at there and '
+        'then', (tester) async {
+      await tester.runAsync(() async {
+        final s = twoPictures();
+        addTearDown(s.dispose);
+        final rig = playbackRigOf(s);
+
+        rig.playback.play(scope: PlaybackScope.activeCut);
+        expect(rig.playback.isWaiting, isTrue, reason: '⛔premise');
+        rig.setPlaybackMode(PlaybackMode.skipFrames);
+
+        expect(rig.playback.isWaiting, isFalse);
+        rig.playback.stop();
+      });
     });
   });
 }

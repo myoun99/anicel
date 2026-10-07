@@ -5,15 +5,17 @@
 // change window. Two of those rows — the project audio sample rate and the
 // playback quality — asked the same question the same way and were one
 // body copied twice; G3 (2026-09-07) made them one `_editChoice` differing
-// only in values, and these are the pins that say it still behaves.
-// Without them the shared body could apply the wrong setting, or the wrong
-// preset, and nothing would say so. ↩️The playback quality left with its
-// option (2026-10-08), so the sample rate is the one row pinned here.
+// only in values, and these are the pins that say the two branches still
+// behave. Without them the shared body could apply the wrong setting, or
+// the wrong preset, and nothing would say so. ↩️The playback quality left
+// with its option (2026-10-08); the playback MODE took its seat, and is the
+// second row pinned here.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/menu/project_settings_menu.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
@@ -90,6 +92,63 @@ void main() {
     expect(session.projectAudio.projectAudioSampleRate, target);
   });
 
+  testWidgets('the playback-mode row picks the mode the tapped preset says — '
+      'the SAME body, a different setting', (tester) async {
+    final before = session.playbackRig.playbackMode;
+    final rateBefore = session.projectAudio.projectAudioSampleRate;
+    final target = PlaybackMode.values.firstWhere(
+      (preset) => preset != before,
+    );
+
+    await pumpMenu(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining(ProjectSettingsMenu.playbackModeLabel(before)),
+      findsOneWidget,
+      reason: 'the row states the mode as it is',
+    );
+    await tester.tap(
+      find.byKey(const ValueKey<String>('project-settings-playback-mode')),
+    );
+    await tester.pumpAndSettle();
+
+    // Every mode is a row, each in its own words.
+    for (final preset in PlaybackMode.values) {
+      expect(
+        find.byKey(ValueKey<String>('playback-mode-${preset.name}')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(ProjectSettingsMenu.playbackModeLabel(preset)),
+        findsOneWidget,
+        reason: preset.name,
+      );
+    }
+    expect(
+      {
+        for (final preset in PlaybackMode.values)
+          ProjectSettingsMenu.playbackModeLabel(preset),
+      },
+      hasLength(PlaybackMode.values.length),
+      reason: 'three modes, three names',
+    );
+
+    await tester.tap(
+      find.byKey(ValueKey<String>('playback-mode-${target.name}')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(session.playbackRig.playbackMode, target);
+    expect(
+      session.projectAudio.projectAudioSampleRate,
+      rateBefore,
+      reason: 'the shared body applied the mode, not the sample rate',
+    );
+  });
+
   testWidgets('the menu is a value row per setting, and the FPS row opens the '
       'presets with a rate of one\'s own', (tester) async {
     await pumpMenu(tester);
@@ -104,6 +163,7 @@ void main() {
       'project-settings-fps',
       'project-settings-audio-rate',
       'project-settings-camera-size',
+      'project-settings-playback-mode',
     ]) {
       expect(find.byKey(ValueKey<String>(row)), findsOneWidget, reason: row);
     }

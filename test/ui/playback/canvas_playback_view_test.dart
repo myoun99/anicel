@@ -158,14 +158,19 @@ void main() {
     );
   }
 
+  /// The frame's own painter — the bar at the view's foot paints too.
   PlaybackFramePainter painterOf(WidgetTester tester) {
-    final paint = tester.widget<CustomPaint>(
+    for (final paint in tester.widgetList<CustomPaint>(
       find.descendant(
         of: find.byKey(const ValueKey<String>('canvas-playback-view')),
         matching: find.byType(CustomPaint),
       ),
-    );
-    return paint.painter! as PlaybackFramePainter;
+    )) {
+      if (paint.painter case final PlaybackFramePainter painter) {
+        return painter;
+      }
+    }
+    throw StateError('the playback view paints no frame');
   }
 
   testWidgets('shows the warmed composite for the playback frame', (
@@ -445,11 +450,19 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('shows warming progress while the cache fills', (tester) async {
+  /// 유저 답 F-296-Q5 (2026-10-08): 「자리를 늘 두는 막대로 바꾼다」. ↩️It
+  /// was a strip with the words 「caching N/M」 that came while pictures were
+  /// being made and went when they were — 없다가 생기는 UI.
+  testWidgets('the bar at the foot is always there, says how much of what '
+      'the run wants is made, and says it without words', (tester) async {
     final f = fixture();
     final progress = ValueNotifier(
       const PrerenderProgress(cached: 1, total: 4),
     );
+    addTearDown(progress.dispose);
+    const barKey = ValueKey<String>('canvas-playback-progress');
+    double shown() =>
+        tester.widget<LinearProgressIndicator>(find.byKey(barKey)).value!;
 
     f.controller.play(scope: PlaybackScope.activeCut);
     await pumpView(
@@ -459,18 +472,24 @@ void main() {
       progress: progress,
     );
 
+    expect(shown(), 0.25);
     expect(
-      find.byKey(const ValueKey<String>('canvas-playback-progress')),
-      findsOneWidget,
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('canvas-playback-view')),
+        matching: find.byType(Text),
+      ),
+      findsNothing,
+      reason: '설명 문구 금지 — and the old words were English only',
     );
-    expect(find.text('caching 1/4'), findsOneWidget);
 
     progress.value = const PrerenderProgress(cached: 4, total: 4);
     await tester.pump();
-    expect(
-      find.byKey(const ValueKey<String>('canvas-playback-progress')),
-      findsNothing,
-    );
+    expect(find.byKey(barKey), findsOneWidget, reason: 'its seat is kept');
+    expect(shown(), 1);
+
+    progress.value = PrerenderProgress.none;
+    await tester.pump();
+    expect(shown(), 1, reason: 'nothing asked for is nothing left to make');
 
     f.controller.stop();
     await tester.pump();

@@ -55,6 +55,7 @@ import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
 import '../services/cut_frame_composite_plan.dart';
+import '../models/playback_mode.dart';
 import '../models/track_transitions.dart' show drawnFrameCountsOf;
 import '../services/playback/frame_demand.dart';
 import '../services/playback/playback_frame_mapping.dart';
@@ -482,6 +483,7 @@ class EditorSessionManager extends ChangeNotifier
   late final PlaybackRig playbackRig = PlaybackRig(
     project: this,
     selection: this,
+    changes: this,
     timeline: this,
     appSettings: appSettings,
     soloedSeLayerIds: visibilitySolo.soloedSeLayerIds,
@@ -626,9 +628,13 @@ class EditorSessionManager extends ChangeNotifier
                         )) +
                         frameIndex
                   : null,
-        // The clock does not wait for a picture, so one is started where
-        // the playhead will be when it lands.
-        lead: projectSettings.projectFrameRate.frameAtElapsed,
+        // Where the clock does not wait for a picture, one is started
+        // where the playhead will be when it lands. Where it waits, the
+        // frame under the playhead is the one to make.
+        lead: (composeTime) =>
+            playbackRig.playbackMode == PlaybackMode.skipFrames
+            ? projectSettings.projectFrameRate.frameAtElapsed(composeTime)
+            : 0,
       ),
     );
   }
@@ -3333,6 +3339,7 @@ class EditorSessionManager extends ChangeNotifier
     solo: visibilitySolo,
     failedCopies: failedSaveCopies,
     keepStandingShown: standing.keepStandingShown,
+    playback: playbackRig,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not

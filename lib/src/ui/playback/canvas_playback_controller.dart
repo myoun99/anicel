@@ -36,9 +36,13 @@ class AudioClockStatus {
 /// Real-time canvas playback state machine.
 ///
 /// Frame indexes derive from the ticker's wall-clock elapsed time, so when
-/// rendering falls behind, frames are skipped rather than time stretched
-/// (Premiere/AE behavior). Notifies only when the resolved frame actually
-/// changes; the heavyweight session playhead syncs once via [onStopped].
+/// the app's own frames fall behind, playback frames are skipped rather than
+/// time stretched (Premiere/AE behavior). Notifies only when the resolved
+/// frame actually changes; the heavyweight session playhead syncs once via
+/// [onStopped].
+///
+/// A frame whose PICTURE is not made yet is another matter, and the owner's
+/// to say ([waitsOn]): the clock stands on it until it is.
 class CanvasPlaybackController extends ChangeNotifier
     implements PlaybackTransport {
   CanvasPlaybackController({
@@ -85,6 +89,17 @@ class CanvasPlaybackController extends ChangeNotifier
   /// clock is whose TIME gets shown.
   AudioClockStatus? Function()? resolveAudioClock;
 
+  /// Asked of every frame the run would stand on: whether its clock must
+  /// WAIT there — the frame's picture is not made yet, or (rendering first)
+  /// what lies ahead of it is not. Null = the clock never waits.
+  ///
+  /// 유저 2026-10-08: 「거슬리는건 재생했는데 재생바는 지나가고있는데 그림이
+  /// 없어서 비어있다던가」 · 「안구워진곳에 닿으면 그 자리에서 만들어서
+  /// 보여주기때문에 그 자리에서 멈췃다가 구워지면 이어서 재생」. The playhead
+  /// stops ON the frame that is not there — it does not pass it — and
+  /// [lookAgain] is how it hears the picture has come.
+  bool Function(int playlistFrame)? waitsOn;
+
   /// Fired on every explicit seek with the clamped target frame, so a
   /// device transport can move without inferring the jump from frame
   /// deltas. (With the audio clock driving the picture, an un-forwarded
@@ -124,6 +139,19 @@ class CanvasPlaybackController extends ChangeNotifier
   /// drops).
   @override
   ValueListenable<bool> get isActiveListenable => _isActiveNotifier;
+
+  bool _waiting = false;
+  final ValueNotifier<bool> _isWaitingNotifier = ValueNotifier<bool>(false);
+
+  /// Whether the run's clock stands on its frame, waiting for the picture
+  /// ([waitsOn]).
+  ///
+  /// 🚨WAITING IS NOT PAUSED, and T28 stands: playing, or not. Nobody can
+  /// put a run into this state or take it out — there is no button for it —
+  /// and it ends by itself the moment the picture lands. [isPlaying] stays
+  /// true through it; what stands is the clock, and with it the sound.
+  bool get isWaiting => _waiting;
+  ValueListenable<bool> get isWaitingListenable => _isWaitingNotifier;
 
   List<StoryboardTimelineLayoutEntry>? _playlist;
   PlaybackScope _scope = PlaybackScope.activeCut;
@@ -217,7 +245,7 @@ class CanvasPlaybackController extends ChangeNotifier
   /// before or after attachment (ticking starts once both are ready).
   void attachTicker(TickerProvider vsync) {
     _vsync = vsync;
-    if (isPlaying && _ticker == null) {
+    if (isPlaying && !_waiting && _ticker == null) {
       _startTicker();
     }
   }
@@ -254,9 +282,43 @@ class CanvasPlaybackController extends ChangeNotifier
     );
     onPlaylistWarmRequested?.call(playlist, scope, _currentGlobalFrame);
 
-    _startTicker();
+    _standHere();
     _syncFrameNotifiers();
     _isActiveNotifier.value = true;
+    notifyListeners();
+  }
+
+  /// The run stands on its frame by someone's hand — play was pressed
+  /// there, the ruler was dragged there: its clock starts from this frame,
+  /// or waits on it for its picture.
+  void _standHere() {
+    _waiting = waitsOn?.call(_currentGlobalFrame) ?? false;
+    _isWaitingNotifier.value = _waiting;
+    if (_waiting) {
+      _stopTicker();
+    } else {
+      // A fresh ticker, so its elapsed epoch rebases on this frame.
+      _startTicker();
+    }
+  }
+
+  /// A picture landed, or the warmer came to rest: a run that waits looks
+  /// again, and goes on from the frame it stands on if it need wait no
+  /// longer — a whole frame's time from here, as if the clock had been
+  /// stopped and started.
+  void lookAgain() {
+    if (!_waiting || _playlist == null) {
+      return;
+    }
+    if (waitsOn?.call(_currentGlobalFrame) ?? false) {
+      return;
+    }
+    _waiting = false;
+    _isWaitingNotifier.value = false;
+    // Not a new pass, and nothing was dropped while it stood.
+    _lastRawFrame = null;
+    _lastLap = 0;
+    _startTicker();
     notifyListeners();
   }
 
@@ -292,8 +354,7 @@ class CanvasPlaybackController extends ChangeNotifier
     _currentGlobalFrame = globalFrameIndex.clamp(0, total - 1);
     _resetDropAccounting();
     if (isPlaying) {
-      // Restart the ticker so its elapsed epoch rebases on the new frame.
-      _startTicker();
+      _standHere();
     }
     onSeeked?.call(_currentGlobalFrame);
     _syncFrameNotifiers();
@@ -320,6 +381,8 @@ class CanvasPlaybackController extends ChangeNotifier
     final lastGlobal = _playlist == null ? null : _currentGlobalFrame;
     _stopTicker();
     _playlist = null;
+    _waiting = false;
+    _isWaitingNotifier.value = false;
     _syncFrameNotifiers();
     _isActiveNotifier.value = false;
     notifyListeners();
@@ -337,6 +400,7 @@ class CanvasPlaybackController extends ChangeNotifier
     _localFrameIndex.dispose();
     _globalFrameIndexNotifier.dispose();
     _isActiveNotifier.dispose();
+    _isWaitingNotifier.dispose();
     super.dispose();
   }
 
@@ -439,21 +503,63 @@ class CanvasPlaybackController extends ChangeNotifier
       if (_loopMode == PlaybackLoopMode.loop) {
         frame %= total;
       } else {
-        _setFrame(total - 1);
-        stop();
+        _endAt(total);
         return;
       }
     }
+    _goTo(frame, total);
+  }
+
+  /// A run that plays once has run out: it stops on its last frame — once
+  /// that frame has been shown.
+  void _endAt(int total) {
+    _goTo(total - 1, total);
+    if (!_waiting) {
+      stop();
+    }
+  }
+
+  /// The clock says [frame]. The run goes there — unless a frame on the way
+  /// has no picture yet, and then it stands on THAT frame ([waitsOn]): a
+  /// tick that came late does not carry the playhead over a picture that
+  /// was never shown.
+  void _goTo(int frame, int total) {
+    final waitsOn = this.waitsOn;
+    if (waitsOn == null || frame == _currentGlobalFrame) {
+      _setFrame(frame);
+      return;
+    }
+    // The frames on the way, in the order the run plays them, the clock's
+    // own last. Either clock only ever moves on — a step back is the lap
+    // wrapping — so the way from here to there is forwards, round the end.
+    var next = _currentGlobalFrame;
+    do {
+      next = (next + 1) % total;
+      if (waitsOn(next)) {
+        _waitOn(next);
+        return;
+      }
+    } while (next != frame);
     _setFrame(frame);
   }
 
+  void _waitOn(int frame) {
+    _waiting = true;
+    _stopTicker();
+    _currentGlobalFrame = frame;
+    _isWaitingNotifier.value = true;
+    _syncFrameNotifiers();
+    notifyListeners();
+  }
+
   /// The audio-master tick: the picture shows whatever frame the device
-  /// says is being heard. When rendering falls behind, frames are dropped
-  /// — the sound is never made to wait.
+  /// says is being heard. When the app's frames fall behind, playback frames
+  /// are dropped — the sound is not made to wait for them. It waits only
+  /// where the picture itself is not made ([waitsOn]), and then the device
+  /// is stopped with the clock ([isWaiting]).
   void _onAudioClockTick(AudioClockStatus audio, int total) {
     if (audio.ended && _loopMode == PlaybackLoopMode.once) {
-      _setFrame(total - 1);
-      stop();
+      _endAt(total);
       return;
     }
     var frame = audio.globalFrame;
@@ -472,7 +578,7 @@ class CanvasPlaybackController extends ChangeNotifier
       _droppedFrames += frame - lastRawFrame - 1;
     }
     _lastRawFrame = frame;
-    _setFrame(frame);
+    _goTo(frame, total);
   }
 
   void _setFrame(int frame) {

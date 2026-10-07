@@ -16,6 +16,7 @@ import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/cut_id.dart';
 import '../../models/media_asset.dart' show MediaCarry;
+import '../../models/playback_mode.dart' show defaultPlaybackMode;
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/diagnostics/memory_black_box.dart';
@@ -53,6 +54,7 @@ import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
+import 'playback_rig.dart';
 import 'project_file.dart';
 import 'rail_view.dart' show StandingLaw;
 import 'visibility_solo.dart';
@@ -124,7 +126,9 @@ class ProjectFileDoor {
     required VisibilitySolo solo,
     required FailedSaveCopies failedCopies,
     required StandingLaw keepStandingShown,
+    required PlaybackRig playback,
   }) : _file = file,
+       _playback = playback,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -143,6 +147,10 @@ class ProjectFileDoor {
 
   final ProjectFile _file;
   final ProjectAccess _project;
+
+  /// Whose playback mode a save keeps and an open puts back
+  /// ([ProjectResume.playbackMode]).
+  final PlaybackRig _playback;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -844,6 +852,7 @@ class ProjectFileDoor {
     layerId: _selection.activeLayerId,
     frameIndex: _selection.currentFrameIndex,
     tools: toolChoice?.read() ?? const {},
+    playbackMode: _playback.playbackMode,
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1095,6 +1104,8 @@ class ProjectFileDoor {
     // what a file itself shuts — a folder — is not the view's to open.
     _keepStandingShown();
     _resumeTools(resume.tools);
+    // A file that says nothing plays as a new project does.
+    _playback.setPlaybackMode(resume.playbackMode ?? defaultPlaybackMode);
   }
 }
 

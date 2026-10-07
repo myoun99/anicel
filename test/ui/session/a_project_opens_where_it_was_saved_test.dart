@@ -6,6 +6,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_mode.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
@@ -200,6 +201,31 @@ void main() {
     expect(opened.activeCutId, firstCut.id);
     expect(opened.activeLayerId, firstCut.layers.first.id);
     expect(opened.currentFrameIndex, 0);
+    expect(opened.playbackRig.playbackMode, defaultPlaybackMode);
     opened.dispose();
+  });
+
+  test('🚨the playback mode comes back with the file — and picking it is no '
+      'edit: no undo step, no unsaved mark (유저 답 playback-quality-undo-Q1 '
+      '「언두 안 됨 — 보기 설정처럼(저장은 됨)」, of the setting whose seat it '
+      'took)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final picked = PlaybackMode.values.firstWhere(
+      (mode) => mode != defaultPlaybackMode,
+    );
+
+    s.playbackRig.setPlaybackMode(picked);
+
+    expect(s.historyManager.canUndo, isFalse);
+    expect(s.projectFile.hasUnsavedChanges, isFalse);
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(reopened.playbackRig.playbackMode, picked);
+    reopened.dispose();
   });
 }

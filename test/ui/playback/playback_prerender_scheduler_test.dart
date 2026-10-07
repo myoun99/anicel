@@ -682,6 +682,12 @@ void main() {
 
         playhead = 2;
         scheduler.follow(run());
+        expect(
+          scheduler.progress.value,
+          const PrerenderProgress(cached: 0, total: 4),
+          reason: 'a new demand says at once how much is wanted — a run '
+              'that renders first reads this the moment it begins',
+        );
         await rested(scheduler);
 
         expect(made, [2, 3, 0, 1]);
@@ -722,6 +728,44 @@ void main() {
           reason: 'the lead is asked with how long a picture has been taking',
         );
         expect(askedWith.last, scheduler.composeTime);
+        scheduler.dispose();
+        f.composites.dispose();
+      });
+    });
+
+    testWidgets('how long a picture takes is known from the first one', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        final f = fixture();
+        const slow = Duration(milliseconds: 40);
+        final scheduler = PlaybackPrerenderScheduler(
+          composites: f.composites,
+          resolveCut: (_) => four(),
+          idleDelay: Duration.zero,
+          // What a frame reads from outside the cel store is part of what
+          // making its picture takes.
+          beforeCompose: (_, _) => Future<void>.delayed(slow),
+        );
+        expect(scheduler.composeTime, Duration.zero);
+
+        scheduler.follow(
+          PlayingDemand(
+            totalFrames: 1,
+            loops: () => true,
+            playhead: () => 0,
+            picturesOf: (frame) => [(cut: four(), frameIndex: frame)],
+            playlistFrameOf: (_, frameIndex) => frameIndex,
+          ),
+        );
+        await rested(scheduler);
+
+        expect(
+          scheduler.composeTime,
+          greaterThanOrEqualTo(slow),
+          reason: 'one picture made: the mean IS that one — a lead worked '
+              'out from a fraction of it starts the next picture too late',
+        );
         scheduler.dispose();
         f.composites.dispose();
       });

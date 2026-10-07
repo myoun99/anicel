@@ -2,6 +2,7 @@ import 'dart:async' show unawaited;
 
 import 'package:flutter/material.dart';
 
+import '../../models/playback_mode.dart';
 import '../../models/project_frame_rate.dart';
 import '../dialogs/camera_size_dialog.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
@@ -13,17 +14,19 @@ import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../input/control_press_claim.dart';
 
-/// The project's settings — its frame rate, its audio sample rate and its
-/// camera frame — as rows of the top strip's ⚙, one level in, beside the
-/// work's (유저 답 playback-quality-home-Q1 「프로젝트 설정으로 같이」, with
-/// 「다만 프로젝트 설정이랑 작품설정이랑 나누는게 깔끔할지도?」). ↩️They were
-/// the ⚙ on the frame panels' sill, beside the transport. ↩️The playback
-/// quality was a row here too, until the option itself went (유저
-/// 2026-10-08: 「재생화질 옵션 자체가 … 그냥 없애고 원본재생으로만 두자」).
+/// The project's settings — its frame rate, its audio sample rate, its
+/// camera frame and how its playback waits for a picture — as rows of the
+/// top strip's ⚙, one level in, beside the work's (유저 답
+/// playback-quality-home-Q1 「프로젝트 설정으로 같이」, with 「다만 프로젝트
+/// 설정이랑 작품설정이랑 나누는게 깔끔할지도?」). ↩️They were the ⚙ on the
+/// frame panels' sill, beside the transport. ↩️The last row was the playback
+/// QUALITY until the option itself went (유저 2026-10-08: 「재생화질 옵션
+/// 자체가 … 그냥 없애고 원본재생으로만 두자」); its seat is the playback MODE's
+/// (유저 같은 날: 「세개 두면 좋을거같긴하고」 · 「기본값 모든그림」).
 ///
 /// 유저 2026-08-27: the menu is VALUE ROWS — 「FPS 24」, the sample
-/// rate, the camera frame — and each row opens its own small change
-/// window. The presets used to be inlined here, which made the one
+/// rate, the camera frame, the mode — and each row opens its own small
+/// change window. The presets used to be inlined here, which made the one
 /// menu as tall as all of its settings put together; a row that states its
 /// current value is the compact form, and the window it opens is where the
 /// choices live.
@@ -91,7 +94,8 @@ class ProjectSettingsMenu {
   /// ⛔ONE CHOICE ROW, ONE BODY (G3, 2026-09-07). The sample rate and the
   /// playback quality asked the same question the same way — the same
   /// window, the same preset loop, the same "null means cancelled" check,
-  /// the same apply — and differed only in the values [edit] carries.
+  /// the same apply — and differed only in the values [edit] carries. The
+  /// playback mode asks it now, where the quality did.
   Future<void> _editChoice<T>(BuildContext context, _ChoiceEdit<T> edit) async {
     final picked = await _showChoiceWindow<T>(
       context,
@@ -137,6 +141,28 @@ class ProjectSettingsMenu {
     }
   }
 
+  /// A playback mode in the program's language.
+  static String playbackModeLabel(PlaybackMode mode) => switch (mode) {
+    PlaybackMode.skipFrames => AppText.strings.playbackModeSkipFrames,
+    PlaybackMode.everyPicture => AppText.strings.playbackModeEveryPicture,
+    PlaybackMode.renderFirst => AppText.strings.playbackModeRenderFirst,
+  };
+
+  Future<void> _editPlaybackMode(BuildContext context) =>
+      _editChoice<PlaybackMode>(
+        context,
+        (
+          windowKey: 'playback-mode-dialog',
+          title: AppText.strings.playbackMode,
+          titleIcon: Icons.slow_motion_video_outlined,
+          current: session.playbackRig.playbackMode,
+          presets: PlaybackMode.values,
+          keyValue: (preset) => 'playback-mode-${preset.name}',
+          label: ProjectSettingsMenu.playbackModeLabel,
+          apply: session.playbackRig.setPlaybackMode,
+        ),
+      );
+
   /// The rows, each stating its setting as it is now and opening the window
   /// that changes it.
   List<PanelFlyoutEntry> entries(BuildContext context) {
@@ -164,6 +190,14 @@ class ProjectSettingsMenu {
             .replaceAll('{h}', '${cameraSize.height}'),
         icon: Icons.videocam_outlined,
         onSelected: () => unawaited(_editCameraSize(context)),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'project-settings-playback-mode',
+        label:
+            '${strings.playbackMode} · '
+            '${ProjectSettingsMenu.playbackModeLabel(session.playbackRig.playbackMode)}',
+        icon: Icons.slow_motion_video_outlined,
+        onSelected: () => unawaited(_editPlaybackMode(context)),
       ),
     ];
   }

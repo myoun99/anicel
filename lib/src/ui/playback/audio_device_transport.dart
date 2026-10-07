@@ -78,7 +78,7 @@ class AudioDeviceTransport {
 
   bool _attached = false;
   bool _wasActive = false;
-  bool _wasPlaying = false;
+  bool _wasSounding = false;
 
   /// Whether THIS activation runs on the device. Decided once at
   /// activation (like the schedule itself); the platform-player sync
@@ -207,28 +207,35 @@ class AudioDeviceTransport {
 
   void _onControllerChanged() {
     final active = controller.isActive;
-    final playing = controller.isPlaying;
+    // 🚨THE SOUND WAITS WITH THE CLOCK. A run that waits for its picture
+    // ([CanvasPlaybackController.isWaiting] — 유저 2026-10-08: 「그 자리에서
+    // 멈췃다가 구워지면 이어서 재생」) has stopped its clock on a frame, and
+    // sound that ran on would be heard ahead of the picture it belongs to.
+    // ↩️These two branches were the pause's, and stood dead after T28 took
+    // pause away; a wait is not a pause — nobody presses it — but it stops
+    // and starts the device exactly so.
+    final sounding = controller.isPlaying && !controller.isWaiting;
     if (active && !_wasActive) {
       _activate();
-      if (playing && _carrying) {
-        _arm(controller.globalFrameIndexListenable.value ?? 0);
+      if (sounding && _carrying) {
+        _arm(controller.playlistFrame);
       }
     } else if (!active && _wasActive) {
       _carrying = false;
       _device?.stop();
     } else if (active && _carrying) {
-      if (playing && !_wasPlaying) {
-        // Resume re-arms at the controller's frame — a paused seek moved
-        // it, and play() from stopped is exactly a seek-and-go.
-        _arm(controller.globalFrameIndexListenable.value ?? 0);
-      } else if (!playing && _wasPlaying) {
-        // Pause = stop the transport where it stands. The position is
-        // irrelevant afterwards; resume re-arms from the controller.
+      if (sounding && !_wasSounding) {
+        // The picture came: the run goes on from the frame it stands on,
+        // and so does the sound.
+        _arm(controller.playlistFrame);
+      } else if (!sounding && _wasSounding) {
+        // The transport stops where it stands. Its position is irrelevant
+        // afterwards; going on re-arms from the controller's frame.
         _device?.stop();
       }
     }
     _wasActive = active;
-    _wasPlaying = playing;
+    _wasSounding = sounding;
   }
 
   /// Decides whether this run rides the device, and uploads the schedule
@@ -325,13 +332,14 @@ class AudioDeviceTransport {
     if (!_carrying) {
       return;
     }
-    if (controller.isPlaying) {
+    if (_wasSounding && !controller.isWaiting) {
       // A live seek re-arms rather than seeks: the arm owns the loop
       // bookkeeping (seeking mid-first-pass changes where the wrap must
       // land) and a play() from a seek is indistinguishable from one.
       _arm(globalFrame);
     }
-    // Paused: nothing to move — resume re-arms from the controller frame.
+    // Waiting — before the seek, or on the frame it landed on: nothing to
+    // move. The run going on re-arms from the controller's frame.
   }
 
   /// What the controller shows instead of its wall clock; null while the
@@ -341,7 +349,7 @@ class AudioDeviceTransport {
     if (!_carrying || device == null) {
       return null;
     }
-    if (!controller.isPlaying) {
+    if (!controller.isPlaying || controller.isWaiting) {
       return null;
     }
     if (!device.isPlaying) {

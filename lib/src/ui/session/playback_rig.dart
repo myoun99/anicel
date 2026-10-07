@@ -16,6 +16,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 import '../../models/layer_id.dart';
+import '../../models/playback_mode.dart';
 import '../../models/storyboard_timeline_layout.dart';
 import '../../native/qa_audio_device.dart' show audioOutputUnlessTesting;
 import '../audio/audio_conform_store.dart';
@@ -25,6 +26,7 @@ import '../playback/audio_scrubber.dart';
 import '../playback/audioplayers_clip_player.dart';
 import '../../services/playback/frame_demand.dart';
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/playback/playback_picture_wait.dart';
 import '../playback/canvas_playback_controller.dart';
 import '../playback/playback_prerender_scheduler.dart';
 import '../playback/playback_transport.dart';
@@ -42,6 +44,7 @@ class PlaybackRig implements PlaybackRun {
   PlaybackRig({
     required ProjectAccess project,
     required SelectionAccess selection,
+    required ChangeSink changes,
     required TimelineAccess timeline,
     required EditorAppSettings appSettings,
     required ValueListenable<Set<LayerId>> soloedSeLayerIds,
@@ -60,6 +63,7 @@ class PlaybackRig implements PlaybackRun {
     onPlaylistWarmRequested,
   }) : _project = project,
        _selection = selection,
+       _changes = changes,
        _timeline = timeline,
        _appSettings = appSettings,
        _soloedSeLayerIds = soloedSeLayerIds,
@@ -74,6 +78,7 @@ class PlaybackRig implements PlaybackRun {
 
   final ProjectAccess _project;
   final SelectionAccess _selection;
+  final ChangeSink _changes;
   final TimelineAccess _timeline;
   final EditorAppSettings _appSettings;
 
@@ -138,6 +143,38 @@ class PlaybackRig implements PlaybackRun {
   @override
   FrameDemand? get demand => prerenderScheduler.demand;
 
+  /// What a run does at a frame whose picture is not made yet
+  /// ([PlaybackMode]).
+  ///
+  /// A project setting kept beside the project and not in it, as the
+  /// playback quality whose seat it took was (유저 답
+  /// playback-quality-undo-Q1 「언두 안 됨 — 보기 설정처럼(저장은 됨)」):
+  /// picking one is no edit.
+  PlaybackMode playbackMode = defaultPlaybackMode;
+
+  void setPlaybackMode(PlaybackMode mode) {
+    if (playbackMode == mode) {
+      return;
+    }
+    playbackMode = mode;
+    // A run that waits under the old mode may not wait under the new one.
+    playback.lookAgain();
+    _changes.notifyChanged();
+  }
+
+  /// Whether a run's clock waits for its picture: the mode, read against
+  /// what the warmer has made of the run it follows.
+  late final PlaybackPictureWait _pictureWait = PlaybackPictureWait(
+    mode: () => playbackMode,
+    pictureIsThere: (playlistFrame) {
+      final wanted = prerenderScheduler.demand;
+      return wanted is PlayingDemand
+          ? prerenderScheduler.has(wanted.picturesOf(playlistFrame))
+          : null;
+    },
+    aheadIsFilled: () => prerenderScheduler.progress.value.isComplete,
+  );
+
   /// Canvas playback state machine; only the playback view and transport
   /// controls listen (the session playhead syncs once on stop).
   @override
@@ -148,8 +185,19 @@ class PlaybackRig implements PlaybackRun {
     resolveFrameRate: () => _settings.projectFrameRate,
     onStopped: _onStopped,
     onStoppedInGap: _onStoppedInGap,
-    onPlaylistWarmRequested: _onPlaylistWarmRequested,
-  );
+    onPlaylistWarmRequested: _onRunBegins,
+  )..waitsOn = _pictureWait.holds;
+
+  /// A run begins: the warmer follows it from here — the session says what
+  /// it wants — and, rendering first, it fills before it goes.
+  void _onRunBegins(
+    List<StoryboardTimelineLayoutEntry> playlist,
+    PlaybackScope scope,
+    int startGlobalFrame,
+  ) {
+    _onPlaylistWarmRequested(playlist, scope, startGlobalFrame);
+    _pictureWait.runBegins();
+  }
 
   /// Everything in the app that plays, so the actuation gate can ask ONE
   /// object 「누가 재생 중인가」 and stop it.
@@ -238,6 +286,11 @@ class PlaybackRig implements PlaybackRun {
     // playhead that moves on is what it looks again for.
     playback.globalFrameIndexListenable.addListener(prerenderScheduler.wake);
     playback.isActiveListenable.addListener(_onRunToggled);
+    // A run that waits for its picture goes on when the warmer says one
+    // landed — or that it has come to rest, which is what a run that
+    // renders first waits for.
+    prerenderScheduler.landings.addListener(playback.lookAgain);
+    prerenderScheduler.progress.addListener(playback.lookAgain);
   }
 
   /// A run that ends is followed no further. What is wanted next is the
@@ -256,6 +309,8 @@ class PlaybackRig implements PlaybackRun {
   /// [CanvasPlaybackController.isActiveListenable], which [playback]
   /// disposes.
   void dispose() {
+    prerenderScheduler.progress.removeListener(playback.lookAgain);
+    prerenderScheduler.landings.removeListener(playback.lookAgain);
     playback.isActiveListenable.removeListener(_onRunToggled);
     playback.globalFrameIndexListenable.removeListener(
       prerenderScheduler.wake,
