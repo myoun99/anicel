@@ -164,6 +164,71 @@ chk "reaches PowerShell as Windows spells it" "$(calls)" \
 chk "(premise: this shell spells that folder another way)" \
   "$([ "$TMP/i" != "$FOLDER" ] && echo differs)" "differs"
 
+
+# ---------------------------------------------------------------------------
+# The same two questions, asked of the REAL PowerShell.
+#
+# The stand-in above cannot tell `-eq` from `-ne`: it answers by its own rule.
+# So the hook's own two functions are lifted out of it and run — against a
+# SPARE port and processes of ANOTHER NAME, because a wrong `stop` here must
+# not be able to reach a real board server. ⛔If the name could not be
+# swapped, this part refuses to run.
+echo "--- the real PowerShell: a spare port, stand-in processes"
+SPARE=43917
+STANDIN=board_up_test_stand_in
+lifted="$(sed -n -e '/^listener() {$/,/^}$/p' -e '/^stop() {$/,/^}$/p' \
+  "$HERE/board_up.sh" | sed "s/-Name board_server /-Name $STANDIN /")"
+if printf '%s' "$lifted" | grep -q -- '-Name board_server' \
+    || ! printf '%s' "$lifted" | grep -q -- "-Name $STANDIN " \
+    || ! printf '%s' "$lifted" | grep -q '^listener() {$'; then
+  chk "the hook's two functions could be lifted, and stop renamed" no yes
+else
+  eval "$lifted"
+  PORT=$SPARE
+  ps() { powershell -NoProfile -Command "$1" 2>/dev/null | tr -d '\r'; }
+
+  EXE="$(cygpath -m "$TMP")/nobody/board_server.exe"
+  chk "a free port has no listener" "$(listener)" ""
+  # Something real listens there, and says which exe and which process it is.
+  (powershell -NoProfile -Command "\$l = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, $SPARE); \$l.Start(); \"\$PID \$((Get-Process -Id \$PID).Path)\" | Out-File -Encoding ascii '$(cygpath -m "$TMP")/listens'; Start-Sleep 40" >/dev/null 2>&1 &)
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -s "$TMP/listens" ] && break; sleep 0.5
+  done
+  read -r listenerPid listenerExe < <(tr -d '\r' < "$TMP/listens" 2>/dev/null)
+  chk "(premise: a process listens on the spare port)" \
+    "$([ -n "$listenerPid" ] && echo yes)" "yes"
+  EXE="$listenerExe"
+  chk "its own exe is ours" "$(listener)" "ours"
+  lowered="${listenerExe,,}"
+  EXE="${lowered//\\//}"
+  chk "(premise: that spelling is another one)" \
+    "$([ "$EXE" != "$listenerExe" ] && echo differs)" "differs"
+  chk "in another case, with the other slash, still ours" "$(listener)" "ours"
+  EXE="$(cygpath -m "$TMP")/nobody/board_server.exe"
+  chk "any other exe is other" "$(listener)" "other"
+  ps "Stop-Process -Id $listenerPid -Force -EA 0"
+
+  # Two stand-ins of one name in two folders: `stop` ends the one it names.
+  mkdir -p "$TMP/sa" "$TMP/sb"
+  cp "$(command -v ping)" "$TMP/sa/$STANDIN.exe"
+  cp "$(command -v ping)" "$TMP/sb/$STANDIN.exe"
+  ("$TMP/sa/$STANDIN.exe" -n 40 127.0.0.1 >/dev/null 2>&1 &)
+  ("$TMP/sb/$STANDIN.exe" -n 40 127.0.0.1 >/dev/null 2>&1 &)
+  running() { ps "(Get-Process -Name $STANDIN -EA 0 | ForEach-Object { Split-Path (Split-Path \$_.Path) -Leaf } | Sort-Object) -join ','"; }
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ "$(running)" = "sa,sb" ] && break; sleep 0.5
+  done
+  chk "(premise: both stand-ins run)" "$(running)" "sa,sb"
+  EXE="$(cygpath -m "$TMP")/sa/$STANDIN.exe"
+  stop
+  sleep 1
+  chk "stop ends the exe it names and no other of that name" "$(running)" "sb"
+  EXE="$(cygpath -m "$TMP")/nobody/$STANDIN.exe"
+  stop
+  sleep 1
+  chk "and an exe nobody runs ends nothing" "$(running)" "sb"
+  ps "Get-Process -Name $STANDIN -EA 0 | Stop-Process -Force -EA 0"
+fi
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
