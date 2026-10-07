@@ -319,6 +319,34 @@ void main() {
       expect(tool.holdsAnything, isFalse);
     });
 
+    test('landNow lands them IN THE ORDER THEY WERE LET GO OF, the one in '
+        'hand last: history has them in the order they were made', () async {
+      final (:tool, :host, :baker, :cel) = hand(
+        texts: [carried(4, said([run('zz')], x: 16, y: 16))],
+      );
+      tool.beginText(cel, at);
+      typeInto(tool, 'a');
+      await baker.pending.answer();
+      typeInto(tool, 'ab');
+      // The second taken: the first is let go of, its last want owed.
+      tool
+        ..takeText(cel, pictureOf(cel).texts.single)
+        ..typeAt(const TextSelection.collapsed(offset: 2));
+      typeInto(tool, 'zzz');
+      await baker.asked.last.answer();
+      expect(host.ran, isEmpty, reason: '⛔fixture: neither has landed');
+
+      tool.landNow();
+
+      expect(textsOn(cel), [(4, 'zzz'), (5, 'a')]);
+      host.history.undo();
+      expect(
+        textsOn(cel),
+        [(4, 'zz'), (5, 'a')],
+        reason: 'the one in hand landed LAST: it is the first taken back',
+      );
+    });
+
     test('🚨DELETED while a landing of it was still owed, it stays deleted: '
         'the engine\'s late answer lands nothing', () async {
       final (:tool, :host, :baker, :cel) = hand();
@@ -593,6 +621,8 @@ void main() {
       expect(tool.restingBoxesOn(cel.key, pictureOf(cel)), isEmpty);
       expect(tool.takeableOn(cel), isEmpty);
       expect(tool.list.texts, isEmpty);
+      tool.list.take(4);
+      expect(tool.session, isNull, reason: 'the list takes none of it');
 
       await baker.pending.answer();
 
@@ -777,11 +807,13 @@ void main() {
         expect(drawnAt(cel, 0, 0), [77, 0, 0, 255], reason: 'the one named');
         expect(drawnAt(cel, 1, 1), [3, 0, 0, 255], reason: 'as it was SHOWN');
         expect(tool.holdsAnything, isFalse);
+        final redrawn = host.redrawn;
 
         await baker.pending.answer();
 
         expect(host.ran, hasLength(2));
         expect(textsOn(cel), isEmpty);
+        expect(host.redrawn, redrawn, reason: 'it is done with: it tells none');
       });
 
       test('🚨one IN HAND is let go of when the drawing takes it', () async {

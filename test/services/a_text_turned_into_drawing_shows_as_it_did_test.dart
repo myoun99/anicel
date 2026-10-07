@@ -172,11 +172,11 @@ void main() {
       // The stamp lays nothing of such a pixel, so nothing there can come
       // out in another order.
       final ghost = tileOf({
-        (0, 0): [99, 99, 99, 0],
+        (1, 0): [99, 99, 99, 0],
         (7, 7): [99, 99, 99, 255],
       });
       final dot = tileOf({
-        (0, 0): [50, 60, 70, 255],
+        (1, 0): [50, 60, 70, 255],
       });
       final before = drawingOf(const {}).withTexts([
         textOf(1, plate: {a: dot}),

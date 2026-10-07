@@ -188,6 +188,11 @@ void main() {
       );
 
       expect([for (final text in textsOn(coordinator)) text.id], [1, 3]);
+      expect(
+        coordinator.currentSurfaceOf(key).tileAt(b),
+        isNull,
+        reason: '⛔gone, not drawn: nothing of it is the drawing\'s',
+      );
 
       history.undo();
       expect([for (final text in textsOn(coordinator)) text.id], [1, 2, 3]);
