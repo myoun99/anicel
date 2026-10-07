@@ -151,6 +151,33 @@ void main() {
     expect(rows.made, 3, reason: 'a held; b composed again');
   });
 
+  test('🚨rows held before the room shrank go at the next fitRoom — and a '
+      'row asked for again composes again, in the room left', () async {
+    // The storage session's review (2026-10-08): the room is asked only
+    // when a row would be held, so rows held before an OS memory warning
+    // halved the line stood over it while their pictures were held.
+    final a = surface(1);
+    final [aImage, bImage] = await picture('p1', [a, surface(2)]);
+    rows.fitRoom();
+    expect(aImage.debugDisposed, isFalse, reason: 'they fit: kept');
+    room = 2 * rowBytes;
+    rows.fitRoom();
+    expect(aImage.debugDisposed, isFalse, reason: 'a room they fill: kept');
+
+    room = rowBytes;
+    rows.fitRoom();
+    expect(aImage.debugDisposed, isTrue);
+    expect(bImage.debugDisposed, isTrue);
+    expect(HeldRows.debugHeld, heldBefore, reason: 'none held');
+    expect(told.last, 0, reason: 'the lender hears it');
+
+    final made = rows.made;
+    final [aAgain] = await picture('p2', [a]);
+    expect(rows.made, made + 1, reason: 'a composed again');
+    expect(identical(aAgain, aImage), isFalse);
+    expect(HeldRows.debugHeld - heldBefore, 1, reason: 'and held: it fits');
+  });
+
   test('the room is asked when a row would be held, so a line that gives '
       'more holds more', () async {
     room = 0;

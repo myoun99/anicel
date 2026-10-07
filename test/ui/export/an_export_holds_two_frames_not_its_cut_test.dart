@@ -490,6 +490,42 @@ void main() {
         });
       });
 
+      testWidgets('🚨$door: a line lowered under what is held takes it back '
+          'at the next frame — even one that is the picture before it', (
+        tester,
+      ) async {
+        // The storage session's review (2026-10-08): an OS memory warning
+        // halves playback's line while the run goes, and the rows held
+        // before it stood over the lowered line as long as their picture
+        // was held — through a span of frames that shows the same picture.
+        await tester.runAsync(() async {
+          final s = sessionOf([cut()]);
+          addTearDown(s.dispose);
+          parkEvery(s);
+          final (:renderer, :frameAt) = over(s);
+          addTearDown(renderer.dispose);
+          final line = s.playbackRig.playbackCache;
+          final heldBefore = HeldRows.debugHeld;
+
+          (await frameAt(0)).dispose();
+          expect(line.lentBytes, greaterThan(0), reason: 'LIVENESS: held');
+          final made = renderer.debugPicturesMade;
+
+          // Lowered while the run goes — the memory tab's allowance here;
+          // an OS memory warning lowers the same cap (floored far above
+          // this fixture's rows).
+          line.playbackCacheByteBudget = 0;
+          (await frameAt(1)).dispose();
+          expect(
+            renderer.debugPicturesMade,
+            made,
+            reason: 'LIVENESS: frame 1 is frame 0\'s picture',
+          );
+          expect(line.lentBytes, 0);
+          expect(HeldRows.debugHeld, heldBefore);
+        });
+      });
+
       testWidgets('$door: a picture is let go the frame after the last one '
           'made of it stops being the frame before, and every one when the '
           'run ends', (tester) async {

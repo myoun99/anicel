@@ -139,6 +139,7 @@ class ExportFrameRenderer {
     _frameBefore = _thisFrame;
     _thisFrame = {};
     _pictures.nextFrame();
+    _rows.fitRoom();
   }
 
   /// Lets go of the pictures a video run held — and with them the rows they

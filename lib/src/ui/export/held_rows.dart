@@ -100,6 +100,27 @@ class HeldRows {
     _tell();
   }
 
+  /// Lets go of every held row once they no longer fit the room — the
+  /// run's to ask at each frame.
+  ///
+  /// The room is asked only when a row would be held, and it can shrink
+  /// while a run goes: an OS memory warning halves playback's line. Rows
+  /// held before it would stand over the lowered line for as long as the
+  /// pictures made of them are held — through a whole span of frames that
+  /// shows the same picture (the storage session's review, 2026-10-08). A
+  /// held row only waits to be asked for again, so one let go is composed
+  /// again when it is, as a row with no room is.
+  void fitRoom() {
+    if (_bytes <= _room()) {
+      return;
+    }
+    for (final held in _byPicture.values) {
+      held.forEach(_release);
+    }
+    _byPicture.clear();
+    _tell();
+  }
+
   /// [composed], held under [surface] — or null when it does not fit in
   /// the room.
   _Row? _keep(BitmapSurface surface, PositionedSurfaceImage composed) {
