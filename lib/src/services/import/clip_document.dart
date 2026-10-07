@@ -20,7 +20,11 @@ enum ClipLayerKind {
   picture,
   vector,
   paper,
-  text,
+
+  /// A text layer (CLIP STUDIO's 「テキスト」). Named lettering, not text:
+  /// the app's own text LAYER KIND was removed (F-154), and the scan that
+  /// keeps it gone reads any name ending in its spelling as a remnant.
+  lettering,
   sound,
 
   /// A fill layer (`GradationFillInfo`).
@@ -412,7 +416,7 @@ final class _DocumentReader {
       return ClipLayerKind.sound;
     }
     if (type == 800) {
-      return ClipLayerKind.text;
+      return ClipLayerKind.lettering;
     }
     if (type == 1584) {
       return ClipLayerKind.paper;
