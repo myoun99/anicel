@@ -567,7 +567,7 @@ void main() {
     testWidgets('a pill reads in the program language — the app\'s own name '
         'in every one', (tester) async {
       final before = AppText.settings.value;
-      AppText.settings.value = AppLanguageSettings(
+      AppText.settings.value = const AppLanguageSettings(
         programLanguage: AppLanguage.ko,
         notationLanguage: AppLanguage.ko,
       );
