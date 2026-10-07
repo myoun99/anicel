@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/services/persistence/move_into_folder.dart';
@@ -99,6 +100,26 @@ void main() {
     callerGone.value = true;
     await tester.pumpAndSettle();
   }
+
+  test('the question is written in every language the app speaks', () {
+    // A key one table lacks is read from the English one, and nothing
+    // says so: the sentence and its two answers are checked by what they
+    // SAY in each language.
+    final english = AppStrings.of(AppLanguage.en);
+    for (final language in AppLanguage.values) {
+      if (language == AppLanguage.en) {
+        continue;
+      }
+      final strings = AppStrings.of(language);
+      for (final (word, inEnglish) in [
+        (strings.exHandOverPending, english.exHandOverPending),
+        (strings.exHandOverPickAgain, english.exHandOverPickAgain),
+        (strings.exHandOverDiscard, english.exHandOverDiscard),
+      ]) {
+        expect(word, isNot(inEnglish), reason: 'in ${language.name}');
+      }
+    }
+  });
 
   group('outputs handed over once they are made', () {
     /// What the hand-over answered, once it has.

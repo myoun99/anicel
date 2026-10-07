@@ -305,6 +305,25 @@ void main() {
       });
     }
 
+    testWidgets('its barrier OFFERS no dismissal — to a tap, or to the '
+        'dismiss a screen reader reads off a barrier that has one', (
+      tester,
+    ) async {
+      // The veto on the route's pop would leave a tap on the barrier
+      // harmless by itself; the barrier would still say it dismisses.
+      bool offersDismissal() => tester
+          .widget<ModalBarrier>(find.byType(ModalBarrier).last)
+          .dismissible;
+
+      await open(tester, staysUntilAnswered: false);
+      expect(offersDismissal(), isTrue, reason: '전제: an ordinary one does');
+      await answerWith(tester, find.byKey(keys.decline));
+
+      await open(tester, staysUntilAnswered: true);
+      expect(offersDismissal(), isFalse);
+      await answerWith(tester, find.byKey(keys.decline));
+    });
+
     testWidgets('its two buttons answer as they do everywhere', (
       tester,
     ) async {
