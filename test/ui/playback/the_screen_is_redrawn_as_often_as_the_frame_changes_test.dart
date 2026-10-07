@@ -172,12 +172,15 @@ void main() {
 
   // ⚠️In the app this is the clock of every run, silent ones too: an empty
   // schedule rides the device like any other. What the device counts is
-  // samples handed over — a stair some 10ms to the step — so it cannot say
-  // when its next frame is due, and is asked instead.
+  // samples handed over — a stair — so it cannot say when its next frame is
+  // due.
   group('on the device\'s clock', () {
-    testWidgets('🚨the device is asked off the ticker, and asking costs no '
-        'screen frame: while it says the same frame nothing is drawn, and '
-        'when it says another the ticker is woken for it', (tester) async {
+    // ↩️For a day the device was asked every 3ms off the ticker, and the
+    // ticker slept until it said another frame. Asked between vsyncs, a
+    // frame changes up to a screen frame later than it does read on one
+    // (유저 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데」).
+    testWidgets('🚨the ticker stays awake: the device is read on every '
+        'screen frame, and nowhere between them', (tester) async {
       final vsync = _CountingVSync();
       final c = controller()..attachTicker(vsync);
       addTearDown(c.dispose);
@@ -190,121 +193,23 @@ void main() {
 
       c.play(scope: PlaybackScope.activeCut);
       await tester.pump();
-      expect(vsync.ticks, 1);
-      final askedByTheTick = asked;
-
       for (var screen = 0; screen < 6; screen += 1) {
         await tester.pump(screenFrame);
-        expect(asksForAFrame(tester), isFalse);
+        expect(asksForAFrame(tester), isTrue, reason: 'awake');
       }
-      expect(vsync.ticks, 1, reason: 'six screen frames, none of them asked');
-      expect(
-        asked - askedByTheTick,
-        greaterThan(20),
-        reason: 'the device was asked all the while',
-      );
+      expect(vsync.ticks, 7, reason: 'a tick a screen frame');
+      expect(asked, vsync.ticks, reason: 'read on the ticks, and only there');
 
+      // The frame it says is shown on the very next screen frame.
       heard = 1;
-      await tester.pump(SleepingTicker.askEvery);
+      await tester.pump(screenFrame);
       expect(c.position!.localFrameIndex, 1);
-      expect(vsync.ticks, 2);
-      expect(asksForAFrame(tester), isFalse, reason: 'asleep again');
       c.stop();
       c.detachTicker();
     });
 
-    testWidgets('a tick it did not ask for leaves one asker, not two', (
-      tester,
-    ) async {
-      final vsync = _CountingVSync();
-      final c = controller()..attachTicker(vsync);
-      addTearDown(c.dispose);
-      var asked = 0;
-      c.resolveAudioClock = () {
-        asked += 1;
-        return const AudioClockStatus(globalFrame: 0);
-      };
-
-      c.play(scope: PlaybackScope.activeCut);
-      await tester.pump();
-      // Its provider un-silences it: a route come back into view.
-      vsync.last!.muted = false;
-      await tester.pump(const Duration(milliseconds: 1));
-      expect(vsync.ticks, 2, reason: '⛔premise: it ticked unasked');
-      final askedByThen = asked;
-
-      await tester.pump(SleepingTicker.askEvery * 10);
-      expect(asked - askedByThen, 10);
-      c.stop();
-      c.detachTicker();
-    });
-
-    // 🚨Two ways a clock ends that did not take its waker with them: they
-    // disposed the ticker by hand, and the device went on being asked
-    // every few milliseconds for good.
-    testWidgets('a view that goes away takes the asker with it', (
-      tester,
-    ) async {
-      final vsync = _CountingVSync();
-      final c = controller()..attachTicker(vsync);
-      addTearDown(c.dispose);
-      var asked = 0;
-      c.resolveAudioClock = () {
-        asked += 1;
-        return const AudioClockStatus(globalFrame: 0);
-      };
-
-      c.play(scope: PlaybackScope.activeCut);
-      await tester.pump();
-      c.detachTicker();
-      final askedByThen = asked;
-
-      await tester.pump(const Duration(seconds: 1));
-      expect(asked, askedByThen);
-      c.stop();
-    });
-
-    testWidgets('a controller that is disposed asks nobody after', (
-      tester,
-    ) async {
-      final vsync = _CountingVSync();
-      final c = controller()..attachTicker(vsync);
-      var asked = 0;
-      c.resolveAudioClock = () {
-        asked += 1;
-        return const AudioClockStatus(globalFrame: 0);
-      };
-
-      c.play(scope: PlaybackScope.activeCut);
-      await tester.pump();
-      c.dispose();
-      final askedByThen = asked;
-
-      await tester.pump(const Duration(seconds: 1));
-      expect(asked, askedByThen);
-    });
-
-    testWidgets('a device that ran out wakes the ticker, though it says the '
-        'same frame: a run played once ends', (tester) async {
-      final vsync = _CountingVSync();
-      final c = controller()..attachTicker(vsync);
-      addTearDown(c.dispose);
-      c.loopMode = PlaybackLoopMode.once;
-      var status = const AudioClockStatus(globalFrame: 3);
-      c.resolveAudioClock = () => status;
-
-      c.play(scope: PlaybackScope.activeCut, startGlobalFrame: 3);
-      await tester.pump();
-      expect(c.isActive, isTrue, reason: '⛔premise');
-
-      status = const AudioClockStatus(globalFrame: 3, ended: true);
-      await tester.pump(SleepingTicker.askEvery);
-      expect(c.isActive, isFalse);
-      c.detachTicker();
-    });
-
-    testWidgets('a device that no longer carries the run wakes the ticker: '
-        'the wall clock is read from there', (tester) async {
+    testWidgets('a device that no longer carries the run: the wall clock is '
+        'read from there, and that clock sleeps', (tester) async {
       final vsync = _CountingVSync();
       final c = controller()..attachTicker(vsync);
       addTearDown(c.dispose);
@@ -315,37 +220,44 @@ void main() {
       await tester.pump();
       status = null;
       await tester.pump(const Duration(milliseconds: 150));
-
       expect(c.position!.localFrameIndex, 1);
+      expect(asksForAFrame(tester), isFalse, reason: 'asleep');
       c.stop();
       c.detachTicker();
     });
+  });
 
-    testWidgets('a clock that stands asks nobody: a run that waits for its '
-        'picture leaves the device alone', (tester) async {
+  // 🚨Two ways a clock ends that once disposed the ticker by hand and left
+  // what wakes it behind. ⚠️Each test ENDS on the act: a waker left behind
+  // is a timer still pending when the test ends, and a ticker left behind
+  // is one still active — the test framework fails a test for either. Time
+  // pumped after the act would let the waker fire and hide it.
+  group('what wakes a ticker ends with it', () {
+    testWidgets('a view that goes away takes the ticker and its waker', (
+      tester,
+    ) async {
       final vsync = _CountingVSync();
       final c = controller()..attachTicker(vsync);
       addTearDown(c.dispose);
-      c.waitsOn = (frame, {required placed}) => frame == 1;
-      var heard = 0;
-      var asked = 0;
-      c.resolveAudioClock = () {
-        asked += 1;
-        return AudioClockStatus(globalFrame: heard);
-      };
 
       c.play(scope: PlaybackScope.activeCut);
       await tester.pump();
-      heard = 1;
-      await tester.pump(SleepingTicker.askEvery);
-      expect(c.isWaiting, isTrue, reason: '⛔premise');
-      final askedByThen = asked;
+      expect(asksForAFrame(tester), isFalse, reason: '⛔premise: asleep');
 
-      await tester.pump(const Duration(seconds: 1));
-      expect(asked, askedByThen);
-      expect(vsync.ticks, 2);
-      c.stop();
       c.detachTicker();
+    });
+
+    testWidgets('a controller that is disposed leaves neither', (
+      tester,
+    ) async {
+      final vsync = _CountingVSync();
+      final c = controller()..attachTicker(vsync);
+
+      c.play(scope: PlaybackScope.activeCut);
+      await tester.pump();
+      expect(asksForAFrame(tester), isFalse, reason: '⛔premise: asleep');
+
+      c.dispose();
     });
   });
 }

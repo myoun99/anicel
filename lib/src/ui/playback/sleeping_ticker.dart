@@ -19,13 +19,16 @@ import 'package:flutter/scheduler.dart';
 /// So between frames the ticker is MUTED — time goes on running in a muted
 /// ticker — and woken when the frame is about to change. The tick that
 /// changes the frame is still the ticker's, on a vsync, read off the clock
-/// it always read. How it is woken is its owner's to say, by what its clock
-/// can tell:
+/// it always read. A clock that knows when its next frame is due sleeps
+/// [untilDue], and a timer wakes it [wakeAhead] before that.
 ///
-/// - a clock that knows when its next frame is due sleeps [untilDue], and a
-///   timer wakes it [wakeAhead] before that;
-/// - a clock that does not is ASKED ([untilItSays]) — off the ticker, which
-///   costs no screen frame — and the ticker is woken when it says so.
+/// 🚨A clock that cannot say when is NOT put to sleep: its ticker stays
+/// awake and reads it on every vsync. ↩️For a day there was a second way —
+/// such a clock was ASKED every 3ms, off the ticker, and the ticker woke
+/// when it said so. That costs no screen frame, and it changes a frame up
+/// to a screen frame later than reading the clock on the vsync does (유저
+/// 2026-10-08: 「늦게바뀌는건 좀 많이 신경쓰이는데」). A clock has to be made
+/// able to say when; asking it oftener is not that.
 ///
 /// ⚠️`Ticker.muted` is by convention its provider's to write — a route
 /// that is not shown silences its tickers through it. The two writers do
@@ -51,10 +54,6 @@ class SleepingTicker {
   /// tick finds the frame unchanged and it is drawn again.
   static const Duration wakeAhead = Duration(milliseconds: 4);
 
-  /// How often a sleeping ticker's clock is asked: twice within a screen
-  /// frame of the fastest screens, so a frame changes on the vsync it would
-  /// have, or the one after.
-  static const Duration askEvery = Duration(milliseconds: 3);
 
   bool get isRunning => _ticker != null;
 
@@ -82,17 +81,6 @@ class SleepingTicker {
     if (sleep > Duration.zero) {
       _sleep(() => Timer(sleep, _wake));
     }
-  }
-
-  /// Sleeps until [itIsTime] says so, asked every [askEvery].
-  void untilItSays(bool Function() itIsTime) {
-    _sleep(
-      () => Timer.periodic(askEvery, (_) {
-        if (itIsTime()) {
-          _wake();
-        }
-      }),
-    );
   }
 
   /// Silences the ticker — if there still is one: the tick that asks may

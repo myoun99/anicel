@@ -462,11 +462,17 @@ class CanvasPlaybackController extends ChangeNotifier
     final audio = resolveAudioClock?.call();
     if (audio != null) {
       _onAudioClockTick(audio, total);
-      // ⚠️In the app this is the clock of every run, silent ones too: an
-      // empty schedule uploads like any other and rides the device. What
-      // the device counts is samples handed over, which climb a stair some
-      // 10ms to the step, so it cannot say when its next frame is due.
-      _clock.untilItSays(_theDeviceMovedOn);
+      // 🚨UNDER THE DEVICE'S CLOCK THE TICKER STAYS AWAKE: the device is
+      // read on every vsync. ⚠️In the app this is the clock of every run,
+      // silent ones too — an empty schedule uploads like any other and
+      // rides the device. What the device counts is samples handed over,
+      // which climb a stair, so it cannot say when its next frame is due.
+      // ↩️For a day (2026-10-08) it was asked instead — every 3ms, off the
+      // ticker, which woke when it said another frame. Asked between
+      // vsyncs, a frame changes up to a screen frame later than read on
+      // one, and the stair is late enough by itself (유저: 「늦게바뀌는건
+      // 좀 많이 신경쓰이는데」). It sleeps again when the device's clock is a
+      // continuous one that can say when.
       return;
     }
     final rate = resolveFrameRate();
@@ -482,20 +488,6 @@ class CanvasPlaybackController extends ChangeNotifier
     }
     _goTo(frame, total);
     _clock.untilDue(rate.frameStart(played + 1) - elapsed);
-  }
-
-  /// Whether a sleeping clock has anything to wake for: whatever is not
-  /// 「the same frame, still」 — another frame, the end, or a device that no
-  /// longer carries the run. The tick reads the clock again and does what
-  /// it does.
-  bool _theDeviceMovedOn() {
-    final playlist = _playlist;
-    final audio = resolveAudioClock?.call();
-    return playlist == null ||
-        audio == null ||
-        audio.ended ||
-        _heardFrame(audio, _playbackTotalFrames(playlist)) !=
-            _currentGlobalFrame;
   }
 
   /// A run that plays once has run out: it stops on its last frame — once
