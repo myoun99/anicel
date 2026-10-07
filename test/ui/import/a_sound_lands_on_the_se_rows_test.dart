@@ -31,6 +31,7 @@ import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🚨A SOUND ON THE TIMELINE GOES TO THE SE ROWS (유저 2026-09-11, 미디어 배치
 /// 라운드 6: 「SE1부터 시작해서 뒤든 앞이든 겹치지 않는, 공간이 존재하는
@@ -231,15 +232,7 @@ void main() {
     bar().range!.onChanged!(2, 5);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    for (var tries = 0; tries < 60; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      if (s.activeTrack.seLayers.first.timeline[start] != null) {
-        break;
-      }
-    }
+    await pumpPastTheWaitWindow(tester);
 
     final s1 = s.activeTrack.seLayers.first;
     expect(s1.timeline[start]?.length, 4);
@@ -266,7 +259,6 @@ void main() {
     await tester.runAsync(
       () => s.mediaPool.addMediaAssets([normalizedMediaPath(path!)], carried: true),
     );
-    final start = s.activeCutGlobalStartFrame;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(body: ImportDialog(session: s, initialPaths: [path!])),
@@ -284,15 +276,7 @@ void main() {
     bar().range!.onChanged!(2, 5);
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    for (var tries = 0; tries < 60; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      if (s.activeTrack.seLayers.first.timeline[start] != null) {
-        break;
-      }
-    }
+    await pumpPastTheWaitWindow(tester);
 
     final clip = s.activeTrack.seLayers.first.audioClips.single;
     expect(clip.offsetFrames, 2, reason: 'a stretch of the pooled file');
@@ -356,15 +340,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    for (var tries = 0; tries < 60; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-      if (s.activeTrack.seLayers.first.timeline[start] != null) {
-        break;
-      }
-    }
+    await pumpPastTheWaitWindow(tester);
     expect(s.activeTrack.seLayers.first.timeline[start], isNotNull);
     await tester.pumpAndSettle();
   });

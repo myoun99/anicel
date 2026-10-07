@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io' show FileSystemException;
 
 import 'package:flutter/material.dart';
@@ -14,12 +13,12 @@ import '../../services/persistence/recent_projects.dart';
 import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_progress_dialog.dart';
+import '../dialogs/cloud_wait.dart';
 import '../editor_session_manager.dart';
 import '../open_projects.dart';
 import '../session/project_file_door.dart' show readProjectFile;
 import '../session/tvpp_import_door.dart' show readTvppProject;
 import '../text/app_strings.dart';
-import '../text/cloud_wait_line.dart';
 import '../text/model_vocabulary.dart' show ImportWarningWords;
 
 /// A chosen project, plus the token that reopens it next launch.
@@ -134,7 +133,7 @@ final class ProjectOpenDoor {
   /// session is bound back to the real file so saves land there.
   Future<({EditorSessionManager session, bool staged})> _readProject(
     String path,
-    _CloudWait wait,
+    CloudWait wait,
   ) async {
     final source = await FolderPicker.materializeOpenedFile(
       path,
@@ -143,7 +142,7 @@ final class ProjectOpenDoor {
       isCancelled: wait.isCancelled,
     );
     // The bytes are here; the read that follows is the app's own.
-    wait.arrived();
+    wait.ended();
     final read = await readProjectFile(
       source.path,
       // Only when they differ: binding is what says「saves go back THERE」,
@@ -261,7 +260,7 @@ final class ProjectOpenDoor {
   Future<({EditorSessionManager session, List<ImportWarning> warnings})?>
   _convertTvpp(
     String path,
-    _CloudWait wait,
+    CloudWait wait,
     void Function(double) report,
   ) async {
     final read = await readTvppProject(
@@ -279,7 +278,7 @@ final class ProjectOpenDoor {
         onProgress: (fraction) {
           // Baking has started, so the waiting line has nothing left to
           // say.
-          wait.arrived();
+          wait.ended();
           report(fraction);
         },
       );
@@ -299,7 +298,7 @@ final class ProjectOpenDoor {
   /// from nothing (유저 2026-09-13: 「로딩창 안 떠서 여는 중인지 아닌지
   /// 모르겠어」). F-53 had already said what a wait window does — it goes
   /// up at once — and this is that law with its one exception removed. The
-  /// status line still says whose work a cloud wait is ([_CloudWait]); once
+  /// status line still says whose work a cloud wait is ([CloudWait]); once
   /// the bytes are here the rest is the app's own.
   ///
   /// The two answers every open can end in are given HERE: the user stopped
@@ -310,9 +309,9 @@ final class ProjectOpenDoor {
   /// so a task whose answer is itself null is not mistaken for a cancel.
   Future<({T value})?> _openBehindWindow<T>(
     BuildContext context,
-    Future<T> Function(_CloudWait wait, void Function(double) report) task,
+    Future<T> Function(CloudWait wait, void Function(double) report) task,
   ) async {
-    final wait = _CloudWait();
+    final wait = CloudWait();
     try {
       final value = await runWithAppProgress<T>(
         context: context,
@@ -337,46 +336,4 @@ final class ProjectOpenDoor {
       wait.dispose();
     }
   }
-}
-
-/// What a door says while a file it did not write is on its way.
-///
-/// One object for the three things a wait needs — a line that changes, a
-/// stop, and the question 「were we stopped?」 — so both doors say the
-/// same thing with the same words rather than each inventing its own.
-///
-/// The line NAMES THE CLOUD (유저 2026-08-27: 「프로바이더가 로컬로
-/// 다운로드하는 걸 기다리고 있다고 명확히 표기하는 게 좋겠다」). 「여는 중」
-/// across a download makes the app look slow for work the provider is
-/// doing, and the person waiting cannot tell the two apart without being
-/// told which one it is.
-class _CloudWait {
-  final ValueNotifier<String> status = ValueNotifier<String>('');
-  final Completer<void> _started = Completer<void>();
-  bool _cancelled = false;
-
-
-  /// Completes the first time the work says it is WAITING — which is what
-  /// a door raises its window on. A pick that reads straight away never
-  /// completes it, and so never draws anything.
-  Future<void> get started => _started.future;
-
-  void report(Duration waited, FileArrival arrival) {
-    if (!_started.isCompleted) {
-      _started.complete();
-    }
-    // The sentence is [cloudWaitLine]'s, here and in the import window
-    // (F-141): this file used to spell the threshold and the two templates
-    // out for itself, and so did that one.
-    status.value = cloudWaitLine(waited, arrival);
-  }
-
-  /// The bytes are here; whatever comes next is the app's own work.
-  void arrived() => status.value = '';
-
-  void cancel() => _cancelled = true;
-
-  bool isCancelled() => _cancelled;
-
-  void dispose() => status.dispose();
 }

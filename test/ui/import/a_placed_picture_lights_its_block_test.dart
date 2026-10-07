@@ -17,6 +17,7 @@ import 'package:anicel/src/ui/timeline/timeline_silhouette_painter.dart';
 
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// F-155 (유저 2026-09-17), three reports of one placement:
 /// 「미디어 풀 파일 png를 기존 애니메이션 레이어의 프레임영역에 떨궈서
@@ -122,6 +123,7 @@ void main() {
     expect(find.byType(ImportDialog), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     for (var tries = 0; tries < 100; tries += 1) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),

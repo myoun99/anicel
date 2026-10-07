@@ -9,6 +9,7 @@ import 'package:anicel/src/ui/import/import_dialog.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// 🐞F-282 ④ (유저 2026-10-04): 「동영상을 잘라내서 임포트시, 미디어풀에
 /// 등록되는데, 그걸 다시 타임라인에 배치하려하면 파일을 읽지 못했다고 뜸」.
@@ -55,15 +56,7 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    for (var tries = 0; tries < 100; tries += 1) {
-      if (s.requireActiveCut.layers.length > layersBefore) {
-        break;
-      }
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)),
-      );
-      await tester.pump();
-    }
+    await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
     expect(s.requireActiveCut.layers.length, layersBefore + 1);

@@ -55,6 +55,7 @@ class AppProgressDialog extends StatelessWidget {
     this.windowKey,
     this.runningStatus,
     this.onCancel,
+    this.cancelLive,
   });
 
   final String title;
@@ -82,6 +83,14 @@ class AppProgressDialog extends StatelessWidget {
   /// leaves the app exactly where it was. Null keeps the old shape.
   final VoidCallback? onCancel;
 
+  /// Whether [onCancel] can be pressed NOW — for work whose stretches are
+  /// not all waits: an import is honest to stop while a file is on its way
+  /// and not while it places what came (F-282-Q1, 2026-10-08). The button
+  /// stands for the window's whole life either way and only goes grey: a
+  /// control that came and went would read as the window jumping
+  /// (「없다가 생기는 UI 금지」). Null keeps it live throughout.
+  final ValueListenable<bool>? cancelLive;
+
   final ValueListenable<AppProgress> progress;
   final Key? windowKey;
 
@@ -89,6 +98,17 @@ class AppProgressDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final live = cancelLive;
+    return live == null
+        ? _window(context, cancellable: true)
+        : ValueListenableBuilder<bool>(
+            valueListenable: live,
+            builder: (context, cancellable, _) =>
+                _window(context, cancellable: cancellable),
+          );
+  }
+
+  Widget _window(BuildContext context, {required bool cancellable}) {
     final theme = Theme.of(context);
     return AppWindow(
       windowKey: windowKey,
@@ -101,7 +121,7 @@ class AppProgressDialog extends StatelessWidget {
           AppWindowAction(
             label: AppText.strings.commonCancel,
             actionKey: const ValueKey<String>('app-progress-cancel'),
-            onPressed: cancel,
+            onPressed: cancellable ? cancel : null,
           ),
       ],
       body: ValueListenableBuilder<AppProgress>(
@@ -215,6 +235,7 @@ Future<T> runWithAppProgress<T>({
   Duration doneLinger = appProgressDoneLinger,
   ValueListenable<String>? runningStatus,
   VoidCallback? onCancel,
+  ValueListenable<bool>? cancelLive,
 }) async {
   final progress = ValueNotifier<AppProgress>(const AppProgress.running(null));
   return _awaitBehindWindow(
@@ -228,6 +249,7 @@ Future<T> runWithAppProgress<T>({
     progress: progress,
     runningStatus: runningStatus,
     onCancel: onCancel,
+    cancelLive: cancelLive,
     // The window has to be BUILT before the work starts. A failure that
     // lands in the same turn as the call would otherwise beat the first
     // frame, and the close would find no context — leaving a window up
@@ -253,6 +275,7 @@ Future<T> _awaitBehindWindow<T>({
   required ValueNotifier<AppProgress> progress,
   required ValueListenable<String>? runningStatus,
   required VoidCallback? onCancel,
+  required ValueListenable<bool>? cancelLive,
   required Future<T> Function() start,
 }) async {
   BuildContext? windowContext;
@@ -273,6 +296,7 @@ Future<T> _awaitBehindWindow<T>({
           windowKey: windowKey,
           runningStatus: runningStatus,
           onCancel: onCancel,
+          cancelLive: cancelLive,
         ),
       );
     },

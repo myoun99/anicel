@@ -1323,6 +1323,7 @@ enum AppStrings {
       _s('imFileCountTemplate').replaceAll('{n}', '$count');
   String get imStatusImporting => _s('imStatusImporting');
   String get imStatusNothing => _s('imStatusNothing');
+  String get imStatusDone => _s('imStatusDone');
   String get imFolderGone => _s('imFolderGone');
   String imFolderUnreadable(String reason) =>
       _s('imFolderUnreadableTemplate').replaceAll('{reason}', reason);
@@ -1343,9 +1344,6 @@ enum AppStrings {
       _s('imCouldNotImportTemplate').replaceAll('{name}', name);
   String imPsdNoLayers(String name) =>
       _s('imPsdNoLayersTemplate').replaceAll('{name}', name);
-  String imRenderingPdf(int done, int total) => _s(
-    'imRenderingPdfTemplate',
-  ).replaceAll('{done}', '$done').replaceAll('{total}', '$total');
 
   /// The cut-folder column's words.
   String get imKeepExplain => _s('imKeepExplain');
@@ -2425,6 +2423,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} files',
     'imStatusImporting': 'Importing…',
     'imStatusNothing': 'Nothing imported.',
+    'imStatusDone': 'Imported',
     'imFolderGone': 'That folder is gone.',
     'imFolderUnreadableTemplate': 'Could not read the folder: {reason}',
     'imCutFolderUnreadable': 'Could not read that folder.',
@@ -2439,7 +2438,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': 'Could not import {name}.',
     'imPsdNoLayersTemplate':
         '{name}: no layers to expand — import it merged instead.',
-    'imRenderingPdfTemplate': 'Rendering PDF page {done}/{total}…',
     'imKeepExplain':
         'The project file holds these, compressed; the originals are left alone.',
     'imReferenceExplain':
@@ -3694,6 +3692,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n}個のファイル',
     'imStatusImporting': 'インポート中…',
     'imStatusNothing': '何もインポートされませんでした。',
+    'imStatusDone': 'インポートしました',
     'imFolderGone': 'そのフォルダーは見つかりません。',
     'imFolderUnreadableTemplate': 'フォルダーを読めませんでした: {reason}',
     'imCutFolderUnreadable': 'そのフォルダーを読めませんでした。',
@@ -3708,7 +3707,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': '{name} をインポートできませんでした。',
     'imPsdNoLayersTemplate':
         '{name}: 展開するレイヤーがありません — 統合で読み込んでください。',
-    'imRenderingPdfTemplate': 'PDF ページを描画中 {done}/{total}…',
     'imKeepExplain': 'プロジェクトファイルが圧縮して持ちます。元のファイルはそのままです。',
     'imReferenceExplain': 'ファイルはその場所に残り、プロジェクトはそれを指します。',
     'imCutFolderBakes':
@@ -5070,6 +5068,7 @@ enum AppStrings {
     'imFileCountTemplate': '파일 {n}개',
     'imStatusImporting': '임포트하는 중…',
     'imStatusNothing': '임포트된 것이 없습니다.',
+    'imStatusDone': '임포트 완료',
     'imFolderGone': '그 폴더가 없어졌습니다.',
     'imFolderUnreadableTemplate': '폴더를 읽지 못했습니다: {reason}',
     'imCutFolderUnreadable': '그 폴더를 읽지 못했습니다.',
@@ -5081,7 +5080,6 @@ enum AppStrings {
     'imNoPdfRendererTemplate': '{name}: 이 빌드에는 PDF 렌더러가 없습니다.',
     'imCouldNotImportTemplate': '{name}: 임포트하지 못했습니다.',
     'imPsdNoLayersTemplate': '{name}: 펼칠 레이어가 없습니다 — 합치기로 가져오세요.',
-    'imRenderingPdfTemplate': 'PDF 쪽을 그리는 중 {done}/{total}…',
     'imKeepExplain': '프로젝트 파일이 압축해서 품습니다. 원본은 그대로 둡니다.',
     'imReferenceExplain': '파일은 그 자리에 두고 프로젝트가 가리킵니다.',
     'imCutFolderBakes': '컷 폴더의 셀은 항상 굽습니다. 스캔과 동영상은 참조로 남습니다.',
@@ -6528,6 +6526,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} fichiers',
     'imStatusImporting': 'Importation…',
     'imStatusNothing': 'Rien n’a été importé.',
+    'imStatusDone': 'Importé',
     'imFolderGone': 'Ce dossier n’existe plus.',
     'imFolderUnreadableTemplate': 'Impossible de lire le dossier : {reason}',
     'imCutFolderUnreadable': 'Impossible de lire ce dossier.',
@@ -6542,7 +6541,6 @@ enum AppStrings {
     'imCouldNotImportTemplate': 'Impossible d’importer {name}.',
     'imPsdNoLayersTemplate':
         '{name} : aucun calque à développer — importez-le fusionné.',
-    'imRenderingPdfTemplate': 'Rendu de la page PDF {done}/{total}…',
     'imKeepExplain':
         'Le fichier du projet les contient, compressés ; les originaux restent intacts.',
     'imReferenceExplain':
@@ -7856,6 +7854,7 @@ enum AppStrings {
     'imFileCountTemplate': '{n} 个文件',
     'imStatusImporting': '正在导入…',
     'imStatusNothing': '没有导入任何内容。',
+    'imStatusDone': '已导入',
     'imFolderGone': '该文件夹已不存在。',
     'imFolderUnreadableTemplate': '无法读取文件夹：{reason}',
     'imCutFolderUnreadable': '无法读取该文件夹。',
@@ -7866,7 +7865,6 @@ enum AppStrings {
     'imNoPdfRendererTemplate': '{name}：此版本没有 PDF 渲染器。',
     'imCouldNotImportTemplate': '无法导入 {name}。',
     'imPsdNoLayersTemplate': '{name}：没有可展开的图层 — 请以合并方式导入。',
-    'imRenderingPdfTemplate': '正在渲染 PDF 页面 {done}/{total}…',
     'imKeepExplain': '项目文件以压缩方式保存这些文件；原文件保持不变。',
     'imReferenceExplain': '文件保留在原处，项目指向它们。',
     'imCutFolderBakes': '镜头文件夹中的图像总是栅格化；扫描和视频保持链接。',

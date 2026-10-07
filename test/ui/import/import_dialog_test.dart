@@ -24,6 +24,7 @@ import '../../helpers/settle_async.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
@@ -131,6 +132,7 @@ void main() {
 
     final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     // Real IO completes inside runAsync, but the await CONTINUATIONS are
     // fake-zone microtasks that only pump() drains — interleave the two.
     for (var tries = 0; tries < 100; tries += 1) {
@@ -177,6 +179,7 @@ void main() {
       reason: 'the row is already answered: into the cut you are in',
     );
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     for (var tries = 0; tries < 100; tries += 1) {
       if (s.requireActiveCut.layers.length > layersBefore) {
         break;
@@ -244,6 +247,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
       await tester.pumpAndSettle();
 
       expect(s.mediaPool.mediaAssets.single.path, path.replaceAll('\\', '/'));
@@ -320,6 +324,7 @@ void main() {
 
     Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
       for (var tries = 0; tries < 100; tries += 1) {
         if (s.mediaPool.mediaAssets.isNotEmpty) {
           break;
@@ -486,6 +491,7 @@ void main() {
 
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     for (var tries = 0; tries < 100; tries += 1) {
       if (s.repository.requireProject().tracks.first.cuts.length > cutsBefore) {
         break;
@@ -525,6 +531,7 @@ void main() {
     await tester.pump();
     await pickCell(tester, column: 'into', path: pdfPath, option: 'newCut');
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     for (var tries = 0; tries < 100; tries += 1) {
       final status = tester.widgetList<Text>(
         find.byKey(const ValueKey<String>('import-status')),
@@ -738,6 +745,7 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
       for (var tries = 0; tries < 100; tries += 1) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
@@ -1033,6 +1041,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     // The CUT lands before its pages are drawn — the structure is
     // committed first and the bakes follow — so waiting for the cut alone
     // would read the render log half-written.
@@ -1150,6 +1159,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     List<MediaAsset> pool() => s.repository.requireProject().mediaAssets;
     for (var tries = 0; tries < 200 && pool().isEmpty; tries += 1) {
       await tester.runAsync(
@@ -1242,6 +1252,7 @@ void main() {
     );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     for (var tries = 0; tries < 100; tries += 1) {
       if (s.requireActiveCut.layers.length > layersBefore) {
         break;
@@ -1258,6 +1269,156 @@ void main() {
       s.mediaPool.mediaAssets,
       hasLength(1),
       reason: 'the pool already knew this file',
+    );
+  });
+
+  testWidgets('🎯the run stands behind the app\'s wait window from its first '
+      'frame — counting from 0%, its Cancel standing throughout and grey '
+      'with no wait to stop — and leaves on its check (F-282-Q1)', (
+    tester,
+  ) async {
+    // 유저 2026-10-08: 「굽기 · 저장과 같은 기다림 창에」.
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final first = await tester.runAsync(() => writePng('first.png'));
+    final second = await tester.runAsync(() => writePng('second.png'));
+    final layersBefore = s.requireActiveCut.layers.length;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [first!, second!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    await tester.pump();
+
+    final window = find.byKey(const ValueKey<String>('import-progress-dialog'));
+    expect(window, findsOneWidget);
+    expect(
+      find.descendant(
+        of: window,
+        matching: find.byKey(const ValueKey<String>('app-progress-percent')),
+      ),
+      findsOneWidget,
+      reason: 'it counts the files from the first one',
+    );
+    final cancel = find.descendant(
+      of: window,
+      matching: find.byKey(const ValueKey<String>('app-progress-cancel')),
+    );
+    expect(cancel, findsOneWidget, reason: 'the stop stands throughout');
+
+    var checked = false;
+    for (var tries = 0; tries < 400 && !checked; tries += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      checked = find
+          .byKey(const ValueKey<String>('app-progress-done'))
+          .evaluate()
+          .isNotEmpty;
+    }
+    expect(checked, isTrue, reason: 'it says it is over');
+    expect(cancel, findsOneWidget, reason: 'still standing — not gone');
+    expect(
+      tester.widget<TextButton>(cancel).onPressed,
+      isNull,
+      reason: 'nothing is being waited for: there is nothing to stop',
+    );
+    await pumpPastTheWaitWindow(tester);
+    expect(s.requireActiveCut.layers.length, layersBefore + 2);
+  });
+
+  testWidgets('🎯a stop gives up the ONE file it was said to — the next '
+      'file\'s wait is its own, and it lands when its bytes come', (
+    tester,
+  ) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    final first = await tester.runAsync(() => writePng('cloud-a.png'));
+    final second = await tester.runAsync(() => writePng('cloud-b.png'));
+    final secondBytes = await tester.runAsync(
+      () => File(second!).readAsBytes(),
+    );
+    final layersBefore = s.requireActiveCut.layers.length;
+    final cloudLine = AppText.strings.openWaitingCloudTemplate
+        .split('{sec}')
+        .first;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [first!, second!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    // Both turn into placeholders only now — see the test below for why.
+    await tester.runAsync(() async {
+      await File(first).writeAsBytes(const <int>[]);
+      await File(second).writeAsBytes(const <int>[]);
+    });
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+
+    final waitWindow = find.byKey(
+      const ValueKey<String>('import-progress-dialog'),
+    );
+    final lineThere = find.descendant(
+      of: waitWindow,
+      matching: find.textContaining(cloudLine),
+    );
+    Future<bool> pumpUntil(bool Function() done) async {
+      for (var tries = 0; tries < 60 && !done(); tries += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      return done();
+    }
+
+    expect(
+      await pumpUntil(() => lineThere.evaluate().isNotEmpty),
+      isTrue,
+      reason: 'the first file is waited for',
+    );
+    await tester.tap(
+      find.descendant(
+        of: waitWindow,
+        matching: find.byKey(const ValueKey<String>('app-progress-cancel')),
+      ),
+    );
+    // The first is given up — its line goes — and the second's wait is a
+    // wait of its own, its line coming up again.
+    expect(
+      await pumpUntil(() => lineThere.evaluate().isEmpty),
+      isTrue,
+      reason: 'the first file\'s wait ended',
+    );
+    expect(
+      await pumpUntil(
+        () =>
+            waitWindow.evaluate().isEmpty || lineThere.evaluate().isNotEmpty,
+      ),
+      isTrue,
+    );
+    expect(
+      lineThere,
+      findsOneWidget,
+      reason: 'the stop said to the first file did not give up the second',
+    );
+    await tester.runAsync(() => File(second).writeAsBytes(secondBytes!));
+    await pumpPastTheWaitWindow(tester);
+
+    expect(s.requireActiveCut.layers.length, layersBefore + 1);
+    expect(
+      find.text(AppText.strings.imUnreadable('cloud-a.png')),
+      findsOneWidget,
+      reason: 'the one given up is named',
     );
   });
 
@@ -1299,7 +1460,16 @@ void main() {
     await tester.runAsync(() => File(path).writeAsBytes(const <int>[]));
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
 
-    // It waits rather than failing, and the line names the cloud.
+    // It waits rather than failing, and the line names the cloud — on the
+    // wait window the run stands behind (F-282-Q1: 「클라우드 파일을
+    // 기다리는 줄과 「그만」도 이 창으로 옮긴다」).
+    final waitWindow = find.byKey(
+      const ValueKey<String>('import-progress-dialog'),
+    );
+    final lineThere = find.descendant(
+      of: waitWindow,
+      matching: find.textContaining(cloudLine),
+    );
     var waited = false;
     for (var tries = 0; tries < 40 && !waited; tries += 1) {
       // Real time for the file probes, and the FAKE clock moved forward
@@ -1309,7 +1479,7 @@ void main() {
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
       await tester.pump(const Duration(milliseconds: 300));
-      waited = find.textContaining(cloudLine).evaluate().isNotEmpty;
+      waited = lineThere.evaluate().isNotEmpty;
     }
     expect(
       waited,
@@ -1318,20 +1488,15 @@ void main() {
     );
     expect(s.requireActiveCut.layers.length, layersBefore);
 
-    // And the wait can be let go of — Cancel is live again while the
-    // import is waiting on bytes that are not its own.
+    // And the wait can be let go of — the wait window's Cancel is live
+    // while the import waits on bytes that are not its own.
     await tester.tap(
-      find.byKey(const ValueKey<String>('import-cancel-button')),
+      find.descendant(
+        of: waitWindow,
+        matching: find.byKey(const ValueKey<String>('app-progress-cancel')),
+      ),
     );
-    for (var tries = 0; tries < 40; tries += 1) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump(const Duration(milliseconds: 300));
-      if (find.textContaining(cloudLine).evaluate().isEmpty) {
-        break;
-      }
-    }
+    await pumpPastTheWaitWindow(tester);
     expect(
       find.textContaining(cloudLine),
       findsNothing,
@@ -1341,6 +1506,11 @@ void main() {
       s.requireActiveCut.layers.length,
       layersBefore,
       reason: 'nothing was placed from a file that never arrived',
+    );
+    expect(
+      find.text(AppText.strings.imUnreadable('cloudy.png')),
+      findsOneWidget,
+      reason: 'the file given up is named on the import window',
     );
   });
 
@@ -1378,6 +1548,7 @@ void main() {
       );
       await tester.pump();
       await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+      await pumpPastTheWaitWindow(tester);
       for (var tries = 0; tries < 100; tries += 1) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),

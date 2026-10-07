@@ -13,6 +13,7 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/import_layer_spot.dart';
 import 'package:anicel/src/services/media/video_decode_worker.dart';
+import 'package:anicel/src/ui/dialogs/app_progress_dialog.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 import 'package:anicel/src/ui/import/import_file_settings.dart';
@@ -22,6 +23,7 @@ import 'package:anicel/src/ui/widgets/transport_bar.dart';
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 void main() {
   late Directory tempDir;
@@ -333,6 +335,44 @@ void main() {
     expect(cellText(tester, 'sound', movie), AppText.strings.commonOn);
   });
 
+  testWidgets('🎯a movie that BAKES counts its frames into the run\'s % — under '
+      'the run\'s one wait window, not one of its own (F-282-Q1)', (
+    tester,
+  ) async {
+    // 유저 2026-10-08: 「파일 수와 각 파일의 진행(동영상 굽기의 프레임 등)으로
+    // %를 센다. 동영상 굽기의 창은 따로 뜨지 않고 이 창 하나로 합친다」.
+    final movie = await writeMovie(tester, 'take.mp4');
+    await open(tester, [movie], backend: FakeVideoBackend(frameCount: 24));
+    await tester.tap(find.byKey(ValueKey<String>('import-cell-bake-$movie')));
+    await tester.pump();
+    expect(cellText(tester, 'bake', movie), AppText.strings.commonOn);
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await tester.pump();
+    await tester.pump();
+    final window = find.byType(AppProgressDialog);
+    expect(window, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('import-progress-dialog')),
+      findsOneWidget,
+      reason: 'the run\'s own window, and no second one for the movie',
+    );
+    final progress = tester.widget<AppProgressDialog>(window).progress;
+    final counted = <double>[];
+    progress.addListener(() {
+      if (progress.value.fraction case final fraction?) {
+        counted.add(fraction);
+      }
+    });
+    await pumpPastTheWaitWindow(tester);
+
+    expect(
+      counted.where((fraction) => fraction > 0 && fraction < 1),
+      isNotEmpty,
+      reason: 'the frames it baked were counted on the way, not only its end',
+    );
+  });
+
   testWidgets('its transport counts PROJECT frames on the sound\'s clock — '
       'a 12 fps take of 12 frames runs 24 in a 24 fps project', (
     tester,
@@ -367,11 +407,10 @@ void main() {
     );
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
-    // The run STARTS on a later pump, so 「Importing…」 is not up yet on
-    // the first look — wait for what the run leaves behind, then for the
-    // window to say it is done.
+    // The run STARTS on a later pump — wait for what the run leaves behind,
+    // then for the wait window it stands behind to go.
     await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
-    await settle(tester, () => !tester.any(find.text('Importing…')));
+    await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
     final key = normalizedMediaPath(movie);
@@ -436,7 +475,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
-    await settle(tester, () => !tester.any(find.text('Importing…')));
+    await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
     final key = normalizedMediaPath(movie);
@@ -491,7 +530,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
     await settle(tester, () => s.mediaPool.mediaAssets.isNotEmpty);
-    await settle(tester, () => !tester.any(find.text('Importing…')));
+    await pumpPastTheWaitWindow(tester);
     await tester.pumpAndSettle();
 
     final key = normalizedMediaPath(movie);

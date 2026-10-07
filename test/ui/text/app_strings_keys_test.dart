@@ -624,6 +624,7 @@ void main() {
     'imNoSource': (s) => s.imNoSource,
     'imStatusImporting': (s) => s.imStatusImporting,
     'imStatusNothing': (s) => s.imStatusNothing,
+    'imStatusDone': (s) => s.imStatusDone,
     'imFolderGone': (s) => s.imFolderGone,
     'imCutFolderUnreadable': (s) => s.imCutFolderUnreadable,
     'imKeepExplain': (s) => s.imKeepExplain,

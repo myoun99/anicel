@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/solid_png_fixture.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/wait_window.dart';
 
 /// PICK-7 in the import window: a file picked from Google Drive on Android —
 /// a document with no filesystem path — is read through a copy of its own
@@ -130,6 +131,7 @@ void main() {
   /// every file has landed.
   Future<void> runImport(WidgetTester tester) async {
     await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    await pumpPastTheWaitWindow(tester);
     final window = find.byKey(const ValueKey<String>('import-dialog'));
     for (var tries = 0; tries < 100; tries += 1) {
       if (window.evaluate().isEmpty) {
