@@ -17,6 +17,7 @@ import '../paste_linked_asking_first.dart';
 import '../paste_with_its_media.dart';
 import '../session/block_naming.dart' show AutoNameCuts, AutoNameTargets;
 import '../session/frame_clipboard.dart' show ClipboardPlace;
+import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
 
@@ -259,12 +260,17 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       ? session.layerClipboard.canPasteRows
       : session.clipboard.canPasteIndependentAt(clipboardPlace);
 
+  /// The board an independent paste here puts down — the one whose media a
+  /// paste from another project has to hold first ([pasteWithItsMedia]).
+  BringsMedia get independentPasteBoard =>
+      _pastesRows ? session.layerClipboard : session.clipboard;
+
   @override
   void pasteIndependentFrame() {
-    final rows = _pastesRows;
+    final board = independentPasteBoard;
     // The place is asked when the paste LANDS — after the wait, where one
     // is held.
-    void paste() => rows
+    void paste() => identical(board, session.layerClipboard)
         ? session.layerClipboard.pasteRows()
         : session.clipboard.pasteIndependentAt(clipboardPlace);
     final context = waitIn;
@@ -276,7 +282,7 @@ mixin _ClipboardAtThePanelsPlace implements ToolbarPanelContext {
       pasteWithItsMedia(
         context,
         title: editorActionLabel(EditorActionIds.editPasteIndependent),
-        board: rows ? session.layerClipboard : session.clipboard,
+        board: board,
         paste: paste,
       ),
     );

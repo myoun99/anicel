@@ -268,6 +268,50 @@ void main() {
       expect(pill(r.s).canPasteIndependentFrame, isFalse);
       expect(pill(r.s).canPasteLinkedFrame, isFalse);
     });
+
+    test('a row the cut cannot take a second of is passed over, and the '
+        'rest land', () {
+      final r = threeRows();
+      r.s.layerStack.addLayerOfKind(LayerKind.storyboard);
+      final conte = r.s.activeLayerId!;
+      int conteRows() => r.s.requireActiveCut.layers
+          .where((layer) => layer.kind == LayerKind.storyboard)
+          .length;
+      expect(conteRows(), 1, reason: '⛔전제');
+      select(r.s, [conte, r.a]);
+      pill(r.s).copyFrame();
+      r.s.selectLayer(r.c);
+
+      expect(pill(r.s).canPasteIndependentFrame, isTrue);
+      pill(r.s).pasteIndependentFrame();
+
+      expect(conteRows(), 1, reason: 'R9 #7: a cut holds ONE');
+      expect(names(r.s), ['A', 'B', 'C', 'A']);
+    });
+
+    test('the board a paste must hold the media of is the one in hand', () {
+      // What the wait window is told to wait for (`pasteWithItsMedia`): a
+      // row copy's media, asked of the frame board, would never be held.
+      final r = threeRows();
+      r.s.createDrawingAtCurrentFrame();
+      pill(r.s).copyFrame();
+      expect(
+        identical(pill(r.s).independentPasteBoard, framesOf(r.s)),
+        isTrue,
+      );
+
+      select(r.s, [r.a]);
+      pill(r.s).copyFrame();
+      expect(identical(pill(r.s).independentPasteBoard, rowsOf(r.s)), isTrue);
+      expect(
+        identical(
+          StoryboardToolbarPanelContext(r.s).independentPasteBoard,
+          framesOf(r.s),
+        ),
+        isTrue,
+        reason: 'rows are not that panel\'s to put down',
+      );
+    });
   });
 
   group('the linked paste is 「링크해서 복제」, of every row in hand', () {

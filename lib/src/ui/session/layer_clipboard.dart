@@ -1,6 +1,5 @@
 import '../../models/bitmap_surface.dart';
 import '../../models/cut.dart';
-import '../../models/cut_id.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -94,15 +93,15 @@ class LayerClipboard implements BringsMedia {
 
   void copySelectedRows() {
     final rows = _rowsToCopy;
-    final cut = _project.activeCutOrNull;
-    if (rows.isEmpty || cut == null) {
+    if (rows.isEmpty) {
       return;
     }
+    // A selected row of the cut implies the cut.
+    final cut = _project.requireActiveCut;
     final copied = [for (final layer in rows) _copyOf(layer, cut)];
     _board._take(
       _CopiedRows(
         from: this,
-        cutId: cut.id,
         rows: copied,
         names: namesOfACopy(
           project: _project.repository.requireProject(),
@@ -158,16 +157,17 @@ class LayerClipboard implements BringsMedia {
     _staging,
   );
 
-  /// Whether a row of the board may land in this cut.
-  ///
-  /// R9 #7: a cut that already holds its one row of a kind takes no second.
-  /// ⚠️`_lands` was NEVER APPLIED by any test while the board held one row
-  /// (mutation, 2026-09-06 and again 09-08): nothing copied a
-  /// single-instance row and pasted it into a cut that already had one.
-  bool get canPasteRows =>
-      _project.activeCutOrNull != null &&
-      (_board._copy?.rows.any(_lands) ?? false);
+  /// Whether a row of the board may land here.
+  bool get canPasteRows => _board._copy?.rows.any(_lands) ?? false;
 
+  /// R9 #7: a cut that already holds its one row of a kind takes no second
+  /// — and a gap, which has no cut, takes none at all
+  /// ([LayerStack.canAddLayerOfKind]).
+  ///
+  /// ↩️This guard was NEVER APPLIED by any test while the board held one
+  /// row (mutation, 2026-09-06 and again 09-08): the copy's own gate turned
+  /// the conte row away first. The board takes that row now, and
+  /// `r9_p1_instant_cel_test` reaches both paste arms with it.
   bool _lands(_CopiedLayer row) =>
       _layerStack.canAddLayerOfKind(row.payload.kind);
 
@@ -176,10 +176,11 @@ class LayerClipboard implements BringsMedia {
   /// and what they brought.
   void pasteRows() {
     final copy = _board._copy;
-    final cut = _project.activeCutOrNull;
-    if (copy == null || cut == null || !canPasteRows) {
+    if (copy == null || !copy.rows.any(_lands)) {
       return;
     }
+    // A row that may land implies a cut to land in.
+    final cut = _project.requireActiveCut;
     final standing = _selection.activeLayer?.id;
     // The rows land with what they name and this project lacks — their
     // media, their terms, spelled as this project spells them (I-7,
@@ -220,21 +221,20 @@ class LayerClipboard implements BringsMedia {
   ///
   /// A link is 「the same cel」 (I-7), so it serves the cut the rows were
   /// copied in, while they still stand there: a row of another project has
-  /// no cel of this one, and a row that is gone has none to share. A copy
+  /// no cel of this one — though it may well wear the same id — and a row
+  /// that is gone, or is in another cut, has none to share here. A copy
   /// lands beside its source, so a per-cut singleton has no second
   /// ([layerTakesACopyBesideIt]).
   List<LayerId> get _rowsToLink {
     final copy = _board._copy;
-    final cut = _project.activeCutOrNull;
-    if (copy == null ||
-        cut == null ||
-        !identical(copy.from, this) ||
-        copy.cutId != cut.id) {
+    if (copy == null || !identical(copy.from, this)) {
       return const [];
     }
+    // A row's id is its project's, so 「still in this cut」 is one lookup.
+    final here = _project.activeCutOrNull?.layers ?? const <Layer>[];
     return [
       for (final row in copy.rows)
-        if (cut.layers.byId(row.sourceId) case final layer?
+        if (here.byId(row.sourceId) case final layer?
             when layerTakesACopyBesideIt(layer))
           row.sourceId,
     ];
@@ -250,10 +250,11 @@ class LayerClipboard implements BringsMedia {
   /// and put the copy above its source.
   void pasteRowsLinked() {
     final ids = _rowsToLink;
-    final cut = _project.activeCutOrNull;
-    if (ids.isEmpty || cut == null) {
+    if (ids.isEmpty) {
       return;
     }
+    // A row still in the cut implies the cut.
+    final cut = _project.requireActiveCut;
     final standing = _selection.activeLayer?.id;
     final copies = <LayerId>[];
     _project.historyManager.runAsOneStep('Paste rows linked', () {
@@ -358,19 +359,14 @@ class LayerBoard {
 class _CopiedRows implements BoardCopy {
   const _CopiedRows({
     required this.from,
-    required this.cutId,
     required this.rows,
     required this.names,
   });
 
-  /// The clipboard that banked them — the PROJECT whose ids [cutId] and
-  /// every [_CopiedLayer.sourceId] are. A linked paste serves only that
-  /// project ([LayerClipboard.canPasteRowsLinked]), as the frame board's
-  /// does.
+  /// The clipboard that banked them — the PROJECT whose ids every
+  /// [_CopiedLayer.sourceId] is. A linked paste serves only that project
+  /// ([LayerClipboard.canPasteRowsLinked]), as the frame board's does.
   final LayerClipboard from;
-
-  /// The cut they were copied in.
-  final CutId cutId;
 
   /// Bottom → top, as that cut stacked them.
   final List<_CopiedLayer> rows;
