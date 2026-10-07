@@ -299,6 +299,13 @@ class LayerFrameImageCache {
     // waits for a half image and four for a quarter, the first of them the
     // whole canvas (🗣️유저 2026-10-05, board F-296: 「오히려 1/2로 하는게 더
     // 무거워지는거같은데 맞나?」).
+    // 🔬The Windows app (Impeller, debug build), 2026-10-07, a cut of 35
+    // pictures of the user's: the SAME BYTES over 184 layer images and 70
+    // bakes, each made both ways; a whole warm at a half 1.68 → 1.52 s and
+    // 2.67 → 2.51 s, at a quarter 1.86 → 1.36 s and 2.74 → 2.60 s (two
+    // runs, the machine busy with other work both times). What it sheds is
+    // the waiting — the pixels drawn are the same, so a level below the
+    // full one still costs more to prepare than the full one does.
     final positioned = await composePositionedSurfaceImage(
       preview,
       reuse: BitmapTileImageCache.instance,
