@@ -5,7 +5,6 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/canvas_resize_anchor.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -391,7 +390,8 @@ void main() {
           width: cut.canvasSize.width - 128,
           height: cut.canvasSize.height - 128,
         ),
-        anchor: CanvasResizeAnchor.center,
+        // The centre kept: half the 128 each side.
+        contentOffset: (dx: -64, dy: -64),
         brushFrameStore: store,
       );
       history.execute(resize);

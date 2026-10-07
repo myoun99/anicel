@@ -128,7 +128,10 @@ class _LinkCommands {
             repository: _coordinator.repository,
             cutId: targetCutId,
             canvasSize: originCut.canvasSize,
-            anchor: CanvasResizeAnchor.center,
+            contentOffset: CanvasResizeAnchor.center.contentOffset(
+              from: targetCut.canvasSize,
+              to: originCut.canvasSize,
+            ),
             brushFrameStore: store,
           ),
         ConvertToLinkedCutCommand(

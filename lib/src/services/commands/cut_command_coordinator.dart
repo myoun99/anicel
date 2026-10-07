@@ -185,6 +185,15 @@ class CutCommandCoordinator {
     canvasSize: canvasSize,
     anchor: anchor,
   );
+  void placeCutCanvas({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+  }) => _cuts.placeCutCanvas(
+    cutId: cutId,
+    canvasSize: canvasSize,
+    contentOffset: contentOffset,
+  );
   void renameCut({required CutId cutId, required String newName}) =>
       _cuts.renameCut(cutId: cutId, newName: newName);
   void renameCuts(Map<CutId, String> names) => _cuts.renameCuts(names);

@@ -112,6 +112,19 @@ class CutVerbs {
     ),
   );
 
+  /// The active cut's canvas at [canvasSize], the picture moved by
+  /// [contentOffset] — what a canvas adjusted on the canvas lands (I-79).
+  void placeActiveCutCanvas(
+    CanvasSize canvasSize, {
+    required ({double dx, double dy}) contentOffset,
+  }) => _activeCut.onActiveCut(
+    (cutId) => _project.cutCommandCoordinator.placeCutCanvas(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      contentOffset: contentOffset,
+    ),
+  );
+
   /// Duplicates the active cut, pictures and all: the copy mints every row
   /// and cel afresh, and a picture lives under its cel's key, so each one
   /// follows its cel over (F-62's law at the cut's scale). ↩️Nothing did

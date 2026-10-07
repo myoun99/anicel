@@ -185,11 +185,55 @@ class _CutCommands {
     }
   }
 
+  /// [cutId]'s canvas at [canvasSize], the picture kept to [anchor] — one
+  /// way of saying [placeCutCanvas]'s offset.
   void resizeCutCanvas({
     required CutId cutId,
     required CanvasSize canvasSize,
     CanvasResizeAnchor anchor = CanvasResizeAnchor.topLeft,
   }) {
+    _requirePositive(canvasSize);
+    placeCutCanvas(
+      cutId: cutId,
+      canvasSize: canvasSize,
+      contentOffset: anchor.contentOffset(
+        from: _coordinator._requireCut(cutId).canvasSize,
+        to: canvasSize,
+      ),
+    );
+  }
+
+  /// [cutId]'s canvas at [canvasSize], the picture moved by [contentOffset]
+  /// ([ResizeCutCanvasCommand.contentOffset]) — no step when neither
+  /// changes anything.
+  ///
+  /// ⚠️The offset is part of the question: a canvas whose edges were
+  /// dragged can keep its size and still move the picture.
+  void placeCutCanvas({
+    required CutId cutId,
+    required CanvasSize canvasSize,
+    required ({double dx, double dy}) contentOffset,
+  }) {
+    _requirePositive(canvasSize);
+    _coordinator._executeIfChanged(
+      subject: _coordinator._requireCut(cutId),
+      value: (
+        canvasSize,
+        contentOffset.dx.roundToDouble(),
+        contentOffset.dy.roundToDouble(),
+      ),
+      read: (cut) => (cut.canvasSize, 0.0, 0.0),
+      command: (_) => ResizeCutCanvasCommand(
+        repository: _coordinator.repository,
+        cutId: cutId,
+        canvasSize: canvasSize,
+        contentOffset: contentOffset,
+        brushFrameStore: _coordinator.brushFrameStore,
+      ),
+    );
+  }
+
+  static void _requirePositive(CanvasSize canvasSize) {
     if (canvasSize.width <= 0 || canvasSize.height <= 0) {
       throw ArgumentError.value(
         canvasSize,
@@ -197,19 +241,6 @@ class _CutCommands {
         'Canvas size must be positive.',
       );
     }
-
-    _coordinator._executeIfChanged(
-      subject: _coordinator._requireCut(cutId),
-      value: canvasSize,
-      read: (cut) => cut.canvasSize,
-      command: (_) => ResizeCutCanvasCommand(
-        repository: _coordinator.repository,
-        cutId: cutId,
-        canvasSize: canvasSize,
-        anchor: anchor,
-        brushFrameStore: _coordinator.brushFrameStore,
-      ),
-    );
   }
 
   void renameCut({required CutId cutId, required String newName}) =>
