@@ -137,6 +137,51 @@ const double verticalSmallKanaShiftEm = 0.15;
 /// digit per cell rather than being cut at an arbitrary place.
 const int verticalTateChuYokoDigits = 2;
 
+/// Characters a column does not BEGIN with (行頭禁則): the closing half of
+/// every bracket pair, the full stops and commas, and the marks that end
+/// or join a clause.
+///
+/// JIS X 4051's basic set, read by a host that WRAPS a column — a text set
+/// in a box on a cel — so that a column never opens on a mark that belongs
+/// to the letter before it ([verticalMayBreakBetween]). The sheets never
+/// ask: each of their columns is one cell's own, and does not wrap.
+const Set<String> verticalNoColumnStartChars = {
+  '）', ')', '〕', '］', ']', '｝', '}', '〉', '》', '」', '』', '】', '〗', '〙', '〛',
+  '、', '。', '，', '．', ',', '.',
+  '？', '！', '?', '!',
+  '・', '：', '；', ':', ';',
+};
+
+/// Characters a column does not END with (行末禁則): the opening half of
+/// every bracket pair.
+const Set<String> verticalNoColumnEndChars = {
+  '（', '(', '〔', '［', '[', '｛', '{', '〈', '《', '「', '『', '【', '〖', '〘', '〚',
+};
+
+/// Whether a column that wraps may END between two neighbouring cells —
+/// [before] the cell above, [after] the one below.
+///
+/// Not before white space, which hangs at the foot of its column rather
+/// than head the next (what a line does with the space it wraps at); not
+/// before a character of [verticalNoColumnStartChars]; not after one of
+/// [verticalNoColumnEndChars]; and not inside a NUMBER.
+///
+/// ⚠️A number stays whole for the table's own sake too: digits pair up by
+/// how many stand together ([verticalTateChuYokoDigits]), so a run cut in
+/// two by a column's end would be read as two other runs the day a break
+/// was typed there — and two digits that stood one above the other would
+/// stand side by side.
+bool verticalMayBreakBetween(String before, String after) {
+  if (after.trim().isEmpty) {
+    return false;
+  }
+  final head = after.characters.first;
+  final foot = before.characters.last;
+  return !verticalNoColumnStartChars.contains(head) &&
+      !verticalNoColumnEndChars.contains(foot) &&
+      !(_isDigit(foot) && _isDigit(head));
+}
+
 bool _isDigit(String char) {
   if (char.length != 1) {
     return false;
@@ -425,6 +470,29 @@ List<VerticalTextCell> verticalTextCells(
     index += 1;
   }
   return cells;
+}
+
+/// [cell] as the cells a column that WRAPS sets it in: a phrase lying down
+/// ([VerticalGlyphForm.sideways]) word by word, each with the space after
+/// it — so that the column may end between two words, and the space hangs
+/// at its foot — and any other cell as it is.
+///
+/// Every piece still lies down, a one-letter word among them: that the
+/// phrase reads along the column was the table's answer for the whole of
+/// it ([verticalTextCells]), and breaking it does not turn a letter back.
+/// The sheets never ask: a label is one phrase in one column.
+List<VerticalTextCell> verticalCellWordByWord(VerticalTextCell cell) {
+  if (cell.form != VerticalGlyphForm.sideways || !cell.text.contains(' ')) {
+    return [cell];
+  }
+  return [
+    for (final word in RegExp('[^ ]+ *').allMatches(cell.text))
+      VerticalTextCell(
+        text: word[0]!,
+        form: VerticalGlyphForm.sideways,
+        spanCells: verticalSidewaysRunCells(word[0]!),
+      ),
+  ];
 }
 
 /// Where the run of Latin letters starting at [index] ends (exclusive):

@@ -30,6 +30,7 @@ void main() {
     double? wrapWidth,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
+    bool vertical = false,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -37,6 +38,7 @@ void main() {
     rotationDegrees: turn,
     align: align,
     lineHeight: 1,
+    vertical: vertical,
   );
 
   CelTextSpan run(String words, [TextLetterStyle style = plain]) =>
@@ -291,6 +293,124 @@ void main() {
       expect(growing.wrapWidth, isNull);
       expect(growing.isEmpty, isTrue);
       expect(growing.anchor, CanvasPoint(x: 135, y: 50));
+    });
+  });
+
+  // 세로쓰기 (유저 2026-10-06). The swap is the same law read down the
+  // columns: no letter moves.
+  group('written in COLUMNS', () {
+    for (final align in TextCelAlign.values) {
+      for (final turn in [0.0, 30.0]) {
+        test('🚨a text that grows, made a box: as LONG as the next whole '
+            'pixel past its longest column, and no letter moves — '
+            '${align.name}, turned $turn', () {
+          final before = said(
+            [run('abc\nd')],
+            align: align,
+            turn: turn,
+            vertical: true,
+          );
+
+          final boxed = celTextBoxed(before);
+
+          // 「abc」 lies down the column: 60 long.
+          expect(boxed.wrapWidth, 61);
+          expect(boxed.vertical, isTrue);
+          expectSameLetters(before, boxed);
+        });
+
+        test('🚨a box, made a text that grows: a break where a column ended '
+            'for want of room, and no letter moves — ${align.name}, turned '
+            '$turn', () {
+          final before = said(
+            [run('あいうえおかき')],
+            wrapWidth: 60,
+            align: align,
+            turn: turn,
+            vertical: true,
+          );
+
+          final grown = celTextUnboxed(before);
+
+          expect(grown.wrapWidth, isNull);
+          expect(grown.text, 'あいう\nえおか\nき');
+          expectSameLetters(before, grown);
+        });
+      }
+    }
+  });
+
+  group('a text written THE OTHER WAY, where it stands', () {
+    ui.Offset cornerOf(CelTextContent content) {
+      final layout = layoutCelText(content);
+      addTearDown(layout.dispose);
+      return layout.toCanvas(layout.block.topLeft);
+    }
+
+    ui.Size blockOf(CelTextContent content) {
+      final layout = layoutCelText(content);
+      addTearDown(layout.dispose);
+      return layout.block.size;
+    }
+
+    for (final align in TextCelAlign.values) {
+      for (final turn in [0.0, 30.0]) {
+        test('🚨the top left corner of its letters\' block stays where it is '
+            '— into columns and back — ${align.name}, turned $turn', () {
+          final lines = said(
+            [run('あいうえ\nおか')],
+            align: align,
+            turn: turn,
+          );
+          final corner = cornerOf(lines);
+
+          final columns = celTextWrittenAs(lines, vertical: true);
+
+          expect(columns.vertical, isTrue);
+          expect(columns.text, lines.text);
+          expect((cornerOf(columns) - corner).distance, lessThan(1e-9));
+          expect(
+            blockOf(columns),
+            const ui.Size(40, 80),
+            reason: '⛔fixture: it IS set the other way',
+          );
+
+          final back = celTextWrittenAs(columns, vertical: false);
+
+          expect(back.vertical, isFalse);
+          expect((cornerOf(back) - corner).distance, lessThan(1e-9));
+          expect(blockOf(back), blockOf(lines));
+        });
+      }
+    }
+
+    test('🚨a BOX keeps its shape as near as a box can: what it was TALL is '
+        'what its columns are LONG', () {
+      // Three letters a line: two lines, 60 by 40.
+      final box = said([run('あいうえおか')], wrapWidth: 60);
+      expect(blockOf(box), const ui.Size(60, 40), reason: '⛔fixture');
+
+      final columns = celTextWrittenAs(box, vertical: true);
+
+      // Columns 40 long hold two letters each: three columns, 60 by 40.
+      expect(columns.wrapWidth, 40);
+      expect(blockOf(columns), const ui.Size(60, 40));
+      expect(celTextWrittenAs(columns, vertical: false).wrapWidth, 60);
+    });
+
+    test('a text that grows stays one that grows', () {
+      expect(
+        celTextWrittenAs(said([run('123')]), vertical: true).wrapWidth,
+        isNull,
+      );
+    });
+
+    test('written that way already, it is itself', () {
+      final lines = said([run('123')]);
+      final columns = said([run('123')], vertical: true);
+
+      expect(celTextWrittenAs(lines, vertical: false), same(lines));
+      expect(celTextWrittenAs(columns, vertical: true), same(columns));
     });
   });
 

@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/text/cel_text_box_width.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/boolean_dot.dart';
@@ -137,6 +138,7 @@ void main() {
       'outline',
       'outline-width',
       'antialias',
+      'writing',
       'align',
       'box-width',
       'line-height',
@@ -251,9 +253,12 @@ void main() {
       await tester.pump();
       await tester.tap(row('align-right'));
       await tester.pump();
+      await tester.tap(row('writing-columns'));
+      await tester.pump();
 
       expect(hand.options.value.letters.bold, isTrue);
       expect(hand.options.value.align, TextCelAlign.right);
+      expect(hand.options.value.vertical, isTrue);
       expect(hand.host.ran, isEmpty);
       expect(pill(tester, 'align-right').selected, isTrue);
     });
@@ -462,6 +467,66 @@ void main() {
       await tester.pump();
 
       expect(landedOn(hand.cel).spans.single.style.antialias, isTrue);
+    });
+
+    // 🗣️유저 2026-10-06: 「세로쓰기: 1차는 가로만」 → 「어차피 타임시트나
+    // x시트에서 가로쓰기/세로표기같은거 한거 많으니 그거 통합하면서
+    // 진행해도될듯」.
+    testWidgets('🚨the way of writing: lines is lit for a text as it has '
+        'always been — 「세로」 pressed, the text in hand is written in '
+        'COLUMNS where it stands, as one step, and so will the next be', (
+      tester,
+    ) async {
+      final before = said([run('ab'), run('cd', red)]);
+      final hand = await pumpSettings(tester, text: before);
+      expect(pill(tester, 'writing-lines').selected, isTrue);
+      expect(pill(tester, 'writing-columns').selected, isFalse);
+
+      await tester.tap(row('writing-columns'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel), celTextWrittenAs(before, vertical: true));
+      expect(landedOn(hand.cel).vertical, isTrue);
+      expect(hand.host.ran, hasLength(1));
+      expect(pill(tester, 'writing-columns').selected, isTrue);
+      expect(pill(tester, 'writing-lines').selected, isFalse);
+      expect(hand.options.value.vertical, isTrue);
+
+      await tester.tap(row('writing-lines'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel).vertical, isFalse);
+      expect(hand.options.value.vertical, isFalse);
+    });
+
+    testWidgets('🚨the alignment\'s answers are NAMED by where they are on '
+        'screen: the head, the middle and the foot of a column are its top, '
+        'its middle and its bottom — the seats and the values the same', (
+      tester,
+    ) async {
+      final strings = AppText.strings;
+      Finder named(String answer, String label) => find.descendant(
+        of: row('align-$answer'),
+        matching: find.text(label),
+      );
+      final hand = await pumpSettings(tester, text: said([run('ab')]));
+      expect(named('left', strings.textToolAlignLeft), findsOneWidget);
+      expect(named('right', strings.textToolAlignRight), findsOneWidget);
+      final seat = tester.getTopLeft(row('align-right'));
+
+      await tester.tap(row('writing-columns'));
+      await tester.pump();
+
+      expect(named('left', strings.textToolAlignTop), findsOneWidget);
+      expect(named('center', strings.textToolAlignCenter), findsOneWidget);
+      expect(named('right', strings.textToolAlignBottom), findsOneWidget);
+      expect(named('left', strings.textToolAlignLeft), findsNothing);
+      expect(tester.getTopLeft(row('align-right')).dy, seat.dy);
+
+      await tester.tap(row('align-right'));
+      await tester.pump();
+
+      expect(landedOn(hand.cel).align, TextCelAlign.right);
     });
 
     testWidgets('a mixed ring pressed turns every letter on', (tester) async {
@@ -1037,6 +1102,7 @@ void main() {
     expect(bar(tester, 'size').onChanged, isNull);
     expect(bar(tester, 'line-height').onChanged, isNull);
     expect(pill(tester, 'align-left').onTap, isNull);
+    expect(pill(tester, 'writing-columns').onTap, isNull);
     expect(tester.widget<PanelFlyoutButton>(row('font')).enabled, isFalse);
     expect(
       tester

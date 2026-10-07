@@ -1421,6 +1421,11 @@ enum AppStrings {
   String get textToolLineHeight => _s('textToolLineHeight');
   String get textToolBackground => _s('textToolBackground');
   String get textToolIntoDrawing => _s('textToolIntoDrawing');
+  String get textToolWriting => _s('textToolWriting');
+  String get textToolWritingLines => _s('textToolWritingLines');
+  String get textToolWritingColumns => _s('textToolWritingColumns');
+  String get textToolAlignTop => _s('textToolAlignTop');
+  String get textToolAlignBottom => _s('textToolAlignBottom');
 
   /// The ＋ over the list of faces, and a brought face's own delete.
   String get textToolFontImport => _s('textToolFontImport');
@@ -2506,6 +2511,11 @@ enum AppStrings {
     'textToolLineHeight': 'Line spacing',
     'textToolBackground': 'Background',
     'textToolIntoDrawing': 'Rasterize',
+    'textToolWriting': 'Direction',
+    'textToolWritingLines': 'Horizontal',
+    'textToolWritingColumns': 'Vertical',
+    'textToolAlignTop': 'Top',
+    'textToolAlignBottom': 'Bottom',
     'textToolFontImport': 'Import a font file',
     'textToolFontDelete': 'Delete font',
     'textToolFontsOfProject': 'Fonts in this project',
@@ -3773,6 +3783,11 @@ enum AppStrings {
     'textToolLineHeight': '行間',
     'textToolBackground': '背景',
     'textToolIntoDrawing': 'ラスタライズ',
+    'textToolWriting': '文字方向',
+    'textToolWritingLines': '横書き',
+    'textToolWritingColumns': '縦書き',
+    'textToolAlignTop': '上',
+    'textToolAlignBottom': '下',
     'textToolFontImport': 'フォントファイルを読み込み',
     'textToolFontDelete': 'フォントを削除',
     'textToolFontsOfProject': 'このプロジェクトのフォント',
@@ -5136,6 +5151,11 @@ enum AppStrings {
     'textToolLineHeight': '줄 간격',
     'textToolBackground': '배경',
     'textToolIntoDrawing': '그림으로 굳히기',
+    'textToolWriting': '쓰기 방향',
+    'textToolWritingLines': '가로',
+    'textToolWritingColumns': '세로',
+    'textToolAlignTop': '위',
+    'textToolAlignBottom': '아래',
     'textToolFontImport': '글꼴 파일 가져오기',
     'textToolFontDelete': '글꼴 삭제',
     'textToolFontsOfProject': '이 프로젝트의 글꼴',
@@ -6590,6 +6610,11 @@ enum AppStrings {
     'textToolLineHeight': 'Interligne',
     'textToolBackground': 'Fond',
     'textToolIntoDrawing': 'Pixelliser',
+    'textToolWriting': 'Direction',
+    'textToolWritingLines': 'Horizontale',
+    'textToolWritingColumns': 'Verticale',
+    'textToolAlignTop': 'Haut',
+    'textToolAlignBottom': 'Bas',
     'textToolFontImport': 'Importer un fichier de police',
     'textToolFontDelete': 'Supprimer la police',
     'textToolFontsOfProject': 'Polices de ce projet',
@@ -7900,6 +7925,11 @@ enum AppStrings {
     'textToolLineHeight': '行距',
     'textToolBackground': '背景',
     'textToolIntoDrawing': '栅格化',
+    'textToolWriting': '文字方向',
+    'textToolWritingLines': '横排',
+    'textToolWritingColumns': '竖排',
+    'textToolAlignTop': '上',
+    'textToolAlignBottom': '下',
     'textToolFontImport': '导入字体文件',
     'textToolFontDelete': '删除字体',
     'textToolFontsOfProject': '此项目的字体',

@@ -88,34 +88,47 @@ CelTextContent celTextTurnedAbout(
   );
 }
 
-/// A box [content] made [width] wide by one of its two side edges: the
-/// other edge stays where it is.
+/// The way [content]'s letters run, as one step of it on the canvas: along
+/// its lines — or, written in columns, DOWN them — turned as the text is.
 ///
-/// A box hangs from its anchor, its top left corner — so the RIGHT edge
-/// only changes the width, and the LEFT edge ([byLeftEdge]) carries the
-/// anchor along the text's own line by what the width lost.
+/// What a box's room is measured along ([CelTextContent.wrapWidth]), and so
+/// what a hand on the edge that sets it travels along.
+({double dx, double dy}) celTextLettersWay(CelTextContent content) {
+  final radians = content.rotationDegrees * math.pi / 180;
+  return content.vertical
+      ? (dx: -math.sin(radians), dy: math.cos(radians))
+      : (dx: math.cos(radians), dy: math.sin(radians));
+}
+
+/// A box [content] given [width] of room by one of the two edges its
+/// letters run between: the other edge stays where it is.
 ///
-/// ⛔For a box only: a text that grows has no width to drag.
+/// A box hangs from its anchor — its top left corner, or written in columns
+/// its top right — so the FAR edge only changes the room, and the edge the
+/// anchor is on ([byLeadingEdge]: the left one, or in columns the top)
+/// carries the anchor along the letters' way by what the room lost.
+///
+/// ⛔For a box only: a text that grows has no room to drag.
 CelTextContent celTextBoxWidened(
   CelTextContent content,
   double width, {
-  required bool byLeftEdge,
+  required bool byLeadingEdge,
 }) {
   final before = content.wrapWidth;
   if (before == null) {
     throw ArgumentError.value(content, 'content', 'has no box to widen');
   }
   final after = math.max(width, celTextMinWrapWidth);
-  if (!byLeftEdge) {
+  if (!byLeadingEdge) {
     return content.copyWith(wrapWidth: after);
   }
-  final radians = content.rotationDegrees * math.pi / 180;
+  final way = celTextLettersWay(content);
   final along = before - after;
   return content.copyWith(
     wrapWidth: after,
     anchor: CanvasPoint(
-      x: content.anchor.x + along * math.cos(radians),
-      y: content.anchor.y + along * math.sin(radians),
+      x: content.anchor.x + along * way.dx,
+      y: content.anchor.y + along * way.dy,
     ),
   );
 }

@@ -36,6 +36,7 @@ void main() {
     double? wrapWidth,
     double turn = 0,
     TextCelAlign align = TextCelAlign.left,
+    bool vertical = false,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -43,6 +44,7 @@ void main() {
     rotationDegrees: turn,
     align: align,
     lineHeight: 1,
+    vertical: vertical,
   );
 
   CelTextSpan run(String words, [TextLetterStyle style = small]) =>
@@ -53,6 +55,9 @@ void main() {
     canvasSize: celTextTestCanvas,
     placement: null,
   );
+
+  /// The letters of the field last mounted.
+  late CelTextEditingController mounted;
 
   /// The field for [content], mounted, and what it was laid out as.
   Future<({RenderEditable field, CelTextLayout layout, List<String> log})>
@@ -66,6 +71,7 @@ void main() {
       nextLetterStyle: small,
     );
     addTearDown(letters.dispose);
+    mounted = letters;
     final focus = FocusNode();
     addTearDown(focus.dispose);
     final layout = layoutCelText(content, nextLetterStyle: small);
@@ -212,6 +218,109 @@ void main() {
       Offset.zero,
     );
     expect(origin.dx, closeTo((16 - 8) * 2 + 10, 1e-9));
+  });
+
+  // 세로쓰기 (유저 2026-10-06).
+  group('a text in COLUMNS', () {
+    testWidgets('🚨its field lies DOWN them: from the block\'s top right '
+        'corner, its line runs down the first column — the IME composes '
+        'beside the caret there too', (tester) async {
+      final (:field, :layout, log: _) = await pumpField(
+        tester,
+        said([run('ab')], x: 16, y: 9, vertical: true),
+      );
+      expect(
+        layout.block,
+        const Rect.fromLTWH(-8, 0, 8, 16),
+        reason: '⛔fixture',
+      );
+
+      // The canvas pixel (16, 9) — the block's top right — at two screen
+      // pixels a pixel, the view panned by (10, 20).
+      final origin = MatrixUtils.transformPoint(
+        field.getTransformTo(null),
+        Offset.zero,
+      );
+      expect(origin.dx, closeTo(16 * 2 + 10, 1e-9));
+      expect(origin.dy, closeTo(9 * 2 + 20, 1e-9));
+      // Along the field's line is DOWN the screen.
+      final along = MatrixUtils.transformPoint(
+        field.getTransformTo(null),
+        const Offset(16, 0),
+      );
+      expect(along.dx, closeTo(origin.dx, 1e-9));
+      expect(along.dy - origin.dy, closeTo(32, 1e-9));
+    });
+
+    /// 「あい」 in the first column, 「うえ」 in the one to its left.
+    Future<void> pumpTwoColumns(WidgetTester tester, {int caret = 0}) async {
+      await pumpField(tester, said([run('あい\nうえ')], vertical: true));
+      mounted.selection = TextSelection.collapsed(offset: caret);
+    }
+
+    testWidgets('🚨the arrows go where the COLUMNS go: down and up are the '
+        'next letter and the one before', (tester) async {
+      await pumpTwoColumns(tester);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 1));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 2));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 0));
+    });
+
+    testWidgets('🚨left is the column AFTER, as far down it; right the '
+        'column before — and past the last column, the text\'s end', (
+      tester,
+    ) async {
+      await pumpTwoColumns(tester, caret: 1);
+
+      // Before 「い」, a letter down the first column: before 「え」.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 4));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 1));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 5));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 0));
+    });
+
+    testWidgets('with Shift the END of the selection goes there', (
+      tester,
+    ) async {
+      await pumpTwoColumns(tester);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+
+      expect(
+        mounted.selection,
+        const TextSelection(baseOffset: 0, extentOffset: 4),
+      );
+    });
+
+    testWidgets('⛔CONTROL: in LINES the arrows are the field\'s own — down '
+        'is the line below', (tester) async {
+      await pumpField(tester, said([run('あい\nうえ')]));
+      mounted.selection = const TextSelection.collapsed(offset: 1);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      // Past the break (offset 2): on the second line, wherever the field
+      // stands the caret there — and not the next letter, which is what
+      // down is in columns.
+      expect(mounted.selection.extentOffset, greaterThan(2));
+    });
   });
 
   testWidgets('it is never painted and never pressed', (tester) async {

@@ -6,15 +6,18 @@ import '../../models/text_cel_style.dart';
 import 'canvas_letter_style.dart';
 
 /// Sets a canvas text's letters ONCE MORE — each run painted by what
-/// [paintOf] says of its letters, null being their own colour.
-typedef CanvasLetterSetter =
-    TextPainter Function(ui.Paint? Function(TextLetterStyle letters) paintOf);
+/// [paintOf] says of its letters, null being their own colour — and hands
+/// back what it set: one painter for a text set in lines, the painters of
+/// its cells for one set in columns.
+typedef CanvasLetterSetter<T> =
+    T Function(ui.Paint? Function(TextLetterStyle letters) paintOf);
 
 /// THE PASSES A CANVAS TEXT'S LETTERS ARE DRAWN IN — outline under fill
 /// (#15: one rule on every surface), over the whole text, so a letter's
 /// outline never covers its neighbour — for the SE name tag
 /// (`layoutTextCel`) and a text on a cel (`layoutCelText`) alike (R5 ⓣ:
-/// 「ONE canvas-text implementation」).
+/// 「ONE canvas-text implementation」), and for a text set in lines or in
+/// columns alike: [T] is whatever one setting of the letters is.
 ///
 /// 🗣️유저 2026-10-06 (R9-rest, of letters with no smoothing — the switch
 /// the shape fill and the selection carry): 「권장대로. 2차에서 스위치로
@@ -34,42 +37,47 @@ typedef CanvasLetterSetter =
 /// is asked for.
 ///
 /// ⚠️WITH NO HARD LETTER NOTHING OF THIS RUNS: the passes are the two
-/// painters they always were, drawn as they always were, and a text baked
+/// settings they always were, drawn as they always were, and a text baked
 /// before the switch existed bakes to the bytes it did.
-class CanvasLetterPasses {
+class CanvasLetterPasses<T extends Object> {
   CanvasLetterPasses._({
     required this.fill,
-    required TextPainter? stroke,
-    required List<_HardPass> hardStrokes,
-    required List<_HardPass> hardFills,
+    required T? stroke,
+    required List<_HardPass<T>> hardStrokes,
+    required List<_HardPass<T>> hardFills,
     required bool hardThroughout,
+    required void Function(T set) letGo,
   }) : _stroke = stroke,
        _hardStrokes = hardStrokes,
        _hardFills = hardFills,
-       _hardThroughout = hardThroughout;
+       _hardThroughout = hardThroughout,
+       _letGo = letGo;
 
   /// The passes of a text whose runs are set in [letters], [set] being how
-  /// it sets them.
+  /// it sets them and [letGo] how one setting is let go of.
   ///
   /// [measured] is the text already set in its letters' own colours, where
   /// the caller had to set it to know its size (the SE tag, every frame):
   /// with no hard letter that IS the fill pass, and nothing is set twice.
-  /// It is this object's to dispose of from here on.
+  /// It is this object's to let go of from here on.
   factory CanvasLetterPasses.of(
     Iterable<TextLetterStyle> letters,
-    CanvasLetterSetter set, {
-    TextPainter? measured,
+    CanvasLetterSetter<T> set, {
+    required void Function(T set) letGo,
+    T? measured,
   }) {
     final styles = letters.toList();
     final hard = [
       for (final style in styles)
         if (!style.antialias) style,
     ];
-    final TextPainter fill;
+    final T fill;
     if (hard.isEmpty && measured != null) {
       fill = measured;
     } else {
-      measured?.dispose();
+      if (measured != null) {
+        letGo(measured);
+      }
       // A hard letter is not this pass's: it names a paint that draws
       // nothing, as a run with no outline does in the outline's pass.
       fill = set((letters) => letters.antialias ? null : _drawsNothing);
@@ -107,11 +115,15 @@ class CanvasLetterPasses {
           _hardFillOf(argb, set),
       ],
       hardThroughout: hard.length == styles.length,
+      letGo: letGo,
     );
   }
 
   /// The hard letters whose colour is [argb], set as cover.
-  static _HardPass _hardFillOf(int argb, CanvasLetterSetter set) {
+  static _HardPass<T> _hardFillOf<T extends Object>(
+    int argb,
+    CanvasLetterSetter<T> set,
+  ) {
     final cover = _coverIn(argb);
     return (
       argb: argb,
@@ -124,16 +136,18 @@ class CanvasLetterPasses {
 
   /// The letters as the engine sets them — what a caret, a selection and a
   /// press are measured on — and the pass that fills the smooth ones.
-  final TextPainter fill;
+  final T fill;
 
   /// The smooth letters' outlines; null when none of them wears one.
-  final TextPainter? _stroke;
+  final T? _stroke;
 
-  final List<_HardPass> _hardStrokes;
-  final List<_HardPass> _hardFills;
+  final List<_HardPass<T>> _hardStrokes;
+  final List<_HardPass<T>> _hardFills;
 
   /// Whether NO letter of the text is smooth.
   final bool _hardThroughout;
+
+  final void Function(T set) _letGo;
 
   /// Draws the box behind the letters — [box], in [argb] — HARD where every
   /// letter of the text is: a text none of whose letters is smoothed has no
@@ -152,33 +166,67 @@ class CanvasLetterPasses {
     );
   }
 
-  /// Draws the letters with their box's corner at [at]. [within] holds
-  /// everything they can draw, in the canvas's own space: the hard letters
-  /// are cut just past it ([_drawHard]).
-  void paint(ui.Canvas canvas, ui.Offset at, {required ui.Rect within}) {
-    void hard(_HardPass pass) => _drawHard(
+  /// Draws the letters, [draw] being how one setting of them is drawn.
+  /// [within] holds everything they can draw, in the canvas's own space:
+  /// the hard letters are cut just past it ([_drawHard]).
+  void paint(
+    ui.Canvas canvas, {
+    required ui.Rect within,
+    required void Function(T set) draw,
+  }) {
+    void hard(_HardPass<T> pass) => _drawHard(
       canvas,
       pass.argb,
       within: within,
-      cover: () => pass.cover.paint(canvas, at),
+      cover: () => draw(pass.cover),
     );
-    _stroke?.paint(canvas, at);
+    final stroke = _stroke;
+    if (stroke != null) {
+      draw(stroke);
+    }
     _hardStrokes.forEach(hard);
-    fill.paint(canvas, at);
+    draw(fill);
     _hardFills.forEach(hard);
   }
 
   void dispose() {
-    fill.dispose();
-    _stroke?.dispose();
+    final stroke = _stroke;
+    _letGo(fill);
+    if (stroke != null) {
+      _letGo(stroke);
+    }
     for (final pass in [..._hardStrokes, ..._hardFills]) {
-      pass.cover.dispose();
+      _letGo(pass.cover);
     }
   }
 }
 
+/// The passes of a text whose every setting is ONE painter — a text set in
+/// lines (`layoutCelText`), the SE name tag (`layoutTextCel`).
+CanvasLetterPasses<TextPainter> canvasLetterPainterPasses(
+  Iterable<TextLetterStyle> letters,
+  CanvasLetterSetter<TextPainter> set, {
+  TextPainter? measured,
+}) => CanvasLetterPasses.of(
+  letters,
+  set,
+  letGo: (painter) => painter.dispose(),
+  measured: measured,
+);
+
+/// Drawing the passes of a text whose every setting is one painter.
+extension CanvasLetterPainterPasses on CanvasLetterPasses<TextPainter> {
+  /// Draws the letters with their box's corner at [at] ([paint]).
+  void paintAt(ui.Canvas canvas, ui.Offset at, {required ui.Rect within}) =>
+      paint(
+        canvas,
+        within: within,
+        draw: (painter) => painter.paint(canvas, at),
+      );
+}
+
 /// The hard letters of one colour, set as cover ([_coverIn]).
-typedef _HardPass = ({int argb, TextPainter cover});
+typedef _HardPass<T> = ({int argb, T cover});
 
 /// Draws what [cover] draws HARD, in the colour [argb]: every pixel it
 /// covers by half or more is that colour, whole, and every other is

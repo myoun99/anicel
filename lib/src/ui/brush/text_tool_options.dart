@@ -24,6 +24,7 @@ class TextToolOptions {
     this.align = TextCelAlign.left,
     this.lineHeight = CelTextContent.defaultLineHeight,
     this.backgroundColor,
+    this.vertical = false,
   });
 
   static const TextToolOptions defaults = TextToolOptions();
@@ -40,6 +41,10 @@ class TextToolOptions {
   /// The box filled behind the next text, ARGB; null for none.
   final int? backgroundColor;
 
+  /// Whether the next text is written in columns
+  /// ([CelTextContent.vertical]).
+  final bool vertical;
+
   /// A text with no letters yet, standing at [anchor] — as wide as
   /// [wrapWidth] says, or growing with what is typed.
   CelTextContent newTextAt(CanvasPoint anchor, {double? wrapWidth}) =>
@@ -50,6 +55,7 @@ class TextToolOptions {
         align: align,
         lineHeight: lineHeight,
         backgroundColor: backgroundColor,
+        vertical: vertical,
       );
 
   TextToolOptions copyWith({
@@ -57,6 +63,7 @@ class TextToolOptions {
     TextCelAlign? align,
     double? lineHeight,
     Object? backgroundColor = _sentinel,
+    bool? vertical,
   }) => TextToolOptions(
     letters: letters ?? this.letters,
     align: align ?? this.align,
@@ -64,6 +71,7 @@ class TextToolOptions {
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
         : backgroundColor as int?,
+    vertical: vertical ?? this.vertical,
   );
 
   @override
@@ -73,10 +81,12 @@ class TextToolOptions {
           other.letters == letters &&
           other.align == align &&
           other.lineHeight == lineHeight &&
-          other.backgroundColor == backgroundColor;
+          other.backgroundColor == backgroundColor &&
+          other.vertical == vertical;
 
   @override
-  int get hashCode => Object.hash(letters, align, lineHeight, backgroundColor);
+  int get hashCode =>
+      Object.hash(letters, align, lineHeight, backgroundColor, vertical);
 
   static const Object _sentinel = Object();
 }

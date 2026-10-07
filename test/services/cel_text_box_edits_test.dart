@@ -17,6 +17,7 @@ void main() {
     double y = 50,
     double? wrapWidth,
     double turn = 0,
+    bool vertical = false,
   }) => CelTextContent(
     spans: const [
       CelTextSpan(
@@ -36,6 +37,7 @@ void main() {
     align: TextCelAlign.right,
     lineHeight: 1.5,
     backgroundColor: 0xFF00FF00,
+    vertical: vertical,
   );
 
   Matcher near(double x, double y) => isA<CanvasPoint>()
@@ -164,7 +166,7 @@ void main() {
       final widened = celTextBoxWidened(
         said(wrapWidth: 120),
         200,
-        byLeftEdge: false,
+        byLeadingEdge: false,
       );
 
       expect(widened.wrapWidth, 200);
@@ -176,13 +178,13 @@ void main() {
       final narrowed = celTextBoxWidened(
         said(wrapWidth: 120),
         80,
-        byLeftEdge: true,
+        byLeadingEdge: true,
       );
 
       expect(narrowed.wrapWidth, 80);
       expect(narrowed.anchor, near(140, 50));
       expect(
-        celTextBoxWidened(said(wrapWidth: 120), 150, byLeftEdge: true).anchor,
+        celTextBoxWidened(said(wrapWidth: 120), 150, byLeadingEdge: true).anchor,
         near(70, 50),
       );
     });
@@ -191,7 +193,7 @@ void main() {
       final narrowed = celTextBoxWidened(
         said(wrapWidth: 120, turn: 90),
         80,
-        byLeftEdge: true,
+        byLeadingEdge: true,
       );
 
       // The line runs DOWN: the anchor moves 40 down it.
@@ -200,7 +202,7 @@ void main() {
       final slanted = celTextBoxWidened(
         said(wrapWidth: 120, turn: 30),
         80,
-        byLeftEdge: true,
+        byLeadingEdge: true,
       );
       expect(
         slanted.anchor,
@@ -215,11 +217,11 @@ void main() {
       final box = said(wrapWidth: 120);
 
       expect(
-        celTextBoxWidened(box, -30, byLeftEdge: false).wrapWidth,
+        celTextBoxWidened(box, -30, byLeadingEdge: false).wrapWidth,
         celTextMinWrapWidth,
       );
       expect(
-        celTextBoxWidened(box, -30, byLeftEdge: true).anchor,
+        celTextBoxWidened(box, -30, byLeadingEdge: true).anchor,
         near(100 + 119, 50),
         reason: 'the anchor stops with the width',
       );
@@ -227,8 +229,58 @@ void main() {
 
     test('a text that grows has no width to drag', () {
       expect(
-        () => celTextBoxWidened(said(), 100, byLeftEdge: false),
+        () => celTextBoxWidened(said(), 100, byLeadingEdge: false),
         throwsArgumentError,
+      );
+    });
+  });
+
+  // 세로쓰기 (유저 2026-10-06): a box's room is along its letters' way, and
+  // in columns that is DOWN.
+  group('the way the letters run', () {
+    Matcher way(double dx, double dy) => isA<({double dx, double dy})>()
+        .having((w) => w.dx, 'dx', closeTo(dx, 1e-9))
+        .having((w) => w.dy, 'dy', closeTo(dy, 1e-9));
+
+    test('along the lines; in columns, down them — turned as the text is', () {
+      expect(celTextLettersWay(said()), way(1, 0));
+      expect(celTextLettersWay(said(turn: 90)), way(0, 1));
+      expect(celTextLettersWay(said(vertical: true)), way(0, 1));
+      expect(celTextLettersWay(said(vertical: true, turn: 90)), way(-1, 0));
+    });
+
+    test('🚨in COLUMNS the edge the anchor is on is the TOP one: it carries '
+        'the anchor DOWN the column, so the foot stays where it was', () {
+      final shortened = celTextBoxWidened(
+        said(wrapWidth: 120, vertical: true),
+        80,
+        byLeadingEdge: true,
+      );
+
+      expect(shortened.wrapWidth, 80);
+      expect(shortened.anchor, near(100, 90));
+    });
+
+    test('the foot of a column only changes how long it is', () {
+      final lengthened = celTextBoxWidened(
+        said(wrapWidth: 120, vertical: true),
+        200,
+        byLeadingEdge: false,
+      );
+
+      expect(lengthened.wrapWidth, 200);
+      expect(lengthened.anchor, near(100, 50));
+    });
+
+    test('down the text\'s OWN column, when it is turned', () {
+      // A quarter turn: down the column is to the LEFT on the canvas.
+      expect(
+        celTextBoxWidened(
+          said(wrapWidth: 120, vertical: true, turn: 90),
+          80,
+          byLeadingEdge: true,
+        ).anchor,
+        near(60, 50),
       );
     });
   });

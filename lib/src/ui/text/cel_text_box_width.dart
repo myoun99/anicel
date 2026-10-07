@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Rect;
 
 import '../../models/canvas_point.dart';
 import '../../models/cel_text.dart';
@@ -38,31 +38,45 @@ import 'cel_text_layout.dart';
 ///
 /// [content] itself for one that is a box already — and for one with no
 /// letters: it has no line to be as wide as.
+///
+/// Written in COLUMNS it is the same swap read down them: as long as the
+/// next whole pixel past its longest column, hung by its top right corner
+/// where its columns already stand.
 CelTextContent celTextBoxed(CelTextContent content) {
   if (content.wrapWidth != null || content.isEmpty) {
     return content;
   }
   final layout = layoutCelText(content);
   final block = layout.block;
-  final width = math.max(
-    block.width.floorToDouble() + 1,
+  final room = math.max(
+    (content.vertical ? block.height : block.width).floorToDouble() + 1,
     celTextMinWrapWidth,
   );
-  final corner = layout.toCanvas(
-    Offset(
-      switch (content.align) {
-        TextCelAlign.left => block.left,
-        TextCelAlign.center => block.center.dx - width / 2,
-        TextCelAlign.right => block.right - width,
-      },
-      block.top,
-    ),
-  );
+  final corner = layout.toCanvas(_boxCornerOf(content, block, room));
   layout.dispose();
   return content.copyWith(
-    wrapWidth: width,
+    wrapWidth: room,
     anchor: CanvasPoint(x: corner.dx, y: corner.dy),
   );
+}
+
+/// Where a box with [room] for its letters hangs — its anchor, in the
+/// text's own frame — so that the letters of [block], a text that grows,
+/// stay where they are: its top left corner, or written in columns its top
+/// right.
+Offset _boxCornerOf(CelTextContent content, Rect block, double room) {
+  if (content.vertical) {
+    return Offset(block.right, switch (content.align) {
+      TextCelAlign.left => block.top,
+      TextCelAlign.center => block.center.dy - room / 2,
+      TextCelAlign.right => block.bottom - room,
+    });
+  }
+  return Offset(switch (content.align) {
+    TextCelAlign.left => block.left,
+    TextCelAlign.center => block.center.dx - room / 2,
+    TextCelAlign.right => block.right - room,
+  }, block.top);
 }
 
 /// [content] as a text that GROWS and looks the same: a break typed in
@@ -94,16 +108,61 @@ CelTextContent celTextUnboxed(CelTextContent content) {
       nextLetterStyle: const TextLetterStyle(),
     );
   }
+  // How far along its room the point its letters stand ABOUT is: the head
+  // of a line or a column, its middle, or its foot.
+  final along = switch (content.align) {
+    TextCelAlign.left => 0.0,
+    TextCelAlign.center => width / 2,
+    TextCelAlign.right => width,
+  };
   final about = layout.toCanvas(
-    Offset(switch (content.align) {
-      TextCelAlign.left => 0,
-      TextCelAlign.center => width / 2,
-      TextCelAlign.right => width,
-    }, 0),
+    content.vertical ? Offset(0, along) : Offset(along, 0),
   );
   layout.dispose();
   return broken.copyWith(
     wrapWidth: null,
     anchor: CanvasPoint(x: about.dx, y: about.dy),
+  );
+}
+
+/// [content] written in COLUMNS ([vertical]) or in lines, WHERE IT STANDS:
+/// the top left corner of its letters' block stays where it is.
+///
+/// A box keeps its SHAPE as near as a box can: the room its letters had
+/// across them becomes the room they have along them — a box four lines
+/// tall is, in columns, four lines long — and its other side is whatever
+/// its letters then take.
+///
+/// [content] itself when it is written that way already.
+CelTextContent celTextWrittenAs(
+  CelTextContent content, {
+  required bool vertical,
+}) {
+  if (content.vertical == vertical) {
+    return content;
+  }
+  final before = layoutCelText(content);
+  final block = before.block;
+  final corner = before.toCanvas(block.topLeft);
+  before.dispose();
+  final written = content.copyWith(
+    vertical: vertical,
+    wrapWidth: content.wrapWidth == null
+        ? null
+        : math.max(
+            (vertical ? block.height : block.width).ceilToDouble(),
+            celTextMinWrapWidth,
+          ),
+  );
+  // Set once to learn where its block's corner falls, and moved by what
+  // that is off.
+  final after = layoutCelText(written);
+  final falls = after.toCanvas(after.block.topLeft);
+  after.dispose();
+  return written.copyWith(
+    anchor: CanvasPoint(
+      x: written.anchor.x + corner.dx - falls.dx,
+      y: written.anchor.y + corner.dy - falls.dy,
+    ),
   );
 }

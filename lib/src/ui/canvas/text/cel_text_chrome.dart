@@ -165,15 +165,11 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
     // composed is typed blind without it.
     final composing = letters.value.composing;
     if (composing.isValid && !composing.isCollapsed) {
-      for (final rect in layout.selectionRects(
+      for (final mark in layout.marksBeside(
         math.min(composing.start, length),
         math.min(composing.end, length),
       )) {
-        canvas.drawLine(
-          onPanel(rect.bottomLeft),
-          onPanel(rect.bottomRight),
-          hairline,
-        );
+        canvas.drawLine(onPanel(mark.from), onPanel(mark.to), hairline);
       }
     }
     if (start < end) {
@@ -190,10 +186,12 @@ class CelTextChromePainter extends CustomPainter with RepaintOnProps {
         );
       }
     } else if (caretLit.value) {
+      // A hairline: a rect of no width, or — across a column — of no
+      // height. From its one corner to the other is the line either way.
       final caret = layout.caretRect(TextPosition(offset: end));
       canvas.drawLine(
         onPanel(caret.topLeft),
-        onPanel(caret.bottomLeft),
+        onPanel(caret.bottomRight),
         hairline,
       );
     }

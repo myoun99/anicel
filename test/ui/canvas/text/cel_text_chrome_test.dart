@@ -154,6 +154,66 @@ void main() {
     expect(asked, 3);
   });
 
+  // What it draws is measured on the real app; what it draws over a text
+  // being typed into, in COLUMNS, is asked here — the two lines the layout
+  // answers a different way round.
+  group('over a text being typed into', () {
+    /// The lines the chrome draws for a hand typing into [content] with the
+    /// caret before its second letter, the first being composed.
+    List<({Offset from, Offset to})> linesOver(CelTextContent content) {
+      final held = textHand(bake: bakesAtOnce, text: content);
+      held.tool.typeAt(const TextSelection.collapsed(offset: 1));
+      held.tool.letters!.value = held.tool.letters!.value.copyWith(
+        composing: const TextRange(start: 0, end: 1),
+      );
+      final painter = CelTextChromePainter(
+        tool: held.tool,
+        stage: stageAt(1),
+        restingBoxes: const [],
+        tracedBox: null,
+        caretLit: caretLit,
+        color: const Color(0xFF4488FF),
+      );
+      final canvas = _WritesLines();
+      painter.paint(canvas, const Size(64, 64));
+      return canvas.lines;
+    }
+
+    CelTextContent said({required bool vertical}) => CelTextContent(
+      spans: const [
+        CelTextSpan(text: '123', style: TextLetterStyle(fontSize: 8)),
+      ],
+      anchor: CanvasPoint(x: 16, y: 8),
+      lineHeight: 1,
+      vertical: vertical,
+    );
+
+    test('🚨in COLUMNS the caret is a line ACROSS its column, and the letter '
+        'being composed wears its mark down the column\'s RIGHT side', () {
+      final [mark, caret] = linesOver(said(vertical: true));
+
+      // The mark: down the right of the first letter's place, 8 long.
+      expect(mark.from.dx, mark.to.dx);
+      expect(mark.to.dy - mark.from.dy, 8);
+      // The caret: across the column, 8 wide, at the first letter's foot —
+      // and its right end is where the mark ends.
+      expect(caret.from.dy, caret.to.dy);
+      expect(caret.to.dx - caret.from.dx, 8);
+      expect(caret.to, mark.to);
+    });
+
+    test('⛔CONTROL: in lines the caret stands as tall as its line, and the '
+        'mark runs UNDER the letter', () {
+      final [mark, caret] = linesOver(said(vertical: false));
+
+      expect(mark.from.dy, mark.to.dy);
+      expect(mark.to.dx - mark.from.dx, 8);
+      expect(caret.from.dx, caret.to.dx);
+      expect(caret.to.dy - caret.from.dy, 8);
+      expect(caret.to, mark.to);
+    });
+  });
+
   test('and another hand: a painter is its tool\'s', () {
     final other = textHand(bake: bakesAtOnce);
     final painter = CelTextChromePainter(
@@ -167,4 +227,16 @@ void main() {
 
     expect(painter.shouldRepaint(chrome()), isTrue);
   });
+}
+
+/// A canvas that writes down the LINES drawn on it, and draws nothing.
+class _WritesLines implements Canvas {
+  final List<({Offset from, Offset to})> lines = [];
+
+  @override
+  void drawLine(Offset p1, Offset p2, Paint paint) =>
+      lines.add((from: p1, to: p2));
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

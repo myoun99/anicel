@@ -85,6 +85,9 @@ class TextToolSettingsValues {
     return inHand == null ? _next.backgroundColor : inHand.backgroundColor;
   }
 
+  /// Whether the text is written in COLUMNS — the one in hand, or the next.
+  bool get vertical => _inHand?.vertical ?? _next.vertical;
+
   /// Whether the text in hand is a BOX — its lines wrap at a width — or one
   /// that grows with what is typed. Null with none in hand: which of the
   /// two the next text is, the hand says (a click or a drag, 유저
@@ -118,6 +121,13 @@ class TextToolSettingsValues {
     onText: (text) => text.copyWith(backgroundColor: color),
     onNext: (next) => next.copyWith(backgroundColor: color),
     settled: settled,
+  );
+
+  /// Writes the text in hand in columns, or in lines — where it stands
+  /// ([celTextWrittenAs]) — and the next text the same way.
+  void setVertical(bool vertical) => _setBox(
+    onText: (text) => celTextWrittenAs(text, vertical: vertical),
+    onNext: (next) => next.copyWith(vertical: vertical),
   );
 
   /// Swaps the text in hand between a box and a text that grows — 유저

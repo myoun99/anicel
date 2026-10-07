@@ -29,7 +29,7 @@ class TextCelLayout {
   TextCelLayout._({
     required this.inkBounds,
     required this.topLeft,
-    required CanvasLetterPasses letters,
+    required CanvasLetterPasses<TextPainter> letters,
     required this.style,
     required this.pad,
     required this.textSize,
@@ -53,7 +53,7 @@ class TextCelLayout {
 
   /// The letters, set for drawing — stroke under fill, smooth or hard
   /// (the passes a text on a cel is drawn in too).
-  final CanvasLetterPasses _letters;
+  final CanvasLetterPasses<TextPainter> _letters;
 
   /// Draws at the layout's canvas coordinates — the caller sets up any
   /// viewport/camera transform first.
@@ -75,7 +75,7 @@ class TextCelLayout {
     }
     // ⚠️A letter's size past the ink the layout counts: that box is the
     // lines' own, and a glyph reaches out of its line.
-    _letters.paint(
+    _letters.paintAt(
       canvas,
       topLeft,
       within: inkBounds.inflate(style.fontSize),
@@ -134,7 +134,7 @@ TextCelLayout layoutTextCel({
   final outlined = canvasLetterOutlinePaint(style) != null;
   // The tag is one run in one style. What was set to measure it is its
   // fill pass, where its letters are smooth — the tag is set every frame.
-  final passes = CanvasLetterPasses.of(
+  final passes = canvasLetterPainterPasses(
     [style],
     (paintOf) => build(fontSize: drawnSize, foreground: paintOf(style)),
     measured: fill,

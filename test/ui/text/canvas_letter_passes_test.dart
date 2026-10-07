@@ -43,10 +43,13 @@ void main() {
   /// The passes of a text whose runs are in [letters] — and, pass by pass
   /// in the order they were set, what each run was to be painted with. The
   /// Nth pass set is N letters long.
-  ({CanvasLetterPasses passes, List<Map<TextLetterStyle, ui.Paint?>> said})
+  ({
+    CanvasLetterPasses<TextPainter> passes,
+    List<Map<TextLetterStyle, ui.Paint?>> said,
+  })
   passesOf(List<TextLetterStyle> letters, {TextPainter? measured}) {
     final said = <Map<TextLetterStyle, ui.Paint?>>[];
-    final passes = CanvasLetterPasses.of(letters, (paintOf) {
+    final passes = canvasLetterPainterPasses(letters, (paintOf) {
       said.add({for (final style in letters) style: paintOf(style)});
       return set(said.length);
     }, measured: measured);
@@ -56,9 +59,9 @@ void main() {
 
   /// What [passes] draw, call by call: each pass by the number it was set
   /// as, and the layers opened and shut round them.
-  List<String> drawnBy(CanvasLetterPasses passes) {
+  List<String> drawnBy(CanvasLetterPasses<TextPainter> passes) {
     final canvas = _WritesDown();
-    passes.paint(
+    passes.paintAt(
       canvas,
       ui.Offset.zero,
       within: const ui.Rect.fromLTWH(0, 0, 100, 100),

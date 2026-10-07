@@ -78,6 +78,7 @@ void main() {
       'the alignment': base.copyWith(align: TextCelAlign.right),
       'the line height': base.copyWith(lineHeight: 2),
       'the box behind it': base.copyWith(backgroundColor: 0xFFFFFF00),
+      'the way it is written': base.copyWith(vertical: true),
     };
 
     for (final entry in changes.entries) {
@@ -93,6 +94,23 @@ void main() {
 
     test('a content with nothing changed reads back as itself', () {
       expect(CelTextContent.fromJson(throughJson(base.toJson())), base);
+    });
+
+    test('🚨a text written in LINES writes no word of it: what a file '
+        'written before a text could be set in columns says is a text in '
+        'lines', () {
+      expect(base.vertical, isFalse);
+      expect(base.toJson().containsKey('vertical'), isFalse);
+      expect(base.copyWith(vertical: true).toJson()['vertical'], isTrue);
+    });
+
+    test('a text in columns stays one through a change of anything else, '
+        'and is turned back', () {
+      final columns = base.copyWith(vertical: true);
+
+      expect(columns.copyWith(lineHeight: 2).vertical, isTrue);
+      expect(columns.copyWith(vertical: false), base);
+      expect(columns.hashCode, isNot(base.hashCode));
     });
 
     // The parameter is untyped so that null can mean 「take it off」, and a

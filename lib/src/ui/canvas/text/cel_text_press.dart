@@ -157,7 +157,7 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
       artwork,
       start: scene.tool.crossOffCentre,
     ),
-    BoxPress.handle when hit!.handle < _leftEdgeHandle => _ScalePress(
+    BoxPress.handle when hit!.handle < _leadingEdgeHandle => _ScalePress(
       event,
       start: session.content,
       centre: centre,
@@ -167,7 +167,7 @@ CelTextPress? _pressOnBox(_Pressed pressed, CelTextSession session) {
       event,
       artwork,
       start: session.content,
-      byLeftEdge: hit!.handle == _leftEdgeHandle,
+      byLeadingEdge: hit!.handle == _leadingEdgeHandle,
     ),
     BoxPress.inside => _InsidePress(event, artwork, cel: cel, held: true),
     // Outside the box: another text if one is there. Else on stage it is
@@ -213,20 +213,30 @@ CelText? _textAt(CelTextTool tool, CelTextCel cel, Offset artwork) {
   return null;
 }
 
-/// The side edges' handles follow the four corners in [celTextHandlesOf].
-const int _leftEdgeHandle = 4;
+/// The handles of the two edges a box's letters run between follow the four
+/// corners in [celTextHandlesOf] — the edge its anchor is on first.
+const int _leadingEdgeHandle = 4;
 
 /// Where a text held by its box can be taken, on the artwork: its four
-/// corners — the scale — and, for a box, the middle of its two side edges:
-/// its width. The chrome draws these and a press is asked of them, so what
-/// is seen is what is grabbed.
+/// corners — the scale — and, for a box, the middle of the two edges its
+/// letters run between: its room. The side edges of a text in lines, the
+/// top and the bottom of one in columns. The chrome draws these and a press
+/// is asked of them, so what is seen is what is grabbed.
 List<Offset> celTextHandlesOf(CelTextLayout layout) {
   final corners = layout.boxCorners;
+  if (layout.content.wrapWidth == null) {
+    return corners;
+  }
+  // Top left, top right, bottom right, bottom left.
+  final [topLeft, topRight, bottomRight, bottomLeft] = corners;
   return [
     ...corners,
-    if (layout.content.wrapWidth != null) ...[
-      (corners[0] + corners[3]) / 2,
-      (corners[1] + corners[2]) / 2,
+    if (layout.content.vertical) ...[
+      (topLeft + topRight) / 2,
+      (bottomLeft + bottomRight) / 2,
+    ] else ...[
+      (topLeft + bottomLeft) / 2,
+      (topRight + bottomRight) / 2,
     ],
   ];
 }
@@ -445,31 +455,32 @@ final class _ScalePress extends _BoxEditPress {
       );
 }
 
-/// On a side edge of a box: its width, in whole pixels, by how far the hand
-/// has gone along the text's own line.
+/// On an edge of a box its letters run between: its room, in whole pixels,
+/// by how far the hand has gone along the letters' own way
+/// ([celTextLettersWay]).
 final class _WidthPress extends _BoxEditPress {
   _WidthPress(
     super.event,
     this.artwork, {
     required super.start,
-    required this.byLeftEdge,
+    required this.byLeadingEdge,
   });
 
   final Offset artwork;
-  final bool byLeftEdge;
+  final bool byLeadingEdge;
 
   @override
   void _move(CelTextScene scene, Offset local, Offset artwork) {
-    final radians = start.rotationDegrees * math.pi / 180;
+    final way = celTextLettersWay(start);
     final along =
-        (artwork.dx - this.artwork.dx) * math.cos(radians) +
-        (artwork.dy - this.artwork.dy) * math.sin(radians);
+        (artwork.dx - this.artwork.dx) * way.dx +
+        (artwork.dy - this.artwork.dy) * way.dy;
     final width = start.wrapWidth!;
     scene.tool.showEdit(
       celTextBoxWidened(
         start,
-        (byLeftEdge ? width - along : width + along).roundToDouble(),
-        byLeftEdge: byLeftEdge,
+        (byLeadingEdge ? width - along : width + along).roundToDouble(),
+        byLeadingEdge: byLeadingEdge,
       ),
     );
   }
@@ -529,7 +540,9 @@ final class _TurnPress extends _BoxEditPress {
 }
 
 /// On nothing: let go where it went down, a text that grows; dragged, a
-/// box as wide as the drag.
+/// box with the drag's room for its letters — as wide as it for a text in
+/// lines, as long as it for one in columns, which hangs from the drag's
+/// top RIGHT corner.
 final class _EmptyPress extends CelTextPress {
   _EmptyPress(super.event, this.artwork);
 
@@ -549,9 +562,14 @@ final class _EmptyPress extends CelTextPress {
       scene.onBegin(celTextWholePixel(artwork));
       return;
     }
+    // Which way the next text is written is the tool's settings' to say.
+    final columns = scene.tool.host.options.vertical;
     scene.onBegin(
-      celTextWholePixel(traced.topLeft),
-      wrapWidth: math.max(traced.width.roundToDouble(), celTextMinWrapWidth),
+      celTextWholePixel(columns ? traced.topRight : traced.topLeft),
+      wrapWidth: math.max(
+        (columns ? traced.height : traced.width).roundToDouble(),
+        celTextMinWrapWidth,
+      ),
     );
   }
 

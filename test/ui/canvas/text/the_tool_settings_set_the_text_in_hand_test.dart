@@ -284,6 +284,63 @@ void main() {
     });
   });
 
+  // 🗣️유저 2026-10-06: 「세로쓰기: 1차는 가로만」 → 「어차피 타임시트나
+  // x시트에서 가로쓰기/세로표기같은거 한거 많으니 그거 통합하면서
+  // 진행해도될듯」.
+  group('「세로」', () {
+    /// Whether the cel shows ink at the canvas pixel ([x], [y]).
+    bool inked(WidgetTester tester, double x, double y) {
+      final pixel = shownPixel(celOf(tester), x.toInt(), y.toInt());
+      return pixel != null && pixel[3] != 0;
+    }
+
+    testWidgets('🚨picked with nothing in hand, the NEXT text typed on the '
+        'canvas is written in columns: it runs DOWN from where it was '
+        'begun, and to its LEFT', (tester) async {
+      await pumpWithSettings(tester);
+      await press(tester, 'writing-columns');
+      final c = canvasPixelInView(tester);
+
+      await clickAt(tester, c.dx, c.dy);
+      await typeText(tester, 'ab');
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts.single.content.vertical, isTrue);
+      // 「ab」 lies down the column: two letters long under the anchor, one
+      // column wide to its left — and nothing to its right.
+      expect(inked(tester, c.dx - 4, c.dy + 4), isTrue);
+      expect(inked(tester, c.dx - 4, c.dy + 80), isTrue);
+      expect(inked(tester, c.dx + 4, c.dy + 4), isFalse);
+      expect(inked(tester, c.dx - 4, c.dy - 4), isFalse);
+    });
+
+    testWidgets('🚨picked with a text in hand, that text is written the '
+        'other way where it stands — one step, and one undo writes it '
+        'back', (tester) async {
+      final c = await hiInHand(tester);
+      final history = sessionOf(tester).historyManager;
+      final steps = history.undoCount;
+      expect(inked(tester, c.dx + 80, c.dy + 4), isTrue, reason: '⛔fixture');
+
+      await press(tester, 'writing-columns');
+
+      expect(celOf(tester).texts.single.content.vertical, isTrue);
+      expect(history.undoCount, steps + 1);
+      expect(textToolOf(tester).session, isNotNull, reason: 'in hand');
+      // Its block's top left corner is where it was: the letters run down
+      // from there, and no longer along the line.
+      expect(inked(tester, c.dx + 4, c.dy + 80), isTrue);
+      expect(inked(tester, c.dx + 80, c.dy + 4), isFalse);
+
+      history.undo();
+      await pumpFrames(tester);
+
+      expect(celOf(tester).texts.single.content.vertical, isFalse);
+      expect(inked(tester, c.dx + 80, c.dy + 4), isTrue);
+    });
+  });
+
   group('the list of the cel\'s texts', () {
     /// 「hi」 on the cel, and 「yo」 under it on the canvas — set after, so on
     /// top of the stack — with nothing in hand.

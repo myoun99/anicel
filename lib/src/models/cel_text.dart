@@ -51,6 +51,7 @@ class CelTextContent {
     this.align = TextCelAlign.left,
     this.lineHeight = defaultLineHeight,
     this.backgroundColor,
+    this.vertical = false,
   }) : spans = List.unmodifiable(_settled(spans)) {
     // ⚠️Refused HERE, where a content is made, and not where one is set:
     // the engine lays a box of no width out as one letter a line and a
@@ -91,6 +92,11 @@ class CelTextContent {
   /// [align] says — at the first line's top. With one it is the box's top
   /// left corner, and [align] places the lines inside the width.
   ///
+  /// Written in columns ([vertical]) it is the same point read the other
+  /// way: the point the columns are set about — their top, their middle or
+  /// their bottom — at the first column's right, or the box's top RIGHT
+  /// corner.
+  ///
   /// The text turns about this point ([rotationDegrees]), so letters typed
   /// into a turned text run on along its own line and the ones already
   /// there do not move.
@@ -99,6 +105,9 @@ class CelTextContent {
   /// The width its lines wrap at — 유저 2026-10-06: a box dragged out has
   /// 「폭이 정해진 상자(자동 줄바꿈)」. Null for a text that grows with what
   /// is typed and breaks only where the person pressed Enter.
+  ///
+  /// Written in columns ([vertical]) it is how LONG a column runs before
+  /// the next one begins: the same room, along the way the letters go.
   final double? wrapWidth;
 
   /// Clockwise, in canvas degrees, about [anchor].
@@ -109,6 +118,18 @@ class CelTextContent {
 
   /// The box filled behind the letters, ARGB; null for none.
   final int? backgroundColor;
+
+  /// Whether the text is written in COLUMNS (縦書き): its letters top to
+  /// bottom, its columns from the right to the left — set by the app's one
+  /// vertical table (`vertical_writing.dart`).
+  ///
+  /// 🗣️유저 2026-10-06: 「세로쓰기: 1차는 가로만」 → 「어차피 타임시트나
+  /// x시트에서 가로쓰기/세로표기같은거 한거 많으니 그거 통합하면서
+  /// 진행해도될듯」.
+  ///
+  /// ⚠️[align] keeps its three names and is read along the letters: left
+  /// is the head of a column, right its foot.
+  final bool vertical;
 
   /// Every letter, as one string.
   String get text => spans.map((span) => span.text).join();
@@ -143,6 +164,7 @@ class CelTextContent {
     TextCelAlign? align,
     double? lineHeight,
     Object? backgroundColor = _sentinel,
+    bool? vertical,
   }) => CelTextContent(
     spans: spans ?? this.spans,
     anchor: anchor ?? this.anchor,
@@ -157,6 +179,7 @@ class CelTextContent {
     backgroundColor: identical(backgroundColor, _sentinel)
         ? this.backgroundColor
         : backgroundColor as int?,
+    vertical: vertical ?? this.vertical,
   );
 
   Map<String, dynamic> toJson() => {
@@ -167,6 +190,7 @@ class CelTextContent {
     'align': align.jsonValue,
     'lineHeight': lineHeight,
     if (backgroundColor != null) 'backgroundColor': backgroundColor,
+    if (vertical) 'vertical': vertical,
   };
 
   factory CelTextContent.fromJson(Map<String, dynamic> json) => CelTextContent(
@@ -180,6 +204,7 @@ class CelTextContent {
     align: TextCelAlign.fromJson(json['align'] as String?),
     lineHeight: (json['lineHeight'] as num?)?.toDouble() ?? defaultLineHeight,
     backgroundColor: json['backgroundColor'] as int?,
+    vertical: json['vertical'] as bool? ?? false,
   );
 
   @override
@@ -192,7 +217,8 @@ class CelTextContent {
           other.rotationDegrees == rotationDegrees &&
           other.align == align &&
           other.lineHeight == lineHeight &&
-          other.backgroundColor == backgroundColor;
+          other.backgroundColor == backgroundColor &&
+          other.vertical == vertical;
 
   @override
   int get hashCode => Object.hash(
@@ -203,6 +229,7 @@ class CelTextContent {
     align,
     lineHeight,
     backgroundColor,
+    vertical,
   );
 
   @override

@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/canvas/text/cel_text_press.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_stage.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
 import 'package:anicel/src/ui/text/canvas_letter_faces.dart';
+import 'package:anicel/src/ui/text/cel_text_layout.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -60,9 +61,10 @@ void main() {
     List<CelText> texts = const [],
     CelTextStage? stage,
     bool noCel = false,
+    bool columns = false,
   }) {
     final baker = HeldBaker();
-    final tool = CelTextTool(host: _Host(), bake: baker.call);
+    final tool = CelTextTool(host: _Host(columns: columns), bake: baker.call);
     final begun = <({CanvasPoint anchor, double? wrapWidth})>[];
     final traced = <Rect?>[];
     final CelTextCel cel = (
@@ -176,6 +178,21 @@ void main() {
 
       expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
       expect(begun, [(anchor: CanvasPoint(x: 6, y: 4), wrapWidth: 14)]);
+    });
+
+    // 세로쓰기 (유저 2026-10-06): the drag's room is its letters' — down.
+    test('🚨with the next text in COLUMNS, a drag begins a box as LONG as '
+        'the drag, hung from its top RIGHT corner', () {
+      final (tool: _, :scene, baker: _, :begun, :traced) = table(
+        columns: true,
+      );
+
+      final down = press(scene, 20.2, 14)!;
+      move(scene, down, 6.4, 3.8);
+      up(scene, down, 6.4, 3.8);
+
+      expect(traced.last, const Rect.fromLTRB(6.4, 3.8, 20.2, 14));
+      expect(begun, [(anchor: CanvasPoint(x: 20, y: 4), wrapWidth: 10)]);
     });
 
     test('🚨a hand that wandered less than its slop is still a click, and '
@@ -460,6 +477,82 @@ void main() {
       final widened = textOf(scene, 4).content;
       expect(widened.wrapWidth, 20);
       expect(widened.anchor, CanvasPoint(x: 16, y: 4));
+    });
+
+    group('a box in COLUMNS', () {
+      /// 「ab」 lying down a column 16 long, hung from (16, 4): the box is
+      /// 8 wide — from 8 to 16 — and runs from 4 down to 20.
+      final box = CelTextContent(
+        spans: const [CelTextSpan(text: 'ab', style: letters)],
+        anchor: CanvasPoint(x: 16, y: 4),
+        wrapWidth: 16,
+        lineHeight: 1,
+        vertical: true,
+      );
+
+      test('🚨wears its room\'s handles on its TOP and its BOTTOM edge — '
+          'the top one first, the edge its anchor is on', () {
+        final layout = layoutCelText(box);
+        addTearDown(layout.dispose);
+
+        final handles = celTextHandlesOf(layout);
+
+        expect(handles, hasLength(6));
+        expect(handles[4], const Offset(12, 4));
+        expect(handles[5], const Offset(12, 20));
+
+        // ⛔CONTROL: in lines they are on its two sides.
+        final lines = layoutCelText(
+          CelTextContent(
+            spans: const [CelTextSpan(text: 'ab', style: letters)],
+            anchor: CanvasPoint(x: 8, y: 4),
+            wrapWidth: 16,
+            lineHeight: 1,
+          ),
+        );
+        addTearDown(lines.dispose);
+        expect(celTextHandlesOf(lines).sublist(4), const [
+          Offset(8, 8),
+          Offset(24, 8),
+        ]);
+      });
+
+      test('🚨its BOTTOM edge sets how long its columns run, by how far the '
+          'hand goes DOWN them — and it stays hung where it was', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 12);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        // Three across the column and four down it.
+        final edge = press(scene, 12, 20)!;
+        move(scene, edge, 15, 24);
+        up(scene, edge, 15, 24);
+        await baker.pending.answer();
+
+        final lengthened = textOf(scene, 4).content;
+        expect(lengthened.wrapWidth, 20);
+        expect(lengthened.anchor, CanvasPoint(x: 16, y: 4));
+      });
+
+      test('🚨its TOP edge carries the anchor down the column: the foot '
+          'stays where it was', () async {
+        final (:tool, :scene, :baker, begun: _, traced: _) = table(
+          texts: [carried(4, box)],
+        );
+        press(scene, 12, 12);
+        expect(tool.session!.textId, 4, reason: '⛔fixture');
+
+        final edge = press(scene, 12, 4)!;
+        move(scene, edge, 12, 8);
+        up(scene, edge, 12, 8);
+        await baker.pending.answer();
+
+        final shortened = textOf(scene, 4).content;
+        expect(shortened.wrapWidth, 12);
+        expect(shortened.anchor, CanvasPoint(x: 16, y: 8));
+      });
     });
 
     test('a press that goes away mid-move puts the text back where it '
@@ -937,11 +1030,17 @@ void main() {
 
 /// The canvas panel the hand works on, stood in for: real history.
 class _Host implements CelTextToolHost {
+  _Host({this.columns = false});
+
+  /// Whether the next text is written in columns.
+  final bool columns;
+
   final HistoryManager history = HistoryManager();
 
   @override
-  TextToolOptions get options => const TextToolOptions(
-    letters: TextLetterStyle(fontSize: 8),
+  TextToolOptions get options => TextToolOptions(
+    letters: const TextLetterStyle(fontSize: 8),
+    vertical: columns,
   );
 
   /// A press is handed its cel; none is named for the settings' list.

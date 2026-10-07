@@ -34,6 +34,7 @@ void main() {
     double? wrapWidth,
     int? background,
     double lineHeight = 1,
+    bool vertical = false,
   }) => CelTextContent(
     spans: spans,
     anchor: CanvasPoint(x: x, y: y),
@@ -41,6 +42,7 @@ void main() {
     wrapWidth: wrapWidth,
     lineHeight: lineHeight,
     backgroundColor: background,
+    vertical: vertical,
   );
 
   CelTextSpan run(
@@ -145,6 +147,45 @@ void main() {
     final plate = await baked(said([run('ab')]));
 
     expect(plate.keys.toSet(), {TileCoord(x: 1, y: 1), TileCoord(x: 2, y: 1)});
+    for (final tile in plate.values) {
+      expect(tile.pixels, tileFilledWith(ink).pixels);
+    }
+  });
+
+  // 세로쓰기 (유저 2026-10-06). 「123」 is three digits — too many for one
+  // cell — so each stands in a cell of its own: a tile apiece at size 8.
+  test('🚨a text in COLUMNS is drawn DOWN from its anchor and to its left: '
+      'a letter a tile, one under the other', () async {
+    final plate = await baked(said([run('123')], x: 16, vertical: true));
+
+    expect(plate.keys.toSet(), {
+      TileCoord(x: 1, y: 1),
+      TileCoord(x: 1, y: 2),
+      TileCoord(x: 1, y: 3),
+    });
+    for (final tile in plate.values) {
+      expect(tile.pixels, tileFilledWith(ink).pixels);
+    }
+
+    // ⛔CONTROL: in lines the very text runs to the RIGHT of that anchor.
+    final lines = await baked(said([run('123')], x: 16));
+    expect(lines.keys.toSet(), {
+      TileCoord(x: 2, y: 1),
+      TileCoord(x: 3, y: 1),
+      TileCoord(x: 4, y: 1),
+    });
+  });
+
+  test('a break typed into a text in columns opens the next one to the '
+      'LEFT, and a word lying down runs down its column', () async {
+    final plate = await baked(said([run('7\nab')], x: 24, vertical: true));
+
+    // 「7」 at the anchor's left; 「ab」 lying down the column left of that.
+    expect(plate.keys.toSet(), {
+      TileCoord(x: 2, y: 1),
+      TileCoord(x: 1, y: 1),
+      TileCoord(x: 1, y: 2),
+    });
     for (final tile in plate.values) {
       expect(tile.pixels, tileFilledWith(ink).pixels);
     }

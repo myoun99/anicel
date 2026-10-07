@@ -30,6 +30,15 @@ import 'cel_text_stage.dart';
 /// learned each of these, `SheetTextEditLayer`) — and stood under the
 /// panel's view of it, so the IME composes beside the caret and the arrow
 /// keys move along the lines the canvas shows.
+///
+/// 🧭A TEXT IN COLUMNS HAS ITS FIELD LYING DOWN THEM. A field sets lines;
+/// turned a quarter clockwise about the block's top right corner, its
+/// first line runs down the first column and its next line is to the left
+/// — near enough to where the letters are that the IME's window opens
+/// beside them. Near enough, not exactly: the field breaks its lines by
+/// the letters' widths, the columns by the table's cells. So the ARROWS in
+/// columns are answered here, off the text as it is shown ([_arrow]), and
+/// never left to the field's own idea of the line above.
 class CelTextField extends StatelessWidget {
   const CelTextField({
     super.key,
@@ -132,13 +141,20 @@ class CelTextField extends StatelessWidget {
         : SizedBox(width: wrapWidth + _caretGap, child: field);
   }
 
-  /// The text's own frame — its lines' block — on the panel.
+  /// The text's own frame — its letters' block — on the panel: from the
+  /// block's top left corner along its lines, or — in columns — from its
+  /// top right corner down them.
   Matrix4 get _frame {
     final content = letters.content;
-    return stage.artworkOnPanel
+    final frame = stage.artworkOnPanel
       ..translateByDouble(content.anchor.x, content.anchor.y, 0, 1)
-      ..rotateZ(content.rotationDegrees * math.pi / 180)
-      ..translateByDouble(shown.block.left, shown.block.top, 0, 1);
+      ..rotateZ(content.rotationDegrees * math.pi / 180);
+    if (content.vertical) {
+      return frame
+        ..translateByDouble(shown.block.right, shown.block.top, 0, 1)
+        ..rotateZ(math.pi / 2);
+    }
+    return frame..translateByDouble(shown.block.left, shown.block.top, 0, 1);
   }
 
   static void _keepTheKeyboard(PointerEvent event) {}
@@ -149,6 +165,66 @@ class CelTextField extends StatelessWidget {
       onEscape();
       return KeyEventResult.handled;
     }
+    if (event is! KeyUpEvent && letters.content.vertical && _arrow(event)) {
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
+  }
+
+  /// An arrow, in a text written in COLUMNS: down and up are the next
+  /// letter and the one before, left and right the column after and the
+  /// column before — with Shift, the end of the selection goes there.
+  /// Whether [event] was one, and was answered.
+  ///
+  /// ⚠️Plain and with Shift alone. A jump by a word or to the end of the
+  /// text is the field's own, as it is in lines.
+  bool _arrow(KeyEvent event) {
+    final keys = HardwareKeyboard.instance;
+    if (keys.isControlPressed || keys.isAltPressed || keys.isMetaPressed) {
+      return false;
+    }
+    final from = letters.selection.extentOffset;
+    final text = letters.text;
+    if (from < 0) {
+      return false;
+    }
+    final to = switch (event.logicalKey) {
+      LogicalKeyboardKey.arrowDown =>
+        from >= text.length
+            ? text.length
+            : from + text.substring(from).characters.first.length,
+      LogicalKeyboardKey.arrowUp =>
+        from <= 0
+            ? 0
+            : from - text.substring(0, from).characters.last.length,
+      LogicalKeyboardKey.arrowLeft => _inTheColumn(from, after: true),
+      LogicalKeyboardKey.arrowRight => _inTheColumn(from, after: false),
+      _ => null,
+    };
+    if (to == null) {
+      return false;
+    }
+    letters.selection = keys.isShiftPressed
+        ? letters.selection.copyWith(extentOffset: to)
+        : TextSelection.collapsed(offset: to);
+    return true;
+  }
+
+  /// The place as far down the column [after] the one [offset] is in — or
+  /// the one before it — as [offset] is down its own: read off the text as
+  /// it is shown. With no column on that side, the text's end, or its
+  /// start.
+  int _inTheColumn(int offset, {required bool after}) {
+    final length = shown.content.text.length;
+    final caret = shown.caretRect(
+      TextPosition(offset: math.min(offset, length)),
+    );
+    // The column after is to the LEFT.
+    final beside = Offset(
+      after ? caret.left - 0.5 : caret.right + 0.5,
+      caret.center.dy,
+    );
+    final there = shown.positionAt(shown.toCanvas(beside)).offset;
+    return there != offset ? there : (after ? letters.text.length : 0);
   }
 }

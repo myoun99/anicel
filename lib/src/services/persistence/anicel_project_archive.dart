@@ -66,6 +66,17 @@ String projectDisplayName(String path) {
       : file;
 }
 
+/// v9 (2026-10-07, the text tool's vertical writing — R9-rest): a text on a
+/// cel says when it is written in columns (`CelTextContent.vertical`,
+/// written only where it is). A v8 build reads the text without the word:
+/// it sets the letters in lines over a plate that shows them in columns,
+/// its box, caret and presses all measured in lines — and the first edit
+/// bakes the lines and writes the text back without the word. The bump
+/// turns that into a refusal ([decodeAnicelProjectDocument]).
+///
+/// ⚠️No older shape is read for it, and the floor stays where it was: a
+/// text that does not say is one in lines at THIS version too.
+///
 /// v8 (2026-10-07, the text tool's AA switch — R9-rest): a letter says
 /// whether its edges are smoothed (`TextLetterStyle.antialias`, written
 /// only where they are not). A v7 build reads a letter without the word:
@@ -140,7 +151,7 @@ String projectDisplayName(String path) {
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int anicelFormatVersion = 8;
+const int anicelFormatVersion = 9;
 
 /// The oldest format this build reads. A file below it is turned away at
 /// the door, by its number ([decodeAnicelProjectDocument]).

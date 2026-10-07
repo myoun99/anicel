@@ -4,6 +4,7 @@ import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/ui/brush/text_tool_options.dart';
 import 'package:anicel/src/ui/brush/text_tool_settings_values.dart';
 import 'package:anicel/src/ui/canvas/text/cel_text_tool.dart';
+import 'package:anicel/src/ui/text/cel_text_box_width.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -415,6 +416,57 @@ void main() {
       expect(values.wraps, isTrue);
       expect(values.canSetWraps(wraps: true), isTrue);
       expect(values.canSetWraps(wraps: false), isTrue);
+    });
+  });
+
+  // 세로쓰기 (유저 2026-10-06).
+  group('the way a text is written', () {
+    test('is the text in hand\'s, whatever the next text\'s is — and with '
+        'none in hand, the next text\'s', () {
+      expect(
+        settings(next: const TextToolOptions(vertical: true)).values.vertical,
+        isTrue,
+      );
+      expect(settings().values.vertical, isFalse);
+      expect(
+        settings(
+          text: said([run('ab')]),
+          next: const TextToolOptions(vertical: true),
+        ).values.vertical,
+        isFalse,
+      );
+    });
+
+    test('🚨changed, the text in hand is written the other way WHERE IT '
+        'STANDS — one step — and the next text will be written so', () async {
+      final before = said([run('ab'), run('cd', large)]);
+      final (:values, :options, tool: _, :host, :baker, :cel) = settings(
+        text: before,
+      );
+
+      values.setVertical(true);
+      await baker.pending.answer();
+
+      expect(landed(cel), celTextWrittenAs(before, vertical: true));
+      expect(landed(cel).anchor, isNot(before.anchor));
+      expect(host.ran, hasLength(1));
+      expect(options.value.vertical, isTrue);
+      expect(values.vertical, isTrue);
+    });
+
+    test('a text begun after it starts written that way', () {
+      const next = TextToolOptions(vertical: true);
+      final begun = next.newTextAt(CanvasPoint(x: 3, y: 4), wrapWidth: 50);
+
+      expect(begun.vertical, isTrue);
+      expect(begun.wrapWidth, 50);
+      expect(
+        TextToolOptions.defaults.newTextAt(CanvasPoint(x: 3, y: 4)).vertical,
+        isFalse,
+      );
+      expect(next, isNot(TextToolOptions.defaults));
+      expect(next.copyWith(lineHeight: 2).vertical, isTrue);
+      expect(next.hashCode, isNot(TextToolOptions.defaults.hashCode));
     });
   });
 

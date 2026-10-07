@@ -28,7 +28,8 @@ import 'tool_settings_section.dart';
 /// The layout is the one 유저 took on 2026-10-06, top to bottom: the text in
 /// hand and its delete · **글자** — face, size, tracking, bold, colour,
 /// outline, outline width, and the smoothing of their edges (유저: 「2차에서
-/// 스위치로 넣음」) · **상자** — alignment, box width, line spacing,
+/// 스위치로 넣음」) · **상자** — the way it is written (가로 · 세로,
+/// 유저: 「세로쓰기 … 그거 통합하면서 진행」), alignment, box width, line spacing,
 /// background · and at the foot 「그림으로 굳히기」.
 ///
 /// What every row reads and writes is ONE law, and it is not in this file
@@ -617,20 +618,59 @@ class _BoxRows extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     mainAxisSize: MainAxisSize.min,
-    children: [_alignment(), _boxWidth(), _gap, _linePitch(), _background()],
+    children: [
+      _writing(),
+      _alignment(),
+      _boxWidth(),
+      _gap,
+      _linePitch(),
+      _background(),
+    ],
   );
 
+  /// Lines, or columns (縦書き) — of the text in hand, which is then
+  /// written the other way where it stands, and of the next text.
+  ///
+  /// 🗣️유저 2026-10-06: 「세로쓰기: 1차는 가로만」 → 「어차피 타임시트나
+  /// x시트에서 가로쓰기/세로표기같은거 한거 많으니 그거 통합하면서
+  /// 진행해도될듯」.
+  Widget _writing() {
+    final strings = AppText.strings;
+    return _ChoiceRow<bool>(
+      name: 'writing',
+      label: strings.textToolWriting,
+      current: values.vertical,
+      answers: [
+        (value: false, key: 'lines', label: strings.textToolWritingLines),
+        (value: true, key: 'columns', label: strings.textToolWritingColumns),
+      ],
+      onPick: (vertical) =>
+          values.writable ? () => values.setVertical(vertical) : null,
+    );
+  }
+
+  /// Where the letters stand along their way: the three answers keep their
+  /// values and are NAMED by what they are on screen — the left, the middle
+  /// and the right of a line; the top, the middle and the bottom of a
+  /// column.
   Widget _alignment() {
     final strings = AppText.strings;
+    final columns = values.vertical;
     return _ChoiceRow<TextCelAlign>(
       name: 'align',
       label: strings.textToolAlign,
       current: values.align,
       answers: [
         for (final (align, label) in [
-          (TextCelAlign.left, strings.textToolAlignLeft),
+          (
+            TextCelAlign.left,
+            columns ? strings.textToolAlignTop : strings.textToolAlignLeft,
+          ),
           (TextCelAlign.center, strings.textToolAlignCenter),
-          (TextCelAlign.right, strings.textToolAlignRight),
+          (
+            TextCelAlign.right,
+            columns ? strings.textToolAlignBottom : strings.textToolAlignRight,
+          ),
         ])
           (value: align, key: align.name, label: label),
       ],

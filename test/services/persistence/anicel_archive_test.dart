@@ -272,6 +272,18 @@ void main() {
           'it must refuse the file, not soften it (R9-rest, 10-07)',
     );
   });
+
+  test('🚨a build that reads version 8 refuses what this one writes — a '
+      'text says when it is written in columns now', () {
+    expect(
+      writtenFormatVersion(),
+      greaterThan(8),
+      reason:
+          'a v8 build sets a text in columns in lines, over a plate that '
+          'shows columns, and its first edit writes the lines back — it '
+          'must refuse the file (R9-rest, 10-07)',
+    );
+  });
 }
 
 /// The project manifest is compressed, and an old uncompressed one still
