@@ -218,6 +218,83 @@ void main() {
     });
   });
 
+  // 세로쓰기 (유저 2026-10-06): a column's letters are drawn by the passes
+  // a line's are — one painter a cell, each pass — so hard, they have no
+  // soft edge either.
+  group('hard letters set in COLUMNS', () {
+    // 「ab」 lies down its column: twenty long, ten wide, hanging to the
+    // anchor's left — turned, and between pixels.
+    CelTextContent inColumns(List<CelTextSpan> spans, {int? background}) =>
+        CelTextContent(
+          spans: spans,
+          anchor: CanvasPoint(x: 22.5, y: 4.25),
+          rotationDegrees: 25,
+          lineHeight: 1,
+          backgroundColor: background,
+          vertical: true,
+        );
+
+    test('🚨are their colour, whole, or nothing', () async {
+      final hard = await inkOf(inColumns([run('ab')]));
+
+      expect(hard, isNotEmpty, reason: 'they ARE drawn');
+      expect(hex(hard), {'ffc80a14'});
+
+      // ⛔CONTROL: smooth, the same text has an edge of in-between pixels.
+      final smooth = await inkOf(inColumns([run('ab', antialias: true)]));
+      expect(hex(smooth).length, greaterThan(4), reason: '⛔fixture');
+      final cover = smooth.fold<double>(
+        0,
+        (sum, pixel) => sum + (pixel >>> 24) / 255,
+      );
+      expect(hard.length, closeTo(cover, cover * 0.08));
+    });
+
+    test('🚨an outline is UNDER its fill there too, each its colour, whole: '
+        'the fill covers what it covers with no outline', () async {
+      int count(List<int> pixels, int argb) =>
+          pixels.where((pixel) => pixel == argb).length;
+      final bare = await inkOf(inColumns([run('ab')]));
+      final hard = await inkOf(
+        inColumns([run('ab', outline: blue, outlineWidth: 3)]),
+      );
+
+      expect(hex(hard), {'ffc80a14', 'ff0a14c8'});
+      expect(count(hard, red), bare.length);
+      expect(count(hard, blue), greaterThan(20), reason: 'a ring round it');
+    });
+
+    test('two letters of two colours down one column never blend', () async {
+      final hard = await inkOf(
+        inColumns([run('a'), run('b', color: blue)]),
+      );
+
+      expect(hex(hard), {'ffc80a14', 'ff0a14c8'});
+    });
+
+    test('the box behind them is hard where every letter is', () async {
+      final hard = await inkOf(inColumns([run('ab')], background: green));
+
+      expect(hex(hard), {'ffc80a14', 'ff14c80a'});
+    });
+
+    test('one layer a colour, cut just past all the columns can draw', () {
+      final layout = layoutCelText(
+        inColumns([run('ab', outline: blue, outlineWidth: 4)]),
+      );
+      final canvas = _CountsLayers();
+      layout.paint(canvas);
+
+      expect(layout.block, const ui.Rect.fromLTWH(-10, 0, 10, 20));
+      expect(canvas.layers, 2, reason: 'the outline, the fill');
+      expect(
+        canvas.cuts.toSet(),
+        {layout.block.inflate(10 + 2).inflate(2)},
+      );
+      layout.dispose();
+    });
+  });
+
   group('what is drawn for it', () {
     int layersOf(CelTextContent content) {
       final layout = layoutCelText(content);

@@ -425,7 +425,8 @@ List<_Column> _columnsOf(
   var next = 0;
 
   /// The style a column with no cell is as wide as: the letters at [place]
-  /// — the break that opened it, or what will be typed there.
+  /// — the break that opened it — or, in a text with no letters at all,
+  /// what will be typed there.
   TextLetterStyle lettersAt(int place) {
     var at = 0;
     for (final span in content.spans) {
@@ -434,7 +435,7 @@ List<_Column> _columnsOf(
         return span.style;
       }
     }
-    return content.isEmpty ? nextLetterStyle : content.spans.last.style;
+    return nextLetterStyle;
   }
 
   void close(List<_ColumnCell> column, int start, int end, bool wrapped) {
