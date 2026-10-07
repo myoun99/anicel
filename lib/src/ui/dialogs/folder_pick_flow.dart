@@ -301,9 +301,10 @@ Future<List<FolderGrant>> _grantsTheCallerTakes(
   return accepted;
 }
 
-/// PICK-6: hands a finished file to the location the user picks — the
-/// SCOPED platforms' Save As (iOS/Android have no save dialog, so the file
-/// is staged first and the OS moves it).
+/// PICK-6: hands a finished file to the location the user picks — the road
+/// of the SCOPED platforms, which have no save dialog that answers with a
+/// path: the file is made first and the OS places it. Save As goes through
+/// it there, and so does every file that is handed over once it is made.
 ///
 /// ⚠️[sourcePath] is CONSUMED on success — the file is MOVED, not copied.
 /// From then on the returned grant's path is the only copy.
@@ -311,12 +312,25 @@ Future<List<FolderGrant>> _grantsTheCallerTakes(
 /// The grant is returned whole rather than as a path, because Save As is
 /// exactly the caller that needs the bookmark: it is what lets every later
 /// save write there with no UI at all.
+///
+/// [keepsSavingThere] is [placeStagedFileForUser]'s question — will the
+/// caller go on saving into what it placed? — and it is what Android's
+/// storage grant hangs on. A file that is SAVED AGAIN is rewritten in place
+/// through its real path, and Android resolves none without the grant, so
+/// that caller is asked for it before the window opens. A file that is
+/// handed over and never written again is poured into the document the
+/// window made, which asks no grant at all.
+///
+/// ↩️Every caller was asked for the grant, because this was Save As's road
+/// alone when the gate went in (2026-08-14); the exports that came to use
+/// it inherited a permission nothing of theirs needed.
 Future<FolderGrant?> exportFileForUser(
   BuildContext context, {
   required String sourcePath,
+  required bool keepsSavingThere,
   String? suggestedName,
 }) async {
-  if (!await _storageGrantCleared(context)) {
+  if (keepsSavingThere && !await _storageGrantCleared(context)) {
     return null;
   }
   final grant = await FolderPicker.exportFile(
@@ -517,10 +531,13 @@ Future<HandOver> handOverFilesForUser(
           ? HandOver.declined
           : HandOver.placed;
     case HandOverRoad.saveWindow:
-      return await exportFileForUser(context, sourcePath: paths.single) ==
-              null
-          ? HandOver.declined
-          : HandOver.placed;
+      final placed = await exportFileForUser(
+        context,
+        sourcePath: paths.single,
+        // Handed over, and never written again.
+        keepsSavingThere: false,
+      );
+      return placed == null ? HandOver.declined : HandOver.placed;
     case HandOverRoad.folderWindow:
       final folder = await pickFolderForUser(context);
       if (folder == null) {
@@ -840,17 +857,20 @@ Future<String?> handWrittenFileToUser(
 /// removing. It answers false when it could not produce a real file, and
 /// then nothing is handed over.
 ///
-/// ⚠️The DESKTOP halves are deliberately NOT here. Save As desktop answers
-/// with a path for the later atomic temp+rename save and asks the F-14
-/// replace question; an export desktop writes immediately. Two laws, and a
-/// flag choosing between them would be the invented kind.
+/// ⚠️The DESKTOP halves are deliberately NOT here. They ask through the one
+/// save window ([pickSaveFileForUser]) and then part ways: Save As keeps
+/// the path for the atomic temp+rename save that follows, an export writes
+/// at it at once. Two laws, and a flag choosing between them would be the
+/// invented kind.
 ///
 /// [keepsSavingThere] answers ONE question — will the caller go on saving
-/// into what it placed? Only Save As does. Where the picker answered with a
-/// document that has no filesystem path (PICK-7, Drive on Android), the
-/// staged file is poured into it and then either becomes that document's
-/// working copy — moved, never copied, and answered as a path — or goes
-/// with the staging folder like any other placed file.
+/// into what it placed? Only Save As does, and two things follow from the
+/// answer. Android's storage grant is asked of that caller alone
+/// ([exportFileForUser]). And where the picker answered with a document
+/// that has no filesystem path (PICK-7, Drive on Android), the staged file
+/// is poured into it and then either becomes that document's working copy
+/// — moved, never copied, and answered as a path — or goes with the
+/// staging folder like any other placed file.
 Future<FolderGrant?> placeStagedFileForUser(
   BuildContext context, {
   required String suggestedName,
@@ -874,6 +894,7 @@ Future<FolderGrant?> placeStagedFileForUser(
     context,
     sourcePath: staged.path,
     suggestedName: suggestedName,
+    keepsSavingThere: keepsSavingThere,
   );
   final document = grant?.document;
   final placed = keepsSavingThere && document != null

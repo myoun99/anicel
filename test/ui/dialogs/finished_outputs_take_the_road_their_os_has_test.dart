@@ -109,6 +109,58 @@ void main() {
     expect(await handOver(tester, [file]), HandOver.declined);
   });
 
+  testWidgets('🎯Android: ONE file is handed over with NO All-Files grant — '
+      'it is poured where the save window says and never written again, so '
+      'nothing of it needs a real path', (tester) async {
+    final windows = androidWindows();
+    AppStorage.debugAllFilesAccessOverride = false;
+
+    expect(await handOver(tester, [file]), HandOver.placed);
+
+    expect(windows.saved, [file]);
+    expect(
+      find.byKey(const ValueKey<String>('storage-grant-dialog')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Android: SEVERAL outputs still need it — a folder is written '
+      'into through its real path — and are told so, not moved', (
+    tester,
+  ) async {
+    final windows = androidWindows();
+    AppStorage.debugAllFilesAccessOverride = false;
+    HandOver? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result = await handOverFilesForUser(
+                context,
+                paths: [file, folder],
+              );
+            },
+            child: const Text('hand over'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('hand over'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('storage-grant-dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('storage-grant-cancel')));
+    await tester.pumpAndSettle();
+
+    expect(result, HandOver.declined);
+    expect(windows.askedFolder, isEmpty, reason: 'the window never opened');
+    expect(File(file).existsSync(), isTrue);
+  });
+
   testWidgets('🎯Android: SEVERAL outputs are asked ONE folder window and '
       'moved into the folder it answers — a folder among them whole', (
     tester,
