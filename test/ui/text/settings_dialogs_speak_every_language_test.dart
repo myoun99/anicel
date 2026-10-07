@@ -227,7 +227,12 @@ void main() {
   /// independent — the button wore a table string until it became an action
   /// a key can be put on, and is answered in the other four languages by id
   /// (`shortcutAction.edit-unlink`). The same shape.
-  const untranslatedElsewhere = 92;
+  ///
+  /// 93 (I-63 ③, 2026-10-07): the English row of the layer pill's Add Layer
+  /// — its ＋ became an action beside Add Frame (which only changed its
+  /// words, New Drawing before), answered in the other four languages by id
+  /// (`shortcutAction.layer-add`). The same shape.
+  const untranslatedElsewhere = 93;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
