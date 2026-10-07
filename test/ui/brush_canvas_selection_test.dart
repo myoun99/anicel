@@ -40,7 +40,10 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/core/point_bounds.dart';
+import 'package:anicel/src/ui/canvas/canvas_capsule.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/canvas_target_pill.dart';
 import 'package:anicel/src/ui/canvas/float_warp.dart'
     show debugLastResampledFloat;
 import 'package:anicel/src/ui/canvas/box_chrome.dart';
@@ -2937,6 +2940,97 @@ void main() {
       await press.up();
       await tester.pump();
     }
+  });
+
+  // 🗣️I-79 (유저 2026-10-06): 「변형도구 체크버튼도 이 공용화된거 쓰도록」, and
+  // I-79-Q1 (10-08): 「아니 그냥 위쪽 가운데 말고 아래쪽 가운데로 하자」 — the
+  // box's ✓/✕ wear the canvas's pill, under the middle of the box AS DRAWN.
+  testWidgets('🚨the ✓/✕ pill stands under the middle of the box as drawn — '
+      'a turned box, not the shape it carries', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    // A diamond: turned an eighth, its box stands well past it.
+    env.commands.setRegion(
+      CanvasSelectionRegion.shape(
+        CanvasSelectionShape([
+          CanvasPoint(x: 45, y: 20),
+          CanvasPoint(x: 70, y: 45),
+          CanvasPoint(x: 45, y: 70),
+          CanvasPoint(x: 20, y: 45),
+        ]),
+      ),
+    );
+    await tester.pump();
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.editTransformValues(
+      (now) => now.copyWith(rotationDegrees: 45),
+    );
+    await tester.pump();
+
+    final pill = find.byKey(const ValueKey<String>('selection-confirm-pill'));
+    for (final key in const ['selection-move-confirm', 'selection-move-cancel']) {
+      expect(
+        find.descendant(of: pill, matching: find.byKey(ValueKey<String>(key))),
+        findsOneWidget,
+        reason: '$key 는 알약 안에 있다',
+      );
+    }
+    final chrome = chromeOnScreen(tester)!;
+    final drawn = pointsBounds(
+      chrome.box,
+    ).shift(tester.getTopLeft(find.byKey(layerKey)));
+    final rect = tester.getRect(pill);
+    expect(rect.center.dx, closeTo(drawn.center.dx, 0.01), reason: '가운데');
+    expect(
+      rect.top,
+      closeTo(drawn.bottom + targetPillGap, 0.01),
+      reason: '상자 아래 — 상자가 실은 모양 아래가 아니다',
+    );
+  });
+
+  // The rim round the buttons is the PILL's. A press there reached the layer
+  // as 「outside the box」, which is the rotation.
+  testWidgets('🚨알약 테두리에서 시작한 드래그도 회전이 아니다', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      viewport: seedFromRender(tester, CanvasViewport(zoom: 3)),
+    );
+    await moveAtZoom(
+      tester,
+      zoom: 3,
+      grabCanvas: const Offset(36.5, 36.5),
+      byCanvas: const Offset(10, 5),
+    );
+    expect(env.commands.transformActive, isTrue, reason: '⛔전제: 상자가 열림');
+    final before = env.commands.transformValues!;
+
+    final pill = tester.getRect(
+      find.byKey(const ValueKey<String>('selection-confirm-pill')),
+    );
+    final rim = Offset(pill.left + CanvasCapsule.barPillEnd / 2, pill.center.dy);
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('selection-move-confirm')))
+          .contains(rim),
+      isFalse,
+      reason: '⛔전제: 버튼이 아니라 테두리',
+    );
+    final press = await tester.startGesture(rim);
+    await tester.pump();
+    await press.moveBy(const Offset(24, 18));
+    await tester.pump();
+    await press.moveBy(const Offset(24, 18));
+    await tester.pump();
+
+    expect(
+      env.commands.transformValues?.rotationDegrees,
+      before.rotationDegrees,
+      reason: '🚨알약 위에서 끈 것은 회전이 아니다',
+    );
+    expect(env.commands.transformValues?.tx, before.tx, reason: '⛔이동도 아니다');
+    await press.up();
+    await tester.pump();
   });
 
   // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록」 — these

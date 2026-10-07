@@ -98,7 +98,7 @@ import 'canvas_viewport_pan_metrics.dart';
 import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
-import '../widgets/superellipse_clip.dart';
+import '../canvas/canvas_capsule.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart' show sliderValueText;
 import '../widgets/panel_flyout.dart';
@@ -1822,6 +1822,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _cutPieceFromShape,
               oneFingerAction:
                   widget.oneFingerAction,
+              pillCover: _pillCover,
               onFillShape:
                   _fillDrawnShape,
               onDrawShape:
@@ -2170,6 +2171,26 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
           floorOverlay: widget.floorBottomOverlaySpan,
         ),
       );
+
+  /// What the 확정/취소 pill keeps out from under (`CanvasTargetPill`):
+  /// all that framing keeps out from under, and on the floor the
+  /// horizontal bar's capsule as well — framing looks past a capsule
+  /// floating on the artwork, and a pill under one could not be pressed.
+  EdgeInsets get _pillCover {
+    final framing = _framingInsets;
+    if (!_onFloor) {
+      return framing;
+    }
+    final overTheBar =
+        _CanvasEditorPanelShell.floorBarBottom(
+          cover: widget.floorCover,
+          bottomOverlaySpan: widget.floorBottomOverlaySpan,
+          transport: widget.transport,
+        ) +
+        AppScrollbarLane.medium +
+        _CanvasEditorPanelShell._capsuleMargin;
+    return framing.copyWith(bottom: math.max(framing.bottom, overTheBar));
+  }
 
   /// [_CanvasEditorPanelShell.pillBandIn], measured where the words it is
   /// sized by are known — and again whenever they change.
@@ -2799,7 +2820,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           ),
         ),
         if (onFloor)
-          _floorCapsules(colorScheme)
+          _floorCapsules()
         else
           ..._dockedLanes(colorScheme),
         if (documentName case final name?) _documentName(name),
@@ -2843,8 +2864,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         child: FittedBox(
                           fit: BoxFit.scaleDown,
                           alignment: Alignment.centerLeft,
-                          child: _capsule(
-                            colorScheme,
+                          child: CanvasCapsule(
                             keyValue: 'canvas-page-strip',
                             width: _pageStripWidth,
                             child: Column(
@@ -2893,8 +2913,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                             window.width - 2 * _capsuleMargin,
                           ),
                         ),
-                        child: _capsule(
-                          colorScheme,
+                        child: CanvasCapsule(
                           keyValue: 'canvas-view-pill',
                           height: _CanvasViewportBottomBar.heightIn(context),
                           child: bottomBar,
@@ -2926,23 +2945,20 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// actually beside it. A rail panel is as tall as it was left at, so
   /// a short one covers a band, not an edge: stepping in for the whole
   /// edge left the bar hanging in the middle of nothing.
-  Widget _floorCapsules(ColorScheme colorScheme) => Positioned.fill(
+  Widget _floorCapsules() => Positioned.fill(
     child: LayoutBuilder(
       builder: (context, panel) => Stack(
         children: [
-          _floorVerticalCapsule(colorScheme, panel),
-          _floorHorizontalCapsule(colorScheme, panel),
+          _floorVerticalCapsule(panel),
+          _floorHorizontalCapsule(panel),
           if (transport case final transport?)
-            _floorTransportCapsule(colorScheme, transport),
+            _floorTransportCapsule(transport),
         ],
       ),
     ),
   );
 
-  Positioned _floorVerticalCapsule(
-    ColorScheme colorScheme,
-    BoxConstraints panel,
-  ) {
+  Positioned _floorVerticalCapsule(BoxConstraints panel) {
     final insets = cover;
     final visibleTop = insets.top;
     final visibleBottom = math.max(
@@ -2961,8 +2977,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
       right: intrudes ? insets.right + _capsuleMargin : _capsuleMargin,
       top: barTop,
       height: track,
-      child: _capsule(
-        colorScheme,
+      child: CanvasCapsule(
         keyValue: 'canvas-panbar-vertical',
         width: rightStripWidth,
         height: track,
@@ -2982,10 +2997,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   ///  * ACROSS that edge it still yields, because there it is not a matter
   ///    of taste: a bar on the bottom edge with the region docked below
   ///    would be UNDER it.
-  Positioned _floorHorizontalCapsule(
-    ColorScheme colorScheme,
-    BoxConstraints panel,
-  ) => Positioned(
+  Positioned _floorHorizontalCapsule(BoxConstraints panel) => Positioned(
     left: _capsuleMargin,
     right: _capsuleMargin,
     // ⑩: …and above whatever lies ON the artwork at that edge. The
@@ -2996,8 +3008,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     bottom: _floorBarBottom,
     child: Align(
       alignment: Alignment.bottomCenter,
-      child: _capsule(
-        colorScheme,
+      child: CanvasCapsule(
         keyValue: 'canvas-panbar-horizontal',
         height: AppScrollbarLane.medium,
         width: _capsuleTrack(panel.maxWidth),
@@ -3009,11 +3020,21 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// How far up the floor's bottom edge the horizontal bar's capsule
   /// stands: over what covers that edge, and over the transport when there
   /// is one.
-  double get _floorBarBottom =>
+  static double floorBarBottom({
+    required EdgeInsets cover,
+    required double bottomOverlaySpan,
+    required CanvasTransportBand? transport,
+  }) =>
       cover.bottom +
       bottomOverlaySpan +
       _capsuleMargin +
-      (transport == null ? 0 : transport!.height + _capsuleMargin);
+      (transport == null ? 0 : transport.height + _capsuleMargin);
+
+  double get _floorBarBottom => floorBarBottom(
+    cover: cover,
+    bottomOverlaySpan: bottomOverlaySpan,
+    transport: transport,
+  );
 
   /// The floor's transport, in a capsule under the horizontal bar — as wide
   /// as what the side panels leave.
@@ -3023,14 +3044,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// this wide would have its ends — where the playhead reads and the sound
   /// is — under one.
   Positioned _floorTransportCapsule(
-    ColorScheme colorScheme,
     CanvasTransportBand transport,
   ) => Positioned(
     left: cover.left + _capsuleMargin,
     right: cover.right + _capsuleMargin,
     bottom: cover.bottom + bottomOverlaySpan + _capsuleMargin,
-    child: _capsule(
-      colorScheme,
+    child: CanvasCapsule(
       keyValue: 'canvas-transport',
       height: transport.height,
       child: transport.child,
@@ -3052,7 +3071,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// A docked panel's panbars ([dockedLanes]): each bar in a lane of its
   /// own, flush with its edge, and the corner between them left to neither.
   /// Each lane is ringed on its artwork side in the backdrop, for the
-  /// capsule's reason ([_capsule]). The transport of a document that runs
+  /// capsule's reason ([CanvasCapsule]). The transport of a document that runs
   /// is a band under them, ruled off the same way.
   List<Widget> _dockedLanes(ColorScheme colorScheme) {
     const ring = BorderSide(color: AppColors.backdrop);
@@ -3109,50 +3128,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     ];
   }
 
-  /// One floating control surface: opaque, superellipse, ringed in the
-  /// backdrop.
-  ///
-  /// ↩️Opaque on a docked panel too. Its capsules were see-through for a
-  /// day (F-209, 유저 2026-09-28), and the user took that back (09-30:
-  /// 「알약 반투명하지말자. 원복. 대신 판정을 알약까지 포함해서 판정」),
-  /// leaving a see-through pill to us only if it costs nothing
-  /// (「굽기가능하거나 성능변화없으면」). It does not: the pill faded WHOLE is
-  /// a group opacity, one more offscreen pass on every frame the canvas
-  /// under it moves (Impeller keeps no raster cache) — and with the framing
-  /// out from under the pill ([pillBandIn]) nothing framed lies under it.
-  ///
-  /// The ring is not decoration. What lies beside a capsule is the
-  /// PASTEBOARD, a colour the user chooses, so no fill of ours can be
-  /// relied on to contrast with it — the same reason the panbar lane has
-  /// carried a hairline since the palette collapsed to three fills.
-  Widget _capsule(
-    ColorScheme colorScheme, {
-    required String keyValue,
-    required Widget child,
-    double? width,
-    double? height,
-  }) {
-    // The corner follows the SHORT axis, the way every control's does. A
-    // capsule with neither axis stated would ask for an infinite radius, so
-    // the fallback is the app's smallest corner rather than a crash.
-    final short = math.min(width ?? double.infinity, height ?? double.infinity);
-    final shape = short.isFinite
-        ? AppShapes.control(short)
-        : AppShapes.container(AppShapes.wellRadius);
-    return DecoratedBox(
-      key: ValueKey<String>(keyValue),
-      decoration: ShapeDecoration(
-        color: colorScheme.surface,
-        shape: shape.copyWith(
-          side: const BorderSide(color: AppColors.backdrop),
-        ),
-      ),
-      child: SuperellipseClip(
-        shape: shape,
-        child: SizedBox(width: width, height: height, child: child),
-      ),
-    );
-  }
 }
 
 /// The file's name on a see-through plate ([BrushCanvasPanel.documentName]),
@@ -3260,7 +3235,7 @@ class _FloatingCanvasControls extends StatelessWidget {
 /// nothing has to be guessed at — what left the pill is one tap away, in
 /// the one place things that left the pill go.
 class _CanvasViewportBottomBar extends StatelessWidget {
-  static const double height = 28;
+  static const double height = CanvasCapsule.barPillHeight;
 
   /// ⛔`_wideLayoutMinWidth` and `_pillColorMinWidth` are GONE. They were
   /// the widths at which the pill let itself show the rotate/flip pair and
@@ -3335,7 +3310,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   static const double _swatchGap = 4;
   static const double _dividerWidth = 13; // 1px rule, 6px margin each side
   static const double _gearWidth = 28; // 16px glyph + 6px padding each side
-  static const double _pillEnds = 8; // the 4px SizedBox at each end
+  static const double _pillEnds = 2 * CanvasCapsule.barPillEnd;
 
   /// Slack on every fold decision, so a control that measures a pixel wider
   /// than its token folds one step early rather than escaping the capsule.

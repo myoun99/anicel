@@ -324,7 +324,7 @@ class _BottomBarBuild {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const SizedBox(width: 4),
+        const SizedBox(width: CanvasCapsule.barPillEnd),
         ..._joined([
           <Widget>[
             if (!bare) ..._bar.leading,
@@ -383,7 +383,7 @@ class _BottomBarBuild {
               ),
             ],
         ]),
-        const SizedBox(width: 4),
+        const SizedBox(width: CanvasCapsule.barPillEnd),
       ],
     );
   }

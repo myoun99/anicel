@@ -48,6 +48,7 @@ import '../input/control_press_claim.dart';
 import '../input/value_control_pointers.dart';
 import '../widgets/app_icon_button.dart';
 import 'canvas_press.dart';
+import 'canvas_target_pill.dart';
 import 'canvas_viewport_offset.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
@@ -92,7 +93,14 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.transformOptions = TransformToolOptions.defaults,
     this.floatOverlay,
     this.oneFingerAction,
+    this.pillCover = EdgeInsets.zero,
   });
+
+  /// The edges of this layer that something else stands on — the panels
+  /// lying on the floor, the panel's own capsules — which the 확정/취소
+  /// pill keeps out from under ([CanvasTargetPill.cover]). Zero = the
+  /// whole layer is open.
+  final EdgeInsets pillCover;
 
   /// Where the FLOAT's pixels go (TS1): the composite that draws the active
   /// layer reads this and draws them at that layer's depth, so the layers
@@ -3250,8 +3258,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           if (widget.floatOverlay == null && !floatPaint.isEmpty)
             _floatPreview(floatPaint, context),
           _antsLayer(displayShape, region, chrome),
-          // R16-①: the CONFIRM button — floats at the selection's top
-          // right while there is something to confirm.
+          // R16-①: the CONFIRM button — in the pill under the box while
+          // there is something to confirm.
           //
           // ↩️**IT ASKED `_movePending` ALONE**, and that was the same
           // stale premise the ants carried: when it was written a box could
@@ -3263,7 +3271,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // 🗣️유저 2026-09-18 (F-164): 「그리고 **확정버튼도 사라지는**
           // 문제」.
           if ((_movePending || _transform != null) && displayShape != null)
-            // 🚨★★★**THE WAY OUT CANNOT LEAVE THE SCREEN.** The bar sits
+            // 🚨★★★**THE WAY OUT CANNOT LEAVE THE SCREEN.** The bar sat
             // 34px ABOVE the box's top-right, which was safe only while a
             // scale grew the box down and right — it anchors on the corner
             // that never moved. ①센터 기준 makes every scale grow the box
@@ -3271,21 +3279,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             // 유저's 「확정/취소만 버튼」 becomes unreachable on a tablet,
             // which has no Enter key to fall back on.
             //
-            // ⚠️Its own [Positioned.fill] rather than the layer's Stack:
-            // the clamp needs the layer's SIZE, and this is the only child
-            // that does.
-            Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) =>
-                    _confirmBar(displayShape, constraints.biggest),
-              ),
-            ),
+            // ⚠️Its own [Positioned.fill]: the pill is laid out against
+            // the layer's SIZE, and this is the only child that needs it.
+            Positioned.fill(child: _confirmPill(displayShape, chrome)),
         ],
       ),
     );
   }
 
-  /// 확정 and 취소, side by side at the box's corner.
+  /// 확정 and 취소, side by side in the pill under the box.
   ///
   /// 🗣️유저 2026-09-22: 「상자밖은 기본은 회전에 **확정/취소만 버튼** 만들면
   /// 쉽겟고」 — a press outside the box turns it now, so the way out cannot
@@ -3294,37 +3296,45 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   ///
   /// ⛔Cancel is wired to [_cancelTransform], which is Escape's own verb —
   /// one law, two entrances. It is not a second way of ending a session.
-  Widget _confirmBar(CanvasSelectionRegion displayShape, Size within) {
-    final offset = _confirmButtonOffset(displayShape, within);
-    return Stack(
-      children: [
-        Positioned(
-          left: offset.dx,
-          top: offset.dy,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _confirmButton(displayShape),
-              const SizedBox(width: _chromeButtonGap),
-              _cancelButton(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// The bar's footprint, as a NUMBER rather than a measurement.
-  ///
-  /// ⚠️The clamp runs while the bar is being BUILT, so there is nothing to
-  /// measure yet. The numbers are [AppIconButtonSize.bar]'s own, read off
-  /// the token rather than written again — 🚨and `maxWidth`, because a
-  /// clamp that assumed the narrow end would let the wide one hang off.
-  static const double _chromeButtonGap = 6;
-  static final Size _confirmBarSize = Size(
-    AppIconButtonSize.bar.maxWidth * 2 + _chromeButtonGap,
-    AppIconButtonSize.bar.height,
+  Widget _confirmPill(
+    CanvasSelectionRegion displayShape,
+    SelectionTransformChrome? chrome,
+  ) => CanvasTargetPill(
+    keyValue: 'selection-confirm-pill',
+    target: _pillTarget(displayShape, chrome),
+    cover: widget.pillCover,
+    children: [_confirmButton(displayShape), _cancelButton()],
   );
+
+  /// What the pill stands under: the box's outline as the screen draws it,
+  /// or the shape where no box is drawn.
+  ///
+  /// ⚠️The OUTLINE's bounds, not the shape's: a turned box reaches past the
+  /// shape it carries, so a pill placed under the shape would sit on the
+  /// box's lower corner. The handles stand on the outline and need no
+  /// asking of their own.
+  ///
+  /// ⚠️No drag offset: with the move living in the affine, the chrome and
+  /// the shape the caller hands are both already TRANSFORMED, so the pill
+  /// already rides the box it is supposed to ride.
+  Rect _pillTarget(
+    CanvasSelectionRegion displayShape,
+    SelectionTransformChrome? chrome,
+  ) {
+    if (chrome != null) {
+      return pointsBounds(chrome.box);
+    }
+    final bounds = displayShape.selectedBounds;
+    return pointsBounds([
+      for (final (x, y) in [
+        (bounds.left, bounds.top),
+        (bounds.right, bounds.top),
+        (bounds.right, bounds.bottom),
+        (bounds.left, bounds.bottom),
+      ])
+        _mapCanvasToViewportOffset(CanvasPoint(x: x, y: y)),
+    ]);
+  }
 
   /// ⛔**THE APP'S ONE BUTTON** (「앱에 버튼은 한 종류」), reused rather than
   /// re-made — 유저 2026-09-22: 「확정/취소버튼은 **우리 ui 있는거
@@ -3506,41 +3516,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       );
     }
     return displayShape;
-  }
-
-  /// Where 확정/취소 sit: **under the box, at its bottom-right** — 유저
-  /// 2026-09-22: 「위치는 위가아니라 **클튜처럼 아래**」.
-  ///
-  /// And when the outside is blocked they step INSIDE, which is the answer
-  /// 유저 gave on `transform-confirm-bar-placement`: 「위가 막히면 상자
-  /// 안쪽으로 들어간다」. ⛔The bar is the only way out of a session on a
-  /// tablet, so it never leaves the screen — but it also never stops
-  /// belonging to the box, which is why it goes inside rather than parking
-  /// at the edge on its own.
-  ///
-  /// ⚠️No drag offset: the bar is anchored to [region], and with the move
-  /// living in the affine the caller hands the TRANSFORMED shape — so it
-  /// already rides the corner it is supposed to ride.
-  Offset _confirmButtonOffset(CanvasSelectionRegion region, Size within) {
-    final bounds = region.selectedBounds;
-    final box = _mapCanvasToViewportOffset(
-      CanvasPoint(x: bounds.right, y: bounds.bottom),
-    );
-    const gap = 8.0;
-    // Right-aligned on the box's edge, a gap BELOW it.
-    final outside = Offset(
-      box.dx - _confirmBarSize.width,
-      box.dy + gap,
-    );
-    final roomBelow = outside.dy + _confirmBarSize.height <= within.height;
-    final rode = roomBelow
-        ? outside
-        // Blocked: the same corner, on the other side of the edge.
-        : Offset(outside.dx, box.dy - gap - _confirmBarSize.height);
-    return Offset(
-      rode.dx.clamp(0.0, math.max(0.0, within.width - _confirmBarSize.width)),
-      rode.dy.clamp(0.0, math.max(0.0, within.height - _confirmBarSize.height)),
-    );
   }
 
   Offset _mapCanvasToViewportOffset(CanvasPoint point) =>
