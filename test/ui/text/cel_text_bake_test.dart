@@ -183,9 +183,9 @@ void main() {
     final plate = await baked(
       said(
         [
-          CelTextSpan(
+          const CelTextSpan(
             text: '123',
-            style: const TextLetterStyle(
+            style: TextLetterStyle(
               fontSize: 8,
               color: 0xFF0A141E,
               letterSpacing: 8,

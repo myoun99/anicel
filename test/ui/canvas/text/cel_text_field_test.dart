@@ -272,6 +272,44 @@ void main() {
       expect(mounted.selection, const TextSelection.collapsed(offset: 0));
     });
 
+    testWidgets('🚨UP is the letter before, one press a letter — in the '
+        'second column too, where the field\'s own line above is elsewhere', (
+      tester,
+    ) async {
+      await pumpTwoColumns(tester, caret: 2);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 1));
+
+      // After 「う」, in the column to the left: before it.
+      mounted.selection = const TextSelection.collapsed(offset: 4);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 3));
+      // …and at the text's start it stays.
+      mounted.selection = const TextSelection.collapsed(offset: 0);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 0));
+    });
+
+    testWidgets('with Ctrl held an arrow is NOT answered here: a jump is '
+        'the field\'s own, as it is in lines', (tester) async {
+      await pumpTwoColumns(tester, caret: 3);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+
+      expect(
+        mounted.selection,
+        isNot(const TextSelection.collapsed(offset: 4)),
+        reason: 'not the next letter down the column',
+      );
+      // ⛔CONTROL: with Ctrl let go, from the same place, it is.
+      mounted.selection = const TextSelection.collapsed(offset: 3);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      expect(mounted.selection, const TextSelection.collapsed(offset: 4));
+    });
+
     testWidgets('🚨left is the column AFTER, as far down it; right the '
         'column before — and past the last column, the text\'s end', (
       tester,
