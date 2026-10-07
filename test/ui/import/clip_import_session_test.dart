@@ -45,10 +45,22 @@ void main() {
         }),
       });
 
+  /// A `ResizableImageInfo` that doubles a picture across.
+  Uint8List doubledAcross() {
+    final data = ByteData(184)
+      ..setFloat64(40, 2)
+      ..setFloat64(48, 1);
+    return data.buffer.asUint8List();
+  }
+
   /// A file: BG under an animation folder A whose cel 「1」 is a folder of
   /// two layers and whose cel 「2」 is one — on two timelines, the first
   /// keying 1 then 2, the second 2 alone; a shooting frame 200 × 100.
-  String writeClip() {
+  ///
+  /// [troubled] puts three more layers on top that cannot all be drawn: a
+  /// grey one, a dropped picture its transform doubles, and one whose
+  /// blocks the file does not hold.
+  String writeClip({bool troubled = false}) {
     final attribute = offscreenAttributeBytes(
       width: 64,
       height: 64,
@@ -60,15 +72,17 @@ void main() {
       externalId(2): square(0, 4, (0, 0, 200)),
       externalId(3): square(0, 6, (0, 200, 0)),
       externalId(4): square(0, 8, (200, 200, 200)),
-      // Timeline one, A: 「1」 at tick 0, 「2」 at tick 15 (frame 6), to
-      // tick 30 (frame 12). BG throughout.
+      externalId(5): square(0, 2, (9, 9, 9)),
+      externalId(6): blockRecordsBytes({0: null}),
+      // Timeline one, A: 「1」 at tick 0, 「2」 at tick 12 (frame 6 — two
+      // ticks a frame at 30 fps), to tick 24 (frame 12). BG throughout.
       externalId(10): trackDataBytes(
         cmtDocumentBytes(
           clipTrackSpec([
             clipNodeSpec(
-              time: [0, 30],
-              motion: [0, 30],
-              keys: [0, 15],
+              time: [0, 24],
+              motion: [0, 24],
+              keys: [0, 12],
               cels: ['1', '2'],
             ),
           ]),
@@ -76,7 +90,7 @@ void main() {
       ),
       externalId(11): trackDataBytes(
         cmtDocumentBytes(
-          clipTrackSpec([clipNodeSpec(time: [0, 30], motion: [0, 30])]),
+          clipTrackSpec([clipNodeSpec(time: [0, 24], motion: [0, 24])]),
         ),
       ),
       // Timeline two, A: 「2」 alone over its six frames.
@@ -84,8 +98,8 @@ void main() {
         cmtDocumentBytes(
           clipTrackSpec([
             clipNodeSpec(
-              time: [0, 15],
-              motion: [0, 15],
+              time: [0, 12],
+              motion: [0, 12],
               keys: [0],
               cels: ['2'],
             ),
@@ -115,15 +129,57 @@ void main() {
       for (final row in <List<Object?>>[
         [1, '', 256, 1, 0, '', 0, 0, 2, 0, 0, 0],
         [2, 'BG', 1, 0, 0, uuidBg, 100, 50, 0, 3, 100, 0],
-        [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, 0, 0, 1],
+        [3, 'A', 0, 1, 2, uuidA, 0, 0, 4, if (troubled) 8 else 0, 0, 1],
         [4, '1', 0, 1, 0, '', 0, 0, 5, 7, 0, 0],
         [5, 'under', 1, 0, 0, '', 0, 0, 0, 6, 101, 0],
         [6, 'top', 1, 0, 0, '', 0, 0, 0, 0, 102, 0],
         [7, '2', 1, 0, 0, '', 20, 30, 0, 0, 103, 0],
+        if (troubled) ...[
+          [8, 'grey', 1, 0, 0, '', 0, 0, 0, 9, 105, 0],
+          [10, 'lost', 1, 0, 0, '', 0, 0, 0, 0, 106, 0],
+        ],
       ]) {
         layer.execute(row);
       }
       layer.close();
+      if (troubled) {
+        db
+          ..execute(
+            'INSERT INTO Layer(MainId, LayerName, LayerType, LayerFolder, '
+            'LayerVisibility, LayerOpacity, LayerComposite, LayerOffsetX, '
+            'LayerOffsetY, LayerNextIndex, ResizableOriginalMipmap, '
+            'ResizableImageInfo, DrawToRenderOffscreenType) '
+            "VALUES (9, 'scan', 0, 0, 1, 256, 0, 0, 0, 10, 104, ?, 20)",
+            [doubledAcross()],
+          )
+          ..execute('''
+            INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES
+              (104, 204), (105, 205), (106, 206);
+            INSERT INTO MipmapInfo(MainId, ThisScale, Offscreen, NextIndex)
+              VALUES (204, 100, 304, 0), (205, 100, 305, 0),
+              (206, 100, 306, 0);
+          ''');
+        final offscreens = db.prepare(
+          'INSERT INTO Offscreen(MainId, Attribute, BlockData) '
+          'VALUES (?, ?, ?)',
+        );
+        offscreens
+          ..execute([304, attribute, externalId(5)])
+          ..execute([
+            305,
+            offscreenAttributeBytes(
+              width: 64,
+              height: 64,
+              columns: 1,
+              rows: 1,
+              colourChannels: 0,
+            ),
+            externalId(6),
+          ])
+          // Blocks the file does not hold.
+          ..execute([306, attribute, externalId(99)])
+          ..close();
+      }
       db.execute('''
         INSERT INTO Mipmap(MainId, BaseMipmapInfo) VALUES
           (100, 200), (101, 201), (102, 202), (103, 203);
@@ -134,8 +190,8 @@ void main() {
           VALUES (1, 40, 0);
         INSERT INTO TimeLine(MainId, NextTimeLine, TimeLineName, FrameRate,
           StartFrame, EndFrame, FirstTrack) VALUES
-          (40, 41, 'one', 24.0, 0, 12, 50),
-          (41, 0, 'two', 24.0, 0, 6, 52);
+          (40, 41, 'one', 30.0, 0, 12, 50),
+          (41, 0, 'two', 30.0, 0, 6, 52);
       ''');
       final offscreen = db.prepare(
         'INSERT INTO Offscreen(MainId, Attribute, BlockData) VALUES (?, ?, ?)',
@@ -191,20 +247,32 @@ void main() {
 
   test('🎯a .clip opens AS the project: every timeline a 겸용 cut, its rate, '
       'its shooting frame the camera, and every picture baked', () async {
-    final opened = await openedClip(writeClip());
-    expect(opened, isNotNull, reason: 'the file reads');
-    final session = opened!.session;
+    final read = await readClipProject(clipPath: writeClip());
+    expect(read, isNotNull, reason: 'the file reads');
+    final session = EditorSessionManager(initialProject: read!.project);
     addTearDown(session.dispose);
+    final progress = <double>[];
+    final warnings = await session.clipDoor.bake(
+      read,
+      onProgress: progress.add,
+    );
 
     expect(
-      [for (final warning in opened.warnings) warning.key],
+      [for (final warning in warnings) warning.key],
       ['clipCelLayers'],
       reason: '🚨every picture DECODED — a seek that lands anywhere else '
           'arrives as a warning, not a throw',
     );
+    expect(progress, [0.25, 0.5, 0.75, 1.0], reason: 'four pictures');
+    expect(
+      session.projectFile.hasUnsavedChanges,
+      isTrue,
+      reason: 'a conversion is unsaved — nothing on disk holds it',
+    );
+    expect(session.projectFile.path, isNull);
     final project = session.repository.requireProject();
     expect(project.name, 'scene');
-    expect(project.fps, 24);
+    expect(project.fps, 30);
     expect(
       (project.cameraSize.width, project.cameraSize.height),
       (200, 100),
@@ -273,6 +341,33 @@ void main() {
     expect(alphaAt(27, 37), 255);
     expect(alphaAt(19, 30), 0);
     expect(alphaAt(28, 38), 0);
+  });
+
+  test('what cannot be drawn is said by name — a grey layer, a picture its '
+      'transform doubles, blocks the file does not hold', () async {
+    final opened = await openedClip(writeClip(troubled: true));
+    final session = opened!.session;
+    addTearDown(session.dispose);
+
+    expect(
+      [
+        for (final warning in opened.warnings)
+          (warning.key, warning.values['name'] ?? warning.values['file']),
+      ],
+      unorderedEquals([
+        ('clipCelLayers', 'A'),
+        ('clipNotColour', 'grey'),
+        ('clipTransform', 'scan'),
+        ('celUnreadable', 'lost'),
+      ]),
+    );
+    final cut = session.repository.requireProject().tracks.single.cuts.first;
+    final scan = cut.layers.singleWhere((layer) => layer.name == 'scan');
+    expect(
+      inked(session, cut, scan.id, scan.frames.single.id),
+      2 * 2,
+      reason: 'the doubled picture still lands, at its move',
+    );
   });
 
   test('a file that is not a CLIP STUDIO file is not one', () async {

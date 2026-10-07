@@ -163,6 +163,25 @@ void main() {
     expect(projects.sessions.length, 1);
   });
 
+  testWidgets('a dropped .clip goes through the same door — the CLIP STUDIO '
+      'reader is what answers it', (tester) async {
+    final path = fileNamed('Scene.clip');
+    final projects = await pumpApp(tester);
+    final notClip = find.text(AppText.strings.imNotClip);
+
+    await drop(tester, [path]);
+    expect(find.byType(ImportDialog), findsNothing);
+    await until(tester, () => notClip.evaluate().isNotEmpty);
+
+    expect(
+      notClip,
+      findsOneWidget,
+      reason: 'a file that is no CLIP STUDIO file is said to be one by the '
+          'door that reads them — nothing else says it',
+    );
+    expect(projects.sessions.length, 1);
+  });
+
   testWidgets('a dropped picture still comes in through the import window, '
       'and the open door stays shut', (tester) async {
     final path = fileNamed('picture.png');
