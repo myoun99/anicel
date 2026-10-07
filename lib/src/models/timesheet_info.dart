@@ -1,5 +1,4 @@
 import '../core/collection_equality.dart';
-import 'cut_metadata.dart';
 import 'envelope/cut_envelope_presets.dart';
 import 'layer_mark.dart';
 
@@ -11,16 +10,18 @@ import 'layer_mark.dart';
 enum TimesheetHeaderField { episode, title, scene, cut, time, name, sheet }
 
 /// The work's words every paper form prints — its title (the project's
-/// name while it has none), its episode (話数), who does each stage's work
-/// — plus how the timesheet prints its header. Project-level: every cut's
-/// sheets share it.
+/// name while it has none), its episode (話数), who does the conte — plus
+/// how the timesheet prints its header. Project-level: every cut's sheets
+/// share it.
 ///
 /// ⛔No scene: 유저 09-25 「씬은 작품설정에선 필요없어. 1500컷을 작업한다치면
 /// 콘티패널 내에서 컷들을 하나로 묶어서 씬/파트 이렇게 묶게할예정」 — a scene
 /// belongs to a group of cuts, not to the work.
-/// ⛔No artist of its own: a sheet's 作業者 is the 원화 worker in [staff]
+/// ⛔No artist of its own: a sheet's 作業者 is a stage's worker on the CUT
+/// (`sheetArtistMark`). ↩️It was the 원화 worker in the work's [staff]
 /// (유저 09-25 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의
-/// 원화 이름 인식하게하고」).
+/// 원화 이름 인식하게하고」) until the stages other than the conte became
+/// each cut's (F-291-Q1, 2026-10-08).
 class TimesheetInfo {
   const TimesheetInfo({
     this.title = '',
@@ -56,10 +57,10 @@ class TimesheetInfo {
   /// wash) — default on, toggleable per project.
   final bool seEmptyFill;
 
-  /// Who does each colour label's work — the name a paper form prints for
-  /// a stage, or for a stage's correction — keyed by the label's
-  /// [LayerMark.keySlug]: 원화 is `key`, 원화 작화감독 is
-  /// `key-animation-director`.
+  /// Who does the conte's work — its worker and its corrections, the stages
+  /// the work keeps ([StaffHolder.work]; every other stage is the cut's,
+  /// `CutMetadata.staff`) — keyed by the label's [LayerMark.keySlug]: the
+  /// conte is `conte`, its 감독 `conte-director`.
   ///
   /// 🚨★★★ONE VOCABULARY, THE COLOUR LABELS. 유저 09-25: 「이런 스태프는
   /// 색라벨에 자세하게 나와있으니 그거 기반으로」, grouped 「공정별 묶음 —
@@ -146,18 +147,6 @@ class TimesheetInfo {
   TimesheetInfo withStaffName(LayerMark mark, String name) =>
       copyWith(staff: staffWithName(staff, mark, name));
 
-  /// Who does each stage's work on [cut]: the work's staff, with the cut's
-  /// own names over it (유저 09-25: 작품 설정에는 기본값, 컷 설정에는 컷별
-  /// 이름 — [[project-settings-window]]).
-  Map<String, String> staffForCut(CutMetadata cut) => {
-    ...staff,
-    ...cut.staff,
-  };
-
-  /// The name for [mark]'s work on [cut] ([staffForCut]), or empty.
-  String staffNameForCut(CutMetadata cut, LayerMark mark) =>
-      staffForCut(cut)[mark.keySlug] ?? '';
-
   Map<String, dynamic> toJson() => {
     'title': title,
     'episode': episode,
@@ -186,7 +175,7 @@ class TimesheetInfo {
       },
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
-      staff: staffFromJson(json['staff']),
+      staff: staffFromJson(json['staff'], holder: StaffHolder.work),
       logoAssetPath: json['logo'] as String?,
       coverImagePath: json['cover'] as String?,
       envelopeFormId:

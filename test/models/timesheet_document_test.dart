@@ -116,25 +116,32 @@ void main() {
       expect(overridden.episode, 'MV');
     });
 
-    test('the 作業者 is the 원화 worker — not another stage\'s, nor a '
-        'correction\'s', () {
-      // 유저 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든
-      // 스태프의 원화 이름 인식하게하고」.
+    test('🎯the 作業者 is the CUT\'s 러프원화 worker — not another stage\'s, '
+        'nor a correction\'s', () {
+      // 유저 2026-10-05 (F-291): 「타임시트에 적히는 이름 기준이 원화이름인데,
+      // 그게아니라 레이아웃 아니면 러프원화의 이름임. 기본적으로
+      // 러프원화이름이면 될거같고」 — and 10-08 (F-291-Q1), the stages are
+      // the cut's.
       final document = _document(
-        _cut(),
-        info: TimesheetInfo.empty
-            .withStaffName(const LayerMark(process: LayerProcess.key), '大川')
-            .withStaffName(
-              const LayerMark(process: LayerProcess.layout),
-              'LO',
-            )
-            .withStaffName(
-              const LayerMark(
-                process: LayerProcess.key,
-                revise: LayerRevise.animationDirector,
+        _cut().copyWith(
+          metadata: const CutMetadata()
+              .withStaffName(
+                const LayerMark(process: LayerProcess.roughKey),
+                '大川',
+              )
+              .withStaffName(const LayerMark(process: LayerProcess.key), '原')
+              .withStaffName(
+                const LayerMark(process: LayerProcess.layout),
+                'LO',
+              )
+              .withStaffName(
+                const LayerMark(
+                  process: LayerProcess.roughKey,
+                  revise: LayerRevise.animationDirector,
+                ),
+                '作監',
               ),
-              '作監',
-            ),
+        ),
       );
       expect(document.artist, '大川');
     });

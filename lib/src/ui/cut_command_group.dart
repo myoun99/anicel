@@ -64,10 +64,7 @@ Future<void> _editCutSettings(
 ) => askAboutThenCommit<Map<String, String>, Map<LayerMark, String>>(
   context,
   session.cutVerbs.addressedCutStaff,
-  dialog: (staff) => CutSettingsWindow(
-    cutStaff: staff,
-    workStaff: session.timesheetInfo.staff,
-  ),
+  dialog: (staff) => CutSettingsWindow(cutStaff: staff),
   commit: session.cutVerbs.setAddressedCutStaffNames,
 );
 

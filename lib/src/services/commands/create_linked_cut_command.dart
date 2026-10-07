@@ -16,6 +16,7 @@ import '../project_lookup.dart';
 import '../project_tree_editor.dart';
 import '../project_repository.dart';
 import 'cut_insertion.dart';
+import 'linked_cut_field_command.dart' show withLinkedCutFieldsOf;
 import 'transitions_ride_the_cuts.dart';
 
 /// 겸용컷 생성 (L2): a NEW cut whose drawing layers are linked copies of
@@ -116,19 +117,22 @@ class CreateLinkedCutCommand implements Command {
           if (layerIdMap.containsKey(layer.id))
             _linkedCopyOf(layer, cutDuration: duration),
       ];
-      final newCut = Cut(
-        id: newCutId,
-        name: newName,
-        // A fresh direction row — the per-use fixture — around the linked
-        // rows.
-        layers: withEnsuredSectionLayers(newCutId, linkedLayers),
-        duration: duration,
-        canvasSize: source.canvasSize,
-        // The camera row came across linked; its lanes come across COPIED.
-        // The immutable track is shared as the plain duplicate shares it: a
-        // pose-view round-trip would resynchronize independently keyed
-        // properties.
-        camera: CutCamera.fromTrack(source.camera.track),
+      final newCut = withLinkedCutFieldsOf(
+        Cut(
+          id: newCutId,
+          name: newName,
+          // A fresh direction row — the per-use fixture — around the linked
+          // rows.
+          layers: withEnsuredSectionLayers(newCutId, linkedLayers),
+          duration: duration,
+          canvasSize: source.canvasSize,
+          // The camera row came across linked; its lanes come across COPIED.
+          // The immutable track is shared as the plain duplicate shares it:
+          // a pose-view round-trip would resynchronize independently keyed
+          // properties.
+          camera: CutCamera.fromTrack(source.camera.track),
+        ),
+        source,
       );
 
       _registryBefore = project.linkRegistry;

@@ -3,9 +3,9 @@ import 'package:anicel/src/models/envelope/cut_envelope_counts.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_form.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
-import 'package:anicel/src/models/timesheet_info.dart';
 
 /// The envelope FORM is data: boxes in form-space fractions, each holding
 /// a printed label, a bound value, or nothing but handwriting space.
@@ -111,15 +111,15 @@ void main() {
       });
     }
 
-    test('a name written through the work\'s staff reaches the 原画 and 動画 '
+    test('a name written through the cut\'s staff reaches the 原画 and 動画 '
         'boxes', () {
-      final info = TimesheetInfo.empty
+      final cut = const CutMetadata()
           .withStaffName(const LayerMark(process: LayerProcess.key), '大川')
           .withStaffName(
             const LayerMark(process: LayerProcess.inbetween),
             '山田',
           );
-      final written = CutEnvelopeSource(staff: info.staff);
+      final written = CutEnvelopeSource(staff: cut.staff);
       String? printed(String boxId) => resolveEnvelopeText(
         CutEnvelopePresets.analog.boxById(boxId)!.binding!,
         written,

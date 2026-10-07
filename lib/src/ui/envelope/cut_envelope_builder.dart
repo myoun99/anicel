@@ -34,7 +34,7 @@ CutEnvelopeSource buildCutEnvelopeSource({
         ),
     ],
     cels: cutEnvelopeCelCounts(cut),
-    staff: info.staffForCut(cut.metadata),
+    staff: cut.metadata.staff,
     logoAssetPath: info.logoAssetPath,
     canvasWidth: cut.canvasSize.width,
     canvasHeight: cut.canvasSize.height,

@@ -7,10 +7,15 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/layer_process.dart';
+import 'package:anicel/src/models/timesheet_sheet_kind.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/services/commands/create_linked_cut_command.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
@@ -89,5 +94,42 @@ void main() {
 
   test('undo before execute is refused', () {
     expect(command().undo, throwsStateError);
+  });
+
+  test('🎯the new 겸용 cut starts with what its pair shares — the guides, '
+      'the label, the sheet and the staff every edit writes onto both', () {
+    final guides = CutGuides(
+      guides: [
+        DrawingGuide(
+          id: const GuideId('sym'),
+          name: 'Axis',
+          shape: SymmetryShape(
+            axis: GuideAxis(
+              origin: CanvasPoint(x: 10, y: 20),
+              angleDegrees: 30,
+            ),
+          ),
+        ),
+      ],
+    );
+    const mark = LayerMark(process: LayerProcess.key);
+    const staff = {'key': '大川', 'rough-key': '林'};
+    repository.updateCutGuides(cutId: source.id, guides: guides);
+    repository.updateCutMetadata(
+      cutId: source.id,
+      metadata: source.metadata.copyWith(
+        mark: mark,
+        sheetKind: TimesheetSheetKind.threeSeconds,
+        staff: staff,
+      ),
+    );
+
+    command().execute();
+    final linked = track().cuts.firstWhere((cut) => cut.id == newCutId);
+
+    expect(linked.guides, guides);
+    expect(linked.metadata.mark, mark);
+    expect(linked.metadata.sheetKind, TimesheetSheetKind.threeSeconds);
+    expect(linked.metadata.staff, staff);
   });
 }

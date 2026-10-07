@@ -265,9 +265,6 @@ class _CutCommands {
         ),
       );
 
-  /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
-  /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
-  /// them already wears [mark].
   /// 컷 설정: each stage of [names] named on [cutIds] and their 겸용
   /// siblings, as ONE undo step — the stages it does not name keep each
   /// cut's own, and a stage every cut already has so is no step at all.
@@ -325,6 +322,9 @@ class _CutCommands {
     });
   }
 
+  /// Sets the 색 라벨 of [cutIds] — and of each one's 겸용 siblings — as ONE
+  /// undo step ([UpdateCutMarkCommand]); nothing at all when every one of
+  /// them already wears [mark].
   void setCutMark({required List<CutId> cutIds, required LayerMark mark}) {
     final project = _coordinator.repository.requireProject();
     if (LinkedCutFieldCommand.linkedCutsOf(project, cutIds).every(

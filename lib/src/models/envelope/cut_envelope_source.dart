@@ -58,8 +58,8 @@ class CutEnvelopeSource {
   /// The 担当 rows, top to bottom.
   final List<CutEnvelopeCelCount> cels;
 
-  /// Who does each colour label's work, keyed by [LayerMark.keySlug] —
-  /// the work's one staff vocabulary.
+  /// Who does each stage's work on the cut (`CutMetadata.staff`), keyed by
+  /// [LayerMark.keySlug] — the one staff vocabulary, the colour labels'.
   final Map<String, String> staff;
   final String? logoAssetPath;
 

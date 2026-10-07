@@ -19,9 +19,11 @@ import 'staff_process_folds.dart';
 /// strip's ⚙, and the sheets only print what it holds.
 ///
 /// Two folds, named as the user named them — 「작품설정이나 스태프설정
-/// 접을수있게. 기본값은 스태프설정만 접기」. The staff is the colour labels':
-/// a fold per process, its worker and the corrections it references
-/// ([StaffProcessFolds] — a cut's settings show the same).
+/// 접을수있게. 기본값은 스태프설정만 접기」. The staff is the colour labels'
+/// the work keeps — the conte's, its worker and the corrections it
+/// references ([StaffProcessFolds] — a cut's settings show the others):
+/// 유저 2026-10-08 (F-291-Q1) 「공통적인 부분인 제목/화수/회사로고/
+/// 표지그림등만 남겨두고, 스태프는 콘티만 남겨둠」.
 class WorkSettingsWindow extends StatefulWidget {
   const WorkSettingsWindow({
     super.key,
@@ -52,9 +54,10 @@ class _WorkSettingsWindowState extends State<WorkSettingsWindow> {
     text: widget.initialInfo.episode,
   );
 
-  /// One name per colour label ([staffFieldsOf]).
+  /// One name per colour label the work keeps ([staffFieldsOf]).
   late final Map<LayerMark, TextEditingController> _staff = staffFieldsOf(
     widget.initialInfo.staffNameFor,
+    holder: StaffHolder.work,
   );
 
   /// Each picture of the work, as picked so far.

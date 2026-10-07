@@ -6,20 +6,24 @@ import '../export/export_settings_modules.dart' show ExportAccordion;
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
-/// One name field per colour label, in the order the label popover lists
-/// them ([everyLayerMark] — the one enumeration of the labels), each
-/// starting at [nameOf] it.
+/// One name field per colour label [holder] keeps ([staffHolderOf]), in
+/// the order the label popover lists them ([everyLayerMark] — the one
+/// enumeration of the labels), each starting at [nameOf] it.
 ///
 /// ⛔EVERY label gets a field, including 用紙's worker: leaving one out
 /// would be a 「~는 제외한다」 rule nobody asked for.
 /// ↩️The user has asked since (2026-10-05, F-291: 「용지라는 스태프는
-/// 없음」): every label but 用紙's — paper is nobody's work.
+/// 없음」): every label but 用紙's — paper is nobody's work. And
+/// (2026-10-08, F-291-Q1) each window the stages its holder keeps: the
+/// work the conte's, a cut every other.
 Map<LayerMark, TextEditingController> staffFieldsOf(
-  String Function(LayerMark mark) nameOf,
-) => {
+  String Function(LayerMark mark) nameOf, {
+  required StaffHolder holder,
+}) => {
   for (final mark in everyLayerMark())
-    if (!mark.isNone && mark.process != LayerProcess.paper)
-      mark: TextEditingController(text: nameOf(mark)),
+    if (mark.process case final process?)
+      if (staffHolderOf(process) == holder)
+        mark: TextEditingController(text: nameOf(mark)),
 };
 
 /// The words a folded section shows beside its title: what it holds.
@@ -31,13 +35,17 @@ String foldSummary(Iterable<String> words) => [
 /// The staff, a fold per process: its worker, then the corrections it
 /// references — the fields of [staffFieldsOf], named as the labels name
 /// them (답 staff-roles-from-labels 「공정별 묶음 — 작업자 + 그 공정의 수정
-/// 담당」). The work's settings and a cut's settings show it alike.
+/// 담당」). The work's settings and a cut's settings show it alike, each
+/// with the stages it keeps.
+///
+/// ↩️A cut's empty field showed the work's name faintly, the name the forms
+/// printed in its place — until a cut's stages stopped falling back to the
+/// work's (F-291-Q1).
 class StaffProcessFolds extends StatefulWidget {
   const StaffProcessFolds({
     super.key,
     required this.fields,
     required this.keyPrefix,
-    this.hintFor,
     this.onSubmitted,
   });
 
@@ -46,10 +54,6 @@ class StaffProcessFolds extends StatefulWidget {
 
   /// What the folds' and the fields' keys start with — the window's name.
   final String keyPrefix;
-
-  /// What an empty field shows faintly: the name the forms print in its
-  /// place, or null for none.
-  final String? Function(LayerMark mark)? hintFor;
 
   /// Enter in a field.
   final VoidCallback? onSubmitted;
@@ -67,7 +71,8 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // A process with no field has no fold (用紙 — [staffFieldsOf]).
+        // A process with no field here has no fold: 用紙, and the stages the
+        // other holder keeps ([staffFieldsOf]).
         for (final process in LayerProcess.values)
           if (widget.fields.keys.any((mark) => mark.process == process))
             _fold(process, strings),
@@ -117,9 +122,6 @@ class _StaffProcessFoldsState extends State<StaffProcessFolds> {
                 child: TextField(
                   key: ValueKey<String>('$prefix-staff-${mark.keySlug}'),
                   controller: widget.fields[mark],
-                  decoration: InputDecoration(
-                    hintText: widget.hintFor?.call(mark),
-                  ),
                   onSubmitted: (_) => widget.onSubmitted?.call(),
                 ),
               ),

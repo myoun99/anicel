@@ -23,14 +23,13 @@ TimesheetDocument _document({String note = ''}) {
       layers: const [],
       duration: 24,
       canvasSize: const CanvasSize(width: 1280, height: 720),
-      metadata: CutMetadata(note: note),
+      metadata: CutMetadata(
+        note: note,
+      ).withStaffName(const LayerMark(process: LayerProcess.roughKey), '大川'),
     ),
     projectName: 'Project',
     fps: 24,
-    info: const TimesheetInfo(
-      title: 'YOASOBI',
-      episode: 'MV',
-    ).withStaffName(const LayerMark(process: LayerProcess.key), '大川'),
+    info: const TimesheetInfo(title: 'YOASOBI', episode: 'MV'),
   );
 }
 
@@ -137,8 +136,8 @@ void main() {
     });
   });
 
-  test('the header prints the work\'s title and episode, the 원화 worker '
-      'as its 作業者, and leaves the scene to the pen', () {
+  test('the header prints the work\'s title and episode, the cut\'s 러프원화 '
+      'worker as its 作業者, and leaves the scene to the pen', () {
     final document = _document();
     final printed = TimesheetDocumentPainter(
       words: timesheetWordsIn(AppLanguage.en),

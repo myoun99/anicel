@@ -17,10 +17,12 @@ import 'timesheet_sheet_kind.dart';
 import 'track_se_window.dart';
 import 'transition_geometry.dart';
 
-/// The colour label whose worker a sheet's 作業者 box names — 원화. 유저
-/// 09-25: 「작품설정 작업자랑 원화랑 겹치니까 타임시트든 뭐든 스태프의 원화
-/// 이름 인식하게하고」.
-const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.key);
+/// The colour label whose worker on the cut a sheet's 作業者 box names —
+/// 러프원화 (유저 2026-10-05, F-291: 「타임시트에 적히는 이름 기준이
+/// 원화이름인데, 그게아니라 레이아웃 아니면 러프원화의 이름임. 기본적으로
+/// 러프원화이름이면 될거같고」). ↩️It was the 원화 (09-25: 「…스태프의 원화
+/// 이름 인식하게하고」).
+const LayerMark sheetArtistMark = LayerMark(process: LayerProcess.roughKey);
 
 /// How many paper pages [drawnFrameCount] rows fill at [pageFrameCount]
 /// rows a page — always at least one, and capped so junk data cannot ask
@@ -446,7 +448,7 @@ class TimesheetDocument {
     return TimesheetDocument._(
       title: info.title.isEmpty ? projectName : info.title,
       episode: info.episode,
-      artist: info.staffNameForCut(cut.metadata, sheetArtistMark),
+      artist: cut.metadata.staffNameFor(sheetArtistMark),
       memoText: cut.metadata.note,
       visibleHeaderFields: List.unmodifiable(info.visibleFields),
       exposureBarThreshold: info.exposureBarThreshold,

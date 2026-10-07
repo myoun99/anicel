@@ -97,37 +97,41 @@ void main() {
   });
 
   group('production staff', () {
-    const key = LayerMark(process: LayerProcess.key);
-    const keyDirection = LayerMark(
-      process: LayerProcess.key,
-      revise: LayerRevise.direction,
+    // The stages the work keeps: the conte's (F-291-Q1).
+    const conte = LayerMark(process: LayerProcess.conte);
+    const conteDirector = LayerMark(
+      process: LayerProcess.conte,
+      revise: LayerRevise.director,
     );
 
     test('staffNameFor answers an empty name rather than null', () {
-      expect(TimesheetInfo.empty.staffNameFor(key), '');
+      expect(TimesheetInfo.empty.staffNameFor(conte), '');
     });
 
     test('a stage and its correction are two names, keyed by the label', () {
       // 유저 답 staff-roles-from-labels: 「공정별 묶음 — 작업자 + 그 공정의
       // 수정 담당」.
       final info = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(keyDirection, '清');
+          .withStaffName(conte, '大川')
+          .withStaffName(conteDirector, '清');
 
-      expect(info.staffNameFor(key), '大川');
-      expect(info.staffNameFor(keyDirection), '清');
-      expect(info.staff, {key.keySlug: '大川', keyDirection.keySlug: '清'});
+      expect(info.staffNameFor(conte), '大川');
+      expect(info.staffNameFor(conteDirector), '清');
+      expect(info.staff, {
+        conte.keySlug: '大川',
+        conteDirector.keySlug: '清',
+      });
     });
 
     test('the take is not part of whose work it is', () {
-      final info = TimesheetInfo.empty.withStaffName(key, '大川');
-      expect(info.staffNameFor(key.withTake(2)), '大川');
+      final info = TimesheetInfo.empty.withStaffName(conte, '大川');
+      expect(info.staffNameFor(conte.withTake(2)), '大川');
     });
 
     test('withStaffName DROPS a name when emptied', () {
       final cleared = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(key, '');
+          .withStaffName(conte, '大川')
+          .withStaffName(conte, '');
       expect(
         cleared.staff,
         isEmpty,
@@ -137,14 +141,14 @@ void main() {
 
     test('staff and logo round-trip through JSON', () {
       final info = TimesheetInfo.empty
-          .withStaffName(key, '大川')
-          .withStaffName(keyDirection, '清')
+          .withStaffName(conte, '大川')
+          .withStaffName(conteDirector, '清')
           .copyWith(logoAssetPath: () => 'logos/studio.png');
 
       final restored = TimesheetInfo.fromJson(info.toJson());
 
       expect(restored, info);
-      expect(restored.staffNameFor(keyDirection), '清');
+      expect(restored.staffNameFor(conteDirector), '清');
       expect(restored.logoAssetPath, 'logos/studio.png');
     });
 
@@ -153,12 +157,28 @@ void main() {
       // object per role.
       final restored = TimesheetInfo.fromJson({
         'staff': {
-          'key': '大川',
+          'conte': '大川',
           'genga': {'name': '山田', 'stamp': 'stamps/y.png'},
         },
       });
 
-      expect(restored.staff, {'key': '大川'});
+      expect(restored.staff, {'conte': '大川'});
+    });
+
+    test('🎯the work keeps the conte\'s names alone: a file\'s name for '
+        'another stage drops — that stage is each cut\'s now', () {
+      // 유저 2026-10-08 (F-291-Q1): 「스태프는 콘티만 남겨둠. 나머진 삭제.
+      // 나머진 컷마다 스태프설정」.
+      final restored = TimesheetInfo.fromJson({
+        'staff': {
+          'conte': '大川',
+          'conte-director': '清',
+          'key': '山田',
+          'inbetween-inbetween-check': '林',
+        },
+      });
+
+      expect(restored.staff, {'conte': '大川', 'conte-director': '清'});
     });
 
     test('an old file with no staff loads clean', () {

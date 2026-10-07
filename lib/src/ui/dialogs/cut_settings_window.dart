@@ -6,23 +6,15 @@ import '../widgets/app_window.dart';
 import 'staff_process_folds.dart';
 
 /// 컷 설정 — who does each stage's work on the cuts it is about: a name per
-/// colour label, the work's own shown faintly where the cut names nobody
-/// (유저 09-25: 작품 설정에는 기본값, 컷 설정에는 컷별 이름 —
-/// [[project-settings-window]]). Pops the stages whose names were changed,
+/// colour label a cut keeps — every stage but the conte's, the work's
+/// (유저 2026-10-08, F-291-Q1: 「원화 작업자나 시아게는 컷마다 다름 …
+/// 나머진 컷마다 스태프설정」). Pops the stages whose names were changed,
 /// or null when cancelled: every other stage keeps each cut's own.
 class CutSettingsWindow extends StatefulWidget {
-  const CutSettingsWindow({
-    super.key,
-    required this.cutStaff,
-    required this.workStaff,
-  });
+  const CutSettingsWindow({super.key, required this.cutStaff});
 
   /// The cut's own names, by label slug (`CutMetadata.staff`).
   final Map<String, String> cutStaff;
-
-  /// The work's names, by label slug (`TimesheetInfo.staff`) — what the
-  /// forms print for a stage the cut does not name.
-  final Map<String, String> workStaff;
 
   @override
   State<CutSettingsWindow> createState() => _CutSettingsWindowState();
@@ -31,6 +23,7 @@ class CutSettingsWindow extends StatefulWidget {
 class _CutSettingsWindowState extends State<CutSettingsWindow> {
   late final Map<LayerMark, TextEditingController> _staff = staffFieldsOf(
     _cutNameFor,
+    holder: StaffHolder.cut,
   );
 
   String _cutNameFor(LayerMark mark) => widget.cutStaff[mark.keySlug] ?? '';
@@ -65,7 +58,6 @@ class _CutSettingsWindowState extends State<CutSettingsWindow> {
         child: StaffProcessFolds(
           fields: _staff,
           keyPrefix: 'cut-settings',
-          hintFor: (mark) => widget.workStaff[mark.keySlug],
           onSubmitted: _submit,
         ),
       ),

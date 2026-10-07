@@ -11,8 +11,16 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 작품 설정 (유저 09-25, project-settings-window): the work's title and
 /// episode, and its staff by the colour labels — two folds, the staff
-/// folded until opened.
+/// folded until opened. The staff is the conte's alone (유저 2026-10-08,
+/// F-291-Q1: 「스태프는 콘티만 남겨둠. 나머진 삭제. 나머진 컷마다
+/// 스태프설정」).
 void main() {
+  const conte = LayerMark(process: LayerProcess.conte);
+  const conteDirector = LayerMark(
+    process: LayerProcess.conte,
+    revise: LayerRevise.director,
+  );
+
   Future<void> openWindow(
     WidgetTester tester,
     TimesheetInfo initial,
@@ -87,11 +95,7 @@ void main() {
       find.byKey(const ValueKey<String>('work-settings-episode-field')),
       findsOneWidget,
     );
-    expect(
-      rowOf(const LayerMark(process: LayerProcess.key)),
-      findsNothing,
-      reason: 'the staff is folded until opened',
-    );
+    expect(rowOf(conte), findsNothing, reason: 'the staff is folded');
     expect(
       find.text(AppText.strings.workSettingsStaff),
       findsOneWidget,
@@ -99,53 +103,51 @@ void main() {
     );
   });
 
-  testWidgets('the staff is the colour labels\': every process a fold of its '
-      'worker and the corrections it references — but 用紙, nobody\'s work', (
+  testWidgets('🎯the staff is the conte\'s: its worker and the corrections it '
+      'references — every other stage is the cut\'s, and 用紙 nobody\'s', (
     tester,
   ) async {
     await openWindow(tester, TimesheetInfo.empty, (_) {});
     await toggle(tester, 'work-settings-staff');
 
     for (final mark in everyLayerMark()) {
-      if (mark.isNone || mark.process == LayerProcess.paper) {
+      final process = mark.process;
+      if (process == null) {
         continue;
       }
-      expect(rowOf(mark), findsOneWidget, reason: mark.keySlug);
-    }
-    // 유저 2026-10-05 (F-291): 「용지라는 스태프는 없음」.
-    for (final mark in everyLayerMark()) {
-      if (mark.process == LayerProcess.paper) {
-        expect(rowOf(mark), findsNothing, reason: mark.keySlug);
+      expect(
+        rowOf(mark),
+        process == LayerProcess.conte ? findsOneWidget : findsNothing,
+        reason: mark.keySlug,
+      );
+      if (process != LayerProcess.conte) {
+        expect(
+          find.byKey(
+            ValueKey<String>('work-settings-process-${process.jsonValue}'),
+          ),
+          findsNothing,
+          reason: 'and no fold of its own',
+        );
       }
     }
-    expect(
-      find.byKey(const ValueKey<String>('work-settings-process-paper')),
-      findsNothing,
-      reason: 'and no fold of its own',
-    );
   });
 
-  testWidgets('a process folds on its own', (tester) async {
+  testWidgets('the conte\'s fold folds on its own', (tester) async {
     await openWindow(tester, TimesheetInfo.empty, (_) {});
     await toggle(tester, 'work-settings-staff');
 
-    await toggle(tester, 'work-settings-process-key');
+    await toggle(tester, 'work-settings-process-conte');
 
-    expect(rowOf(const LayerMark(process: LayerProcess.key)), findsNothing);
+    expect(rowOf(conte), findsNothing);
     expect(
-      rowOf(const LayerMark(process: LayerProcess.inbetween)),
+      find.byKey(const ValueKey<String>('work-settings-process-conte')),
       findsOneWidget,
-      reason: 'only the one folded',
+      reason: 'folded, not gone',
     );
   });
 
   testWidgets('what is typed is saved under the labels, a stage and its '
       'correction apart; a row left blank writes nothing', (tester) async {
-    const key = LayerMark(process: LayerProcess.key);
-    const keyDirection = LayerMark(
-      process: LayerProcess.key,
-      revise: LayerRevise.direction,
-    );
     TimesheetInfo? saved;
     await openWindow(tester, TimesheetInfo.empty, (r) => saved = r);
     await tester.enterText(
@@ -157,16 +159,19 @@ void main() {
       '#3',
     );
     await toggle(tester, 'work-settings-staff');
-    await tester.ensureVisible(rowOf(key));
-    await tester.enterText(rowOf(key), '大川');
-    await tester.ensureVisible(rowOf(keyDirection));
-    await tester.enterText(rowOf(keyDirection), '清');
+    await tester.ensureVisible(rowOf(conte));
+    await tester.enterText(rowOf(conte), '大川');
+    await tester.ensureVisible(rowOf(conteDirector));
+    await tester.enterText(rowOf(conteDirector), '清');
 
     await save(tester);
 
     expect(saved!.title, 'YOASOBI');
     expect(saved!.episode, '#3');
-    expect(saved!.staff, {key.keySlug: '大川', keyDirection.keySlug: '清'});
+    expect(saved!.staff, {
+      conte.keySlug: '大川',
+      conteDirector.keySlug: '清',
+    });
   });
 
   testWidgets('the empty title shows the project\'s name — what the paper '
