@@ -60,6 +60,7 @@ import '../session/project_file_door.dart'
 import '../session/tvpp_import_door.dart' show readTvppProject;
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
+import '../shortcuts/panel_actions.dart';
 import '../shortcuts/shortcut_settings_dialog.dart';
 import '../text/cloud_wait_line.dart';
 import '../theme/app_theme.dart';
@@ -160,6 +161,43 @@ class EditorTopStrip extends StatelessWidget {
     onSelected: onPressed,
     submenuBuilder: submenuBuilder,
   );
+
+  /// Presses the row of the strip's menus that is [actionId], where that
+  /// row can be pressed (I-40).
+  ///
+  /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
+  /// 열기 닫기같은거든 뭐든 모든 버튼」. ★A KEY AND ITS ROW ARE ONE PRESS: the
+  /// rows are built the way the menu builds them — a second level too — and
+  /// the one that names the action is pressed if the menu would let it be.
+  /// So a row that is dim does nothing by key either, and a row added to a
+  /// menu with its action's name is reachable by key with no more written.
+  /// [context] is where a row's window opens: the shell's own.
+  void pressMenuRow(BuildContext context, String actionId) {
+    final row = menuRows(
+      context,
+    ).where((row) => row.shortcuts.contains(actionId)).firstOrNull;
+    if (row != null && row.enabled) {
+      row.onSelected?.call();
+    }
+  }
+
+  /// Every row of the strip's two menus as they would open right now — a
+  /// second level's rows after the row that opens it.
+  List<PanelFlyoutItem> menuRows(BuildContext context) => _rowsOf([
+    ..._projectEntries(context),
+    ..._settingsEntries(context),
+  ]).toList();
+
+  static Iterable<PanelFlyoutItem> _rowsOf(
+    List<PanelFlyoutEntry> entries,
+  ) sync* {
+    for (final entry in entries.whereType<PanelFlyoutItem>()) {
+      yield entry;
+      if (entry.submenuBuilder case final under?) {
+        yield* _rowsOf(under());
+      }
+    }
+  }
 
   // --- File -----------------------------------------------------------------
 
@@ -612,13 +650,15 @@ class EditorTopStrip extends StatelessWidget {
     // 여는거야」 — a tab of its own beside the ones already open.
     _item(
       id: 'file-new',
-      label: AppText.strings.newProject,
+      label: editorActionLabel(EditorActionIds.fileNew),
+      shortcuts: const [EditorActionIds.fileNew],
       icon: Icons.note_add_outlined,
       onPressed: () => projects.open(newUntitledProject()),
     ),
     _item(
       id: 'file-open',
-      label: 'Open…',
+      label: editorActionLabel(EditorActionIds.fileOpen),
+      shortcuts: const [EditorActionIds.fileOpen],
       icon: Icons.folder_open_outlined,
       onPressed: () => unawaited(_openProject(context)),
     ),
@@ -644,7 +684,8 @@ class EditorTopStrip extends StatelessWidget {
     // pops into existence this app does not make.
     _item(
       id: 'file-back-up-failed-copy',
-      label: AppText.strings.failedCopyBackUp,
+      label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
+      shortcuts: const [EditorActionIds.fileBackUpFailedCopy],
       icon: Icons.backup_outlined,
       onPressed: session.failedSaveCopies.entries.isEmpty
           ? null
@@ -654,7 +695,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'file-import',
-      label: 'Import / Place…',
+      label: editorActionLabel(EditorActionIds.fileImport),
+      shortcuts: const [EditorActionIds.fileImport],
       icon: Icons.file_download_outlined,
       onPressed: () {
         unawaited(
@@ -667,7 +709,8 @@ class EditorTopStrip extends StatelessWidget {
     ),
     _item(
       id: 'file-export',
-      label: 'Export…',
+      label: editorActionLabel(EditorActionIds.fileExport),
+      shortcuts: const [EditorActionIds.fileExport],
       icon: Icons.save_alt,
       // The export dialog is cut-anchored — disabled in the no-cut gap
       // state (UI-R9 #3).
@@ -710,7 +753,8 @@ class EditorTopStrip extends StatelessWidget {
     // app's own settings.
     _item(
       id: 'work-settings',
-      label: 'Work settings…',
+      label: editorActionLabel(EditorActionIds.workSettings),
+      shortcuts: const [EditorActionIds.workSettings],
       icon: Icons.theaters_outlined,
       onPressed: () => unawaited(
         askThenCommit<TimesheetInfo>(
@@ -739,7 +783,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'edit-keyboard-shortcuts',
-      label: 'Keyboard shortcuts…',
+      label: editorActionLabel(EditorActionIds.keyboardShortcuts),
+      shortcuts: const [EditorActionIds.keyboardShortcuts],
       icon: Icons.keyboard_outlined,
       // The bindings arrive down the ONE scope every key label reads — a
       // second pipe for the same object is how a menu and its tooltips
@@ -761,7 +806,8 @@ class EditorTopStrip extends StatelessWidget {
     // wrappers around the same section widgets).
     _item(
       id: 'edit-preferences',
-      label: 'Preferences…',
+      label: editorActionLabel(EditorActionIds.preferences),
+      shortcuts: const [EditorActionIds.preferences],
       icon: Icons.tune,
       onPressed: () {
         unawaited(
@@ -803,6 +849,7 @@ class EditorTopStrip extends StatelessWidget {
           PanelFlyoutItem(
             keyValue: 'panels-menu-item-${entry.tabId}',
             label: entry.label,
+            shortcuts: [panelActionId(entry.tabId)],
             checked: entry.visible,
             onSelected: () => panelsMenu.toggle(entry.tabId),
           ),
@@ -812,7 +859,8 @@ class EditorTopStrip extends StatelessWidget {
         // half the people holding the stylus.
         _item(
           id: 'window-tool-rail-right',
-          label: 'Tool strip on the right',
+          label: editorActionLabel(EditorActionIds.toolRailOnRight),
+          shortcuts: const [EditorActionIds.toolRailOnRight],
           icon: Icons.flip,
           checked: panelsMenu.toolRailOnRight,
           onPressed: panelsMenu.canMoveToolRail
@@ -826,7 +874,8 @@ class EditorTopStrip extends StatelessWidget {
         // all of it.
         _item(
           id: 'window-region-on-top',
-          label: 'Timeline region on top',
+          label: editorActionLabel(EditorActionIds.regionOnTop),
+          shortcuts: const [EditorActionIds.regionOnTop],
           icon: Icons.vertical_align_top,
           checked: panelsMenu.regionOnTop,
           onPressed: panelsMenu.canMoveRegion
@@ -835,7 +884,8 @@ class EditorTopStrip extends StatelessWidget {
         ),
         _item(
           id: 'window-reset-layout',
-          label: 'Reset workspace layout',
+          label: editorActionLabel(EditorActionIds.resetLayout),
+          shortcuts: const [EditorActionIds.resetLayout],
           icon: Icons.restart_alt,
           onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
         ),
@@ -860,7 +910,8 @@ class EditorTopStrip extends StatelessWidget {
         // platform, the driver-vs-app separator.
         _item(
           id: 'edit-input-inspector',
-          label: 'Input Inspector',
+          label: editorActionLabel(EditorActionIds.inputInspector),
+          shortcuts: const [EditorActionIds.inputInspector],
           // ⛔Not the bug glyph: that one is the DEBUG row above, and a
           // child repeating its parent's mark says nothing. This one is
           // about the pointer.
@@ -876,7 +927,8 @@ class EditorTopStrip extends StatelessWidget {
         // --dart-define on a tablet costs a rebuild and an install.
         _item(
           id: 'edit-frame-timing-overlay',
-          label: 'Frame Timing Overlay',
+          label: editorActionLabel(EditorActionIds.frameTimingOverlay),
+          shortcuts: const [EditorActionIds.frameTimingOverlay],
           icon: Icons.speed_outlined,
           checked: MeasurementMode.frameTimingOverlay.value,
           onPressed: () {
@@ -893,7 +945,8 @@ class EditorTopStrip extends StatelessWidget {
         // frame inside the scene whose raster time they report.
         _item(
           id: 'edit-frame-stats',
-          label: 'Frame Stats',
+          label: editorActionLabel(EditorActionIds.frameStats),
+          shortcuts: const [EditorActionIds.frameStats],
           icon: Icons.query_stats_outlined,
           checked: MeasurementMode.frameStats.value,
           onPressed: () {
@@ -908,7 +961,8 @@ class EditorTopStrip extends StatelessWidget {
         // strobes as the pen moves is re-baking on your pointer.
         _item(
           id: 'edit-show-repaints',
-          label: 'Show Repaints',
+          label: editorActionLabel(EditorActionIds.showRepaints),
+          shortcuts: const [EditorActionIds.showRepaints],
           icon: Icons.flare_outlined,
           checked: MeasurementMode.showRepaints.value,
           onPressed: () {
@@ -926,7 +980,8 @@ class EditorTopStrip extends StatelessWidget {
         // debug affordance nobody can press is a debug affordance nobody has.
         _item(
           id: 'edit-bake-panels',
-          label: 'Bake Static Panels',
+          label: editorActionLabel(EditorActionIds.bakePanels),
+          shortcuts: const [EditorActionIds.bakePanels],
           icon: Icons.layers_outlined,
           checked: StaticRaster.globallyEnabled.value,
           onPressed: () {
@@ -939,7 +994,8 @@ class EditorTopStrip extends StatelessWidget {
     const PanelFlyoutDivider(),
     _item(
       id: 'help-about',
-      label: 'About Anicel',
+      label: editorActionLabel(EditorActionIds.about),
+      shortcuts: const [EditorActionIds.about],
       icon: Icons.info_outline,
       onPressed: () =>
           showAboutDialog(context: context, applicationName: 'Anicel'),
@@ -2030,7 +2086,7 @@ Future<void> showSaveFailure(
       detailsHeading: strings.saveFailedDetailsHeading,
       actions: [
         AppWindowAction(
-          label: strings.failedCopyBackUp,
+          label: editorActionLabel(EditorActionIds.fileBackUpFailedCopy),
           actionKey: const ValueKey<String>('save-failure-back-up'),
           onPressed: copy == null
               ? null

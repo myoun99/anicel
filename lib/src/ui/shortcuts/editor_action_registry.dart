@@ -44,6 +44,7 @@ class EditorActionDefinition {
     this.pixelClipboardVerb,
     this.sheetMove,
     this.brushPress,
+    this.menuRow = false,
   });
 
   final String id;
@@ -116,6 +117,17 @@ class EditorActionDefinition {
   /// [editorActionDefinitions]: the library is the user's own, so they are
   /// made from it as it stands (`brushActionsOf`).
   final BrushPress? brushPress;
+
+  /// A row of the top strip's menus (I-40): the action IS that row, and a
+  /// key presses it where the row can be pressed
+  /// (`EditorTopStrip.pressMenuRow`).
+  ///
+  /// 🗣️유저 2026-09-18: 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의 패널
+  /// 열기 닫기같은거든 뭐든 모든 버튼」. ⛔A menu row's action has no road of
+  /// its own to what the row does: 저장 had one — the row's call written a
+  /// second time in the shell's switch — and two roads to one verb are what
+  /// drift apart.
+  final bool menuRow;
 }
 
 /// The move that walks [arrow] on the timeline: its one-frame step when
@@ -334,6 +346,26 @@ abstract final class EditorActionIds {
   /// 「컨트롤s로 저장 로직 연결, 컨트롤쉬프트s로 다른이름저장」.
   static const fileSave = 'file-save';
   static const fileSaveAs = 'file-save-as';
+
+  /// 🗣️I-40: the rest of the top strip's two menus, each id the id its row
+  /// has always been keyed and worded by (`menu-<id>`).
+  static const fileNew = 'file-new';
+  static const fileOpen = 'file-open';
+  static const fileBackUpFailedCopy = 'file-back-up-failed-copy';
+  static const fileImport = 'file-import';
+  static const fileExport = 'file-export';
+  static const workSettings = 'work-settings';
+  static const keyboardShortcuts = 'edit-keyboard-shortcuts';
+  static const preferences = 'edit-preferences';
+  static const about = 'help-about';
+  static const inputInspector = 'edit-input-inspector';
+  static const frameTimingOverlay = 'edit-frame-timing-overlay';
+  static const frameStats = 'edit-frame-stats';
+  static const showRepaints = 'edit-show-repaints';
+  static const bakePanels = 'edit-bake-panels';
+  static const toolRailOnRight = 'window-tool-rail-right';
+  static const regionOnTop = 'window-region-on-top';
+  static const resetLayout = 'window-reset-layout';
 
   /// 「= 버튼은 활성레이어 솔로 버튼으로 연결」 — the legend eye menu's solo.
   /// ↩️The key is T since F-261. ↩️Q since I-63.
@@ -644,6 +676,24 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     pixelClipboardVerb: PixelClipboardVerb.pasteBelow,
   ),
+  // 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
+  // 모든 버튼」 — the project menu's rows, in the menu's order. Each is the
+  // row itself ([EditorActionDefinition.menuRow]); none but the two saves
+  // ships with a key: nobody named one.
+  const EditorActionDefinition(
+    id: EditorActionIds.fileNew,
+    label: 'New project',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileOpen,
+    label: 'Open…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSave,
     label: 'Save',
@@ -651,6 +701,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true),
     ],
+    menuRow: true,
   ),
   const EditorActionDefinition(
     id: EditorActionIds.fileSaveAs,
@@ -659,6 +710,28 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [
       SingleActivator(LogicalKeyboardKey.keyS, control: true, shift: true),
     ],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileBackUpFailedCopy,
+    label: 'Back up failed copy…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileImport,
+    label: 'Import / Place…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.fileExport,
+    label: 'Export…',
+    category: 'File',
+    defaultActivators: [],
+    menuRow: true,
   ),
   // 🗣️I-19 (유저 2026-09-13): 「툴 내의 세부툴도 숏컷 지정 가능하게 하려고.
   // 툴 자체에 설정할수도있고 툴 내부의 세부툴도 설정가능하게」. ★Every rail
@@ -970,4 +1043,97 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Timeline',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.keyQ)],
   ),
+  // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
+  // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
+  // nothing and is no action; the rows under it are.
+  const EditorActionDefinition(
+    id: EditorActionIds.workSettings,
+    label: 'Work settings…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.keyboardShortcuts,
+    label: 'Keyboard shortcuts…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.preferences,
+    label: 'Preferences…',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.about,
+    label: 'About Anicel',
+    category: 'Settings',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.inputInspector,
+    label: 'Input Inspector',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameTimingOverlay,
+    label: 'Frame Timing Overlay',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameStats,
+    label: 'Frame Stats',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.showRepaints,
+    label: 'Show Repaints',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.bakePanels,
+    label: 'Bake Static Panels',
+    category: 'Debug',
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  // ⚠️LAST, and that is the point: the workspace's own panels follow these
+  // as rows of the same category (`panelActionsOf`).
+  const EditorActionDefinition(
+    id: EditorActionIds.toolRailOnRight,
+    label: 'Tool strip on the right',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.regionOnTop,
+    label: 'Timeline region on top',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.resetLayout,
+    label: 'Reset workspace layout',
+    category: panelActionCategory,
+    defaultActivators: [],
+    menuRow: true,
+  ),
 ];
+
+/// The category the panels' rows stand under — these three, and one row per
+/// panel of the workspace.
+const String panelActionCategory = 'Panels';

@@ -232,7 +232,16 @@ void main() {
   /// — its ＋ became an action beside Add Frame (which only changed its
   /// words, New Drawing before), answered in the other four languages by id
   /// (`shortcutAction.layer-add`). The same shape.
-  const untranslatedElsewhere = 93;
+  ///
+  /// 📒Ledger entry 2026-10-07, **95** (93 + 2 — I-40, the top strip's menu
+  /// rows): seventeen rows of the project and settings menus became actions.
+  /// Fifteen of them had their English at the call site, counted there, and
+  /// carry it in the registry now — no change. The other two (새 프로젝트 ·
+  /// 실패본 백업) were worded through getters with an English ROW, which is
+  /// the registry's label now: the row left the table and the count sees a
+  /// literal. All seventeen are answered in the other four languages by id,
+  /// with the words their menu rows already had.
+  const untranslatedElsewhere = 95;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');

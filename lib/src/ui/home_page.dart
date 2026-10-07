@@ -62,6 +62,7 @@ import 'playback/playback_transport_controls.dart'
     show playOrStop, skipToStart, toggleVoiceRecordingWithFeedback;
 import 'shortcuts/brush_actions.dart';
 import 'shortcuts/editor_action_registry.dart';
+import 'shortcuts/panel_actions.dart';
 import 'shortcuts/editor_key_holds.dart';
 import 'shortcuts/editor_shortcut_bindings.dart';
 import 'shortcuts/editor_shortcut_scope.dart';
@@ -333,6 +334,26 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     brushActionsOf(_brushKeys.groups, _brushKeys.presets),
   );
 
+  /// The workspace's panels as rows of the shortcut list (I-40) — told
+  /// whenever the panels' menu changes, and when the program language does:
+  /// a panel's row wears the panel's own name.
+  void _showPanelsToShortcuts() =>
+      _shortcuts.setPanelActions(panelActionsOf(_panelsMenu.entries));
+
+  /// The top strip as it is on screen — and as a KEY presses it: a menu
+  /// row's action is pressed through this same strip
+  /// ([EditorTopStrip.pressMenuRow]), so a key and its row cannot be handed
+  /// different things.
+  EditorTopStrip _topStrip() => EditorTopStrip(
+    projects: _projects,
+    onCloseProject: (session) => unawaited(_closeProject(session)),
+    panelsMenu: _panelsMenu,
+    brushTool: _brushTool,
+    colorBackground: _colorWheelBackground,
+    colorPalette: _colorPalette,
+    onColorPaletteChanged: _setColorPalette,
+  );
+
   /// The keys that are HELD (I-15) — 「이동」 on Space and the eyedropper's
   /// Alt — taken on the same road as every shortcut; see [EditorKeyHolds].
   /// The window's: it follows the stroke of the project on screen.
@@ -397,6 +418,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _pointAtProjectOnScreen();
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
+    _panelsMenu.addListener(_showPanelsToShortcuts);
+    AppText.settings.addListener(_showPanelsToShortcuts);
     _paletteService = _unlessTesting(ColorPaletteFileService.new);
     unawaited(
       _paletteService?.loadOrDefaults().then((palette) {
@@ -804,12 +827,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
     _goingAway.clear();
     _appSettings.dispose();
+    _panelsMenu.removeListener(_showPanelsToShortcuts);
     _panelsMenu.dispose();
     _brushTool.dispose();
     _transformOptions.dispose();
     _lastStroke.dispose();
     _colorWheelBackground.dispose();
     _colorPalette.dispose();
+    AppText.settings.removeListener(_showPanelsToShortcuts);
     _brushKeys.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();
@@ -885,6 +910,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // action presses what the brush's row or the group's tab does.
     if (definition?.brushPress case final press?) {
       _brushKeys.press(press);
+      return;
+    }
+    // 🗣️I-40 (유저 2026-09-18): 「설정의 패널 열기 닫기같은거든 뭐든 모든
+    // 버튼」 — a row of the strip's menus is pressed AS the row: built the way
+    // the menu builds it, and pressed only where the menu would let it be.
+    if (definition?.menuRow ?? false) {
+      _topStrip().pressMenuRow(context, actionId);
       return;
     }
     if (definition?.pixelVerb case final verb?) {
@@ -1093,10 +1125,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               )
               ?.call();
         }
-      case EditorActionIds.fileSave:
-        unawaited(saveProject(context, _session));
-      case EditorActionIds.fileSaveAs:
-        unawaited(promptSaveProjectAs(context, _session));
       case EditorActionIds.layerVisibilitySolo:
         _session.visibilitySolo.toggleLayerVisibilitySolo();
       case EditorActionIds.canvasZoomIn:
@@ -1310,16 +1338,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                                             in _projects.sessions)
                                           projectTabLabel(_projects, session),
                                       ]),
-                                      builder: (context, _) => EditorTopStrip(
-                                        projects: _projects,
-                                        onCloseProject: (session) =>
-                                            unawaited(_closeProject(session)),
-                                        panelsMenu: _panelsMenu,
-                                        brushTool: _brushTool,
-                                        colorBackground: _colorWheelBackground,
-                                        colorPalette: _colorPalette,
-                                        onColorPaletteChanged: _setColorPalette,
-                                      ),
+                                      builder: (context, _) => _topStrip(),
                                     ),
                                   ),
                                 ),

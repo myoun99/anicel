@@ -5,6 +5,7 @@ import '../debug/key_trace.dart';
 import 'brush_actions.dart';
 import 'editor_action_registry.dart';
 import 'focused_text_field.dart';
+import 'panel_actions.dart';
 import 'sheet_arrow.dart';
 import 'shortcut_activator_codec.dart';
 import 'shortcut_presets.dart';
@@ -23,36 +24,62 @@ class EditorShortcutBindings extends ChangeNotifier {
   /// Null disables persistence (tests, and FLUTTER_TEST runs).
   final ShortcutSettingsStore? store;
 
-  /// Every action a key can be put on: the registry's, then the brush
-  /// library's as it stands ([setBrushActions]).
+  /// Every action a key can be put on: the registry's, then the workspace's
+  /// panels ([setPanelActions]) and the brush library's ([setBrushActions])
+  /// as they stand.
   List<EditorActionDefinition> get definitions => _definitions;
   List<EditorActionDefinition> _definitions = editorActionDefinitions;
   Map<String, EditorActionDefinition> _definitionsById = {
     for (final definition in editorActionDefinitions) definition.id: definition,
   };
 
-  /// The brush library's rows (I-56, `brushActionsOf`) — they follow the
-  /// registry's, and change with the library. Notifies.
+  List<EditorActionDefinition> _panelActions = const [];
+  List<EditorActionDefinition> _brushActions = const [];
+
+  /// The brush library's rows (I-56, `brushActionsOf`) — the last of the
+  /// list, changing with the library. Notifies when they are other rows.
   ///
   /// ⚠️What was recorded for a brush that is not among [actions] stays where
   /// it is and presses nothing ([isBrushActionId]).
   void setBrushActions(List<EditorActionDefinition> actions) {
-    // The library tells of every change — a group folded shut in its panel
-    // too — and everything that shows a key listens here: rows that are
-    // what they were tell nobody.
-    final held = _definitions.sublist(editorActionDefinitions.length);
-    final unchanged =
-        held.length == actions.length &&
-        Iterable<int>.generate(actions.length).every(
-          (i) =>
-              held[i].id == actions[i].id &&
-              held[i].label == actions[i].label &&
-              held[i].brushPress == actions[i].brushPress,
-        );
-    if (unchanged) {
-      return;
+    if (!_sameRows(_brushActions, actions)) {
+      _brushActions = actions;
+      _relist();
     }
-    _definitions = [...editorActionDefinitions, ...actions];
+  }
+
+  /// The workspace's panels as rows (I-40, `panelActionsOf`) — right after
+  /// the registry's, whose last category they continue. The same law as the
+  /// brushes' ([isPanelActionId]).
+  void setPanelActions(List<EditorActionDefinition> actions) {
+    if (!_sameRows(_panelActions, actions)) {
+      _panelActions = actions;
+      _relist();
+    }
+  }
+
+  /// Whether [rows] are the rows already [held]. What these are made from
+  /// tells of every change — a group folded shut in its panel, a panel shown
+  /// or hidden — and everything that shows a key listens here: rows that
+  /// are what they were tell nobody.
+  static bool _sameRows(
+    List<EditorActionDefinition> held,
+    List<EditorActionDefinition> rows,
+  ) =>
+      held.length == rows.length &&
+      Iterable<int>.generate(rows.length).every(
+        (i) =>
+            held[i].id == rows[i].id &&
+            held[i].label == rows[i].label &&
+            held[i].brushPress == rows[i].brushPress,
+      );
+
+  void _relist() {
+    _definitions = [
+      ...editorActionDefinitions,
+      ..._panelActions,
+      ..._brushActions,
+    ];
     _definitionsById = {
       for (final definition in _definitions) definition.id: definition,
     };
@@ -97,9 +124,11 @@ class EditorShortcutBindings extends ChangeNotifier {
       _definitionsById[actionId];
 
   /// Whether a saved entry for [actionId] is kept: an action there is, or a
-  /// brush the library may yet hold.
+  /// brush the library — a panel the workspace — may yet tell of.
   bool _keeps(String actionId) =>
-      definitionFor(actionId) != null || isBrushActionId(actionId);
+      definitionFor(actionId) != null ||
+      isBrushActionId(actionId) ||
+      isPanelActionId(actionId);
 
   /// The keys the preset in use ships [actionId] with ([presetActivators]),
   /// as THIS platform presses them: the command modifier written as Ctrl is
