@@ -78,6 +78,7 @@ import 'eyedropper_swatch_painter.dart' show eyedropperSwatchLook;
 import 'tool_cursor_look.dart';
 import 'tool_cursor_sprite.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
+import '../canvas/selection_drag.dart' show DrawnShapePath;
 import '../../services/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
 import 'brush_tool_state.dart';
@@ -1322,6 +1323,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// The region this panel last painted ants for — the rebuild guard.
   CanvasSelectionRegion? _paintedIdleRegion;
 
+  /// The selection as the last build handed it to the drawing view, which
+  /// clips a stroke to it — so that a region changed since can be told
+  /// from one that has not
+  /// ([_CanvasPanelSelection.handleSelectionChannelChanged]).
+  CanvasSelectionRegion? _strokeClipAsBuilt;
+
   /// The idle ants animate only when they are the ones on screen: the
   /// mounted selection layer runs its own ticker.
   void _syncIdleAnts() {
@@ -1773,6 +1780,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                     .fillShape =>
                   CanvasSelectionTool
                       .fillShape,
+                CanvasTool.shape =>
+                  CanvasSelectionTool
+                      .drawShape,
                 _ =>
                   CanvasSelectionTool
                       .select,
@@ -1804,6 +1814,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   widget.oneFingerAction,
               onFillShape:
                   _fillDrawnShape,
+              onDrawShape:
+                  _drawTracedShape,
               // CANVAS space,
               // unmapped: this
               // layer never
@@ -2026,6 +2038,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
     final coordinator = widget.coordinator!;
     final activeKey = coordinator.activeFrameKey;
+    final liveSelection = widget.selectionCommands?.region;
+    _strokeClipAsBuilt = liveSelection;
     final interactiveView = InteractiveBrushEditCanvasView(
       // STABLE key (R13-2): keying by frameId remounted the whole
       // interactive subtree on every frame flip — the constant flip
@@ -2052,13 +2066,15 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // R26 #18: the live stroke shows clipped to the selection, exactly
       // as the commit will clip it — in the row's own artwork, where this
       // view draws (a-marquee-on-a-posed-row).
-      selectionRegion: switch (widget.selectionCommands?.region) {
+      selectionRegion: switch (liveSelection) {
         null => null,
         final selection => _selectionSeat.regionOnTheRow(selection),
       },
       // R9-rest: what a save lands is the stroke AND the text in hand.
       onStrokeLanderChanged: (lander) =>
           widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
+      // I-69: the shape tool has the view draw what its drag traced.
+      onPathStrokerChanged: (stroker) => _pathStroker = stroker,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
           widget.onStrokeInputActiveChanged?.call(active);
@@ -2270,6 +2286,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_brush.tool == CanvasTool.eyedropper) {
       _tap.toolTapHandler()?.call(point);
     }
+  }
+
+  /// The drawing view's [PathStroker] while it is mounted — how a traced
+  /// shape becomes a stroke ([_drawTracedShape]).
+  PathStroker? _pathStroker;
+
+  /// Draw a finished shape-tool drag (I-69): [path] as ONE STROKE of the
+  /// brush in hand, laid by the drawing view through the stroke's own code
+  /// — so the selection clips it, symmetry copies it, undo covers it and it
+  /// is saved as the stroke it is.
+  void _drawTracedShape(DrawnShapePath path) {
+    // Traced on the canvas, stroked in the row's own artwork where the row
+    // shows it (a-marquee-on-a-posed-row).
+    final onTheRow = <CanvasPoint>[];
+    for (final point in path.points) {
+      final there = _selectionSeat.pointOnTheRow(point);
+      if (there == null) {
+        // The placement has collapsed the row: it shows nothing to draw on.
+        return;
+      }
+      onTheRow.add(there);
+    }
+    _pathStroker?.call([...onTheRow, if (path.closed) onTheRow.first]);
   }
 
   /// Paint a finished shape-fill outline.

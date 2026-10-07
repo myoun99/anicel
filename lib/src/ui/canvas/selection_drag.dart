@@ -35,6 +35,10 @@ sealed class SelectionDrag {
   final int pointer;
 }
 
+/// What a verb that DRAWS a traced shape strokes: its [points] in order,
+/// and whether the stroke comes back to the first of them.
+typedef DrawnShapePath = ({List<CanvasPoint> points, bool closed});
+
 /// The marquee/lasso drag: the tools that TRACE a new outline.
 ///
 /// Rect, ellipse and lasso are one drag with one geometry rule — the shape
@@ -78,17 +82,38 @@ final class MarqueeDrag extends SelectionDrag {
     CanvasShapeKind.ellipse => false,
     CanvasShapeKind.lasso => true,
     CanvasShapeKind.polygon => false,
+    CanvasShapeKind.line => false,
   };
 
   void update(CanvasPoint at) {
     _current = at;
     if (tracesPointerPath(shapeKind)) {
       _traced = [..._traced, at];
+    } else if (shapeKind == CanvasShapeKind.line) {
+      // The line has no outline for the ants to walk; what they draw while
+      // it is dragged is the line itself, end to end.
+      _traced = [start, at];
     }
   }
 
+  /// Whether the two corners are too close to have meant a shape — a
+  /// click, or a drag that never left it.
+  bool get _degenerate =>
+      (_current.x - start.x).abs() < 2 && (_current.y - start.y).abs() < 2;
+
+  /// What a verb that DRAWS this shape strokes: the outline, closed — or
+  /// the line's two ends. Null while there is nothing to draw.
+  DrawnShapePath? path() {
+    if (shapeKind == CanvasShapeKind.line) {
+      return _degenerate ? null : (points: [start, _current], closed: false);
+    }
+    final outline = shape();
+    return outline == null ? null : (points: outline.points, closed: true);
+  }
+
   /// The path traced so far, for the ants to draw while the drag runs.
-  /// Empty for the shapes that are read from their corners instead.
+  /// Empty for the shapes that are read from their corners instead — but
+  /// for the line, whose two ends are all there is to draw.
   List<CanvasPoint> get openTrail => _traced;
 
   /// The in-progress or final marquee polygon; null while degenerate.
@@ -106,13 +131,15 @@ final class MarqueeDrag extends SelectionDrag {
         // Tapped out, not dragged: its outline is the channel's open trace
         // and it is built when the trace CLOSES, not while a drag runs.
         return null;
+      case CanvasShapeKind.line:
+        // Two ends and no inside: there is no outline ([path] has it).
+        return null;
       case CanvasShapeKind.rect:
       case CanvasShapeKind.ellipse:
         // A click (or a drag too small to have meant one) is degenerate for
         // both box shapes — an ellipse in a 1px box is not a thinner
         // ellipse, it is nothing.
-        if ((_current.x - start.x).abs() < 2 &&
-            (_current.y - start.y).abs() < 2) {
+        if (_degenerate) {
           return null;
         }
         return shapeKind == CanvasShapeKind.ellipse

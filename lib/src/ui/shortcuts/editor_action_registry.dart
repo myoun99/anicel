@@ -7,7 +7,8 @@ import '../../models/canvas_shape_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
-import '../brush/brush_tool_state.dart' show CanvasTool, canvasToolRailGroup;
+import '../brush/brush_tool_state.dart'
+    show CanvasTool, canvasToolRailGroup, canvasToolShapes;
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
@@ -167,7 +168,8 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
     ?definition.pixelVerb: definition.id,
 };
 
-/// The shape tiles of [verb] as actions, one per [CanvasShapeKind].
+/// The shape tiles of [verb] as actions, one per shape it speaks
+/// (`canvasToolShapes`).
 ///
 /// ★GENERATED from the verb × shape product, never hand-written:
 /// [CanvasShapeKind] warns that the product grows like one, so a new shape
@@ -175,7 +177,7 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
 /// composed (`shapeTileLabel`) — the English one here from the English
 /// table — so no language tables a shape tile twice.
 List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
-  for (final shape in CanvasShapeKind.values)
+  for (final shape in canvasToolShapes(verb))
     EditorActionDefinition(
       // Named for the rail tool the tile belongs to — 'tool-select-lasso',
       // 'tool-fill-rect' — which is the id the rectangle select already had.
@@ -278,6 +280,7 @@ abstract final class EditorActionIds {
   static const toolFill = 'tool-fill';
   static const toolFillBucket = 'tool-fill-bucket';
   static const toolText = 'tool-text';
+  static const toolShape = 'tool-shape';
   static const toolGuide = 'tool-guide';
   static const toolSelect = 'tool-select';
   static const toolTransform = 'tool-transform';
@@ -790,6 +793,16 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     toolPress: RailToolPress(CanvasTool.text),
   ),
+  // I-69: no key of its own, nor its tiles' — a person binds what they
+  // want.
+  const EditorActionDefinition(
+    id: EditorActionIds.toolShape,
+    label: 'Shape Tool',
+    category: 'Tools',
+    defaultActivators: [],
+    toolPress: RailToolPress(CanvasTool.shape),
+  ),
+  ..._shapeTileActions(CanvasTool.shape),
   // 「가이드 툴을 g로 지정」.
   const EditorActionDefinition(
     id: EditorActionIds.toolGuide,

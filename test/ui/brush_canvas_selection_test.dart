@@ -182,9 +182,15 @@ void main() {
     final brush = ValueNotifier(
       BrushToolState.defaults.copyWith(
         tool: tool,
-        selectShape: shapeKind,
-        fillShape: shapeKind,
+        // Each verb takes the shape only if it speaks it: a line is the
+        // shape tool's alone.
+        selectShape: canvasShapeEncloses(shapeKind) ? shapeKind : null,
+        fillShape: canvasShapeEncloses(shapeKind) ? shapeKind : null,
+        drawShape: canvasToolShapes(CanvasTool.shape).contains(shapeKind)
+            ? shapeKind
+            : null,
         fillBlendMode: blendMode,
+        shapeBlendMode: blendMode,
       ),
     );
     addTearDown(brush.dispose);
@@ -6934,6 +6940,167 @@ void main() {
     await tester.pump();
 
     expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+  });
+
+  group('the shape tool (I-69)', () {
+    // 유저 2026-10-04: 「브러시 상태를 그대로 사용해서 도형그림 … 그냥 진짜
+    // 브러시랑 똑같이 래스터라이즈되있는 도형」 — the verb, end to end. The
+    // fixture's own ink sits at 30..60; these draw clear of it.
+    testWidgets('draws the traced rectangle as ONE stroke of the brush — its '
+        'outline and not its inside — and leaves the selection alone', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.shape);
+      final before = env.history.undoCount;
+      expect(inkAt(env.coordinator, 150, 100), 0, reason: 'blank to begin with');
+
+      await dragOnLayer(tester, const Offset(100, 100), const Offset(200, 180));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 150, 100), isNonZero, reason: 'the top');
+      expect(inkAt(env.coordinator, 100, 140), isNonZero, reason: 'the left');
+      expect(inkAt(env.coordinator, 200, 140), isNonZero, reason: 'the right');
+      expect(inkAt(env.coordinator, 150, 180), isNonZero, reason: 'the bottom');
+      expect(
+        inkAt(env.coordinator, 150, 140),
+        0,
+        reason: 'a shape drawn is its line: nothing is filled in',
+      );
+      expect(env.commands.region, isNull, reason: 'drawing is not selecting');
+      expect(
+        env.history.undoCount,
+        before + 1,
+        reason: 'one stroke, one step back',
+      );
+
+      env.history.undo();
+      await tester.pump();
+      expect(inkAt(env.coordinator, 150, 100), 0, reason: 'and it goes whole');
+      expect(inkAt(env.coordinator, 100, 140), 0);
+    });
+
+    testWidgets('a line is drawn from one end to the other, and nothing '
+        'beside it', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+      );
+
+      await dragOnLayer(tester, const Offset(100, 200), const Offset(220, 200));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 104, 200), isNonZero, reason: 'one end');
+      expect(inkAt(env.coordinator, 160, 200), isNonZero, reason: 'between');
+      expect(inkAt(env.coordinator, 216, 200), isNonZero, reason: 'the other');
+      expect(inkAt(env.coordinator, 160, 230), 0);
+      expect(env.commands.region, isNull);
+    });
+
+    testWidgets('an ellipse is drawn round the box it was dragged in', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.ellipse,
+      );
+
+      await dragOnLayer(tester, const Offset(300, 100), const Offset(400, 180));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 350, 100), isNonZero, reason: 'the top');
+      expect(inkAt(env.coordinator, 300, 140), isNonZero, reason: 'the left');
+      expect(inkAt(env.coordinator, 350, 140), 0, reason: 'not its inside');
+      expect(
+        inkAt(env.coordinator, 303, 103),
+        0,
+        reason: 'nor the corner of its box — that is what makes it round',
+      );
+    });
+
+    testWidgets('a click draws nothing and leaves nothing to undo', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.shape);
+      final before = env.history.undoCount;
+
+      await tapOnLayer(tester, const Offset(150, 150));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 150, 150), 0);
+      expect(env.history.undoCount, before);
+    });
+
+    // 유저 2026-10-04: 「도형도구의 합성모드가 독립적으로 존재」 — and erase is
+    // in the blend list, which makes a shape an eraser the way it makes the
+    // shape fill one. On the raster, for the shape fill's reason: erase is
+    // carried per dab.
+    testWidgets('a shape drawn on the erase blend REMOVES ink', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+        blendMode: BrushBlendMode.erase,
+      );
+      expect(inkAt(env.coordinator, 45, 45), isNonZero, reason: 'ink to erase');
+
+      await dragOnLayer(tester, const Offset(20, 45), const Offset(70, 45));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 45, 45), 0, reason: 'the ink is gone');
+    });
+
+    // R26 #18: 「선택하고 그리면 선택 내부만 그려진다」, whatever drew it.
+    testWidgets('the selection clips a shape as it clips a stroke', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+      );
+      env.commands.setRegion(
+        CanvasSelectionRegion.shape(
+          CanvasSelectionShape.rect(left: 100, top: 80, right: 150, bottom: 220),
+        ),
+      );
+      await tester.pump();
+
+      await dragOnLayer(tester, const Offset(60, 150), const Offset(240, 150));
+      await tester.pump();
+
+      expect(inkAt(env.coordinator, 125, 150), isNonZero, reason: 'inside');
+      expect(inkAt(env.coordinator, 80, 150), 0, reason: 'before it');
+      expect(inkAt(env.coordinator, 200, 150), 0, reason: 'past it');
+    });
+
+    // a-marquee-on-a-posed-row: traced on the canvas, so on a posed row the
+    // shape goes where the row SHOWS it.
+    testWidgets('a shape lands on the artwork its trace shows', (tester) async {
+      const size = BrushCanvasFixture.canvasSize;
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.shape,
+        shapeKind: CanvasShapeKind.line,
+        placement: (
+          pose: TransformPose(
+            center: CanvasPoint(x: size.width / 2 + 100, y: size.height / 2),
+          ),
+          anchorPoint: null,
+        ),
+      );
+
+      await dragOnLayer(tester, const Offset(200, 200), const Offset(300, 200));
+      await tester.pump();
+
+      expect(
+        inkAt(env.coordinator, 150, 200),
+        isNonZero,
+        reason: 'the canvas line (200..300) shows artwork (100..200)',
+      );
+      expect(inkAt(env.coordinator, 250, 200), 0);
+    });
   });
 
   group('polygon', () {

@@ -47,12 +47,94 @@ class _BrushEditStroke {
     _state._opening.startContact(
       _state._pressure.noteSample(event, opening: true),
     );
+    _arm(
+      strokeSettings,
+      at: canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+      // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
+      // jitter come from its press, so every view that hears the press
+      // rolls the same numbers. ↩️Written for a sheet's windows each
+      // drawing their own slice of one stroke (one paper, 유저 2026-09-25);
+      // a stroke is one window's now (H49, 09-30), and the press still
+      // decides its dice.
+      dice: Object.hash(event.pointer, event.timeStamp),
+      byHand: true,
+    );
+    // A press off the pasteboard lays nothing down; the stroke's first dab
+    // comes where a move crosses in.
+    _state._opening.press(
+      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
+      at: event.timeStamp,
+      position: canvasPosition,
+    );
+  }
+
+  /// The pointer a stroke the TOOL lays wears: none of a real pointer's
+  /// numbers, which count up from zero.
+  static const int _toolsOwnStroke = -1;
+
+  /// A stroke the TOOL lays begins at [canvasPosition], heading [towards]
+  /// its next point (I-69) — no pointer under it and no pen: the pressure
+  /// rests at full ([_BrushEditPressure.restInput]), nothing is steadied
+  /// and nothing snaps ([_arm]'s `byHand`), and its first dab goes out at
+  /// once, already knowing which way the stroke sets off.
+  ///
+  /// ⚠️[_toolsOwnStroke] stands in for the pointer for the length of the
+  /// ONE call that lays the stroke and lands it ([_BrushEditPathStroke]):
+  /// the landing asks whether a stroke is in flight by asking for its
+  /// pointer, and no pointer event is heard in between.
+  void beginToolStroke(
+    CanvasPoint canvasPosition, {
+    required CanvasPoint towards,
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
+    _state._activeDrawingPointer = _toolsOwnStroke;
+    _state._touchStrokeDownPosition = null;
+    _state._touchStrokeCommitted = false;
+    final strokeSettings = _state.widget.inputSettings();
+    _state._activeStrokeInputSettings = strokeSettings;
+    _arm(
+      strokeSettings,
+      at: canvasPosition,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: dice,
+      byHand: false,
+    );
+    if (startsInsidePasteboard) {
+      _paintPress(
+        canvasPosition,
+        directionDegrees: strokeDirectionDegrees(
+          from: canvasPosition,
+          to: towards,
+        ),
+      );
+    }
+  }
+
+  /// THE STROKE IS ARMED — everything a stroke stands on before its first
+  /// dab, whoever begins it: the host hears that one is in flight, the
+  /// symmetry, the dynamics and the ground mixer are made for it from
+  /// [strokeSettings], and the overlay opens in its blend.
+  ///
+  /// [byHand] is whether a hand is drawing it: only then is there a line
+  /// to steady (the stabiliser) and a ray to find from how it sets off
+  /// (the perspective snap). A stroke the tool lays goes where it was
+  /// told.
+  void _arm(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required bool startsInsidePasteboard,
+    required int dice,
+    required bool byHand,
+  }) {
+    final canvasPosition = at;
     _state.widget.onActiveStrokeChanged?.call(true);
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
     final stabilizerStrength = strokeSettings.stabilizerStrength;
-    _state._stabilizer = stabilizerStrength > 0
+    _state._stabilizer = byHand && stabilizerStrength > 0
         ? StrokeStabilizer(
             ropeLength: stabilizerStrength / _state.widget.viewport.zoom,
             start: canvasPosition,
@@ -61,22 +143,18 @@ class _BrushEditStroke {
     // Guides are read ONCE per stroke. Both are frozen here rather than
     // consulted per sample so an edit landing mid-stroke cannot bend the
     // line that is already down.
-    _state._snapSession = PerspectiveSnapSession.maybeStart(
-      guides: _state.widget.guides,
-      start: canvasPosition,
-      zoom: _state.widget.viewport.zoom,
-      space: _state.widget.guideSpace,
-    );
+    _state._snapSession = byHand
+        ? PerspectiveSnapSession.maybeStart(
+            guides: _state.widget.guides,
+            start: canvasPosition,
+            zoom: _state.widget.viewport.zoom,
+            space: _state.widget.guideSpace,
+          )
+        : null;
     final symmetry = _state.widget.guides.actingSymmetry;
     _state._symmetryTransforms = symmetry == null
         ? const []
         : symmetryCopiesIn(_state.widget.guideSpace, symmetry);
-    // ONE PRESS, ONE ROLL OF THE DICE: the stroke's spacing, scatter and
-    // jitter come from its press, so every view that hears the press rolls
-    // the same numbers. ↩️Written for a sheet's windows each drawing their
-    // own slice of one stroke (one paper, 유저 2026-09-25); a stroke is one
-    // window's now (H49, 09-30), and the press still decides its dice.
-    final dice = Object.hash(event.pointer, event.timeStamp);
     _state._spacingRandom = math.Random(dice);
     _state._dualPhaseRandom = math.Random(dice + 1);
     _state._strokeDynamics = BrushStrokeDynamics(
@@ -112,13 +190,6 @@ class _BrushEditStroke {
     _state._overlay._overlayModel.preBlendBase = strokeSurface;
     _state._collectedDabs.clear();
     _state._prepareLiveRasterizer();
-    // A press off the pasteboard lays nothing down; the stroke's first dab
-    // comes where a move crosses in.
-    _state._opening.press(
-      startsInsidePasteboard ? () => _paintPress(canvasPosition) : () {},
-      at: event.timeStamp,
-      position: canvasPosition,
-    );
   }
 
   /// One pen sample for the stroke: painted now — or, while the stroke
@@ -148,8 +219,10 @@ class _BrushEditStroke {
     paint();
   }
 
-  /// The stroke's FIRST dab, under the press.
-  void _paintPress(CanvasPoint canvasPosition) {
+  /// The stroke's FIRST dab, under the press. [directionDegrees] is which
+  /// way the stroke sets off when its beginner already knows (a stroke the
+  /// tool lays); a pen's is learnt from its first move.
+  void _paintPress(CanvasPoint canvasPosition, {double? directionDegrees}) {
     final initialDabs = _state._pressure.withPressureDynamics(
       const BrushDabInterpolator().interpolate(
         previous: null,
@@ -182,7 +255,8 @@ class _BrushEditStroke {
             firstSequence: _state._nextSequence,
             // Which way the stroke set off, once a move has said so; a tap
             // that never moved has no direction to follow.
-            directionDegrees: _state._opening.pressDirection,
+            directionDegrees:
+                directionDegrees ?? _state._opening.pressDirection,
           ),
         ),
         _state._symmetryTransforms,

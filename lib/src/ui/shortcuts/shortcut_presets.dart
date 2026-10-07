@@ -183,8 +183,11 @@ final Map<String, List<SingleActivator>> _clipStudioKeys = {
   ],
   EditorActionIds.toolFill: const [SingleActivator(LogicalKeyboardKey.keyG)],
   EditorActionIds.toolText: const [SingleActivator(LogicalKeyboardKey.keyT)],
-  // Ruler — a similar command.
-  EditorActionIds.toolGuide: const [SingleActivator(LogicalKeyboardKey.keyU)],
+  // Figure. ↩️U stood on the guide tool until the shape tool came (I-69,
+  // 2026-10-07) — Ruler, a similar command, which shares the key in the
+  // program; the same command comes before a similar one, so the guide
+  // tool has no key of this table's now.
+  EditorActionIds.toolShape: const [SingleActivator(LogicalKeyboardKey.keyU)],
   EditorActionIds.toolSelect: const [SingleActivator(LogicalKeyboardKey.keyM)],
   // Transform > Scale/Rotate, and > Free Transform.
   EditorActionIds.toolTransformNormal: const [

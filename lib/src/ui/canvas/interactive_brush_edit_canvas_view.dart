@@ -46,6 +46,7 @@ import 'shown_cels.dart';
 import 'canvas_viewport_offset.dart';
 
 part 'brush_edit/brush_edit_stroke.dart';
+part 'brush_edit/brush_edit_path_stroke.dart';
 part 'brush_edit/brush_edit_opening.dart';
 part 'brush_edit/brush_edit_fill.dart';
 part 'brush_edit/brush_edit_pressure.dart';
@@ -70,6 +71,16 @@ List<BrushDab>? debugStrokeDabsLaid;
 /// one verb a save needs, not a handle onto its input state.
 typedef StrokeLander = bool Function();
 
+/// Draws a path — two or more points in the view's own space — as ONE
+/// stroke of the brush in hand, and answers whether it is drawn (or will
+/// be, once the cel it asked for is there):
+/// [_BrushEditPathStroke.strokeAlong] handed out, so the tool that traced
+/// the path can have it drawn (I-69, the shape tool).
+///
+/// ⚠️A FUNCTION, for [StrokeLander]'s reason: what leaves this view is the
+/// one verb, not a handle onto its stroke.
+typedef PathStroker = bool Function(List<CanvasPoint> path);
+
 class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// The commitment distance (the engine's lock slop — one number keeps
   /// the engine's navigate-lock and this view's cancel window agreeing).
@@ -92,6 +103,7 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
+    this.onPathStrokerChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.toolHolds,
@@ -221,6 +233,10 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// nothing else — a save that ended the stroke its own way would be that
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
+
+  /// Handed this view's [PathStroker] while it is mounted, and null when
+  /// it goes — published the way [onStrokeLanderChanged] is.
+  final ValueChanged<PathStroker?>? onPathStrokerChanged;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
   /// eraser, switched the tool temporarily — the shell mirrors it on the
@@ -412,6 +428,7 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
+    widget.onPathStrokerChanged?.call(_pathStroke.strokeAlong);
     _toolHolds.handOver = _door;
   }
 
@@ -480,6 +497,7 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
+    widget.onPathStrokerChanged?.call(null);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;
     }
@@ -582,6 +600,8 @@ class _InteractiveBrushEditCanvasViewState
   // A collaborator (canvas/brush_edit/brush_edit_stroke.dart, a part of this library).
   // The State keeps the entry points its pointer handlers call.
   late final _BrushEditStroke _stroke = _BrushEditStroke(this);
+
+  late final _BrushEditPathStroke _pathStroke = _BrushEditPathStroke(this);
 
   /// What the stroke's contact has read so far, and what it holds until it
   /// has (H43).

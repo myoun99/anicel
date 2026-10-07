@@ -246,6 +246,11 @@ class ToolSettingsPanel extends StatelessWidget {
           shapeKind: state.activeShapeKind,
           selectionCommands: selectionCommands,
         ),
+        // I-69: the shape tool draws with the brush in hand, so what there
+        // is to set about its line is the brush's — on the strip, and in the
+        // brush's own panel. ⚠️The card's 「일반」 type (a plain line of the
+        // tool's own width) is not built yet; its controls come here.
+        CanvasTool.shape => const _ShapeToolSettings(),
         // R28 #6: the eyedropper has a REFERENCE SOURCE setting now.
         CanvasTool.eyedropper => _EyedropperSettings(
           source: eyedropperSource,
@@ -353,6 +358,20 @@ class _ShapeFillSettings extends StatelessWidget {
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
       ],
+    );
+  }
+}
+
+class _ShapeToolSettings extends StatelessWidget {
+  const _ShapeToolSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    return ToolSettingsSection(
+      tool: 'shape',
+      title: AppText.strings.toolShape,
+      scrolls: false,
+      children: const [],
     );
   }
 }

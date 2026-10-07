@@ -16,7 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
-import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
+import 'package:anicel/src/ui/brush/brush_tool_state.dart'
+    show CanvasTool, canvasToolShapes;
 import 'package:anicel/src/ui/brush/tool_press.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
@@ -75,7 +76,10 @@ void main() {
         'other', () {
       const clipStudio = ShortcutPreset.clipStudio;
       expect(keysOf(clipStudio, EditorActionIds.toolFill), ['G']);
-      expect(keysOf(clipStudio, EditorActionIds.toolGuide), ['U']);
+      // U is Figure and Ruler both in the program: the same command — the
+      // shape tool — before the similar one (I-69).
+      expect(keysOf(clipStudio, EditorActionIds.toolShape), ['U']);
+      expect(keysOf(clipStudio, EditorActionIds.toolGuide), isEmpty);
       expect(keysOf(clipStudio, EditorActionIds.toolSelect), ['M']);
       expect(keysOf(clipStudio, EditorActionIds.toolText), ['T']);
       expect(keysOf(clipStudio, EditorActionIds.toolBrush), ['B', 'P']);
@@ -194,8 +198,12 @@ void main() {
       expect(keysOf(clipStudio, EditorActionIds.toolTransform), isEmpty);
       // G · M · U — 「도구 버튼 하나에만 준다」.
       expect(keysOf(clipStudio, EditorActionIds.toolFillBucket), isEmpty);
-      for (final shape in CanvasShapeKind.values) {
-        for (final verb in [CanvasTool.fillShape, CanvasTool.select]) {
+      for (final verb in [
+        CanvasTool.fillShape,
+        CanvasTool.select,
+        CanvasTool.shape,
+      ]) {
+        for (final shape in canvasToolShapes(verb)) {
           final tile = toolActionIdFor(ShapeTilePress(verb, shape));
           expect(
             keysOf(clipStudio, tile),

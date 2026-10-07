@@ -119,8 +119,12 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
   set value(BrushToolState next) {
     final previous = value;
     if (next.tool != previous.tool) {
-      if (canvasToolPaints(previous.tool)) {
-        _paintToolBank[previous.tool] = previous;
+      // The tool whose brush the outgoing tool held gets it back as it
+      // was left: a painting tool's own, and — through the shape tool — the
+      // brush tool's ([canvasToolBrushOwner]).
+      final lent = canvasToolBrushOwner(previous.tool);
+      if (lent != null) {
+        _paintToolBank[lent] = previous;
       }
       // Restore ONLY on a pure tool switch (the caller changed nothing but
       // the tool) — an assignment that also carries new settings (a preset
@@ -128,8 +132,9 @@ class PaintToolStateNotifier extends ValueNotifier<BrushToolState> {
       // must a brush taken up whole ([holdBrush]).
       final pureToolSwitch =
           !_holding && next.copyWith(tool: previous.tool) == previous;
-      final stored = pureToolSwitch && canvasToolPaints(next.tool)
-          ? _paintToolBank[next.tool]
+      final owner = canvasToolBrushOwner(next.tool);
+      final stored = pureToolSwitch && owner != null
+          ? _paintToolBank[owner]
           : null;
       if (stored != null) {
         // 🚨★★★ 유저 #14 (2026-08-14): 「선택툴에서 올가미 선택하고 브러시가면

@@ -169,6 +169,15 @@ class ToolsPanel extends StatelessWidget {
               selected: tool == CanvasTool.text,
             ),
             const SizedBox(height: 4),
+            // I-69: the shape tool — beside the text, with the tools that
+            // put something on the cel.
+            _toolButton(
+              keyValue: 'tool-shape-button',
+              group: CanvasTool.shape,
+              icon: Icons.category_outlined,
+              selected: canvasToolDrawsShapes(tool),
+            ),
+            const SizedBox(height: 4),
             _toolButton(
               keyValue: 'tool-guide-button',
               group: CanvasTool.guide,

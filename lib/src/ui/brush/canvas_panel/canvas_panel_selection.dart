@@ -69,7 +69,18 @@ class _CanvasPanelSelection {
     // of the drag loop and only rebuilds when the ants this panel owns
     // actually change.
     final next = idleSelectionRegion;
-    if (next == _state._paintedIdleRegion) {
+    // 🚨The panel builds a SECOND thing from the region: the clip the
+    // drawing view lays a stroke through (R26 #18). Under a painting tool
+    // the two change together — no layer is mounted, so the idle ants ARE
+    // the region. The shape tool (I-69) is the one that draws its strokes
+    // with the layer mounted: the ants this panel owns never change, and a
+    // region changed by a command while it is in hand (select all,
+    // deselect, invert) still has to reach the view, or the next shape is
+    // clipped to a selection that is no longer there.
+    final clipIsStale =
+        canvasToolDrawsShapes(_state._brush.tool) &&
+        _state.widget.selectionCommands?.region != _state._strokeClipAsBuilt;
+    if (next == _state._paintedIdleRegion && !clipIsStale) {
       return;
     }
     _state._rebuild(_state._syncIdleAnts);

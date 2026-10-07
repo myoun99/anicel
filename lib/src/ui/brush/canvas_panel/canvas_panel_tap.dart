@@ -266,6 +266,8 @@ class _CanvasPanelTap {
       // The shape fill rides the same drag layer as select and cut — one
       // outline, three things to do with it.
       case CanvasTool.fillShape:
+      // I-69: and a fourth — the shape tool draws what the drag traces.
+      case CanvasTool.shape:
       // R9-rest: a press sets a text or takes hold of one, and a drag does
       // too — the text tool mounts a layer of its own for both.
       case CanvasTool.text:

@@ -77,6 +77,7 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onShapeCommitted,
     this.onCutShape,
     this.onFillShape,
+    this.onDrawShape,
     this.symmetry,
     this.selectionCommands,
     this.onDragActiveChanged,
@@ -174,6 +175,14 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// itself, arriving through the stroke funnel like any other mark.
   final ValueChanged<CanvasSelectionShape>? onFillShape;
 
+  /// A finished SHAPE-TOOL drag (I-69): the path the host strokes with the
+  /// brush in hand. The selection is not touched, and the undo it leaves
+  /// behind is the stroke's — the same arrangement as [onFillShape].
+  ///
+  /// ⚠️A PATH, not an outline: the line is two ends with no inside, so it
+  /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).
+  final ValueChanged<DrawnShapePath>? onDrawShape;
+
   /// The symmetry guide acting right now, in CANVAS coordinates — an
   /// outline drawn here is copied by it the same way a stroke is.
   ///
@@ -265,6 +274,10 @@ enum CanvasSelectionTool {
   /// painted, and — like [cut] — leaves the selection alone. Filling a
   /// shape you drew is not selecting it.
   fillShape,
+
+  /// Hands the finished drag's PATH to [CanvasSelectionLayer.onDrawShape]
+  /// to be stroked, and leaves the selection alone (I-69, the shape tool).
+  drawShape,
 }
 
 /// Why a move session ended. ⛔Not a flag: the three are three different
@@ -2145,7 +2158,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // drag leaves it alone, so a cancel has nothing to put back.
           before:
               widget.tool == CanvasSelectionTool.cut ||
-                  widget.tool == CanvasSelectionTool.fillShape
+                  widget.tool == CanvasSelectionTool.fillShape ||
+                  widget.tool == CanvasSelectionTool.drawShape
               ? null
               : _region,
           at: canvasPoint,
@@ -2874,6 +2888,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   void _finishMarquee(MarqueeDrag drag) {
+    if (widget.tool == CanvasSelectionTool.drawShape) {
+      // The one verb that takes the PATH: a line has no outline to commit,
+      // and what the drag traced is drawn rather than folded into anything.
+      final path = drag.path();
+      if (path != null) {
+        widget.onDrawShape?.call(path);
+      }
+      return;
+    }
     _commitDrawnOutline(drag.shape(), before: drag.before);
   }
 
@@ -2995,6 +3018,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     CanvasShapeKind.ellipse => false,
     CanvasShapeKind.lasso => false,
     CanvasShapeKind.polygon => true,
+    CanvasShapeKind.line => false,
   };
 
   /// The region's axis-aligned bounds (box geometry for the transform

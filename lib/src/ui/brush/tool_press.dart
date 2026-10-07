@@ -169,6 +169,7 @@ String shapeTileLabel(
     CanvasTool.select => s.toolShapeSelectTemplate,
     CanvasTool.cut => s.toolShapeCutTemplate,
     CanvasTool.fillShape => s.toolShapeFillTemplate,
+    CanvasTool.shape => s.toolShapeDrawTemplate,
     _ => throw ArgumentError.value(verb, 'verb', 'traces no shape'),
   };
   return template.replaceAll('{shape}', switch (shape) {
@@ -176,5 +177,6 @@ String shapeTileLabel(
     CanvasShapeKind.ellipse => s.toolShapeEllipse,
     CanvasShapeKind.lasso => s.toolShapeLasso,
     CanvasShapeKind.polygon => s.toolShapePolygon,
+    CanvasShapeKind.line => s.toolShapeLine,
   });
 }

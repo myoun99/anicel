@@ -61,6 +61,8 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
         ),
         (press: TransformModePress(TransformMode.mesh), icon: Icons.grid_4x4),
       ],
+      // The SHAPE tool's tiles: the shapes it draws (I-69).
+      CanvasTool.shape => _shapeTiles(CanvasTool.shape),
       CanvasTool.brush ||
       CanvasTool.eraser ||
       CanvasTool.eyedropper ||
@@ -68,13 +70,14 @@ List<({SubToolPress press, IconData icon})> subToolTilesOf(CanvasTool group) =>
       CanvasTool.text => const [],
     };
 
-/// One shape tile per [CanvasShapeKind], in rail order, for [verb].
+/// One shape tile per shape [verb] speaks ([canvasToolShapes]), in rail
+/// order.
 ///
 /// ONE list feeds every drag-out verb, so a new [CanvasShapeKind] shows up
-/// under select, cut and fill from a single entry here rather than from one
-/// hand-written tile per verb.
+/// under every verb that speaks it from a single entry here rather than
+/// from one hand-written tile per verb.
 List<({SubToolPress press, IconData icon})> _shapeTiles(CanvasTool verb) => [
-  for (final shape in CanvasShapeKind.values)
+  for (final shape in canvasToolShapes(verb))
     (
       press: ShapeTilePress(verb, shape),
       icon: switch (shape) {
@@ -82,6 +85,7 @@ List<({SubToolPress press, IconData icon})> _shapeTiles(CanvasTool verb) => [
         CanvasShapeKind.ellipse => Icons.circle_outlined,
         CanvasShapeKind.lasso => Icons.gesture,
         CanvasShapeKind.polygon => Icons.polyline_outlined,
+        CanvasShapeKind.line => Icons.horizontal_rule,
       },
     ),
 ];
@@ -180,6 +184,8 @@ class ToolLibraryPanel extends StatelessWidget {
       case CanvasTool.fill:
       case CanvasTool.fillShape:
         return _tileList('tool-library-fill', _tiles(CanvasTool.fill));
+      case CanvasTool.shape:
+        return _tileList('tool-library-shape', _tiles(CanvasTool.shape));
       case CanvasTool.move:
         return ValueListenableBuilder<TransformToolOptions>(
           valueListenable: transformOptions ?? _fallbackTransformOptions,

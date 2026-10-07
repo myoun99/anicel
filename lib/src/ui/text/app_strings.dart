@@ -1398,6 +1398,7 @@ enum AppStrings {
   String get toolEyedropper => _s('toolEyedropper');
   String get toolFill => _s('toolFill');
   String get toolText => _s('toolText');
+  String get toolShape => _s('toolShape');
 
   // The text tool's settings (R9-rest) — the rows of the layout 유저 took
   // on 2026-10-06.
@@ -1470,9 +1471,11 @@ enum AppStrings {
   String get toolShapeEllipse => _s('toolShapeEllipse');
   String get toolShapeLasso => _s('toolShapeLasso');
   String get toolShapePolygon => _s('toolShapePolygon');
+  String get toolShapeLine => _s('toolShapeLine');
   String get toolShapeSelectTemplate => _s('toolShapeSelectTemplate');
   String get toolShapeCutTemplate => _s('toolShapeCutTemplate');
   String get toolShapeFillTemplate => _s('toolShapeFillTemplate');
+  String get toolShapeDrawTemplate => _s('toolShapeDrawTemplate');
   /// A built-in brush's or group's name, by its `builtin-*` id — written ONCE,
   /// when the library makes the built-ins. 유저 2026-09-15
   /// (brush-preset-names-language-Q1): 「만들 때 그 언어로 적는다」. From then
@@ -2490,6 +2493,7 @@ enum AppStrings {
     'toolEyedropper': 'Eyedropper',
     'toolFill': 'Fill',
     'toolText': 'Text',
+    'toolShape': 'Shape',
     'textToolSelectedText': 'Selected text',
     'textToolDeleteText': 'Delete text',
     'textToolLetters': 'Letters',
@@ -2547,9 +2551,11 @@ enum AppStrings {
     'toolShapeEllipse': 'Ellipse',
     'toolShapeLasso': 'Lasso',
     'toolShapePolygon': 'Polygon',
+    'toolShapeLine': 'Line',
     'toolShapeSelectTemplate': '{shape} Select',
     'toolShapeCutTemplate': '{shape} Cut',
     'toolShapeFillTemplate': '{shape} Fill',
+    'toolShapeDrawTemplate': 'Draw {shape}',
     'brBrushesTitle': 'Brushes',
     'brGroupNameField': 'Group name',
     'brCreate': 'Create',
@@ -3332,6 +3338,7 @@ enum AppStrings {
     'shortcutAction.tool-fill': '塗りつぶしツール',
     'shortcutAction.tool-fill-bucket': '塗りつぶし',
     'shortcutAction.tool-text': 'テキストツール',
+    'shortcutAction.tool-shape': '図形ツール',
     'shortcutAction.tool-guide': 'ガイドツール',
     'shortcutAction.tool-select': '選択ツール',
     'shortcutAction.tool-transform': '変形ツール',
@@ -3767,6 +3774,7 @@ enum AppStrings {
     'toolEyedropper': 'スポイト',
     'toolFill': '塗りつぶし',
     'toolText': 'テキスト',
+    'toolShape': '図形',
     'textToolSelectedText': '選択中のテキスト',
     'textToolDeleteText': 'テキストを削除',
     'textToolLetters': '文字',
@@ -3824,9 +3832,11 @@ enum AppStrings {
     'toolShapeEllipse': '楕円',
     'toolShapeLasso': '投げ縄',
     'toolShapePolygon': '多角形',
+    'toolShapeLine': '直線',
     'toolShapeSelectTemplate': '{shape}選択',
     'toolShapeCutTemplate': '{shape}カット',
     'toolShapeFillTemplate': '{shape}塗り',
+    'toolShapeDrawTemplate': '{shape}描画',
     'brBrushesTitle': 'ブラシ',
     'brGroupNameField': 'グループ名',
     'brCreate': '作成',
@@ -4709,6 +4719,7 @@ enum AppStrings {
     'shortcutAction.tool-fill': '채우기 도구',
     'shortcutAction.tool-fill-bucket': '채우기',
     'shortcutAction.tool-text': '텍스트 도구',
+    'shortcutAction.tool-shape': '도형 도구',
     'shortcutAction.tool-guide': '가이드 도구',
     'shortcutAction.tool-select': '선택 도구',
     'shortcutAction.tool-transform': '변형 도구',
@@ -5140,6 +5151,7 @@ enum AppStrings {
     'toolEyedropper': '스포이트',
     'toolFill': '채우기',
     'toolText': '텍스트',
+    'toolShape': '도형',
     'textToolSelectedText': '선택된 텍스트',
     'textToolDeleteText': '텍스트 삭제',
     'textToolLetters': '글자',
@@ -5195,9 +5207,11 @@ enum AppStrings {
     'toolShapeEllipse': '타원',
     'toolShapeLasso': '올가미',
     'toolShapePolygon': '다각형',
+    'toolShapeLine': '직선',
     'toolShapeSelectTemplate': '{shape} 선택',
     'toolShapeCutTemplate': '{shape} 잘라내기',
     'toolShapeFillTemplate': '{shape} 채우기',
+    'toolShapeDrawTemplate': '{shape} 그리기',
     'brBrushesTitle': '브러시',
     'brGroupNameField': '그룹 이름',
     'brCreate': '만들기',
@@ -6119,6 +6133,7 @@ enum AppStrings {
     'shortcutAction.tool-fill': 'Outil remplissage',
     'shortcutAction.tool-fill-bucket': 'Pot de peinture',
     'shortcutAction.tool-text': 'Outil texte',
+    'shortcutAction.tool-shape': 'Outil forme',
     'shortcutAction.tool-guide': 'Outil repère',
     'shortcutAction.tool-select': 'Outil sélection',
     'shortcutAction.tool-transform': 'Outil transformation',
@@ -6605,6 +6620,7 @@ enum AppStrings {
     'toolEyedropper': 'Pipette',
     'toolFill': 'Remplissage',
     'toolText': 'Texte',
+    'toolShape': 'Forme',
     'textToolSelectedText': 'Texte sélectionné',
     'textToolDeleteText': 'Supprimer le texte',
     'textToolLetters': 'Caractères',
@@ -6663,9 +6679,11 @@ enum AppStrings {
     'toolShapeEllipse': 'Ellipse',
     'toolShapeLasso': 'Lasso',
     'toolShapePolygon': 'Polygone',
+    'toolShapeLine': 'Ligne',
     'toolShapeSelectTemplate': 'Sélection {shape}',
     'toolShapeCutTemplate': 'Découpe {shape}',
     'toolShapeFillTemplate': 'Remplissage {shape}',
+    'toolShapeDrawTemplate': 'Tracé {shape}',
     'brBrushesTitle': 'Brosses',
     'brGroupNameField': 'Nom du groupe',
     'brCreate': 'Créer',
@@ -7500,6 +7518,7 @@ enum AppStrings {
     'shortcutAction.tool-fill': '填充工具',
     'shortcutAction.tool-fill-bucket': '油漆桶',
     'shortcutAction.tool-text': '文字工具',
+    'shortcutAction.tool-shape': '形状工具',
     'shortcutAction.tool-guide': '参考线工具',
     'shortcutAction.tool-select': '选择工具',
     'shortcutAction.tool-transform': '变换工具',
@@ -7925,6 +7944,7 @@ enum AppStrings {
     'toolEyedropper': '吸管',
     'toolFill': '填充',
     'toolText': '文字',
+    'toolShape': '形状',
     'textToolSelectedText': '所选文字',
     'textToolDeleteText': '删除文字',
     'textToolLetters': '字符',
@@ -7979,9 +7999,11 @@ enum AppStrings {
     'toolShapeEllipse': '椭圆',
     'toolShapeLasso': '套索',
     'toolShapePolygon': '多边形',
+    'toolShapeLine': '直线',
     'toolShapeSelectTemplate': '{shape}选择',
     'toolShapeCutTemplate': '{shape}裁剪',
     'toolShapeFillTemplate': '{shape}填充',
+    'toolShapeDrawTemplate': '{shape}绘制',
     'brBrushesTitle': '笔刷',
     'brGroupNameField': '组名称',
     'brCreate': '创建',
