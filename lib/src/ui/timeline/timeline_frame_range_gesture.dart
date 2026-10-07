@@ -274,10 +274,7 @@ class TimelineRangeGestureCallbacks {
   final VoidCallback onMoveCancel;
 }
 
-/// [held]: the drag began inside the selection on a row that cannot move
-/// ([TimelineRangeGestureCallbacks.rowHolds]) — a drag, so its release is
-/// no tap, and nothing else.
-enum _RangeDragMode { none, select, move, held }
+enum _RangeDragMode { none, select, move }
 
 /// The row-wide gesture layer for range selection + range move (UI-R8).
 /// Replaces the block-body move handle: dragging frames now SELECTS, and
@@ -373,12 +370,11 @@ class _TimelineFrameRangeGestureLayerState
     final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
     final rowHolds = widget.callbacks.rowHolds?.call(widget.row) ?? false;
     if (insideSelection && rowHolds) {
-      _mode = _RangeDragMode.held;
-      // The hand DRAGGED, and on a row that moves this step would have
-      // carried the selection: so its release is no tap for the cells
-      // under it either — a tap there lets the selection go.
+      // Nobody's: no mode, and nothing to pin a row for. But the hand
+      // DRAGGED — on a row that moves, this step would have carried the
+      // selection — so its release is no tap, for this layer or for the
+      // cells under it: a tap there lets the selection go.
       _dragStepped = true;
-      widget.callbacks.onGripTaken?.call(widget.row);
       return;
     }
     if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
@@ -412,7 +408,7 @@ class _TimelineFrameRangeGestureLayerState
   }
 
   void _updateDrag(DragUpdateDetails details) {
-    if (_mode == _RangeDragMode.none || _mode == _RangeDragMode.held) {
+    if (_mode == _RangeDragMode.none) {
       return;
     }
     // D42: reaching a viewport edge auto-pans on BOTH axes — the row
@@ -433,7 +429,7 @@ class _TimelineFrameRangeGestureLayerState
     );
     _scrolledCross += appliedCross;
     switch (_mode) {
-      case _RangeDragMode.none || _RangeDragMode.held:
+      case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
         final local =
@@ -894,8 +890,7 @@ class _TimelineLaneRangeGestureLayerState
       axis: horizontal ? Axis.vertical : Axis.horizontal,
     );
     switch (_mode) {
-      // (Held is the cells layer's: a lane's keys are its own to move.)
-      case _RangeDragMode.none || _RangeDragMode.held:
+      case _RangeDragMode.none:
         return;
       case _RangeDragMode.select:
         final local =
@@ -1101,8 +1096,8 @@ mixin _RangeDragFirstStep {
   /// Whether the drag this layer is carrying has CHANGED anything: moved
   /// what it carries off its seat, or taken its head off the cell it was
   /// pressed on — or would have, on a row that is no grip
-  /// ([_RangeDragMode.held]). What the pan tells the taps that share its
-  /// pointer
+  /// ([TimelineRangeGestureCallbacks.rowHolds]). What the pan tells the
+  /// taps that share its pointer
   /// (`EagerPanGestureRecognizer.draggedAStep`) — a release inside a tap's
   /// slop is no tap once this is so (F-238 made a one-frame move that
   /// short). Let go with the drag.
