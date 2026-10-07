@@ -109,13 +109,13 @@ _LinesSetting _linesOf(
     content,
     canvasLetterPainterPasses(
       [for (final span in content.spans) span.style],
-      (paintOf) => _painterOf(
+      (pass) => _painterOf(
         content,
         nextLetterStyle,
         (letters) => canvasLetterTextStyle(
           letters,
           lineHeight: lineHeight,
-          foreground: paintOf(letters),
+          foreground: pass.paintOf(letters),
         ),
       ),
     ),

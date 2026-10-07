@@ -136,7 +136,7 @@ TextCelLayout layoutTextCel({
   // fill pass, where its letters are smooth — the tag is set every frame.
   final passes = canvasLetterPainterPasses(
     [style],
-    (paintOf) => build(fontSize: drawnSize, foreground: paintOf(style)),
+    (pass) => build(fontSize: drawnSize, foreground: pass.paintOf(style)),
     measured: fill,
   );
 

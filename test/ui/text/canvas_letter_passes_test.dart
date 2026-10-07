@@ -49,8 +49,8 @@ void main() {
   })
   passesOf(List<TextLetterStyle> letters, {TextPainter? measured}) {
     final said = <Map<TextLetterStyle, ui.Paint?>>[];
-    final passes = canvasLetterPainterPasses(letters, (paintOf) {
-      said.add({for (final style in letters) style: paintOf(style)});
+    final passes = canvasLetterPainterPasses(letters, (pass) {
+      said.add({for (final style in letters) style: pass.paintOf(style)});
       return set(said.length);
     }, measured: measured);
     addTearDown(passes.dispose);
@@ -241,6 +241,77 @@ void main() {
 
   // The SE name tag is set every frame it is on screen, and has to set its
   // letters to know how large it is.
+  // What a host that KEEPS what it set is given to keep it by — a text in
+  // columns keeps its cells' painters (`cel_text_cell_painters.dart`).
+  group('a pass says which it is', () {
+    /// The passes a text in [letters] is set in, as a setter is handed them.
+    List<CanvasLetterPass> handedFor(List<TextLetterStyle> letters) {
+      final handed = <CanvasLetterPass>[];
+      final passes = canvasLetterPainterPasses(letters, (pass) {
+        handed.add(pass);
+        return set();
+      });
+      addTearDown(passes.dispose);
+      return handed;
+    }
+
+    test('🚨every pass of a text has a KEY of its own — two hard colours, '
+        'two keys', () {
+      const hardBlue = TextLetterStyle(color: 0xFF0000AA, antialias: false);
+
+      final handed = handedFor([smoothOutlined, hardOutlined, hardBlue]);
+
+      // The fill · the outline · the hard outline · the two hard fills.
+      expect(handed, hasLength(5));
+      expect({for (final pass in handed) pass.key}, hasLength(5));
+    });
+
+    test('🚨the same pass of ANOTHER text has the same key — and paints a '
+        'run of the same letters as the first did: with the letters, the '
+        'key says all of it', () {
+      final one = handedFor([smoothOutlined, hardOutlined]);
+      final other = handedFor([hardOutlined, smooth, smoothOutlined]);
+
+      expect(
+        [for (final pass in other) pass.key],
+        [for (final pass in one) pass.key],
+      );
+      for (final (index, pass) in one.indexed) {
+        for (final style in [smoothOutlined, hardOutlined]) {
+          final first = pass.paintOf(style);
+          final second = other[index].paintOf(style);
+          expect(second?.color, first?.color);
+          expect(second?.style, first?.style);
+          expect(second?.strokeWidth, first?.strokeWidth);
+          expect(second?.strokeJoin, first?.strokeJoin);
+        }
+      }
+    });
+
+    test('says which runs are its own to DRAW: a run that names a paint '
+        'drawing nothing is not', () {
+      const all = [smooth, smoothOutlined, hard, hardOutlined];
+      var drawn = 0;
+      var left = 0;
+
+      for (final pass in handedFor(all)) {
+        for (final style in all) {
+          expect(
+            pass.draws(style),
+            !drawsNothing(pass.paintOf(style)),
+            reason: '${pass.key}',
+          );
+          pass.draws(style) ? drawn += 1 : left += 1;
+        }
+      }
+
+      // Five passes of four runs: the fill draws 2 · the outline 1 · the
+      // hard outline 1 · the two hard fills 1 each (the hard styles' two
+      // colours differ, by how see-through they are).
+      expect((drawn, left), (6, 14));
+    });
+  });
+
   group('what was set to measure the text', () {
     test('🚨IS the fill pass where no letter is hard: nothing is set twice', () {
       final measured = set();

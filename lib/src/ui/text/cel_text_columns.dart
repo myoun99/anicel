@@ -20,38 +20,53 @@ part of 'cel_text_layout.dart';
 /// the column), at the first column's right.
 ///
 /// ⚠️ONE PAINTER A CELL, A PASS. A cell is drawn turned, shifted or scaled
-/// on its own, so the engine's one paragraph cannot hold them. A text on a
-/// cel is short; what that costs on a long one is not measured.
+/// on its own, so the engine's one paragraph cannot hold them — and making
+/// a painter is the cost of setting a text in columns (measured:
+/// [_CellPainters]). So a cell's painter is KEPT by what it is made of and
+/// held here, never made for this text alone; and a cell that is not a
+/// pass's to draw has none in that pass.
 class _ColumnsSetting implements _TextSetting {
   factory _ColumnsSetting(
     CelTextContent content,
     TextLetterStyle nextLetterStyle,
   ) {
     final cells = _columnCellsOf(content);
-    final letters = CanvasLetterPasses<List<TextPainter>>.of(
+    final kept = _CellPainters.shared;
+    final faces = CanvasLetterFaces.current.generation;
+    // Each cell's letters in their OWN colour: what the cell is measured
+    // on, and the very painter the fill pass draws a smooth letter with.
+    final measured = [
+      for (final cell in cells)
+        kept.hold(cell.painterKey(_ownColour, faces), null),
+    ];
+    final letters = CanvasLetterPasses<List<_HeldCellPainter?>>.of(
       [for (final span in content.spans) span.style],
-      (paintOf) => [
-        for (final cell in cells) _cellPainter(cell, paintOf(cell.style)),
+      (pass) => [
+        for (final cell in cells)
+          if (pass.draws(cell.style)) _heldFor(cell, pass, faces) else null,
       ],
-      letGo: (painters) {
-        for (final painter in painters) {
-          painter.dispose();
-        }
-      },
+      letGo: (painters) => painters.nonNulls.forEach(kept.letGo),
     );
     for (final (index, cell) in cells.indexed) {
-      cell.measure(letters.fill[index]);
+      cell.measure(measured[index].painter);
     }
     final columns = _columnsOf(content, cells, nextLetterStyle);
     return _ColumnsSetting._(
       cells,
       columns,
+      measured,
       letters,
       _placed(content, columns),
     );
   }
 
-  _ColumnsSetting._(this._cells, this._columns, this._letters, this.block);
+  _ColumnsSetting._(
+    this._cells,
+    this._columns,
+    this._measured,
+    this._letters,
+    this.block,
+  );
 
   /// Every cell of the text, in reading order.
   final List<_ColumnCell> _cells;
@@ -59,8 +74,13 @@ class _ColumnsSetting implements _TextSetting {
   /// The columns, first — rightmost — to last.
   final List<_Column> _columns;
 
-  /// The cells' painters, pass by pass: one a cell, in [_cells]' order.
-  final CanvasLetterPasses<List<TextPainter>> _letters;
+  /// Each cell's letters in their own colour, in [_cells]' order: what a
+  /// caret, a selection and a press are measured on.
+  final List<_HeldCellPainter> _measured;
+
+  /// The cells' painters, pass by pass, in [_cells]' order — null where a
+  /// cell is not that pass's to draw.
+  final CanvasLetterPasses<List<_HeldCellPainter?>> _letters;
 
   /// The columns' block: as long as the longest column — or as the box, for
   /// a text that wraps — and as wide as its columns.
@@ -77,10 +97,14 @@ class _ColumnsSetting implements _TextSetting {
     within: within,
     draw: (painters) {
       for (final (index, cell) in _cells.indexed) {
+        final held = painters[index];
+        if (held == null) {
+          continue;
+        }
         paintVerticalTextCell(
           canvas,
           cell.cell,
-          painter: painters[index],
+          painter: held.painter,
           center: cell.centre,
           fontSize: cell.style.fontSize,
           // A cel is paper: its letters are set for its own pixels, never
@@ -162,7 +186,7 @@ class _ColumnsSetting implements _TextSetting {
     return _columns.last;
   }
 
-  TextPainter _fillOf(_ColumnCell cell) => _letters.fill[cell.index];
+  TextPainter _fillOf(_ColumnCell cell) => _measured[cell.index].painter;
 
   @override
   List<int> get wrapPlaces => [
@@ -171,7 +195,20 @@ class _ColumnsSetting implements _TextSetting {
   ];
 
   @override
-  void dispose() => _letters.dispose();
+  void dispose() {
+    _letters.dispose();
+    _measured.forEach(_CellPainters.shared.letGo);
+  }
+}
+
+/// The painter [cell] is drawn with in [pass], held: painted in its own
+/// colour it is the one it is measured on, whichever pass asks.
+_HeldCellPainter _heldFor(_ColumnCell cell, CanvasLetterPass pass, int faces) {
+  final paint = pass.paintOf(cell.style);
+  return _CellPainters.shared.hold(
+    cell.painterKey(paint == null ? _ownColour : pass.key, faces),
+    paint,
+  );
 }
 
 /// One cell of a text set in columns: what the table makes of its letters
@@ -198,6 +235,19 @@ class _ColumnCell {
   /// Where its letters end in the text.
   int get end => start + cell.text.length;
 
+  /// What its painter painted by [paint] is kept by ([_CellPainterKey]).
+  _CellPainterKey painterKey(Object paint, int faces) => (
+    letters: cell.text,
+    style: style,
+    lyingDown: _liesDown,
+    paint: paint,
+    faces: faces,
+  );
+
+  /// Whether its letters lie down the column as a word: they are tracked
+  /// by their own painter, and not by room after the cell.
+  bool get _liesDown => cell.form == VerticalGlyphForm.sideways;
+
   /// Whether it is white space — which hangs past a column's end and is no
   /// reason to break one.
   bool get isSpace => cell.text.trim().isEmpty;
@@ -214,8 +264,7 @@ class _ColumnCell {
   /// its own painter.)
   double get advance => math.max(0, _glyphAdvance + _trackingAfter);
 
-  double get _trackingAfter =>
-      cell.form == VerticalGlyphForm.sideways ? 0 : style.letterSpacing;
+  double get _trackingAfter => _liesDown ? 0 : style.letterSpacing;
 
   void measure(TextPainter fill) {
     _fit = verticalGlyphFit(cell, painter: fill, fontSize: style.fontSize);
@@ -386,23 +435,6 @@ List<_ColumnCell> _columnCellsOf(CelTextContent content) {
   }
   return cells;
 }
-
-/// One cell's letters set for one pass: at the size of their style, in a
-/// line box one letter tall — what [paintVerticalTextCell] centres.
-TextPainter _cellPainter(_ColumnCell cell, ui.Paint? foreground) => TextPainter(
-  text: TextSpan(
-    text: cell.cell.text,
-    style: canvasLetterTextStyle(
-      cell.style,
-      lineHeight: 1,
-      foreground: foreground,
-    ).copyWith(letterSpacing: cell.cell.form == VerticalGlyphForm.sideways
-        ? cell.style.letterSpacing
-        : 0),
-  ),
-  textDirection: TextDirection.ltr,
-  maxLines: 1,
-)..layout();
 
 /// [cells] — measured — broken into columns: at every break typed into
 /// [content], and for a box wherever the next cells would run past its

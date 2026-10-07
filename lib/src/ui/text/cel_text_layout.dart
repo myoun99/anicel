@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart';
 
 import '../../models/cel_text.dart';
@@ -13,6 +14,7 @@ import 'vertical_writing_text.dart'
     show paintVerticalTextCell, verticalGlyphAdvance, verticalGlyphFit;
 import 'word_condensation.dart' show paintScaledText;
 
+part 'cel_text_cell_painters.dart';
 part 'cel_text_columns.dart';
 part 'cel_text_lines.dart';
 

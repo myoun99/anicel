@@ -5,12 +5,47 @@ import 'package:flutter/painting.dart';
 import '../../models/text_cel_style.dart';
 import 'canvas_letter_style.dart';
 
-/// Sets a canvas text's letters ONCE MORE — each run painted by what
-/// [paintOf] says of its letters, null being their own colour — and hands
-/// back what it set: one painter for a text set in lines, the painters of
-/// its cells for one set in columns.
-typedef CanvasLetterSetter<T> =
-    T Function(ui.Paint? Function(TextLetterStyle letters) paintOf);
+/// Sets a canvas text's letters ONCE MORE, for one pass — each run painted
+/// by what the pass says of its letters — and hands back what it set: one
+/// painter for a text set in lines, the painters of its cells for one set
+/// in columns.
+typedef CanvasLetterSetter<T> = T Function(CanvasLetterPass pass);
+
+/// ONE PASS over a text's letters, as a setter is handed it
+/// ([CanvasLetterPasses]).
+class CanvasLetterPass {
+  CanvasLetterPass._(this.key, this._paintOf);
+
+  /// WHICH pass this is, as a value: with a run's letters it says ALL of
+  /// what [paintOf] answers for them. So whoever keeps what it set by the
+  /// letters, their style and this can use it again for another text — a
+  /// text in columns keeps its cells' painters so
+  /// (`cel_text_cell_painters.dart`).
+  ///
+  /// ⚠️A pass that painted by anything else — a colour of the whole text's,
+  /// a size of the canvas — would have to say so HERE, or what is kept for
+  /// one text would be drawn for another.
+  final Object key;
+
+  final ui.Paint? Function(TextLetterStyle letters) _paintOf;
+
+  /// What paints a run of [letters] in this pass — null being their own
+  /// colour.
+  ///
+  /// A run that is not this pass's still names a paint, one that draws
+  /// nothing ([draws]): a text set as ONE paragraph has to set that run to
+  /// keep the others where they stand.
+  ui.Paint? paintOf(TextLetterStyle letters) => _paintOf(letters);
+
+  /// Whether a run of [letters] is this pass's to draw at all. A host that
+  /// sets every run on its own sets nothing for one that is not.
+  bool draws(TextLetterStyle letters) =>
+      !identical(_paintOf(letters), _drawsNothing);
+}
+
+/// The kinds of pass there are — a hard one told from the others of its
+/// kind by the colour it covers in ([CanvasLetterPass.key]).
+enum _PassKind { fill, stroke, hardStroke, hardFill }
 
 /// THE PASSES A CANVAS TEXT'S LETTERS ARE DRAWN IN — outline under fill
 /// (#15: one rule on every surface), over the whole text, so a letter's
@@ -80,7 +115,12 @@ class CanvasLetterPasses<T extends Object> {
       }
       // A hard letter is not this pass's: it names a paint that draws
       // nothing, as a run with no outline does in the outline's pass.
-      fill = set((letters) => letters.antialias ? null : _drawsNothing);
+      fill = set(
+        CanvasLetterPass._(
+          (_PassKind.fill, null),
+          (letters) => letters.antialias ? null : _drawsNothing,
+        ),
+      );
     }
     final outlined = styles.any(
       (style) => style.antialias && canvasLetterOutlinePaint(style) != null,
@@ -89,13 +129,16 @@ class CanvasLetterPasses<T extends Object> {
       fill: fill,
       stroke: outlined
           ? set(
-              (letters) => letters.antialias
-                  // ⚠️A run with no outline still names a paint, one that
-                  // draws nothing: painted by its colour it would be drawn
-                  // a second time under its own fill, and every soft edge
-                  // of it would come out heavier.
-                  ? canvasLetterOutlinePaint(letters) ?? _drawsNothing
-                  : _drawsNothing,
+              CanvasLetterPass._(
+                (_PassKind.stroke, null),
+                (letters) => letters.antialias
+                    // ⚠️A run with no outline still names a paint, one
+                    // that draws nothing: painted by its colour it would
+                    // be drawn a second time under its own fill, and every
+                    // soft edge of it would come out heavier.
+                    ? canvasLetterOutlinePaint(letters) ?? _drawsNothing
+                    : _drawsNothing,
+              ),
             )
           : null,
       hardStrokes: [
@@ -106,7 +149,11 @@ class CanvasLetterPasses<T extends Object> {
           (
             argb: argb,
             cover: set(
-              (letters) => _hardOutlineCover(letters, argb) ?? _drawsNothing,
+              CanvasLetterPass._(
+                (_PassKind.hardStroke, argb),
+                (letters) =>
+                    _hardOutlineCover(letters, argb) ?? _drawsNothing,
+              ),
             ),
           ),
       ],
@@ -128,8 +175,12 @@ class CanvasLetterPasses<T extends Object> {
     return (
       argb: argb,
       cover: set(
-        (letters) =>
-            !letters.antialias && letters.color == argb ? cover : _drawsNothing,
+        CanvasLetterPass._(
+          (_PassKind.hardFill, argb),
+          (letters) => !letters.antialias && letters.color == argb
+              ? cover
+              : _drawsNothing,
+        ),
       ),
     );
   }
