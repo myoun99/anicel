@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/services/persistence/session_scratch.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -329,6 +330,12 @@ void main() {
     );
     expect(source.path, isNot(path));
     expect(File(source.path).readAsBytesSync(), const [4, 5]);
+    expect(
+      source.path,
+      startsWith('${SessionScratch.openedFolder()}/'),
+      reason: 'in this run\'s room, which goes with the run — loose in the '
+          'system temp, nothing ever removed one',
+    );
     File(source.path).deleteSync();
   });
 

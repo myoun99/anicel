@@ -96,6 +96,10 @@ class SessionScratch {
   /// handed back whole after each save (`ProviderDocuments`). This run's
   /// only, like everything else in the room: the next launch opens the
   /// document again, not the copy.
+  ///
+  /// And the last-resort copy of a pick that would not read in place
+  /// (`FolderPicker.materializeOpenedFile`, 2026-10-08), which a session
+  /// opened from it goes on reading its cels out of.
   static String openedFolder() {
     ensureThisRunsFolder();
     return '${thisRunsFolder()}/Opened';

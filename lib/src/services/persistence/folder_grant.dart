@@ -27,6 +27,7 @@ import '../../core/path_names.dart';
 import 'app_documents.dart';
 import 'file_type_groups.dart';
 import 'provider_documents.dart';
+import 'session_scratch.dart';
 
 /// How a folder request ended.
 enum FolderPickStatus {
@@ -889,7 +890,9 @@ abstract final class FolderPicker {
   /// The staged road survives as an ALARMED last resort: `staged: true`
   /// is the caller's cue to say so on screen, so a build that still
   /// needs it is visible rather than quietly slower. If it never fires
-  /// in the field, it comes out.
+  /// in the field, it comes out. ↩️Its copy is made in this run's room
+  /// now ([SessionScratch.openedFolder]), which gives it the run's
+  /// lifetime — loose in the system temp, nothing ever removed one.
   ///
   /// ⚠️A pick with NO ENTRY gets no wait and no ask — nothing is on its
   /// way to a path that does not exist — but it does get the one staged
@@ -1070,12 +1073,25 @@ abstract final class FolderPicker {
     final extension = dot > path.lastIndexOf(Platform.pathSeparator)
         ? path.substring(dot)
         : '';
+    // 🚨IN THIS RUN'S ROOM, NOT LOOSE IN THE SYSTEM TEMP (2026-10-08). The
+    // project door reads its cels out of this copy for as long as the
+    // session is open, so no read could delete it when it was done, and
+    // nothing else ever did: every copy stayed in the temp for good. The
+    // room goes with the run — a normal exit removes it, and the next launch
+    // sweeps the room of a run that died.
+    final room = SessionScratch.openedFolder();
+    Directory(room).createSync(recursive: true);
     final staged =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}'
-        'anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
+        '$room/anicel-open-${DateTime.now().microsecondsSinceEpoch}$extension';
     if (await readFileCoordinated(sourcePath: path, destinationPath: staged) &&
         await arrivalOf(staged) == FileArrival.whole) {
       return (path: staged, staged: true);
+    }
+    // A copy that never arrived whole is nobody's to read.
+    try {
+      File(staged).deleteSync();
+    } on FileSystemException {
+      // Never written, or held: the room goes with the run either way.
     }
     throw FileSystemException('파일을 읽지 못했습니다', path);
   }
