@@ -361,6 +361,7 @@ void main() {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
 
     Future<int Function(int x, int y)> capture({
+      bool canvasBase = true,
       bool none = false,
       int? own,
     }) async {
@@ -382,7 +383,7 @@ void main() {
                   cacheInvalidationSink: BrushEditCacheInvalidationSink(),
                   canvasSize: BrushCanvasFixture.canvasSize,
                   floorCover: EdgeInsets.zero,
-                  canvasBase: true,
+                  canvasBase: canvasBase,
                   backdropArgb: own,
                   viewport: seedFromRender(
                     tester,
@@ -410,6 +411,13 @@ void main() {
         return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
       };
     }
+
+    // The control: the same stage as the floor stands in the room — so the
+    // black below is the flag's doing, not a scope that never arrived. And
+    // the panel that turns canvas-base next is the same State, re-reading.
+    final floor = await capture(canvasBase: false);
+    expect(floor(2, 2), 0x102030, reason: 'the floor: the room\'s backdrop');
+    expect(floor(438, 288), 0x00A0FF, reason: 'the floor: its pasteboard');
 
     for (final (said, rgbAt) in [
       ('the room\'s colours', await capture()),
