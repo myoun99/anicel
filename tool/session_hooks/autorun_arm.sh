@@ -45,11 +45,30 @@ case "$payload" in
   *) exit 0 ;;
 esac
 
-MEM="${1:-}"
-[ -d "$MEM" ] || exit 0
-LEGACY="$MEM/.autorun"
+# 🚨ONLY THE USER ARMS THIS. What another session sends arrives in the same
+# prompt, and a report that merely names the word — 「…훅 셋(보드 게이트 ·
+# 자율진행 · 충돌 사본)이 돌았고…」 — armed the session that received it
+# (2026-10-07, this very hook, while its lane was being written). A peer's
+# words are cut out before the word is looked for: a peer cannot hold another
+# session's turn open, nor end its run with 「자율진행 그만」. ⚠️The session
+# id is read from the whole payload, so it is taken first.
 sid=$(printf '%s' "$payload" \
   | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+case "$payload" in
+  *'<cross-session-message'*)
+    payload=$(printf '%s' "$payload" \
+      | sed 's/<cross-session-message.*<[\\]*\/cross-session-message>//g')
+    case "$payload" in
+      *자율진행*|*'자율 진행'*) ;;
+      *) exit 0 ;;
+    esac
+    ;;
+esac
+
+MEM="${1:-}"
+[ -d "$MEM" ] || exit 0
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
+LEGACY="$MEM/.autorun"
 if [ -n "$sid" ]; then
   FLAG="$MEM/.autorun.$sid"
 else
@@ -63,12 +82,12 @@ if printf '%s' "$payload" \
     | grep -qE '자율[[:space:]]*진행[^가-힣]{0,4}(종료|중단|해제|그만|끄|off|OFF)'; then
   [ -f "$FLAG" ] || [ -f "$LEGACY" ] || exit 0
   rm -f "$FLAG" "$LEGACY"
-  printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' \
+  say_context UserPromptSubmit \
     "⏹ 자율진행을 껐습니다. 이제 턴을 끝내도 막지 않습니다."
   exit 0
 fi
 
 [ -f "$FLAG" ] && exit 0
 printf 'armed\n' > "$FLAG"
-printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' \
+say_context UserPromptSubmit \
   "▶ 자율진행이 켜졌습니다. 남은 일이 있는 한 턴이 끝나지 않습니다. 진짜로 다 끝났을 때만 '$FLAG' 를 지우고 끝내세요 — 「이어서 하겠습니다」라고 쓰고 끝내는 것은 이제 불가능합니다."

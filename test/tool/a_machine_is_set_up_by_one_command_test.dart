@@ -82,8 +82,17 @@ void main() {
       expect(named.difference(scripts.keys.toSet()), isEmpty);
       expect(
         scripts.keys.toSet().difference(named),
-        {'autorun_test.sh', 'guard_git_add_test.sh'},
-        reason: 'what is there and not installed is one of the two tests',
+        {
+          'autorun_test.sh',
+          'board_gate_test.sh',
+          'guard_git_add_test.sh',
+          'hook_says_test.sh',
+          // Read in by every hook that speaks, never run by itself
+          // (a_hook_speaks_through_one_mouth_test).
+          'hook_says.sh',
+        },
+        reason: 'what is there and not installed is a test run by hand, or '
+            'the one file the hooks read in',
       );
     });
 

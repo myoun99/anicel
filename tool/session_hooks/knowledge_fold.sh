@@ -182,7 +182,8 @@ while IFS=$'\t' read -r verdict o n s path; do
         || printf '%s\t%s\n' "$s" "$path" >> "$TMP/seen.next" ;;
     both)
       [ "$s" != "-" ] && printf '%s\t%s\n' "$s" "$path" >> "$TMP/seen.next"
-      both="$both${path#./}\\n" ;;
+      both="$both${path#./}
+" ;;
   esac
 done < "$TMP/verdicts"
 
@@ -200,6 +201,8 @@ fi
 touch -r "$TMP/prior" "$SEEN"
 OLDW="$(cd "$OLD" && pwd -W)"
 NEWW="$(cd "$NEW" && pwd -W)"
-tee "$SAYS" <<JSON
-{"decision":"block","reason":"메모리 파일이 두 자리에서 따로 바뀌었습니다(옮기는 중이라 자리가 둘입니다):\n$both옛 자리: $OLDW\n새 자리: $NEWW\n어느 쪽도 덮지 않았습니다. 두 파일을 다 읽고 합친 내용을 **두 자리에 같은 바이트로** 쓰세요 — 그러면 다음 턴부터 조용해집니다. ⛔한쪽을 그냥 다른 쪽으로 복사하지 마세요: 다른 세션이 적은 메모가 사라집니다."}
-JSON
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
+say_block "메모리 파일이 두 자리에서 따로 바뀌었습니다(옮기는 중이라 자리가 둘입니다):
+${both}옛 자리: $OLDW
+새 자리: $NEWW
+어느 쪽도 덮지 않았습니다. 두 파일을 다 읽고 합친 내용을 **두 자리에 같은 바이트로** 쓰세요 — 그러면 다음 턴부터 조용해집니다. ⛔한쪽을 그냥 다른 쪽으로 복사하지 마세요: 다른 세션이 적은 메모가 사라집니다." | tee "$SAYS"

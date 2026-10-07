@@ -50,9 +50,21 @@ MEM="${1:-}"
 [ -d "$MEM" ] || exit 0
 PLACE="${2:-$MEM/board.jsonl}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -W)"
+# 🚨EVERY VERDICT BELOW IS PLAIN TEXT HANDED TO `say_block`. This file built
+# its JSON by hand in four places, and the checker's complaint — several
+# lines, quotes in them — went into one of them raw: the gate's output was
+# not JSON exactly when the board had something to say (2026-10-07, found
+# on the Surface). The reasons are written with real line breaks now and
+# hook_says.sh does the escaping.
+. "$HERE/hook_says.sh"
 # Where the installer puts gh on Windows; anywhere else, wherever PATH has it.
 GH="C:/Program Files/GitHub CLI/gh.exe"
 [ -x "$GH" ] || GH="$(cygpath -m "$(command -v gh 2>/dev/null)" 2>/dev/null)"
+# ⚠️`BOARD_GATE_GH` is board_gate_test.sh's and nobody else's: a stand-in
+# that answers the three queries below from files — or a path where nothing
+# is, for a machine without gh — so the PR half, the half that went unrun
+# for weeks at a time, can be driven without a network.
+GH="${BOARD_GATE_GH:-$GH}"
 ACK="$MEM/.gate-ack"
 REPO="myoun99/anicel"
 
@@ -122,10 +134,30 @@ if [ -x "$MEM/board_check.exe" ] && [ -n "$boardThere" ]; then
   gateCode=$?
   gateWhy=$(cat "$gateErr" 2>/dev/null)
   rm -f "$gateErr"
+  # ⚠️Each ends with an empty line: the PR half below appends to it.
   if [ "$gateCode" -ge 2 ]; then
-    boardComplaint="🚨board_check 가 돌지 못했습니다 (exit $gateCode) — 보드는 검사되지 않았습니다.\n$gateWhy\n\n"
+    boardComplaint="🚨board_check 가 돌지 못했습니다 (exit $gateCode) — 보드는 검사되지 않았습니다.
+$gateWhy
+
+"
   elif [ -n "$raw" ]; then
-    boardComplaint="$raw\n\n칸을 고치고 턴을 끝내세요. 결정 카드의 필수 형태:\n  {\\\"kind\\\":\\\"decision\\\",\\\"id\\\":…,\\\"state\\\":\\\"ask\\\",\\\"title\\\":…,\n   \\\"where\\\":\\\"화면에서 거기까지 가는 길\\\",\n   \\\"why\\\":\\\"왜 막혔나\\\",\n   \\\"options\\\":[{\\\"key\\\":\\\"1\\\",\\\"label\\\":…,\\\"what\\\":\\\"고르면 화면이 어떻게 되나\\\",\\\"cost\\\":…}, …],\n   \\\"recommend\\\":\\\"1\\\"}\n⛔note 에 적은 설명은 유저에게 보이지 않습니다.\n\n"
+    # ↩️The shape below said `"state":"ask"` until 2026-10-07. A card's
+    # place is the last 대분류 of its story — `"at":"질문"` — and a `state`
+    # written by hand is the field the story cannot overturn.
+    boardComplaint="$raw
+
+$(cat <<'SHAPE'
+칸을 고치고 턴을 끝내세요. 결정 카드의 필수 형태:
+  {"kind":"decision","id":…,"at":"질문","title":…,
+   "where":"화면에서 거기까지 가는 길",
+   "why":"왜 막혔나",
+   "options":[{"key":"1","label":…,"what":"고르면 화면이 어떻게 되나","cost":…}, …],
+   "recommend":"1"}
+⛔note 에 적은 설명은 유저에게 보이지 않습니다.
+SHAPE
+)
+
+"
   fi
 fi
 
@@ -164,9 +196,12 @@ if [ -f "$MEM/board.jsonl" ]; then
   if [ -f "$FACTS" ]; then
     gone=$(comm -23 "$FACTS" <(printf '%s\n' "$nowPairs") 2>/dev/null | head -10)
     if [ -n "$gone" ]; then
-      cat <<JSON
-{"decision":"block","reason":"board.jsonl 에서 (카드, PR) 짝이 사라졌습니다:\n$(printf '%s' "$gone" | sed 's/$/\\n/' | tr -d '\n')\n이 파일은 추가 전용이고 PR 청구는 누적됩니다 — 줄어들었다는 것은 **과거 줄을 고쳐 사실을 지웠다**는 뜻입니다.\n⛔카드가 엉뚱한 칸에 있어서 지운 것이라면 그건 08-30에 제가 한 실수 그대로입니다. 지우지 말고 **rest 필드**를 쓰세요 — 남은 것이 있으면 보드가 알아서 확인할 것에서 빼고 대기중·착수 가능으로 내립니다(유저가 08-26과 08-30 두 번 말한 그것입니다).\n⇒ 되돌리고, 그 카드에 rest 를 한 줄 적으세요."}
-JSON
+      say_block "board.jsonl 에서 (카드, PR) 짝이 사라졌습니다:
+$gone
+
+이 파일은 추가 전용이고 PR 청구는 누적됩니다 — 줄어들었다는 것은 **과거 줄을 고쳐 사실을 지웠다**는 뜻입니다.
+⛔카드가 엉뚱한 칸에 있어서 지운 것이라면 그건 08-30에 제가 한 실수 그대로입니다. 지우지 말고 **rest 필드**를 쓰세요 — 남은 것이 있으면 보드가 알아서 확인할 것에서 빼고 대기중·착수 가능으로 내립니다(유저가 08-26과 08-30 두 번 말한 그것입니다).
+⇒ 되돌리고, 그 카드에 rest 를 한 줄 적으세요."
       exit 0
     fi
   fi
@@ -190,9 +225,8 @@ if [ -d "$WORKTREE" ]; then
   junk=$(ls "$WORKTREE" 2>/dev/null | grep -E '\.log$|^downs=|^seen=|^out\.txt$' | head -20)
   if [ -n "$junk" ]; then
     list=$(echo "$junk" | tr '\n' ' ')
-    cat <<JSON
-{"decision":"block","reason":"리포 루트에 세션 산출물이 남았습니다: $list\n리다이렉트는 스크래치패드로 보내야 합니다(리포 폴더는 유저의 작업 공간). 지우고 턴을 끝내세요 — 검사가 없던 동안 12개가 쌓였고 그중 둘은 공개 리포에 커밋됐습니다."}
-JSON
+    say_block "리포 루트에 세션 산출물이 남았습니다: $list
+리다이렉트는 스크래치패드로 보내야 합니다(리포 폴더는 유저의 작업 공간). 지우고 턴을 끝내세요 — 검사가 없던 동안 12개가 쌓였고 그중 둘은 공개 리포에 커밋됐습니다."
     exit 0
   fi
 fi
@@ -202,7 +236,7 @@ fi
 # swallowing a complaint that needed no network.
 if [ ! -x "$GH" ]; then
   if [ -n "$boardComplaint" ]; then
-    printf '{"decision":"block","reason":"%s"}\n' "$boardComplaint"
+    say_block "$boardComplaint"
   fi
   exit 0
 fi
@@ -245,13 +279,11 @@ acked() {
 }
 
 listed() {
-  out=""
   while IFS=$'\t' read -r num title; do
     [ -z "$num" ] && continue
     acked "$num" && continue
-    out="$out#$num $title\\n"
+    printf '#%s %s\n' "$num" "$title"
   done <<< "$1"
-  printf '%s' "$out"
 }
 
 # --- 내가 머지한 PR 중 카드가 없는 것 -------------------------------------
@@ -321,7 +353,8 @@ if [ -n "$since" ] && [ -f "$MEM/board.jsonl" ]; then
     if grep -q "#$num\b" "$MEM/board.jsonl" 2>/dev/null; then
       continue
     fi
-    cardless="$cardless#$num $title\n"
+    cardless="$cardless#$num $title
+"
   done <<< "$mine"
 fi
 
@@ -350,17 +383,38 @@ reds=$(listed "$red")
 # them, not the gate.
 [ -z "$hits" ] && [ -z "$reds" ] && [ -z "$cardless" ] && [ -z "$boardComplaint" ] && exit 0
 
+# ⚠️`${reason}` WITH ITS BRACES, every time. A name runs on through ASCII
+# letters, so 「$reasonCI가 빨간 …」 asked for a variable called `reasonCI`
+# — and under `set -u` an unset one ends the script. The red-PR half died
+# on that line every time it had something to say (found 2026-10-07 by
+# reading; 🧪`bash -c 'set -u; reason=x; echo "$reasonCI가"'` →
+# 「reasonCI: unbound variable」). The other two lines were saved by the
+# Korean letter that happened to follow the name.
 reason="$boardComplaint"
 if [ -n "$cardless" ]; then
-  reason="$reason내가 머지했는데 카드가 없는 PR:\n$cardless\n출구는 전부 카드입니다 — 카드 없는 착지는 보드에 영어 PR 제목 한 줄로 떠서 「무엇을 볼지」를 못 말합니다.\n⇒ board.jsonl 에 그 착지의 구현 공정을 한 줄 적으세요: at=구현 · pr=번호 · note=무엇을 왜 바꿨나 · how=이렇게 확인한다.\n⚠️남의 세션 착지면(계정이 하나라 구분이 안 됩니다) 번호를 .gate-ack 에 적고 유저에게 말하세요 — 내 것이면 카드 없이 넘어갈 길은 없습니다.\n";
+  reason="${reason}내가 머지했는데 카드가 없는 PR:
+$cardless
+출구는 전부 카드입니다 — 카드 없는 착지는 보드에 영어 PR 제목 한 줄로 떠서 「무엇을 볼지」를 못 말합니다.
+⇒ board.jsonl 에 그 착지의 구현 공정을 한 줄 적으세요: at=구현 · pr=번호 · note=무엇을 왜 바꿨나 · how=이렇게 확인한다.
+⚠️남의 세션 착지면(계정이 하나라 구분이 안 됩니다) 번호를 .gate-ack 에 적고 유저에게 말하세요 — 내 것이면 카드 없이 넘어갈 길은 없습니다.
+"
 fi
 if [ -n "$reds" ]; then
-  reason="$reasonCI가 빨간 PR이 열린 채로 턴이 끝나려 합니다:\\n$reds\\n빨간 것은 기다림이 아닙니다 — 고치거나 닫아야 할 것입니다. 로그부터: gh api repos/$REPO/actions/jobs/<잡ID>/logs\\n"
+  reason="${reason}CI가 빨간 PR이 열린 채로 턴이 끝나려 합니다:
+$reds
+
+빨간 것은 기다림이 아닙니다 — 고치거나 닫아야 할 것입니다. 로그부터: gh api repos/$REPO/actions/jobs/<잡ID>/logs
+"
 fi
 if [ -n "$hits" ]; then
-  reason="$reason머지 준비가 끝난 PR이 열린 채로 턴이 끝나려 합니다:\\n$hits\\n2026-08-22에 이걸로 초록인 PR이 두 시간 방치됐습니다 — 「CI 끝나면 머지하겠다」고 쓰는 것은 아무것도 안 하는 것입니다.\\n1) bash tool/merge_check.sh <번호> 가 exit 0 이면 gh pr merge --squash --delete-branch, 그리고 본진·워크트리 둘 다 pull\\n"
+  reason="${reason}머지 준비가 끝난 PR이 열린 채로 턴이 끝나려 합니다:
+$hits
+
+2026-08-22에 이걸로 초록인 PR이 두 시간 방치됐습니다 — 「CI 끝나면 머지하겠다」고 쓰는 것은 아무것도 안 하는 것입니다.
+1) bash tool/merge_check.sh <번호> 가 exit 0 이면 gh pr merge --squash --delete-branch, 그리고 본진·워크트리 둘 다 pull
+"
 fi
 
-cat <<JSON
-{"decision":"block","reason":"${reason}2) 손대면 안 되는 이유가 있으면 그 번호를 '$ACK' 에 한 줄로 적고(이유는 유저에게 말할 것)\\n3) merge_check 가 막으면 그 이유를 유저에게 보고\\n⛔이 턴에서 결정하세요. 「나중에」의 나중은 영영 오지 않습니다."}
-JSON
+say_block "${reason}2) 손대면 안 되는 이유가 있으면 그 번호를 '$ACK' 에 한 줄로 적고(이유는 유저에게 말할 것)
+3) merge_check 가 막으면 그 이유를 유저에게 보고
+⛔이 턴에서 결정하세요. 「나중에」의 나중은 영영 오지 않습니다."

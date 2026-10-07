@@ -73,6 +73,28 @@ reset
 say s "자율진행이 뭔지 설명해줘"            ; chk "설명 요청도 켠다(의도된 무딤)"          "$(armed s)" yes
 reset
 
+# --- only the USER arms it: another session's words are not the user's -----
+# 2026-10-07: a peer's report that named the word armed the session that
+# received it. What a peer sends arrives inside the same prompt.
+peer='<cross-session-message from=\"x\">훅 셋(보드 게이트 · 자율진행 · 충돌 사본)이 돌았다<\/cross-session-message>'
+say s "$peer"                              ; chk "🚨남의 세션이 쓴 낱말로는 안 켜진다"     "$(armed s)" no
+say s "$peer 자율진행으로 해줘"            ; chk "그 옆의 유저 말로는 켜진다"             "$(armed s)" yes
+stop='<cross-session-message from=\"x\">자율진행 그만<\/cross-session-message>'
+say s "$stop"                              ; chk "🚨남의 「그만」으로는 안 꺼진다"         "$(armed s)" yes
+plain='<cross-session-message>자율진행 종료</cross-session-message>'
+say s "$plain"                             ; chk "꼬리표의 빗금이 이스케이프 안 돼도 같다"  "$(armed s)" yes
+reset
+
+# --- what it says is one line of JSON, whatever the folder is called -------
+out=$(printf '{"session_id":"s","prompt":"자율진행"}' | bash "$ARM" "$TMP")
+chk "켤 때 한 줄로 말한다"                    "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
+chk "그 말은 UserPromptSubmit 의 덧붙임이다"   "$(printf '%s' "$out" | grep -c '^{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"▶ ')" 1
+chk "지울 표식의 경로를 그대로 댄다"           "$(printf '%s' "$out" | grep -c "'$TMP/.autorun.s'")" 1
+out=$(gate s)
+chk "막는 말도 한 줄이다"                     "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" 1
+chk "줄바꿈은 글자 둘(\\n)로 적힌다"           "$(printf '%s' "$out" | grep -c '끝내세요\.\\n⛔')" 1
+reset
+
 # --- two sessions armed at once stay apart --------------------------------
 say s "자율진행"; say t "자율진행"
 chk "둘 다 켜진다(s)"                         "$(armed s)" yes

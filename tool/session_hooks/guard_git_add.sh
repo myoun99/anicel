@@ -47,6 +47,5 @@ hit=$(printf '%s' "$cmd" \
 
 [ "$hit" -eq 0 ] && exit 0
 
-cat <<'JSON'
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"⛔ 전체 스테이징(-A / --all / .)은 이 리포에서 금지입니다. 2026-08-23 에 이걸로 오타 파일 둘(`downs=2`·`seen=6783`)이 공개 리포에 커밋됐습니다(c72e6d01). 올릴 파일 경로를 직접 적으세요."}}
-JSON
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
+say_deny '⛔ 전체 스테이징(-A / --all / .)은 이 리포에서 금지입니다. 2026-08-23 에 이걸로 오타 파일 둘(`downs=2`·`seen=6783`)이 공개 리포에 커밋됐습니다(c72e6d01). 올릴 파일 경로를 직접 적으세요.'

@@ -34,4 +34,5 @@ else
   msg="⚠️ MEMORY.md 가 ${size}B — 한계(24576B)까지 $((CEILING - size))B 남았습니다. 지금 줄일 자리를 찾아두는 게 쌉니다."
 fi
 
-printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"%s"}}\n' "$msg"
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
+say_context PostToolUse "$msg"

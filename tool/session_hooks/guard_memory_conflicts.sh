@@ -29,18 +29,18 @@ set -u
 DIR="${1:-}"
 [ -d "$DIR" ] || exit 0
 
+NL='
+'
 found=""
 for f in "$DIR"/*" "* "$DIR"/*"("*; do
   [ -e "$f" ] || continue
   name="${f##*/}"
-  # A name goes into JSON below: without the two characters that end it.
-  name="${name//\\/}"
-  name="${name//\"/}"
-  case "$found" in *"$name\\n"*) continue ;; esac
-  found="$found$name\\n"
+  case "$NL$found" in *"$NL$name$NL"*) continue ;; esac
+  found="$found$name$NL"
 done
 [ -z "$found" ] && exit 0
 
-cat <<JSON
-{"decision":"block","reason":"메모리 폴더에 두 기계가 같은 파일을 동시에 고쳐서 생긴 사본이 있습니다:\n$found동기화는 합치지 못해서 둘 다 남깁니다 — 원래 이름의 파일이 한쪽 것, 이 사본이 다른 쪽 것입니다.\n두 파일을 다 읽고 합친 내용을 **원래 이름의 파일**에 쓴 뒤 사본을 지우세요. ⛔사본을 그냥 지우지 마세요: 다른 기계의 세션이 적은 메모가 사라집니다."}
-JSON
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook_says.sh"
+say_block "메모리 폴더에 두 기계가 같은 파일을 동시에 고쳐서 생긴 사본이 있습니다:
+${found}동기화는 합치지 못해서 둘 다 남깁니다 — 원래 이름의 파일이 한쪽 것, 이 사본이 다른 쪽 것입니다.
+두 파일을 다 읽고 합친 내용을 **원래 이름의 파일**에 쓴 뒤 사본을 지우세요. ⛔사본을 그냥 지우지 마세요: 다른 기계의 세션이 적은 메모가 사라집니다."
