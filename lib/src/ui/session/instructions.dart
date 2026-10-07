@@ -8,11 +8,9 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_exposure.dart';
-import '../../models/timesheet_document.dart' show timesheetMemoInstructionLine;
 import '../timeline/instruction_span_editing.dart';
 import 'active_cut_controllers.dart';
 import 'session_roles.dart';
-import 'cut_verbs.dart';
 import 'camera.dart';
 
 /// The INSTRUCTIONS — the spans a direction row carries, the span at a
@@ -33,17 +31,14 @@ class Instructions {
     required ChangeSink changes,
     required FrameIds frameIds,
     required ActiveCutControllers controllers,
-    required CutVerbs cutVerbs,
     required Camera camera,
   }) : _project = project,
        _selection = selection,
        _changes = changes,
        _frameIds = frameIds,
        _controllers = controllers,
-       _cutVerbs = cutVerbs,
        _camera = camera;
 
-  final CutVerbs _cutVerbs;
   final Camera _camera;
 
   final ProjectAccess _project;
@@ -151,27 +146,17 @@ class Instructions {
         );
       };
     }
-    // The sheet's memo shorthand ('A→B PAN memo') writes itself ONCE at
-    // creation and stays user-editable note text from then on (R5-⑥ — the
-    // derived always-printed line could not be edited). Edits and removals
-    // never rewrite the note; the user owns it. Event + note = ONE undo.
-    String? appendedNote;
-    if (!edits) {
-      final line = timesheetMemoInstructionLine(
-        event,
-        _camera.cameraInstructionSet.defById(event.instructionId),
-      );
-      if (line.isNotEmpty) {
-        final note = _cutVerbs.activeCutNote ?? '';
-        appendedNote = note.isEmpty ? line : '$note\n$line';
-      }
-    }
+    // ⛔A direction writes nothing into the sheet's memo (I-72, 유저
+    // 2026-10-05: 「디렉션레이어, 작성하거나 하면 타임시트용지에 해당 지시
+    // 적어주는데 그 동작 잔재 안남도록 싹 삭제. 앞으론 디렉션레이어 만든게
+    // 타임시트 용지의 메모란에 텍스트로 추가되지않음」). ↩️Its shorthand
+    // ('A→B PAN memo') wrote itself into the cut note at creation (R5-⑥),
+    // with a memo field of its own on the instruction to feed it.
     _project.cutCommandCoordinator.updateDirectionSpans(
       cutId: _project.requireActiveCut.id,
       layerId: layerId,
       spans: spans,
       description: edits ? 'Edit instruction' : 'Add instruction',
-      note: appendedNote,
     );
     _changes.notifyChanged();
   }

@@ -180,26 +180,28 @@ void main() {
       expect(bare.toJson().containsKey('text'), isFalse);
     });
 
-    test('memo round-trips, stays optional and clears via copyWith', () {
-      const withMemo = InstructionEvent(
-        instructionId: 'ol',
-        length: 6,
-        valueA: 'C',
-        valueB: 'D',
-        memo: 'カットO.L',
+    // I-72 (유저 2026-10-05): the memo a span carried fed one thing, the line
+    // a new span wrote into the timesheet's memo band — deleted, remnants
+    // and all.
+    test('a span\'s memo is no longer read: a file that holds one opens '
+        'without it, and saving writes none', () {
+      final read = InstructionEvent.fromJson({
+        'instructionId': 'ol',
+        'length': 6,
+        'valueA': 'C',
+        'valueB': 'D',
+        'memo': 'カットO.L',
+      });
+      expect(
+        read,
+        const InstructionEvent(
+          instructionId: 'ol',
+          length: 6,
+          valueA: 'C',
+          valueB: 'D',
+        ),
       );
-
-      expect(withMemo.toJson()['memo'], 'カットO.L');
-      expect(InstructionEvent.fromJson(withMemo.toJson()), withMemo);
-
-      const bare = InstructionEvent(instructionId: 'ol', length: 6);
-      expect(bare.toJson().containsKey('memo'), isFalse);
-
-      final kept = withMemo.copyWith(length: 8);
-      expect(kept.memo, 'カットO.L');
-      final cleared = withMemo.copyWith(memo: () => null);
-      expect(cleared.memo, isNull);
-      expect(cleared, isNot(withMemo));
+      expect(read.toJson().containsKey('memo'), isFalse);
     });
 
     test('displayLabel: free text wins, vocabulary name falls back', () {

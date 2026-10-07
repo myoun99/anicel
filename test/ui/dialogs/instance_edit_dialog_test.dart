@@ -140,8 +140,8 @@ void main() {
     expect(result, isNull);
   });
 
-  testWidgets('instruction dialog: memo field rides the shared shell and '
-      'returns through the result; Delete shows when editing', (tester) async {
+  testWidgets('instruction dialog: rides the shared shell and returns what '
+      'it was handed; Delete shows when editing', (tester) async {
     InstructionEventDialogResult? result;
     await _openDialog<InstructionEventDialogResult>(
       tester,
@@ -150,7 +150,6 @@ void main() {
         initialInstructionId: 'ol',
         initialValueA: 'C',
         initialValueB: 'D',
-        initialMemo: 'カットO.L',
         editing: true,
       ),
       (r) => result = r,
@@ -165,16 +164,11 @@ void main() {
       findsOneWidget,
     );
 
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('instruction-memo-field')),
-      'カットO.L 강조',
-    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
     await tester.pumpAndSettle();
     expect(result!.instructionId, 'ol');
-    expect(result!.memo, 'カットO.L 강조');
     expect(result!.valueA, 'C');
     expect(result!.valueB, 'D');
   });

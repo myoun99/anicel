@@ -274,7 +274,6 @@ TimelineExposure respelledExposure(
       text: instruction.text,
       valueA: instruction.valueA,
       valueB: instruction.valueB,
-      memo: instruction.memo,
     ),
   );
 }

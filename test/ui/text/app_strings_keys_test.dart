@@ -382,7 +382,6 @@ void main() {
     'instructionNameLabel': (s) => s.instructionNameLabel,
     'instructionStartLabel': (s) => s.instructionStartLabel,
     'instructionEndLabel': (s) => s.instructionEndLabel,
-    'instructionMemoLabel': (s) => s.instructionMemoLabel,
     'instructionEditSetButton': (s) => s.instructionEditSetButton,
     'instructionEditorIcon': (s) => s.instructionEditorIcon,
     'instructionEditorColor': (s) => s.instructionEditorColor,

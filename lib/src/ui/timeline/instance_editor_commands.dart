@@ -544,7 +544,6 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
     initialText: span.covering.text,
     initialValueA: span.covering.valueA,
     initialValueB: span.covering.valueB,
-    initialMemo: span.covering.memo,
     editing: true,
     onEditInstructionSet: span.editsSet
         ? () => _editInstructionSet(dialogContext, session)
@@ -556,7 +555,7 @@ Future<InstructionEventDialogResult?> _showInstructionEditor(
 
 /// THE INSTRUCTION SPAN FLOW, once: an empty cell CREATES, a covered one
 /// opens the editor, and the editor's answer either deletes the span or
-/// replaces it with the six fields it hands back.
+/// replaces it with the fields it hands back.
 ///
 /// ↩️An empty cell creates only when the row hands over a `create` — the
 /// double tap's and the ＋'s doors do; the Edit button's door hands over none,
@@ -616,7 +615,6 @@ Future<void> _editSpanInstance(
       text: result.text,
       valueA: result.valueA,
       valueB: result.valueB,
-      memo: result.memo,
     ),
   );
 }

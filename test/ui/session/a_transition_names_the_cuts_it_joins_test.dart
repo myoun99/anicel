@@ -219,16 +219,8 @@ void main() {
     ]) {
       expect(find.byKey(ValueKey<String>(field)), findsNothing);
     }
-    expect(
-      find.byKey(const ValueKey<String>('instruction-memo-field')),
-      findsOneWidget,
-    );
     expect(blockWord('c301'), findsWidgets, reason: 'the preview names it');
 
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('instruction-memo-field')),
-      'slow',
-    );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-ok-button')),
     );
@@ -236,7 +228,6 @@ void main() {
     await editing;
 
     final stored = s.activeTrack.transitionLayer.instructions[18]!;
-    expect(stored.memo, 'slow');
     expect(stored.text, isNull);
     expect(stored.valueA, isNull);
     expect(stored.valueB, isNull);

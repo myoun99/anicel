@@ -755,27 +755,6 @@ class TimesheetDocument {
   }
 }
 
-/// One memo-band line for an instruction event — the sheet shorthand the
-/// user writes by hand: `<A><mark><B> <name> <memo>`, e.g. 'A⋈ O.L' or
-/// 'C⋈D O.L カットO.L' (a single space before the memo — R4 dropped the
-/// parentheses). The mark glyph mirrors the def's markType (⋈ = the O.L
-/// bowtie, → = the bar); blank parts simply drop out.
-String timesheetMemoInstructionLine(
-  InstructionEvent event,
-  CameraInstructionDef? def,
-) {
-  final markGlyph =
-      (def?.markType ?? CameraInstructionMarkType.bar) ==
-          CameraInstructionMarkType.ol
-      ? '⋈'
-      : '→';
-  final endpoints = '${event.valueA ?? ''}$markGlyph${event.valueB ?? ''}';
-  final memo = event.memo;
-  final label =
-      '${event.displayLabel(def)}${memo == null || memo.isEmpty ? '' : ' $memo'}';
-  return label.isEmpty ? endpoints : '$endpoints $label';
-}
-
 /// One layer's sheet-column cells, derived straight from the (possibly
 /// PREVIEW) layer — the drag overlay's per-column source (UI-R9 #7). The
 /// same derivation [TimesheetDocument.fromCut] uses for its action/SE

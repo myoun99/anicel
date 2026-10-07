@@ -850,9 +850,7 @@ class CutCommandCoordinator {
 
   /// Writes a direction row's spans — which ARE its blocks (R27,
   /// [LayerKind.spansRideBlocks]) — as the edit [spans] makes of the row;
-  /// one undo step, no-op when it changes nothing. An optional [note]
-  /// rewrites the cut note in the SAME undo step (the creation flow
-  /// auto-writes the memo shorthand — R5-⑥).
+  /// one undo step, no-op when it changes nothing.
   ///
   /// ⛔Not a span map in and a span map out. A map says where spans are,
   /// not which block each one was, and a direction row's span is a block
@@ -863,18 +861,15 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required Layer Function(Layer row) spans,
     String description = 'Edit instructions',
-    String? note,
   }) {
     final before = _requireLayer(cutId: cutId, layerId: layerId);
     if (!before.kind.spansRideBlocks) {
       throw StateError('Direction spans belong on direction rows only.');
     }
-    final cut = _requireCut(cutId);
     final after = rederiveRunBehaviors(
       spans(before),
       drawnFrameCount: cutDrawnFrameCount(repository.requireProject(), cutId)!,
     );
-    final notes = note != null && cut.metadata.note != note;
     historyManager.executeAsOneStep(description, [
       if (after != before)
         UpdateLayerTimelineCommand(
@@ -882,8 +877,6 @@ class CutCommandCoordinator {
           before: before,
           after: after,
         ),
-      if (notes)
-        UpdateCutNoteCommand(repository: repository, cutId: cutId, note: note),
     ]);
   }
 

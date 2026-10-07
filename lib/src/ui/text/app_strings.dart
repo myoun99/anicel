@@ -716,7 +716,6 @@ enum AppStrings {
   String get instructionNameLabel => _s('instructionNameLabel');
   String get instructionStartLabel => _s('instructionStartLabel');
   String get instructionEndLabel => _s('instructionEndLabel');
-  String get instructionMemoLabel => _s('instructionMemoLabel');
   String get instructionEditSetButton => _s('instructionEditSetButton');
   String get instructionEditorIcon => _s('instructionEditorIcon');
   String get instructionEditorColor => _s('instructionEditorColor');
@@ -2159,7 +2158,6 @@ enum AppStrings {
     'instructionNameLabel': 'Name (blank = instruction name)',
     'instructionStartLabel': 'Start name (A)',
     'instructionEndLabel': 'End name (B)',
-    'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
     'instructionEditorIcon': 'Icon',
     'instructionEditorColor': 'Color',
@@ -3302,7 +3300,6 @@ enum AppStrings {
     'instructionNameLabel': '名前（空欄なら記号名）',
     'instructionStartLabel': '始点名（A）',
     'instructionEndLabel': '終点名（B）',
-    'instructionMemoLabel': 'メモ（タイムシートのメモ欄）',
     'instructionEditSetButton': '指示記号を編集…',
     'instructionEditorIcon': 'アイコン',
     'instructionEditorColor': '色',
@@ -4675,7 +4672,6 @@ enum AppStrings {
     'instructionNameLabel': '이름 (비우면 기호 이름)',
     'instructionStartLabel': '시작 이름 (A)',
     'instructionEndLabel': '끝 이름 (B)',
-    'instructionMemoLabel': '메모 (타임시트 메모 칸)',
     'instructionEditSetButton': '지시 기호 편집…',
     'instructionEditorIcon': '아이콘',
     'instructionEditorColor': '색',
@@ -6079,7 +6075,6 @@ enum AppStrings {
     'instructionNameLabel': "Nom (vide = nom de l'indication)",
     'instructionStartLabel': 'Nom de début (A)',
     'instructionEndLabel': 'Nom de fin (B)',
-    'instructionMemoLabel': 'Mémo (bande mémo de la feuille)',
     'instructionEditSetButton': 'Modifier les indications…',
     'instructionEditorIcon': 'Icône',
     'instructionEditorColor': 'Couleur',
@@ -7458,7 +7453,6 @@ enum AppStrings {
     'instructionNameLabel': '名称（留空则用记号名）',
     'instructionStartLabel': '起点名称（A）',
     'instructionEndLabel': '终点名称（B）',
-    'instructionMemoLabel': '备注（摄影表备注栏）',
     'instructionEditSetButton': '编辑指示记号…',
     'instructionEditorIcon': '图标',
     'instructionEditorColor': '颜色',
