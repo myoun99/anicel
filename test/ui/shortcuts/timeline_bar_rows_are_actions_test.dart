@@ -13,7 +13,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/main.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/pixel_clipboard_verb.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
@@ -32,8 +35,8 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 const k = LogicalKeyboardKey.keyK;
 
-/// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임.
-const barRows = [
+/// The bar's menu rows, in the bar's order — 컷 · 레이어 · 프레임 · fx.
+final barRows = [
   EditorActionIds.cutNew,
   EditorActionIds.cutDuplicate,
   EditorActionIds.cutCreateLinked,
@@ -50,11 +53,13 @@ const barRows = [
   EditorActionIds.layerDetach,
   EditorActionIds.layerRasterize,
   EditorActionIds.layerStoryboard,
+  for (final kind in addLayerKinds) addLayerKindActionId(kind),
   EditorActionIds.layerAttachFreeAbove,
   EditorActionIds.layerAttachFreeBelow,
   EditorActionIds.layerAttachSyncedAbove,
   EditorActionIds.layerAttachSyncedBelow,
   EditorActionIds.frameSelectRowSpan,
+  for (final kind in EffectKind.values) addEffectActionId(kind),
 ];
 
 /// The shared pill's colour edit list — actions since 2026-09-13 and I-55,
@@ -121,7 +126,8 @@ int layersOf(WidgetTester tester) =>
 void main() {
   group('the registry', () {
     test('holds the bar\'s menu rows under Timeline, in the bar\'s order, '
-        'and the frame pill\'s switch after them', () {
+        'with the frame pill\'s switch between its row and the fx pill\'s '
+        'rows', () {
       final timeline = [
         for (final definition in editorActionDefinitions)
           if (definition.category == 'Timeline') definition,
@@ -133,11 +139,52 @@ void main() {
         ],
         barRows,
       );
-      expect(timeline.last.id, EditorActionIds.frameAutoCreate);
+      final ids = [for (final definition in timeline) definition.id];
+      final theSwitch = ids.indexOf(EditorActionIds.frameAutoCreate);
+      expect(ids[theSwitch - 1], EditorActionIds.frameSelectRowSpan);
       expect(
-        timeline.last.menuRow,
+        timeline[theSwitch].menuRow,
         isFalse,
         reason: 'a button of the pill, not a row of a menu',
+      );
+      expect(ids.sublist(theSwitch + 1), [
+        for (final kind in EffectKind.values) addEffectActionId(kind),
+      ]);
+    });
+
+    test('a kind of layer and a kind of effect are named by composing — '
+        'the menu\'s name and the kind\'s, the fx row\'s own — in every '
+        'language the two parts are said in', () {
+      expect(
+        editorActionLabel(addLayerKindActionId(LayerKind.animation)),
+        'Add Layer: Animation',
+      );
+      expect(
+        addLayerKindActionLabel(LayerKind.animation, AppLanguage.ko),
+        '레이어 추가: 애니메이션',
+      );
+      expect(
+        addLayerKindActionLabel(LayerKind.folder, AppLanguage.ja),
+        'レイヤーを追加: フォルダー',
+      );
+      expect(
+        editorActionLabel(addEffectActionId(EffectKind.blur)),
+        'Add Blur',
+      );
+      expect(
+        addEffectActionLabel(EffectKind.blur, AppLanguage.ko),
+        '흐림 효과 추가',
+      );
+    });
+
+    test('⛔the add menu\'s kinds are the list its actions are made of — the '
+        'camera and the transition are in neither', () {
+      expect(addLayerKinds, hasLength(7));
+      expect(addLayerKinds, isNot(contains(LayerKind.camera)));
+      expect(addLayerKinds, isNot(contains(LayerKind.transition)));
+      expect(
+        File('lib/src/ui/timeline/timeline_bar_menus.dart').readAsStringSync(),
+        contains('for (final kind in addLayerKinds)'),
       );
     });
 
@@ -179,6 +226,8 @@ void main() {
         'toggleTargetLayerKind',
         'addAttachedLayer',
         'selectRowSpan',
+        'addLayerOfKind',
+        'addEffectToActiveLayer',
       ]) {
         expect(shell, isNot(contains(verb)), reason: verb);
       }
@@ -199,8 +248,9 @@ void main() {
 
   group('the bar\'s menus', () {
     testWidgets('🚨every one of those actions has its row, and every row '
-        'that runs something names an action — but the kinds and the '
-        'labels', (tester) async {
+        'that runs something names an action — but the colour labels', (
+      tester,
+    ) async {
       await pumpApp(tester);
       final rows = timelineRows(tester);
       final named = {for (final row in rows) ...row.shortcuts};
@@ -215,18 +265,13 @@ void main() {
               row.submenuBuilder == null)
             row.keyValue,
       ];
-      expect(silent, isNotEmpty, reason: '⛔premise: the families are there');
-      // ⚠️Not yet actions, each for its reason: a KIND of layer and a kind
-      // of effect are families whose action names are composed (「레이어
-      // 추가: 애니메이션」) and come next (I-40); a colour label is a choice
-      // of a list, not a command.
+      expect(silent, isNotEmpty, reason: '⛔premise: the labels are there');
+      // ⚠️A colour label is a choice out of a list, not a command — the
+      // one family of rows here that is no action. ↩️The kinds of layer and
+      // of effect stood beside it until their names were composed (「레이어
+      // 추가: 애니메이션」).
       expect(
-        silent.where(
-          (key) =>
-              !key.startsWith('add-layer-kind-') &&
-              !key.startsWith('add-effect-') &&
-              !key.startsWith('layer-mark-option-'),
-        ),
+        silent.where((key) => !key.startsWith('layer-mark-option-')),
         isEmpty,
       );
     });
@@ -306,6 +351,65 @@ void main() {
       final cuts = cutsOf(tester);
       await pressKeyOf(tester, EditorActionIds.cutNew);
       expect(cutsOf(tester), cuts + 1);
+    });
+
+    testWidgets('adds a layer of ITS kind — not the one the pill\'s ＋ '
+        'adds', (tester) async {
+      await pumpApp(tester);
+      final layers = layersOf(tester);
+
+      await pressKeyOf(tester, addLayerKindActionId(LayerKind.folder));
+
+      final after = sessionOf(tester).activeCutOrNull!.layers;
+      expect(after, hasLength(layers + 1));
+      expect(
+        after.where((layer) => layer.kind == LayerKind.folder),
+        hasLength(1),
+      );
+    });
+
+    testWidgets('⛔adds no layer of a kind the panel being worked in cannot '
+        'add: from the storyboard, the animation kind\'s key does '
+        'nothing', (tester) async {
+      await pumpApp(tester);
+      final session = sessionOf(tester);
+      final layers = layersOf(tester);
+      session.claimStoryboardRow();
+      await tester.pumpAndSettle();
+      expect(
+        rowOf(
+          TimelineBarMenus(
+            session: session,
+            panel: StoryboardToolbarPanelContext(session),
+          ).rows(contextOf(tester)),
+          addLayerKindActionId(LayerKind.animation),
+        ).enabled,
+        isFalse,
+        reason: '⛔premise: the storyboard shows that kind dim',
+      );
+
+      await pressKeyOf(tester, addLayerKindActionId(LayerKind.animation));
+
+      expect(layersOf(tester), layers);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('adds its effect to the layer in hand', (tester) async {
+      await pumpApp(tester);
+      final session = sessionOf(tester);
+      expect(
+        rowOf(timelineRows(tester), addEffectActionId(EffectKind.blur)).enabled,
+        isTrue,
+        reason: '⛔premise: the layer in hand takes effects',
+      );
+      expect(session.activeLayer!.effects, isEmpty);
+
+      await pressKeyOf(tester, addEffectActionId(EffectKind.blur));
+
+      expect(
+        [for (final effect in session.activeLayer!.effects) effect.kind],
+        [EffectKind.blur],
+      );
     });
 
     testWidgets('🚨presses the row of the panel being worked in: the layer '

@@ -1,7 +1,6 @@
 import '../widgets/app_tooltip.dart';
 import 'package:flutter/material.dart';
 
-import '../brush/tool_press.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import 'editor_action_registry.dart';
@@ -35,8 +34,9 @@ class EditorShortcutScope extends InheritedNotifier<EditorShortcutBindings> {
 /// A registry action's name in the program language — the ONE name its
 /// button, its menu item and the shortcut list all say.
 ///
-/// ⚠️A shape tile's name is COMPOSED rather than tabled ([shapeTileLabel]),
-/// so it is asked here, where every reader of a name already comes.
+/// ⚠️Some names are COMPOSED rather than tabled — a shape tile's, a blend
+/// action's, an add-layer kind's ([EditorActionDefinition.composedName]) —
+/// so a name is asked here, where every reader of one already comes.
 String editorActionLabel(String actionId) => actionLabelOf(
   editorActionDefinitions.firstWhere(
     (definition) => definition.id == actionId,
@@ -48,15 +48,9 @@ String editorActionLabel(String actionId) => actionLabelOf(
 /// to be looked up by id. ⚠️Its name is the user's own word for the brush
 /// or the group (I-56), the same in every language: no table has a row for
 /// it, so it answers with the name it carries, as an untabled action does.
-String actionLabelOf(EditorActionDefinition definition) {
-  if (definition.toolPress case ShapeTilePress(:final verb, :final shape)) {
-    return shapeTileLabel(verb, shape);
-  }
-  if (definition.blendMode case final mode?) {
-    return blendModeActionLabel(mode, AppText.language);
-  }
-  return AppText.strings.shortcutLabel(definition.id, definition.label);
-}
+String actionLabelOf(EditorActionDefinition definition) =>
+    definition.composedName?.call(AppText.language) ??
+    AppText.strings.shortcutLabel(definition.id, definition.label);
 
 /// [label] followed by the live keys of the actions a control is the entrance
 /// of — 「Copy (Ctrl+C)」, 「Brush Tool (B)」, 「コピー (⌘C)」.

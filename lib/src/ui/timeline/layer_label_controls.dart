@@ -863,20 +863,8 @@ IconData layerKindIcon(LayerKind kind) {
 /// ⚠️Trade terms stay in their own script or in English (user 2026-08-12:
 /// 「현장용어만 원어/영어로 두기로 하자」): SE, Transition, Direction. That
 /// is a decision about the WORDS and it lives in the tables, not here.
-String layerKindDisplayName(LayerKind kind) {
-  final strings = AppText.strings;
-  return switch (kind) {
-    LayerKind.animation => strings.tlKindAnimation,
-    LayerKind.storyboard => strings.tlKindStoryboard,
-    LayerKind.image => strings.tlKindImage,
-    LayerKind.se => strings.tlKindSe,
-    LayerKind.instruction => strings.tlKindInstruction,
-    LayerKind.transition => strings.tlKindTransition,
-    LayerKind.camera => strings.tlKindCamera,
-    LayerKind.folder => strings.tlKindFolder,
-    LayerKind.adjustment => strings.tlKindAdjustment,
-  };
-}
+String layerKindDisplayName(LayerKind kind) =>
+    kind.labelFor(AppText.language);
 
 /// Chip colour of [mark] — and, since ⑲, the colour of that layer's frame
 /// BLOCKS as well.

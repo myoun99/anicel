@@ -14,7 +14,6 @@ import '../editor_session_manager.dart';
 import '../shortcuts/editor_action_registry.dart';
 import '../shortcuts/editor_shortcut_scope.dart';
 import '../text/app_strings.dart';
-import '../text/model_vocabulary.dart';
 import '../widgets/panel_flyout.dart';
 import 'layer_label_controls.dart' show layerKindDisplayName, layerKindIcon;
 import 'rasterize_reference_rows.dart';
@@ -89,10 +88,9 @@ class TimelineBarMenus {
   List<PanelFlyoutEntry> addLayer() {
     return [
       PanelFlyoutHeader(editorActionLabel(EditorActionIds.layerAdd)),
-      // ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12:
-      // 「레이어 +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」).
-      // The `＋` itself makes an animation layer now, so an entry meaning
-      // "whatever is selected" answered a question nothing asks.
+      // Which kinds, and why no 「현재 선택한 레이어와 같은 종류」 entry: at
+      // the list ([addLayerKinds]) — its rows and their actions are both
+      // made from it.
       //
       // ★EVERY entry wears its kind's own icon, and they come from
       // [layerKindIcon] rather than being chosen here (유저: 「레이어 생성,
@@ -101,29 +99,15 @@ class TimelineBarMenus {
       // is how the list came to disagree with the rail it creates rows for.
       // One table, so the menu and the row can never show different pictures
       // of the same noun.
-      for (final kind in const [
-        LayerKind.animation,
-        LayerKind.storyboard,
-        LayerKind.image,
-        LayerKind.se,
-        LayerKind.instruction,
-        // R6b: the row that filters everything below it. It lands above the
-        // active layer like every other kind, which is what puts the rows it
-        // grades underneath it.
-        LayerKind.adjustment,
-        // R5 #14: a FOLDER is something you add, empty, and then fill by
-        // dropping rows on it — the file-manager shape, replacing "group the
-        // active layer into a folder".
-        LayerKind.folder,
-        // Neither the camera nor the transition is offered — a cut owns
-        // exactly one camera and the transition row belongs to the track.
-      ])
+      for (final kind in addLayerKinds)
         PanelFlyoutItem(
           keyValue: 'add-layer-kind-${_addLayerKeySuffix(kind)}',
           // The kind's ONE name ([layerKindDisplayName]) — the rail's and
           // the kind flyout's. ↩️This menu kept a switch of its own over the
           // same table, which answered the same until a kind was added.
+          // The row's ACTION is named over it: 「레이어 추가: 애니메이션」.
           label: layerKindDisplayName(kind),
+          shortcuts: [addLayerKindActionId(kind)],
           icon: layerKindIcon(kind),
           // R9 #7: one storyboard row per cut — the entry greys out once the
           // cut has it, instead of accepting the tap and doing nothing.
@@ -212,10 +196,8 @@ class TimelineBarMenus {
       for (final kind in EffectKind.values)
         PanelFlyoutItem(
           keyValue: 'add-effect-${kind.jsonValue}',
-          label: AppText.strings.tlAddEffectTemplate.replaceAll(
-            '{name}',
-            kind.labelFor(AppText.language),
-          ),
+          label: editorActionLabel(addEffectActionId(kind)),
+          shortcuts: [addEffectActionId(kind)],
           icon: Icons.auto_fix_high_outlined,
           enabled: serves && session.effectsAndFx.canAddEffectToActiveLayer,
           onSelected: () => session.effectsAndFx.addEffectToActiveLayer(kind),

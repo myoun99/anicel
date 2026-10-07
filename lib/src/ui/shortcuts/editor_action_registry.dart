@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/layer_effect.dart' show EffectKind;
+import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
 import '../../services/cel_pixel_overwrite.dart' show CelPixelVerb;
 import '../brush/brush_press.dart';
@@ -12,7 +14,8 @@ import '../brush/brush_tool_state.dart'
 import '../brush/tool_press.dart';
 import '../brush/transform_tool_options.dart' show TransformMode;
 import '../text/app_strings.dart' show AppStrings;
-import '../text/model_vocabulary.dart' show BrushBlendModeWords;
+import '../text/model_vocabulary.dart'
+    show BrushBlendModeWords, EffectKindWords, LayerKindWords;
 import 'sheet_arrow.dart' show SheetArrow, SheetKeys, SheetMove;
 
 /// The single shortcut intent: every editor action dispatches through ONE
@@ -46,12 +49,44 @@ class EditorActionDefinition {
     this.sheetMove,
     this.brushPress,
     this.menuRow = false,
-  });
+  }) : composedName = null;
+
+  /// An action whose name is COMPOSED rather than tabled: [name] says it in
+  /// a language, and its English is the registry's own wording ([label]) —
+  /// one composer for both, so the two cannot come to differ.
+  EditorActionDefinition.composed({
+    required this.id,
+    required String Function(AppLanguage language) name,
+    required this.category,
+    required this.defaultActivators,
+    this.toolPress,
+    this.blendMode,
+    this.menuRow = false,
+  }) : label = name(AppLanguage.en),
+       composedName = name,
+       defaultTouchGesture = null,
+       hold = false,
+       zoomsView = false,
+       pixelVerb = null,
+       pixelClipboardVerb = null,
+       sheetMove = null,
+       brushPress = null;
 
   final String id;
   final String label;
   final String category;
   final List<SingleActivator> defaultActivators;
+
+  /// The action's name in a language, when that name is composed of other
+  /// names — a shape tile's of its verb and its shape, a blend action's of
+  /// the blend's own, an add-layer row's of the menu's name and the kind's
+  /// — and null for every action a table names by its id.
+  ///
+  /// ↩️Until 2026-10-08 each family was a branch wherever a name is asked
+  /// (is it a shape tile, is it a blend), and again where the tables are
+  /// checked for a row. The layer kinds and the effect kinds (I-40) would
+  /// have been the third and fourth branch; a family says its own name now.
+  final String Function(AppLanguage language)? composedName;
 
   /// The multi-finger touch gesture bound by default (R11-⑨); most
   /// actions ship unbound — every action is ASSIGNABLE in the settings
@@ -184,11 +219,11 @@ final Map<CelPixelVerb, String> _pixelVerbActionIds = {
 /// table — so no language tables a shape tile twice.
 List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
   for (final shape in canvasToolShapes(verb))
-    EditorActionDefinition(
+    EditorActionDefinition.composed(
       // Named for the rail tool the tile belongs to — 'tool-select-lasso',
       // 'tool-fill-rect' — which is the id the rectangle select already had.
       id: 'tool-${canvasToolRailGroup(verb).name}-${shape.name}',
-      label: shapeTileLabel(verb, shape, AppStrings.of(AppLanguage.en)),
+      name: (language) => shapeTileLabel(verb, shape, AppStrings.of(language)),
       category: 'Tools',
       defaultActivators: [
         // 「선택도구의 올가미 선택에 w로 두고싶어」. ↩️F-261 (유저
@@ -222,9 +257,9 @@ List<EditorActionDefinition> _shapeTileActions(CanvasTool verb) => [
 /// ([blendModeActionLabel]), so no table names a mode twice.
 List<EditorActionDefinition> _blendModeActions() => [
   for (final (index, mode) in BrushBlendMode.values.indexed)
-    EditorActionDefinition(
+    EditorActionDefinition.composed(
       id: blendModeActionId(mode),
-      label: blendModeActionLabel(mode, AppLanguage.en),
+      name: (language) => blendModeActionLabel(mode, language),
       category: 'Tools',
       defaultActivators: [
         if (index < _functionKeys.length) SingleActivator(_functionKeys[index]),
@@ -251,6 +286,87 @@ const _functionKeys = [
 /// The action that picks [mode] — spelled here once, for whoever names a
 /// blend action without the list in hand (a shortcut preset).
 String blendModeActionId(BrushBlendMode mode) => 'tool-blend-${mode.name}';
+
+/// The kinds the layer pill's add menu offers, in its order — its rows and
+/// their actions are both made from this list.
+///
+/// ⛔NO 「현재 선택한 레이어와 같은 종류」 entry (유저 2026-08-12: 「레이어
+/// +에 있는 현재 선택한 레이어로 생성 삭제. 필요없음. 묻지마.」). The `＋`
+/// itself makes an animation layer now, so an entry meaning "whatever is
+/// selected" answered a question nothing asks.
+const addLayerKinds = [
+  LayerKind.animation,
+  LayerKind.storyboard,
+  LayerKind.image,
+  LayerKind.se,
+  LayerKind.instruction,
+  // R6b: the row that filters everything below it. It lands above the
+  // active layer like every other kind, which is what puts the rows it
+  // grades underneath it.
+  LayerKind.adjustment,
+  // R5 #14: a FOLDER is something you add, empty, and then fill by
+  // dropping rows on it — the file-manager shape, replacing "group the
+  // active layer into a folder".
+  LayerKind.folder,
+  // Neither the camera nor the transition is offered — a cut owns exactly
+  // one camera and the transition row belongs to the track.
+];
+
+/// The English of [EditorActionIds.layerAdd], which the kinds' names are
+/// composed over as well.
+const _addLayerLabel = 'Add Layer';
+
+/// The add menu's kinds as actions, one per kind it offers.
+///
+/// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 뭐든
+/// 모든 버튼」; asked how far (I-40-Q1, 10-08), 유저 chose the command
+/// buttons and menu rows of the editing screen. ★GENERATED from the menu's
+/// own list, so a kind added to the menu arrives in the shortcut list with
+/// it, and named by composition — 「레이어 추가: 애니메이션」 — out of two
+/// names the tables already hold.
+/// ⚠️Not [EditorActionIds.layerAdd]: that is the pill's `＋`, which adds the
+/// one kind the panel being worked in adds; a row here adds ITS kind, where
+/// the panel can.
+List<EditorActionDefinition> _addLayerKindActions() => [
+  for (final kind in addLayerKinds)
+    EditorActionDefinition.composed(
+      id: addLayerKindActionId(kind),
+      name: (language) => addLayerKindActionLabel(kind, language),
+      category: 'Timeline',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String addLayerKindActionId(LayerKind kind) => 'layer-add-${kind.name}';
+
+String addLayerKindActionLabel(LayerKind kind, AppLanguage language) {
+  final add = AppStrings.of(
+    language,
+  ).shortcutLabel(EditorActionIds.layerAdd, _addLayerLabel);
+  return '$add: ${kind.labelFor(language)}';
+}
+
+/// The fx pill's rows as actions, one per [EffectKind] — the menu lists
+/// every kind, always (it dims what the row cannot take), and so does this.
+/// The action's name is the row's own: 「{name} 추가」.
+List<EditorActionDefinition> _addEffectActions() => [
+  for (final kind in EffectKind.values)
+    EditorActionDefinition.composed(
+      id: addEffectActionId(kind),
+      name: (language) => addEffectActionLabel(kind, language),
+      category: 'Timeline',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String addEffectActionId(EffectKind kind) => 'effect-add-${kind.jsonValue}';
+
+String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
+    AppStrings.of(
+      language,
+    ).tlAddEffectTemplate.replaceAll('{name}', kind.labelFor(language));
 
 /// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
 String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
@@ -1059,7 +1175,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
   // the user's to name; no key was said, so both wait unbound.
   const EditorActionDefinition(
     id: EditorActionIds.layerAdd,
-    label: 'Add Layer',
+    label: _addLayerLabel,
     category: 'Timeline',
     defaultActivators: [],
   ),
@@ -1218,6 +1334,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     defaultActivators: [],
     menuRow: true,
   ),
+  ..._addLayerKindActions(),
   const EditorActionDefinition(
     id: EditorActionIds.layerAttachFreeAbove,
     label: 'Attach free layer above',
@@ -1261,6 +1378,8 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     category: 'Timeline',
     defaultActivators: [],
   ),
+  // The fx pill's rows, after the frame pill's — the bar's order.
+  ..._addEffectActions(),
   // 🗣️I-40: the settings menu's rows — 「설정의 패널 열기 닫기같은거든 뭐든」.
   // A row that only opens a second level (프로젝트 설정 · 패널 · 디버그) runs
   // nothing and is no action; the rows under it are.

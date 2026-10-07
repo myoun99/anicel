@@ -2,6 +2,7 @@ import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_effect.dart';
+import '../../models/layer_kind.dart';
 import '../../models/separable_blend_mode.dart';
 import '../../services/canvas_selection_region.dart';
 import 'app_strings.dart';
@@ -45,6 +46,27 @@ extension SeparableBlendModeWords on SeparableBlendMode {
 extension EffectKindWords on EffectKind {
   String labelFor(AppLanguage language) =>
       AppStrings.of(language).effectKindName(jsonValue, label);
+}
+
+/// A row kind's name. Its words are rows of their own in the tables
+/// (`tlKind*`) rather than one keyed lookup, so this is the one place that
+/// pairs a kind with its row — `layerKindDisplayName` asks here in the
+/// program's language.
+extension LayerKindWords on LayerKind {
+  String labelFor(AppLanguage language) {
+    final strings = AppStrings.of(language);
+    return switch (this) {
+      LayerKind.animation => strings.tlKindAnimation,
+      LayerKind.storyboard => strings.tlKindStoryboard,
+      LayerKind.image => strings.tlKindImage,
+      LayerKind.se => strings.tlKindSe,
+      LayerKind.instruction => strings.tlKindInstruction,
+      LayerKind.transition => strings.tlKindTransition,
+      LayerKind.camera => strings.tlKindCamera,
+      LayerKind.folder => strings.tlKindFolder,
+      LayerKind.adjustment => strings.tlKindAdjustment,
+    };
+  }
 }
 
 /// An effect parameter's lane name, by the id its spec carries — the spec
