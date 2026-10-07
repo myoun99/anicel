@@ -94,6 +94,20 @@ void main() {
     expect([row(first).collapsed, row(second).collapsed], [true, true]);
   });
 
+  test('opening one use opens every use', () {
+    write(first, collapsed: true);
+    write(second, collapsed: true);
+
+    UpdateLayerCollapsedCommand(
+      repository: repository,
+      cutId: cutId,
+      layerId: first,
+      collapsed: false,
+    ).execute();
+
+    expect([row(first).collapsed, row(second).collapsed], [false, false]);
+  });
+
   test('a row that is not linked folds alone', () {
     UpdateLayerCollapsedCommand(
       repository: repository,
