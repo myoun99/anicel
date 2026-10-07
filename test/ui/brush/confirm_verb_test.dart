@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/cel_text.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/services/brush_stroke_commit_data.dart';
 import 'package:anicel/src/services/last_stroke_slot.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
@@ -11,6 +13,8 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cel_text_commands.dart';
 import 'package:anicel/src/ui/brush/confirm_verb.dart';
 import 'package:anicel/src/ui/brush/transform_tool_options.dart';
+
+import '../../helpers/cel_text_hand.dart';
 
 /// Which door 확정 opens — the ORDER is the law (confirm-button, 유저
 /// 2026-09-24): an open polygon first (it is what the user is looking at),
@@ -93,6 +97,37 @@ void main() {
     expect(verb.canConfirm, isTrue);
     verb.confirm();
     expect(selection.hasOpenPolygon, isFalse, reason: '닫혔다');
+    expect(reinputs, 0, reason: '⛔재입력이 끼어들지 않는다');
+    expect(applied, 0);
+  });
+
+  test('🚨a text in hand is what a confirm lets go of — before 적용, before '
+      'the last stroke: neither is laid down under it', () {
+    final text = CelTextCommands();
+    addTearDown(text.dispose);
+    final hand = textHand(
+      bake: bakesAtOnce,
+      text: CelTextContent(
+        spans: const [
+          CelTextSpan(text: 'ab', style: TextLetterStyle(fontSize: 8)),
+        ],
+        anchor: CanvasPoint(x: 8, y: 8),
+      ),
+    );
+    text.bind(hand.tool);
+    final withAText = ConfirmVerb(
+      selection: selection,
+      text: text,
+      lastStroke: lastStroke,
+      tool: tool,
+      transformOptions: options,
+    );
+    expect(hand.tool.session, isNotNull, reason: '⛔fixture: in hand');
+
+    expect(withAText.canConfirm, isTrue);
+    withAText.confirm();
+
+    expect(hand.tool.session, isNull, reason: 'let go of');
     expect(reinputs, 0, reason: '⛔재입력이 끼어들지 않는다');
     expect(applied, 0);
   });

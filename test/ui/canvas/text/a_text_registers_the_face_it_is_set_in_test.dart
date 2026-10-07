@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_font_file.dart';
 import 'package:anicel/src/services/commands/update_project_fonts_command.dart';
@@ -337,6 +338,19 @@ void main() {
         fonts: [carried],
       ),
     );
+    // 🚨Told, as every edit the app makes is: the list on screen is the
+    // second project's own now — and it says the very fonts the first
+    // carries. A workspace that asked only 「is the list another」 on the way
+    // back would go on showing the second's, 빼기 and all.
+    second.notifyChanged();
+    await pumpFrames(tester);
+    await openFaces(tester);
+    expect(
+      row('project-font-Probe Sans'),
+      findsOneWidget,
+      reason: '⛔fixture: the second project\'s font is on screen',
+    );
+    await tester.tapAt(const Offset(4, 4));
     await pumpFrames(tester);
     await tapKey(tester, 'project-tab-0');
     expect(sessionOf(tester), same(first), reason: '⛔fixture');
@@ -358,17 +372,37 @@ void main() {
     final fonts = tester
         .widget<ToolSettingsPanel>(find.byType(ToolSettingsPanel))
         .textFonts!;
+    // On a frame that has no cel yet, where a press makes one.
+    AppInput.settings.value = const AppInputSettings(
+      autoCreateFrameOnDraw: true,
+    );
+    addTearDown(() => AppInput.settings.value = const AppInputSettings());
+    sessionOf(tester).selectFrameIndex(1);
+    // ⚠️The registering itself is heard with the next thing the session
+    // tells of — a text's landing files a step and tells the canvas, not
+    // the session (measured 2026-10-07: the first edit after it said the
+    // fonts once). So that one is let through before the counting begins.
+    sessionOf(tester).notifyChanged();
+    await pumpFrames(tester);
+    final listed = fontsOfTheProject(tester);
     var said = 0;
     fonts.addListener(() => said += 1);
 
-    // Another text in the same face: the project is another, its fonts
-    // are what they were.
+    // Another text in the same face, begun where there is no cel: the press
+    // makes one, so the PROJECT is another — and its fonts are what they
+    // were, in a list made anew with it. (A text set on a cel that is
+    // there changes the cel's picture and no project.)
     await clickAt(tester, c.dx - 200, c.dy - 100);
     await typeText(tester, 'ab');
     await clickAt(tester, c.dx + 300, c.dy + 200);
 
-    expect(celOf(tester).texts, hasLength(2), reason: '⛔fixture: an edit');
-    expect(fontsOfTheProject(tester), hasLength(1), reason: '⛔fixture');
+    final listedNow = fontsOfTheProject(tester);
+    expect(
+      identical(listedNow, listed),
+      isFalse,
+      reason: '⛔fixture: the project was made anew, its list with it',
+    );
+    expect(listedNow, listed, reason: '⛔fixture: and says what it said');
     expect(said, 0);
   });
 }

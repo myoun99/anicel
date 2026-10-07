@@ -633,12 +633,15 @@ void main() {
 
     testWidgets('letters that do not agree on their face name no missing '
         'one, and mark none', (tester) async {
+      // ⚠️The face this device does not hold comes FIRST: what the letters
+      // do not agree on is shown by their first, and it is that one a row
+      // would be made for.
       await pumpFaces(
         tester,
         text: CelTextContent(
           spans: const [
-            CelTextSpan(text: 'ab', style: plain),
-            CelTextSpan(text: 'cd', style: elsewhere),
+            CelTextSpan(text: 'ab', style: elsewhere),
+            CelTextSpan(text: 'cd', style: plain),
           ],
           anchor: CanvasPoint(x: 8, y: 8),
         ),

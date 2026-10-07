@@ -102,11 +102,12 @@ class CelTextField extends StatelessWidget {
       showCursor: false,
       cursorWidth: 0,
       maxLines: null,
-      // A box sets its lines across its whole width, as the canvas does: a
-      // short line stands where the alignment puts it IN THE BOX, and that
-      // is where the IME is told the caret is. A text that grows is as wide
-      // as its lines (and has no width to be forced to).
-      forceLine: wrapWidth != null,
+      // A text that grows is as wide as its lines, and is not forced to the
+      // line it is given. A box sets its lines across its whole width, as
+      // the canvas does — a short line stands where the alignment puts it
+      // IN THE BOX, and that is where the IME is told the caret is — and
+      // it is the width it is handed below that does that, not this.
+      forceLine: false,
       keyboardType: TextInputType.multiline,
       textInputAction: TextInputAction.newline,
       textAlign: canvasTextAlign(content.align),
