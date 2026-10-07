@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/frame_clipboard.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import '../../helpers/a_cut_with_a_drawing_row.dart';
 
 /// F-281 (유저 2026-10-04): 「se행의 복사,붙여넣기, 타임라인패널에선 되는데
 /// 콘티패널에선 se블록을 복사가 안됨. 로컬이든 글로벌이든 가능하도록 통일.
@@ -69,7 +70,7 @@ void main() {
     setUp(() {
       session = EditorSessionManager(initialProject: createDefaultProject());
       s1 = session.activeTrack.seLayers.first.id;
-      session.cutVerbs.createCut();
+      createCutWithADrawingRow(session);
       cut2 = session.activeCutGlobalStartFrame;
       expect(cut2, greaterThan(0), reason: 'fixture premise');
       // Two sounds: 「a」 on frames 3–4 of the cut, 「b」 on frame 6.

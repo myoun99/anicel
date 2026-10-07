@@ -10,6 +10,8 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 import 'helpers/home_page_probes.dart';
 
@@ -121,7 +123,10 @@ void main() {
   testWidgets('linked frame copy and paste buttons link authored exposures', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const AnicelApp());
+    // From an EMPTY row: the bare project (the app opens on a cel, F-211).
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
 
     // Copy/paste-linked live in the Frame ▾ flyout (R-toolbar round);
     // enablement reads open the menu themselves.

@@ -25,7 +25,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
     await switchToCut(tester, 'default-cut-1');
 
     await expectCutName(tester, 'default-cut-1', '1');
@@ -42,10 +42,10 @@ void main() {
     expect(find.text('B'), findsNothing);
     expect(find.text('A'), findsWidgets);
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
       findsOneWidget,
     );
-    expectCellText('layer-1', 0, 'X');
+    expectCellText(secondCutRowId, 0, 'X');
     expect(await activeCutIdOf(tester), CutId(second));
 
     await tapStoryboardCutBlock(tester, 'default-cut-1');
@@ -64,7 +64,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
     await switchToCut(tester, 'default-cut-1');
     await showStoryboardPanel(tester);
 
@@ -92,7 +92,7 @@ void main() {
     await showTimelinePanel(tester);
 
     expect(
-      find.byKey(const ValueKey<String>('timeline-row-cells-layer-1')),
+      find.byKey(const ValueKey<String>('timeline-row-cells-$secondCutRowId')),
       findsOneWidget,
     );
     expect(
@@ -105,7 +105,7 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
     await showStoryboardPanel(tester);
 
     expect(await activeCutIdOf(tester), CutId(second));
@@ -120,83 +120,85 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
 
     await switchToCut(tester, second);
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
-    expectCellText('layer-1', 0, 'X');
+    expectCellText(secondCutRowId, 0, 'X');
 
     await tapHomeTimelineCell(
       tester,
-      const ValueKey<String>('timeline-cell-layer-1-1'),
+      const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
     );
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    expectCellText('layer-1', 0, 'X');
-    expectCellMark('layer-1', 1, unnamedDrawingMark);
+    expectCellText(secondCutRowId, 0, 'X');
+    expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
     expect(selectedCellStateLabel(tester), 'drawing start');
 
     await switchToCut(tester, 'default-cut-1');
 
     await expectActiveCutName(tester, '1');
     expectActiveLayerName('A');
-    expectCellText('default-layer-1', 0, 'X');
+    // Cut 1 is as it opened (F-211): its first cel, and nothing on frame 2.
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
     expectNoCellMark('default-layer-1', 1, unnamedDrawingMark);
 
     await switchToCut(tester, second);
 
     await expectActiveCutName(tester, '2');
-    expectCellMark('layer-1', 1, unnamedDrawingMark);
+    expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
   });
 
   testWidgets(
     'blank and mark edits after switching to Cut 2 do not affect Cut 1',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
-      final second = await createSecondCut(tester);
+      final second = await createSecondCutWithADrawingRow(tester);
 
       await switchToCut(tester, second);
       await tapHomeTimelineCell(
         tester,
-        const ValueKey<String>('timeline-cell-layer-1-1'),
+        const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
       );
       await tapToolbarButton(
         tester,
         const ValueKey<String>('new-frame-button'),
       );
-      expectCellMark('layer-1', 1, unnamedDrawingMark);
+      expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
 
       // Grow the block to [1,4) so a held cell can take the dot, cut the
       // hold back at 3, then dot the held cell at 2 (dots are block-owned).
-      await dragBlockEndGrip(tester, 'layer-1', 0, 2);
+      await dragBlockEndGrip(tester, secondCutRowId, 0, 2);
       await tapHomeTimelineCell(
         tester,
-        const ValueKey<String>('timeline-cell-layer-1-3'),
+        const ValueKey<String>('timeline-cell-$secondCutRowId-3'),
       );
       await tapToolbarButton(
         tester,
         const ValueKey<String>('blank-exposure-button'),
       );
-      expectCellText('layer-1', 3, 'X');
+      expectCellText(secondCutRowId, 3, 'X');
 
       await tapHomeTimelineCell(
         tester,
-        const ValueKey<String>('timeline-cell-layer-1-2'),
+        const ValueKey<String>('timeline-cell-$secondCutRowId-2'),
       );
       await tapToolbarButton(
         tester,
         const ValueKey<String>('toggle-mark-button'),
       );
-      expectCellMark('layer-1', 2, breakdownMark);
+      expectCellMark(secondCutRowId, 2, breakdownMark);
       expect(selectedCellStateLabel(tester), 'inbetween mark');
 
       await switchToCut(tester, 'default-cut-1');
 
       await expectActiveCutName(tester, '1');
-      // Cut 1's layer is untouched: one empty run whose first cell reads X.
-      expectCellText('default-layer-1', 0, 'X');
-      expectNoCellText('default-layer-1', 1, 'X');
+      // Cut 1's layer is untouched: the cel it opened with (F-211), one
+      // comma long, and the empty run behind it — whose first cell reads X.
+      expectCellMark('default-layer-1', 0, unnamedDrawingMark);
+      expectCellText('default-layer-1', 1, 'X');
       expectNoCellMark('default-layer-1', 2, breakdownMark);
       expect(
         anyCellSemanticsLabel('default-layer-1', 'inbetween mark'),
@@ -209,27 +211,26 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
 
     await switchToCut(tester, second);
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
 
-    await dragBlockEndGrip(tester, 'layer-1', 0, 1);
+    await dragBlockEndGrip(tester, secondCutRowId, 0, 1);
 
     await tapHomeTimelineCell(
       tester,
-      const ValueKey<String>('timeline-cell-layer-1-1'),
+      const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
     );
     expect(selectedCellStateLabel(tester), 'held exposure');
-    expectNoCellText('layer-1', 1, 'X');
+    expectNoCellText(secondCutRowId, 1, 'X');
 
     await switchToCut(tester, 'default-cut-1');
 
     expectActiveLayerName('A');
-    // The fresh layer is all empty (X) cells; empty cells carry no
-    // semantics label under the unified model.
-    expect(selectedCellStateLabel(tester), isNull);
-    expectCellText('default-layer-1', 0, 'X');
+    // Cut 1 is as it opened (F-211): the cursor stands on its first cel.
+    expect(selectedCellStateLabel(tester), 'drawing start');
+    expectCellMark('default-layer-1', 0, unnamedDrawingMark);
     expectNoCellMark('default-layer-1', 1, unnamedDrawingMark);
   });
 
@@ -249,11 +250,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Block A at index 0, block B at index 3 with an X gap between.
-      await tapToolbarButton(
-        tester,
-        const ValueKey<String>('new-frame-button'),
-      );
+      // Block A at index 0 — the cel the project opens with (F-211; ↩️the
+      // test pressed ＋ for it) — and block B at index 3 with an X gap
+      // between.
       await tapHomeTimelineCell(
         tester,
         const ValueKey<String>('timeline-cell-default-layer-1-3'),
@@ -326,7 +325,7 @@ void main() {
     'cut switching clears copied frame before cross-cut linked paste',
     (WidgetTester tester) async {
       await tester.pumpWidget(const AnicelApp());
-      final second = await createSecondCut(tester);
+      final second = await createSecondCutWithADrawingRow(tester);
       await switchToCut(tester, 'default-cut-1');
 
       await tapToolbarButton(
@@ -351,7 +350,7 @@ void main() {
 
       await tapHomeTimelineCell(
         tester,
-        const ValueKey<String>('timeline-cell-layer-1-1'),
+        const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
       );
 
       expect(
@@ -361,7 +360,7 @@ void main() {
         ),
         isFalse,
       );
-      expectNoCellMark('layer-1', 1, unnamedDrawingMark);
+      expectNoCellMark(secondCutRowId, 1, unnamedDrawingMark);
     },
   );
 
@@ -369,25 +368,25 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const AnicelApp());
-    final second = await createSecondCut(tester);
+    final second = await createSecondCutWithADrawingRow(tester);
 
     await switchToCut(tester, second);
     await tapHomeTimelineCell(
       tester,
-      const ValueKey<String>('timeline-cell-layer-1-1'),
+      const ValueKey<String>('timeline-cell-$secondCutRowId-1'),
     );
     await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
-    expectCellMark('layer-1', 1, unnamedDrawingMark);
+    expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
 
     await tapUndoButton(tester);
 
     await expectActiveCutName(tester, '2');
     expectActiveLayerName('A');
-    expectNoCellMark('layer-1', 1, unnamedDrawingMark);
+    expectNoCellMark(secondCutRowId, 1, unnamedDrawingMark);
 
     await tapRedoButton(tester);
 
     await expectActiveCutName(tester, '2');
-    expectCellMark('layer-1', 1, unnamedDrawingMark);
+    expectCellMark(secondCutRowId, 1, unnamedDrawingMark);
   });
 }

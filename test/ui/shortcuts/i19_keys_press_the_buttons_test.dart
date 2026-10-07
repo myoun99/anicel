@@ -71,8 +71,9 @@ List<String> _glyphs() => [
   for (var i = 0; i < 4; i++) rowPainter(_row).cellModelAt(i).glyph,
 ];
 
-/// A fresh app with a drawing on frame 0 of the first row, the cells before
-/// and after [act].
+/// A fresh app — it opens with a drawing on frame 0 of the first row
+/// (F-211; ↩️it opened on an empty row, and this pressed ＋ for the drawing)
+/// — and the cells before and after [act].
 Future<({List<String> before, List<String> after})> _onAFreshDrawing(
   WidgetTester tester,
   Future<void> Function() act,
@@ -82,7 +83,6 @@ Future<({List<String> before, List<String> after})> _onAFreshDrawing(
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pumpWidget(const AnicelApp());
   await tester.pumpAndSettle();
-  await tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
   final before = _glyphs();
   await act();
   return (before: before, after: _glyphs());

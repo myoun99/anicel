@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/canvas/canvas_pan_hold.dart';
 import 'package:anicel/src/ui/canvas/canvas_press.dart';
 import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 
@@ -248,7 +249,14 @@ void main() {
       'drag mapped to the pan — one pan, whichever door', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    // ⚠️On a row with NO cel — the bare project; the app itself opens on a
+    // cel (F-211). On a cel the key and then the press, with no frame
+    // between them, DRAWS instead (board card
+    // `the-pan-key-then-an-instant-press-draws`). This test measures how
+    // FAR the pan goes, so it stands where it always stood.
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
     await tester.pumpAndSettle();
     final layer = find.descendant(
       of: find.byKey(const ValueKey<String>('main-canvas-brush-host')),

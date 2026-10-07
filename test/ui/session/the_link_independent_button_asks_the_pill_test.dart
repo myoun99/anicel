@@ -420,7 +420,11 @@ void main() {
   ) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    // The bare project, as [session] above: [drawnAndLinked] draws the
+    // row's ONE cel (the app itself opens on a cel — F-211).
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
     await tester.pumpAndSettle();
     final s = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -455,7 +459,10 @@ void main() {
     ) async {
       await tester.binding.setSurfaceSize(const Size(1600, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.pumpWidget(const MaterialApp(home: HomePage()));
+      // The bare project, as [session] above (see the test before).
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
       await tester.pumpAndSettle();
       EditorShortcutScope.peek(
         tester.element(find.byType(EditorCanvasArea)),

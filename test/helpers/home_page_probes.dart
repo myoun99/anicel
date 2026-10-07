@@ -149,6 +149,26 @@ Future<String> createSecondCut(WidgetTester tester) async {
   return (await activeCutIdOf(tester)).value;
 }
 
+/// The id of the drawing row [createSecondCutWithADrawingRow] makes: the
+/// second drawing row the session mints.
+const secondCutRowId = 'default-layer-2';
+
+/// [createSecondCut], and a drawing row in it — made the way a user makes
+/// one, with the layer pill's ＋ (it is named 「A」 there, and stood on).
+///
+/// F-211 (유저 2026-09-28): 「새 컷 생성의 초기값은 프레임도 없고 나아가서
+/// A라는 기본 레이어도 존재안하도록」. ↩️A new cut was born with a blank layer
+/// A (`layer-1`), and the tests that edit cells in their second cut stood
+/// on it.
+Future<String> createSecondCutWithADrawingRow(WidgetTester tester) async {
+  final cutId = await createSecondCut(tester);
+  await tapToolbarButton(
+    tester,
+    const ValueKey<String>('timeline-toolbar-add-layer-button'),
+  );
+  return cutId;
+}
+
 Future<void> expectCutName(
   WidgetTester tester,
   String cutId,

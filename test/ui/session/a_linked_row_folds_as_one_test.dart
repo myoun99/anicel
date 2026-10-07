@@ -14,6 +14,7 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart'
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane;
 import '../../helpers/pill_row_clipboard.dart';
+import '../../helpers/a_cut_with_a_drawing_row.dart';
 
 /// 🗣️F-302 (유저 2026-10-05): 「겸용컷, 레이어에서 fx 접기펼치기, 폴더/어태치
 /// 접기/펼치기 버튼도 공유. 지금 겸용컷별로 독립적임. 펼친 상태 접힌 상태
@@ -149,7 +150,7 @@ void main() {
     final r = _Rig();
     // A second cut of its own, standing differently: its first cel's lanes
     // are open, the origin's are shut.
-    r.s.cutVerbs.createCut();
+    createCutWithADrawingRow(r.s);
     final other = r.s.requireActiveCut.id;
     final otherCel = r.s.layers
         .firstWhere((layer) => layer.kind == LayerKind.animation)

@@ -19,6 +19,7 @@ import 'package:anicel/src/ui/session/range_selections.dart';
 import 'package:anicel/src/ui/session/storyboard_cursor.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import '../../helpers/a_cut_with_a_drawing_row.dart';
 
 /// F-283 (유저 2026-10-04): 「타임라인패널의 se블록에 대해 코마조절 1,2,3,4
 /// 버튼이 작동안함. 콘티패널에선 작동하는데. 또 법 멋대로 사본만든건지
@@ -55,7 +56,7 @@ void main() {
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
     s1 = session.activeTrack.seLayers.first.id;
-    session.cutVerbs.createCut();
+    createCutWithADrawingRow(session);
     cut2 = session.activeCutGlobalStartFrame;
     expect(
       cut2,

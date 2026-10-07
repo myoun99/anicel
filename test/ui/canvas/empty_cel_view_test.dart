@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
 
 import '../../helpers/panel_finders.dart' show visibleCanvasPoint;
 import '../../helpers/blank_cel.dart';
@@ -49,10 +50,14 @@ void main() {
   );
   final canvasView = find.byKey(const ValueKey<String>('brush-canvas-view'));
 
+  /// The app on the BARE project. A row with no cel on it is this file's
+  /// subject, and the app itself opens on layer A's first cel (F-211).
   Future<EditorWorkspace> openApp(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
     await tester.pumpAndSettle();
     return tester.widget<EditorWorkspace>(find.byType(EditorWorkspace));
   }
@@ -295,8 +300,8 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('🚨F-171: from the app as it opens — no cel ever drawn — the '
-      'FIRST press makes the block AND draws into it', (tester) async {
+  testWidgets('🚨F-171: on a row no cel was ever drawn on, the FIRST press '
+      'makes the block AND draws into it', (tester) async {
     // 유저 (F-171): 「앱의 초기값 상태에서 프레임 자동생성 버튼 누르고 선
     // 그으면 그 가장 처음 상태만 선이 안그어짐. 블록은 생기는데. 그 상태에서
     // 프레임 삭제하고 다시 해보면 그 뒤부터는 프레임 생기고 선도 라이브로
@@ -304,7 +309,9 @@ void main() {
     //
     // ⛔The case above draws on frame 0 FIRST, on purpose: that is what puts
     // a coordinator behind the empty cell. This one does not — nothing has
-    // been drawn on this layer yet, which is the app as it opens.
+    // been drawn on this layer yet, which was the app as it opened when
+    // 유저 said it. ↩️It opens on a first cel now (F-211), so this is the
+    // bare project — and the law is for every row made since.
     AppInput.settings.value = AppInput.settings.value.copyWith(
       touchDragOneFinger: CanvasTouchDragAction.draw,
       autoCreateFrameOnDraw: true,

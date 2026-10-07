@@ -78,7 +78,12 @@ void main() {
       expect(cuts.first, existingCut);
       expect(created, isNot(existingCut.id));
       expect(cuts.last.name, name, reason: 'named after the cut it follows');
-      expect(cuts.last.layers.first.id, const LayerId('layer-1'));
+      expect(
+        [for (final layer in cuts.last.layers) layer.kind],
+        [LayerKind.instruction, LayerKind.camera],
+        reason: 'F-211: a new cut is bare — ↩️it was born with a blank '
+            'layer under the first free layer id',
+      );
       expect(fixture.editingSession.activeCutId, created);
       expect(fixture.historyManager.undoCount, 1);
       expect(fixture.historyManager.redoCount, 0);

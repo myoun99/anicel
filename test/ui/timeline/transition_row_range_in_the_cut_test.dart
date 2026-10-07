@@ -15,6 +15,7 @@ import 'package:anicel/src/ui/timeline/timeline_section_policy.dart'
     show sectionedLayerOrder;
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart'
     show StoryboardToolbarPanelContext;
+import '../../helpers/a_cut_with_a_drawing_row.dart';
 
 /// transition-row-range-in-the-cut — a RANGE selection holds the transition
 /// row's spans the way it holds any row's blocks, and moves and deletes them.
@@ -35,7 +36,7 @@ void main() {
       initialProject: createDefaultProject(),
     );
     addTearDown(session.dispose);
-    session.cutVerbs.createCut();
+    createCutWithADrawingRow(session);
     session.selectCut(session.repository.requireProject().tracks.first.cuts[1].id);
     expect(
       session.activeCutFrameCount,

@@ -6,6 +6,8 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project.dart';
 
 /// 🗣️F-189 (유저 2026-09-26): 「가끔 터치로 팬하거나 줌하거나 터치조작할때
 /// 아직 손 대고있는데 동작 풀리거든? 터치중 펜 호버하면 자주 풀리는거같은데.
@@ -19,10 +21,13 @@ import 'package:anicel/src/ui/home_page.dart';
 void main() {
   late EditorSessionManager session;
 
-  Future<Finder> pumpHome(WidgetTester tester) async {
+  /// The app as it opens — or on [project].
+  Future<Finder> pumpHome(WidgetTester tester, {Project? project}) async {
     await tester.binding.setSurfaceSize(const Size(1600, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: project)),
+    );
     await tester.pumpAndSettle();
     session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
@@ -209,7 +214,14 @@ void main() {
     WidgetTester tester,
     PointerDeviceKind kind,
   ) async {
-    final area = await pumpHome(tester);
+    // ⚠️On a row with NO cel — the bare project; the app itself opens on a
+    // cel (F-211). On a cel this very sequence, the key and then the press
+    // with no frame between them, DRAWS: the stroke view hears the press
+    // before the pan's gate has rebuilt, and never asks whether the key is
+    // held (board card `the-pan-key-then-an-instant-press-draws`). This
+    // test's subject is the key's REPEATS, so it stands where it always
+    // stood.
+    final area = await pumpHome(tester, project: createDefaultProject());
     final centre = onTheCanvas(tester, area);
     final before = live();
     await tester.sendKeyDownEvent(LogicalKeyboardKey.space);
