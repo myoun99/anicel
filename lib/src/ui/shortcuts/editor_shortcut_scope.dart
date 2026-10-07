@@ -45,12 +45,10 @@ String editorActionLabel(String actionId) => actionLabelOf(
 
 /// [definition]'s name in the program language — [editorActionLabel] for a
 /// row in hand, which a brush library's row always is: it is in no registry
-/// to be looked up by id, and its name is the user's own word for the brush
-/// or the group (I-56), the same in every language.
+/// to be looked up by id. ⚠️Its name is the user's own word for the brush
+/// or the group (I-56), the same in every language: no table has a row for
+/// it, so it answers with the name it carries, as an untabled action does.
 String actionLabelOf(EditorActionDefinition definition) {
-  if (definition.brushPress != null) {
-    return definition.label;
-  }
   if (definition.toolPress case ShapeTilePress(:final verb, :final shape)) {
     return shapeTileLabel(verb, shape);
   }
