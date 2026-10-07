@@ -248,32 +248,91 @@ void main() {
     c.detachTicker();
   });
 
-  testWidgets('waiting is told once each way, and looking again while the '
-      'picture is still not there tells nothing', (tester) async {
+  testWidgets('a run says when it begins to wait and when it goes on — the '
+      'sound hears both through this — and looking again while the picture '
+      'is still not there says nothing', (tester) async {
     final c = controller();
     c.attachTicker(const TestVSync());
     addTearDown(c.dispose);
     missing.add(1);
-    final told = <bool>[];
-    c.isWaitingListenable.addListener(
-      () => told.add(c.isWaitingListenable.value),
-    );
-    var notices = 0;
+    final heard = <bool>[];
+    c.addListener(() => heard.add(c.isWaiting));
 
     c.play(scope: PlaybackScope.activeCut);
     await tester.pump();
+    heard.clear();
     await tester.pump(const Duration(milliseconds: 150));
-    expect(told, [true]);
+    expect(heard, [true]);
 
-    c.addListener(() => notices += 1);
     c.lookAgain();
-    expect(told, [true], reason: 'still not there');
-    expect(notices, 0);
+    expect(heard, [true], reason: 'still not there');
     expect(c.isWaiting, isTrue);
 
     arrive(c, 1);
-    expect(told, [true, false]);
-    expect(notices, 1, reason: 'the sound is told through this: it goes on');
+    expect(heard, [true, false]);
+    c.stop();
+    c.detachTicker();
+  });
+
+  /// The count in the transport's slot says how many frames were NOT shown.
+  /// ↩️Each clock counted off its own readings, so a tick that came late
+  /// onto a frame that was not there counted that frame — and the ones the
+  /// clock had run on to — as skipped, in the one mode that promises every
+  /// picture.
+  testWidgets('🚨a frame the run waits before is not a dropped one: the '
+      'count is the frames it PASSED, and going on forgets none of them', (
+    tester,
+  ) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+    missing.add(2);
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    // One gap straight to 350ms: the clock says frame 3.
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(c.position!.localFrameIndex, 2, reason: '⛔premise: it waits');
+    expect(c.droppedFrames, 1, reason: 'frame 1 was passed; 2 and 3 were not');
+
+    arrive(c, 2);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(c.position!.localFrameIndex, 3);
+    expect(c.droppedFrames, 1, reason: 'nothing was dropped while it stood');
+
+    c.stop();
+    c.detachTicker();
+  });
+
+  testWidgets('on the device\'s clock too — where a run going on from a '
+      'wait steps BACK to the frame it stood on, and that is no new pass', (
+    tester,
+  ) async {
+    final c = controller();
+    c.attachTicker(const TestVSync());
+    addTearDown(c.dispose);
+    missing.add(2);
+    var heard = 0;
+    c.resolveAudioClock = () => AudioClockStatus(globalFrame: heard);
+
+    c.play(scope: PlaybackScope.activeCut);
+    await tester.pump();
+    heard = 3;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(c.position!.localFrameIndex, 2, reason: '⛔premise: it waits');
+    expect(c.droppedFrames, 1);
+
+    // The device is armed again at the frame the run stands on.
+    heard = 2;
+    arrive(c, 2);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    heard = 3;
+    await tester.pump(const Duration(milliseconds: 16));
+    expect(c.position!.localFrameIndex, 3);
+    expect(c.droppedFrames, 1);
+
     c.stop();
     c.detachTicker();
   });
@@ -289,7 +348,6 @@ void main() {
     c.stop();
 
     expect(c.isWaiting, isFalse);
-    expect(c.isWaitingListenable.value, isFalse);
     c.lookAgain();
     expect(c.isActive, isFalse, reason: 'looking again starts nothing');
     c.detachTicker();

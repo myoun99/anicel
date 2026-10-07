@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -141,7 +140,6 @@ class CanvasPlaybackController extends ChangeNotifier
   ValueListenable<bool> get isActiveListenable => _isActiveNotifier;
 
   bool _waiting = false;
-  final ValueNotifier<bool> _isWaitingNotifier = ValueNotifier<bool>(false);
 
   /// Whether the run's clock stands on its frame, waiting for the picture
   /// ([waitsOn]).
@@ -151,7 +149,6 @@ class CanvasPlaybackController extends ChangeNotifier
   /// and it ends by itself the moment the picture lands. [isPlaying] stays
   /// true through it; what stands is the clock, and with it the sound.
   bool get isWaiting => _waiting;
-  ValueListenable<bool> get isWaitingListenable => _isWaitingNotifier;
 
   List<StoryboardTimelineLayoutEntry>? _playlist;
   PlaybackScope _scope = PlaybackScope.activeCut;
@@ -159,12 +156,11 @@ class CanvasPlaybackController extends ChangeNotifier
   int _baseGlobalFrame = 0;
   int _currentGlobalFrame = 0;
   int _droppedFrames = 0;
-  int? _lastRawFrame;
-  int _lastLap = 0;
 
   /// Frames skipped to keep real time during the CURRENT loop pass
   /// (DaVinci-style dropped frame indicator); resets on every wrap-around
-  /// and on play/seek.
+  /// and on play/seek. Counted where the playhead moves ([_goTo]): a frame
+  /// the run WAITS before is not one it skipped.
   int get droppedFrames => _droppedFrames;
 
   /// 🚨★★★ T28 — PLAYING, OR NOT. There is no third state.
@@ -275,7 +271,7 @@ class CanvasPlaybackController extends ChangeNotifier
     }
     _scope = scope;
     _playlist = playlist;
-    _resetDropAccounting();
+    _droppedFrames = 0;
     _currentGlobalFrame = (startGlobalFrame ?? 0).clamp(
       0,
       _playbackTotalFrames(playlist) - 1,
@@ -293,7 +289,6 @@ class CanvasPlaybackController extends ChangeNotifier
   /// or waits on it for its picture.
   void _standHere() {
     _waiting = waitsOn?.call(_currentGlobalFrame) ?? false;
-    _isWaitingNotifier.value = _waiting;
     if (_waiting) {
       _stopTicker();
     } else {
@@ -314,10 +309,6 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     _waiting = false;
-    _isWaitingNotifier.value = false;
-    // Not a new pass, and nothing was dropped while it stood.
-    _lastRawFrame = null;
-    _lastLap = 0;
     _startTicker();
     notifyListeners();
   }
@@ -352,19 +343,13 @@ class CanvasPlaybackController extends ChangeNotifier
       return;
     }
     _currentGlobalFrame = globalFrameIndex.clamp(0, total - 1);
-    _resetDropAccounting();
+    _droppedFrames = 0;
     if (isPlaying) {
       _standHere();
     }
     onSeeked?.call(_currentGlobalFrame);
     _syncFrameNotifiers();
     notifyListeners();
-  }
-
-  void _resetDropAccounting() {
-    _droppedFrames = 0;
-    _lastRawFrame = null;
-    _lastLap = 0;
   }
 
   /// ⛔`pause()` and `resume()` are GONE (T28). They were the two doors of a
@@ -382,7 +367,6 @@ class CanvasPlaybackController extends ChangeNotifier
     _stopTicker();
     _playlist = null;
     _waiting = false;
-    _isWaitingNotifier.value = false;
     _syncFrameNotifiers();
     _isActiveNotifier.value = false;
     notifyListeners();
@@ -400,7 +384,6 @@ class CanvasPlaybackController extends ChangeNotifier
     _localFrameIndex.dispose();
     _globalFrameIndexNotifier.dispose();
     _isActiveNotifier.dispose();
-    _isWaitingNotifier.dispose();
     super.dispose();
   }
 
@@ -485,20 +468,6 @@ class CanvasPlaybackController extends ChangeNotifier
     }
     var frame =
         _baseGlobalFrame + elapsedToGlobalFrame(elapsed, resolveFrameRate());
-    // Dropped-frame accounting on the raw (pre-wrap) frame: any advance of
-    // more than one frame between ticks means rendering fell behind. The
-    // counter reports the CURRENT loop pass only, resetting on wrap.
-    final lap = frame ~/ math.max(1, total);
-    if (lap != _lastLap) {
-      _droppedFrames = 0;
-      _lastRawFrame = null;
-      _lastLap = lap;
-    }
-    final lastRawFrame = _lastRawFrame;
-    if (lastRawFrame != null && frame > lastRawFrame + 1) {
-      _droppedFrames += frame - lastRawFrame - 1;
-    }
-    _lastRawFrame = frame;
     if (frame >= total) {
       if (_loopMode == PlaybackLoopMode.loop) {
         frame %= total;
@@ -523,31 +492,44 @@ class CanvasPlaybackController extends ChangeNotifier
   /// has no picture yet, and then it stands on THAT frame ([waitsOn]): a
   /// tick that came late does not carry the playhead over a picture that
   /// was never shown.
+  ///
+  /// 🚨[droppedFrames] IS COUNTED HERE, OFF THE WAY THE PLAYHEAD WENT: the
+  /// frames it passed without standing on them. A move that wraps starts
+  /// the new pass's count, and counts nothing. ↩️Each clock kept its own
+  /// count off its own raw readings — the wall clock by lap, the device by
+  /// a step back — and with a run that can wait both were wrong the same
+  /// way: they counted the frames a run then WAITED before, which it went
+  /// on to show. Each also left a last reading behind, which a run going on
+  /// from a wait had to remember to forget.
   void _goTo(int frame, int total) {
-    final waitsOn = this.waitsOn;
-    if (waitsOn == null || frame == _currentGlobalFrame) {
-      _setFrame(frame);
-      return;
-    }
+    final from = _currentGlobalFrame;
     // The frames on the way, in the order the run plays them, the clock's
     // own last. Either clock only ever moves on — a step back is the lap
     // wrapping — so the way from here to there is forwards, round the end.
-    var next = _currentGlobalFrame;
-    do {
-      next = (next + 1) % total;
-      if (waitsOn(next)) {
-        _waitOn(next);
-        return;
-      }
-    } while (next != frame);
-    _setFrame(frame);
+    var landing = from;
+    var passed = -1;
+    var waits = false;
+    while (landing != frame && !waits) {
+      landing = (landing + 1) % total;
+      passed += 1;
+      waits = waitsOn?.call(landing) ?? false;
+    }
+    if (landing < from) {
+      _droppedFrames = 0;
+    } else if (passed > 0) {
+      _droppedFrames += passed;
+    }
+    if (waits) {
+      _waitOn(landing);
+    } else {
+      _setFrame(landing);
+    }
   }
 
   void _waitOn(int frame) {
     _waiting = true;
     _stopTicker();
     _currentGlobalFrame = frame;
-    _isWaitingNotifier.value = true;
     _syncFrameNotifiers();
     notifyListeners();
   }
@@ -570,14 +552,7 @@ class CanvasPlaybackController extends ChangeNotifier
       frame = 0;
     }
     // A backward step is the loop wrapping (the transport wraps the
-    // position itself): a fresh pass, like the wall clock's lap reset.
-    final lastRawFrame = _lastRawFrame;
-    if (lastRawFrame != null && frame < lastRawFrame) {
-      _droppedFrames = 0;
-    } else if (lastRawFrame != null && frame > lastRawFrame + 1) {
-      _droppedFrames += frame - lastRawFrame - 1;
-    }
-    _lastRawFrame = frame;
+    // position itself): [_goTo] goes round the end to it.
     _goTo(frame, total);
   }
 
