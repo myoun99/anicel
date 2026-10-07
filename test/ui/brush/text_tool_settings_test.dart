@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/cel_text.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
@@ -690,6 +691,24 @@ void main() {
         isEmpty,
       );
     });
+  });
+
+  test('「그림으로 굳히기」 is said in EVERY language — in Korean as the '
+      'layout 유저 took wrote it, elsewhere by the app\'s own word for a '
+      'layer made pixels', () {
+    expect(
+      {
+        for (final language in AppLanguage.values)
+          language: AppStrings.of(language).textToolIntoDrawing,
+      },
+      {
+        AppLanguage.en: 'Rasterize',
+        AppLanguage.ja: 'ラスタライズ',
+        AppLanguage.ko: '그림으로 굳히기',
+        AppLanguage.fr: 'Pixelliser',
+        AppLanguage.zhHans: '栅格化',
+      },
+    );
   });
 
   // 유저 2026-10-06: 「동작은 텍스트 선택하면 해당 버튼 활성화색」.

@@ -190,6 +190,20 @@ void main() {
       expect(textsOn(cel), [(1, 'ab')]);
     });
 
+    test('a text let go of is DONE WITH: nothing listens to it any more, and '
+        'the letters it had set are let go of with it', () async {
+      final (:tool, host: _, :baker, :cel) = hand();
+      tool.beginText(cel, at);
+      typeInto(tool, 'ab');
+      await baker.pending.answer();
+      final session = tool.session!;
+
+      tool.confirm();
+
+      // What a session that was disposed of says of a new listener.
+      expect(() => session.addListener(() {}), throwsFlutterError);
+    });
+
     test('🚨a landing says the FACES its letters are written in — each '
         'once, the app\'s own left unsaid — and a text taken off its cel '
         'says none', () async {
