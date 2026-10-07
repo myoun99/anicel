@@ -1,6 +1,6 @@
-import 'dart:io';
+import 'dart_sources.dart';
 
-/// Every menu row written under [root] — a `PanelFlyoutItem(…)` call — as
+/// Every menu row written under [dir] — a `PanelFlyoutItem(…)` call — as
 /// 「file | its key as written」, and whether it names an action
 /// (`shortcuts:`).
 ///
@@ -9,21 +9,16 @@ import 'dart:io';
 /// row with no key of its own is known by its place among the keyless rows
 /// of its file.
 ///
-/// ⚠️The caller reads the folder, `Directory('lib/src/ui')` spelled out in
-/// the test: the affected-tests selector finds a source scan by the path
-/// the TEST names.
-({Set<String> named, Set<String> silent}) menuRowsUnder(Directory root) {
+/// ⚠️The caller names the folder, `'lib/src/ui'` spelled out in the test:
+/// the affected-tests selector finds a source scan by the path the TEST
+/// names. The walk is the one every source scan takes ([dartFilesUnder]).
+({Set<String> named, Set<String> silent}) menuRowsUnder(String dir) {
   final named = <String>{};
   final silent = <String>{};
-  final files = root.listSync(recursive: true).whereType<File>().toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
-  for (final file in files) {
-    if (!file.path.endsWith('.dart')) continue;
+  final root = '${dir.replaceAll(r'\', '/')}/';
+  for (final file in dartFilesUnder(dir)) {
     final text = file.readAsStringSync().replaceAll('\r\n', '\n');
-    final path = file.path
-        .replaceAll('\\', '/')
-        .split('${root.path.replaceAll('\\', '/')}/')
-        .last;
+    final path = file.path.replaceAll(r'\', '/').split(root).last;
     var keyless = 0;
     for (final call in _callsOf('PanelFlyoutItem', text)) {
       final key = _argument('keyValue', call);

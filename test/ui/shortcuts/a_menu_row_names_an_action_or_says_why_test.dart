@@ -129,7 +129,7 @@ const ledger = <String, Why>{
 };
 
 void main() {
-  final rows = menuRowsUnder(Directory('lib/src/ui'));
+  final rows = menuRowsUnder('lib/src/ui');
 
   // The instrument before what it measures: a scan that counted a comment
   // as a row would ask the ledger for a line nothing can give, and one that
@@ -158,7 +158,7 @@ final first = PanelFlyoutItem(label: 'keyless');
 final second = PanelFlyoutItem(label: 'keyless too');
 ''');
 
-    final found = menuRowsUnder(folder);
+    final found = menuRowsUnder(folder.path);
 
     expect(found.named, {"menu.dart | 'named'"});
     expect(found.silent, {
