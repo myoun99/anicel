@@ -42,6 +42,7 @@ void main() {
     'psdLab',
     'psdAdjustment',
     'psdClipping',
+    'psdLayerEffects',
     'psdBlend',
     'folderNothing',
     'folderNoBase',

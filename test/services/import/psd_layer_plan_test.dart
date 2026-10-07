@@ -44,6 +44,7 @@ void main() {
     String blend = 'norm',
     String? adjustment,
     bool pixels = true,
+    bool effects = false,
   }) => PsdLayer(
     name: name,
     left: left,
@@ -57,23 +58,31 @@ void main() {
     role: PsdLayerRole.raster,
     pixels: pixels ? Uint8List((right - left) * (bottom - top) * 4) : null,
     adjustmentKey: adjustment,
+    hasLayerEffects: effects,
   );
 
-  PsdLayer bracket(PsdLayerRole role, {String name = 'G', String blend = 'pass'}) =>
-      PsdLayer(
-        name: name,
-        left: 0,
-        top: 0,
-        right: 0,
-        bottom: 0,
-        opacity: 255,
-        visible: true,
-        clipping: false,
-        blendKey: blend,
-        role: role,
-        pixels: null,
-        adjustmentKey: null,
-      );
+  PsdLayer bracket(
+    PsdLayerRole role, {
+    String name = 'G',
+    String blend = 'pass',
+    bool collapsed = false,
+    bool effects = false,
+  }) => PsdLayer(
+    name: name,
+    left: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 255,
+    visible: true,
+    clipping: false,
+    blendKey: blend,
+    role: role,
+    pixels: null,
+    adjustmentKey: null,
+    collapsed: collapsed,
+    hasLayerEffects: effects,
+  );
 
   PsdDocument document(
     List<PsdLayer> layers, {
@@ -150,6 +159,24 @@ void main() {
       expect(book.folderId, root.id);
       expect(result.layers[0].folderId, root.id);
       expect(result.layers[3].folderId, root.id);
+    });
+
+    test('a group shown closed comes in closed, an open one open — the '
+        'file\'s own folder stays open (F-306)', () {
+      final result = plan(
+        document([
+          bracket(PsdLayerRole.groupClose),
+          raster('inside'),
+          bracket(PsdLayerRole.groupOpen, name: 'closed', collapsed: true),
+          bracket(PsdLayerRole.groupClose),
+          raster('beside'),
+          bracket(PsdLayerRole.groupOpen, name: 'open'),
+        ]),
+      );
+      final byName = {for (final layer in result.layers) layer.name: layer};
+      expect(byName['closed']!.collapsed, isTrue);
+      expect(byName['open']!.collapsed, isFalse);
+      expect(byName['BG_a12.psd']!.collapsed, isFalse);
     });
 
     test('groups nest', () {
@@ -236,6 +263,29 @@ void main() {
       expect(
         result.warnings.any((w) => w.english.contains('Curves 1')),
         isTrue,
+      );
+    });
+
+    test('layer effects are named — on a layer and on a group — and the '
+        'rows still come in (F-306)', () {
+      final result = plan(
+        document([
+          raster('plain'),
+          bracket(PsdLayerRole.groupClose),
+          raster('shadowed', effects: true),
+          bracket(PsdLayerRole.groupOpen, name: 'stroked', effects: true),
+        ]),
+      );
+      expect(
+        [
+          for (final warning in result.warnings)
+            if (warning.key == 'psdLayerEffects') warning.values['name'],
+        ],
+        ['shadowed', 'stroked'],
+      );
+      expect(
+        result.layers.map((layer) => layer.name),
+        containsAll(['plain', 'shadowed', 'stroked']),
       );
     });
 

@@ -136,6 +136,7 @@ PsdExpandPlan planPsdExpansion({
         openGroups.add(mint.nextLayerId());
       case PsdLayerRole.groupOpen:
         final id = openGroups.isEmpty ? mint.nextLayerId() : openGroups.removeLast();
+        _sayEffects(source, warnings);
         layers.add(
           Layer(
             id: id,
@@ -147,6 +148,8 @@ PsdExpandPlan planPsdExpansion({
             opacity: source.opacity / 255,
             blendMode: _blendFor(source, warnings),
             folderId: enclosing(),
+            // A folder shown closed comes in closed (F-306).
+            collapsed: source.collapsed,
           ),
         );
       case PsdLayerRole.raster:
@@ -174,6 +177,7 @@ PsdExpandPlan planPsdExpansion({
             ),
           );
         }
+        _sayEffects(source, warnings);
         final layerId = mint.nextLayerId();
         final frameId = mint.nextFrameId(layerId);
         layers.add(
@@ -241,6 +245,22 @@ PsdExpandPlan planPsdExpansion({
     layers: layers,
     placements: placements,
     warnings: warnings,
+  );
+}
+
+/// Names [source] when it carries layer effects that are on: the stack is
+/// the layers' own pixels, and an effect is drawn by Photoshop on top of
+/// them (F-306 — they used to fall away without a word).
+void _sayEffects(PsdLayer source, List<ImportWarning> warnings) {
+  if (!source.hasLayerEffects) {
+    return;
+  }
+  warnings.add(
+    ImportWarning(
+      'psdLayerEffects',
+      '{name}: layer effects not applied.',
+      {'name': source.name},
+    ),
   );
 }
 

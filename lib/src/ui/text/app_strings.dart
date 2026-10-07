@@ -3588,6 +3588,7 @@ enum AppStrings {
     'importWarning.psdLab': 'LabをプロファイルなしでRGBに変換しました — 色が変わります。',
     'importWarning.psdAdjustment': '{name}: 調整レイヤーは適用しませんでした。',
     'importWarning.psdClipping': '{name}: クリッピングマスクは適用しませんでした。',
+    'importWarning.psdLayerEffects': '{name}: レイヤー効果は適用しませんでした。',
     'importWarning.psdBlend': '{name}: 描画モード「{mode}」に相当するものがありません — 通常にしました。',
     'importWarning.folderNothing': 'このフォルダーに取り込めるセルや画像はありませんでした。',
     'importWarning.folderNoBase': '{process}/{symbol}: 対応する最上位レイヤーがありません — セル{n}枚を飛ばしました。',
@@ -4963,6 +4964,7 @@ enum AppStrings {
     'importWarning.psdLab': 'Lab를 프로파일 없이 RGB로 변환했습니다 — 색이 달라집니다.',
     'importWarning.psdAdjustment': '{name}: 조정 레이어는 적용하지 않았습니다.',
     'importWarning.psdClipping': '{name}: 클리핑 마스크는 적용하지 않았습니다.',
+    'importWarning.psdLayerEffects': '{name}: 레이어 효과는 적용하지 않았습니다.',
     'importWarning.psdBlend': '{name}: 블렌드 모드 "{mode}" 에 해당하는 것이 없습니다 — 보통으로 설정했습니다.',
     'importWarning.folderNothing': '이 폴더에 가져올 수 있는 셀이나 그림이 없습니다.',
     'importWarning.folderNoBase': '{process}/{symbol}: 맞는 최상위 레이어가 없습니다 — 셀 {n}장을 건너뛰었습니다.',
@@ -6398,6 +6400,7 @@ enum AppStrings {
         'Lab converti en RVB sans profil — les couleurs changent.',
     'importWarning.psdAdjustment': '{name} : calque de réglage non appliqué.',
     'importWarning.psdClipping': '{name} : masque d\'écrêtage non appliqué.',
+    'importWarning.psdLayerEffects': '{name} : effets de calque non appliqués.',
     'importWarning.psdBlend':
         '{name} : le mode de fusion « {mode} » n\'a pas d\'équivalent — réglé '
         'sur normal.',
@@ -7747,6 +7750,7 @@ enum AppStrings {
     'importWarning.psdLab': 'Lab 在无配置文件的情况下转为 RGB——颜色会偏移。',
     'importWarning.psdAdjustment': '{name}：未应用调整图层。',
     'importWarning.psdClipping': '{name}：未应用剪贴蒙版。',
+    'importWarning.psdLayerEffects': '{name}：未应用图层效果。',
     'importWarning.psdBlend': '{name}：混合模式“{mode}”没有对应项——已设为正常。',
     'importWarning.folderNothing': '该文件夹中没有可导入的赛璐珞或图片。',
     'importWarning.folderNoBase': '{process}/{symbol}：没有匹配的顶层图层——已跳过 {n} 张赛璐珞。',
