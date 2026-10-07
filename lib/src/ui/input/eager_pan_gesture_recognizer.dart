@@ -36,6 +36,16 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
   /// leaves the cell it pressed (F-138-Q1 「누른 상자 벗어나면 시작」).
   bool Function(Offset down, Offset now)? firstStepAt;
 
+  /// Whether the drag this pan carries has CHANGED anything yet — asked of
+  /// its owner after every move, once the owner has heard it, and told to
+  /// the taps that share the pointer ([pointerDragTookAStep]).
+  ///
+  /// ⛔Not [firstStepAt] asked again: that is 「would a drag begun here
+  /// have stepped」, read before the drag exists, and its answer moves once
+  /// the drag does (a select's own anchor span turns its press into a press
+  /// inside the selection). What the drag DID is the owner's to say.
+  bool Function()? draggedAStep;
+
   Offset _down = Offset.zero;
   Offset _now = Offset.zero;
 
@@ -45,6 +55,15 @@ class EagerPanGestureRecognizer extends PanGestureRecognizer {
       _now = event.localPosition;
     }
     super.handleEvent(event);
+    if (event is PointerMoveEvent && (draggedAStep?.call() ?? false)) {
+      markPointerDragStepped(event.pointer);
+    }
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {
+    forgetPointerDragStep(pointer);
+    super.didStopTrackingLastPointer(pointer);
   }
 
   @override

@@ -405,6 +405,7 @@ class _TimelineFrameRangeGestureLayerState
             (horizontal
                 ? Offset(_scrolledMain, _scrolledCross)
                 : Offset(_scrolledCross, _scrolledMain));
+        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           widget.row,
           _anchorIndex,
@@ -428,6 +429,7 @@ class _TimelineFrameRangeGestureLayerState
           accumulatedDelta: _crossDelta + _scrolledCross,
           rowExtent: widget.crossAxisExtent,
         );
+        _noteMoveSteps(frames, rows);
         if (frames == _lastFrames && rows == _lastRows) {
           return;
         }
@@ -445,6 +447,7 @@ class _TimelineFrameRangeGestureLayerState
   void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
+    _dragStepped = false;
     reportRangeDragFinished(
       dragging: mode != _RangeDragMode.none,
       moving: mode == _RangeDragMode.move,
@@ -540,6 +543,10 @@ class _TimelineFrameRangeGestureLayerState
         // selection it has just moved. The pan's end comes after this — a
         // pointer's listeners hear its up before the recognisers do — so
         // the mode still says.
+        //
+        // The taps that CANNOT see this layer's mode — the cells under it —
+        // are told through the pointer instead, once the drag has changed
+        // something ([_dragStepped], `pointerDragTookAStep`).
         child: InstantTapRegion(
           behavior: HitTestBehavior.translucent,
           onTap: (_) {},
@@ -552,6 +559,7 @@ class _TimelineFrameRangeGestureLayerState
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
+            draggedAStep: () => _dragStepped,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -858,6 +866,7 @@ class _TimelineLaneRangeGestureLayerState
             (horizontal
                 ? Offset(_scrolledMain, _scrolledCross)
                 : Offset(_scrolledCross, _scrolledMain));
+        _noteSelectHead(_anchorIndex, _frameAt(local), _crossOffsetAt(local));
         widget.callbacks.onSelectUpdate(
           widget.layer.id,
           widget.laneId,
@@ -871,6 +880,7 @@ class _TimelineLaneRangeGestureLayerState
           accumulatedDelta: _mainDelta + _scrolledMain,
           frameCellExtent: widget.frameCellExtent,
         );
+        _noteMoveSteps(frames, 0);
         if (frames == _lastFrames) {
           return;
         }
@@ -887,6 +897,7 @@ class _TimelineLaneRangeGestureLayerState
   void _finishDrag(VoidCallback onMoveFinished) {
     final mode = _mode;
     _mode = _RangeDragMode.none;
+    _dragStepped = false;
     reportRangeDragFinished(
       dragging: mode != _RangeDragMode.none,
       moving: mode == _RangeDragMode.move,
@@ -982,6 +993,7 @@ class _TimelineLaneRangeGestureLayerState
             context: context,
             debugOwner: this,
             firstStepAt: _firstStepAt,
+            draggedAStep: () => _dragStepped,
             onStart: _startDrag,
             onUpdate: _updateDrag,
             onEnd: _endDrag,
@@ -1000,6 +1012,7 @@ Widget _eagerPanDetector({
   required BuildContext context,
   required Object debugOwner,
   required bool Function(Offset down, Offset now) firstStepAt,
+  required bool Function() draggedAStep,
   required void Function(Offset localPosition) onStart,
   required GestureDragUpdateCallback onUpdate,
   required VoidCallback onEnd,
@@ -1014,6 +1027,7 @@ Widget _eagerPanDetector({
               () => EagerPanGestureRecognizer(debugOwner: debugOwner),
               (recognizer) {
                 recognizer.firstStepAt = firstStepAt;
+                recognizer.draggedAStep = draggedAStep;
                 recognizer.supportedDevices = devices;
                 recognizer.gestureSettings =
                     MediaQuery.maybeGestureSettingsOf(context);
@@ -1046,6 +1060,30 @@ mixin _RangeDragFirstStep {
   int _frameAt(Offset localPosition);
 
   bool _pressedInSelection(int frame);
+
+  /// Whether the drag this layer is carrying has CHANGED anything: moved
+  /// what it carries off its seat, or taken its head off the cell it was
+  /// pressed on. What the pan tells the taps that share its pointer
+  /// (`EagerPanGestureRecognizer.draggedAStep`) — a release inside a tap's
+  /// slop is no tap once this is so (F-238 made a one-frame move that
+  /// short). Let go with the drag.
+  bool _dragStepped = false;
+
+  /// A SELECT whose head stands on [head], [cross] across its row: stepped
+  /// once that is not the cell it was pressed on ([anchor], this row).
+  void _noteSelectHead(int anchor, int head, double cross) {
+    if (head != anchor || cross < 0 || cross >= _dragRowExtent) {
+      _dragStepped = true;
+    }
+  }
+
+  /// A MOVE now [frames] and [rows] from where it began: stepped once
+  /// either is not zero — and still a drag if it comes back.
+  void _noteMoveSteps(int frames, int rows) {
+    if (frames != 0 || rows != 0) {
+      _dragStepped = true;
+    }
+  }
 
   /// Whether a press at [down], now at [now], has stepped. A press inside the
   /// selection steps when the block would leave its seat, by the nearest-cell

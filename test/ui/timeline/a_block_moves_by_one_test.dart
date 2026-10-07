@@ -53,6 +53,7 @@ void main() {
   TimelineGridHooks gridHooks({
     TimelineFrameRangeHooks? rangeHooks,
     TimelineLaneRangeHooks? laneRange,
+    VoidCallback? onSettledPress,
   }) {
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
@@ -63,6 +64,7 @@ void main() {
       exposureStateForLayer: stateFor,
       onSelectLayer: (_) {},
       onSelectFrame: (_) {},
+      onSettledPress: onSettledPress,
       onToggleLayerVisibility: (_) {},
       onLayerOpacityChanged: (_, _) {},
       onToggleLayerTimesheet: (_) {},
@@ -118,6 +120,9 @@ void main() {
     await mount(
       tester,
       gridHooks(
+        // The CELLS' own settled press — the session clears every selection
+        // on it (T10), beside the range's own clear below.
+        onSettledPress: () => heard.settled += 1,
         rangeHooks: TimelineFrameRangeHooks(
           selection: selection,
           onSelectUpdate:
@@ -194,8 +199,41 @@ void main() {
         await tester.pump();
         expect(heard.ends, 1, reason: 'one move, committed on the release');
         expect(heard.clears, 0, reason: 'a move is not a tap');
+        // 🚨Measured 2026-10-07: the eight pixels this move travelled are
+        // inside the twelve a release may travel and still be a tap, so the
+        // cells' settled press fired and the session dropped the selection
+        // it had just moved. 「Did it travel」 is not the question any more:
+        // 「did the drag change anything」 is.
+        expect(
+          heard.settled,
+          0,
+          reason: 'a move is not a tap for the cells under it either',
+        );
       });
     }
+
+    testWidgets('a MOUSE that wobbles short of a step still settles on the '
+        'cells — its pan starts at one pixel, and that alone is no drag', (
+      tester,
+    ) async {
+      final (heard, inside) = await mountSelected(tester);
+
+      final gesture = await tester.startGesture(
+        inside,
+        kind: PointerDeviceKind.mouse,
+      );
+      await creep(tester, gesture, 2);
+      await gesture.up();
+      await tester.pump();
+
+      expect(heard.steps, isEmpty, reason: 'nothing left its seat');
+      expect(
+        heard.settled,
+        1,
+        reason: 'the cells are told of a STEP, not of a pan that started — '
+            'what they were told before this',
+      );
+    });
 
     testWidgets('F-238: a pen trembling short of the first step is still a '
         'TAP — no move begins, and the selection clears (T10)', (
@@ -216,6 +254,7 @@ void main() {
       expect(heard.begins, isEmpty, reason: 'nothing was carried');
       expect(heard.steps, isEmpty);
       expect(heard.clears, 1, reason: 'T10 「클릭하고 떼면 뭐든 비우게」');
+      expect(heard.settled, 1, reason: 'and the cells\' press settled');
     });
 
     testWidgets('F-238: a move the host refuses becomes a SELECT from the '
@@ -339,6 +378,12 @@ void main() {
       await tester.pump();
       expect(heard.steps, [1]);
       expect(heard.ends, 1);
+      expect(
+        heard.clears,
+        0,
+        reason: '🚨a move is not a tap: the band\'s release clears on a tap, '
+            'and eight pixels read as one',
+      );
     });
 
     for (final (way, dy) in [('up', -1.0), ('down', 1.0)]) {
@@ -457,4 +502,7 @@ final class Heard {
   final selects = <(int, int)>[];
   int ends = 0;
   int clears = 0;
+
+  /// The cells' own settled presses (`TimelineGridHooks.onSettledPress`).
+  int settled = 0;
 }

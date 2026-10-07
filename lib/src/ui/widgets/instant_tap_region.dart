@@ -48,7 +48,8 @@ class InstantTapRegion extends StatefulWidget {
   final void Function(Offset localPosition)? onPressDown;
 
   /// Fired on the RELEASE, and only when the pointer never travelled past
-  /// [travelSlop] — 「this press turned out to be a tap」.
+  /// [travelSlop] and no edit drag took a step with it
+  /// ([pointerDragTookAStep]) — 「this press turned out to be a tap」.
   ///
   /// 🚨T10 needs two different things at two different moments, which is why
   /// [onTap] alone could not carry it (유저 확정 2026-08-14):
@@ -167,7 +168,10 @@ class _InstantTapRegionState extends State<InstantTapRegion> {
           return;
         }
         final local = _downLocal ?? event.localPosition;
-        final travelled = _travelled;
+        // A drag that changed something is a drag however short it
+        // travelled: on a cell narrower than the slop one frame's move
+        // stays inside it (F-238), and its release is no tap.
+        final travelled = _travelled || pointerDragTookAStep(event.pointer);
         final actedOnDown = _actedOnDown;
         _forget();
         // A finger that stayed put still owes the primary action, which the
