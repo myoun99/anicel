@@ -222,7 +222,12 @@ void main() {
   /// 91 (R9-rest, 2026-10-06): the English row of the text tool's registry
   /// action, Text Tool — answered in the other four languages by id
   /// (`shortcutAction.tool-text`). The same shape once more.
-  const untranslatedElsewhere = 91;
+  ///
+  /// 92 (I-45's key, 2026-10-07): the English row of the shared pill's Make
+  /// independent — the button wore a table string until it became an action
+  /// a key can be put on, and is answered in the other four languages by id
+  /// (`shortcutAction.edit-unlink`). The same shape.
+  const untranslatedElsewhere = 92;
 
   test('🚨F-37: the rest of lib/src/ui only ever gets more translated', () {
     final hasLetter = RegExp('[A-Za-z]');
