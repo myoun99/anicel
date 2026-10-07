@@ -161,6 +161,40 @@ void main() {
     );
   });
 
+  testWidgets('one path, one roll of the dice: a shape drawn again scatters '
+      'the same way, and another shape rolls numbers of its own', (
+    tester,
+  ) async {
+    final host = _Host();
+    await _pump(
+      tester,
+      host,
+      BrushToolState.defaults
+          .copyWith(size: 6, scatterRadiusRatio: 1.0, scatterCount: 1)
+          .toInputSettings(),
+    );
+    final high = [p(10, 20), p(140, 20)];
+    // The same line, 24 lower.
+    final low = [p(10, 44), p(140, 44)];
+
+    host.stroker!(high);
+    host.stroker!(high);
+    host.stroker!(low);
+
+    // How far each dab was thrown off its line, to a millionth of a pixel.
+    List<int> thrown(List<BrushDab> dabs, double line) => [
+      for (final dab in dabs) ((dab.center.y - line) * 1e6).round(),
+    ];
+    final first = thrown(host.committed[0], 20);
+    expect(first.any((off) => off != 0), isTrue, reason: 'fixture: it scatters');
+    expect(thrown(host.committed[1], 20), first, reason: 'the same shape');
+    expect(
+      thrown(host.committed[2], 44),
+      isNot(first),
+      reason: 'another shape, another roll — not one pattern on every line',
+    );
+  });
+
   testWidgets('its first dab is turned the way the stroke sets off — a tool '
       'knows where it is going before it starts', (tester) async {
     final host = _Host();
@@ -195,10 +229,19 @@ void main() {
         'is there', (tester) async {
       final host = _Host();
       await _pump(tester, host, _brush(), editable: false, celAnswer: true);
+      await tester.pump();
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'fixture');
 
       expect(host.stroker!(corner), isTrue, reason: 'it will be drawn');
       expect(host.askedForACel, 1);
       expect(host.committed, isEmpty, reason: 'not before the cel');
+      expect(
+        tester.binding.hasScheduledFrame,
+        isTrue,
+        reason: 'the frame that brings the cel is asked for, not waited on — '
+            'a path left for whichever frame comes next could land on '
+            'another cel',
+      );
 
       // The frame that brings the cel.
       await _pump(tester, host, _brush(), editable: true, celAnswer: true);

@@ -135,6 +135,30 @@ void main() {
       ]);
     });
 
+    testWidgets('the shape tool has a button of its own, lit while it is in '
+        'hand (I-69)', (tester) async {
+      final pressed = <ToolPress>[];
+      await tester.pumpWidget(_panel(onPress: pressed.add));
+      expect(
+        tester.appIconButton(_button('tool-shape-button')).isSelected,
+        isFalse,
+      );
+
+      await tester.tap(_button('tool-shape-button'));
+      expect(pressed, [const RailToolPress(CanvasTool.shape)]);
+
+      await tester.pumpWidget(_panel(tool: CanvasTool.shape));
+      expect(
+        tester.appIconButton(_button('tool-shape-button')).isSelected,
+        isTrue,
+      );
+      expect(
+        tester.appIconButton(_button('tool-fill-button')).isSelected,
+        isFalse,
+        reason: 'drawing a shape is not the shape fill',
+      );
+    });
+
     testWidgets('tapping the eraser presses the eraser', (tester) async {
       final pressed = <ToolPress>[];
       await tester.pumpWidget(_panel(onPress: pressed.add));
