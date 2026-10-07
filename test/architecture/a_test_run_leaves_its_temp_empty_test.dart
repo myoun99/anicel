@@ -50,6 +50,26 @@ void main() {
     ]);
   });
 
+  test('a folder that came back after its delete — a write still on its way '
+      'makes it again — is asked again when the run ends, and goes', () async {
+    final temp = Directory.systemTemp.createTempSync('left-again');
+    deleteAfterSessionEnds(temp);
+    final again = Directory('${temp.path}/again')..createSync();
+    deleteTempQuietly(again);
+    expect(again.existsSync(), isFalse, reason: 'CONTROL: it went');
+    File('${again.path}/late.json')
+      ..parent.createSync(recursive: true)
+      ..writeAsStringSync('{}');
+
+    expect(
+      await whatTheRunLeftIn(temp),
+      isEmpty,
+      reason: 'the test removed it; the write it set off made it again — '
+          'that is not a folder left behind',
+    );
+    expect(again.existsSync(), isFalse, reason: 'asked again, and gone');
+  });
+
   test('a folder a quiet delete lost is asked again when the run ends, and '
       'named only if the run is still holding it', () async {
     final temp = Directory.systemTemp.createTempSync('left-held');

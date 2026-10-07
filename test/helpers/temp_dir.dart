@@ -14,8 +14,8 @@ import 'dart:io';
 ///
 /// ↩️**It said 「The OS reaps its own temp」 until 2026-10-08, and Windows
 /// does not**: one machine's temp held 696 folders of test runs older than
-/// six hours. A folder this loses is asked for again when the run ends
-/// ([whatTheRunLeftIn]), once nothing of the run is holding it any more.
+/// six hours. Every folder this is asked to remove is asked again when the
+/// run ends ([whatTheRunLeftIn]), once nothing of the run is holding it.
 ///
 /// ⛔This is not 「지우지 않는다」: the delete is still attempted, at the same
 /// moment, and succeeds virtually always. Only the FAILURE is swallowed.
@@ -34,19 +34,17 @@ import 'dart:io';
 /// Nothing else in `test/` may write the delete by hand, and nothing may
 /// call this from an `addTearDown`; the ratchet beside this file holds both.
 void deleteTempQuietly(Directory directory) {
+  _askedToGo.add(_spelled(directory.path));
   try {
     directory.deleteSync(recursive: true);
   } on FileSystemException {
-    // A leaked handle on Windows must not fail the suite. A folder that was
-    // simply not there is not one this lost.
-    if (directory.existsSync()) {
-      _lostToAHandle.add(_spelled(directory.path));
-    }
+    // A leaked handle on Windows must not fail the suite.
   }
 }
 
-/// The folders [deleteTempQuietly] tried to remove and could not.
-final Set<String> _lostToAHandle = <String>{};
+/// Every folder [deleteTempQuietly] was asked to remove — whether it went
+/// or not, because one that went can come back ([whatTheRunLeftIn]).
+final Set<String> _askedToGo = <String>{};
 
 String _spelled(String path) => path.replaceAll(r'\', '/');
 
@@ -58,8 +56,8 @@ String _spelled(String path) => path.replaceAll(r'\', '/');
 /// ONE temp directory, and nothing in that directory said which run made
 /// what: by the time anyone looked, one machine's temp held 1,135 folders
 /// of test runs and 696 of them were older than six hours. Asked here, every
-/// `Directory.systemTemp` of the run — a test's, a fixture's, and the
-/// product code's a test drives — lands in one folder that belongs to this
+/// `Directory.systemTemp` of the run — asked by a test, a fixture, or the
+/// product code a test drives — lands in one folder that belongs to this
 /// run alone, so 「what did this file leave behind」 has an answer that no
 /// other run's folders can blur ([whatTheRunLeftIn]).
 ///
@@ -97,12 +95,15 @@ final class _TheRunsTemp extends IOOverrides {
 /// Whatever is still in [temp] when the run's own folders are gone, one
 /// line each — empty when the run left nothing.
 ///
-/// 🎯**Two answers, and only the second waits.** An entry nothing tried to
-/// delete was left behind, full stop. One [deleteTempQuietly] lost to a
-/// handle is asked again now that every test is over, for as long as
-/// [patience] — the scanner's grip and the late write are gone by then — and
-/// is left behind only if the run is STILL holding it: a file opened and
-/// never closed, which is no longer a moment's grip.
+/// 🎯**Two answers, and only the second waits.** An entry nothing asked to
+/// delete was left behind, full stop. One a test DID ask [deleteTempQuietly]
+/// to remove is asked again now that every test is over, for as long as
+/// [patience], and is left behind only if the run is STILL holding it — a
+/// file opened and never closed. Either way it came to be there is a moment's
+/// grip, not a folder left behind: the delete lost to a handle, or a write
+/// still on its way made the folder again after it (a settings store saves
+/// without waiting and makes its folder; the first runs of this check met
+/// it in a different suite each time, 2026-10-08).
 Future<List<String>> whatTheRunLeftIn(
   Directory temp, {
   Duration patience = const Duration(seconds: 3),
@@ -115,7 +116,7 @@ Future<List<String>> whatTheRunLeftIn(
   for (final entity in temp.listSync(followLinks: false)) {
     final path = _spelled(entity.path);
     final name = path.substring(path.lastIndexOf('/') + 1);
-    if (!_lostToAHandle.contains(path)) {
+    if (!_askedToGo.contains(path)) {
       left.add('$name — nothing deleted it${_holding(entity)}');
     } else if (!await _goneBefore(entity, until)) {
       left.add('$name — still held when the run ended${_holding(entity)}');
