@@ -28,6 +28,9 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
 import 'package:anicel/src/ui/timeline/timeline_bar_menus.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
@@ -175,6 +178,47 @@ void main() {
         addEffectActionLabel(EffectKind.blur, AppLanguage.ko),
         '흐림 효과 추가',
       );
+    });
+
+    test('…and read in the program\'s language wherever a name is asked', () {
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+
+      expect(
+        editorActionLabel(addLayerKindActionId(LayerKind.animation)),
+        '레이어 추가: 애니메이션',
+      );
+      expect(layerKindDisplayName(LayerKind.folder), '폴더');
+      expect(
+        editorActionLabel(addEffectActionId(EffectKind.blur)),
+        '흐림 효과 추가',
+      );
+    });
+
+    test('⛔a composed name\'s English is the registry\'s own wording — one '
+        'composer says both', () {
+      final composed = [
+        for (final definition in editorActionDefinitions)
+          if (definition.composedName != null) definition,
+      ];
+      expect(
+        composed.map((definition) => definition.id),
+        containsAll([
+          addLayerKindActionId(LayerKind.se),
+          addEffectActionId(EffectKind.keepColor),
+          'tool-select-lasso',
+        ]),
+        reason: '⛔premise: the families are composed',
+      );
+      for (final definition in composed) {
+        expect(
+          definition.label,
+          definition.composedName!(AppLanguage.en),
+          reason: definition.id,
+        );
+      }
     });
 
     test('⛔the add menu\'s kinds are the list its actions are made of — the '

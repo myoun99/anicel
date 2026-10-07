@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/menu_rows_without_an_action.dart';
+import '../../helpers/project_scratch_folder.dart';
 
 /// 🗣️I-40 (유저 2026-09-18): 「버튼 전수감사해서 숏컷리스트에 등록 … 설정의
 /// 패널 열기 닫기같은거든 뭐든 모든 버튼」. Asked how far (I-40-Q1), 유저
@@ -129,6 +130,43 @@ const ledger = <String, Why>{
 
 void main() {
   final rows = menuRowsUnder(Directory('lib/src/ui'));
+
+  // The instrument before what it measures: a scan that counted a comment
+  // as a row would ask the ledger for a line nothing can give, and one that
+  // missed a row would call the ledger whole.
+  test('the scan: a row is a CALL — not the class saying what a row takes, '
+      'a comment, a switch asking what a row has, or a longer-named '
+      'widget', () {
+    final folder = Directory.systemTemp.createTempSync('menu-rows');
+    deleteAfterSessionEnds(folder);
+    File('${folder.path}/menu.dart').writeAsStringSync('''
+class PanelFlyoutItem {
+  const PanelFlyoutItem({this.keyValue});
+}
+final a = PanelFlyoutItem(keyValue: 'named', shortcuts: const ['x']);
+final b = PanelFlyoutItem(
+  keyValue: 'silent-\${f(1, 2)}',
+  label: g(3, 4),
+);
+// PanelFlyoutItem(keyValue: 'in a comment')
+final c = switch (e) {
+  PanelFlyoutItem(:final keyValue) => keyValue,
+  _ => null,
+};
+final d = NotAPanelFlyoutItem(keyValue: 'another widget');
+final first = PanelFlyoutItem(label: 'keyless');
+final second = PanelFlyoutItem(label: 'keyless too');
+''');
+
+    final found = menuRowsUnder(folder);
+
+    expect(found.named, {"menu.dart | 'named'"});
+    expect(found.silent, {
+      "menu.dart | 'silent-\${f(1, 2)}'",
+      'menu.dart | keyless row 1',
+      'menu.dart | keyless row 2',
+    });
+  });
 
   test('⛔premise: the scan reaches the menus — the rows that are actions '
       'and the ones that are not', () {
