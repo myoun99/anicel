@@ -13,12 +13,17 @@ import '../helpers/dart_sources.dart';
 /// lives in the commands that write the layout (`TransitionsRideTheCuts`),
 /// not in their doors; this holds the next writer to it.
 ///
-/// ⚠️It reads the repository's layout verbs. A command that writes the
-/// layout inside one `updateProject` (the linked cut's) is not seen here —
-/// `a_layout_command_carries_the_transitions_test` drives that one.
+/// ⚠️It reads the repository's layout verbs, and the ONE INSERTION's two
+/// writes on a project (`projectWithCutInserted` · `projectWithCutTakenOut`)
+/// — since 2026-10-08 a new cut goes in by one `updateProject`, the linked
+/// cut's command with it, so the insertion and that command are seen by
+/// those two names. A command that writes the layout some OTHER way inside
+/// an `updateProject` is not seen here;
+/// `a_layout_command_carries_the_transitions_test` drives the ones there
+/// are.
 void main() {
-  test('a file that writes a cut layout through the repository carries the '
-      'transitions', () {
+  test('a file that writes a cut layout — by the repository\'s verbs or by '
+      'the one insertion — carries the transitions', () {
     final writers = <String>[];
     final bare = <String>[];
     for (final entity in dartFilesUnder('lib')) {
@@ -42,6 +47,15 @@ void main() {
       reason: 'LIVENESS — the scan reads the writers it is about',
     );
     expect(
+      writers,
+      containsAll(<Matcher>[
+        endsWith('lib/src/services/commands/cut_insertion.dart'),
+        endsWith('lib/src/services/commands/create_linked_cut_command.dart'),
+      ]),
+      reason: 'the insertion and the linked cut are writers by NAME — a '
+          'count would not say which ones it lost',
+    );
+    expect(
       bare,
       isEmpty,
       reason:
@@ -52,8 +66,10 @@ void main() {
   });
 }
 
-/// A repository verb that changes where cuts stand on a track.
+/// A write that changes where cuts stand on a track: a repository verb, or
+/// one of the insertion's two writes on a project.
 final _layoutWrite = RegExp(
   r'\b_?repository\.(insertCut|removeCut|setCutOrder|reorderCut|'
-  r'updateCutDuration|updateCutLeadingGap|addCut)\(',
+  r'updateCutDuration|updateCutLeadingGap|addCut)\(|'
+  r'\bprojectWithCut(Inserted|TakenOut)\(',
 );
