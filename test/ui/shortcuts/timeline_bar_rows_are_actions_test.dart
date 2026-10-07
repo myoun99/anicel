@@ -27,6 +27,7 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/editor_shortcut_scope.dart';
 import 'package:anicel/src/ui/timeline/timeline_bar_menus.dart';
 import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 const k = LogicalKeyboardKey.keyK;
@@ -388,6 +389,36 @@ void main() {
       await tester.tap(button);
       await tester.pumpAndSettle();
       expect(on(), before, reason: 'the button and the key flip one switch');
+    });
+  });
+
+  group('the pills\' buttons that are actions', () {
+    testWidgets('wear the action\'s name and show a key recorded for it — '
+        'the cut pill\'s ＋ and the frame pill\'s switch', (tester) async {
+      await pumpApp(tester);
+      String tooltip(String key) => tester
+          .widget<AppIconButtonFace>(find.byKey(ValueKey<String>(key)).first)
+          .tooltip;
+      expect(tooltip('new-cut-button'), 'New cut');
+      expect(
+        tooltip('auto-frame-toggle-button'),
+        'Make a frame where there is none',
+      );
+
+      keys(tester)
+        ..setActivators(EditorActionIds.cutNew, const [
+          SingleActivator(k, control: true),
+        ])
+        ..setActivators(EditorActionIds.frameAutoCreate, const [
+          SingleActivator(k, alt: true),
+        ]);
+      await tester.pumpAndSettle();
+
+      expect(tooltip('new-cut-button'), 'New cut (Ctrl+K)');
+      expect(
+        tooltip('auto-frame-toggle-button'),
+        'Make a frame where there is none (Alt+K)',
+      );
     });
   });
 
