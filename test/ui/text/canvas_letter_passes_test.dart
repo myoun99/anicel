@@ -137,14 +137,18 @@ void main() {
       // layer of its own round the hard one.)
       expect(drawnBy(passes), [
         'pass 2',
+        'cut',
         'layer',
         'layer',
         'pass 3',
         'restore',
         'restore',
+        'restore',
         'pass 1',
+        'cut',
         'layer',
         'pass 4',
+        'restore',
         'restore',
       ]);
     });
@@ -155,14 +159,18 @@ void main() {
       // The fill (it measures) · the hard outline · the hard fill.
       expect(said, hasLength(3));
       expect(drawnBy(passes), [
+        'cut',
         'layer',
         'layer',
         'pass 2',
         'restore',
         'restore',
+        'restore',
         'pass 1',
+        'cut',
         'layer',
         'pass 3',
+        'restore',
         'restore',
       ]);
     });
@@ -375,6 +383,13 @@ class _WritesDown implements ui.Canvas {
 
   @override
   void saveLayer(ui.Rect? bounds, ui.Paint paint) => calls.add('layer');
+
+  @override
+  void clipRect(
+    ui.Rect rect, {
+    ui.ClipOp clipOp = ui.ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => calls.add('cut');
 
   @override
   void restore() => calls.add('restore');

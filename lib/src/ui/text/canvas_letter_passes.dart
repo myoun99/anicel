@@ -147,7 +147,7 @@ class CanvasLetterPasses {
     _drawHard(
       canvas,
       argb,
-      within: box.inflate(1),
+      within: box,
       cover: () => canvas.drawRect(box, _coverIn(argb)),
     );
   }
@@ -192,6 +192,13 @@ typedef _HardPass = ({int argb, TextPainter cover});
 /// paint: a paint's alpha is taken before its filter (measured 2026-10-07 —
 /// a half see-through colour came down whole), so under the cliff it would
 /// be read as cover.
+///
+/// ⚠️[within] IS A CUT, MADE HERE. One engine cuts a layer at the bounds it
+/// is given and another takes them as a hint (measured 2026-10-07: the test
+/// engine drew a hard outline past them, whole) — so a room too small would
+/// show on the first and pass every test on the second. Cut here, it shows
+/// wherever this runs. The cut is hard, and keeps a pixel the cliff keeps:
+/// one whose middle is inside.
 void _drawHard(
   ui.Canvas canvas,
   int argb, {
@@ -200,6 +207,9 @@ void _drawHard(
 }) {
   final alpha = (argb >> 24) & 0xFF;
   final seeThrough = alpha != 0xFF;
+  canvas
+    ..save()
+    ..clipRect(within, doAntiAlias: false);
   if (seeThrough) {
     canvas.saveLayer(
       within,
@@ -221,6 +231,7 @@ void _drawHard(
   if (seeThrough) {
     canvas.restore();
   }
+  canvas.restore();
 }
 
 /// How steep the alpha's cliff is ([_drawHard]): of two covers a 255th

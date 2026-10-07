@@ -195,12 +195,25 @@ void main() {
       expect(hex(hard), {'ffc80a14', 'ff14c80a'});
     });
 
-    test('⛔CONTROL: with one smooth letter the box is smooth', () async {
+    test('⛔CONTROL: with one smooth letter the box is smooth — read off '
+        'the box alone, where no letter is', () async {
+      // The letters are see-through to nothing: only the box is drawn, and
+      // every soft pixel is the box's own edge.
       final mixed = await inkOf(
-        said([run('a'), run('b', antialias: true)], background: green),
+        said([
+          run('a', color: 0x00000000),
+          run('b', antialias: true, color: 0x00000000),
+        ], background: green),
+      );
+      final hard = await inkOf(
+        said([
+          run('a', color: 0x00000000),
+          run('b', color: 0x00000000),
+        ], background: green),
       );
 
-      expect(hex(mixed).length, greaterThan(4));
+      expect(hex(mixed).length, greaterThan(4), reason: 'a soft edge');
+      expect(hex(hard), {'ff14c80a'}, reason: '⛔fixture: all hard, no edge');
     });
   });
 
@@ -244,15 +257,51 @@ void main() {
     test('an outline with no width is no outline, hard or smooth', () {
       expect(layersOf(said([run('ab', outline: blue)])), 1);
     });
+
+    test('🚨a hard pass is CUT at the room it is given, on every engine — '
+        'all the letters can draw, a letter\'s size past their block', () {
+      final layout = layoutCelText(
+        said([run('ab', outline: blue, outlineWidth: 4)]),
+      );
+      final canvas = _CountsLayers();
+      layout.paint(canvas);
+
+      // Size 10: the block is 20 by 10, and the room a letter's size and
+      // half the outline past it on every side.
+      expect(canvas.cuts, hasLength(2), reason: 'the outline, the fill');
+      expect(
+        canvas.cuts.toSet(),
+        {layout.block.inflate(10 + 2)},
+      );
+      layout.dispose();
+    });
+
+    test('the box behind hard letters is cut at itself', () {
+      final layout = layoutCelText(said([run('ab')], background: green));
+      final canvas = _CountsLayers();
+      layout.paint(canvas);
+      layout.dispose();
+
+      expect(canvas.cuts.first, layout.box);
+    });
   });
 }
 
-/// A canvas that counts the layers opened on it and draws nothing.
+/// A canvas that counts the layers opened on it, keeps the rects it was cut
+/// at, and draws nothing.
 class _CountsLayers implements ui.Canvas {
   int layers = 0;
+  final List<ui.Rect> cuts = [];
 
   @override
   void saveLayer(ui.Rect? bounds, ui.Paint paint) => layers += 1;
+
+  @override
+  void clipRect(
+    ui.Rect rect, {
+    ui.ClipOp clipOp = ui.ClipOp.intersect,
+    bool doAntiAlias = true,
+  }) => cuts.add(rect);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
