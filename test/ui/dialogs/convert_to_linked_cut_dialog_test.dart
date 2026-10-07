@@ -59,7 +59,11 @@ void main() {
   ) async {
     await show(tester, previewOf: (_) => linkingPreview);
 
-    expect(find.textContaining('Links A, B.'), findsOneWidget);
+    // F-303: the layers it links are LISTED under their heading — ↩️they
+    // were joined into the sentence 「Links A, B.」.
+    expect(find.text('Layers linked (2)'), findsOneWidget);
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsOneWidget);
     expect(
       find.textContaining('replaced by the origin\'s (원본 승리)'),
       findsOneWidget,
@@ -69,6 +73,7 @@ void main() {
     for (final drawing in replaced) {
       expect(
         find.descendant(
+          // One list among several now: any of the window's lists.
           of: find.byKey(const ValueKey<String>('app-notice-details-list')),
           matching: find.text(drawing),
         ),
@@ -80,8 +85,10 @@ void main() {
       find.textContaining('2 drawing(s) join the shared set.'),
       findsOneWidget,
     );
-    expect(find.textContaining('"2" gains: only-here.'), findsOneWidget);
-    expect(find.textContaining('This cut gains: only-there.'), findsOneWidget);
+    expect(find.text('Added to "2" (1)'), findsOneWidget);
+    expect(find.text('only-here'), findsOneWidget);
+    expect(find.text('Added to this cut (1)'), findsOneWidget);
+    expect(find.text('only-there'), findsOneWidget);
     expect(find.textContaining('Undo restores both cuts.'), findsOneWidget);
 
     await tester.tap(
@@ -123,7 +130,7 @@ void main() {
       ],
     );
 
-    expect(find.textContaining('Links A, B.'), findsNothing);
+    expect(find.text('Layers linked (2)'), findsNothing);
     final confirm = tester.widget<FilledButton>(
       find.byKey(const ValueKey<String>('convert-linked-cut-confirm-button')),
     );
@@ -135,6 +142,6 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('3').last);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Links A, B.'), findsOneWidget);
+    expect(find.text('Layers linked (2)'), findsOneWidget);
   });
 }

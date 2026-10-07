@@ -142,16 +142,16 @@ void main() {
     'convertLinkedCutTitle': (s) => s.convertLinkedCutTitle,
     'convertLinkedCutBodyTemplate': (s) => s.convertLinkedCutBodyTemplate,
     'convertLinkedCutTargetLabel': (s) => s.convertLinkedCutTargetLabel,
-    'convertLinkedCutLinksTemplate': (s) => s.convertLinkedCutLinksTemplate,
+    'convertLinkedCutLinksHeading': (s) => s.convertLinkedCutLinksHeading,
     'convertLinkedCutReplacedTemplate': (s) =>
         s.convertLinkedCutReplacedTemplate,
     'convertLinkedCutReplacedHeading': (s) =>
         s.convertLinkedCutReplacedHeading,
     'convertLinkedCutJoiningTemplate': (s) => s.convertLinkedCutJoiningTemplate,
-    'convertLinkedCutTargetGainsTemplate': (s) =>
-        s.convertLinkedCutTargetGainsTemplate,
-    'convertLinkedCutOriginGainsTemplate': (s) =>
-        s.convertLinkedCutOriginGainsTemplate,
+    'convertLinkedCutTargetGainsHeadingTemplate': (s) =>
+        s.convertLinkedCutTargetGainsHeadingTemplate,
+    'convertLinkedCutOriginGainsHeading': (s) =>
+        s.convertLinkedCutOriginGainsHeading,
     'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
     'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
     'convertLinkedCutResizeFirst': (s) => s.convertLinkedCutResizeFirst,

@@ -123,6 +123,18 @@ class _PreviewSummary extends StatelessWidget {
     ),
   );
 
+  /// Names the 안내문 is about, in the notices' own fold under the heading
+  /// that says what they are — open, as [_replaced]'s are.
+  ///
+  /// 🗣️F-303 (유저 2026-10-06): 「ui 공용 리스트화 사용안하는거 연결」.
+  /// ↩️Three lines of this window joined their names into a sentence
+  /// (「Links A, B.」, 「"2" gains: …」, 「This cut gains: …」) beside the one
+  /// list I-18 had already made of the drawings it replaces.
+  Widget _listed(String heading, List<String> names) => Padding(
+    padding: const EdgeInsets.only(bottom: 4),
+    child: DetailsDisclosure(heading: heading, lines: names, startsOpen: true),
+  );
+
   /// 원본 승리, announced up front (user-confirmed rule): the origin's
   /// picture wins each same-name conflict, exactly once, undoable.
   ///
@@ -157,11 +169,9 @@ class _PreviewSummary extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (preview.linkingLayerNames.isNotEmpty)
-          line(
-            strings.convertLinkedCutLinksTemplate.replaceAll(
-              '{names}',
-              preview.linkingLayerNames.join(', '),
-            ),
+          _listed(
+            strings.convertLinkedCutLinksHeading,
+            preview.linkingLayerNames,
           ),
         ..._replaced(context),
         if (preview.joiningFrameCount > 0)
@@ -172,20 +182,17 @@ class _PreviewSummary extends StatelessWidget {
             ),
           ),
         if (preview.layerNamesAppearingInTarget.isNotEmpty)
-          line(
-            strings.convertLinkedCutTargetGainsTemplate
-                .replaceAll('{cut}', preview.targetCutName)
-                .replaceAll(
-                  '{names}',
-                  preview.layerNamesAppearingInTarget.join(', '),
-                ),
+          _listed(
+            strings.convertLinkedCutTargetGainsHeadingTemplate.replaceAll(
+              '{cut}',
+              preview.targetCutName,
+            ),
+            preview.layerNamesAppearingInTarget,
           ),
         if (preview.layerNamesAppearingInOrigin.isNotEmpty)
-          line(
-            strings.convertLinkedCutOriginGainsTemplate.replaceAll(
-              '{names}',
-              preview.layerNamesAppearingInOrigin.join(', '),
-            ),
+          _listed(
+            strings.convertLinkedCutOriginGainsHeading,
+            preview.layerNamesAppearingInOrigin,
           ),
         if (!preview.linksAnything) line(strings.convertLinkedCutNothing),
         // Sizes first: linking makes the two show ONE picture, and the

@@ -117,6 +117,16 @@ class DetailsDisclosure extends StatefulWidget {
 class _DetailsDisclosureState extends State<DetailsDisclosure> {
   late bool _open = widget.startsOpen;
 
+  /// The heading and its count. Flexible: one longer than the window is
+  /// wide wraps under itself rather than running off the edge (F-303 gave
+  /// the list to windows whose headings are sentences).
+  Widget _heading(ThemeData theme) => Flexible(
+    child: Text(
+      '${widget.heading} (${widget.lines.length})',
+      style: theme.textTheme.bodyMedium,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -134,15 +144,7 @@ class _DetailsDisclosureState extends State<DetailsDisclosure> {
                 _open ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
                 size: 18,
               ),
-              // Flexible: a heading longer than the window is wide wraps
-              // under itself rather than running off the edge (F-303 gave
-              // the list to windows whose headings are sentences).
-              Flexible(
-                child: Text(
-                  '${widget.heading} (${widget.lines.length})',
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
+              _heading(theme),
             ],
           ),
         )),
