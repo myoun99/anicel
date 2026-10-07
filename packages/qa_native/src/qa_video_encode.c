@@ -100,6 +100,8 @@ QA_EXPORT int32_t qa_video_export_error(char* out, int32_t capacity) {
 #include <mfreadwrite.h>
 #include <mferror.h>
 
+#include "qa_video_hardware_law.h"
+
 typedef struct {
   IMFSinkWriter* writer;
   DWORD video_stream;
@@ -224,8 +226,13 @@ QA_EXPORT int32_t qa_video_export_open(const char* utf8_path,
   // and the sink writer only reaches the hardware (async) ones through
   // this attribute. H.264 keeps working either way (HW first, the
   // software MFT as ever when there is none).
+  // ↩️2026-10-08: 「either way」 was not true of a SMALL H.264 job — an
+  // Intel hardware transform takes a 64×48 job and fails it at Finalize.
+  // Which jobs may ask is qa_video_hardware_may_encode's to say.
   IMFAttributes* writer_attributes = NULL;
-  if (SUCCEEDED(MFCreateAttributes(&writer_attributes, 1))) {
+  if (qa_video_hardware_may_encode(g_win_video.width, g_win_video.height,
+                                   codec == QA_VIDEO_CODEC_HEVC) &&
+      SUCCEEDED(MFCreateAttributes(&writer_attributes, 1))) {
     IMFAttributes_SetUINT32(writer_attributes,
                             &MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
   }
