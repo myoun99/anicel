@@ -202,4 +202,31 @@ void main() {
       expect(line.lentBytes, 0);
     });
   });
+
+  testWidgets('🚨what a run may hold is the line less what the session keeps '
+      'warm — the open cut\'s frames, which no trim gives back', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      const budget = 1024;
+      final s = session(budget: budget);
+      final line = s.playbackRig.playbackCache;
+      final composites = s.renderCaches.cutFrameCompositeCache;
+      expect(line.lendableBytes, budget, reason: 'LIVENESS: nothing warm');
+
+      final open = s.activeCutOrNull!;
+      draw(s, open, 'cut-1-layer', 'frame-a');
+      await composites.prepareComposite(
+        cut: open,
+        frameIndex: 0,
+        quality: s.playbackRig.playbackQuality,
+      );
+      expect(composites.estimatedBytes, greaterThan(0), reason: 'premise');
+      expect(
+        line.lendableBytes,
+        budget - composites.estimatedBytes,
+        reason: 'the open cut\'s warm frame is the session\'s, not the run\'s',
+      );
+    });
+  });
 }
