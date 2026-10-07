@@ -5476,11 +5476,11 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// 통일적용」. The row holds TWO papers, and which one a position is on
   /// is the split its gestures already make by hit-testing: where the conte
   /// blocks are drawn ([StoryboardCutBlocksPainter.conteBlockBandOf]) over a
-  /// cut that has a storyboard row, the CONTE block — the cell it is, of
-  /// that row on the cut's own frames, the very cell the timeline's double
-  /// tap names; anywhere else on a cut block, the CUT — a cell of the
-  /// track's row. So the two never answer for each other, and neither
-  /// answers for a block of another row.
+  /// cut that has a storyboard row, the CONTE block — a cell of that row;
+  /// anywhere else on a cut block, the CUT — a cell of the track's row. The
+  /// ROW is what tells the two apart (both count the track's frames, as the
+  /// press does), so they never answer for each other, and neither answers
+  /// for a block of another row.
   ({TimelineRowAddress row, TimelineDoubleTapCells cells, VoidCallback open})?
   _doubleClickCellAt(Offset localPosition) {
     TimelineDoubleTapCells cellAt(int? frame) => (
@@ -5507,7 +5507,7 @@ class _StoryboardTrackRow extends StatelessWidget {
           ? null
           : (
               row: LayerRowAddress(strip.layer.id),
-              cells: cellAt(frame - strip.entry.startFrame),
+              cells: cellAt(frame),
               open: () => onEditConteBlock(track.id, strip.layer.id, frame),
             );
     }
