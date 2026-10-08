@@ -85,14 +85,6 @@ class ContePictureLive extends StatelessWidget {
   /// the camera it showed more than the film has, and sharper than the
   /// print beside it (10-02: 「끄면 부드럽고 켜면 선명」).
   Widget _live(ContePicture picture) {
-    final window = picture.window;
-    final drawn = session.editingCanvas.stackAt(
-      cut: picture.cut,
-      frameIndex: picture.frame,
-      drawingLayerId: picture.layer.id,
-    );
-    final canvas = picture.cut.canvasSize;
-    final corners = canvas.canvasRect;
     final raster = pictureRasterOf(
       SheetDeviceGrid.through(
         viewport,
@@ -112,7 +104,7 @@ class ContePictureLive extends StatelessWidget {
     final canvasToBox =
         Matrix4.diagonal3Values(rasterPerPaper, rasterPerPaper, 1)
           ..multiply(Matrix4.translationValues(-frame.left, -frame.top, 0))
-          ..multiply(window.canvasToPaper);
+          ..multiply(picture.window.canvasToPaper);
     final laid = pictureLaid(picture.mark, viewport);
     return ClipPath(
       clipper: _shotOf(picture),
@@ -137,51 +129,63 @@ class ContePictureLive extends StatelessWidget {
                 laid,
                 effectiveRatio,
               ),
-              child: Stack(
-                children: [
-                  const Positioned.fill(
-                    child: ColoredBox(color: exportFrameGround),
-                  ),
-                  Positioned.fill(
-                    child: ClipPath(
-                      clipper: _Outline([
-                        for (final corner in [
-                          corners.topLeft,
-                          corners.topRight,
-                          corners.bottomRight,
-                          corners.bottomLeft,
-                        ])
-                          MatrixUtils.transformPoint(canvasToBox, corner),
-                      ]),
-                      child: CanvasLayerStackView(
-                        key: ValueKey<String>('conte-picture-live-${window.id}'),
-                        nodes: drawn.nodes,
-                        imageCache: session.renderCaches.layerFrameImageCache,
-                        canvasSize: canvas,
-                        viewport: viewportOfSimilarity(canvasToBox)!,
-                        activeSurfacePainter: BitmapSurfacePainter(
-                          surface: celSurfaceAsShown(
-                            surfaceOf(picture),
-                            drawn.activeSourceEffects,
-                          ),
-                          overlayModel: window.overlay,
-                          showTransparentBackground: false,
-                          lineage: (window.key.layerId, window.key.frameId),
-                        ),
-                        onBufferBytes: (bytes) => _count(window.id, bytes),
-                        // The page prints this picture under it: taking over
-                        // from the print, the live one shows no less on its
-                        // first frame.
-                        alreadyShown: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              child: _composite(picture, canvasToBox),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// What [picture]'s raster holds: the frame's ground, and its canvas
+  /// composited through [canvasToBox] — the canvas into the raster — cut
+  /// to the canvas's outline.
+  Widget _composite(ContePicture picture, Matrix4 canvasToBox) {
+    final window = picture.window;
+    final drawn = session.editingCanvas.stackAt(
+      cut: picture.cut,
+      frameIndex: picture.frame,
+      drawingLayerId: picture.layer.id,
+    );
+    final canvas = picture.cut.canvasSize;
+    final corners = canvas.canvasRect;
+    return Stack(
+      children: [
+        const Positioned.fill(child: ColoredBox(color: exportFrameGround)),
+        Positioned.fill(
+          child: ClipPath(
+            clipper: _Outline([
+              for (final corner in [
+                corners.topLeft,
+                corners.topRight,
+                corners.bottomRight,
+                corners.bottomLeft,
+              ])
+                MatrixUtils.transformPoint(canvasToBox, corner),
+            ]),
+            child: CanvasLayerStackView(
+              key: ValueKey<String>('conte-picture-live-${window.id}'),
+              nodes: drawn.nodes,
+              imageCache: session.renderCaches.layerFrameImageCache,
+              canvasSize: canvas,
+              viewport: viewportOfSimilarity(canvasToBox)!,
+              activeSurfacePainter: BitmapSurfacePainter(
+                surface: celSurfaceAsShown(
+                  surfaceOf(picture),
+                  drawn.activeSourceEffects,
+                ),
+                overlayModel: window.overlay,
+                showTransparentBackground: false,
+                lineage: (window.key.layerId, window.key.frameId),
+              ),
+              onBufferBytes: (bytes) => _count(window.id, bytes),
+              // The page prints this picture under it: taking over from the
+              // print, the live one shows no less on its first frame.
+              alreadyShown: true,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
