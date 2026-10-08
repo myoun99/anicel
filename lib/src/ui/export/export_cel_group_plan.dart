@@ -172,10 +172,12 @@ class ExportCelSheet extends ExportListSheet {
   final ExportCelRefusal? refused;
 
   /// The picture: the cel that is written, for a planned drawing — or, for
-  /// one that is [refused], the drawing by itself over its cut's paper.
+  /// one that is [refused], the bare drawing, drawn nowhere: it carries what
+  /// the hand did to it ([skipped], [laid]).
   ///
-  /// ↩️That was what the preview showed of a row that was off, while a row
-  /// whose files can be none was in the list.
+  /// ↩️It was the drawing by itself over its cut's paper — what the preview
+  /// showed of a row that was off, while a row whose files can be none was
+  /// in the list.
   final ExportCelGroupTask look;
 
   /// Its picture's own answer, so the list and the run cannot say two

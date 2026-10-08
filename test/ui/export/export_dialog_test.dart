@@ -148,7 +148,9 @@ void main() {
     Key? dialogKey,
     TextStyle face = const TextStyle(),
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 660));
+    // Room for the render queue beside the least the preview takes (the
+    // Cels list with its attach column), so the drawer stays open.
+    await tester.binding.setSurfaceSize(const Size(1440, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     // Unmount at teardown: the dialog's dispose cancels the preview
     // debounce timer — otherwise every test ends with a pending Timer.

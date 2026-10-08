@@ -74,7 +74,9 @@ void main() {
     EditorSessionManager manager, {
     String? Function()? askedWhere,
   }) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 660));
+    // Room for the render queue beside the least the preview takes (the
+    // Cels list with its attach column), so the drawer stays open.
+    await tester.binding.setSurfaceSize(const Size(1440, 660));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
     await tester.pumpWidget(

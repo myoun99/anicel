@@ -1540,12 +1540,12 @@ class ExportDialogState extends State<ExportDialog> {
         }
         // The file exactly as the naming rule will write it, extension
         // included (유저 2026-09-09: 「이름 규칙같은거에서 적용된걸 그대로 …
-        // A0001.png 이런식으로 확장자까지」) — and one that is no file by its
-        // whole name.
+        // A0001.png 이런식으로 확장자까지」) — a file turned off by the name
+        // it keeps. ↩️A drawing that could be no file was turned through
+        // too, on a row that was off, and named by its whole name
+        // (export-four-tabs).
         final sheet = pages[at];
-        return sheet.fileName.isNotEmpty
-            ? (name: sheet.fileName, absent: false)
-            : (name: sheet.fullName, absent: true);
+        return (name: sheet.fileName, absent: !sheet.written);
       case ExportTab.conte:
         final (_, pages) = _conteSheet();
         if (pages.isEmpty) {

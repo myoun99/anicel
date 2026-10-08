@@ -248,10 +248,8 @@ void main() {
     session.playbackRig.prerenderScheduler.cancel();
   });
 
-  testWidgets('a cel\'s plate is its file — and a drawing the run does not '
-      'write is named by its own name, in the ink of what is off', (
-    tester,
-  ) async {
+  testWidgets('a cel\'s plate is its file — and a file the run does not '
+      'write keeps its name, in the ink of what is off', (tester) async {
     AppExport.settings.value = exportSettingsWritingCelsAlone();
     final session = film();
     addTearDown(session.dispose);
@@ -263,11 +261,14 @@ void main() {
     await press(tester, 'export-cels-next');
     expect(tester.exportPreviewLine, 'A2.png · 2 / 2');
 
-    // The row switched off: its drawings are still what the panel turns
-    // through, and none of them is a file.
+    // The row switched off: every file of it is off, and they are still
+    // what the panel turns through.
     await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
-    expect(tester.exportPreviewName, '2');
+    expect(tester.exportPreviewLine, 'A2.png · 2 / 2');
     expect(tester.exportPreviewNameAbsent, isTrue);
+
+    await tester.pressInCelsBoard(tester.celsBoardSwitch('a'));
+    expect(tester.exportPreviewNameAbsent, isFalse);
     session.playbackRig.prerenderScheduler.cancel();
   });
 
