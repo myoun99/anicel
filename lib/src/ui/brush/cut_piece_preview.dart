@@ -213,16 +213,17 @@ void paintCutPiece(
   });
 }
 
-/// The held piece, drawn on white.
+/// The held piece, drawn on nothing: the panel behind it shows through, as
+/// it does behind the brush's stroke in the same box.
 ///
-/// 🗣️유저 2026-10-03 (F-271): 「잘라내기도구의 스탬프 서브도구, 도구설정의
-/// 프리뷰의 배경이 투명(격자무늬)인데 투명인건 맞는데 배경 그냥 흰색으로.」
+/// 🗣️유저 2026-10-08 (F-271, 정정): 「흰색말고 투명인채로 하는데, 격자무늬가
+/// 아니라 브러시 프리뷰에서 쓰는것마냥 뒤 패널색이 되는것? 즉 뒤가 비치도록.
+/// 그런 느낌의 투명」.
 ///
-/// ↩️It stood on the transparency checker, on the reasoning that a cut
-/// piece has transparency and 「on a plain panel background a transparent
-/// region and a white one look identical」. That is true and the user chose
-/// the plain ground anyway: the piece is read against the paper it will be
-/// stamped on.
+/// ↩️It stood on the transparency checker until 10-03, then on white (유저
+/// 10-03: 「투명인건 맞는데 배경 그냥 흰색으로」) until the correction above.
+/// The ground is the box's to give — [ToolSettingsPreview] paints none, and
+/// neither preview inside it paints one of its own.
 class CutPiecePreview extends StatelessWidget {
   const CutPiecePreview({super.key, required this.piece});
 
@@ -249,13 +250,11 @@ class _CutPiecePreviewPainter extends CustomPainter with RepaintOnProps {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
     // ↩️The app's one transparency checker was painted here (유저 2026-09-09:
     // 「투명이라는 의미의 체크무늬 … 이미있으면 있던거 쓰고」) — and before
-    // that a checker of this painter's own. White since F-271, by the same
-    // user: 「투명인건 맞는데 배경 그냥 흰색으로」.
-    canvas.drawRect(bounds, Paint()..color = const Color(0xFFFFFFFF));
-    paintCutPiece(canvas, bounds, piece, image);
+    // that a checker of this painter's own — then white (F-271, 10-03). No
+    // ground since the user's correction (F-271, 10-08: 「뒤가 비치도록」).
+    paintCutPiece(canvas, Offset.zero & size, piece, image);
   }
 
   @override
