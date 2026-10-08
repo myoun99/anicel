@@ -82,8 +82,7 @@ class _CelWork {
   /// on 40 whole-canvas cels: the two copies were the whole freeze, 773ms
   /// and 1,211ms of the 2,005ms the UI isolate could not answer (benchmark
   /// `a_heavy_save_holds_the_screen_benchmark_test`).
-  final ({TransferableTypedData payload, CanvasSize canvasSize, int tileSize})?
-  hot;
+  final TransferableTypedData? hot;
 
   /// 🪦A `coldBlob` rode here while the cold tier was RAM. Cooled cels are
   /// files in the run's 이사대기 room now, so they arrive as a ref like
@@ -126,12 +125,7 @@ class _CelWork {
   /// with the cel in it, and the session still holds everything drawn since.
   AnicelCelBlob? resolveBlob() {
     if (hot case final hot?) {
-      return AnicelCelBlob.ofPayload(
-        key: key,
-        canvasSize: hot.canvasSize,
-        tileSize: hot.tileSize,
-        payload: hot.payload.materialize().asUint8List(),
-      );
+      return AnicelCelBlob.ofPayload(hot.materialize().asUint8List());
     }
     final file = File(refPath!);
     for (var attempt = 0; ; attempt += 1) {
@@ -716,13 +710,9 @@ class AnicelFileService {
       final work = _CelWork(
         key: key,
         name: name,
-        hot: (
-          payload: TransferableTypedData.fromList([
-            encodeCelEntryFromSurface(key, surface),
-          ]),
-          canvasSize: surface.canvasSize,
-          tileSize: surface.tileSize,
-        ),
+        hot: TransferableTypedData.fromList([
+          encodeCelEntryFromSurface(key, surface),
+        ]),
       );
       await Future<void>.delayed(Duration.zero);
       debugAfterScreenTurn?.call();

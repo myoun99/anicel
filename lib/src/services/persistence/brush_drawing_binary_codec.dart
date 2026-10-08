@@ -182,22 +182,32 @@ Uint8List encodeCelEntry(AnicelCelEntry entry) {
   return writer.takeBytes();
 }
 
-AnicelCelEntry decodeCelEntry(Uint8List bytes) {
-  final reader = _ByteReader(bytes);
+/// What a cel stream says it is, up to its tile count: its version, its
+/// key, its canvas and its tile size — read in ONE place, for the reason
+/// [_ByteWriter.celStreamHeader] is written in one.
+({int version, BrushFrameKey key, CanvasSize canvasSize, int tileSize})
+_celStreamHeaderOf(_ByteReader reader) {
   final version = reader.u8();
   if (version > anicelCelBinaryVersion) {
     throw const FormatException('Unsupported cel entry version.');
   }
-  final key = BrushFrameKey(
-    projectId: ProjectId(reader.string()),
-    trackId: TrackId(reader.string()),
-    cutId: CutId(reader.string()),
-    layerId: LayerId(reader.string()),
-    frameId: FrameId(reader.string()),
+  return (
+    version: version,
+    key: BrushFrameKey(
+      projectId: ProjectId(reader.string()),
+      trackId: TrackId(reader.string()),
+      cutId: CutId(reader.string()),
+      layerId: LayerId(reader.string()),
+      frameId: FrameId(reader.string()),
+    ),
+    canvasSize: CanvasSize(width: reader.u32(), height: reader.u32()),
+    tileSize: reader.u16(),
   );
-  final width = reader.u32();
-  final height = reader.u32();
-  final tileSize = reader.u16();
+}
+
+AnicelCelEntry decodeCelEntry(Uint8List bytes) {
+  final reader = _ByteReader(bytes);
+  final (:version, :key, :canvasSize, :tileSize) = _celStreamHeaderOf(reader);
   final tileCount = reader.u32();
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
   List<AnicelTileRecord> tiles(int count) => [
@@ -211,7 +221,7 @@ AnicelCelEntry decodeCelEntry(Uint8List bytes) {
   final drawing = tiles(tileCount);
   return AnicelCelEntry(
     key: key,
-    canvasSize: CanvasSize(width: width, height: height),
+    canvasSize: canvasSize,
     tileSize: tileSize,
     tiles: drawing,
     // The version says whether the texts are there — never the bytes left
@@ -320,23 +330,21 @@ class AnicelCelBlob {
     return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory AnicelCelBlob.encode(AnicelCelEntry entry) => AnicelCelBlob.ofPayload(
-    key: entry.key,
-    canvasSize: entry.canvasSize,
-    tileSize: entry.tileSize,
-    payload: encodeCelEntry(entry),
-  );
+  factory AnicelCelBlob.encode(AnicelCelEntry entry) =>
+      AnicelCelBlob.ofPayload(encodeCelEntry(entry));
 
   /// The blob of a cel's uncompressed [payload] — the bytes [encodeCelEntry]
   /// writes, or [encodeCelEntryFromSurface] straight off a surface —
   /// compressed here. The save isolate's shape: a hot cel arrives there
   /// already serialised, because a surface cannot cross.
-  factory AnicelCelBlob.ofPayload({
-    required BrushFrameKey key,
-    required CanvasSize canvasSize,
-    required int tileSize,
-    required Uint8List payload,
-  }) {
+  ///
+  /// ⛔The blob's own header is READ OFF the payload's, never handed in
+  /// beside it: two copies of a cel's key and size would be two answers to
+  /// what the cel is, and nothing would see them disagree.
+  factory AnicelCelBlob.ofPayload(Uint8List payload) {
+    final (:key, :canvasSize, :tileSize, version: _) = _celStreamHeaderOf(
+      _ByteReader(payload),
+    );
     final compressed = compressAnicelPayload(payload);
     return AnicelCelBlob.fromCompressedBody(
       key: key,
