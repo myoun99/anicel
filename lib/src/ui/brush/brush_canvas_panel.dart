@@ -67,6 +67,7 @@ import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../../services/cut_piece_stamp.dart';
+import 'cut_into_the_hand.dart';
 import 'cut_piece_preview.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
@@ -2299,19 +2300,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final onTheRow = _selectionSeat.regionOnTheRow(
       CanvasSelectionRegion.shape(shape),
     );
-    if (slot == null || coordinator == null || onTheRow == null) {
+    if (slot == null) {
       return;
     }
-    final piece = buildCutPiece(
-      region: onTheRow,
-      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+    // Null = no cel under the outline, or no paint inside it: the slot is
+    // left alone and the cut says it found nothing, as every cut does
+    // (F-254: 「잘라내기도구로 빈 곳에 그렸을때도 동일하게」).
+    cutIntoTheHand(
+      coordinator == null || onTheRow == null
+          ? null
+          : buildCutPiece(
+              region: onTheRow,
+              surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+            ),
+      slot.hold,
     );
-    // Null = the outline covered no paint. Leave the slot alone rather
-    // than blanking it: it survives frames, cuts and projects, so one
-    // stray scrape must not be able to throw away what is in it.
-    if (piece != null) {
-      slot.hold(piece);
-    }
   }
 
   /// TS7: the tap layer's press verb, continued while the pointer is held.

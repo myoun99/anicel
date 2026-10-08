@@ -32,6 +32,8 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/cut_piece_preview.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 import '../helpers/placement_reading.dart';
@@ -67,6 +69,7 @@ void main() {
         BrushBlendMode? stampBlend,
         double? stampOpacity,
         bool rowTakesStrokes,
+        bool celUnderThePlayhead,
       })
       setTool,
     })
@@ -101,6 +104,8 @@ void main() {
       double? stampOpacity,
       // False = standing on a row that takes no strokes (a property lane).
       bool rowTakesStrokes = true,
+      // False = standing on a frame with no cel.
+      bool celUnderThePlayhead = true,
     }) async {
       // Both verbs get the same outline: a test picks one shape and the
       // panel reads whichever field the active verb owns.
@@ -125,6 +130,7 @@ void main() {
               pieceGround: pieceGround,
               cutPieceSlot: slot,
               rowAcceptsStrokes: rowTakesStrokes,
+              celEditable: celUnderThePlayhead,
               interactiveContentPose: placementOfSample(
                 placement,
                 BrushCanvasFixture.canvasSize,
@@ -230,6 +236,23 @@ void main() {
     );
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     expect(env.slot.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
+  });
+
+  testWidgets('on a frame with no cel the outline finds nothing, and says '
+      'so too', (tester) async {
+    addTearDown(cursorNotices.clear);
+    final env = await pumpPanel(tester, tool: CanvasTool.cut);
+    await env.setTool(CanvasTool.cut, celUnderThePlayhead: false);
+
+    // Across where the bar is on the cel the coordinator holds — no cel
+    // stands under the playhead to read it from.
+    await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
+
+    expect(env.slot.isEmpty, isTrue);
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('cutting leaves the selection completely alone', (tester) async {
@@ -1007,18 +1030,28 @@ void main() {
     expect(env.slot.isNotEmpty, isTrue);
   });
 
-  testWidgets('a cut over blank cel leaves the held piece alone', (
-    tester,
-  ) async {
+  // 🗣️F-254 (유저 2026-10-08): 「잘라내기도구로 빈 곳에 그렸을때도 동일하게
+  // 법 통일해서 적용」 — the whole cut's 「잘라낼 대상이 존재하지 않습니다」,
+  // for the outline too.
+  testWidgets('a cut over blank cel leaves the held piece alone — and says '
+      'there is nothing to cut, as the whole cut does', (tester) async {
+    addTearDown(cursorNotices.clear);
     // The slot is a long-term holder; one stray scrape must not empty it.
     final env = await pumpPanel(tester, tool: CanvasTool.cut);
     await dragOnLayer(tester, const Offset(10, 10), const Offset(90, 70));
     final piece = env.slot.piece;
     expect(piece, isNotNull);
+    expect(
+      cursorNotices.message,
+      isNull,
+      reason: 'a cut that took paint has nothing to explain',
+    );
 
     // Far below the painted bar.
     await dragOnLayer(tester, const Offset(10, 200), const Offset(60, 250));
     expect(env.slot.piece, same(piece));
+    expect(cursorNotices.message, AppText.strings.noticeNothingToCut);
+    cursorNotices.clear();
   });
 
   testWidgets('🐛F-112: a cut after the canvas remounts is a new piece too', (

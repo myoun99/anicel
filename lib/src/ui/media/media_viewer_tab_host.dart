@@ -33,6 +33,7 @@ import '../brush/canvas_book.dart';
 import '../brush/canvas_floor_insets.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
+import '../brush/cut_into_the_hand.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_transport.dart';
 import '../dialogs/open_file_flow.dart';
@@ -1019,7 +1020,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
   ///
   /// In a book (F-201) the page is the one the outline lies on most — the
   /// pages lie one under another — and the outline moves into that page's
-  /// own space. An outline on the desk between pages cuts nothing.
+  /// own space. An outline on the desk between pages cuts nothing, and says
+  /// so as every cut that finds nothing does ([cutIntoTheHand]).
   void _cutFromPage(CanvasSelectionShape shape) {
     final book = _book;
     if (book == null) {
@@ -1029,6 +1031,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     final page = _pageUnder(book, shape);
     if (page == null) {
+      final slot = widget.cutPieceSlot;
+      if (slot != null) {
+        cutIntoTheHand(null, slot.hold);
+      }
       return;
     }
     final at = book.pageRect(page).topLeft;
@@ -1058,7 +1064,11 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     final slot = widget.cutPieceSlot;
     final document = _document;
     final pageCount = _pageCount;
-    if (!mounted || slot == null || document == null || pageCount == 0) {
+    if (!mounted || slot == null) {
+      return;
+    }
+    if (document == null || pageCount == 0) {
+      cutIntoTheHand(null, slot.hold);
       return;
     }
     final pageIndex = page.clamp(0, pageCount - 1);
@@ -1103,10 +1113,10 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost>
     }
     // The document it was cut from is gone, or the panel is: what is on
     // screen now is not what was cut.
-    if (!mounted || generation != _generation || piece == null) {
+    if (!mounted || generation != _generation) {
       return;
     }
-    slot.hold(piece);
+    cutIntoTheHand(piece, slot.hold);
   }
 
   /// The read is back, or never went out: stop billing it.

@@ -19,8 +19,7 @@ import '../../services/cut_piece_lift.dart' show buildCutPiece;
 import '../../services/cut_piece_stamp.dart' show buildCutPasteDab;
 import '../../services/layer_pose_matrix.dart' show LayerPlacement;
 import '../../services/piece_landing.dart';
-import '../text/app_strings.dart';
-import '../widgets/cursor_notice.dart';
+import '../brush/cut_into_the_hand.dart';
 import 'active_cut_controllers.dart';
 import 'pixel_board.dart';
 import 'pixel_editing.dart';
@@ -401,18 +400,13 @@ class PixelVerbs {
   /// 🗣️유저 2026-10-01 (F-254): 「전체 잘라내기, 지금 작동안하는 그림없는
   /// 곳에선 아무메시지 안뜨는데 뜨도록. 내용은 잘라낼 대상이 존재하지
   /// 않습니다.」 — a press that found no picture says so where the user is
-  /// looking. The hand keeps what it held either way.
+  /// looking, as every cut does ([cutIntoTheHand]).
   void cutWhole() {
     final hand = cutToolHand;
     if (hand == null) {
       return;
     }
-    final piece = standingPiece();
-    if (piece == null) {
-      cursorNotices.show(AppText.strings.noticeNothingToCut);
-      return;
-    }
-    hand(piece);
+    cutIntoTheHand(standingPiece(), hand);
   }
 
   /// Whether the 색 편집 list's clipboard row [verb] has anything to do —
