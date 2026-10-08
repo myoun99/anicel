@@ -420,7 +420,7 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     final layout = planBlockRunLeadEdge(
       slots: [for (final panel in panels) panel.slot],
       targetIndex: targetIndex,
-      frameDelta: math.min(cumulativeDelta, _cameraRoom()),
+      frameDelta: _cameraBounded(cumulativeDelta),
     );
     _plannedPanels = panels;
     _plannedPanelLengths = layout.lengths;
@@ -432,19 +432,39 @@ final class CutLeadTrimDrag extends CutTrimDrag {
     );
   }
 
-  /// How far the dragged cut may shrink from the front before its camera
-  /// would leave a key outside it ([minimumCutDurationForCamera],
-  /// I-73-camera-row-Q4): the key on its last frame comes in with the end,
-  /// and the edge stops short of the others.
-  int _cameraRoom() {
-    final cut = _roles.project.cutById(_cutId);
+  /// [cumulativeDelta] as far as the cameras let it go (I-73-camera-row-Q4,
+  /// [minimumCutDurationForCamera]): shrinking the cut from its front stops
+  /// short of its keys, and drawing it out stops short of the keys of the
+  /// glued cut in front, which gives the frames once the gap between them
+  /// is spent. Only on the cut's FIRST panel: an inner panel trades frames
+  /// inside its own cut, whose length stays.
+  int _cameraBounded(int cumulativeDelta) {
+    if (_panelIndex != 0) {
+      return cumulativeDelta;
+    }
+    if (cumulativeDelta > 0) {
+      return math.min(cumulativeDelta, _cameraRoomOf(_cutId));
+    }
+    final index = _order.indexOf(_cutId);
+    if (index <= 0) {
+      return cumulativeDelta;
+    }
+    final gap = _beforeGaps[_cutId] ?? 0;
+    return math.max(cumulativeDelta, -(gap + _cameraRoomOf(_order[index - 1])));
+  }
+
+  /// How far [id] may shrink before its camera would leave a key outside
+  /// it: the key on its last frame comes in with the end, and the end stops
+  /// short of the others.
+  int _cameraRoomOf(CutId id) {
+    final cut = _roles.project.cutById(id);
     if (cut == null) {
       return 0;
     }
     final project = _roles.project.repository.requireProject();
     final floor = minimumCutDurationForCamera(
       cut,
-      drawnFrameCount: cutDrawnFrameCount(project, _cutId) ?? cut.duration,
+      drawnFrameCount: cutDrawnFrameCount(project, id) ?? cut.duration,
     );
     return math.max(0, cut.duration - floor);
   }

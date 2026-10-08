@@ -10,6 +10,7 @@ import '../../../models/layer.dart';
 import '../../../models/layer_id.dart';
 import '../../../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../../../models/track_transitions.dart' show cutDrawnFrameCount;
 import '../../storyboard_layer_policy.dart';
 import '../../timeline/timeline_drag_preview.dart';
 import '../folders_and_attachments.dart';
@@ -791,7 +792,23 @@ CutResize? cutSyncResizeFor({
       : minimumCutDurationForStoryboardRow(
           divisionRow.id == afterRow.id ? afterRow : divisionRow,
         );
-  final duration = math.max(floor, afterRowEnd);
+  // …and the camera's (I-73-camera-row-Q4, [minimumCutDurationForCamera]):
+  // the end stops short of its keys. Its keys are not this drag's, so the
+  // committed camera is the right one to read; a row that would end sooner
+  // is tiled out to the cut's end again by the write (and by the preview,
+  // which settles as the write does).
+  final cameraFloor = syncedCut == null
+      ? 1
+      : minimumCutDurationForCamera(
+          syncedCut,
+          drawnFrameCount:
+              cutDrawnFrameCount(
+                project.repository.requireProject(),
+                sync.cutId,
+              ) ??
+              syncedCut.duration,
+        );
+  final duration = math.max(math.max(floor, cameraFloor), afterRowEnd);
   return (
     durations: {sync.cutId: duration},
     gaps: {

@@ -7,11 +7,14 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/track.dart';
@@ -193,6 +196,106 @@ void main() {
 
       expect(cutIn(session, a).duration, 14);
       expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+    });
+  });
+
+  test('🚨drawn out from the front, the glued cut in front gives no frame '
+      'past its own keys', () {
+    final session = open();
+
+    trim(session, b, TimelineBlockEdge.start, -20);
+
+    expect(
+      (cutIn(session, a).duration, cutIn(session, b).duration),
+      (14, 34),
+      reason: 'a gives ten — its key 12 stays, and its end key takes 13',
+    );
+    expect(keysOf(session, a), {0: 0, 12: 12, 13: 23});
+  });
+
+  group('a cut with a conte', () {
+    /// Cut c: two panels of twelve, its camera keyed at [keys].
+    EditorSessionManager withConte(List<int> keys) {
+      Frame panel(String id) =>
+          Frame(id: FrameId(id), duration: 1, strokes: const []);
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('conte'),
+          name: 'Conte',
+          createdAt: DateTime.utc(2026, 10, 9),
+          tracks: [
+            Track(
+              id: const TrackId('t'),
+              name: 'V',
+              cuts: [
+                cutOf('c', keys).copyWith(
+                  layers: [
+                    Layer(
+                      id: const LayerId('c-conte'),
+                      name: 'Conte',
+                      kind: LayerKind.storyboard,
+                      frames: [panel('p1'), panel('p2')],
+                      timeline: const {
+                        0: TimelineExposure.drawing(FrameId('p1'), length: 12),
+                        12: TimelineExposure.drawing(FrameId('p2'), length: 12),
+                      },
+                    ),
+                    Layer(
+                      id: const LayerId('c-cam'),
+                      name: 'Camera',
+                      kind: LayerKind.camera,
+                      frames: const [],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      return session;
+    }
+
+    List<int> panelsOf(EditorSessionManager session) => [
+      ...cutIn(session, const CutId('c')).layers
+          .singleWhere((layer) => layer.kind == LayerKind.storyboard)
+          .timeline
+          .entries
+          .where((entry) => !entry.value.ghost)
+          .map((entry) => entry.key),
+    ];
+
+    test('🚨its end — the conte\'s last comma — stops short of the camera\'s '
+        'keys too, the last panel tiled out to it', () {
+      final session = withConte([0, 16, 23]);
+
+      trim(session, const CutId('c'), TimelineBlockEdge.end, -10);
+
+      expect(cutIn(session, const CutId('c')).duration, 18);
+      expect(panelsOf(session), [0, 12], reason: 'the last panel runs to 18');
+      expect(keysOf(session, const CutId('c')), {0: 0, 16: 16, 17: 23});
+    });
+
+    test('an inner panel\'s front trades frames inside its cut — its length, '
+        'and its camera, stay', () {
+      final session = withConte([0, 22, 23]);
+
+      expect(
+        session.edgeDrag.beginCutEdgeDrag(
+          cutId: const CutId('c'),
+          edge: TimelineBlockEdge.start,
+          panelIndex: 1,
+        ),
+        isTrue,
+        reason: '⛔전제',
+      );
+      session.edgeDrag.updateCutEdgeDrag(4);
+      session.edgeDrag.endCutEdgeDrag();
+
+      expect(panelsOf(session), [0, 16], reason: 'the division moved');
+      expect(cutIn(session, const CutId('c')).duration, 24);
+      expect(keysOf(session, const CutId('c')), {0: 0, 22: 22, 23: 23});
     });
   });
 
