@@ -122,6 +122,10 @@ void main() {
     // The brush in hand, for a case about what a tool does NOT read of it.
     // Null = the defaults.
     BrushToolState Function(BrushToolState defaults)? brushInHand,
+    // Every view the panel ASKS for. The fixture's view is held — it does
+    // not move for the asking — so a case reads here whether a gesture was
+    // taken as navigation.
+    ValueChanged<CanvasViewport>? onViewportChanged,
     TransformMode transformMode = TransformMode.normal,
     CanvasViewport? viewport,
     // Extra committed ink, mounted with the fixture. `null` replaces the
@@ -237,6 +241,7 @@ void main() {
                 brushToolState: brush,
                 selectionCommands: commands,
                 viewport: liveViewport,
+                onViewportChanged: onViewportChanged,
                 shapeFillDabFor: (shape, color) => buildShapeFillDab(
                   shape: shape,
                   color: color,
@@ -7619,6 +7624,375 @@ void main() {
         expect(inkAt(ink, 199, 204), isNonZero, reason: 'to its last');
         expect(inkAt(ink, 200, 200), 0);
         expect(inkAt(ink, 250, 200), 0);
+      });
+    });
+
+    // 유저 답 I-69-Q5 (2026-10-08): 「설정 스위치 + Shift」 · 메모 「태블릿은
+    // 지금 다른거 하던거처럼 수정자. 즉 터치 … 그냥 터치면 수정자란뜻」.
+    group('「비율 고정」', () {
+      // A plain line ten wide with a hard edge, so where a side lies is a
+      // row of pixels: a drag (100,100)→(200,150) has its bottom side
+      // along y = 150 left free, and along y = 200 as a square.
+      const free = ShapeToolOptions(
+        type: ShapeLineType.plain,
+        size: 10,
+        antiAlias: false,
+      );
+      final kept = free.copyWith(ratioLock: true);
+
+      Matcher isASquare() => predicate<BrushFrameEditingCoordinator>(
+        (ink) => inkAt(ink, 150, 199) != 0 && inkAt(ink, 150, 150) == 0,
+        'has its bottom side along y = 200',
+      );
+      Matcher isAsDragged() => predicate<BrushFrameEditingCoordinator>(
+        (ink) => inkAt(ink, 150, 150) != 0 && inkAt(ink, 150, 199) == 0,
+        'has its bottom side along y = 150',
+      );
+
+      testWidgets('with the switch on a rectangle is a square, an ellipse a '
+          'circle, and a line keeps to one of eight ways', (tester) async {
+        final box = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+        expect(box.coordinator, isASquare());
+        expect(inkAt(box.coordinator, 199, 150), isNonZero, reason: 'its right');
+
+        final round = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.ellipse,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(300, 100),
+          const Offset(400, 160),
+        );
+        await tester.pump();
+        expect(
+          inkAt(round.coordinator, 350, 199),
+          isNonZero,
+          reason: 'as high as it is wide: its lowest point is at y = 200',
+        );
+        expect(inkAt(round.coordinator, 350, 160), 0);
+
+        final line = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeKind: CanvasShapeKind.line,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 200),
+          const Offset(220, 230),
+        );
+        await tester.pump();
+        expect(inkAt(line.coordinator, 219, 200), isNonZero, reason: 'level');
+        expect(inkAt(line.coordinator, 219, 204), isNonZero);
+        expect(inkAt(line.coordinator, 219, 205), 0, reason: 'with no rise');
+        expect(inkAt(line.coordinator, 215, 229), 0);
+      });
+
+      testWidgets('with the switch off a shape is as it was dragged', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+
+        expect(env.coordinator, isAsDragged());
+      });
+
+      testWidgets('🚨Shift turns the switch the other way round for as long '
+          'as it is held — off to on, and on to off', (tester) async {
+        Future<BrushFrameEditingCoordinator> drawnWithShift(
+          ShapeToolOptions options,
+        ) async {
+          final env = await pumpSelectionPanel(
+            tester,
+            tool: CanvasTool.shape,
+            shapeOptions: options,
+          );
+          await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+          await dragOnLayer(
+            tester,
+            const Offset(100, 100),
+            const Offset(200, 150),
+          );
+          await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+          await tester.pump();
+          return env.coordinator;
+        }
+
+        expect(await drawnWithShift(free), isASquare());
+        expect(await drawnWithShift(kept), isAsDragged());
+      });
+
+      testWidgets('🚨a finger laid on the glass is the modifier: the shape '
+          'goes on being drawn, its ratio kept while the finger rests', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+
+        expect(
+          env.history.undoCount,
+          before + 1,
+          reason: 'the finger did not take the shape out of the hand',
+        );
+        expect(env.coordinator, isASquare());
+      });
+
+      testWidgets('the finger lifting gives the ratio back at the next move', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(190, 140));
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+
+        expect(env.coordinator, isAsDragged());
+      });
+
+      // 유저 2026-08-27: 「손가락이 동시에 착지하는게 불가능하니까」 — a
+      // finger's drag is a gesture of its own only once it has gone the
+      // touch commit slop (18 px), here as for a stroke and for the boxes.
+      testWidgets('🚨a shape dragged BY a finger: a second finger before it '
+          'has gone anywhere makes the pair a screen gesture — nothing is '
+          'drawn', (tester) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final first = await tester.startGesture(
+          origin + const Offset(100, 100),
+        );
+        await tester.pump();
+        await first.moveTo(origin + const Offset(108, 100));
+        await tester.pump();
+        final second = await tester.startGesture(
+          origin + const Offset(300, 300),
+        );
+        await tester.pump();
+        await first.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await first.up();
+        await second.up();
+        await tester.pump();
+
+        expect(env.history.undoCount, before, reason: 'no shape was drawn');
+        expect(inkAt(env.coordinator, 150, 150), 0);
+        expect(inkAt(env.coordinator, 150, 199), 0);
+      });
+
+      testWidgets('once it has gone its own way, a second finger is its '
+          'modifier — and moves no view, slide as it may', (tester) async {
+        final asked = <CanvasViewport>[];
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+          onViewportChanged: asked.add,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final first = await tester.startGesture(
+          origin + const Offset(100, 100),
+        );
+        await tester.pump();
+        // 17 px is not yet its own way; 2 more is.
+        await first.moveTo(origin + const Offset(117, 100));
+        await tester.pump();
+        await first.moveTo(origin + const Offset(119, 100));
+        await tester.pump();
+        final second = await tester.startGesture(
+          origin + const Offset(300, 300),
+        );
+        await tester.pump();
+        await second.moveTo(origin + const Offset(380, 340));
+        await tester.pump();
+        await first.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await second.moveTo(origin + const Offset(420, 300));
+        await tester.pump();
+        await first.up();
+        await second.up();
+        await tester.pump();
+
+        expect(env.history.undoCount, before + 1);
+        expect(env.coordinator, isASquare());
+        expect(asked, isEmpty, reason: 'the pair is not a screen gesture');
+      });
+
+      testWidgets('🚨while a pen draws a shape the glass is not the view\'s: '
+          'two fingers laid beside it move nothing', (tester) async {
+        final asked = <CanvasViewport>[];
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.shape,
+          shapeOptions: free,
+          onViewportChanged: asked.add,
+        );
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+
+        Future<void> spreadTwoFingers() async {
+          final a = await tester.startGesture(origin + const Offset(400, 300));
+          await tester.pump();
+          final b = await tester.startGesture(origin + const Offset(500, 300));
+          await tester.pump();
+          await a.moveTo(origin + const Offset(340, 300));
+          await tester.pump();
+          await b.moveTo(origin + const Offset(560, 300));
+          await tester.pump();
+          await a.up();
+          await b.up();
+          await tester.pump();
+        }
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        await spreadTwoFingers();
+        expect(asked, isEmpty, reason: 'a finger there is the modifier\'s');
+
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        expect(
+          env.coordinator,
+          isAsDragged(),
+          reason: 'and the shape went on: both fingers were gone by then',
+        );
+
+        // The instrument, last — it moves the view: with nothing in hand
+        // the same two fingers DO ask for another one.
+        await spreadTwoFingers();
+        expect(asked, isNotEmpty, reason: 'two fingers on a still canvas');
+      });
+
+      testWidgets('beside any OTHER drag a finger is still the sign to let '
+          'go: a selection being traced is dropped', (tester) async {
+        final env = await pumpSelectionPanel(tester);
+        final origin = tester.getTopLeft(find.byKey(layerKey));
+        final before = env.history.undoCount;
+
+        final pen = await tester.startGesture(
+          origin + const Offset(100, 100),
+          kind: PointerDeviceKind.stylus,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(180, 130));
+        await tester.pump();
+        final finger = await tester.startGesture(
+          origin + const Offset(500, 400),
+          kind: PointerDeviceKind.touch,
+        );
+        await tester.pump();
+        await pen.moveTo(origin + const Offset(200, 150));
+        await tester.pump();
+        await pen.up();
+        await tester.pump();
+        await finger.up();
+        await tester.pump();
+
+        expect(env.commands.region, isNull, reason: 'nothing was selected');
+        expect(env.history.undoCount, before);
+      });
+
+      testWidgets('the switch is the shape tool\'s: the fill tool\'s shape '
+          'fill is as it was dragged, whatever the switch says', (
+        tester,
+      ) async {
+        final env = await pumpSelectionPanel(
+          tester,
+          tool: CanvasTool.fillShape,
+          shapeOptions: kept,
+        );
+        await dragOnLayer(
+          tester,
+          const Offset(100, 100),
+          const Offset(200, 150),
+        );
+        await tester.pump();
+
+        expect(inkAt(env.coordinator, 150, 140), isNonZero, reason: 'filled');
+        expect(
+          inkAt(env.coordinator, 150, 180),
+          0,
+          reason: 'fifty high, as dragged — not a square',
+        );
       });
     });
 

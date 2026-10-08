@@ -4,6 +4,7 @@ import '../../models/canvas_point.dart';
 import '../../models/canvas_shape_kind.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/shape_ratio_lock.dart';
 
 /// ONE in-flight selection drag, as its own object — begun by CONSTRUCTING
 /// it, closed by exactly one of a commit or a cancel, then discarded.
@@ -51,6 +52,7 @@ final class MarqueeDrag extends SelectionDrag {
     required this.shapeKind,
     required this.before,
     required CanvasPoint at,
+    this.byTouch = false,
   }) : start = at,
        _current = at,
        _traced = tracesPointerPath(shapeKind) ? [at] : const [];
@@ -69,6 +71,18 @@ final class MarqueeDrag extends SelectionDrag {
   /// Where the drag went down, in canvas space.
   final CanvasPoint start;
 
+  /// Whether a FINGER drags it, and how far the hand has gone across the
+  /// screen — what a finger laid down beside it is read by.
+  ///
+  /// 🚨Fingers cannot land together (유저 2026-08-27: 「손가락이 동시에
+  /// 착지하는게 불가능하니까」), so a finger's drag is not yet a gesture of
+  /// its own when it starts: a second finger before it has gone the touch
+  /// commit slop makes the pair a screen gesture, and only after that does
+  /// it find a drag to be the modifier of. A pen's or a mouse's is its own
+  /// from the press.
+  final bool byTouch;
+  double screenTravel = 0;
+
   CanvasPoint _current;
   List<CanvasPoint> _traced;
 
@@ -85,14 +99,20 @@ final class MarqueeDrag extends SelectionDrag {
     CanvasShapeKind.line => false,
   };
 
-  void update(CanvasPoint at) {
-    _current = at;
+  /// The hand has moved to [at]. With [keepsRatio] the shape ends where
+  /// its ratio is kept instead ([ratioKeptEnd]) — asked at every move, so
+  /// it can come and go under the hand; a shape that is the hand's own
+  /// path has none to keep.
+  void update(CanvasPoint at, {bool keepsRatio = false}) {
+    _current = keepsRatio
+        ? ratioKeptEnd(from: start, to: at, shape: shapeKind)
+        : at;
     if (tracesPointerPath(shapeKind)) {
       _traced = [..._traced, at];
     } else if (shapeKind == CanvasShapeKind.line) {
       // The line has no outline for the ants to walk; what they draw while
       // it is dragged is the line itself, end to end.
-      _traced = [start, at];
+      _traced = [start, _current];
     }
   }
 

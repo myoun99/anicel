@@ -992,10 +992,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// viewport gestures exactly like a stroke.
   bool _selectionDragActive = false;
 
-  /// True while a transform HANDLE is being dragged. Narrower than
+  /// True while a drag that takes a finger as its MODIFIER is in progress
+  /// — a transform handle's, a shape being drawn. Narrower than
   /// [_selectionDragActive] on purpose: it is the only state in which
   /// touch is locked out of the viewport as well.
-  bool _transformDragActive = false;
+  bool _modifierTouchDragActive = false;
 
   /// True while the text tool follows a press — a text moved, sized or
   /// turned, letters selected, a box traced: the viewport's gestures hold
@@ -1831,6 +1832,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   _fillDrawnShape,
               onDrawShape:
                   _drawTracedShape,
+              shapeKeepsRatio:
+                  _brush.shapeOptions.ratioLock,
               // 🚨WHOEVER HEARS THE PRESS ASKS FOR THE CEL, AND ONLY ONE
               // DOES (I-10) — the text layer's wiring, word for word: on a
               // frame with no cel this layer asks in the standing-down
@@ -1870,8 +1873,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                       .selectionCommands,
               // No setState for either: the gesture layer asks both
               // when an event arrives (see its `strokeActive`).
-              onTransformDragActiveChanged:
-                  (active) => _transformDragActive = active,
+              onModifierTouchDragActiveChanged:
+                  (active) => _modifierTouchDragActive = active,
               onDragActiveChanged: (active) {
                 if (_selectionDragActive !=
                     active) {

@@ -283,7 +283,7 @@ class _PanelBuild {
           _state._selectionDragActive ||
           _state._textDragActive ||
           (_contentStrokeActive?.value ?? false),
-      touchLocked: () => _state._transformDragActive,
+      touchLocked: () => _state._modifierTouchDragActive,
       // Nothing drawn in the viewport (canvas, playback
       // frames, camera overlay) may paint outside the panel.
       child: ClipRect(

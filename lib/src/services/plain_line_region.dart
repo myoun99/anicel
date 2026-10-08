@@ -57,7 +57,7 @@ CanvasSelectionRegion? plainLineRegion({
       // and of an open path every point but its two ends.
       ShapeCorners.sharp => [
         for (var i = closed ? 0 : 1; i < (closed ? count : count - 1); i += 1)
-          ?_sharpCorner(
+          _sharpCorner(
             path[(i - 1 + count) % count],
             path[i],
             path[(i + 1) % count],
@@ -143,9 +143,9 @@ CanvasSelectionShape _disc(CanvasPoint center, double half) =>
 /// those two edges meet — or, where that makes the corner longer than
 /// [_sharpCornerLimit] allows, straight across from one edge to the other.
 ///
-/// Null where the path does not turn, and where it doubles straight back:
-/// there the two boxes are one, cut square at the point.
-CanvasSelectionShape? _sharpCorner(
+/// Where the path does not turn, and where it doubles straight back, the
+/// piece has no area: the two edges it runs between are one line there.
+CanvasSelectionShape _sharpCorner(
   CanvasPoint before,
   CanvasPoint corner,
   CanvasPoint after,
@@ -154,9 +154,6 @@ CanvasSelectionShape? _sharpCorner(
   final into = _unit(before, corner);
   final outOf = _unit(corner, after);
   final turn = into.x * outOf.y - into.y * outOf.x;
-  if (turn.abs() < 1e-9) {
-    return null;
-  }
   // The outside of a turn is the side it turns away from.
   final side = turn > 0 ? 1.0 : -1.0;
   final edgeBefore = (x: into.y * side, y: -into.x * side);

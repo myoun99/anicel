@@ -306,6 +306,26 @@ void main() {
       );
     });
 
+    test('an open path of several sides turns its corners and stops at '
+        'its two ends', () {
+      // Along, then down: (0,0) → (100,0) → (100,100).
+      final region = line(
+        [p(0, 0), p(100, 0), p(100, 100)],
+        width: 10,
+        corners: ShapeCorners.sharp,
+      );
+
+      expect(region, covers(104.9, -4.9), reason: 'the corner, to its point');
+      expect(region, isNot(covers(-0.1, 0)), reason: 'the first end is cut');
+      expect(
+        region,
+        isNot(covers(-4, -1.5)),
+        reason: 'and is no corner: nothing turns there',
+      );
+      expect(region, isNot(covers(100, 100.1)), reason: 'so is the last');
+      expect(region, isNot(covers(102, 104)));
+    });
+
     test('a path that doubles straight back has no corner at all', () {
       final region = line(
         [p(0, 0), p(100, 0), p(0, 0)],

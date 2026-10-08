@@ -75,7 +75,7 @@ class _CanvasPanelMappedButtons {
   bool get _busy =>
       _state._strokeActive ||
       _state._selectionDragActive ||
-      _state._transformDragActive;
+      _state._modifierTouchDragActive;
 
   bool get _penTail => _state._toolHolds.penTail;
 

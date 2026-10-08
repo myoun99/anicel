@@ -37,6 +37,8 @@ import '../brush/transform_tool_options.dart';
 import 'box_chrome.dart' show SelectionTransformChrome;
 import 'box_on_screen.dart';
 import 'float_warp.dart';
+import 'interactive_brush_edit_canvas_view.dart'
+    show InteractiveBrushEditCanvasView;
 import 'selection_ants_painter.dart';
 import 'selection_drag.dart';
 import 'transform_box.dart';
@@ -79,11 +81,12 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onCutShape,
     this.onFillShape,
     this.onDrawShape,
+    this.shapeKeepsRatio = false,
     this.onPressNeedsCel,
     this.symmetry,
     this.selectionCommands,
     this.onDragActiveChanged,
-    this.onTransformDragActiveChanged,
+    this.onModifierTouchDragActiveChanged,
     this.onLiftRequested,
     this.onLiftLanded,
     this.onLiftConfirmed,
@@ -187,6 +190,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).
   final ValueChanged<DrawnShapePath>? onDrawShape;
 
+  /// The shape tool's 「비율 고정」 switch (유저 답 I-69-Q5, 2026-10-08:
+  /// 「설정 스위치 + Shift」): a shape being DRAWN is a square, a circle, a
+  /// line on one of the eight 45° ways. The modifier — Shift, or a finger
+  /// laid on the glass — turns it the other way round for as long as it is
+  /// held. Read by no other verb: a selection's Shift is its combine mode.
+  final bool shapeKeepsRatio;
+
   /// Asks the host for a cel to draw on, for a press of the SHAPE tool on a
   /// frame that has none: true when one was made, false when none could be
   /// — and then the host has said why. Null where a cel is already there,
@@ -216,11 +226,13 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// viewport gestures exactly like during a stroke).
   final ValueChanged<bool>? onDragActiveChanged;
 
-  /// Raised while a TRANSFORM handle drag is in progress, which is the one
-  /// case where touch must also stand down — see the touch branch of
-  /// [_handlePointerDown] for why an extra finger there is ignored rather
-  /// than obeyed.
-  final ValueChanged<bool>? onTransformDragActiveChanged;
+  /// Raised while a drag that reads a finger as its MODIFIER is in progress
+  /// — a transform handle's, a shape being drawn — which is where touch
+  /// must also stand down: see the touch branch of [_handlePointerDown] for
+  /// why an extra finger there neither cancels nor navigates.
+  /// ↩️It was `onTransformDragActiveChanged` while the transform handle was
+  /// the one such drag.
+  final ValueChanged<bool>? onModifierTouchDragActiveChanged;
 
   /// R14-④/R15-④ bitmap lift: called ONCE per selection shape when the
   /// Move tool first drags it. The host commits the shape's
@@ -774,8 +786,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     duration: const Duration(milliseconds: 600),
   );
 
-  /// A finger resting on the glass while a transform handle is dragged —
-  /// the modifier's TOUCH entrance.
+  /// A finger resting on the glass while a transform handle is dragged or
+  /// a shape is drawn ([_dragTakesAModifierTouch]) — the modifier's TOUCH
+  /// entrance.
   ///
   /// 🗣️유저 2026-09-22: 「수정자는 항상 그렇지만 **터치 입구도 존재하게**
   /// 하고싶으니 **터치발생하면 수정자 발생**하도록. **최대한 입구 단순하게
@@ -799,6 +812,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// are the same question asked at the same place.
   bool get _scaleModifierHeld =>
       HardwareKeyboard.instance.isAltPressed || _modifierTouch != null;
+
+  /// Whether the drag in hand reads a finger laid down beside it as the
+  /// MODIFIER, rather than as the navigate signal that cancels it: a
+  /// transform handle's, and a shape being drawn.
+  ///
+  /// 🗣️유저 답 I-69-Q5 메모 (2026-10-08): 「태블릿은 지금 다른거 하던거처럼
+  /// 수정자. 즉 터치. 기본적으로 데스크톱의 쉬프트나 컨트롤등 수정자키는
+  /// 태블릿에선 터치임. 다만 태블릿 이런거 구분두지않고 그냥 터치면
+  /// 수정자란뜻」.
+  ///
+  /// ⚠️A shape dragged BY a finger takes one only once it is a gesture of
+  /// its own ([MarqueeDrag.byTouch]): until it has gone the touch commit
+  /// slop the second finger is what it always was, the pair becoming a
+  /// screen gesture — or every two-finger zoom begun on the canvas with
+  /// this tool in hand would draw a shape instead.
+  bool get _dragTakesAModifierTouch {
+    final drag = _drag;
+    return drag is TransformDrag ||
+        (widget.tool == CanvasSelectionTool.drawShape &&
+            drag is MarqueeDrag &&
+            (!drag.byTouch ||
+                drag.screenTravel >=
+                    InteractiveBrushEditCanvasView.kTouchStrokeCommitSlop));
+  }
+
+  /// Whether the shape being drawn keeps its ratio NOW: the tool's switch,
+  /// turned the other way round while the modifier is held — Shift, or the
+  /// finger ([_modifierTouch]).
+  ///
+  /// ⚠️Read at every move, like [_scaleModifierHeld] and for its reason:
+  /// held before the press and pressed during the drag are one question.
+  bool get _shapeKeepsRatioNow =>
+      widget.tool == CanvasSelectionTool.drawShape &&
+      widget.shapeKeepsRatio !=
+          (HardwareKeyboard.instance.isShiftPressed || _modifierTouch != null);
 
   /// A selection the USER made.
   ///
@@ -1862,20 +1910,25 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The one door both drag-active signals leave by.
   ///
-  /// The transform half is DERIVED from [_drag] rather than raised by
+  /// The touch-lock half is DERIVED from [_drag] rather than raised by
   /// hand at each site, so a future drag kind cannot forget to lower it —
   /// and a stuck touch lock is the kind of bug that only shows up as "the
   /// canvas stopped panning" an hour later.
   void _notifyDragActive(bool active) {
     widget.onDragActiveChanged?.call(active);
-    final transform = active && _drag is TransformDrag;
-    if (transform != _reportedTransformDrag) {
-      _reportedTransformDrag = transform;
-      widget.onTransformDragActiveChanged?.call(transform);
+    // ⚠️Said at the press and not again. A finger's shape drag takes no
+    // modifier touch yet at its press ([_dragTakesAModifierTouch]) and is
+    // not reported when it starts to: a finger landing late beside a
+    // finger's gesture is the touch engine's own modifier (PEN-7b) and
+    // moves no view — pinned on the panel, 「once it has gone its own way」.
+    final takesTouch = active && _dragTakesAModifierTouch;
+    if (takesTouch != _reportedModifierTouchDrag) {
+      _reportedModifierTouchDrag = takesTouch;
+      widget.onModifierTouchDragActiveChanged?.call(takesTouch);
     }
   }
 
-  bool _reportedTransformDrag = false;
+  bool _reportedModifierTouchDrag = false;
 
   /// What the open box reads as, or null when no box is up (the settings
   /// fields then show the identity).
@@ -2111,8 +2164,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // MODIFIER — neither cancel nor navigate. 유저 08-13 asked only that
       // it stop cancelling; 09-22 gave it the meaning. ⚠️The reasoning of
       // both decisions lives on [_modifierTouch] — read it before moving
-      // this.
-      if (event.kind == PointerDeviceKind.touch && _drag is! TransformDrag) {
+      // this. A shape being drawn takes it the same way (I-69-Q5,
+      // [_dragTakesAModifierTouch]).
+      if (event.kind == PointerDeviceKind.touch && !_dragTakesAModifierTouch) {
         setState(() => _endDrag(cancelled: true, notify: true));
         _syncAnts();
       } else if (event.kind == PointerDeviceKind.touch) {
@@ -2200,6 +2254,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               ? null
               : _region,
           at: canvasPoint,
+          byTouch: event.kind == PointerDeviceKind.touch,
         );
       });
     }
@@ -2499,7 +2554,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // down and only the release decides whether it lands.
         return;
       case MarqueeDrag():
-        setState(() => drag.update(_toCanvas(event.localPosition)));
+        setState(
+          () => drag
+            ..screenTravel += event.delta.distance
+            ..update(
+              _toCanvas(event.localPosition),
+              keepsRatio: _shapeKeepsRatioNow,
+            ),
+        );
       case MoveDrag():
         setState(() {
           drag.screenDelta += event.delta;
