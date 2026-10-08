@@ -10,8 +10,10 @@ import '../../models/property_track.dart'
 import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_camera_row.dart' show isTrackCameraRow;
 import '../../models/track_transform_lane_carrier.dart';
 import '../../services/camera_pose_resolver.dart';
+import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../../services/cut_frame_composite_plan.dart';
 import '../timeline/effect_lane_editing.dart'
     show
@@ -255,6 +257,22 @@ class LaneVerbs {
         layerId,
         laneId,
       ),
+      // The storyboard's CAMERA row is no cut's layer: standing on it stands
+      // on the camera layer it has in hand — the timeline's camera row, and
+      // so its header (I-73 ④, 「타임라인의 자리 = 카메라 행」) — or on
+      // nothing.
+      final row when cells == null && isTrackCameraRow(row) => switch (
+        projectedLayerInHand(
+          row: row,
+          cut: _project.activeCutOrNull,
+          activeLayerId: _selection.activeLayerId,
+        )) {
+        final camera? => _standingSpan(
+          camera.id,
+          transformGroupHeaderLane.laneId,
+        ),
+        null => null,
+      },
       // A band that also holds other rows claims the press as CELLS.
       LayerRowAddress(:final layerId)
           when cells == null && _isCameraRow(layerId) =>

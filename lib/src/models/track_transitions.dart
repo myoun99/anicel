@@ -36,8 +36,16 @@ TransitionSpan transitionSpanOfEvent(
 List<TransitionSpan> trackTransitionSpans(
   Track track,
   CameraInstructionSet vocabulary,
+) => transitionRowSpans(track.transitionLayer, vocabulary);
+
+/// The spans of a track's transition [row] — the row as stored, or as a
+/// drag in flight shows it (the storyboard's camera row reads a span's
+/// edge while it is dragged, I-73 ④).
+List<TransitionSpan> transitionRowSpans(
+  Layer row,
+  CameraInstructionSet vocabulary,
 ) => [
-  for (final entry in track.transitionLayer.instructions.entries)
+  for (final entry in row.instructions.entries)
     transitionSpanOfEvent(entry, vocabulary),
 ];
 

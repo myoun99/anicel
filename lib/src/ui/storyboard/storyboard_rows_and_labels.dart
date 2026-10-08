@@ -215,7 +215,7 @@ class _StoryboardRowsAndLabels {
   Widget conteLabelRow(Track track, int seat) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final head = conteHeadAt(track.cuts, seat);
-    final verbs = _conteHeadVerbs();
+    final verbs = _timelineHeadVerbs();
     if (head == null || verbs == null) {
       return _StoryboardLayerRowLabel(
         track: track,
@@ -237,10 +237,78 @@ class _StoryboardRowsAndLabels {
     );
   }
 
-  /// The verbs a conte row's head cannot stand without — its eye, its
-  /// opacity, its label and its blend, which the timeline's row takes as
+  /// The CAMERA row's rail label (I-73 ④) — THE TIMELINE'S OWN CAMERA ROW
+  /// ([TimelineLayerControlsRow]), wearing the camera layer of the cut the
+  /// session stands in on this track ([_StoryboardRailRows._cameraHeadOf]).
+  ///
+  /// 🗣️유저 2026-10-08: 「그리고 카메라는 로컬이랑 똑같이 최상단행. cam섹션의
+  /// 제일 위」 — the row the timeline shows at the top of its CAM section,
+  /// shown here at the top of this one: the drawn proposal's 「머리는
+  /// 타임라인의 카메라 행 머리 부품 그대로(칩 · 아이콘 · Camera · fx · 눈 ·
+  /// 값)」. Its eye is the camera VIEW and its slider the view's DIM, as the
+  /// timeline's are ([StoryboardPanel.cameraViewEnabled],
+  /// [StoryboardPanel.cameraDimOpacity]); its label and its fx switch are the
+  /// layer's own.
+  ///
+  /// ⚠️Whether the head is ONE for the track's cuts, as the conte rows' is,
+  /// nobody has said: it is the cut stood in's, as the timeline's is.
+  ///
+  /// A press picks the ROW ([trackCameraRowId]) — never the head's layer —
+  /// and the session lands it on the camera layer of the cut it stands in.
+  /// In a gap there is no head to wear: the row keeps its slots reserved and
+  /// empty ([_StoryboardLayerRowLabel]).
+  Widget cameraLabelRow(Track track) {
+    final rowId = trackCameraRowId(track.id);
+    final active = _state.widget.selectedRow == LayerRowAddress(rowId);
+    final head = _state._railRows._cameraHeadOf(track);
+    final verbs = _timelineHeadVerbs();
+    if (head == null || verbs == null) {
+      return _StoryboardLayerRowLabel(
+        track: track,
+        rowId: rowId,
+        kind: LayerKind.camera,
+        keyName: 'camera',
+        name: trackCameraRowName(
+          track.cuts,
+          standingIn: _state.widget.activeCutId,
+        ),
+        layer: null,
+        active: active,
+        height: _state._rowHeights.camera,
+        onSelectLayer: _state.widget.onSelectLayer,
+      );
+    }
+    final select = _state.widget.onSelectLayer;
+    final view = _state.widget.cameraViewEnabled;
+    return KeyedSubtree(
+      key: ValueKey<String>('storyboard-camera-label-${track.id.value}'),
+      child: TimelineLayerControlsRow(
+        keyPrefix: 'storyboard',
+        layer: view == null ? head : head.copyWith(isVisible: view.value),
+        active: active,
+        metrics: TimelineGridMetrics.defaults.copyWith(
+          layerControlsWidth: _state._naturalRailWidth,
+          layerRowHeight: _state._rowHeights.camera,
+          railColumns: layerRailColumnWidthsIn(_state.context),
+        ),
+        onSelectLayer: (_) => select?.call(rowId),
+        labelDoubleClick: _state.widget.labelDoubleClick,
+        onToggleLayerVisibility: verbs.toggleEye,
+        onLayerOpacityChanged: verbs.setOpacity,
+        onLayerOpacityChangeEnd: _state.widget.onLayerOpacityChangeEnd,
+        opacityOverride: _state.widget.cameraDimOpacity,
+        onLayerMarkSelected: verbs.pickMark,
+        fxState:
+            _state.widget.layerFxStateOf?.call(head.id) ?? LayerFxState.on,
+        onToggleLayerFx: _state.widget.onToggleLayerFx,
+      ),
+    );
+  }
+
+  /// The verbs a head that is the timeline's own row cannot stand without —
+  /// its eye, its opacity, its label and its blend, which that row takes as
   /// given — or null while the host has not wired them all.
-  _ConteHeadVerbs? _conteHeadVerbs() {
+  _TimelineHeadVerbs? _timelineHeadVerbs() {
     final toggleEye = _state.widget.onToggleLayerVisibility;
     final setOpacity = _state.widget.onLayerOpacityChanged;
     final pickMark = _state.widget.onLayerMarkSelected;
@@ -265,7 +333,7 @@ class _StoryboardRowsAndLabels {
     Track track,
     int seat,
     ({Cut cut, Layer row}) head,
-    _ConteHeadVerbs verbs,
+    _TimelineHeadVerbs verbs,
   ) {
     final rowId = trackConteRowId(track.id, seat: seat);
     final select = _state.widget.onSelectLayer;

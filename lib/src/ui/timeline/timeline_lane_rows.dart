@@ -48,6 +48,7 @@ import 'timeline_frame_span_layout.dart'
     show TimelineFrameSpan, TimelineFrameSpanPlacement;
 import 'timeline_grid_metrics.dart';
 import 'axis_turn.dart';
+import 'memo_token.dart' show ByList;
 
 /// A selected lane key rings in ACCENT 1 with a thin silhouette stroke
 /// (UI-R23 #4): two-thirds of the old 2px so the ring reads as a hairline,
@@ -1653,51 +1654,84 @@ List<Widget> timelineUnionKeyMarkerSpans({
       axis: axis,
     ),
     for (final frame in lane.keyedFrames.toList()..sort())
-      TimelineFrameSpan(
-        key: ValueKey<String>(
-          '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
-        ),
-        // The FULL cell, resolved at layout time — the cells row keeps
-        // its memo through zoom steps (R28 #4), so the marker size must
-        // not be baked at build. The child reads the laid-out box and
-        // asks the SAME metric law (D39); Center inside the marker puts
-        // the diamond on the cell centre exactly as the carved-out box
-        // used to.
-        placement: TimelineFrameSpanPlacement(
-          startIndex: frame,
-          endIndexExclusive: frame + 1,
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // The tighter box dimension is the cell's zoom-driven extent
-            // on either axis (the fit takes the min of both anyway).
-            final cellExtent = math.min(
-              constraints.maxWidth,
-              constraints.maxHeight,
-            );
-            final markerSize = timelineLaneUnionKeyMarkerSize(
-              crossExtent,
-              frameCellExtent: cellExtent,
-            );
-            final marker = TimelineLaneKeyMarker(
-              key: ValueKey<String>(
-                '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
-              ),
-              shape: lane.keyShapeAt(frame),
-              markerSize: markerSize,
-              color: layerMarkColor(layer.mark),
-            );
-            // The NAME rides the same span — 🗣️유저 2026-09-12:
-            // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row
-            // drew the mark and left the word to a band it does not have.
-            final word = _unionKeyName(lane, frame: frame);
-            return word == null
-                ? marker
-                : Stack(fit: StackFit.expand, children: [marker, word]);
-          },
-        ),
+      timelineUnionKeySpan(
+        keyPrefix: keyPrefix,
+        layer: layer,
+        lane: lane,
+        frame: frame,
+        crossExtent: crossExtent,
       ),
   ];
+}
+
+/// ONE union key — its mark and its name — as the span it stands on: the
+/// cell of [lane]'s key at [frame], or the cell [at] where a row draws the
+/// key somewhere other than its own frame (the storyboard's camera row
+/// draws each cut's keys at the cut's place on the track, I-73 ④).
+///
+/// [crossExtent] is the band the mark stands in, across — the row's whole
+/// extent, or with [crossInset] the part of it from there (the camera row's
+/// upper and lower lines over an O.L). The mark's size reads it, as it
+/// reads the row's: one metric law ([timelineLaneUnionKeyMarkerSize]).
+///
+/// [named] false leaves the key's name off — the camera row's two lines
+/// have no room for it (the drawn proposal's 「키 이름은 한 줄일 때만」).
+TimelineFrameSpan timelineUnionKeySpan({
+  required String keyPrefix,
+  required Layer layer,
+  required PropertyLaneRow lane,
+  required int frame,
+  required double crossExtent,
+  int? at,
+  double? crossInset,
+  bool named = true,
+}) {
+  final cell = at ?? frame;
+  return TimelineFrameSpan(
+    key: ValueKey<String>(
+      '$keyPrefix-lane-key-span-${layer.id}-${lane.laneId}-$frame',
+    ),
+    // The FULL cell, resolved at layout time — the cells row keeps its memo
+    // through zoom steps (R28 #4), so the marker size must not be baked at
+    // build. The child reads the laid-out box and asks the SAME metric law
+    // (D39); Center inside the marker puts the diamond on the cell centre
+    // exactly as the carved-out box used to.
+    placement: TimelineFrameSpanPlacement(
+      startIndex: cell,
+      endIndexExclusive: cell + 1,
+      crossInset: crossInset ?? 0,
+      crossExtent: crossInset == null ? null : crossExtent,
+    ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        // The tighter box dimension is the cell's zoom-driven extent on
+        // either axis (the fit takes the min of both anyway).
+        final cellExtent = math.min(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+        final markerSize = timelineLaneUnionKeyMarkerSize(
+          crossExtent,
+          frameCellExtent: cellExtent,
+        );
+        final marker = TimelineLaneKeyMarker(
+          key: ValueKey<String>(
+            '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
+          ),
+          shape: lane.keyShapeAt(frame),
+          markerSize: markerSize,
+          color: layerMarkColor(layer.mark),
+        );
+        // The NAME rides the same span — 🗣️유저 2026-09-12:
+        // 「카메라레이어만 레이어에 인스턴스 이름이 표시안되」: this row drew
+        // the mark and left the word to a band it does not have.
+        final word = named ? _unionKeyName(lane, frame: frame) : null;
+        return word == null
+            ? marker
+            : Stack(fit: StackFit.expand, children: [marker, word]);
+      },
+    ),
+  );
 }
 
 /// The line between a union row's keys, as the span it is laid out over —
@@ -1770,6 +1804,15 @@ TimelineFrameSpan? _unionKeysLineSpan({
 /// middle of the first to the middle of the last, where the two marks
 /// stand. A box that stops short of a key — a band's window does — has the
 /// line run to that edge instead ([startsAtKey], [endsAtKey]).
+///
+/// It runs across the box at [crossFraction], and where a row draws its
+/// keys at another height part of the way along — the storyboard's camera
+/// row, whose cut moves to the upper or the lower line where it shares its
+/// frames with a neighbour over an O.L (I-73 ④) — it STEPS there
+/// ([steps]): 유저 2026-10-08, 「ol쪽 만나면 선을 뭔가 꺾어서 위로 향하게
+/// 해서 직선 잇는다던가?」. A step is a slope across its cell edge, as wide
+/// as half a cell and never wider than [timelineKeysLineBendReach] on
+/// either side, so the line stays one line.
 class TimelineLaneKeysLine extends StatelessWidget {
   const TimelineLaneKeysLine({
     super.key,
@@ -1778,6 +1821,8 @@ class TimelineLaneKeysLine extends StatelessWidget {
     required this.color,
     this.startsAtKey = true,
     this.endsAtKey = true,
+    this.crossFraction = 0.5,
+    this.steps = const [],
   });
 
   final Axis axis;
@@ -1792,6 +1837,15 @@ class TimelineLaneKeysLine extends StatelessWidget {
   final bool startsAtKey;
   final bool endsAtKey;
 
+  /// Where across the box the line starts: 0 at the leading side, 1 at the
+  /// trailing — the middle, where a key mark stands, unless the row says.
+  final double crossFraction;
+
+  /// Where the line moves across, in box order: at the leading edge of the
+  /// box's cell [TimelineKeysLineStep.edge] it goes to
+  /// [TimelineKeysLineStep.to].
+  final List<TimelineKeysLineStep> steps;
+
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
@@ -1802,10 +1856,61 @@ class TimelineLaneKeysLine extends StatelessWidget {
           color: color,
           startsAtKey: startsAtKey,
           endsAtKey: endsAtKey,
+          crossFraction: crossFraction,
+          steps: steps,
         ),
       ),
     );
   }
+}
+
+/// One step of a [TimelineLaneKeysLine]: at the leading edge of the box's
+/// cell [edge] — counted from the box's first cell — the line moves across
+/// to [to] (0 the leading side, 1 the trailing).
+typedef TimelineKeysLineStep = ({int edge, double to});
+
+/// How far along the line a step's slope may reach on either side of its
+/// edge, at most — half a cell when a cell is narrower than twice this.
+const double timelineKeysLineBendReach = 6;
+
+/// THE COURSE a [TimelineLaneKeysLine] strokes through, in its box: from the
+/// middle of the first of its [cells] (or the box's edge, where it does not
+/// start at a key) to the middle of the last (or the far edge), at
+/// [crossFraction] across, and at each step a slope from where it was to
+/// where the step sends it — reaching half a cell either side of the step's
+/// edge, never more than [timelineKeysLineBendReach], never past the line's
+/// own ends. Empty where the box holds no line.
+///
+/// ★What the painter draws and what a pin reads are this one answer.
+List<({double along, double across})> timelineKeysLineCourse({
+  required double along,
+  required double across,
+  required int cells,
+  required bool startsAtKey,
+  required bool endsAtKey,
+  required double crossFraction,
+  required List<TimelineKeysLineStep> steps,
+}) {
+  final cell = cells < 1 ? 0.0 : along / cells;
+  final from = startsAtKey ? cell / 2 : 0.0;
+  final to = endsAtKey ? along - cell / 2 : along;
+  if (to <= from) {
+    return const [];
+  }
+  final reach = math.min(cell / 2, timelineKeysLineBendReach);
+  double held(double value) => value.clamp(from, to).toDouble();
+  var at = across * crossFraction;
+  final course = [(along: from, across: at)];
+  for (final step in steps) {
+    final edge = step.edge * cell;
+    final next = across * step.to;
+    course
+      ..add((along: held(edge - reach), across: at))
+      ..add((along: held(edge + reach), across: next));
+    at = next;
+  }
+  course.add((along: to, across: at));
+  return course;
 }
 
 class _KeysLinePainter extends CustomPainter with RepaintOnProps {
@@ -1815,6 +1920,8 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
     required this.color,
     required this.startsAtKey,
     required this.endsAtKey,
+    required this.crossFraction,
+    required this.steps,
   });
 
   final Axis axis;
@@ -1822,28 +1929,51 @@ class _KeysLinePainter extends CustomPainter with RepaintOnProps {
   final Color color;
   final bool startsAtKey;
   final bool endsAtKey;
+  final double crossFraction;
+  final List<TimelineKeysLineStep> steps;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final along = extentAlong(axis, size);
-    final halfCell = cells < 1 ? 0.0 : along / cells / 2;
-    final from = startsAtKey ? halfCell : 0.0;
-    final to = endsAtKey ? along - halfCell : along;
-    if (to <= from) {
+    final course = timelineKeysLineCourse(
+      along: extentAlong(axis, size),
+      across: extentAcross(axis, size),
+      cells: cells,
+      startsAtKey: startsAtKey,
+      endsAtKey: endsAtKey,
+      crossFraction: crossFraction,
+      steps: steps,
+    );
+    if (course.length < 2) {
       return;
     }
-    final across = extentAcross(axis, size) / 2;
-    canvas.drawLine(
-      offsetAlong(axis, along: from, across: across),
-      offsetAlong(axis, along: to, across: across),
-      Paint()
-        ..color = color
-        ..strokeWidth = timelineJoiningLineWidth,
-    );
+    final points = [
+      for (final point in course)
+        offsetAlong(axis, along: point.along, across: point.across),
+    ];
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = timelineJoiningLineWidth;
+    if (points.length == 2) {
+      canvas.drawLine(points.first, points.last, paint);
+      return;
+    }
+    final path = Path()..moveTo(points.first.dx, points.first.dy);
+    for (final point in points.skip(1)) {
+      path.lineTo(point.dx, point.dy);
+    }
+    canvas.drawPath(path, paint..style = PaintingStyle.stroke);
   }
 
   @override
-  Object get props => (axis, cells, color, startsAtKey, endsAtKey);
+  Object get props => (
+    axis,
+    cells,
+    color,
+    startsAtKey,
+    endsAtKey,
+    crossFraction,
+    ByList(steps),
+  );
 }
 
 /// One key marker. A DRAWING, and nothing else.

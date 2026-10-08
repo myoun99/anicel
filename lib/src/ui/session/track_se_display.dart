@@ -4,7 +4,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_empty_gaps.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart';
-import '../../models/track_conte_row.dart';
+import '../../models/track_projection_row.dart';
 import '../../models/track_frame_range.dart';
 import '../../models/track_se_window.dart';
 import '../../models/track_transform_lane_carrier.dart';
@@ -94,11 +94,13 @@ class TrackSeDisplay {
   /// just a yes.
   Track? trackOwnedRailOwner(LayerId layerId) {
     // C②: the V track's synthetic lane CARRIER is a rail row too — an
-    // escalated lane drag anchors the track-axis selection on it. And so is
-    // the track's CONTE row (I-73): the cuts' conte layers shown as one row
-    // of this rail, which no cut's layer id names ([trackConteRowId]).
+    // escalated lane drag anchors the track-axis selection on it. And so are
+    // the track's PROJECTION rows (I-73): the cuts' conte layers and camera
+    // layers shown as rows of this rail, which no cut's layer id names
+    // ([trackIdOfProjectionRow]).
     final mintedFor =
-        trackIdOfTransformLaneCarrier(layerId) ?? trackIdOfConteRow(layerId);
+        trackIdOfTransformLaneCarrier(layerId) ??
+        trackIdOfProjectionRow(layerId);
     return trackSeAnywhere(layerId)?.track ??
         _transitions.trackTransitionOwner(layerId) ??
         (mintedFor == null ? null : _project.trackById(mintedFor));

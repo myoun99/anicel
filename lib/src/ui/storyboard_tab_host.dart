@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../models/cut_id.dart';
+import '../models/layer.dart' show LayerStackQueries;
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
+import '../models/track_camera_row.dart' show trackCameraRowId;
 import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
@@ -76,6 +79,8 @@ class StoryboardTabHost extends StatefulWidget {
     this.onToggleAttachGroup,
     this.rowsChannel,
     this.transformOptions,
+    this.cameraViewEnabled,
+    this.cameraDimOpacity,
   });
 
   /// The legend's row filter, shared with the timeline and the sheet
@@ -165,10 +170,14 @@ class StoryboardTabHost extends StatefulWidget {
   /// window should do.
   final void Function(String path, ImportLayerSpot spot)? onPlaceMediaAsset;
 
-  // ⛔The camera-view notifier is no longer this host's business. R28 #1 put
-  // the toggle beside the transport, and the transport moved to the 문턱
-  // (2026-08-10) — the workspace hands both to [FramePanelSillControls] now,
-  // so this panel neither mounts the button nor needs the state behind it.
+  /// The camera row's head is the timeline's camera row (I-73 ④): its eye is
+  /// the camera VIEW and its slider the view's DIM — the canvas's and the
+  /// camera panel's own notifiers, the ones [TimelineTabHost] is handed for
+  /// its camera row. ↩️Not this host's business from R28 #1 (the toggle went
+  /// beside the transport, then to the 문턱) until the storyboard had a
+  /// camera row; the 문턱's toggle is still the workspace's.
+  final ValueNotifier<bool>? cameraViewEnabled;
+  final ValueNotifier<double>? cameraDimOpacity;
 
   @override
   State<StoryboardTabHost> createState() => _StoryboardTabHostState();
@@ -177,9 +186,15 @@ class StoryboardTabHost extends StatefulWidget {
 class _StoryboardTabHostState extends State<StoryboardTabHost> {
   EditorSessionManager get _session => widget.session;
 
-  /// The S rows' buttons as a press asks them — the timeline rail's own
-  /// wiring, spread over the row selection when the pressed row is in it.
-  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(_session);
+  /// The rows' buttons as a press asks them — the timeline rail's own
+  /// wiring, spread over the row selection when the pressed row is in it;
+  /// the camera row's eye and slider drive the camera view, as on the
+  /// timeline's rail.
+  SessionRowButtonPresses get _rowPresses => SessionRowButtonPresses(
+    _session,
+    cameraView: widget.cameraViewEnabled,
+    cameraDim: widget.cameraDimOpacity,
+  );
 
   /// Rail view state (twirled-down lanes, Transform group collapse).
   /// Session-scoped like the timeline's lane expansion; lost on tab switch
@@ -403,6 +418,32 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         frameIndex: _session.currentFrameIndex,
       );
 
+  /// THE CAMERA ROW's press that lands in a cut (I-73 ④): the row, then the
+  /// cut and the frame of its own the press named — over an O.L, the cut of
+  /// the line pressed — the cells' press ([_pressRowFrame]) with the seek
+  /// that names its cut ([seekStoryboardCutFrame]), standing in this panel.
+  void _pressCameraCut(TrackId trackId, CutId cutId, int ownFrame) =>
+      _session.standing.standInStoryboard(() {
+        _session.selectRow(LayerRowAddress(trackCameraRowId(trackId)));
+        seekStoryboardCutFrame(_session, cutId, ownFrame);
+      });
+
+  /// …and its double click: the timeline camera row's own
+  /// ([activateCellOnDoubleTap] — a key opens, an empty cell is keyed), on
+  /// the camera layer the first click seated, at the frame it stood on.
+  Future<void> _editCameraCell() async {
+    final camera = _session.activeCutOrNull?.layers.cameraLayer;
+    if (camera == null) {
+      return;
+    }
+    await activateCellOnDoubleTap(
+      context,
+      _session,
+      layerId: camera.id,
+      frameIndex: _session.currentFrameIndex,
+    );
+  }
+
   /// I-48: a double click on a layer's label renames the rows its first
   /// press acted on — the timeline rail's door, on this rail's rows.
   VoidCallback _renameOnLabelDoubleClick(LayerId pressed) =>
@@ -596,7 +637,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Offstage(
                 offstage: PanelCollapsedScope.of(context),
                 child: ListenableBuilder(
-                  listenable: _session.voiceRecording.voiceRecordPreviewLane,
+                  // …and the camera VIEW, which the camera row's eye shows
+                  // and which is no session notify (the timeline host hears
+                  // it the same way).
+                  listenable: Listenable.merge([
+                    _session.voiceRecording.voiceRecordPreviewLane,
+                    ?widget.cameraViewEnabled,
+                  ]),
                   builder: (context, _) => StoryboardPanel(
                     project: _session.repository.requireProject(),
                     rowFilter: widget.rowFilter,
@@ -1156,6 +1203,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // names on the same double tap.
                     onEditCutBlock: _editCutBlock,
                     onEditConteBlock: _editConteBlock,
+                    // The CAMERA row (I-73 ④): a press stands in the cut it
+                    // names, a double click is the timeline camera row's, and
+                    // its head is that row's — eye and slider on the view.
+                    onCameraCutPress: _pressCameraCut,
+                    onEditCameraCell: () => unawaited(_editCameraCell()),
+                    cameraViewEnabled: widget.cameraViewEnabled,
+                    cameraDimOpacity: widget.cameraDimOpacity,
                   ),
                 ),
               ),

@@ -921,8 +921,11 @@ void main() {
     // covered in timeline_section_test, but only a pumped panel proves the
     // band measures ITS OWN box — a fit computed against the wrong height
     // would pass every pure test and still ship `C⋮`.
-    testWidgets('the one-row transition band shortens CAM to C, while the '
-        'SE band beside it keeps SE', (tester) async {
+    // ↩️The one-row band here was the CAM band, the transition row alone,
+    // until the camera row joined it on top (I-73 ④): CAM is two rows now
+    // and keeps its word, and the one-row band is the conte row's.
+    testWidgets('the one-row conte band shortens ACTION to A, while the '
+        'two-row CAM and SE bands beside it keep theirs', (tester) async {
       await _pumpPanel(tester, project: _project(seLayers: twoSeRows));
 
       String bandText(String keyValue) => tester
@@ -934,23 +937,23 @@ void main() {
           )
           .text;
 
-      expect(bandText('storyboard-section-zone-lane-track-transition'), 'C');
+      expect(bandText('storyboard-section-zone-lane-track-conte'), 'A');
+      expect(bandText('storyboard-section-zone-lane-track-camera'), 'CAM');
       expect(bandText('storyboard-section-zone-lane-track-se'), 'SE');
 
       // The REGION still announces the whole word: shortening is a drawing
-      // decision, and a reader that said 'C' would be reading geometry.
+      // decision, and a reader that said 'A' would be reading geometry.
       expect(
         find.descendant(
           of: find.byKey(
-            const ValueKey<String>(
-              'storyboard-section-zone-lane-track-transition',
-            ),
+            const ValueKey<String>('storyboard-section-zone-lane-track-conte'),
           ),
           // The widget, not the semantics tree: `bySemanticsLabel` needs the
           // binding turned on, and what is being asserted here is what the
           // band DECLARES, which is exactly this property.
           matching: find.byWidgetPredicate(
-            (widget) => widget is Semantics && widget.properties.label == 'CAM',
+            (widget) =>
+                widget is Semantics && widget.properties.label == 'ACTION',
           ),
         ),
         findsOneWidget,

@@ -1,6 +1,7 @@
 import 'layer_id.dart';
 import 'timeline_row_address.dart';
 import 'track_id.dart';
+import 'track_minted_row_id.dart';
 
 /// THE TRACK'S CONTE ROWS (I-73, 유저 2026-10-08).
 ///
@@ -28,19 +29,18 @@ const _word = 'conte-row';
 const _prefix = '$_word:';
 const _seatPrefix = '$_word@';
 
-LayerId trackConteRowId(TrackId trackId, {int seat = 0}) => LayerId(
-  seat == 0
-      ? '$_prefix${trackId.value}'
-      : '$_seatPrefix$seat:${trackId.value}',
-);
+LayerId trackConteRowId(TrackId trackId, {int seat = 0}) => seat == 0
+    ? mintedTrackRowId(_prefix, trackId)
+    : mintedTrackRowId('$_seatPrefix$seat:', trackId);
 
 /// The track and the seat a conte row's address names; null for every other
 /// id — a cut's own conte layer among them.
 ({TrackId trackId, int seat})? trackConteRowOf(LayerId layerId) {
-  final value = layerId.value;
-  if (value.startsWith(_prefix)) {
-    return (trackId: TrackId(value.substring(_prefix.length)), seat: 0);
+  final base = trackOfMintedRowId(_prefix, layerId);
+  if (base != null) {
+    return (trackId: base, seat: 0);
   }
+  final value = layerId.value;
   if (!value.startsWith(_seatPrefix)) {
     return null;
   }

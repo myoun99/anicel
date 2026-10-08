@@ -10,11 +10,11 @@ import '../../models/timeline_selection_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_row_address.dart';
 import '../../models/working_panel.dart';
-import '../../models/track_conte_row.dart' show isTrackConteRow;
+import '../../models/track_projection_row.dart' show isTrackProjectionRow;
 import '../../models/track_frame_range.dart';
 import '../../models/track_id.dart';
 import '../../models/track_transform_lane_carrier.dart';
-import '../storyboard_layer_policy.dart' show conteLayerInHand;
+import '../storyboard_layer_policy.dart' show projectedLayerInHand;
 import '../timeline/timeline_row_span_resolver.dart'
     show resolveSelectionSpanRows;
 import '../timeline/timeline_section_policy.dart';
@@ -1069,9 +1069,10 @@ class RangeSelections {
   /// would select something (T25).
   ({LayerId layerId, int first, int lastExclusive})? _rowSpanForCurrentRow() {
     final rowLayerId = switch (_currentRow()) {
-      // The storyboard's conte row is no cut's layer: it stands on the
-      // conte layer it has in hand, or on nothing (I-73).
-      final row when isTrackConteRow(row) => conteLayerInHand(
+      // The storyboard's projection rows are no cut's layer: each stands on
+      // the layer it has in hand — a conte seat's, the camera's — or on
+      // nothing (I-73).
+      final row when isTrackProjectionRow(row) => projectedLayerInHand(
         row: row,
         cut: _project.activeCutOrNull,
         activeLayerId: _selection.activeLayerId,

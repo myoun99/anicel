@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
+import '../models/cut_id.dart';
 import '../models/storyboard_timeline_layout.dart';
 
 /// The SELECTED track's layout entries (every entry as fallback when that
@@ -173,6 +174,34 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
     return;
   }
   session.selectGlobalFrame(globalFrame);
+}
+
+/// A press that lands in a CUT at a frame of its OWN (I-73 ④) — the camera
+/// row's: over an O.L its two lines name the cut by the line pressed, where
+/// the track frame alone names the cut it stands under (an arriving cut's
+/// のりしろ is the cut in front's place on the track). Playback seeks the
+/// clock to where that frame plays ([seekStoryboardGlobalFrame]); editing
+/// takes the cut and its frame, the stand [selectGlobalFrame] makes when the
+/// track frame names that cut.
+void seekStoryboardCutFrame(
+  EditorSessionManager session,
+  CutId cutId,
+  int ownFrame,
+) {
+  if (session.playbackRig.playback.isActive) {
+    final globalFrame = session.projectSettings.projectAxis().globalOf(
+      cutId,
+      ownFrame,
+    );
+    if (globalFrame != null) {
+      seekStoryboardGlobalFrame(session, globalFrame);
+    }
+    return;
+  }
+  if (session.activeCutId != cutId) {
+    session.selectCut(cutId);
+  }
+  session.selectFrameIndex(ownFrame);
 }
 
 // `parkStoryboardGlobalFrame` is gone with the law it carried (⑭): a press

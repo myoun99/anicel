@@ -211,6 +211,60 @@ class _StoryboardRailRows {
   bool _showsTransitionRow(Track track) =>
       _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
 
+  /// Whether the rail shows [track]'s CAMERA row (I-73 ④): its section is
+  /// the one the timeline puts the kind in — the camera section, whose top
+  /// row it is — and the legend's filter judges it as every row
+  /// ([_filterAllowsCameraRow]).
+  ///
+  /// ⚠️ONE question for the three places that lay the row out — the row
+  /// table, the rail's labels and the strips — as [_showsTransitionRow] is.
+  bool _showsCameraRow(Track track) =>
+      _sectionShown(timelineSectionForLayerKind(LayerKind.camera)) &&
+      _filterAllowsCameraRow(track);
+
+  /// The camera row's HEAD on [track]: the camera layer of the cut the
+  /// session stands in, when that cut is on this track — the row the
+  /// timeline shows at the top of its CAM section, so the two panels' camera
+  /// rows are one row (「카메라는 로컬이랑 똑같이 최상단행」). Null in a gap,
+  /// and on every other track.
+  Layer? _cameraHeadOf(Track track) {
+    final activeCutId = _state.widget.activeCutId;
+    if (activeCutId == null) {
+      return null;
+    }
+    for (final cut in track.cuts) {
+      if (cut.id == activeCutId) {
+        return cut.layers.cameraLayer;
+      }
+    }
+    return null;
+  }
+
+  /// Whether the legend's filter lets the camera row show. Its head IS a
+  /// layer, so it answers every chip, as an S row does
+  /// ([TimelineRowFilter.allowsLayerRow]); with no head — a gap — the row is
+  /// judged on the one facet it has, its kind (the conte row's rule,
+  /// [_filterAllowsConteSeat]).
+  bool _filterAllowsCameraRow(Track track) {
+    final standing =
+        _state.widget.selectedRow ==
+        LayerRowAddress(trackCameraRowId(track.id));
+    final head = _cameraHeadOf(track);
+    return head == null
+        ? _state.widget.rowFilter.allowsRow(
+            standing: standing,
+            kind: LayerKind.camera,
+            fxEnabled: true,
+          )
+        : _state.widget.rowFilter.allowsLayerRow(
+            head,
+            standing: standing,
+            fxEnabled: fxEnabledFromState(
+              _state.widget.layerFxStateOf?.call(head.id),
+            ),
+          );
+  }
+
   /// The seats of [track]'s conte group the rail SHOWS, top row first — the
   /// attach rows above the conte, the conte, the ones below it
   /// ([conteSeatsOf]) — under the V row (I-73): its section is the one the
@@ -557,20 +611,27 @@ class _StoryboardRailRows {
   List<Widget> railRowsForTrack(Track track, int index) {
     final seRows = _seRowsFor(track);
     final vRows = _vRowsFor(track, index);
+    final camRows = [
+      if (_showsCameraRow(track)) _state._rows.cameraLabelRow(track),
+      if (_showsTransitionRow(track)) _state._rows.transitionLabelRow(track),
+    ];
     return [
-      // The transition row heads the group. It is a FIXTURE like S1/S2 — one
-      // per track, always there — so it takes no filter gate and no reorder
-      // drag: there is nothing to hide it behind and nowhere to move it to.
+      // The CAM section heads the group: the camera row at its top, as the
+      // timeline's camera row tops its own (I-73 ④, 유저 2026-10-08:
+      // 「카메라는 로컬이랑 똑같이 최상단행. cam섹션의 제일 위」), then the
+      // transition row. The transition row is a FIXTURE like S1/S2 — one per
+      // track, always there — so it takes no filter gate and no reorder drag:
+      // there is nothing to hide it behind and nowhere to move it to.
       //
-      // The band says CAM because the transition row IS a camera-section row
+      // The band says CAM because both rows ARE camera-section rows
       // ([timelineSectionForLayerKind]) — the label comes from that policy
       // rather than being typed here, so the two rails cannot start naming
       // the same section differently.
-      if (_showsTransitionRow(track))
+      if (camRows.isNotEmpty)
         _sectionZoneGroup(
-          keyValue: 'storyboard-section-zone-${track.id.value}-transition',
+          keyValue: 'storyboard-section-zone-${track.id.value}-camera',
           label: timelineSectionLabel(TimelineSection.camera),
-          rows: [_state._rows.transitionLabelRow(track)],
+          rows: camRows,
         ),
       // A section with no rows left draws no zone: an empty SE band would
       // be a label over nothing once the filter took its rows.
@@ -882,15 +943,13 @@ class _StoryboardRailRows {
         // ([_TrackStrip]).
         SlicedListenableBuilder<_TrackStrip>(
           listenable: dragPreview,
-          slice: () => _TrackStrip(
-            _previewedEntriesFor(index, dragPreview.value, entries),
-          ),
+          slice: () => _previewedStripFor(index, dragPreview.value, entries),
           builder: (context, strip) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: _stripRowsForTrack(
               track,
               index,
-              strip.entries,
+              strip,
               width,
               scale,
               trackGlobalRows,
@@ -935,21 +994,33 @@ class _StoryboardRailRows {
     int trackIndex,
     TimelineDragPreview? preview,
     List<StoryboardTimelineLayoutEntry> committed,
+  ) => _previewedStripFor(trackIndex, preview, committed).entries;
+
+  /// [_previewedEntriesFor]'s cuts with the track's transition row as the
+  /// same preview carries it — a cut edge drag takes the O.L across the
+  /// boundary it crosses (`_trackWithCutTrimPreview`) — which is where the
+  /// camera row reads its cuts' のりしろ ([cameraRowReachesOf]).
+  _TrackStrip _previewedStripFor(
+    int trackIndex,
+    TimelineDragPreview? preview,
+    List<StoryboardTimelineLayoutEntry> committed,
   ) {
+    final committedRow =
+        _state.widget.project.tracks[trackIndex].transitionLayer;
     if (preview == null) {
-      return committed;
+      return _TrackStrip(committed, committedRow);
     }
     final project = projectWithTimelineDragPreview(
       _state.widget.project,
       preview,
     );
     if (identical(project, _state.widget.project)) {
-      return committed;
+      return _TrackStrip(committed, committedRow);
     }
-    return [
+    return _TrackStrip([
       for (final entry in buildStoryboardTimelineLayout(project))
         if (entry.trackIndex == trackIndex) entry,
-    ];
+    ], project.tracks[trackIndex].transitionLayer);
   }
 
   /// The selection band both rail sweeps draw: the vertical extent that
@@ -1278,8 +1349,26 @@ class _StoryboardRailRows {
     final heights = _state._rowHeights;
     final slots = <_StoryboardRailSlot>[];
     // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
-    // here), and the transition row heads it — above the S rows, the way the
-    // camera section heads the cut timeline's rows.
+    // here), and the camera section heads it — above the S rows, the way it
+    // heads the cut timeline's rows: the CAMERA row first (I-73 ④), stood on
+    // by its own address ([trackCameraRowId]) — no track-axis select-drag
+    // lands on it — then the transition row.
+    //
+    // ⚠️It carries no [_StoryboardRailSlot.railRow] yet: the column sweep
+    // reads an eye off the layer ([layerRailEyeIsOn]), and the camera row's
+    // eye is the camera VIEW, not a flag of the layer — a sweep would spread
+    // the opposite of what its first press set.
+    if (_showsCameraRow(track)) {
+      slots.add((
+        row: null,
+        laneRow: null,
+        standRow: LayerRowAddress(trackCameraRowId(track.id)),
+        bandRow: false,
+        lane: false,
+        railRow: null,
+        height: heights.camera,
+      ));
+    }
     if (_showsTransitionRow(track)) {
       slots.add((
         row: LayerRowAddress(track.transitionLayer.id),
@@ -1388,12 +1477,17 @@ class _StoryboardRailRows {
   List<Widget> _stripRowsForTrack(
     Track track,
     int index,
-    List<StoryboardTimelineLayoutEntry> entries,
+    _TrackStrip strip,
     double width,
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
+    final entries = strip.entries;
     return [
+      // The CAMERA row heads the group (I-73 ④) — a row of the CUTS, so it
+      // is built on them as this step lays them, like the V row below.
+      if (_showsCameraRow(track))
+        _cameraStripRow(track, strip, width, scale),
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
       // The transition row and the S rows are both track-global, so both
@@ -1443,6 +1537,49 @@ class _StoryboardRailRows {
       ],
       ..._conteStripRows(track, entries, width, scale),
     ];
+  }
+
+  /// The CAMERA row's strip (I-73 ④): the cuts as this step lays them, each
+  /// over its own frames under the のりしろ the track's transition row asks
+  /// of it ([cameraRowReachesOf]). That row is read as the drag in flight
+  /// shows it — a cut edge drag carries an O.L in [strip], and a span's own
+  /// edge drag is the row's global preview — so a のりしろ follows the hand
+  /// on this row alone: the span's edge drag rebuilds no other strip.
+  Widget _cameraStripRow(
+    Track track,
+    _TrackStrip strip,
+    double width,
+    TimelineScale scale,
+  ) {
+    final dragPreview = _state.widget.dragPreview ?? _noDragPreview;
+    return SlicedListenableBuilder<Layer>(
+      listenable: dragPreview,
+      slice: () =>
+          timelineDragPreviewGlobalLayerFor(
+            dragPreview.value,
+            track.transitionLayer.id,
+          ) ??
+          strip.transitionRow,
+      builder: (context, transitionRow) => _StoryboardCameraRow(
+        track: track,
+        reaches: cameraRowReachesOf(
+          strip.entries,
+          transitionRowSpans(
+            transitionRow,
+            _state.widget.project.cameraInstructions,
+          ),
+        ),
+        width: width,
+        height: _state._rowHeights.camera,
+        timelineScale: scale,
+        frameGeometry: _state._frameGeometry,
+        windowBucket: _state._horizontalWindowBucket,
+        viewportWidth: _state._stripViewportWidth,
+        onRowFramePress: _state.widget.onRowFramePress,
+        onCameraCutPress: _state.widget.onCameraCutPress,
+        onEditCameraCell: _state.widget.onEditCameraCell,
+      ),
+    );
   }
 
   /// The CONTE rows' strips — the conte's, and an attach row's at each seat
@@ -1694,20 +1831,25 @@ class _StoryboardRailRows {
 /// A track's cuts as a drag preview lays them — what its rows are built
 /// from ([_StoryboardRailRows.trackGroupSection]): the same strip while it
 /// is the same cut objects in the same order, which is all a layout is
-/// made of ([cutSpansOfCuts]).
+/// made of ([cutSpansOfCuts]) — and the same transition row, which a cut
+/// edge drag carries with the boundary it crosses (the camera row reads
+/// the cuts' のりしろ off it, I-73 ④).
 ///
 /// So a step that moves none of them — an SE row's comma, whose rows are
 /// built outside (R10-③) — rebuilds none of its rows. 🔬Measured
 /// (storyboard-drags-lay-out-alone, 10-01): it rebuilt every one of them at
 /// every step.
 final class _TrackStrip {
-  const _TrackStrip(this.entries);
+  const _TrackStrip(this.entries, this.transitionRow);
 
   final List<StoryboardTimelineLayoutEntry> entries;
+  final Layer transitionRow;
 
   @override
   bool operator ==(Object other) {
-    if (other is! _TrackStrip || other.entries.length != entries.length) {
+    if (other is! _TrackStrip ||
+        other.entries.length != entries.length ||
+        !identical(other.transitionRow, transitionRow)) {
       return false;
     }
     for (var i = 0; i < entries.length; i += 1) {
@@ -1720,6 +1862,7 @@ final class _TrackStrip {
 
   @override
   int get hashCode => Object.hashAll([
+    identityHashCode(transitionRow),
     for (final entry in entries) identityHashCode(entry.cut),
   ]);
 }

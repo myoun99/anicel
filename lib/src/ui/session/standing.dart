@@ -10,8 +10,10 @@ import '../../models/layer_folder.dart'
     show LayerFolderIndex, attachGroupBaseOf;
 import '../../models/timeline_row_address.dart';
 import '../../models/track.dart' show Track;
+import '../../models/track_camera_row.dart';
 import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
+import '../../models/track_projection_row.dart';
 import '../../models/track_transform_lane_carrier.dart'
     show trackIdOfTransformLaneCarrier;
 import '../../models/working_panel.dart';
@@ -302,15 +304,17 @@ class Standing {
   /// A stored row that the rail no longer shows (its track's SE slot went
   /// away) falls back to the track row rather than lighting nothing.
   ///
-  /// The track's CONTE row is a row of this rail too (I-73, 유저 2026-10-08:
-  /// 「콘티행에 서야 콘티행에 서도록」) — the selected track's own: it is
-  /// there in every cut and in a gap, so it is stood on under the row's own
-  /// address ([trackConteRowId]) and never under a cut's layer.
+  /// The track's CONTE rows and its CAMERA row are rows of this rail too
+  /// (I-73, 유저 2026-10-08: 「콘티행에 서야 콘티행에 서도록」 · 「카메라는
+  /// 로컬이랑 똑같이 최상단행」) — the selected track's own: they are there in
+  /// every cut and in a gap, so each is stood on under the row's own address
+  /// ([trackIdOfProjectionRow]) and never under a cut's layer.
   TimelineRowAddress get selectedRow {
     final row = _storyboardRow;
     if (row is LayerRowAddress &&
         (_trackSe.isTrackOwnedRailLayerId(row.layerId) ||
-            trackIdOfConteRow(row.layerId) == _selection.selectedTrackId)) {
+            trackIdOfProjectionRow(row.layerId) ==
+                _selection.selectedTrackId)) {
       return row;
     }
     return TrackRowAddress(_selection.selectedTrackId);
@@ -767,10 +771,8 @@ class Standing {
 
   LayerId? _layerTheStoryboardStandSeats({required LayerId? before}) =>
       switch (storyboardStandingRow) {
-        final row when isTrackConteRow(row) => layerAConteStandSeats(
-          before: before,
-          seat: conteRowSeatOf(row)!,
-        ),
+        final row when isTrackProjectionRow(row) =>
+          layerAProjectionStandSeats(before: before, row: row),
         LayerRowAddress(:final layerId) || LaneRowAddress(:final layerId)
             when _activeCutHasLayer(layerId) =>
           layerId,
@@ -811,11 +813,27 @@ class Standing {
   /// storyboard's conte rows and the conte preview's cells. ↩️The
   /// storyboard's V row was one of them until I-73 (10-08): it stands on
   /// the CUT, which seats no row ([_seatTimelineOnStoryboardStand]).
-  LayerId? layerAConteStandSeats({required LayerId? before, int seat = 0}) {
+  LayerId? layerAConteStandSeats({required LayerId? before, int seat = 0}) =>
+      layerAProjectionStandSeats(
+        before: before,
+        row: LayerRowAddress(
+          trackConteRowId(_selection.selectedTrackId, seat: seat),
+        ),
+      );
+
+  /// The layer standing on a cell of the PROJECTION ROW [row] in the active
+  /// cut seats: the cut's layer that row shows ([projectedRowOf]) — a seat of
+  /// its conte group, or its camera layer (I-73 ④: 「타임라인의 자리 = 카메라
+  /// 행」); else [before] when the cut shows it; else null, and the cut's own
+  /// landing stands ([layerAConteStandSeats]'s rule, one body for both).
+  LayerId? layerAProjectionStandSeats({
+    required LayerId? before,
+    required TimelineRowAddress row,
+  }) {
     final cut = _project.activeCutOrNull;
-    final conte = cut == null ? null : conteRowAtSeat(cut, seat);
-    if (conte != null) {
-      return conte.id;
+    final seated = cut == null ? null : projectedRowOf(cut, row);
+    if (seated != null) {
+      return seated.id;
     }
     return _activeCutHasLayer(before) ? before : null;
   }
@@ -1223,10 +1241,13 @@ class Standing {
       if (layerId == null || track == null) {
         return null;
       }
-      // The conte row is a row of this rail by its own address, and sits
-      // in the section the timeline puts its kind in (I-73).
+      // The conte rows and the camera row are rows of this rail by their own
+      // addresses, and sit in the sections the timeline puts their kinds in
+      // (I-73).
       final kind = trackIdOfConteRow(layerId) != null
           ? LayerKind.storyboard
+          : trackIdOfCameraRow(layerId) != null
+          ? LayerKind.camera
           : [track.transitionLayer, ...track.seLayers]
                 .where((candidate) => candidate.id == layerId)
                 .firstOrNull

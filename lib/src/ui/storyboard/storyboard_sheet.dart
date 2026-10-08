@@ -28,9 +28,9 @@ class _StoryboardSheet {
   final _StoryboardPanelState _state;
 
   /// Every track's rows, top to bottom — each track's group as the strip
-  /// column stacks it (the transition row, the S rows and their lanes, the
-  /// V row and its lanes, the conte row) — by the address each is stood on
-  /// ([_standingAddressOf]).
+  /// column stacks it (the camera row, the transition row, the S rows and
+  /// their lanes, the V row and its lanes, the conte rows) — by the address
+  /// each is stood on ([_standingAddressOf]).
   List<TimelineRowAddress> rows() => [
     for (final track in _state.widget.project.tracks)
       for (final slot in _state._railRows._trackGroupRowGeometry(track))
@@ -116,14 +116,21 @@ class _StoryboardSheet {
         final slot = _seSlotOf(track, layerId);
         return flipHudLayerRow(
           // The conte row as this rail draws it — the cuts' conte layers on
-          // the track's axis; the S row as this rail draws it (a take in
-          // flight stands in for its lane); else the one other layer row a
-          // track group has.
+          // the track's axis; the camera row as the walks see it (keys, no
+          // blocks — the timeline's camera row's window is empty too); the S
+          // row as this rail draws it (a take in flight stands in for its
+          // lane); else the one other layer row a track group has.
           trackConteRowOf(layerId) != null
               ? trackConteRowShown(
                   track.id,
                   group.cuts,
                   seat: trackConteRowOf(layerId)!.seat,
+                )
+              : trackIdOfCameraRow(layerId) != null
+              ? trackCameraRowShown(
+                  track.id,
+                  track.cuts,
+                  standingIn: _state.widget.activeCutId,
                 )
               : slot == -1
               ? _state.widget.transitionRowShown?.call(

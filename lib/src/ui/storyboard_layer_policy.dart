@@ -14,8 +14,10 @@ import '../models/storyboard_timeline_layout.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_row_address.dart';
 import '../models/timeline_splice.dart' show captureTimelineRun;
+import '../models/track_camera_row.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
+import '../models/track_projection_row.dart';
 import 'text/app_strings.dart';
 import 'text/model_vocabulary.dart';
 
@@ -31,26 +33,30 @@ export '../models/conte_group.dart'
         storyboardLayerForCut,
         storyboardLayersOfCut;
 
-/// THE LAYER A STORYBOARD CONTE ROW HAS IN HAND: the layer at [row]'s seat
-/// of [cut]'s conte group, while it is the layer the timeline stands on
+/// THE LAYER A STORYBOARD PROJECTION ROW HAS IN HAND: the layer of [cut]
+/// that [row] shows there ([projectedRowOf] — a seat of its conte group, or
+/// its camera layer), while it is the layer the timeline stands on
 /// ([activeLayerId]).
 ///
-/// A conte row is ONE row over every cut ([trackConteRowId]), so what it
-/// stands on is resolved each time it is asked. Standing there seats the
-/// timeline on the layer at that seat of the cut under the playhead
-/// (`Standing.layerAConteStandSeats`), and the verbs that act on the
-/// timeline's own row — the frame buttons, the shove, the row's whole span
-/// — are this row's for as long as that stays so. Null where [row] is no
-/// conte row, where the cut has no layer at its seat, where there is no cut
-/// (a gap), and once another layer has been picked in the timeline: that
-/// one is the timeline panel's subject, not this row's.
-Layer? conteLayerInHand({
+/// A projection row is ONE row over every cut ([trackConteRowId],
+/// [trackCameraRowId]), so what it stands on is resolved each time it is
+/// asked. Standing there seats the timeline on that layer of the cut the
+/// session stands in (`Standing.layerAProjectionStandSeats`), and the verbs
+/// that act on the timeline's own row — the frame buttons, the shove, the
+/// row's whole span — are this row's for as long as that stays so. Null
+/// where [row] is no projection row, where the cut has no layer there,
+/// where there is no cut (a gap), and once another layer has been picked in
+/// the timeline: that one is the timeline panel's subject, not this row's.
+///
+/// ↩️`conteLayerInHand` while the conte rows were the only projection rows;
+/// the camera row asks the same question (I-73 ④, 「타임라인의 자리 = 카메라
+/// 행」).
+Layer? projectedLayerInHand({
   required TimelineRowAddress? row,
   required Cut? cut,
   required LayerId? activeLayerId,
 }) {
-  final seat = conteRowSeatOf(row);
-  final layer = seat == null || cut == null ? null : conteRowAtSeat(cut, seat);
+  final layer = cut == null ? null : projectedRowOf(cut, row);
   return layer != null && layer.id == activeLayerId ? layer : null;
 }
 
@@ -169,6 +175,39 @@ Layer trackConteRowShown(
       count: entry.duration,
     ).exposures,
   );
+}
+
+/// THE TRACK'S CAMERA ROW AS THE WALKS SEE IT (I-73 ④): a row on the
+/// track's axis that holds no block — the timeline's camera row keeps keys,
+/// not blocks ([LayerKind.hasBlocks]) — so a flip walks it a frame at a
+/// time and the flip window draws it empty, as that row's are. It goes by
+/// its head's name ([trackCameraRowName]).
+Layer trackCameraRowShown(
+  TrackId trackId,
+  Iterable<Cut> cuts, {
+  required CutId? standingIn,
+}) => Layer(
+  id: trackCameraRowId(trackId),
+  name: trackCameraRowName(cuts, standingIn: standingIn),
+  kind: LayerKind.camera,
+  frames: const [],
+);
+
+/// The name a track's camera row goes by wherever it is written — its rail
+/// label, the flip window: its head's, the camera layer of the cut
+/// [standingIn] when that cut is one of [cuts], and the kind's own word
+/// otherwise (a gap, another track's cut) — ONE answer, the lesson
+/// [trackConteRowName] learned.
+String trackCameraRowName(Iterable<Cut> cuts, {required CutId? standingIn}) {
+  for (final cut in cuts) {
+    if (cut.id == standingIn) {
+      final camera = cut.layers.cameraLayer;
+      if (camera != null) {
+        return camera.name;
+      }
+    }
+  }
+  return LayerKind.camera.labelFor(AppText.language);
 }
 
 /// The name a track's conte row goes by wherever it is written — its rail

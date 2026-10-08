@@ -26,7 +26,7 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 ///
 /// The conte row is ONE row over every cut, and what it stands on is the
 /// conte layer of the cut under the playhead — the layer standing there
-/// seated the timeline on ([conteLayerInHand]). While that holds, the frame
+/// seated the timeline on ([projectedLayerInHand]). While that holds, the frame
 /// buttons the storyboard has no answer of its own for are the TIMELINE's,
 /// on the same cell: the answers its own panel gives. Where the row holds
 /// no cell — a cut with no conte layer, a gap, a layer picked in the
@@ -199,7 +199,7 @@ void main() {
 
     test('Edit is the panel\'s own', () {
       final panel = StoryboardToolbarPanelContext(onTheConteRow(18));
-      expect(panel.editTarget, isA<StoryboardEditConteCells>());
+      expect(panel.editTarget, isA<StoryboardEditTimelineCells>());
     });
 
     test('🗣️Delete removes the PANEL — the timeline\'s own delete, on that '

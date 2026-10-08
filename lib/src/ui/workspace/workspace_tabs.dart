@@ -1055,9 +1055,13 @@ class _WorkspaceTabs {
               // The rows the ↑/↓ walk and the flip window read while the
               // storyboard is the panel being worked in.
               rowsChannel: _state._storyboardRows,
-              // ⛔The camera-view notifier no longer comes through here:
-              // R28 #1's toggle rides the sill with the transport now
-              // (`sillTrailing` above), so the panel does not see it.
+              // The camera row's head is the timeline's camera row (I-73 ④):
+              // its eye and slider drive the same camera-view state as the
+              // timeline's, the canvas overlay and the camera panel. R28 #1's
+              // TOGGLE still rides the sill with the transport
+              // (`sillTrailing` above).
+              cameraViewEnabled: _state._views._cameraViewEnabled,
+              cameraDimOpacity: _state._views._cameraDimOpacity,
             ),
           ),
         );

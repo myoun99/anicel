@@ -152,7 +152,7 @@ void main() {
       matching: find.byKey(ValueKey<String>(key)),
     );
     const seZone = 'storyboard-section-zone-t-se';
-    const camZone = 'storyboard-section-zone-t-transition';
+    const camZone = 'storyboard-section-zone-t-camera';
     const vZone = 'storyboard-section-zone-t-v';
     expect(inStoryboard(seZone), findsOneWidget, reason: 'premise');
     expect(inStoryboard(camZone), findsOneWidget, reason: 'premise');

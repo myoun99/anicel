@@ -21,7 +21,7 @@ import 'package:anicel/src/models/working_panel.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart'
-    show conteLayerInHand;
+    show projectedLayerInHand;
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08, of a row riding
 /// the conte on the storyboard: 「서면 — 블록」 · 「플립 — 블록 단위」 ·
@@ -180,11 +180,12 @@ void main() {
   test('the row in hand at a seat is the cut\'s row there — while it is '
       'the row the session holds', () {
     final a = cutOf(sessionOf(), 'a');
-    Layer? inHand(TimelineRowAddress? row, String active) => conteLayerInHand(
-      row: row,
-      cut: a,
-      activeLayerId: LayerId(active),
-    );
+    Layer? inHand(TimelineRowAddress? row, String active) =>
+        projectedLayerInHand(
+          row: row,
+          cut: a,
+          activeLayerId: LayerId(active),
+        );
 
     expect(inHand(over, 'a-over')?.id, const LayerId('a-over'));
     expect(inHand(conteRow, 'a-conte')?.id, const LayerId('a-conte'));
@@ -196,7 +197,7 @@ void main() {
       reason: 'no row of the conte group',
     );
     expect(
-      conteLayerInHand(
+      projectedLayerInHand(
         row: over,
         cut: cutOf(sessionOf(), 'c'),
         activeLayerId: const LayerId('c-cel'),

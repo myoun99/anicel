@@ -29,10 +29,10 @@ import 'layer_name_commands.dart'
     show renameActiveCutWithDialog, renameActiveLayerWithDialog;
 import 'toolbar_panel_context.dart'
     show
-        StoryboardEditConteCells,
         StoryboardEditCut,
         StoryboardEditLaneKey,
         StoryboardEditSeEntry,
+        StoryboardEditTimelineCells,
         StoryboardEditTransitionSpan,
         StoryboardToolbarPanelContext,
         ToolbarPanelContext;
@@ -265,9 +265,9 @@ Future<void> editOnPanel(
       // Lane-key state is session-shared, so the shared cell entrance
       // serves it from this panel too.
       await editActiveInstance(context, session);
-    case StoryboardEditConteCells():
+    case StoryboardEditTimelineCells():
       // F-186 · I-73: the timeline's own cells — a band of them, or the
-      // panel the conte row stands on — so the timeline's Edit: the same
+      // cell a projection row stands on — so the timeline's Edit: the same
       // subject its gate read.
       await editSelectionInstance(context, session, cutsAreThisPanels: false);
     case null:

@@ -291,7 +291,7 @@ class _StoryboardConteRow extends StatelessWidget with _StoryboardRowRunLabels {
               edit != null)
             _storyboardRowPressLayer(
               key: ValueKey<String>('storyboard-conte-press-$_scope'),
-              layer: shown,
+              row: LayerRowAddress(shown.id),
               cellExtent: timelineScale.pixelsPerFrame,
               frameAt: (local) => _frameAtX(local.dx),
               onRowFramePress: _pressed,

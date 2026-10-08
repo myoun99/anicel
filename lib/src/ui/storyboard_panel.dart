@@ -31,10 +31,14 @@ import '../models/timeline_coverage.dart'
         TimelineBlockEdge,
         TimelineDrawingBlock,
         drawingBlocks;
+import '../models/camera_row_reach.dart';
 import '../models/track.dart';
+import '../models/track_camera_row.dart';
 import '../models/track_id.dart';
 import '../models/track_conte_row.dart';
 import '../models/track_transform_lane_carrier.dart';
+import '../models/track_transitions.dart' show transitionRowSpans;
+import 'dashed_path.dart' show DashPattern, dashesAlong;
 import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
 import 'canvas/flip_hud_model.dart';
@@ -74,7 +78,12 @@ import 'timeline/timeline_row_span_resolver.dart'
 import 'timeline/se_audio_lane.dart'
     show SeAudioLaneFrameRow, TimelineAudioLaneCallbacks, laneIsSeAudio;
 import 'timeline/timeline_lane_rows.dart'
-    show TimelineLaneControlsRow, TimelineLaneFrameRow;
+    show
+        TimelineLaneControlsRow,
+        TimelineLaneFrameRow,
+        TimelineLaneKeysLine,
+        timelineKeysLineSpan,
+        timelineUnionKeySpan;
 import 'timeline/effect_lane_policy.dart'
     show effectPropertyLanes, parseEffectLaneId;
 import 'timeline/layer_drop_policy.dart' show rowStepsBetween, slotForSteps;
@@ -92,7 +101,10 @@ import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'input/panel_pan.dart';
 import 'input/scroller_press_hold.dart';
 import 'timeline/transform_lane_policy.dart'
-    show laneSelectionCoversBandRow, transformGroupHeader;
+    show
+        laneSelectionCoversBandRow,
+        transformGroupHeader,
+        transformUnionHeader;
 import '../models/app_input_settings.dart' show AppInput;
 import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_beat_lines.dart'
@@ -149,6 +161,7 @@ import 'timeline/timeline_frame_span_layout.dart'
     show
         TimelineFixedFrameSpanLayer,
         TimelineFrameSpan,
+        TimelineFrameSpanLayout,
         TimelineFrameSpanPlacement;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
@@ -192,6 +205,7 @@ import 'listenable_rebind.dart';
 import 'session/row_spans.dart' show trackRowMaterialBlocks;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
+part 'storyboard/storyboard_camera_row.dart';
 part 'storyboard/storyboard_conte_row.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
@@ -214,9 +228,11 @@ typedef StoryboardRailRow = ({
   int? conteSeat,
 });
 
-/// The four verbs a conte row's head takes as given
-/// ([_StoryboardRowsAndLabels.conteLabelRow]).
-typedef _ConteHeadVerbs = ({
+/// The four verbs a head that is the timeline's own row takes as given —
+/// a conte row's and the camera row's
+/// ([_StoryboardRowsAndLabels.conteLabelRow],
+/// [_StoryboardRowsAndLabels.cameraLabelRow]).
+typedef _TimelineHeadVerbs = ({
   ValueChanged<LayerId> toggleEye,
   void Function(LayerId layerId, double opacity) setOpacity,
   void Function(LayerId layerId, LayerMarkEdit edit) pickMark,
@@ -613,6 +629,10 @@ class StoryboardPanel extends StatefulWidget {
     this.onEditSeEntry,
     this.onEditCutBlock,
     this.onEditConteBlock,
+    this.onCameraCutPress,
+    this.onEditCameraCell,
+    this.cameraViewEnabled,
+    this.cameraDimOpacity,
     this.dragPreview,
     this.legend,
     this.onLegendMenus,
@@ -1291,6 +1311,24 @@ class StoryboardPanel extends StatefulWidget {
   /// of its cut's storyboard row [LayerId], at this GLOBAL frame.
   final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
   onEditConteBlock;
+
+  /// A press on the CAMERA row's cells that lands in a cut (I-73 ④): the
+  /// cut whose own frames hold the pointer — over an O.L, the one on the
+  /// line it is on — and the frame of its own there. A press where no cut's
+  /// own frames are goes to [onRowFramePress], as every row's does.
+  final StoryboardCameraCutPress? onCameraCutPress;
+
+  /// …and a double click on its cell: the timeline camera row's own — the
+  /// key there opens, an empty cell is keyed — on the cell the first click
+  /// stood the session on.
+  final VoidCallback? onEditCameraCell;
+
+  /// The camera row's head is the timeline's camera row: its eye is the
+  /// camera VIEW and its slider the view's DIM — the canvas's and the
+  /// camera panel's own notifiers, not flags of the layer (R27 #9). Null
+  /// shows the layer's own.
+  final ValueListenable<bool>? cameraViewEnabled;
+  final ValueListenable<double>? cameraDimOpacity;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
@@ -2715,6 +2753,12 @@ const double _transitionRowHeight = 30;
 /// timeline's own row, drawn by the timeline's own painter.
 const double _conteRowHeight = 30;
 
+/// The camera row's height — the track's cuts' camera layers as one row at
+/// the top of its CAM section (I-73 ④). The S row's regulation for now:
+/// 유저 2026-10-08, of the two lines an O.L splits it into, 「일단 행높이는
+/// 진행해보고 결정하자」.
+const double _cameraRowHeight = 30;
+
 /// A twirled-down lane's height — every lane, the Audio lane included: the
 /// timeline draws all its rows at one height, and the labels and the strips
 /// share it (the rail and strips columns must stay height-synced).
@@ -2738,6 +2782,7 @@ typedef _StoryboardRowHeights = ({
   double se,
   double transition,
   double conte,
+  double camera,
   double lane,
 });
 
@@ -2747,6 +2792,7 @@ _StoryboardRowHeights _storyboardRowHeightsIn(BuildContext context) {
     se: _seRowHeight + growth,
     transition: _transitionRowHeight + growth,
     conte: _conteRowHeight + growth,
+    camera: _cameraRowHeight + growth,
     lane: _laneHeight + growth,
   );
 }
@@ -3378,13 +3424,20 @@ bool _storyboardRangeCovers(
 /// scan, 2026-09-03). 🚨★★★I-9: same as the transition strip one class
 /// up — the coverage question belongs to the host's fork, not to a copy
 /// here.
+///
+/// [row] is the address the press stands on — a layer's own, or a track's
+/// projection row, which no layer's id names (I-73). [onPressAt] takes the
+/// press instead of [onRowFramePress] on a row whose press reads more than
+/// its frame: the camera row's two lines over an O.L say which cut by the
+/// line the pointer is on.
 Positioned _storyboardRowPressLayer({
   required Key key,
-  required Layer layer,
+  required LayerRowAddress row,
   required double cellExtent,
   required int? Function(Offset local) frameAt,
   required StoryboardRowFramePress? onRowFramePress,
   required void Function(int frame)? onEdit,
+  void Function(Offset local, int frame)? onPressAt,
 }) {
   final cells = (
     frameAt: frameAt,
@@ -3396,23 +3449,24 @@ Positioned _storyboardRowPressLayer({
     child: InstantTapRegion(
       behavior: HitTestBehavior.translucent,
       pressSeeksFor: AppInput.timelineCellPressSeeks,
-      onPressDown: timelineCellDoubleTapRecord(
-        row: LayerRowAddress(layer.id),
-        cells: cells,
-      ),
+      onPressDown: timelineCellDoubleTapRecord(row: row, cells: cells),
       onTap: (localPosition) {
         final frame = frameAt(localPosition);
         if (frame == null) {
           return;
         }
-        onRowFramePress?.call(LayerRowAddress(layer.id), frame);
+        if (onPressAt != null) {
+          onPressAt(localPosition, frame);
+          return;
+        }
+        onRowFramePress?.call(row, frame);
       },
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onDoubleTapDown: onEdit == null
             ? null
             : timelineCellDoubleTapActivation(
-                row: LayerRowAddress(layer.id),
+                row: row,
                 cells: cells,
                 onActivate: onEdit,
               ),
@@ -3703,7 +3757,7 @@ class _StoryboardTransitionRow extends StatelessWidget
       spans.add(
         _storyboardRowPressLayer(
           key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
-          layer: layer,
+          row: LayerRowAddress(layer.id),
           cellExtent: timelineScale.pixelsPerFrame,
           frameAt: frameAt,
           onRowFramePress: onRowFramePress,
@@ -4219,7 +4273,7 @@ class _StoryboardSeRow extends StatelessWidget with _StoryboardRowRunLabels {
     void Function(LayerId layerId, int globalFrame)? onEditSeEntry,
   ) => _storyboardRowPressLayer(
     key: ValueKey<String>('storyboard-se-press-${layer.id}'),
-    layer: layer,
+    row: LayerRowAddress(layer.id),
     cellExtent: timelineScale.pixelsPerFrame,
     frameAt: frameAt,
     onRowFramePress: onRowFramePress,
