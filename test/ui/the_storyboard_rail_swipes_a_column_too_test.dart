@@ -301,9 +301,7 @@ void main() {
   testWidgets('⛔a press where the V row\'s eye stood starts no sweep — the '
       'row has none', (tester) async {
     // The column still runs over the V row, reserved and empty (I-73). A
-    // press in it lands on no control, so there is no value to latch and
-    // nothing under it may be painted — a row that READ one there would
-    // spread it down every S row and transition row below.
+    // press in it lands on no control, and nothing under it may be painted.
     final session = await pumpRail(tester);
     final head = tester.getRect(
       find.byKey(const ValueKey<String>('storyboard-track-label-row-t1')),

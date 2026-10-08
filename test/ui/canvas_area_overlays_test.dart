@@ -15,6 +15,7 @@ import 'package:anicel/src/models/camera_instruction.dart'
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/drawing_guide.dart';
 import 'package:anicel/src/ui/canvas/guide_overlay.dart';
+import 'package:anicel/src/ui/editor_canvas_area.dart' show backdropShareUnder;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -84,5 +85,31 @@ void main() {
     session.selectFrameIndex(duration - 3);
     await tester.pumpAndSettle();
     expect(_fadeWashes(), findsOneWidget);
+  });
+
+  // How strong that wash is: what the live cut and the O.L's other cuts
+  // leave of the frame is the backdrop's (F-227). ↩️Each share was its ramp
+  // times its track's opacity until the V row lost it (I-73), which is when
+  // the sum first stood with nothing pinning it.
+  test('the wash is what the live cut and its partners leave', () {
+    expect(
+      backdropShareUnder(0.75, const []),
+      0.25,
+      reason: 'no partner: 1 − fade, the wash as it always was',
+    );
+    expect(
+      backdropShareUnder(0.5, const [0.5]),
+      0,
+      reason: 'an O.L\'s two halves are the whole frame',
+    );
+    expect(
+      backdropShareUnder(0.1, const [0.25, 0.5]),
+      closeTo(0.6, 1e-9),
+      reason:
+          'the partners\' shares ADD (0.75): for the live cut to keep 0.1 '
+          'of the frame out of the quarter they leave, the wash under them '
+          'is 0.6',
+    );
+    expect(backdropShareUnder(0.5, const [1]), 0, reason: 'nothing is left');
   });
 }

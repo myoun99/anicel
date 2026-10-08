@@ -101,6 +101,30 @@ typedef _TrackStackMount = ({
   Key key,
 });
 
+/// The backdrop's share of the editing canvas over the live cut once the
+/// O.L's other cuts are laid above it: the live cut keeps [cutFadeOpacity],
+/// each partner its own share ([partnerShares] — its ramp, the unit alpha
+/// the track stack weighs it by), the backdrop the rest. `1 − fade` with no
+/// partner (the wash as it always was), nothing when an O.L's two halves
+/// are the whole frame.
+///
+/// ↩️Two statics of the canvas area's state spelled this, and each partner's
+/// share was its ramp times its track's own opacity until the V row lost it
+/// (I-73, 2026-10-08). One function, outside the state, so the sum can be
+/// pinned where it is cheapest.
+double backdropShareUnder(
+  double cutFadeOpacity,
+  Iterable<double> partnerShares,
+) {
+  var claimed = 0.0;
+  for (final share in partnerShares) {
+    claimed += share;
+  }
+  return claimed >= 1
+      ? 0
+      : (1 - cutFadeOpacity / (1 - claimed)).clamp(0.0, 1.0);
+}
+
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
 ///
@@ -1267,10 +1291,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 color: Color(
                   session.repository.requireProject().backdropArgb,
                 ).withValues(
-                  alpha: _backdropShare(
-                    cutFadeOpacity,
-                    partnerShare: _shareOf(partners),
-                  ),
+                  alpha: backdropShareUnder(cutFadeOpacity, [
+                    for (final partner in partners) partner.opacity,
+                  ]),
                 ),
                 devicePixelRatio: EffectiveDevicePixelRatio.of(context),
               ),
@@ -1301,28 +1324,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           contribution,
     ];
   }
-
-  /// How much of the frame [partners] claim — each one's ramp, the unit
-  /// alpha the track stack weighs it by.
-  static double _shareOf(List<TrackStackContribution> partners) {
-    var share = 0.0;
-    for (final partner in partners) {
-      share += partner.opacity;
-    }
-    return share;
-  }
-
-  /// The backdrop wash over the live cut once a partner claiming
-  /// [partnerShare] is laid above it: the live cut keeps [cutFadeOpacity],
-  /// the partner its share, the backdrop the rest — `1 − fade` with no
-  /// partner (the wash as it always was), nothing when an O.L's two halves
-  /// are the whole frame.
-  static double _backdropShare(
-    double cutFadeOpacity, {
-    required double partnerShare,
-  }) => partnerShare >= 1
-      ? 0
-      : (1 - cutFadeOpacity / (1 - partnerShare)).clamp(0.0, 1.0);
 
   Positioned _seNameTagOverlay(
     CanvasViewport viewport,

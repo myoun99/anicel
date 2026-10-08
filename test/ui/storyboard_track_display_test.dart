@@ -124,6 +124,32 @@ void main() {
       expect(session.effectsAndFx.isCutFxEnabled(cutId), isTrue);
     });
 
+    test('writing the value it already holds is no edit — there is nothing '
+        'to undo', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final trackId = session.selectedTrackId;
+      final steps = session.historyManager.undoCount;
+
+      session.cutCommandCoordinator.updateTrackDisplay(
+        trackId: trackId,
+        fxEnabled: true,
+      );
+      expect(session.historyManager.undoCount, steps, reason: 'ON over ON');
+
+      session.cutCommandCoordinator.updateTrackDisplay(
+        trackId: trackId,
+        fxEnabled: false,
+      );
+      expect(
+        session.historyManager.undoCount,
+        steps + 1,
+        reason: 'LIVENESS: a real change is one step',
+      );
+    });
+
     test('the flag persists — it is model state, not a session set', () {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),

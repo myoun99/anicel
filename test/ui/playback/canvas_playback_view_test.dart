@@ -275,6 +275,18 @@ void main() {
     expect(painterOf(tester).paintPaper, isTrue);
     expect(painterOf(tester).fadeOpacity, 1);
 
+    // …and back in the gap the frame the view still HOLDS is withheld: the
+    // first visit above had nothing held to show, so it could not tell.
+    controller.seekToGlobalFrame(1);
+    await tester.pump();
+    expect(controller.position, isNull, reason: 'LIVENESS: in the gap again');
+    expect(
+      painterOf(tester).image,
+      isNull,
+      reason: 'a void, not the last cut\'s picture',
+    );
+    expect(painterOf(tester).paintPaper, isFalse);
+
     controller.stop();
     await tester.pump();
     controller.dispose();

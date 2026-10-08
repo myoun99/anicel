@@ -11,11 +11,14 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
+import 'package:anicel/src/services/se_name_tag_plan.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 import 'package:anicel/src/ui/playback/cut_frame_composite_cache.dart';
 import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
@@ -96,6 +99,7 @@ void main() {
     required List<StoryboardTimelineLayoutEntry> layout,
     bool Function(CutId cutId)? cutFxEnabledOf,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
+    List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf,
     bool cameraViewEnabled = true,
     bool backdropNone = false,
     bool pasteboardNone = false,
@@ -116,6 +120,7 @@ void main() {
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
+            seNameTagsOf: seNameTagsOf,
             pasteboardArgb: 0xff123456,
             backdropNone: backdropNone,
             pasteboardNone: pasteboardNone,
@@ -183,6 +188,44 @@ void main() {
     expect(painters[1].cameraPose, isNotNull);
     expect(painters[1].paintPaper, isFalse, reason: 'stacks over the bottom');
     expect(painters[1].paintLetterbox, isFalse);
+
+    f.composites.dispose();
+  });
+
+  testWidgets('each unit carries the names its OWN cut speaks, at its own '
+      'frame', (tester) async {
+    final f = fixture();
+    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
+    ResolvedSeNameTag tagOf(Cut cut, int frame) => ResolvedSeNameTag(
+      layerId: '${cut.id.value}@$frame',
+      widthBudget: 100,
+      content: TextCelContent(
+        text: cut.id.value,
+        style: SeNameTag.defaultStyle,
+        position: Offset.zero,
+      ),
+    );
+
+    f.frame.value = 3;
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+      seNameTagsOf: (cut, frame) => [tagOf(cut, frame)],
+    );
+
+    expect(
+      [
+        for (final painter in paintersOf(tester))
+          [for (final tag in painter.seNameTags) tag.layerId],
+      ],
+      [
+        ['cut-a@3'],
+        ['cut-c@1'],
+      ],
+      reason: 'resolved PER CUT (R5b): each covered track its own speakers',
+    );
 
     f.composites.dispose();
   });
