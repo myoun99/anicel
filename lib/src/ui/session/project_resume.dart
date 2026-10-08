@@ -38,6 +38,7 @@ class ProjectResume {
     this.timelineZoom = const {},
     this.storyboardZoom,
     this.frameAxisOffsets = const {},
+    this.layerAxisOffsets = const {},
   });
 
   static const ProjectResume none = ProjectResume();
@@ -72,6 +73,11 @@ class ProjectResume {
   /// here.
   final Map<String, double> frameAxisOffsets;
 
+  /// How far each frame panel was scrolled along its layers — the
+  /// timeline's rows, the sheet's columns — by rail, in pixels (F-267); a
+  /// rail left at its start is not here.
+  final Map<String, double> layerAxisOffsets;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
@@ -84,6 +90,7 @@ class ProjectResume {
       },
     if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
     if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
+    if (layerAxisOffsets.isNotEmpty) 'layerAxisOffsets': layerAxisOffsets,
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -104,20 +111,26 @@ class ProjectResume {
           .firstOrNull,
       timelineZoom: {
         for (final MapEntry(:key, :value)
-            in anicelObjectMapField(json['timelineZoom']).entries)
-          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
-            CutId(key): value.toDouble(),
+            in _positiveByName(json['timelineZoom']).entries)
+          CutId(key): value,
       },
-      storyboardZoom: switch (json['storyboardZoom']) {
-        final num zoom when zoom.isFinite && zoom > 0 => zoom.toDouble(),
-        _ => null,
-      },
-      frameAxisOffsets: {
-        for (final MapEntry(:key, :value)
-            in anicelObjectMapField(json['frameAxisOffsets']).entries)
-          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
-            key: value.toDouble(),
-      },
+      storyboardZoom: _positive(json['storyboardZoom']),
+      frameAxisOffsets: _positiveByName(json['frameAxisOffsets']),
+      layerAxisOffsets: _positiveByName(json['layerAxisOffsets']),
     );
   }
+
+  /// [value] as a zoom or an offset can be read back: a finite number above
+  /// zero — at zero, or anything else, nothing was saved.
+  static double? _positive(Object? value) => switch (value) {
+    final num number when number.isFinite && number > 0 => number.toDouble(),
+    _ => null,
+  };
+
+  /// The named [_positive] numbers the map [json] holds.
+  static Map<String, double> _positiveByName(Object? json) => {
+    for (final MapEntry(:key, :value) in anicelObjectMapField(json).entries)
+      if (_positive(value) case final number? when key.isNotEmpty)
+        key: number,
+  };
 }

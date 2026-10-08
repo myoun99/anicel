@@ -923,6 +923,10 @@ class _WorkspaceTabs {
               timelineFrameAxisOffset:
                   _state._frameAxisOffsets[LayerRailId.timeline],
               xsheetFrameAxisOffset: _state._frameAxisOffsets[LayerRailId.xsheet],
+              timelineLayerAxisOffset:
+                  _state._layerAxisOffsets[LayerRailId.timeline],
+              xsheetLayerAxisOffset:
+                  _state._layerAxisOffsets[LayerRailId.xsheet],
               expandedLaneLayerIds:
                   _state.widget.session.railView.expandedLaneLayerIds.value,
               onToggleLayerLanes: SessionRowButtonPresses(

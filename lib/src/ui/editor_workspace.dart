@@ -935,6 +935,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
       widget.session.panelViews.frameAxisOffsets;
 
+  /// Where each frame grid's LAYER axis is scrolled to — the project's as
+  /// well, and saved with it (F-267).
+  Map<String, ValueNotifier<double>> get _layerAxisOffsets =>
+      widget.session.panelViews.layerAxisOffsets;
+
   // The lane twirl and the group fold are pressed through
   // `SessionRowButtonPresses` — a press inside the row selection folds every
   // selected row (I-32).

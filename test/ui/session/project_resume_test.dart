@@ -73,10 +73,12 @@ void main() {
       const resume = ProjectResume(
         storyboardZoom: 3.5,
         frameAxisOffsets: {'timeline': 480, 'storyboard': 96.5},
+        layerAxisOffsets: {'timeline': 120, 'xsheet': 64.5},
       );
       final back = ProjectResume.fromJson(resume.toJson());
       expect(back.storyboardZoom, 3.5);
       expect(back.frameAxisOffsets, {'timeline': 480.0, 'storyboard': 96.5});
+      expect(back.layerAxisOffsets, {'timeline': 120.0, 'xsheet': 64.5});
     });
 
     test('🚨a part that cannot be read is dropped ALONE', () {
@@ -88,9 +90,15 @@ void main() {
           '': 30,
           'storyboard': 12,
         },
+        'layerAxisOffsets': {
+          'timeline': 'down',
+          'xsheet': 0,
+          'storyboard': 40,
+        },
       });
       expect(back.storyboardZoom, isNull);
       expect(back.frameAxisOffsets, {'storyboard': 12.0});
+      expect(back.layerAxisOffsets, {'storyboard': 40.0});
       expect(
         ProjectResume.fromJson({'storyboardZoom': 0}).storyboardZoom,
         isNull,

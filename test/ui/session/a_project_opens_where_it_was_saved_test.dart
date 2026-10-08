@@ -296,6 +296,7 @@ void main() {
     views.storyboardPixelsPerFrame.value = 3.5;
     views.frameAxisOffsets['timeline']!.value = 480;
     views.frameAxisOffsets['storyboard']!.value = 96;
+    views.layerAxisOffsets['timeline']!.value = 150;
     expect(
       s.projectFile.hasUnsavedChanges,
       isFalse,
@@ -307,6 +308,7 @@ void main() {
       asked: SaveAsked.byAPerson,
     );
     views.frameAxisOffsets['timeline']!.value = 640;
+    views.layerAxisOffsets['xsheet']!.value = 72;
     await s.projectDoor.saveProjectToFile(
       projectPath,
       asked: SaveAsked.byAPerson,
@@ -323,6 +325,12 @@ void main() {
       0,
       reason: 'a panel left at its start opens at its start',
     );
+    expect(
+      back.layerAxisOffsets['timeline']!.value,
+      150,
+      reason: 'the rows too — along the OTHER axis',
+    );
+    expect(back.layerAxisOffsets['xsheet']!.value, 72);
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
     reopened.dispose();
   });
@@ -342,7 +350,10 @@ void main() {
       reopened.panelViews.storyboardPixelsPerFrame.value,
       PanelViewMemory.defaultStoryboardPixelsPerFrame,
     );
-    for (final offset in reopened.panelViews.frameAxisOffsets.values) {
+    for (final offset in [
+      ...reopened.panelViews.frameAxisOffsets.values,
+      ...reopened.panelViews.layerAxisOffsets.values,
+    ]) {
       expect(offset.value, 0);
     }
     reopened.dispose();

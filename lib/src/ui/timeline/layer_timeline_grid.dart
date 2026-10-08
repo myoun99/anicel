@@ -77,6 +77,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.layers,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.displayedOnionSkinOn = false,
     this.metrics = TimelineGridMetrics.defaults,
     this.onToggleSection,
@@ -107,6 +108,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// grid; the offset lived in it, so it went too — the folded row had
   /// nothing to read and the grid that came back started at zero.
   final ValueNotifier<double>? frameAxisOffset;
+
+  /// Where the LAYER axis stands, in pixels down the rows — the project's,
+  /// saved with it (F-267): the rows are born there, and every scroll of
+  /// them writes it. Null = nobody keeps it; the rows start at the top.
+  final ValueNotifier<double>? layerAxisOffset;
 
   final bool displayedOnionSkinOn;
 
@@ -220,6 +226,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   double _verticalScrollOffset = 0;
 
+  /// The host's record of the layer axis ([LayerTimelineGrid.layerAxisOffset])
+  /// — read ONCE, as the frame axis's is.
+  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
   /// mid-gesture), the trailing room and the notifiers — one object, the
@@ -275,7 +285,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController = PenFriendlyScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
-    _verticalScrollController = PenFriendlyScrollController();
+    // The rows too, where the project left them (F-267) — and the row
+    // window is cut there from the first build, which runs before the
+    // scrollable it windows has a position to read.
+    final keptRows = _keptLayerAxis?.value ?? 0;
+    _verticalScrollController = PenFriendlyScrollController(
+      initialScrollOffset: keptRows,
+    );
+    _scroll.standAt(keptRows);
     // The rows and the frames are the grid: one surface scrolled two ways
     // (F-202).
     scrollTogether(_verticalScrollController, _horizontalScrollController);

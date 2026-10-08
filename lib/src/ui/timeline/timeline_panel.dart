@@ -118,6 +118,8 @@ class TimelinePanel extends StatefulWidget {
     this.xsheetRailExtent,
     this.timelineFrameAxisOffset,
     this.xsheetFrameAxisOffset,
+    this.timelineLayerAxisOffset,
+    this.xsheetLayerAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.cutName = const AlwaysStoppedAnimation<String>(''),
     this.expandedLaneLayerIds = const {},
@@ -474,6 +476,11 @@ class TimelinePanel extends StatefulWidget {
   final ValueNotifier<double>? timelineFrameAxisOffset;
   final ValueNotifier<double>? xsheetFrameAxisOffset;
 
+  /// Where each grid's LAYER axis stands — the project's (F-267), one per
+  /// grid for the same reason the frame axes are.
+  final ValueNotifier<double>? timelineLayerAxisOffset;
+  final ValueNotifier<double>? xsheetLayerAxisOffset;
+
   final ProjectFrameRate projectFrameRate;
 
   /// AE-style property lanes (twirl-down rows under a layer): expansion
@@ -758,6 +765,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       layers: horizontalLayers,
                       railExtent: widget.timelineRailExtent,
                       frameAxisOffset: widget.timelineFrameAxisOffset,
+                      layerAxisOffset: widget.timelineLayerAxisOffset,
                       displayedOnionSkinOn: widget.displayedOnionSkinOn,
                       metrics: horizontalMetrics,
                       onToggleSection: widget.onToggleSection,
@@ -770,6 +778,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                       layers: xsheetLayerDisplayOrder(widget.layers),
                       railExtent: widget.xsheetRailExtent,
                       frameAxisOffset: widget.xsheetFrameAxisOffset,
+                      layerAxisOffset: widget.xsheetLayerAxisOffset,
                       metrics: xsheetMetrics,
                     ),
             ),

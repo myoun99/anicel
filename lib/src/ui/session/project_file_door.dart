@@ -872,11 +872,12 @@ class ProjectFileDoor {
       PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
       final zoom => zoom,
     },
-    frameAxisOffsets: {
-      for (final MapEntry(key: rail, value: offset)
-          in _panelViews.frameAxisOffsets.entries)
-        if (offset.value > 0) rail: offset.value,
-    },
+    frameAxisOffsets: PanelViewMemory.awayFromTheStart(
+      _panelViews.frameAxisOffsets,
+    ),
+    layerAxisOffsets: PanelViewMemory.awayFromTheStart(
+      _panelViews.layerAxisOffsets,
+    ),
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1139,14 +1140,19 @@ class ProjectFileDoor {
       }
     }
     // The conte at the zoom it was left at, and each panel scrolled where it
-    // was — set before any panel is built, so each is born there (F-267).
+    // was along both axes — set before any panel is built, so each is born
+    // there (F-267).
     if (resume.storyboardZoom case final zoom?) {
       _panelViews.storyboardPixelsPerFrame.value = zoom;
     }
-    for (final MapEntry(key: rail, value: offset)
-        in resume.frameAxisOffsets.entries) {
-      _panelViews.frameAxisOffsets[rail]?.value = offset;
-    }
+    PanelViewMemory.standAt(
+      _panelViews.frameAxisOffsets,
+      resume.frameAxisOffsets,
+    );
+    PanelViewMemory.standAt(
+      _panelViews.layerAxisOffsets,
+      resume.layerAxisOffsets,
+    );
   }
 }
 

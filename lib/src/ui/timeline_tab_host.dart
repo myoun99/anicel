@@ -67,6 +67,8 @@ class TimelineTabHost extends StatefulWidget {
     this.xsheetRailExtent,
     this.timelineFrameAxisOffset,
     this.xsheetFrameAxisOffset,
+    this.timelineLayerAxisOffset,
+    this.xsheetLayerAxisOffset,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
@@ -115,10 +117,15 @@ class TimelineTabHost extends StatefulWidget {
   final LayerRailExtent? timelineRailExtent;
   final LayerRailExtent? xsheetRailExtent;
 
-  /// Where each grid's frame axis stands (workspace-owned so it survives a
-  /// fold — F-143; session-only, see the workspace's field).
+  /// Where each grid's frame axis stands (held above the grids so it
+  /// survives a fold — F-143; the project's and saved with it, F-267 — see
+  /// the workspace's field).
   final ValueNotifier<double>? timelineFrameAxisOffset;
   final ValueNotifier<double>? xsheetFrameAxisOffset;
+
+  /// Where each grid's layer axis stands — the project's too (F-267).
+  final ValueNotifier<double>? timelineLayerAxisOffset;
+  final ValueNotifier<double>? xsheetLayerAxisOffset;
 
   /// AE-style property-lane twirl-down state (host-owned so it survives
   /// tab switches).
@@ -881,6 +888,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             xsheetRailExtent: widget.xsheetRailExtent,
             timelineFrameAxisOffset: widget.timelineFrameAxisOffset,
             xsheetFrameAxisOffset: widget.xsheetFrameAxisOffset,
+            timelineLayerAxisOffset: widget.timelineLayerAxisOffset,
+            xsheetLayerAxisOffset: widget.xsheetLayerAxisOffset,
             projectFrameRate: _session.projectSettings.projectFrameRate,
             expandedLaneLayerIds: widget.expandedLaneLayerIds,
             // LIVE, as the hook asks: the widget's set is the one this build

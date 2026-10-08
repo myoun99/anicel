@@ -37,12 +37,19 @@ class _LayerGridScroll {
   /// [_state._rowWindowBucket] for what the `setState` was costing — and note that
   /// the saving is not the widgets, it is the row MODEL above them.
   void handleVerticalScroll() {
-    final offset = _state._verticalScrollController.hasClients
-        ? _state._verticalScrollController.offset
-        : 0.0;
+    final controller = _state._verticalScrollController;
+    final offset = controller.hasClients ? controller.offset : 0.0;
     if (offset == _state._verticalScrollOffset) {
       return;
     }
+    if (_state._keptLayerAxis case final kept?) {
+      keepWhereShown(controller, kept);
+    }
+    standAt(offset);
+  }
+
+  /// The rows' window cut for the rows standing at [offset].
+  void standAt(double offset) {
     final rowExtent = _state._metrics.layerRowHeight;
     final newBucket = (offset / rowExtent).floor();
     _state._verticalScrollOffset = offset;

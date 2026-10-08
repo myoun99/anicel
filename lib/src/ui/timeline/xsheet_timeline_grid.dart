@@ -95,6 +95,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.layers,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.metrics = defaultMetrics,
   });
 
@@ -113,6 +114,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// .frameAxisOffset], transposed: kept by the workspace so a fold does
   /// not throw it away (F-143). Null = a session-local one of our own.
   final ValueNotifier<double>? frameAxisOffset;
+
+  /// Where the LAYER axis stands — the rail's [LayerTimelineGrid
+  /// .layerAxisOffset], transposed: across the columns, the project's
+  /// (F-267). Null = nobody keeps it; the columns start at the left.
+  final ValueNotifier<double>? layerAxisOffset;
 
   /// Grid geometry (transposed); frameCellWidth carries the frame-axis zoom
   /// as the frame ROW height here.
@@ -306,6 +312,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   final ValueNotifier<double> _ownedFrameAxisOffset = ValueNotifier<double>(0);
   final ValueNotifier<int> _frameWindowBucket = ValueNotifier<int>(0);
 
+  /// The host's record of the layer axis ([XSheetTimelineGrid
+  /// .layerAxisOffset]) — read ONCE, as the frame axis's is.
+  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+
+  /// The layer axis's listener: where the columns stand, kept (F-267).
+  void _keepLayerAxis() {
+    if (_keptLayerAxis case final kept?) {
+      keepWhereShown(_layerScrollController, kept);
+    }
+  }
+
   /// The frame axis following its controller — the rail's follower, the
   /// same object, transposed by nothing but which controller it holds.
   late final TimelineFrameAxisFollower _frameAxis = TimelineFrameAxisFollower(
@@ -339,11 +356,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController = PenFriendlyScrollController(
       initialScrollOffset: _frameAxisOffset.value,
     );
-    _layerScrollController = PenFriendlyScrollController();
+    // The columns too, where the project left them (F-267).
+    _layerScrollController = PenFriendlyScrollController(
+      initialScrollOffset: _keptLayerAxis?.value ?? 0,
+    );
     // The layers and the frames are the sheet: one surface scrolled two
     // ways (F-202).
     scrollTogether(_layerScrollController, _frameScrollController);
     _frameScrollController.addListener(_frameAxis.handleScroll);
+    _layerScrollController.addListener(_keepLayerAxis);
     _frameWindowBucket.addListener(_frameScroll.handleFrameWindowBucket);
     widget.hooks.revealSelectionTick?.addListener(_reveal.handleRevealSelection);
     widget.hooks.frameCursor.addListener(_reveal.handlePlaybackPage);
@@ -389,7 +410,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
-    _layerScrollController.dispose();
+    _layerScrollController
+      ..removeListener(_keepLayerAxis)
+      ..dispose();
     _frameWindowBucket.removeListener(_frameScroll.handleFrameWindowBucket);
     _frameGeometry.dispose();
     _windowedFrameGeometry.dispose();
