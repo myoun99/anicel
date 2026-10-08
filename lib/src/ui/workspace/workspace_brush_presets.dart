@@ -263,46 +263,6 @@ class _WorkspaceBrushPresets {
       ..addAll(recalled);
   }
 
-  /// [tool] comes to hand holding [preset]'s brush — the brush row's press
-  /// in that tool's library, and the one road every press of a brush takes:
-  /// a tap on the row, the brush's key, a group's tab handing back what was
-  /// last held there, the opening brush.
-  ///
-  /// 🗣️F-319 (유저 2026-10-08): 「브러시 그룹은 도구가 두곳에 있으니까 두 곳
-  /// 나눠서 지정하도록. 브러시도구의 브러시그룹/브러시 변경. 지우개도구의
-  /// 브러시그룹/브러시변경」 — the press says whose brush it is.
-  /// ↩️It did not, and a rule stood in for it (`_toolTakingUpABrush`):
-  /// 「Applying a preset KEEPS the active painting tool (R11-④: the eraser
-  /// owns its own preset choice); from a non-painting tool it arms the
-  /// brush」. The eraser still owns its own choice — its library's rows and
-  /// its keys are its own now, and name it.
-  ///
-  /// Which settings survive the swap is the state's own rule
-  /// ([BrushToolState.withPreset]). ⚠️Taken up WHOLE
-  /// ([PaintToolStateNotifier.holdBrush]): a tool brought to hand by this
-  /// holds THIS brush, though it equal the brush of the tool it replaces —
-  /// which a plain assignment reads as a switch back to what it had banked
-  /// (F-181).
-  void takeUp(CanvasTool tool, BrushPreset preset) {
-    final tools = _state._brushTool;
-    tools.holdBrush(_brushFromPreset(tools.value, preset, tool));
-    // The library shows the brush taken up — also when it is the one
-    // already in hand, which moves no state for [followBrushTool] to hear:
-    // 「브러시 누르면 그룹 바껴야함」 (F-319).
-    _state._brushGroups.look.end();
-  }
-
-  /// The brush row's press in each paint tool's library, for that tool's
-  /// panel to call with the brush — [takeUp] with the tool said.
-  ///
-  /// ⚠️ONE closure a tool, made once: the panel keeps its grid as built
-  /// while what it is built from is the same (H40), and a closure made in a
-  /// build is never the same.
-  late final Map<CanvasTool, ValueChanged<BrushPreset>> rowPressOf = {
-    for (final tool in CanvasTool.values)
-      if (canvasToolPaints(tool)) tool: (preset) => takeUp(tool, preset),
-  };
-
   /// [from] holding [preset]'s brush for [tool]. H25: the brush as the hand
   /// last left it with THIS tool, or nothing — in which case the brush's own
   /// file speaks.
@@ -493,7 +453,8 @@ class _WorkspaceBrushPresets {
   ///
   /// ⇒ Applying a preset makes them ONE fact: the tool takes its settings,
   /// the panel highlights it, and H25's per-brush size/opacity comes back
-  /// with it. ⚠️Through [takeUp], not by setting an id — an id alone
+  /// with it. ⚠️Through `_WorkspaceBrushGroups.takeUp`, not by setting an
+  /// id — an id alone
   /// would put the highlight on a brush the tool is not holding, which is
   /// the same disagreement pointing the other way.
   ///
@@ -516,7 +477,7 @@ class _WorkspaceBrushPresets {
     if (preset == null) {
       return;
     }
-    takeUp(tool, preset);
+    _state._brushGroups.takeUp(tool, preset);
   }
 
   /// The group the tool's active preset sits in — where a newly saved

@@ -423,7 +423,7 @@ class _WorkspaceTabs {
                               _state._layoutPersistence.scheduleLayoutSave();
                             },
                             onPresetApplied:
-                                _state._brushPresets.rowPressOf[toolState.tool],
+                                _state._brushGroups.rowPressOf[toolState.tool],
                             onPresetSaveRequested:
                                 _state._brushPresets.saveHeldBrushAsPreset,
                             onPresetDeleted: _state._brushPresets.deletePreset,

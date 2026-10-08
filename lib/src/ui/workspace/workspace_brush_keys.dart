@@ -4,7 +4,7 @@ part of '../editor_workspace.dart';
 /// this workspace owns the library, so it tells the shell's port what the
 /// library holds and lends it the two presses a key can make — the ones a
 /// tap on a brush's row and on a group's tab make:
-/// [_WorkspaceBrushPresets.takeUp] and [_WorkspaceBrushGroups.openGroup].
+/// [_WorkspaceBrushGroups.takeUp] and [_WorkspaceBrushGroups.openGroup].
 class _WorkspaceBrushKeys {
   _WorkspaceBrushKeys(this._state);
 
@@ -40,7 +40,7 @@ class _WorkspaceBrushKeys {
   void takeUp(CanvasTool tool, BrushPresetId id) {
     final preset = _state._brushPresets._presetNamed(id);
     if (preset != null) {
-      _state._brushPresets.takeUp(tool, preset);
+      _state._brushGroups.takeUp(tool, preset);
     }
   }
 }

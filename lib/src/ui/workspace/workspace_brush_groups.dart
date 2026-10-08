@@ -1,8 +1,9 @@
 part of '../editor_workspace.dart';
 
 /// The BRUSH GROUP a paint tool opens on — F-250's memory, as its own object
-/// beside [_WorkspaceBrushPresets], which takes the brush up — and the tab
-/// the library shows for it ([look]).
+/// beside [_WorkspaceBrushPresets], which keeps the brushes themselves — and
+/// with it the two PRESSES of a tool's library, a brush's row ([takeUp]) and
+/// a group's tab ([openGroup]), and the tab the library shows ([look]).
 ///
 /// 🗣️F-250 (유저 2026-10-01): 「브러시 그룹을 바꿀때(선택하던 뭐던), 해당
 /// 그룹의 마지막으로 선택했던걸 기억해서 그거 자동선택되도록」 — the tool
@@ -100,7 +101,7 @@ class _WorkspaceBrushGroups {
           );
     final preset = entering == null ? null : presets._presetNamed(entering);
     if (preset != null) {
-      presets.takeUp(tool, preset);
+      takeUp(tool, preset);
     } else {
       // Inside already, or a tab with no brush to hand it: the tool comes
       // to hand holding what it holds.
@@ -109,6 +110,48 @@ class _WorkspaceBrushGroups {
     }
     look.settle(group, held: _tabHeldBy(tool));
   }
+
+  /// [tool] comes to hand holding [preset]'s brush — the brush row's press
+  /// in that tool's library, and the one road every press of a brush takes:
+  /// a tap on the row, the brush's key, a group's tab handing back what was
+  /// last held there, the opening brush.
+  ///
+  /// 🗣️F-319 (유저 2026-10-08): 「브러시 그룹은 도구가 두곳에 있으니까 두 곳
+  /// 나눠서 지정하도록. 브러시도구의 브러시그룹/브러시 변경. 지우개도구의
+  /// 브러시그룹/브러시변경」 — the press says whose brush it is.
+  /// ↩️It did not, and a rule stood in for it (`_toolTakingUpABrush`):
+  /// 「Applying a preset KEEPS the active painting tool (R11-④: the eraser
+  /// owns its own preset choice); from a non-painting tool it arms the
+  /// brush」. The eraser still owns its own choice — its library's rows and
+  /// its keys are its own now, and name it.
+  ///
+  /// Which settings survive the swap is the state's own rule
+  /// ([BrushToolState.withPreset]). ⚠️Taken up WHOLE
+  /// ([PaintToolStateNotifier.holdBrush]): a tool brought to hand by this
+  /// holds THIS brush, though it equal the brush of the tool it replaces —
+  /// which a plain assignment reads as a switch back to what it had banked
+  /// (F-181).
+  void takeUp(CanvasTool tool, BrushPreset preset) {
+    final tools = _state._brushTool;
+    tools.holdBrush(
+      _state._brushPresets._brushFromPreset(tools.value, preset, tool),
+    );
+    // The library shows the brush taken up — also when it is the one
+    // already in hand, which moves no state for [followHand] to hear:
+    // 「브러시 누르면 그룹 바껴야함」 (F-319).
+    look.end();
+  }
+
+  /// The brush row's press in each paint tool's library, for that tool's
+  /// panel to call with the brush — [takeUp] with the tool said.
+  ///
+  /// ⚠️ONE closure a tool, made once: the panel keeps its grid as built
+  /// while what it is built from is the same (H40), and a closure made in a
+  /// build is never the same.
+  late final Map<CanvasTool, ValueChanged<BrushPreset>> rowPressOf = {
+    for (final tool in CanvasTool.values)
+      if (canvasToolPaints(tool)) tool: (preset) => takeUp(tool, preset),
+  };
 
   /// A tab's press in each paint tool's library, for that tool's panel to
   /// call with the tab — [openGroup] with the tool said.

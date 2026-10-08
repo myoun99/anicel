@@ -182,7 +182,14 @@ void main() {
         bindings.definitions
             .skip(editorActionDefinitions.length)
             .map((row) => row.id),
-        ['panel-timesheet', 'panel-media', 'brush-group-inks'],
+        // A paint tool has its own brush rows (F-319): the brush tool's
+        // Inks, then the eraser's.
+        [
+          'panel-timesheet',
+          'panel-media',
+          'brush-group-inks',
+          'eraser-group-inks',
+        ],
       );
 
       bindings.setPanelActions(

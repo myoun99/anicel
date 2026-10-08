@@ -478,8 +478,21 @@ void main() {
       ];
     }
 
+    /// Brings [finder]'s row into view from wherever the list stands. ⚠️A
+    /// row ABOVE what is shown is not built, and dragging on down would
+    /// never meet it — so a row that is not there is looked for from the
+    /// top.
     Future<void> bringIn(WidgetTester tester, Finder finder) async {
-      await tester.dragUntilVisible(finder, list, const Offset(0, -300));
+      if (finder.evaluate().isEmpty) {
+        await tester.drag(list, const Offset(0, 100000));
+        await tester.pump();
+      }
+      await tester.dragUntilVisible(
+        finder,
+        list,
+        const Offset(0, -300),
+        maxIteration: 200,
+      );
       await tester.pump();
     }
 
