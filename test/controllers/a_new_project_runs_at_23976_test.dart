@@ -6,7 +6,7 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/ui/session/tvpp_import_door.dart'
     show readTvppProject;
 
-import '../helpers/temp_dir.dart';
+import '../helpers/project_scratch_folder.dart';
 import '../models/import/tvpp_test_builder.dart';
 
 /// 🚨new-project-default-fps-23976 (유저 2026-10-06): 「프로젝트 기본 fps
@@ -34,7 +34,7 @@ void main() {
   test('⛔a .tvpp opened as a project stays at 24 — the new default is a '
       'new project\'s, not every project\'s', () async {
     final temp = Directory.systemTemp.createTempSync('anicel-fps-default');
-    addTearDown(() => deleteTempQuietly(temp));
+    deleteAfterSessionEnds(temp);
     final b = TvppBuilder();
     b.projectProperties(cameraWidth: 64, cameraHeight: 48);
     b.clipProperties('clip');
