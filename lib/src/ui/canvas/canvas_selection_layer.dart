@@ -177,9 +177,11 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// itself, arriving through the stroke funnel like any other mark.
   final ValueChanged<CanvasSelectionShape>? onFillShape;
 
-  /// A finished SHAPE-TOOL drag (I-69): the path the host strokes with the
-  /// brush in hand. The selection is not touched, and the undo it leaves
-  /// behind is the stroke's — the same arrangement as [onFillShape].
+  /// A finished SHAPE-TOOL drag (I-69): the path the host draws as the
+  /// tool is set to — a stroke of the brush in hand, the tool's own plain
+  /// line, or the shape's inside. The selection is not touched, and the
+  /// undo it leaves behind is that one mark's — the same arrangement as
+  /// [onFillShape].
   ///
   /// ⚠️A PATH, not an outline: the line is two ends with no inside, so it
   /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).

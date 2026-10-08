@@ -2,7 +2,7 @@ part of '../interactive_brush_edit_canvas_view.dart';
 
 /// THE STROKE A TOOL LAYS — a path handed over whole and drawn as ONE
 /// stroke of the brush in hand: the shape tool's rectangle, ellipse or
-/// line (I-69).
+/// line, where its line is of the brush type (I-69).
 ///
 /// 🚨★★★IT IS THE STROKE, NOT A STROKE LIKE IT. The path goes through
 /// [_BrushEditStroke]'s own arming, its own advance and the one landing

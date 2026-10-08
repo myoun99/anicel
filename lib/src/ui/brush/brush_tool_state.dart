@@ -91,8 +91,10 @@ enum CanvasTool {
   /// [BrushToolState.drawShape]; the blend it lays it down with is its own
   /// ([BrushToolState.shapeBlendMode]).
   ///
-  /// ⚠️The card's OTHER type — a plain line of the tool's own width, not the
-  /// brush's (「일반」) — is not built yet (board I-69).
+  /// ↩️That is its line of the BRUSH type. It also draws a PLAIN line of
+  /// its own (「일반」) and fills the shape in (「채움」), and neither reads
+  /// the brush: which of the three it lays, [BrushToolState.shapeOptions]
+  /// says.
   ///
   /// ⚠️Its NAME is a file token (`tool_choice.dart` writes a tool by name).
   shape,
