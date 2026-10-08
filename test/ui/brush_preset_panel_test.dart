@@ -29,6 +29,8 @@ import 'package:anicel/src/ui/widgets/content_scrollbar.dart';
 import 'package:anicel/src/ui/brush/brush_preset_reorder_grid.dart';
 import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
 import 'package:anicel/src/ui/brush/brush_tip_preview.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 const _ink = BrushGroupId('ink');
 const _paint = BrushGroupId('paint');
@@ -506,6 +508,44 @@ void main() {
     await toggle('brush-preset-view-name-toggle');
     expect(find.text('Marker'), findsNothing);
     expect(find.byType(BrushTipPreview), findsOneWidget);
+  });
+
+  // F-318's disease, found by reading the table's unread words (card
+  // the-string-table-holds-words-nobody-reads): the name row wrote 'Name'
+  // itself — English in every language, beside two rows that spoke.
+  testWidgets('the view rows speak the program language — the name row too',
+      (tester) async {
+    final before = AppText.settings.value;
+    addTearDown(() => AppText.settings.value = before);
+    AppText.settings.value = const AppLanguageSettings(
+      programLanguage: AppLanguage.ko,
+    );
+    final ko = AppStrings.of(AppLanguage.ko);
+    expect(
+      ko.brName,
+      isNot(AppStrings.of(AppLanguage.en).brName),
+      reason: '⛔premise: the table has the word in Korean',
+    );
+    await _pumpPanel(tester, presets: [_marker()]);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+
+    for (final (keyValue, words) in [
+      ('brush-preset-view-icon-toggle', ko.brTipIcon),
+      ('brush-preset-view-stroke-toggle', ko.brStrokePreview),
+      ('brush-preset-view-name-toggle', ko.brName),
+    ]) {
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey<String>(keyValue)),
+          matching: find.text(words),
+        ),
+        findsOneWidget,
+        reason: keyValue,
+      );
+    }
   });
 
   testWidgets('🚨H37: with only the tips showing, a cell is as wide as a tip '

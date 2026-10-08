@@ -135,7 +135,6 @@ enum AppStrings {
   String exclusionReason(String key, String fallback) =>
       _values['exclusionReason.$key'] ?? fallback;
 
-  String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
   String get programLanguageHelp => _s('programLanguageHelp');
@@ -181,8 +180,6 @@ enum AppStrings {
   /// bottom-of-screen message strip.
   String get commonNotice => _s('commonNotice');
 
-  /// The shared pill's deselect button — the tablet's Esc.
-  String get tlSharedDeselect => _s('tlSharedDeselect');
 
   String get tlSharedColourEdit => _s('tlSharedColourEdit');
 
@@ -469,22 +466,13 @@ enum AppStrings {
   String get topStripProject => _s('topStripProject');
   String get topStripSettings => _s('topStripSettings');
 
-  String get menuBarFile => _s('menuBarFile');
-  String get menuBarEdit => _s('menuBarEdit');
-  String get menuBarCut => _s('menuBarCut');
-  String get menuBarLayer => _s('menuBarLayer');
-  String get menuBarPlayback => _s('menuBarPlayback');
-  String get menuBarWindow => _s('menuBarWindow');
-  String get menuBarHelp => _s('menuBarHelp');
   String get menuPlay => _s('menuPlay');
   String get menuPause => _s('menuPause');
 
   // --- Project files ---
   String get fileOpenTitle => _s('fileOpenTitle');
-  String get fileSaveTitle => _s('fileSaveTitle');
   String get fileStorageOffNotice => _s('fileStorageOffNotice');
   String get fileOpenSettings => _s('fileOpenSettings');
-  String get fileNameLabel => _s('fileNameLabel');
   String get fileCloudNoticeOpen => _s('fileCloudNoticeOpen');
   String get replaceFileTitle => _s('replaceFileTitle');
 
@@ -504,14 +492,9 @@ enum AppStrings {
   String get folderPickDriveNotice => _s('folderPickDriveNotice');
   String get folderPickDriveNoticeAndroid =>
       _s('folderPickDriveNoticeAndroid');
-  String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
   String get recentReconnect => _s('recentReconnect');
-  String get sortByName => _s('sortByName');
-  String get sortByModified => _s('sortByModified');
-  String get sortBySize => _s('sortBySize');
   String get sortAscending => _s('sortAscending');
-  String get sortDescending => _s('sortDescending');
 
   // --- Canvas size ---
   String get canvasSizeTitle => _s('canvasSizeTitle');
@@ -527,7 +510,6 @@ enum AppStrings {
   String get commonResize => _s('commonResize');
 
   // --- Input settings ---
-  String get inputTitle => _s('inputTitle');
   String get inputPressureHeading => _s('inputPressureHeading');
   String get inputPressureSoftHard => _s('inputPressureSoftHard');
   String get inputPressureLinear => _s('inputPressureLinear');
@@ -656,7 +638,6 @@ enum AppStrings {
   String get blockFrameLinesLabel => _s('blockFrameLinesLabel');
 
   // --- Accent colours ---
-  String get accentTitle => _s('accentTitle');
   String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
 
@@ -768,7 +749,6 @@ enum AppStrings {
   String get sbVideoTrack => _s('sbVideoTrack');
   String get noticeFillRegionOpen => _s('noticeFillRegionOpen');
   String get noticeCameraKeysCopied => _s('noticeCameraKeysCopied');
-  String get tlSameAsSelected => _s('tlSameAsSelected');
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
   String get tlKindImage => _s('tlKindImage');
@@ -822,8 +802,6 @@ enum AppStrings {
   String get linkWindowUnlink => _s('linkWindowUnlink');
   String get linkWindowUnlinkLinkedCut => _s('linkWindowUnlinkLinkedCut');
   String get tlResetGroup => _s('tlResetGroup');
-  String get tlRenameLayer => _s('tlRenameLayer');
-  String get tlDeleteLayer => _s('tlDeleteLayer');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
   String get tlDropIntoFolderTemplate => _s('tlDropIntoFolderTemplate');
@@ -900,7 +878,6 @@ enum AppStrings {
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
   String get tlProjectAudioRate => _s('tlProjectAudioRate');
-  String get tlCustom => _s('tlCustom');
   String get tlShowSeRows => _s('tlShowSeRows');
   String get tlShowCameraRows => _s('tlShowCameraRows');
 
@@ -912,7 +889,6 @@ enum AppStrings {
   String get cutCommands => _s('cutCommands');
   String get cutAddCut => _s('cutAddCut');
   String get cutSettingsTitle => _s('cutSettingsTitle');
-  String get cutDelete => _s('cutDelete');
 
   // --- The media pool ---
   String get mediaActions => _s('mediaActions');
@@ -1015,7 +991,6 @@ enum AppStrings {
   String get colorRecent => _s('colorRecent');
   String get colorBackgroundSwap => _s('colorBackgroundSwap');
   String get penPressureTitle => _s('penPressureTitle');
-  String get penPressureAxis => _s('penPressureAxis');
   String get brushDynamicsTitle => _s('brushDynamicsTitle');
   String get curveSourcePressure => _s('curveSourcePressure');
   String get curveSourceTilt => _s('curveSourceTilt');
@@ -1049,8 +1024,6 @@ enum AppStrings {
   String get panelTools => _s('panelTools');
 
   // --- The onion skin panel ---
-  String get onionBefore => _s('onionBefore');
-  String get onionAfter => _s('onionAfter');
   String get onionBeforeTint => _s('onionBeforeTint');
   String get onionAfterTint => _s('onionAfterTint');
   String get onionGhostColorHelp => _s('onionGhostColorHelp');
@@ -1145,9 +1118,6 @@ enum AppStrings {
   String get exLayer => _s('exLayer');
   String exCelCount(int count) => _count('exCelCount', count);
 
-  /// [exCelCount]'s singular: one picture is the reference popover's
-  /// commonest count, and 「1 cels」 is what it would have said.
-  String get exCelCountOne => _s('exCelCountOne');
   String get exProject => _s('exProject');
   String get exCut => _s('exCut');
   String get exWhite => _s('exWhite');
@@ -1564,9 +1534,6 @@ enum AppStrings {
   String get brGrowShrink => _s('brGrowShrink');
   String get brAntiAlias => _s('brAntiAlias');
   String get brAntiAliasEdge => _s('brAntiAliasEdge');
-  String get brTransformPreserveColors => _s('brTransformPreserveColors');
-  String get brTransformPreserveColorsHint =>
-      _s('brTransformPreserveColorsHint');
   String get brFillBeyondCanvas => _s('brFillBeyondCanvas');
   String get brOpenRegionsRefuse => _s('brOpenRegionsRefuse');
   String get brName => _s('brName');
@@ -1574,7 +1541,6 @@ enum AppStrings {
   String get brTipIcon => _s('brTipIcon');
   String get brStrokePreview => _s('brStrokePreview');
   String get brBrushOptions => _s('brBrushOptions');
-  String get brGroupOptions => _s('brGroupOptions');
   String get brNewGroup => _s('brNewGroup');
   /// What a new group and a new brush are called when they are made — the
   /// built-ins' rule (brush-preset-names-language-Q1). `{n}` is the number
@@ -1627,7 +1593,6 @@ enum AppStrings {
   String get trMeshColumns => _s('trMeshColumns');
   String get trMeshRows => _s('trMeshRows');
   String get commonReset => _s('commonReset');
-  String get commonFill => _s('commonFill');
 
   // --- Canvas view controls ---
   String get viewFitToView => _s('viewFitToView');
@@ -1714,8 +1679,6 @@ enum AppStrings {
   String get tlRepeat => _s('tlRepeat');
   String get tlRepeatSelection => _s('tlRepeatSelection');
 
-  /// '{name}' is the speaker/effect name.
-  String get tlSeNameTemplate => _s('tlSeNameTemplate');
 
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
@@ -1740,7 +1703,6 @@ enum AppStrings {
   };
 
   static const _enValues = <String, String>{
-    'languageSettingsTitle': 'Language Settings',
     'programLanguageLabel': 'Program language',
     'notationLanguageLabel': 'Notation language',
     'programLanguageHelp': 'Menus, panels and labels.',
@@ -1758,7 +1720,6 @@ enum AppStrings {
     'commonClose': 'Close',
     'commonAffectedFiles': 'Affected files',
     'commonNotice': 'Notice',
-    'tlSharedDeselect': 'Deselect',
     'tlSharedColourEdit': 'Color Edit',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'exportQueueEmpty': 'No jobs queued',
@@ -1942,22 +1903,13 @@ enum AppStrings {
     'commonNotNow': 'Not now',
     'topStripProject': 'Project',
     'topStripSettings': 'Settings',
-    'menuBarFile': 'File',
-    'menuBarEdit': 'Edit',
-    'menuBarCut': 'Cut',
-    'menuBarLayer': 'Layer',
-    'menuBarPlayback': 'Playback',
-    'menuBarWindow': 'Window',
-    'menuBarHelp': 'Help',
     'menuPlay': 'Play',
     'menuPause': 'Pause',
     'fileOpenTitle': 'Open project',
-    'fileSaveTitle': 'Save project',
     'fileStorageOffNotice':
         'Storage access is off — projects outside the app folder need the '
         'All-Files permission.',
     'fileOpenSettings': 'Open settings',
-    'fileNameLabel': 'File name',
     'fileCloudNoticeOpen':
         'Cloud services (Google Drive, Dropbox …): use a sync app (Autosync, '
         'FolderSync …) and open its mirror folder here — direct cloud '
@@ -1974,14 +1926,9 @@ enum AppStrings {
     'folderPickDriveNoticeAndroid':
         'Google Drive cannot hand over a folder. Use a folder on this device '
         '— a sync app (Autosync …) can keep a Drive folder there.',
-    'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
     'recentReconnect': 'Reconnect',
-    'sortByName': 'Name',
-    'sortByModified': 'Modified',
-    'sortBySize': 'Size',
     'sortAscending': 'Ascending',
-    'sortDescending': 'Descending',
     'canvasSizeTitle': 'Canvas size',
     'cameraSizeTitle': 'Camera size',
     'canvasWidthLabel': 'Width (px)',
@@ -1991,7 +1938,6 @@ enum AppStrings {
     'cameraRatioFree': 'Free',
     'cameraRatioCurrent': 'Current',
     'commonResize': 'Resize',
-    'inputTitle': 'Input settings',
     'inputPressureHeading': 'Pen pressure response',
     'inputPressureSoftHard': 'Soft ↔ Hard',
     'inputPressureLinear': 'Linear',
@@ -2146,7 +2092,6 @@ enum AppStrings {
         'only inside that file.',
     'uiScaleLabel': 'Interface scale',
     'blockFrameLinesLabel': 'Frame lines inside blocks',
-    'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
     'sheetFormatTitle': 'Sheet format',
@@ -2200,7 +2145,6 @@ enum AppStrings {
     'cutCommands': 'Cut commands',
     'cutAddCut': 'Add cut',
     'cutSettingsTitle': 'Cut settings',
-    'cutDelete': 'Delete cut',
     'mediaActions': 'Media actions',
     'mediaPoolEmpty': 'No media',
     'mediaImportAudio': 'Import audio',
@@ -2260,7 +2204,6 @@ enum AppStrings {
     'colorRecent': 'Recent',
     'colorBackgroundSwap': 'Background colour (tap to swap)',
     'penPressureTitle': 'Pen pressure',
-    'penPressureAxis': 'Pressure →',
     'brushDynamicsTitle': 'Response',
     'curveSourcePressure': 'Pressure',
     'curveSourceTilt': 'Tilt',
@@ -2287,8 +2230,6 @@ enum AppStrings {
     'panelExpandRegion': 'Expand',
     'panelToolSettings': 'Tool settings',
     'panelTools': 'Tools',
-    'onionBefore': 'Before',
-    'onionAfter': 'After',
     'onionBeforeTint': 'Before tint',
     'onionAfterTint': 'After tint',
     'onionGhostColorHelp': 'How the ghosts are colored',
@@ -2659,10 +2600,6 @@ enum AppStrings {
     'brGrowShrink': 'Grow/Shrink',
     'brAntiAlias': 'Anti-alias',
     'brAntiAliasEdge': 'Anti-alias edge',
-    'brTransformPreserveColors': 'Preserve exact colours',
-    'brTransformPreserveColorsHint':
-        'Transform without making in-between '
-        'colours',
     'brFillBeyondCanvas': 'Fill Beyond Canvas',
     'brOpenRegionsRefuse': 'Open regions refuse to fill',
     'brName': 'Name',
@@ -2670,7 +2607,6 @@ enum AppStrings {
     'brTipIcon': 'Tip icon',
     'brStrokePreview': 'Stroke preview',
     'brBrushOptions': 'Brush options',
-    'brGroupOptions': 'Group options',
     'brNewGroup': 'New group',
     'brNewGroupName': 'New Group',
     'brNewPresetName': 'Preset {n}',
@@ -2708,7 +2644,6 @@ enum AppStrings {
     'trMeshColumns': 'Columns',
     'trMeshRows': 'Rows',
     'commonReset': 'Reset',
-    'commonFill': 'Fill',
     'viewFitToView': 'Fit to View',
     'viewResetView': 'Reset View (100%)',
     'panelSettings': 'Settings',
@@ -2774,7 +2709,6 @@ enum AppStrings {
     'tlLayerTakeNumber': 'Take {n}',
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
-    'tlSeNameTemplate': 'SE name {name}',
     'tlNoLayers': 'No layers',
     'tlLegendLayer': 'LAYER',
     'tlAllDisplayedOpacity': 'All displayed layers opacity',
@@ -2806,7 +2740,6 @@ enum AppStrings {
     'noticeFillRegionOpen':
         'Region is not closed — nothing filled (Fill Beyond Canvas needs an enclosed area).',
     'noticeCameraKeysCopied': 'Camera keyframes copied for After Effects.',
-    'tlSameAsSelected': 'Same as selected',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
@@ -2835,8 +2768,6 @@ enum AppStrings {
     'linkWindowUnlink': 'Unlink',
     'linkWindowUnlinkLinkedCut': "A linked cut's layers unlink with the cut",
     'tlResetGroup': 'Reset (keeps keys)',
-    'tlRenameLayer': 'Rename layer…',
-    'tlDeleteLayer': 'Delete layer',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
     'tlDropIntoFolderTemplate': 'into {name}',
@@ -2874,7 +2805,6 @@ enum AppStrings {
     'tlSetCommasN': 'Set N commas',
     'tlSetCommaTemplate': 'Set {n} comma exposure',
     'tlProjectAudioRate': 'Project audio sample rate',
-    'tlCustom': 'Custom…',
     'tlShowSeRows': 'Show SE rows',
     'tlShowCameraRows': 'Show camera rows',
     'setCommasTitle': 'Set commas',
@@ -2887,7 +2817,6 @@ enum AppStrings {
   };
 
   static const _jaValues = <String, String>{
-    'languageSettingsTitle': '言語設定',
     'programLanguageLabel': 'プログラム言語',
     'notationLanguageLabel': '表記言語',
     'programLanguageHelp': 'メニュー・パネル・ラベルの言語。',
@@ -2905,7 +2834,6 @@ enum AppStrings {
     'commonClose': '閉じる',
     'commonAffectedFiles': '該当ファイル',
     'commonNotice': 'お知らせ',
-    'tlSharedDeselect': '選択解除',
     'tlSharedColourEdit': '色編集',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'exportQueueEmpty': 'キューにジョブがありません',
@@ -3081,13 +3009,6 @@ enum AppStrings {
     'commonNotNow': '後で',
     'topStripProject': 'プロジェクト',
     'topStripSettings': '設定',
-    'menuBarFile': 'ファイル',
-    'menuBarEdit': '編集',
-    'menuBarCut': 'カット',
-    'menuBarLayer': 'レイヤー',
-    'menuBarPlayback': '再生',
-    'menuBarWindow': 'ウィンドウ',
-    'menuBarHelp': 'ヘルプ',
     'menuPlay': '再生',
     'menuPause': '一時停止',
     'shortcutAction.file-open': '開く…',
@@ -3137,12 +3058,10 @@ enum AppStrings {
     'menuAction.edit-show-unpainted-tiles': '描画されなかったタイルを表示',
     'shortcutAction.help-about': 'Anicel について',
     'fileOpenTitle': 'プロジェクトを開く',
-    'fileSaveTitle': 'プロジェクトを保存',
     'fileStorageOffNotice':
         'ストレージへのアクセスがオフです — アプリフォルダの外にある'
         'プロジェクトには「すべてのファイル」の権限が必要です。',
     'fileOpenSettings': '設定を開く',
-    'fileNameLabel': 'ファイル名',
     'fileCloudNoticeOpen':
         'クラウドサービス（Google ドライブ、Dropbox など）：同期アプリ'
         '（Autosync、FolderSync など）を使い、そのミラーフォルダをここで'
@@ -3160,14 +3079,9 @@ enum AppStrings {
         'Google ドライブはフォルダーを渡せません。この端末のフォルダーを'
         'お使いください — 同期アプリ（Autosync など）でドライブのフォルダーを'
         '端末に置けます。',
-    'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
     'recentReconnect': '再接続',
-    'sortByName': '名前',
-    'sortByModified': '更新日時',
-    'sortBySize': 'サイズ',
     'sortAscending': '昇順',
-    'sortDescending': '降順',
     'canvasSizeTitle': 'カンバスサイズ',
     'cameraSizeTitle': 'カメラサイズ',
     'canvasWidthLabel': '幅（px）',
@@ -3177,7 +3091,6 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '今の比率',
     'commonResize': 'サイズ変更',
-    'inputTitle': '入力設定',
     'inputPressureHeading': '筆圧カーブ',
     'inputPressureSoftHard': '柔らかい ↔ 硬い',
     'inputPressureLinear': 'リニア',
@@ -3300,7 +3213,6 @@ enum AppStrings {
         'このプロジェクトのファイルが見つかりません — 削除か移動された可能性があります。ゴミ箱に残っていれば今すぐ戻してください。保存済みの絵はそのファイルの中にしかありません。',
     'uiScaleLabel': 'UIの大きさ',
     'blockFrameLinesLabel': 'ブロック内のフレーム線',
-    'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
     'sheetFormatTitle': 'シート書式',
@@ -3479,7 +3391,6 @@ enum AppStrings {
     'cutSettingsTitle': 'カット設定',
     'shortcutAction.cut-move-left': 'カットを左へ',
     'shortcutAction.cut-move-right': 'カットを右へ',
-    'cutDelete': 'カットを削除',
     'mediaActions': 'メディア操作',
     'mediaPoolEmpty': 'メディアがありません',
     'mediaImportAudio': '音声を読み込み',
@@ -3532,7 +3443,6 @@ enum AppStrings {
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（タップで入れ替え）',
     'penPressureTitle': '筆圧',
-    'penPressureAxis': '筆圧 →',
     'brushDynamicsTitle': '入り抜き',
     'curveSourcePressure': '筆圧',
     'curveSourceTilt': '傾き',
@@ -3559,8 +3469,6 @@ enum AppStrings {
     'panelExpandRegion': '広げる',
     'panelToolSettings': 'ツール設定',
     'panelTools': 'ツール',
-    'onionBefore': '前',
-    'onionAfter': '後',
     'onionBeforeTint': '前の色',
     'onionAfterTint': '後の色',
     'onionGhostColorHelp': 'ゴーストの色付け方',
@@ -3976,8 +3884,6 @@ enum AppStrings {
     'brGrowShrink': '拡張 / 収縮',
     'brAntiAlias': 'アンチエイリアス',
     'brAntiAliasEdge': '縁のアンチエイリアス',
-    'brTransformPreserveColors': '元の色を保持',
-    'brTransformPreserveColorsHint': '変形しても中間色を作りません',
     'brFillBeyondCanvas': 'カンバス外も塗る',
     'brOpenRegionsRefuse': '開いた領域は塗られません',
     'brName': '名前',
@@ -3985,7 +3891,6 @@ enum AppStrings {
     'brTipIcon': '先端アイコン',
     'brStrokePreview': 'ストロークのプレビュー',
     'brBrushOptions': 'ブラシオプション',
-    'brGroupOptions': 'グループオプション',
     'brNewGroup': 'グループを新規作成',
     'brNewGroupName': '新規グループ',
     'brNewPresetName': 'プリセット {n}',
@@ -4095,7 +4000,6 @@ enum AppStrings {
     'trMeshColumns': '横のマス',
     'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
-    'commonFill': '塗りつぶし',
     'viewFitToView': '画面に合わせる',
     'viewResetView': '表示をリセット（100%）',
     'panelSettings': '設定',
@@ -4193,7 +4097,6 @@ enum AppStrings {
     'tlLayerTakeNumber': 'テイク{n}',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
-    'tlSeNameTemplate': 'SE名 {name}',
     'tlNoLayers': 'レイヤーがありません',
     'tlLegendLayer': 'レイヤー',
     'tlAllDisplayedOpacity': '表示中レイヤー全体の不透明度',
@@ -4224,7 +4127,6 @@ enum AppStrings {
     'sbVideoTrack': '映像トラック',
     'noticeFillRegionOpen': '領域が閉じていないため塗りつぶせません（キャンバス外まで塗るには囲まれた領域が必要です）。',
     'noticeCameraKeysCopied': 'カメラのキーフレームを After Effects 用にコピーしました。',
-    'tlSameAsSelected': '選択中と同じ種類',
     // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
     // 이름바꾸자. 일본어도 アニメーション」). ⛔Not 動画 — that word is the
     // in-between PROCESS (`layerProcess.inbetween`), another axis.
@@ -4262,8 +4164,6 @@ enum AppStrings {
     'linkWindowUnlink': 'リンクを解除',
     'linkWindowUnlinkLinkedCut': '兼用カットのレイヤーはカットごと解除します',
     'tlResetGroup': 'リセット（キーは残す）',
-    'tlRenameLayer': 'レイヤー名を変更…',
-    'tlDeleteLayer': 'レイヤーを削除',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
     'tlDropIntoFolderTemplate': '{name} の中へ',
@@ -4300,7 +4200,6 @@ enum AppStrings {
     'tlSetCommasN': 'Nコマに設定',
     'tlSetCommaTemplate': '{n}コマに設定',
     'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
-    'tlCustom': 'カスタム…',
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
     'shortcutAction.layer-storyboard': '絵コンテレイヤー',
@@ -4314,7 +4213,6 @@ enum AppStrings {
   };
 
   static const _koValues = <String, String>{
-    'languageSettingsTitle': '언어 설정',
     'programLanguageLabel': '프로그램 언어',
     'notationLanguageLabel': '표기용 언어',
     'programLanguageHelp': '메뉴·패널·라벨의 언어.',
@@ -4332,7 +4230,6 @@ enum AppStrings {
     'commonClose': '닫기',
     'commonAffectedFiles': '해당 파일들',
     'commonNotice': '알림',
-    'tlSharedDeselect': '선택 해제',
     'tlSharedColourEdit': '색 편집',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'exportQueueEmpty': '큐에 작업이 없습니다',
@@ -4508,13 +4405,6 @@ enum AppStrings {
     'commonNotNow': '나중에',
     'topStripProject': '프로젝트',
     'topStripSettings': '설정',
-    'menuBarFile': '파일',
-    'menuBarEdit': '편집',
-    'menuBarCut': '컷',
-    'menuBarLayer': '레이어',
-    'menuBarPlayback': '재생',
-    'menuBarWindow': '창',
-    'menuBarHelp': '도움말',
     'menuPlay': '재생',
     'menuPause': '일시정지',
     'shortcutAction.file-open': '열기…',
@@ -4564,12 +4454,10 @@ enum AppStrings {
     'menuAction.edit-show-unpainted-tiles': '그려지지 않은 타일 표시',
     'shortcutAction.help-about': 'Anicel 정보',
     'fileOpenTitle': '프로젝트 열기',
-    'fileSaveTitle': '프로젝트 저장',
     'fileStorageOffNotice':
         '저장소 접근이 꺼져 있습니다 — 앱 폴더 바깥의 프로젝트에는 '
         '모든 파일 권한이 필요합니다.',
     'fileOpenSettings': '설정 열기',
-    'fileNameLabel': '파일 이름',
     'fileCloudNoticeOpen':
         '클라우드 서비스(Google 드라이브, Dropbox 등): 동기화 앱'
         '(Autosync, FolderSync 등)을 쓰고 그 미러 폴더를 여기서 여세요 — '
@@ -4587,14 +4475,9 @@ enum AppStrings {
         '구글 드라이브는 폴더를 넘겨주지 못합니다. 이 기기의 폴더를 '
         '사용하세요 — 동기화 앱(Autosync 등)으로 드라이브 폴더를 이 기기에 '
         '둘 수 있습니다.',
-    'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
     'recentReconnect': '다시 연결',
-    'sortByName': '이름',
-    'sortByModified': '수정일시',
-    'sortBySize': '크기',
     'sortAscending': '오름차순',
-    'sortDescending': '내림차순',
     'canvasSizeTitle': '캔버스 크기',
     'cameraSizeTitle': '카메라 크기',
     'canvasWidthLabel': '너비 (px)',
@@ -4604,7 +4487,6 @@ enum AppStrings {
     'cameraRatioFree': '자유',
     'cameraRatioCurrent': '지금 비율',
     'commonResize': '크기 변경',
-    'inputTitle': '입력 설정',
     'inputPressureHeading': '필압 곡선',
     'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
     'inputPressureLinear': '리니어',
@@ -4725,7 +4607,6 @@ enum AppStrings {
         '이 프로젝트의 파일이 사라졌습니다 — 지워졌거나 옮겨졌습니다. 휴지통에 아직 있다면 지금 되살리세요. 이미 저장했던 그림들은 그 파일 안에만 있습니다.',
     'uiScaleLabel': 'UI 크기',
     'blockFrameLinesLabel': '블록 안 프레임선',
-    'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
     'sheetFormatTitle': '타임시트 서식',
@@ -4906,7 +4787,6 @@ enum AppStrings {
     'cutSettingsTitle': '컷 설정',
     'shortcutAction.cut-move-left': '컷 왼쪽으로',
     'shortcutAction.cut-move-right': '컷 오른쪽으로',
-    'cutDelete': '컷 삭제',
     'mediaActions': '미디어 작업',
     'mediaPoolEmpty': '미디어가 없습니다',
     'mediaImportAudio': '오디오 불러오기',
@@ -4959,7 +4839,6 @@ enum AppStrings {
     'colorRecent': '최근',
     'colorBackgroundSwap': '배경색 (눌러서 교체)',
     'penPressureTitle': '필압',
-    'penPressureAxis': '필압 →',
     'brushDynamicsTitle': '반응',
     'curveSourcePressure': '필압',
     'curveSourceTilt': '기울기',
@@ -4986,8 +4865,6 @@ enum AppStrings {
     'panelExpandRegion': '펼치기',
     'panelToolSettings': '도구 설정',
     'panelTools': '도구',
-    'onionBefore': '이전',
-    'onionAfter': '이후',
     'onionBeforeTint': '이전 색',
     'onionAfterTint': '이후 색',
     'onionGhostColorHelp': '고스트에 색을 입히는 방식',
@@ -5394,8 +5271,6 @@ enum AppStrings {
     'brGrowShrink': '확장 / 축소',
     'brAntiAlias': '앤티에일리어스',
     'brAntiAliasEdge': '가장자리 앤티에일리어스',
-    'brTransformPreserveColors': '원본 색 보존',
-    'brTransformPreserveColorsHint': '변형해도 중간색을 만들지 않습니다',
     'brFillBeyondCanvas': '캔버스 밖도 채우기',
     'brOpenRegionsRefuse': '열린 영역은 채워지지 않습니다',
     'brName': '이름',
@@ -5403,7 +5278,6 @@ enum AppStrings {
     'brTipIcon': '팁 아이콘',
     'brStrokePreview': '스트로크 미리보기',
     'brBrushOptions': '브러시 옵션',
-    'brGroupOptions': '그룹 옵션',
     'brNewGroup': '새 그룹',
     'brNewGroupName': '새 그룹',
     'brNewPresetName': '프리셋 {n}',
@@ -5513,7 +5387,6 @@ enum AppStrings {
     'trMeshColumns': '가로 칸',
     'trMeshRows': '세로 칸',
     'commonReset': '초기화',
-    'commonFill': '채우기',
     'viewFitToView': '화면에 맞추기',
     'viewResetView': '보기 초기화 (100%)',
     'panelSettings': '설정',
@@ -5611,7 +5484,6 @@ enum AppStrings {
     'tlLayerTakeNumber': '테이크 {n}',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
-    'tlSeNameTemplate': 'SE 이름 {name}',
     'tlNoLayers': '레이어 없음',
     'tlLegendLayer': '레이어',
     'tlAllDisplayedOpacity': '표시 중인 레이어 전체 불투명도',
@@ -5643,7 +5515,6 @@ enum AppStrings {
     'noticeFillRegionOpen':
         '영역이 닫혀 있지 않아 채우지 못했습니다 (캔버스 밖까지 채우려면 둘러싸인 영역이 필요합니다).',
     'noticeCameraKeysCopied': '카메라 키프레임을 After Effects 용으로 복사했습니다.',
-    'tlSameAsSelected': '선택한 것과 같은 종류',
     // 🗣️The row KIND's name is the user's (2026-10-02: 「애니메이션 레이어로
     // 이름바꾸자」). ⛔Not 동화 — that word is the in-between PROCESS
     // (`layerProcess.inbetween`), another axis.
@@ -5681,8 +5552,6 @@ enum AppStrings {
     'linkWindowUnlink': '링크 해제',
     'linkWindowUnlinkLinkedCut': '겸용컷이라 레이어만 해제할 수 없습니다',
     'tlResetGroup': '리셋 (키는 유지)',
-    'tlRenameLayer': '레이어 이름 변경…',
-    'tlDeleteLayer': '레이어 삭제',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
     'tlDropIntoFolderTemplate': '{name} 안으로',
@@ -5720,7 +5589,6 @@ enum AppStrings {
     'tlSetCommasN': 'N코마로 설정',
     'tlSetCommaTemplate': '{n}코마로 설정',
     'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
-    'tlCustom': '사용자 지정…',
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
     'shortcutAction.layer-storyboard': '콘티 레이어',
@@ -5734,7 +5602,6 @@ enum AppStrings {
   };
 
   static const _frValues = <String, String>{
-    'languageSettingsTitle': 'Paramètres de langue',
     'programLanguageLabel': 'Langue du programme',
     'notationLanguageLabel': 'Langue de notation',
     'programLanguageHelp': 'Menus, panneaux et libellés.',
@@ -5752,7 +5619,6 @@ enum AppStrings {
     'commonClose': 'Fermer',
     'commonAffectedFiles': 'Fichiers concernés',
     'commonNotice': 'Avis',
-    'tlSharedDeselect': 'Désélectionner',
     'tlSharedColourEdit': 'Édition couleur',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'exportQueueEmpty': 'Aucune tâche dans la file',
@@ -5938,13 +5804,6 @@ enum AppStrings {
     'commonNotNow': 'Plus tard',
     'topStripProject': 'Projet',
     'topStripSettings': 'Paramètres',
-    'menuBarFile': 'Fichier',
-    'menuBarEdit': 'Édition',
-    'menuBarCut': 'Plan',
-    'menuBarLayer': 'Calque',
-    'menuBarPlayback': 'Lecture',
-    'menuBarWindow': 'Fenêtre',
-    'menuBarHelp': 'Aide',
     'menuPlay': 'Lire',
     'menuPause': 'Pause',
     'shortcutAction.file-open': 'Ouvrir…',
@@ -5995,12 +5854,10 @@ enum AppStrings {
     'menuAction.edit-show-unpainted-tiles': 'Afficher les tuiles non peintes',
     'shortcutAction.help-about': 'À propos de Anicel',
     'fileOpenTitle': 'Ouvrir un projet',
-    'fileSaveTitle': 'Enregistrer le projet',
     'fileStorageOffNotice':
         "L'accès au stockage est désactivé — les projets hors du dossier de "
         "l'application exigent l'autorisation Tous les fichiers.",
     'fileOpenSettings': 'Ouvrir les réglages',
-    'fileNameLabel': 'Nom du fichier',
     'fileCloudNoticeOpen':
         'Services cloud (Google Drive, Dropbox …) : utilisez une app de '
         'synchronisation (Autosync, FolderSync …) et ouvrez son dossier '
@@ -6018,14 +5875,9 @@ enum AppStrings {
         'Google Drive ne peut pas fournir de dossier. Utilisez un dossier de '
         'cet appareil — une app de synchronisation (Autosync …) peut y garder '
         'un dossier Drive.',
-    'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
     'recentReconnect': 'Reconnecter',
-    'sortByName': 'Nom',
-    'sortByModified': 'Modifié',
-    'sortBySize': 'Taille',
     'sortAscending': 'Croissant',
-    'sortDescending': 'Décroissant',
     'canvasSizeTitle': 'Taille du canevas',
     'cameraSizeTitle': 'Taille de la caméra',
     'canvasWidthLabel': 'Largeur (px)',
@@ -6035,7 +5887,6 @@ enum AppStrings {
     'cameraRatioFree': 'Libre',
     'cameraRatioCurrent': 'Actuel',
     'commonResize': 'Redimensionner',
-    'inputTitle': 'Paramètres de saisie',
     'inputPressureHeading': 'Réponse à la pression',
     'inputPressureSoftHard': 'Doux ↔ Dur',
     'inputPressureLinear': 'Linéaire',
@@ -6181,7 +6032,6 @@ enum AppStrings {
         "Le fichier de ce projet n'est plus là — supprimé ou déplacé. "
         "Restaurez-le maintenant s'il est encore dans une corbeille : les "
         'dessins déjà enregistrés ne vivent que dans ce fichier.',
-    'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
     'sheetFormatTitle': 'Format de la feuille',
@@ -6362,7 +6212,6 @@ enum AppStrings {
     'cutSettingsTitle': 'Réglages du plan',
     'shortcutAction.cut-move-left': 'Déplacer le plan à gauche',
     'shortcutAction.cut-move-right': 'Déplacer le plan à droite',
-    'cutDelete': 'Supprimer le plan',
     'mediaActions': 'Actions média',
     'mediaPoolEmpty': 'Aucun média',
     'mediaImportAudio': "Importer de l'audio",
@@ -6424,7 +6273,6 @@ enum AppStrings {
     'colorRecent': 'Récentes',
     'colorBackgroundSwap': 'Couleur de fond (toucher pour échanger)',
     'penPressureTitle': 'Pression du stylet',
-    'penPressureAxis': 'Pression →',
     'brushDynamicsTitle': 'Réponse',
     'curveSourcePressure': 'Pression',
     'curveSourceTilt': 'Inclinaison',
@@ -6451,8 +6299,6 @@ enum AppStrings {
     'panelExpandRegion': 'Développer',
     'panelToolSettings': "Réglages de l'outil",
     'panelTools': 'Outils',
-    'onionBefore': 'Avant',
-    'onionAfter': 'Après',
     'onionBeforeTint': 'Teinte avant',
     'onionAfterTint': 'Teinte après',
     'onionGhostColorHelp': 'Comment les fantômes sont colorés',
@@ -6927,10 +6773,6 @@ enum AppStrings {
     'brGrowShrink': 'Étendre / Réduire',
     'brAntiAlias': 'Anticrénelage',
     'brAntiAliasEdge': 'Anticrénelage du bord',
-    'brTransformPreserveColors': 'Préserver les couleurs exactes',
-    'brTransformPreserveColorsHint':
-        'Transformer sans créer de couleurs '
-        'intermédiaires',
     'trFlipHorizontal': 'Miroir horizontal',
     'trFlipVertical': 'Miroir vertical',
     'trScaleX': 'Échelle X',
@@ -6947,7 +6789,6 @@ enum AppStrings {
     'brTipIcon': 'Icône de pointe',
     'brStrokePreview': 'Aperçu du tracé',
     'brBrushOptions': 'Options du pinceau',
-    'brGroupOptions': 'Options du groupe',
     'brNewGroup': 'Nouveau groupe',
     'brNewGroupName': 'Nouveau groupe',
     'brNewPresetName': 'Préréglage {n}',
@@ -7053,7 +6894,6 @@ enum AppStrings {
     'brTipNotSaved': 'Cette pointe n’a pas pu être enregistrée.',
     'brExpand': 'Déplier',
     'commonReset': 'Réinitialiser',
-    'commonFill': 'Remplir',
     'viewFitToView': 'Ajuster à la fenêtre',
     'viewResetView': 'Réinitialiser la vue (100 %)',
     'panelSettings': 'Paramètres',
@@ -7136,7 +6976,6 @@ enum AppStrings {
     'tlLayerTakeNumber': 'Prise {n}',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
-    'tlSeNameTemplate': 'Nom SE {name}',
     'tlNoLayers': 'Aucun calque',
     'tlLegendLayer': 'CALQUE',
     'tlAllDisplayedOpacity': 'Opacité de tous les calques affichés',
@@ -7169,7 +7008,6 @@ enum AppStrings {
         'La zone n\'est pas fermée — rien n\'a été rempli (le remplissage hors toile exige une zone close).',
     'noticeCameraKeysCopied':
         'Images clés de caméra copiées pour After Effects.',
-    'tlSameAsSelected': 'Comme la sélection',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
@@ -7206,8 +7044,6 @@ enum AppStrings {
     'linkWindowUnlink': 'Délier',
     'linkWindowUnlinkLinkedCut': "Les calques d'une coupe liée se délient avec la coupe",
     'tlResetGroup': 'Réinitialiser (garde les clés)',
-    'tlRenameLayer': 'Renommer le calque…',
-    'tlDeleteLayer': 'Supprimer le calque',
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
     'tlDropIntoFolderTemplate': 'dans {name}',
@@ -7248,7 +7084,6 @@ enum AppStrings {
     'tlSetCommasN': 'Régler sur N commas',
     'tlSetCommaTemplate': 'Régler sur {n} comma',
     'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
-    'tlCustom': 'Personnalisé…',
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
     'shortcutAction.layer-storyboard': 'Calque storyboard',
@@ -7262,7 +7097,6 @@ enum AppStrings {
   };
 
   static const _zhHansValues = <String, String>{
-    'languageSettingsTitle': '语言设置',
     'programLanguageLabel': '程序语言',
     'notationLanguageLabel': '标注语言',
     'programLanguageHelp': '菜单、面板与标签的语言。',
@@ -7280,7 +7114,6 @@ enum AppStrings {
     'commonClose': '关闭',
     'commonAffectedFiles': '相关文件',
     'commonNotice': '提示',
-    'tlSharedDeselect': '取消选择',
     'tlSharedColourEdit': '颜色编辑',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'exportQueueEmpty': '队列中没有任务',
@@ -7443,13 +7276,6 @@ enum AppStrings {
     'commonNotNow': '暂不',
     'topStripProject': '项目',
     'topStripSettings': '设置',
-    'menuBarFile': '文件',
-    'menuBarEdit': '编辑',
-    'menuBarCut': '镜头',
-    'menuBarLayer': '图层',
-    'menuBarPlayback': '播放',
-    'menuBarWindow': '窗口',
-    'menuBarHelp': '帮助',
     'menuPlay': '播放',
     'menuPause': '暂停',
     'shortcutAction.file-open': '打开…',
@@ -7499,10 +7325,8 @@ enum AppStrings {
     'menuAction.edit-show-unpainted-tiles': '显示未绘制的图块',
     'shortcutAction.help-about': '关于 Anicel',
     'fileOpenTitle': '打开项目',
-    'fileSaveTitle': '保存项目',
     'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
     'fileOpenSettings': '打开设置',
-    'fileNameLabel': '文件名',
     'fileCloudNoticeOpen':
         '云服务（Google 云端硬盘、Dropbox 等）：请使用同步应用'
         '（Autosync、FolderSync 等），并在此打开它的镜像文件夹 — '
@@ -7518,14 +7342,9 @@ enum AppStrings {
     'folderPickDriveNoticeAndroid':
         'Google 云端硬盘无法提供文件夹。请使用本设备上的文件夹 — 同步应用'
         '（Autosync 等）可以把云端硬盘文件夹放到本设备上。',
-    'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
     'recentReconnect': '重新连接',
-    'sortByName': '名称',
-    'sortByModified': '修改时间',
-    'sortBySize': '大小',
     'sortAscending': '升序',
-    'sortDescending': '降序',
     'canvasSizeTitle': '画布尺寸',
     'cameraSizeTitle': '摄影机尺寸',
     'canvasWidthLabel': '宽度（px）',
@@ -7535,7 +7354,6 @@ enum AppStrings {
     'cameraRatioFree': '自由',
     'cameraRatioCurrent': '当前比例',
     'commonResize': '调整尺寸',
-    'inputTitle': '输入设置',
     'inputPressureHeading': '压感曲线',
     'inputPressureSoftHard': '软 ↔ 硬',
     'inputPressureLinear': '线性',
@@ -7640,7 +7458,6 @@ enum AppStrings {
         '此项目未能保存的工作只存在于应用内的失败副本中，程序关闭后失败副本会消失。如需保留，请使用“另存为”，或文件菜单中的“备份失败副本…”。',
     'projectFileVanished':
         '此项目的文件已不在原处 — 可能被删除或移动了。若还能从回收站恢复，请现在恢复：已保存过的画面只存在于该文件中。',
-    'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
     'sheetFormatTitle': '摄影表格式',
@@ -7818,7 +7635,6 @@ enum AppStrings {
     'cutSettingsTitle': '镜头设置',
     'shortcutAction.cut-move-left': '镜头左移',
     'shortcutAction.cut-move-right': '镜头右移',
-    'cutDelete': '删除镜头',
     'mediaActions': '媒体操作',
     'mediaPoolEmpty': '没有媒体',
     'mediaImportAudio': '导入音频',
@@ -7868,7 +7684,6 @@ enum AppStrings {
     'colorRecent': '最近',
     'colorBackgroundSwap': '背景色（点按交换）',
     'penPressureTitle': '笔压',
-    'penPressureAxis': '笔压 →',
     'brushDynamicsTitle': '响应',
     'curveSourcePressure': '笔压',
     'curveSourceTilt': '倾斜',
@@ -7895,8 +7710,6 @@ enum AppStrings {
     'panelExpandRegion': '展开',
     'panelToolSettings': '工具设置',
     'panelTools': '工具',
-    'onionBefore': '之前',
-    'onionAfter': '之后',
     'onionBeforeTint': '之前色调',
     'onionAfterTint': '之后色调',
     'onionGhostColorHelp': '残影的着色方式',
@@ -8295,8 +8108,6 @@ enum AppStrings {
     'brGrowShrink': '扩展 / 收缩',
     'brAntiAlias': '抗锯齿',
     'brAntiAliasEdge': '边缘抗锯齿',
-    'brTransformPreserveColors': '保留原始颜色',
-    'brTransformPreserveColorsHint': '变换时不生成中间色',
     'brFillBeyondCanvas': '填充到画布之外',
     'brOpenRegionsRefuse': '开放区域不会被填充',
     'brName': '名称',
@@ -8304,7 +8115,6 @@ enum AppStrings {
     'brTipIcon': '笔尖图标',
     'brStrokePreview': '笔画预览',
     'brBrushOptions': '画笔选项',
-    'brGroupOptions': '分组选项',
     'brNewGroup': '新建分组',
     'brNewGroupName': '新建分组',
     'brNewPresetName': '预设 {n}',
@@ -8414,7 +8224,6 @@ enum AppStrings {
     'trMeshColumns': '列数',
     'trMeshRows': '行数',
     'commonReset': '重置',
-    'commonFill': '填充',
     'viewFitToView': '适应窗口',
     'viewResetView': '重置视图（100%）',
     'panelSettings': '设置',
@@ -8476,7 +8285,6 @@ enum AppStrings {
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',
-    'tlSeNameTemplate': 'SE 名称 {name}',
     'tlNoLayers': '没有图层',
     'tlLegendLayer': '图层',
     'tlAllDisplayedOpacity': '所有显示图层的不透明度',
@@ -8507,7 +8315,6 @@ enum AppStrings {
     'sbVideoTrack': '视频轨道',
     'noticeFillRegionOpen': '区域未闭合，未进行填充（画布外填充需要一个封闭区域）。',
     'noticeCameraKeysCopied': '已为 After Effects 复制摄像机关键帧。',
-    'tlSameAsSelected': '与所选相同',
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
     'tlKindImage': '图像',
@@ -8546,8 +8353,6 @@ enum AppStrings {
     'linkWindowUnlink': '取消链接',
     'linkWindowUnlinkLinkedCut': '链接镜头的图层只能随镜头一起取消链接',
     'tlResetGroup': '重置（保留关键帧）',
-    'tlRenameLayer': '重命名图层…',
-    'tlDeleteLayer': '删除图层',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',
     'tlDropIntoFolderTemplate': '移入 {name}',
@@ -8586,7 +8391,6 @@ enum AppStrings {
     'tlSetCommasN': '设为 N 格',
     'tlSetCommaTemplate': '设为 {n} 格',
     'tlProjectAudioRate': '项目音频采样率',
-    'tlCustom': '自定义…',
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
     'shortcutAction.layer-storyboard': '分镜图层',

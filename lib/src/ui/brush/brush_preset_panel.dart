@@ -885,7 +885,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       ),
       item(
         'brush-preset-view-name-toggle',
-        'Name',
+        // ↩️It wrote 'Name' itself — English in every language, the word
+        // beside its two neighbours' in the table unread by it.
+        AppText.strings.brName,
         _BrushPresetMenuAction.toggleName,
         checked: _showName,
         enabled: _canToggleOff(_showName),
