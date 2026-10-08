@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/decode_audio_file.dart';
 import '../../helpers/fake_pdf_document.dart';
+import '../../helpers/native_call_watch.dart';
 import '../../helpers/native_engine_path.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
@@ -445,6 +446,15 @@ void main() {
       await tester.pumpAndSettle();
     }, skip: skip);
 
+    /// A watch over the engine calls of [test] — made on this isolate, where
+    /// one that never returns stops every timer and held a CI shard to its
+    /// 25-minute end (board `the-trimmed-movie-test-can-hang-on-windows-ci`).
+    Future<NativeCallWatch> watched(WidgetTester tester, String test) async {
+      final watch = (await tester.runAsync(() => NativeCallWatch.start(test)))!;
+      addTearDown(watch.stop);
+      return watch;
+    }
+
     /// How far apart two neighbouring frames' reds are in [writeMovie] —
     /// and therefore how far a piece frame may drift and still be THAT
     /// frame rather than its neighbour (see [cutsWhatTheProjectShows]).
@@ -508,6 +518,7 @@ void main() {
       if (encoder == null || !encoder.isSupported) {
         return null;
       }
+      final watch = await watched(tester, 'a trimmed movie at $pace');
       final s = EditorSessionManager(
         initialProject: createDefaultProject().copyWith(
           audioSpeedNumerator: speed.numerator,
@@ -517,8 +528,10 @@ void main() {
       addTearDown(s.dispose);
       final rate = s.projectSettings.projectFrameRate;
       final source = inTemp('take3.mp4');
+      watch.step('writing the take');
       writeMovie(encoder, source, fps);
 
+      watch.step('cutting the piece');
       final kept = await tester.runAsync(
         () => s.trimmedPieces.cut(
           source,
@@ -529,6 +542,7 @@ void main() {
       );
 
       final decoder = QaVideoDecoder.instance!;
+      watch.step('opening the take');
       final original = decoder.openDocument(source)!;
       final clock = movieClockFor(
         projectRate: rate,
@@ -541,6 +555,7 @@ void main() {
         outFrame: 8,
       );
       expect(kept?.frames, span.count, reason: 'what the placement keeps');
+      watch.step('opening the piece');
       final cut = decoder.openDocument(kept!.path)!;
       try {
         expect(cut.info.frameCount, span.count);
@@ -553,7 +568,9 @@ void main() {
         for (var n = 0; n < span.count; n += 1) {
           final at = span.first + n;
           final movieFrame = clock.movieFrameAt(at);
+          watch.step('reading frame $movieFrame of the take');
           final shown = decoder.frameOf(original, movieFrame)!;
+          watch.step('reading frame $n of the piece');
           final piece = decoder.frameOf(cut, n)!;
           // ⚠️The question is WHICH frame, so the bound is half the step
           // between neighbouring reds: nearer than that is this frame and
@@ -573,9 +590,11 @@ void main() {
           );
         }
       } finally {
+        watch.step('closing the take and the piece');
         decoder.closeDocument(original);
         decoder.closeDocument(cut);
       }
+      watch.step('settling');
       await tester.pumpAndSettle();
       return span.count;
     }
@@ -597,13 +616,17 @@ void main() {
       if (encoder == null || !encoder.isSupported) {
         return;
       }
+      final watch = await watched(tester, 'a frame comes back its colour');
       final source = inTemp('colours.mp4');
+      watch.step('writing the take');
       writeMovie(encoder, source, (numerator: 12, denominator: 1));
       final decoder = QaVideoDecoder.instance!;
+      watch.step('opening the take');
       final movie = decoder.openDocument(source)!;
       try {
         for (var frame = 0; frame < 8; frame += 1) {
           final written = 20 + frame * redStep;
+          watch.step('reading frame $frame');
           final red = decoder.frameOf(movie, frame)![0];
           expect(
             (red - written).abs(),
@@ -614,8 +637,10 @@ void main() {
           );
         }
       } finally {
+        watch.step('closing the take');
         decoder.closeDocument(movie);
       }
+      watch.step('settling');
       await tester.pumpAndSettle();
     }, skip: skip);
 
