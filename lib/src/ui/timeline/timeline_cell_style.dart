@@ -87,7 +87,7 @@ Color get timelineStandingWashColor =>
 /// 그에맞춰 사각형으로 칠하도록. 지금 빈칸인데도 꼭짓점이 동그람」. ↩️It wore
 /// the block's corner wherever it stood. F-26's law, said of the selection
 /// band — 「ONE band, taking the shape of what it is selecting」 — is this
-/// wash's too: an empty cell, a hold's dashes and a lane's cell draw no
+/// wash's too: an empty cell, a hold's line and a lane's cell draw no
 /// rounded paper, so nothing round stands on them.
 BoxDecoration timelineStandingWashDecorationAt({
   required double cellExtent,
@@ -122,6 +122,17 @@ BoxDecoration get timelineRowSelectionBandDecoration =>
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
+
+/// How heavy a line that JOINS is drawn along the frame axis — a hold's, the
+/// one between a row's keys, an instruction's duration: one weight, because
+/// they are one kind of line (I-73, 유저 2026-10-08: the line between keys
+/// is the hold's own — 「블록의 홀드시 … 그대로써서」, 「그 선을 fx나 카메라나
+/// 동일하게」 — and what names a camera's move rides the instruction's).
+const double timelineJoiningLineWidth = 1.4;
+
+/// How far a hold's line stands in from the cells' edges at its own two
+/// ends — clear of the block it holds and of whatever stops it.
+const double timelineHoldLineInset = 1.5;
 
 /// 🚨THE TEXT-ON-GROUND LAW MOVED to `../theme/text_on_ground.dart` when the
 /// settings slider became its second reader (유저 2026-09-08). The names

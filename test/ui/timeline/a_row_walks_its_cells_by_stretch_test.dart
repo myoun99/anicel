@@ -76,7 +76,7 @@ void main() {
       20: block('a', 4),
     },
   );
-  // The run edges' ghosts: a hold's dashes and a repeat's names.
+  // The run edges' ghosts: a hold's line and a repeat's names.
   final ghosts = Layer(
     id: const LayerId('ghosts'),
     name: 'B',
@@ -295,6 +295,7 @@ void main() {
     for (final (walk, ask) in <(String, void Function())>[
       ('the paper', () => painter.substrateIn(0, window)),
       ('the writing', () => painter.writingCellsIn(0, window).toList()),
+      ('the holds', () => painter.holdLinesIn(0, window).toList()),
       ('the word before the end', () => painter.wordCellBefore(window)),
     ]) {
       asked = 0;
@@ -331,12 +332,16 @@ void main() {
 
       test('the cells that write are the cells that write', () {
         final painter = painters[name]!;
+        // A hold's cells write nothing: its line is the whole ghost's
+        // ([TimelineTileRasterSource.holdLinesIn], I-73).
         bool writes(int frameIndex) {
           final model = painter.cellModelAt(frameIndex);
-          return model.mark != null || model.glyph.isNotEmpty;
+          return model.mark != null ||
+              model.glyph.isNotEmpty &&
+                  !(model.ghost && model.glyph == timelineHoldGlyph);
         }
 
-        // [6, 8) ends inside the hold ghost's dashes, a stretch that writes.
+        // [6, 8) lies inside the hold's ghost.
         for (final (from, to) in [(0, frames), (5, 13), (6, 8)]) {
           expect(painter.writingCellsIn(from, to).toList(), [
             for (var frameIndex = from; frameIndex < to; frameIndex += 1)
@@ -353,7 +358,7 @@ void main() {
             if (model.glyph.isEmpty) {
               continue;
             }
-            return model.ghost && model.glyph == timelineHoldDashGlyph
+            return model.ghost && model.glyph == timelineHoldGlyph
                 ? null
                 : index;
           }

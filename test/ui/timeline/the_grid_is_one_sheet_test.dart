@@ -214,7 +214,7 @@ void main() {
       final painter = painterFor(paperGround: host);
       final spy = _PaintSpy();
       painter.paint(spy, const Size(960, 28));
-      expect(spy.lines, isEmpty, reason: 'the hold dash aside, no line');
+      expect(spy.lines, isEmpty, reason: 'a hold\'s line aside, no line');
       expect(
         spy.fills.map((f) => f.rect).toList(),
         [painter.paperRectFor(10).expandToInclude(painter.paperRectFor(13))],

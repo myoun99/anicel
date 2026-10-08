@@ -33,7 +33,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_tile_raster_source.dart'
-    show timelineHoldDashGlyph;
+    show timelineHoldGlyph;
 
 import '../timeline/timeline_frame_geometry_probe.dart';
 
@@ -299,7 +299,7 @@ void main() {
       // row's own hold.
       final onFolder = _painter(s, band);
       final onRow = _painter(s, _layer(s, 'a'));
-      expect(onFolder.cellModelAt(12).glyph, timelineHoldDashGlyph);
+      expect(onFolder.cellModelAt(12).glyph, timelineHoldGlyph);
       expect(onFolder.cellModelAt(12).glyph, onRow.cellModelAt(12).glyph);
       expect(onFolder.cellModelAt(12).ghost, isTrue);
       expect(
