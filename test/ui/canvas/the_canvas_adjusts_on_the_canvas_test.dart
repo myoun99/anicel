@@ -101,6 +101,39 @@ void main() {
     expect(adjust.contentOffset, (dx: 50.0, dy: 20.0));
   });
 
+  testWidgets('the edges keep to whole pixels — a view at 200% moves them '
+      'by whole canvas pixels, never halves', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1000, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 900,
+              height: 700,
+              child: CanvasAdjustLayer(
+                adjust: adjust,
+                viewport: CanvasViewport(zoom: 2),
+                canvasSize: canvas,
+                onLand: () => landed += 1,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final origin = tester.getTopLeft(find.byType(CanvasAdjustLayer));
+    // The right edge's middle, at 200%: (800, 300) on screen.
+    await drag(tester, origin + const Offset(800, 300), const Offset(3, 0));
+
+    final right = adjust.shown!.right;
+    expect(right, isNot(400), reason: '⛔전제: the edge moved');
+    expect(right, right.roundToDouble());
+  });
+
   testWidgets('an edge never comes closer to the one across from it than '
       'one pixel', (tester) async {
     final origin = await pumpLayer(tester);
