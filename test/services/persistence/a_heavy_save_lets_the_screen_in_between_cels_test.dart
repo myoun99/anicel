@@ -4,6 +4,12 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_file_service.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show parseAnicelZipLayoutFile;
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart'
+    show anicelCelEntryName;
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart'
+    show AnicelCelBlob;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
@@ -67,6 +73,42 @@ void main() {
         reason: 'between cel ${i - 1} and cel $i the screen had no turn',
       );
     }
+  });
+
+  test('what lands says what the cel is: a saved cel\'s blob header is its '
+      'payload\'s own', () async {
+    final folder = Directory.systemTemp.createTempSync('blob-header');
+    deleteAfterSessionEnds(folder);
+    final path = '${folder.path}/one.anicel';
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.cutVerbs.createCut();
+    drawOnCurrentFrame(s);
+    final selection = s.editingCanvas.activeBrushEditorSelection!;
+    final key = s.brushFrameKeyForCut(
+      s.requireActiveCut,
+      selection.layerId,
+      selection.frameId,
+    );
+    final canvas = s.requireActiveCut.canvasSize;
+
+    await s.projectDoor.saveProjectToFile(path, asked: SaveAsked.byAPerson);
+
+    final entry = parseAnicelZipLayoutFile(path).entryNamed(
+      anicelCelEntryName(key),
+    )!;
+    final file = File(path).openSync();
+    addTearDown(file.closeSync);
+    file.setPositionSync(entry.dataOffset);
+    final blob = AnicelCelBlob(file.readSync(entry.length));
+    final picture = blob.decode();
+    expect(blob.key, key);
+    expect(
+      (blob.canvasSize, blob.tileSize),
+      (picture.canvasSize, picture.tileSize),
+      reason: 'the header and the payload are one answer',
+    );
+    expect(picture.canvasSize, canvas, reason: '⛔premise: the cut\'s canvas');
   });
 
   test('a cel in RAM crosses as ONE serialised payload — never an entry of '
