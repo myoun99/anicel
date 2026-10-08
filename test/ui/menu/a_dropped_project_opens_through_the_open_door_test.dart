@@ -144,6 +144,28 @@ void main() {
     expect(find.byType(ImportDialog), findsNothing);
   });
 
+  testWidgets('a project with the folder older builds kept beside it is '
+      'told so after it opens — by the folder\'s name', (tester) async {
+    final path = await projectNamed(tester, 'Cut 12.anicel');
+    Directory('${spelled(folder.path)}/Cut 12.assets').createSync();
+    await pumpApp(tester);
+    final notice = find.byKey(
+      const ValueKey<String>('legacy-assets-folder-notice'),
+    );
+
+    await drop(tester, [path]);
+    await until(tester, () => notice.evaluate().isNotEmpty);
+
+    Finder saying(String text) =>
+        find.descendant(of: notice, matching: find.textContaining(text));
+    expect(saying('Cut 12.assets'), findsOneWidget);
+    expect(
+      saying(spelled(folder.path)),
+      findsNothing,
+      reason: 'the name, not the path to it',
+    );
+  });
+
   testWidgets('a dropped .tvpp goes through the same door — the TVPaint '
       'reader is what answers it', (tester) async {
     final path = fileNamed('Clip.tvpp');
