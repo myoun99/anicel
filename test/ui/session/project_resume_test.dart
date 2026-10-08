@@ -67,4 +67,35 @@ void main() {
       );
     });
   });
+
+  group('the conte\'s zoom and each panel\'s scroll (F-267)', () {
+    test('round-trip through the JSON', () {
+      const resume = ProjectResume(
+        storyboardZoom: 3.5,
+        frameAxisOffsets: {'timeline': 480, 'storyboard': 96.5},
+      );
+      final back = ProjectResume.fromJson(resume.toJson());
+      expect(back.storyboardZoom, 3.5);
+      expect(back.frameAxisOffsets, {'timeline': 480.0, 'storyboard': 96.5});
+    });
+
+    test('🚨a part that cannot be read is dropped ALONE', () {
+      final back = ProjectResume.fromJson({
+        'storyboardZoom': 'wide',
+        'frameAxisOffsets': {
+          'timeline': -4,
+          'xsheet': double.nan,
+          '': 30,
+          'storyboard': 12,
+        },
+      });
+      expect(back.storyboardZoom, isNull);
+      expect(back.frameAxisOffsets, {'storyboard': 12.0});
+      expect(
+        ProjectResume.fromJson({'storyboardZoom': 0}).storyboardZoom,
+        isNull,
+        reason: 'a zoom of nothing is no zoom',
+      );
+    });
+  });
 }

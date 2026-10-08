@@ -54,6 +54,7 @@ import '../audio/audio_conform_store.dart';
 import 'media_fingerprint_ledger.dart';
 import 'media_grant_ledger.dart';
 import 'media_pool.dart';
+import 'panel_view_memory.dart';
 import 'playback_rig.dart';
 import 'project_file.dart';
 import 'rail_view.dart' show StandingLaw;
@@ -129,9 +130,11 @@ class ProjectFileDoor {
     required StandingLaw keepStandingShown,
     required PlaybackRig playback,
     required TimelineZoomMemory timelineZoom,
+    required PanelViewMemory panelViews,
   }) : _file = file,
        _playback = playback,
        _timelineZoom = timelineZoom,
+       _panelViews = panelViews,
        _failedCopies = failedCopies,
        _project = project,
        _solo = solo,
@@ -158,6 +161,10 @@ class ProjectFileDoor {
   /// Whose cuts' zooms a save keeps and an open puts back
   /// ([ProjectResume.timelineZoom]).
   final TimelineZoomMemory _timelineZoom;
+
+  /// Whose conte zoom and panel scrolls a save keeps and an open puts back
+  /// ([ProjectResume.storyboardZoom], [ProjectResume.frameAxisOffsets]).
+  final PanelViewMemory _panelViews;
 
   /// 🚨Here for ONE question — what the eyes said before the solo — asked
   /// in [_carryFor]. See the law there.
@@ -861,6 +868,15 @@ class ProjectFileDoor {
     tools: toolChoice?.read() ?? const {},
     playbackMode: _playback.playbackMode,
     timelineZoom: _timelineZoom.byCut,
+    storyboardZoom: switch (_panelViews.storyboardPixelsPerFrame.value) {
+      PanelViewMemory.defaultStoryboardPixelsPerFrame => null,
+      final zoom => zoom,
+    },
+    frameAxisOffsets: {
+      for (final MapEntry(key: rail, value: offset)
+          in _panelViews.frameAxisOffsets.entries)
+        if (offset.value > 0) rail: offset.value,
+    },
   );
 
   /// [from] swapped in as [to] through the coordinator — after the readers
@@ -1121,6 +1137,15 @@ class ProjectFileDoor {
       if (cutPositionOf(project, cut) != null) {
         _timelineZoom.remember(cut, zoom);
       }
+    }
+    // The conte at the zoom it was left at, and each panel scrolled where it
+    // was — set before any panel is built, so each is born there (F-267).
+    if (resume.storyboardZoom case final zoom?) {
+      _panelViews.storyboardPixelsPerFrame.value = zoom;
+    }
+    for (final MapEntry(key: rail, value: offset)
+        in resume.frameAxisOffsets.entries) {
+      _panelViews.frameAxisOffsets[rail]?.value = offset;
     }
   }
 }

@@ -832,7 +832,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<double> _timelinePixelsPerFrame = ValueNotifier(
     TimelinePanel.defaultPixelsPerFrame,
   );
-  final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
+
+  /// The conte's zoom — the PROJECT's, held by the session and saved beside
+  /// its file (`PanelViewMemory`, F-267). ↩️It was the window's, one for
+  /// every tab.
+  ValueNotifier<double> get _storyboardPixelsPerFrame =>
+      widget.session.panelViews.storyboardPixelsPerFrame;
 
   /// The cut [_timelinePixelsPerFrame] was last set for (F-253) — a notify
   /// that leaves the active cut where it was leaves the zoom alone.
@@ -906,8 +911,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   };
 
   /// Where each frame grid's FRAME axis is scrolled to, in pixels at that
-  /// grid's own zoom — kept here, beside the rail windows, so it outlives a
-  /// FOLD the way the zoom outlives a tab switch.
+  /// grid's own zoom — held above the grids, so it outlives a FOLD the way
+  /// the zoom outlives a tab switch.
   ///
   /// 🚨F-143 (유저 2026-09-16): 「간편 오버레이가 타임라인의 스크롤을
   /// 그대로 안받음. 꽤 오른쪽으로 스크롤한채로 접으면 간편오버레이는 첫
@@ -919,15 +924,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// already reads the rail's window「by construction rather than by
   /// agreement」.
   ///
-  /// ⚠️Session-only, unlike the rail windows: those ride the layout file
-  /// because 유저 asked for them to survive a restart. Nobody asked that of
-  /// a scroll position.
+  /// ↩️It was session-only, the window's: 「Nobody asked that of a scroll
+  /// position」 — until F-267 (유저 2026-10-01): 「콘티패널,타임라인패널
+  /// 스크롤상태 … 프로젝트 파일에 기록해서 다시 열면 그대로 열리도록」. So the
+  /// PROJECT holds it (`PanelViewMemory`), and a save writes it beside the
+  /// file; the rail windows still ride the layout file, being the device's.
   ///
   /// One per rail, like [_railExtents]: the timeline, the sheet and the
   /// storyboard each fold, and each had its own offset die with it.
-  final Map<String, ValueNotifier<double>> _frameAxisOffsets = {
-    for (final railId in LayerRailId.values) railId: ValueNotifier<double>(0),
-  };
+  Map<String, ValueNotifier<double>> get _frameAxisOffsets =>
+      widget.session.panelViews.frameAxisOffsets;
 
   // The lane twirl and the group fold are pressed through
   // `SessionRowButtonPresses` — a press inside the row selection folds every
@@ -1634,7 +1640,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _views.dispose();
     _timelineOrientation.dispose();
     _timelinePixelsPerFrame.dispose();
-    _storyboardPixelsPerFrame.dispose();
     _storyboardTrackLaneHeight.dispose();
     _bottomInsetOverride.dispose();
     _brushPresetView.dispose();
@@ -1659,9 +1664,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       extent
         ..removeListener(_layoutPersistence.scheduleLayoutSave)
         ..dispose();
-    }
-    for (final offset in _frameAxisOffsets.values) {
-      offset.dispose();
     }
     _layout.dispose();
     super.dispose();

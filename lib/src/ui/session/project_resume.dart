@@ -36,6 +36,8 @@ class ProjectResume {
     this.tools = const {},
     this.playbackMode,
     this.timelineZoom = const {},
+    this.storyboardZoom,
+    this.frameAxisOffsets = const {},
   });
 
   static const ProjectResume none = ProjectResume();
@@ -62,6 +64,14 @@ class ProjectResume {
   /// 「프로젝트와 같이 저장되도록」) — a cut nobody zoomed is not here.
   final Map<CutId, double> timelineZoom;
 
+  /// The conte's zoom (F-267) — null when it was left at its default.
+  final double? storyboardZoom;
+
+  /// How far each frame panel was scrolled along its frames, by rail, in
+  /// pixels at that panel's zoom (F-267) — a rail left at its start is not
+  /// here.
+  final Map<String, double> frameAxisOffsets;
+
   Map<String, Object?> toJson() => {
     if (cutId != null) 'cutId': cutId!.value,
     if (layerId != null) 'layerId': layerId!.value,
@@ -72,6 +82,8 @@ class ProjectResume {
       'timelineZoom': {
         for (final entry in timelineZoom.entries) entry.key.value: entry.value,
       },
+    if (storyboardZoom != null) 'storyboardZoom': storyboardZoom,
+    if (frameAxisOffsets.isNotEmpty) 'frameAxisOffsets': frameAxisOffsets,
   };
 
   /// The resume point [json] holds; any part it does not hold readably is
@@ -95,6 +107,16 @@ class ProjectResume {
             in anicelObjectMapField(json['timelineZoom']).entries)
           if (key.isNotEmpty && value is num && value.isFinite && value > 0)
             CutId(key): value.toDouble(),
+      },
+      storyboardZoom: switch (json['storyboardZoom']) {
+        final num zoom when zoom.isFinite && zoom > 0 => zoom.toDouble(),
+        _ => null,
+      },
+      frameAxisOffsets: {
+        for (final MapEntry(:key, :value)
+            in anicelObjectMapField(json['frameAxisOffsets']).entries)
+          if (key.isNotEmpty && value is num && value.isFinite && value > 0)
+            key: value.toDouble(),
       },
     );
   }

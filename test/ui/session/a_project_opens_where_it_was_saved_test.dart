@@ -11,6 +11,7 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/services/editing/default_cut_helpers.dart';
 import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/session/panel_view_memory.dart';
 import 'package:anicel/src/ui/session/project_file_door.dart' show SaveAsked;
 
 import '../../helpers/opened_session.dart';
@@ -284,6 +285,66 @@ void main() {
           'cut a resume names does',
     );
     expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
+
+  test('🚨the conte comes back at its zoom and each panel scrolled where it '
+      'was — through the append too — and none of it is an edit (F-267, '
+      '유저 2026-10-01: 「다시 열면 그대로 열리도록」)', () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    final views = s.panelViews;
+    views.storyboardPixelsPerFrame.value = 3.5;
+    views.frameAxisOffsets['timeline']!.value = 480;
+    views.frameAxisOffsets['storyboard']!.value = 96;
+    expect(
+      s.projectFile.hasUnsavedChanges,
+      isFalse,
+      reason: 'zooming and scrolling are no edit — they ride beside the '
+          'project',
+    );
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    views.frameAxisOffsets['timeline']!.value = 640;
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    final back = reopened.panelViews;
+    expect(back.storyboardPixelsPerFrame.value, 3.5);
+    expect(back.frameAxisOffsets['timeline']!.value, 640);
+    expect(back.frameAxisOffsets['storyboard']!.value, 96);
+    expect(
+      back.frameAxisOffsets['xsheet']!.value,
+      0,
+      reason: 'a panel left at its start opens at its start',
+    );
+    expect(reopened.projectFile.hasUnsavedChanges, isFalse);
+    reopened.dispose();
+  });
+
+  test('a file that says nothing of the panels opens them as a new project '
+      'does — the conte at its default zoom, each panel at its start',
+      () async {
+    final s = EditorSessionManager(initialProject: twoCuts());
+    await s.projectDoor.saveProjectToFile(
+      projectPath,
+      asked: SaveAsked.byAPerson,
+    );
+    s.dispose();
+
+    final reopened = await openedSession(projectPath);
+    expect(
+      reopened.panelViews.storyboardPixelsPerFrame.value,
+      PanelViewMemory.defaultStoryboardPixelsPerFrame,
+    );
+    for (final offset in reopened.panelViews.frameAxisOffsets.values) {
+      expect(offset.value, 0);
+    }
     reopened.dispose();
   });
 }

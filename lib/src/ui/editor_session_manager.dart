@@ -140,6 +140,7 @@ import 'session/layer_stack.dart';
 import 'session/layer_verbs.dart';
 import 'session/cut_verbs.dart';
 import 'session/rail_view.dart';
+import 'session/panel_view_memory.dart';
 import 'session/timeline_zoom_memory.dart';
 import 'session/range_selections.dart';
 import 'session/se_entries.dart';
@@ -782,6 +783,10 @@ class EditorSessionManager extends ChangeNotifier
   /// held here, not on the window, because the cuts it names are this
   /// project's (I-7).
   late final TimelineZoomMemory timelineZoom = TimelineZoomMemory();
+
+  /// Where this project's panels were left — the conte's zoom and each frame
+  /// panel's scroll (F-267) — held here for the zoom's reason (I-7).
+  late final PanelViewMemory panelViews = PanelViewMemory();
 
   /// Where this project's CANVAS is framed — its zoom, pan and turn; null
   /// until something frames it, which the canvas resolves to the identity
@@ -1445,6 +1450,7 @@ class EditorSessionManager extends ChangeNotifier
     trackFrameRangeSelection.dispose,
     railView.dispose,
     canvasViewport.dispose,
+    panelViews.dispose,
     historyPictures.dispose,
     () => unawaited(movieCels.dispose()),
     standing.dispose,
@@ -3351,6 +3357,7 @@ class EditorSessionManager extends ChangeNotifier
     keepStandingShown: standing.keepStandingShown,
     playback: playbackRig,
     timelineZoom: timelineZoom,
+    panelViews: panelViews,
   );
 
   /// Every FAILED COPY (실패본) this run holds — the work saves could not
