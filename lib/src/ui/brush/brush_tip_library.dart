@@ -142,17 +142,17 @@ class BrushTipLibrary extends ChangeNotifier {
     try {
       mask = await decodeBrushTipImage(bytes, id: id);
     } on Object catch (_) {
-      return 'That image could not be read as a brush tip.';
+      return AppText.strings.brTipUnreadable;
     }
     if (!mask.alpha.any((value) => value > 0)) {
       // An all-transparent tip paints nothing at all; saying so beats
       // handing the user a brush that silently does not work.
-      return 'That image has no visible shape to use as a tip.';
+      return AppText.strings.brTipNoShape;
     }
     try {
       await register(mask, name: name);
     } on Object {
-      return 'That tip could not be saved.';
+      return AppText.strings.brTipNotSaved;
     }
     return null;
   }

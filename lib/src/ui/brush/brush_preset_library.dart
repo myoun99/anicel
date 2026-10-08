@@ -380,17 +380,17 @@ class BrushPresetLibrary extends ChangeNotifier {
     try {
       landed = await hand(suggested, write);
     } on Object catch (error) {
-      return 'Could not choose where to save: $error';
+      return AppText.strings.brExportPlaceUnchosen(error);
     }
-    if (writeFailed != null) {
-      return 'Could not write the brush file: $writeFailed';
+    if (writeFailed case final failed?) {
+      return AppText.strings.brExportNotWritten(failed);
     }
     if (landed == null || _disposed) {
       return null;
     }
     return presets.length == 1
-        ? 'Exported "${presets.single.name}".'
-        : 'Exported ${presets.length} brushes.';
+        ? AppText.strings.brExportedOne(presets.single.name)
+        : AppText.strings.brExportedMany(presets.length);
   }
 
   /// The presets in [groupId], in library order — the second entry point.
@@ -439,14 +439,14 @@ class BrushPresetLibrary extends ChangeNotifier {
 
   String _groupNameFor(Set<BrushGroupId?> groupIds) {
     if (groupIds.length != 1) {
-      return 'Brushes';
+      return AppText.strings.brExportFallbackName;
     }
     for (final group in _groups) {
       if (group.id == groupIds.single) {
         return group.name;
       }
     }
-    return 'Brushes';
+    return AppText.strings.brExportFallbackName;
   }
 
   /// The decode→merge half of [importFromFile], on a file already picked.
@@ -493,7 +493,7 @@ class BrushPresetLibrary extends ChangeNotifier {
     } on SutDecodeException catch (error) {
       return error.message;
     } on Exception {
-      return 'This file could not be read as a brush file.';
+      return AppText.strings.brImportUnreadable;
     }
     if (_disposed) {
       return null;
@@ -530,12 +530,10 @@ class BrushPresetLibrary extends ChangeNotifier {
     // The pack's tips become library tips in their own right, so they can be
     // put on any brush and survive the preset they arrived with.
     unawaited(_adoptCarriedTips());
-    final summary = imported.length == 1
-        ? 'Imported 1 brush from "${pick.name}".'
-        : 'Imported ${imported.length} brushes from "${pick.name}".';
+    final summary = AppText.strings.brImported(imported.length, pick.name);
     return warnings.isEmpty
         ? summary
-        : '$summary (${warnings.length} entries with warnings)';
+        : AppText.strings.brImportWarnings(summary, warnings.length);
   }
 
   /// The SQLite reader needs a file path; work on a scratch copy so the

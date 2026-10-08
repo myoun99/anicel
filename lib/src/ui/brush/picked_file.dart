@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:file_selector/file_selector.dart';
 
+import '../text/app_strings.dart';
+
 /// A picked file: display name plus raw bytes. One record type for every
 /// brush-side pick (the round-8 audit, 2026-09-06 — the preset and tip
 /// libraries each declared it under a name of their own).
@@ -55,7 +57,7 @@ Future<String?> importPickedFile({
   try {
     picked = await pick();
   } on Object catch (error) {
-    return 'Could not open the file: $error';
+    return AppText.strings.brImportPickFailed(error);
   }
   if (picked == null || disposed()) {
     return null;

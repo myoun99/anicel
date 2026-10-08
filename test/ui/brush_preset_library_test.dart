@@ -20,6 +20,8 @@ import 'package:anicel/src/services/brush_preset_file_service.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_import_merge.dart';
 import 'package:anicel/src/ui/brush/brush_preset_library.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import '../helpers/temp_dir.dart';
 
 const _ink = BrushGroupId('ink');
@@ -85,6 +87,33 @@ void main() {
         await library.importFromFile(),
         'Could not open the file: Bad state: no dialog',
       );
+    });
+
+    test('it answers in the program language — a picker that throws, and a '
+        'file that reads as no brush file', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final ko = AppStrings.of(AppLanguage.ko);
+      final throwing = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async => throw StateError('no dialog'),
+      );
+      addTearDown(throwing.dispose);
+      // Not UTF-8 at all, under the app's own brush extension.
+      final garbled = BrushPresetLibrary(
+        fileService: service,
+        filePicker: () async =>
+            (name: 'x.anibrush', bytes: Uint8List.fromList([0xFF, 0xFE])),
+      );
+      addTearDown(garbled.dispose);
+
+      expect(
+        await throwing.importFromFile(),
+        ko.brImportPickFailed('Bad state: no dialog'),
+      );
+      expect(await garbled.importFromFile(), ko.brImportUnreadable);
     });
 
     test('a cancelled pick is nothing, not an error', () async {
@@ -835,6 +864,76 @@ void _exportRoundTripTests() {
       );
 
       expect(message, 'Could not choose where to save: Bad state: no window');
+    });
+
+    test('it says so in the program language — the write that fails and '
+        'the one that lands', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final ko = AppStrings.of(AppLanguage.ko);
+      final library = exporting();
+
+      final failed = await library.exportPresets(
+        library.presets,
+        hand: (_, write) async =>
+            await write('${tempDirectory.path}/no/such/folder/a.anibrush')
+            ? 'landed'
+            : null,
+      );
+      final landed = await library.exportPresets(
+        library.presets,
+        hand: (name, write) async {
+          final path = '${tempDirectory.path}/$name';
+          return await write(path) ? path : null;
+        },
+      );
+
+      expect(failed, startsWith(ko.brExportNotWritten('')));
+      expect(landed, ko.brExportedOne(library.presets.single.name));
+      expect(
+        await library.exportPresets(
+          library.presets,
+          hand: (_, _) async => throw StateError('no window'),
+        ),
+        ko.brExportPlaceUnchosen('Bad state: no window'),
+      );
+
+      // Brushes of no one group are named in the program language too —
+      // loose ones, and ones whose group this library does not hold.
+      String? named;
+      String? placed;
+      Future<String?> export(List<BrushPreset> presets) =>
+          library.exportPresets(
+            presets,
+            hand: (name, write) async {
+              named = name;
+              final path = '${tempDirectory.path}/$name';
+              if (!await write(path)) return null;
+              return placed = path;
+            },
+          );
+      library.saveCurrent(BrushSettings(size: 9));
+      expect(await export(library.presets), ko.brExportedMany(2));
+      expect(named, '${ko.brExportFallbackName}.anibrush');
+      final loose = (name: named!, bytes: File(placed!).readAsBytesSync());
+      named = null;
+      await export([
+        _preset('a', groupId: _ink),
+        _preset('b', groupId: _ink),
+      ]);
+      expect(named, '${ko.brExportFallbackName}.anibrush');
+
+      // And what comes back in says so in it.
+      final receiver = libraryOf(
+        service: BrushPresetFileService(
+          filePath: '${tempDirectory.path}/receiver.json',
+        ),
+        picked: loose,
+      );
+      addTearDown(receiver.dispose);
+      expect(await receiver.importFromFile(), ko.brImported(2, loose.name));
     });
   });
 }

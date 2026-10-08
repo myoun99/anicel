@@ -9,6 +9,8 @@ import 'package:anicel/src/services/brush_tip_image_codec.dart';
 import 'package:anicel/src/services/brush_tip_library_service.dart';
 import 'package:anicel/src/services/persistence/versioned_settings_file.dart';
 import 'package:anicel/src/ui/brush/brush_tip_library.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 import '../helpers/temp_dir.dart';
 
 BrushTipMask _mask(String id, {int size = 8, int value = 200}) => BrushTipMask(
@@ -210,6 +212,41 @@ void main() {
         expect(library.tips, defaultBrushTipEntries);
       },
     );
+
+    test('a refused image is told in the program language', () async {
+      AppText.settings.value = const AppLanguageSettings(
+        programLanguage: AppLanguage.ko,
+      );
+      addTearDown(() => AppText.settings.value = const AppLanguageSettings());
+      final ko = AppStrings.of(AppLanguage.ko);
+      final library = BrushTipLibrary(service: service);
+      addTearDown(library.dispose);
+      final blank = await encodeBrushTipImage(_mask('blank', value: 0));
+
+      expect(
+        await library.registerImageBytes(
+          Uint8List.fromList([1, 2, 3]),
+          name: 'Broken',
+        ),
+        ko.brTipUnreadable,
+      );
+      expect(
+        await library.registerImageBytes(blank, name: 'Blank'),
+        ko.brTipNoShape,
+      );
+
+      // A tip whose folder cannot be made — under a file — is not saved.
+      final file = File('${tempDirectory.path}/a-file')..writeAsStringSync('');
+      final stuck = BrushTipLibrary(
+        service: BrushTipLibraryService(directoryPath: '${file.path}/tips'),
+      );
+      addTearDown(stuck.dispose);
+      final ink = await encodeBrushTipImage(_mask('ink', value: 255));
+      expect(
+        await stuck.registerImageBytes(ink, name: 'Ink'),
+        ko.brTipNotSaved,
+      );
+    });
 
     test('registers a real image and persists it', () async {
       final library = BrushTipLibrary(service: service);

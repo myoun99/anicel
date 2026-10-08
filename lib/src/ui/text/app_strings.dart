@@ -1593,6 +1593,31 @@ enum AppStrings {
   String get brExportSelected => _s('brExportSelected');
   String get brExportGroup => _s('brExportGroup');
   String get brExportNothing => _s('brExportNothing');
+  String brExportPlaceUnchosen(Object error) =>
+      _s('brExportPlaceUnchosenTemplate').replaceAll('{error}', '$error');
+  String brExportNotWritten(Object error) =>
+      _s('brExportNotWrittenTemplate').replaceAll('{error}', '$error');
+  String brExportedOne(String name) =>
+      _s('brExportedOneTemplate').replaceAll('{name}', name);
+  String brExportedMany(int count) =>
+      _s('brExportedManyTemplate').replaceAll('{count}', '$count');
+
+  /// The file's name when the brushes exported are no one group's.
+  String get brExportFallbackName => _s('brExportFallbackName');
+  String get brImportUnreadable => _s('brImportUnreadable');
+  String brImportPickFailed(Object error) =>
+      _s('brImportPickFailedTemplate').replaceAll('{error}', '$error');
+  String brImported(int count, String file) =>
+      _s(count == 1 ? 'brImportedOneTemplate' : 'brImportedManyTemplate')
+          .replaceAll('{count}', '$count')
+          .replaceAll('{file}', file);
+  String brImportWarnings(String summary, int count) =>
+      _s('brImportWarningsTemplate')
+          .replaceAll('{summary}', summary)
+          .replaceAll('{count}', '$count');
+  String get brTipUnreadable => _s('brTipUnreadable');
+  String get brTipNoShape => _s('brTipNoShape');
+  String get brTipNotSaved => _s('brTipNotSaved');
   String get brExpand => _s('brExpand');
   String get trFlipHorizontal => _s('trFlipHorizontal');
   String get trFlipVertical => _s('trFlipVertical');
@@ -2663,6 +2688,19 @@ enum AppStrings {
     'brExportSelected': 'Export brush',
     'brExportGroup': 'Export brush group',
     'brExportNothing': 'There is nothing to export here.',
+    'brExportPlaceUnchosenTemplate': 'Could not choose where to save: {error}',
+    'brExportNotWrittenTemplate': 'Could not write the brush file: {error}',
+    'brExportedOneTemplate': 'Exported "{name}".',
+    'brExportedManyTemplate': 'Exported {count} brushes.',
+    'brExportFallbackName': 'Brushes',
+    'brImportUnreadable': 'This file could not be read as a brush file.',
+    'brImportPickFailedTemplate': 'Could not open the file: {error}',
+    'brImportedOneTemplate': 'Imported 1 brush from "{file}".',
+    'brImportedManyTemplate': 'Imported {count} brushes from "{file}".',
+    'brImportWarningsTemplate': '{summary} ({count} entries with warnings)',
+    'brTipUnreadable': 'That image could not be read as a brush tip.',
+    'brTipNoShape': 'That image has no visible shape to use as a tip.',
+    'brTipNotSaved': 'That tip could not be saved.',
     'brExpand': 'Expand',
     'trFlipHorizontal': 'Flip Horizontal',
     'trFlipVertical': 'Flip Vertical',
@@ -4036,6 +4074,19 @@ enum AppStrings {
     'brExportSelected': 'ブラシを書き出し',
     'brExportGroup': 'ブラシグループを書き出し',
     'brExportNothing': '書き出すブラシがありません。',
+    'brExportPlaceUnchosenTemplate': '保存先を選べませんでした: {error}',
+    'brExportNotWrittenTemplate': 'ブラシファイルを書き込めませんでした: {error}',
+    'brExportedOneTemplate': '「{name}」を書き出しました。',
+    'brExportedManyTemplate': 'ブラシを{count}個書き出しました。',
+    'brExportFallbackName': 'ブラシ',
+    'brImportUnreadable': 'このファイルはブラシファイルとして読み込めませんでした。',
+    'brImportPickFailedTemplate': 'ファイルを開けませんでした: {error}',
+    'brImportedOneTemplate': '「{file}」からブラシを1個読み込みました。',
+    'brImportedManyTemplate': '「{file}」からブラシを{count}個読み込みました。',
+    'brImportWarningsTemplate': '{summary}（警告のある項目 {count}件）',
+    'brTipUnreadable': 'その画像はブラシ先端として読み込めませんでした。',
+    'brTipNoShape': 'その画像には先端に使える見える形がありません。',
+    'brTipNotSaved': 'その先端を保存できませんでした。',
     'brExpand': '展開',
     'trFlipHorizontal': '左右反転',
     'trFlipVertical': '上下反転',
@@ -5440,6 +5491,19 @@ enum AppStrings {
     'brExportSelected': '브러시 내보내기',
     'brExportGroup': '브러시 그룹 내보내기',
     'brExportNothing': '내보낼 브러시가 없습니다.',
+    'brExportPlaceUnchosenTemplate': '저장할 곳을 고르지 못했습니다: {error}',
+    'brExportNotWrittenTemplate': '브러시 파일을 쓰지 못했습니다: {error}',
+    'brExportedOneTemplate': '브러시 「{name}」 내보냈습니다.',
+    'brExportedManyTemplate': '브러시 {count}개를 내보냈습니다.',
+    'brExportFallbackName': '브러시',
+    'brImportUnreadable': '이 파일은 브러시 파일로 읽을 수 없습니다.',
+    'brImportPickFailedTemplate': '파일을 열지 못했습니다: {error}',
+    'brImportedOneTemplate': '「{file}」에서 브러시 1개를 가져왔습니다.',
+    'brImportedManyTemplate': '「{file}」에서 브러시 {count}개를 가져왔습니다.',
+    'brImportWarningsTemplate': '{summary} (경고가 있는 항목 {count}개)',
+    'brTipUnreadable': '그 이미지는 브러시 팁으로 읽을 수 없습니다.',
+    'brTipNoShape': '그 이미지에는 팁으로 쓸 보이는 모양이 없습니다.',
+    'brTipNotSaved': '그 팁을 저장하지 못했습니다.',
     'brExpand': '펼치기',
     'trFlipHorizontal': '좌우 반전',
     'trFlipVertical': '상하 반전',
@@ -6969,6 +7033,24 @@ enum AppStrings {
     'brExportSelected': 'Exporter la brosse',
     'brExportGroup': 'Exporter le groupe',
     'brExportNothing': 'Aucune brosse à exporter ici.',
+    'brExportPlaceUnchosenTemplate':
+        'Impossible de choisir où enregistrer : {error}',
+    'brExportNotWrittenTemplate':
+        'Impossible d’écrire le fichier de brosses : {error}',
+    'brExportedOneTemplate': 'Brosse exportée : « {name} ».',
+    'brExportedManyTemplate': '{count} brosses exportées.',
+    'brExportFallbackName': 'Brosses',
+    'brImportUnreadable':
+        'Ce fichier n’a pas pu être lu comme un fichier de brosses.',
+    'brImportPickFailedTemplate': 'Impossible d’ouvrir le fichier : {error}',
+    'brImportedOneTemplate': '1 brosse importée depuis « {file} ».',
+    'brImportedManyTemplate': '{count} brosses importées depuis « {file} ».',
+    'brImportWarningsTemplate':
+        '{summary} ({count} entrées avec des avertissements)',
+    'brTipUnreadable': 'Cette image n’a pas pu être lue comme pointe de brosse.',
+    'brTipNoShape':
+        'Cette image n’a aucune forme visible à utiliser comme pointe.',
+    'brTipNotSaved': 'Cette pointe n’a pas pu être enregistrée.',
     'brExpand': 'Déplier',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
@@ -8309,6 +8391,19 @@ enum AppStrings {
     'brExportSelected': '导出画笔',
     'brExportGroup': '导出画笔组',
     'brExportNothing': '这里没有可导出的画笔。',
+    'brExportPlaceUnchosenTemplate': '无法选择保存位置：{error}',
+    'brExportNotWrittenTemplate': '无法写入画笔文件：{error}',
+    'brExportedOneTemplate': '已导出画笔“{name}”。',
+    'brExportedManyTemplate': '已导出 {count} 个画笔。',
+    'brExportFallbackName': '画笔',
+    'brImportUnreadable': '无法将此文件读取为画笔文件。',
+    'brImportPickFailedTemplate': '无法打开文件：{error}',
+    'brImportedOneTemplate': '已从“{file}”导入 1 个画笔。',
+    'brImportedManyTemplate': '已从“{file}”导入 {count} 个画笔。',
+    'brImportWarningsTemplate': '{summary}（{count} 项有警告）',
+    'brTipUnreadable': '无法将该图像读取为笔尖。',
+    'brTipNoShape': '该图像没有可用作笔尖的可见形状。',
+    'brTipNotSaved': '无法保存该笔尖。',
     'brExpand': '展开',
     'trFlipHorizontal': '水平翻转',
     'trFlipVertical': '垂直翻转',
