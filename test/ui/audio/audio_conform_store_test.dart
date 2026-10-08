@@ -11,6 +11,7 @@ import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/services/audio/conform_pcm_codec.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 ConformResult _usableResult() => ConformResult(
   outcome: ConformOutcome.built,
@@ -194,7 +195,7 @@ void main() {
 
   test('🚨a path the pool names ANOTHER carry at is stale on its own — the '
       'sound of the first carry does not answer for the second', () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final conformedAs = <String?>[];
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
@@ -216,14 +217,14 @@ void main() {
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 1);
 
-    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    carry = wholeCarry('a.wav', 'c2'); // removed, carried again
     expect(store.resultFor('a.wav'), isNull, reason: 're-kicked');
     // (Whether it STREAMS is asked of a streaming entry — below, with the
     // streaming policy; this one never streamed, so it could not say.)
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 2);
 
-    carry = (poolPath: 'a.wav', token: 'c1'); // and undone back
+    carry = wholeCarry('a.wav', 'c1'); // and undone back
     expect(store.samplesFor('a.wav'), isNull);
     await pumpEventQueue();
     expect(store.resultFor('a.wav')?.frames, 3);
@@ -256,7 +257,7 @@ void main() {
 
   test('a rate conversion lands only on the entry it was made from',
       () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final resampled = Completer<Float32List>();
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
@@ -269,7 +270,7 @@ void main() {
     await pumpEventQueue();
     expect(store.samplesAtRate('a.wav', 44100), isNull, reason: 'kicked');
 
-    carry = (poolPath: 'a.wav', token: 'c2');
+    carry = wholeCarry('a.wav', 'c2');
     store.resultFor('a.wav');
     await pumpEventQueue();
     resampled.complete(Float32List.fromList([9, 9, 9, 9]));
@@ -285,7 +286,7 @@ void main() {
 
   test('a conform that lands after the pool moved to another carry is the '
       'FIRST carry\'s — it answers for nothing', () async {
-    MediaCarry? carry = (poolPath: 'a.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('a.wav', 'c1');
     final gate = Completer<void>();
     var runs = 0;
     final store = AudioConformStore(
@@ -302,7 +303,7 @@ void main() {
     );
     store.resultFor('a.wav'); // kicked for c1, and still running
     await pumpEventQueue();
-    carry = (poolPath: 'a.wav', token: 'c2'); // removed, carried again
+    carry = wholeCarry('a.wav', 'c2'); // removed, carried again
     gate.complete();
     await pumpEventQueue();
 
@@ -320,7 +321,7 @@ void main() {
 
   test('a carry changed under a FAILURE lets it go — the first carry\'s '
       'missing file does not stand for the second', () async {
-    MediaCarry? carry = (poolPath: 'gone.wav', token: 'c1');
+    MediaCarry? carry = wholeCarry('gone.wav', 'c1');
     final store = AudioConformStore(
       resolveConformPath: (_) => null,
       resolveCarry: (_) => carry,
@@ -334,7 +335,7 @@ void main() {
     await pumpEventQueue();
     expect(store.failureFor('gone.wav'), isNotNull, reason: 'the premise');
 
-    carry = (poolPath: 'gone.wav', token: 'c2');
+    carry = wholeCarry('gone.wav', 'c2');
 
     expect(store.failureFor('gone.wav'), isNull);
     store.dispose();
@@ -454,7 +455,7 @@ void main() {
       final (conformPath, result) = longConform();
       MediaCarry? carry;
       Future<AudioConformStore> streaming() async {
-        carry = (poolPath: 'long.wav', token: 'c1');
+        carry = wholeCarry('long.wav', 'c1');
         final store = AudioConformStore(
           resolveConformPath: (_) => conformPath,
           projectSampleRate: 100,
@@ -471,11 +472,11 @@ void main() {
       }
 
       final asked = await streaming();
-      carry = (poolPath: 'long.wav', token: 'c2'); // removed, carried again
+      carry = wholeCarry('long.wav', 'c2'); // removed, carried again
       expect(asked.isStreaming('long.wav'), isFalse);
 
       final read = await streaming();
-      carry = (poolPath: 'long.wav', token: 'c2');
+      carry = wholeCarry('long.wav', 'c2');
       expect(
         read.streamReaderFor('long.wav'),
         isNull,

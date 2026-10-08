@@ -452,7 +452,13 @@ void main() {
       await _pump(
         tester,
         callbacks,
-        assets: [MediaAsset(path: foot, name: 'foot.wav', carriedAs: 'c1')],
+        assets: [
+          MediaAsset(
+            path: foot,
+            name: 'foot.wav',
+            carriedAs: mediaCarryNamed(foot, 'c1'),
+          ),
+        ],
       );
 
       await tester.tap(find.byIcon(Icons.more_vert).first);

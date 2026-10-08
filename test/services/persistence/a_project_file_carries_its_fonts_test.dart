@@ -26,6 +26,7 @@ import 'package:anicel/src/services/persistence/media_staging_store.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/temp_dir.dart';
+import '../../helpers/whole_carry.dart';
 
 /// 🚨★★★A PROJECT FILE CARRIES THE FONTS REGISTERED WITH IT (R9-rest, the
 /// text tool's faces).
@@ -975,7 +976,7 @@ void main() {
       'in the list does not keep a medium the pool let go of', () async {
     final s = saving();
     final audio = deviceFont('take.wav', 20000, 1);
-    final carry = (poolPath: audio, token: 'c1');
+    final carry = wholeCarry(audio, 'c1');
     final project = carrying([registered(sansName)]);
     final fonts = fromDevice({sansName: deviceFont('probe.ttf', 30000, 7)});
     await s.service.save(

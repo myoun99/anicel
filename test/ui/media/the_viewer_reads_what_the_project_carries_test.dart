@@ -418,7 +418,7 @@ void main() {
               path: path,
               name: 'take',
               kind: MediaAssetKind.video,
-              carriedAs: 'c1',
+              carriedAs: mediaCarryNamed(path, 'c1'),
             ),
           ],
         ),
@@ -431,7 +431,11 @@ void main() {
       final staged = await session.mediaStagingStore.stage(
         carryIn(session, path)!,
       );
-      if (staged == null || !staged.framed) {
+      // ⛔NOT STAGED AT ALL IS NO ENGINE QUESTION — the carry is wrong. The
+      // two shared one skip until 10-08, and a bare token kept all four of
+      // these skipping for an evening, the skip saying there was no engine.
+      expect(staged, isNotNull, reason: 'the movie is staged');
+      if (!staged!.framed) {
         return null;
       }
       return (session: session, path: path, staged: staged.path);

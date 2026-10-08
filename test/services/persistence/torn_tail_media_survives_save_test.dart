@@ -77,7 +77,11 @@ void main() {
 
     final project = createDefaultProject().copyWith(
       mediaAssets: [
-        MediaAsset(path: audioPath, name: '대사.wav', carriedAs: 'c1'),
+        MediaAsset(
+          path: audioPath,
+          name: '대사.wav',
+          carriedAs: mediaCarryNamed(audioPath, 'c1'),
+        ),
       ],
     );
     final carry = project.mediaAssets.single.carry!;
@@ -150,7 +154,11 @@ void main() {
     final audioPath = '${directory.path.replaceAll('\\', '/')}/gone.wav';
     final project = createDefaultProject().copyWith(
       mediaAssets: [
-        MediaAsset(path: audioPath, name: 'gone.wav', carriedAs: 'c1'),
+        MediaAsset(
+          path: audioPath,
+          name: 'gone.wav',
+          carriedAs: mediaCarryNamed(audioPath, 'c1'),
+        ),
       ],
     );
     final carry = project.mediaAssets.single.carry!;
