@@ -248,6 +248,7 @@ void main() {
     expect(mediaFileName(asset.path), 'door_3-6.wav');
     expect(asset.sourcePath, path, reason: 'the original, as provenance');
     await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
   }, skip: nativeEngineLibraryPathOrNull() == null);
 
   testWidgets('🚨a sound the POOL already holds is placed from as it is — its '
@@ -287,6 +288,7 @@ void main() {
           'carried, so nothing is cut',
     );
     await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('with the SECOND cut open the sound starts at that cut\'s start '
@@ -343,6 +345,7 @@ void main() {
     await pumpPastTheWaitWindow(tester);
     expect(s.activeTrack.seLayers.first.timeline[start], isNotNull);
     await tester.pumpAndSettle();
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   group('a sound let go on an SE row\'s EMPTY CELL (「SE 행의 빈 칸 → 새 '

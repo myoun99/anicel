@@ -445,6 +445,7 @@ void main() {
       expect(s.layerById(row.id)!.timeline[6]?.length, 1);
       expect(s.requireActiveCut.layers, hasLength(layerCount));
       await tester.pumpAndSettle();
+      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('🚨the canvas: a new layer by default, and a new cut on '

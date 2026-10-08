@@ -140,6 +140,7 @@ void main() {
       isNotEmpty,
       reason: 'its scans were counted on the way, not only its end',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a dropped cut folder shows the interpretation (layers, '
@@ -218,6 +219,7 @@ void main() {
     final cut = track.cuts.firstWhere((cut) => cut.name == '063');
     expect(cut.layers.any((l) => l.kind == LayerKind.image), isTrue);
     expect(cut.layers.any((l) => l.name == 'A'), isTrue);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('single files import with destination/fit defaults filled — '
@@ -266,6 +268,7 @@ void main() {
       isTrue,
       reason: 'the default is reference mode',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// The media pool's ＋ became a destination in this window rather
@@ -319,6 +322,7 @@ void main() {
 
       expect(s.mediaPool.mediaAssets.single.path, path.replaceAll('\\', '/'));
       expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
+      s.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('the browser pins the pool — the other door is shown, not '
@@ -574,6 +578,7 @@ void main() {
     expect(track.cuts.length, cutsBefore + 1);
     expect(track.cuts.last.duration, 2, reason: '1 page = 1 frame');
     expect(s.mediaPool.mediaAssets.single.pageCount, 2);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a PDF counts its pages into the run\'s % (F-282-Q1)', (
@@ -619,6 +624,7 @@ void main() {
       isNotEmpty,
       reason: 'its pages were counted on the way, not only its end',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a PDF with NO renderer warns honestly instead of failing '
@@ -665,6 +671,7 @@ void main() {
       reason: 'the absence is a stated condition, not a decode failure',
     );
     expect(s.mediaPool.mediaAssets, isEmpty);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a large file bound for the project file is kept like any '
@@ -885,6 +892,7 @@ void main() {
         findsNothing,
         reason: 'a placement IS an import — the batch counted it',
       );
+      session.playbackRig.prerenderScheduler.cancel();
     });
 
     testWidgets('an answer the KIND refuses still does not stick — a sound '
@@ -1216,6 +1224,7 @@ void main() {
       isFalse,
       reason: 'the file the door read is gone — the staged copy is the only one',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a PDF REGISTERED with a range comes in as a piece of those '
@@ -1305,6 +1314,7 @@ void main() {
       cutsBefore,
       reason: 'registered, not placed',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// PLACE: the pool row's way onto the timeline. The same window, minus
@@ -1382,6 +1392,7 @@ void main() {
       hasLength(1),
       reason: 'the pool already knew this file',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯the run stands behind the app\'s wait window from its first '
@@ -1444,6 +1455,7 @@ void main() {
     );
     await pumpPastTheWaitWindow(tester);
     expect(s.requireActiveCut.layers.length, layersBefore + 2);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯a stop gives up the ONE file it was said to — the next '
@@ -1532,6 +1544,7 @@ void main() {
       findsOneWidget,
       reason: 'the one given up is named',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🚨 a placement WAITS for a file that has not arrived, says '
@@ -1624,6 +1637,7 @@ void main() {
       findsOneWidget,
       reason: 'the file given up is named on the import window',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   /// 🚨WHAT SUCCEEDED LEAVES THE LIST.

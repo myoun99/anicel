@@ -206,6 +206,7 @@ void main() {
           '(「사본 남으면 진짜 용서안할게」)',
     );
     expect(ProviderDocuments.workingCopyOf(uri), isNull);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a file picked BESIDE a Drive file is still the person\'s to '
@@ -264,6 +265,7 @@ void main() {
         fileNameOfPath(asset.path): asset.carried,
     };
     expect(carried, {'A1.png': true, 'local.png': false});
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('a pick that REPLACES a Drive file lets go of its copy at once '

@@ -342,7 +342,11 @@ void main() {
     // 유저 2026-10-08: 「파일 수와 각 파일의 진행(동영상 굽기의 프레임 등)으로
     // %를 센다. 동영상 굽기의 창은 따로 뜨지 않고 이 창 하나로 합친다」.
     final movie = await writeMovie(tester, 'take.mp4');
-    await open(tester, [movie], backend: FakeVideoBackend(frameCount: 24));
+    final s = await open(
+      tester,
+      [movie],
+      backend: FakeVideoBackend(frameCount: 24),
+    );
     await tester.tap(find.byKey(ValueKey<String>('import-cell-bake-$movie')));
     await tester.pump();
     expect(cellText(tester, 'bake', movie), AppText.strings.commonOn);
@@ -371,6 +375,7 @@ void main() {
       isNotEmpty,
       reason: 'the frames it baked were counted on the way, not only its end',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('its transport counts PROJECT frames on the sound\'s clock — '
@@ -429,6 +434,7 @@ void main() {
       isTrue,
       reason: 'its sound came with it',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('🎯set to its sound ALONE it lands only the sound — on the SE '
@@ -499,6 +505,7 @@ void main() {
       reason: 'the pool keeps the MOVIE — one entry for the pair it can '
           'still become',
     );
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('let go on an SE row\'s cell the row reads 「소리만」, locked — '
@@ -547,6 +554,7 @@ void main() {
       reason: 'no picture came',
     );
     expect(s.mediaPool.mediaAssets.single.kind, MediaAssetKind.video);
+    s.playbackRig.prerenderScheduler.cancel();
   });
 
   testWidgets('let go on a picture row\'s frames, 「소리만」 is there and '
