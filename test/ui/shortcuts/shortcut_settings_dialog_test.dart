@@ -13,6 +13,8 @@ import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
 import 'package:anicel/src/ui/shortcuts/shortcut_settings_dialog.dart';
 import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show LayerFoldTwirl;
 import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 void main() {
@@ -35,25 +37,178 @@ void main() {
         widget.key is ValueKey<String> &&
         (widget.key! as ValueKey<String>).value.startsWith('shortcut-record-'),
   );
+  /// The keys of the rows the list holds, in order — built or not: the list
+  /// is lazy, so they are read off the children it was handed.
+  List<String> listed(WidgetTester tester) => [
+    for (final child
+        in (tester
+                    .widget<ListView>(
+                      find.byKey(const ValueKey<String>('shortcut-action-list')),
+                    )
+                    .childrenDelegate
+                as SliverChildListDelegate)
+            .children)
+      if (child.key case ValueKey<String>(:final value)) value,
+  ];
+
+  /// The category headings the list holds, in order.
+  List<String> headings(WidgetTester tester) => [
+    for (final key in listed(tester))
+      if (key.startsWith('shortcut-category-')) key,
+  ];
+  final search = find.byKey(const ValueKey<String>('shortcut-search-field'));
+  Finder twirlOf(String category) =>
+      find.byKey(ValueKey<String>('shortcut-bundle-category-$category'));
+  String categoryOf(EditorShortcutBindings bindings, String id) =>
+      bindings.definitions.singleWhere((row) => row.id == id).category;
+
+  /// Opens the category [id] stands under — every category starts shut
+  /// (menu-rows-and-panels-are-shortcut-rows), as the brush bundles do.
+  Future<void> openCategoryOf(
+    WidgetTester tester,
+    EditorShortcutBindings bindings,
+    String id,
+  ) async {
+    await tester.tap(twirlOf(categoryOf(bindings, id)));
+    await tester.pump();
+  }
 
   testWidgets('the search narrows the list to matching actions', (
     tester,
   ) async {
-    await pump(tester);
-    final all = recordButtons().evaluate().length;
-    expect(all, greaterThan(1));
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('shortcut-search-field')),
-      'zzzz-no-such-action',
-    );
+    final bindings = await pump(tester);
+    final all = headings(tester);
+    expect(all.length, greaterThan(1));
+    await tester.enterText(search, 'zzzz-no-such-action');
     await tester.pump();
+    expect(headings(tester), isEmpty);
     expect(recordButtons(), findsNothing);
-    await tester.enterText(
-      find.byKey(const ValueKey<String>('shortcut-search-field')),
-      '',
-    );
+
+    final first = bindings.definitions.first;
+    await tester.enterText(search, first.label);
     await tester.pump();
-    expect(recordButtons().evaluate().length, all);
+    expect(
+      find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+      findsOneWidget,
+    );
+    expect(
+      headings(tester).length,
+      lessThan(all.length),
+      reason: 'only the categories it finds something in',
+    );
+
+    await tester.enterText(search, '');
+    await tester.pump();
+    expect(headings(tester), all);
+  });
+
+  // 🗣️유저 2026-10-08 (menu-rows-and-panels-are-shortcut-rows): 「단축키
+  // 많으니까 항목은 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법
+  // 통일하면서」 — the brush bundles' law (I-56-Q1: 기본 접힘 · 검색하면 맞는
+  // 묶음이 펼쳐진다), for every category.
+  group('a category folds as a brush bundle does', () {
+    bool isOpen(WidgetTester tester, String category) => tester
+        .widget<LayerFoldTwirl>(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is LayerFoldTwirl &&
+                widget.keyValue == 'shortcut-bundle-category-$category',
+          ),
+        )
+        .expanded;
+
+    testWidgets('a category has ONE heading, and its rows stand together '
+        'under it — though the registry holds them in two places', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final categories = [
+        for (final row in bindings.definitions) row.category,
+      ];
+      expect(headings(tester), [
+        for (final category in categories.toSet())
+          'shortcut-category-$category',
+      ]);
+      // ⛔premise: a category whose rows the registry holds apart.
+      final apart = categories.toSet().firstWhere(
+        (category) =>
+            categories.lastIndexOf(category) - categories.indexOf(category) >=
+            categories.where((c) => c == category).length,
+      );
+      final members = [
+        for (final row in bindings.definitions)
+          if (row.category == apart) 'shortcut-row-${row.id}',
+      ];
+
+      await tester.tap(twirlOf(apart));
+      await tester.pump();
+
+      final keys = listed(tester);
+      final heading = keys.indexOf('shortcut-category-$apart');
+      expect(
+        keys.sublist(heading + 1, heading + 1 + members.length),
+        members,
+        reason: '$apart\'s rows, all of them, right under its heading',
+      );
+    });
+
+    testWidgets('every category stands shut when the window opens: its '
+        'heading and no row', (tester) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first.category;
+      expect(headings(tester), isNotEmpty);
+      expect(recordButtons(), findsNothing);
+      expect(isOpen(tester, first), isFalse);
+    });
+
+    testWidgets('a heading\'s twirl opens its rows and shuts them again — '
+        'and no other category\'s', (tester) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      final other = bindings.definitions.firstWhere(
+        (row) => row.category != first.category,
+      );
+      await tester.tap(twirlOf(first.category));
+      await tester.pump();
+      expect(isOpen(tester, first.category), isTrue);
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${other.id}')),
+        findsNothing,
+        reason: '${other.category} stays shut',
+      );
+
+      await tester.tap(twirlOf(first.category));
+      await tester.pump();
+      expect(isOpen(tester, first.category), isFalse);
+      expect(recordButtons(), findsNothing);
+    });
+
+    testWidgets('a search opens the categories it finds something in; they '
+        'stay open after, and the twirl folds them like any other', (
+      tester,
+    ) async {
+      final bindings = await pump(tester);
+      final first = bindings.definitions.first;
+      await tester.enterText(search, first.label);
+      await tester.pump();
+      expect(isOpen(tester, first.category), isTrue);
+
+      await tester.enterText(search, '');
+      await tester.pump();
+      expect(isOpen(tester, first.category), isTrue);
+      expect(
+        find.byKey(ValueKey<String>('shortcut-record-${first.id}')),
+        findsOneWidget,
+      );
+
+      await tester.tap(twirlOf(first.category));
+      await tester.pump();
+      expect(isOpen(tester, first.category), isFalse);
+    });
   });
 
   testWidgets('recording waits past a modifier pressed alone, then takes the '
@@ -62,6 +217,7 @@ void main() {
     // that modifies another is not one to bind by itself.
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
+    await openCategoryOf(tester, bindings, id);
 
     await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
     await tester.pump();
@@ -87,6 +243,7 @@ void main() {
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
     final defaults = bindings.activatorsFor(id);
+    await openCategoryOf(tester, bindings, id);
 
     await tester.tap(find.byKey(ValueKey<String>('shortcut-record-$id')));
     await tester.pump();
@@ -113,6 +270,7 @@ void main() {
     final bindings = await pump(tester);
     final id = bindings.definitions.first.id;
     final trigger = find.byKey(ValueKey<String>('shortcut-touch-$id'));
+    await openCategoryOf(tester, bindings, id);
 
     Future<void> pick(String row) async {
       await tester.tap(trigger);
@@ -227,6 +385,7 @@ void main() {
       final defaults = [
         for (final activator in bindings.activatorsFor(id)) activator.trigger,
       ];
+      await openCategoryOf(tester, bindings, id);
       final row = find.byKey(ValueKey<String>('shortcut-row-$id'));
       expect(
         find.descendant(of: row, matching: find.byType(Chip)),
@@ -269,6 +428,7 @@ void main() {
       final hint = find.byKey(
         const ValueKey<String>('shortcut-recording-hint'),
       );
+      await openCategoryOf(tester, bindings, id);
       await tap(tester, 'record', id);
       expect(hint, findsOneWidget, reason: '⛔premise');
 
@@ -288,6 +448,7 @@ void main() {
       await tester.pump();
       expect(warns(tester), isTrue, reason: '⛔premise');
 
+      await openCategoryOf(tester, bindings, given);
       await tap(tester, 'unassign', given);
 
       expect(warns(tester), isFalse);
@@ -300,6 +461,7 @@ void main() {
     ) async {
       speak(AppLanguage.ko);
       final bindings = await pump(tester);
+      await openCategoryOf(tester, bindings, aKeyedRow(bindings));
       expect(
         button(tester, 'unassign', aKeyedRow(bindings)).tooltip,
         AppStrings.of(AppLanguage.ko).shortcutUnassign,

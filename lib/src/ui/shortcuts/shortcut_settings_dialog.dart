@@ -130,9 +130,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       _labelOf(definition).toLowerCase().contains(query) ||
       _categoryOf(definition).toLowerCase().contains(query);
 
-  /// The brush BUNDLES standing open — a group's, named by its title row's
-  /// action; the root section's, by [_rootBundleOf]. A paint tool has its
-  /// own (F-319): the brush tool's Inks and the eraser's Inks are two.
+  /// The BUNDLES standing open — a category's, named by
+  /// [_categoryBundleOf]; a brush group's, by its title row's action; a
+  /// root section's, by [_rootBundleOf]. A paint tool has its own brush
+  /// bundles (F-319): the brush tool's Inks and the eraser's Inks are two.
   ///
   /// 🗣️I-56-Q1 (유저 2026-10-01), the answer picked: 「브러시 그룹마다 접히는
   /// 묶음」 = 「다른 카테고리는 지금 그대로, 브러시는 그룹마다 한 묶음으로 기본
@@ -140,7 +141,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
   /// 펼쳐진다」. So none is open when the window opens, and a search opens
   /// the ones it finds something in ([_openFoundBundles]) — by putting them
   /// in this one set, so the twirl folds them again like any other.
+  /// ↩️「다른 카테고리는 지금 그대로」 until 유저 2026-10-08
+  /// (menu-rows-and-panels-are-shortcut-rows): 「단축키 많으니까 항목은
+  /// 기본적으로 접을수있게. 브러시항목에서 쓴 거나 법 통일하면서」 — every
+  /// category is a bundle now, under the same law.
   final Set<String> _openBundles = {};
+
+  /// The bundle of [category]'s rows — the fold its heading carries.
+  static String _categoryBundleOf(String category) => 'category-$category';
 
   /// The root section's bundle in [tool]'s library: the brushes of no
   /// group. ⚠️Its title is a word and not a row — the root is not a group
@@ -168,10 +176,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         _ => false,
       };
 
-  /// The bundles [query] finds something in — a title or a brush.
+  /// The bundles [query] finds something in — a category, a brush title or
+  /// a brush.
   Set<String> _bundlesFound(String query) => {
     for (final definition in widget.bindings.definitions)
-      if (_matches(definition, query)) ?_bundleOf(definition),
+      if (_matches(definition, query)) ...{
+        _categoryBundleOf(definition.category),
+        ?_bundleOf(definition),
+      },
   };
 
   void _openFoundBundles() {
@@ -187,9 +199,10 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
     }
   });
 
-  /// The list's rows: every action the search matches under its category,
-  /// and of the brush library a title per bundle with — while it stands open
-  /// — its brushes.
+  /// The list's rows: a heading per category the search finds something in
+  /// with — while it stands open — every action the search matches, and of
+  /// the brush library a title per bundle with — while that stands open —
+  /// its brushes.
   List<Widget> _rows(ThemeData theme) {
     final bindings = widget.bindings;
     final conflicted = bindings.conflictedActionIds;
@@ -215,53 +228,73 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               (_matches(definition, query) || titlesFound.contains(bundle)));
     }
 
+    // ONE heading a category, its rows together under it, the categories in
+    // the order they first come. ↩️A heading was written each time the
+    // category changed down the list, and the registry holds six of them in
+    // two places — File, Tools, Edit, Selection, View and Timeline each
+    // stood twice. A fold is a category's, so its rows stand under one.
+    final byCategory = <String, List<EditorActionDefinition>>{};
+    for (final definition in bindings.definitions) {
+      (byCategory[definition.category] ??= []).add(definition);
+    }
     final rows = <Widget>[];
-    String? category;
     // The root sections whose word already stands — one a paint tool.
     final rootsTitled = <String>{};
-    for (final definition in bindings.definitions) {
-      final bundle = _bundleOf(definition);
-      final shown = shows(definition, bundle);
-      final rootTitleDue =
-          bundle != null &&
-          _isLoose(definition) &&
-          !rootsTitled.contains(bundle) &&
-          found.contains(bundle);
-      if (!shown && !rootTitleDue) {
+    for (final members in byCategory.values) {
+      final fold = _categoryBundleOf(members.first.category);
+      if (!found.contains(fold)) {
         continue;
       }
-      if (definition.category != category) {
-        category = definition.category;
-        rows.add(_categoryHeading(theme, definition));
+      rows.add(_categoryHeading(theme, members.first));
+      if (!_openBundles.contains(fold)) {
+        continue;
       }
-      if (rootTitleDue) {
-        rootsTitled.add(bundle);
-        rows.add(_rootTitleRow(theme, bundle));
-      }
-      if (shown) {
-        rows.add(
-          _actionRow(
-            definition,
-            conflicted.contains(definition.id),
-            touchConflicted.contains(definition.id),
-            bundle: bundle,
-          ),
-        );
+      for (final definition in members) {
+        final bundle = _bundleOf(definition);
+        final shown = shows(definition, bundle);
+        final rootTitleDue =
+            bundle != null &&
+            _isLoose(definition) &&
+            !rootsTitled.contains(bundle) &&
+            found.contains(bundle);
+        if (rootTitleDue) {
+          rootsTitled.add(bundle);
+          rows.add(_rootTitleRow(theme, bundle));
+        }
+        if (shown) {
+          rows.add(
+            _actionRow(
+              definition,
+              conflicted.contains(definition.id),
+              touchConflicted.contains(definition.id),
+              bundle: bundle,
+            ),
+          );
+        }
       }
     }
     return rows;
   }
 
+  /// A category's heading, carrying its fold as a brush bundle's title does.
   Widget _categoryHeading(
     ThemeData theme,
     EditorActionDefinition definition,
   ) => Padding(
+    key: ValueKey<String>('shortcut-category-${definition.category}'),
     padding: const EdgeInsets.only(top: 12, bottom: 4),
-    child: Text(
-      _categoryOf(definition),
-      style: theme.textTheme.labelLarge?.copyWith(
-        color: theme.colorScheme.primary,
-      ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            _categoryOf(definition),
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+        _twirl(_categoryBundleOf(definition.category)),
+      ],
     ),
   );
 

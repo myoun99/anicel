@@ -440,6 +440,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Every category stands shut (menu-rows-and-panels-are-shortcut-rows):
+    // the search finds the row and opens its category.
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('shortcut-search-field')),
+      'Next Frame',
+    );
+    await tester.pumpAndSettle();
     // Record N as the new Next Frame key.
     await tester.tap(
       find.byKey(const ValueKey<String>('shortcut-record-frame-next')),

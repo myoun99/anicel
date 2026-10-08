@@ -427,6 +427,23 @@ void main() {
         ),
       );
       await tester.pump();
+      // Every category stands shut (menu-rows-and-panels-are-shortcut-rows,
+      // the brush bundles' own law): these cases are about what stands
+      // INSIDE the two brush categories, so they open them first, as a
+      // person would.
+      for (final category in brushActionCategories.values) {
+        final twirl = find.byKey(
+          ValueKey<String>('shortcut-bundle-category-$category'),
+        );
+        await tester.dragUntilVisible(
+          twirl,
+          find.byKey(const ValueKey<String>('shortcut-action-list')),
+          const Offset(0, -300),
+          maxIteration: 50,
+        );
+        await tester.tap(twirl);
+        await tester.pump();
+      }
       return bindings;
     }
 
@@ -465,7 +482,8 @@ void main() {
       ];
     }
 
-    /// The category headings the list holds, in order — read the same way.
+    /// The brush category headings the list holds, in order — read the same
+    /// way.
     List<String> headings(WidgetTester tester) {
       final children =
           (tester.widget<ListView>(list).childrenDelegate
@@ -473,8 +491,12 @@ void main() {
               .children;
       return [
         for (final child in children)
-          if (child case Padding(child: Text(:final data?)))
-            if (brushActionCategories.values.contains(data)) data,
+          if (child.key case ValueKey<String>(:final value)
+              when value.startsWith('shortcut-category-'))
+            if (value.substring('shortcut-category-'.length)
+                case final category
+                when brushActionCategories.values.contains(category))
+              category,
       ];
     }
 
