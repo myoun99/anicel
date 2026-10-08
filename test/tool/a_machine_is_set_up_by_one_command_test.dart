@@ -27,21 +27,18 @@ void main() {
     board: 'C:/local/board',
     memory: 'E:/Sync/memory',
     home: null,
-    oldMemory: null,
-  );
-  const MachineSetup moved = (
-    repo: 'C:/code/anicel',
-    board: 'C:/local/board',
-    memory: 'E:/Sync/memory',
-    home: null,
-    oldMemory: 'C:/local/old memory',
   );
   const MachineSetup away = (
     repo: 'D:/work/anicel',
     board: 'D:/local/board',
     memory: 'D:/Sync/memory',
     home: 'http://MYOUN_HOME.local:4321',
-    oldMemory: null,
+  );
+  const MachineSetup spaced = (
+    repo: 'C:/my code/anicel',
+    board: 'C:/local/my board',
+    memory: 'E:/My Sync/memory',
+    home: null,
   );
 
   /// Every `command` of a hooks block, under the event that runs it.
@@ -72,7 +69,7 @@ void main() {
         'every hook there is named — a script nobody installs guards '
         'nothing', () {
       final named = {
-        for (final command in every(moved))
+        for (final command in every(holder))
           RegExp(
             r'/tool/session_hooks/([a-z_]+\.sh)"',
           ).firstMatch(command)?.group(1),
@@ -100,7 +97,7 @@ void main() {
 
     test('🚨every path a command holds is quoted: a folder with a space in '
         'its name is still one argument', () {
-      for (final command in every(moved)) {
+      for (final command in every(spaced)) {
         expect(
           command,
           matches(RegExp(r'^bash( "[^"]+")+$')),
@@ -108,8 +105,9 @@ void main() {
         );
       }
       expect(
-        theOne(moved, 'knowledge_fold.sh'),
-        endsWith('"C:/local/old memory" "E:/Sync/memory"'),
+        theOne(spaced, 'board_gate.sh'),
+        'bash "C:/my code/anicel/tool/session_hooks/board_gate.sh" '
+        '"C:/local/my board" "C:/local/my board/board.jsonl"',
       );
     });
 
@@ -293,28 +291,17 @@ void main() {
       }
     });
 
-    test('the two folders are kept the same only where the memory was moved '
-        'out of one', () {
-      expect(every(holder).join('\n'), isNot(contains('knowledge_fold')));
-      expect(
-        theOne(moved, 'knowledge_fold.sh'),
-        endsWith('"C:/local/old memory" "E:/Sync/memory"'),
-      );
+    test('🚨the size guard is handed the very index its `if` watches', () {
       final watched = {
-        for (final group in hooksFor(moved)['PostToolUse'] as List)
+        for (final group in hooksFor(holder)['PostToolUse'] as List)
           for (final hook in (group as Map)['hooks'] as List)
             '${(hook as Map)['if']}',
       };
       expect(watched, {
         'Edit(E:/Sync/memory/MEMORY.md)',
         'Write(E:/Sync/memory/MEMORY.md)',
-        'Edit(C:/local/old memory/MEMORY.md)',
-        'Write(C:/local/old memory/MEMORY.md)',
       });
-    });
-
-    test('🚨the size guard is handed the very index its `if` watches', () {
-      for (final group in hooksFor(moved)['PostToolUse'] as List) {
+      for (final group in hooksFor(holder)['PostToolUse'] as List) {
         for (final hook in (group as Map)['hooks'] as List) {
           final watched = RegExp(
             r'\((.+)\)$',
@@ -378,8 +365,8 @@ void main() {
     });
 
     test('running it twice writes the same file', () {
-      final once = settingsWith(written, moved);
-      expect(jsonEncode(settingsWith(once, moved)), jsonEncode(once));
+      final once = settingsWith(written, holder);
+      expect(jsonEncode(settingsWith(once, holder)), jsonEncode(once));
     });
   });
 
@@ -395,11 +382,9 @@ void main() {
         r'C:\local\board\',
         '--memory',
         'E:/Sync/memory/',
-        '--old-memory',
-        r'C:\local\old memory',
       ]);
       expect(asked.refusal, isNull);
-      expect(asked.setup, moved);
+      expect(asked.setup, holder);
     });
 
     test('🚨the board folder is never the memory folder, nor inside it — '
