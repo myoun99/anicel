@@ -14,6 +14,9 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerKindDisplayName;
+import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
 void main() {
@@ -80,14 +83,12 @@ void main() {
       expect(block.total, '24');
     });
 
-    testWidgets('renders current storyboard layer strip when present', (
-      tester,
-    ) async {
+    testWidgets('renders the cut\'s storyboard layer on the conte row when '
+        'present', (tester) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
-      final block = requireCutBlock(tester, 'cut-a');
-      expect(block.hasStoryboardLayer, isTrue);
-      expect(block.layerLabel, 'Storyboard');
+      expect(conteRowBlocks(tester, 'track-a'), isNotEmpty);
+      expect(conteRowName(tester, 'track-a'), 'Storyboard');
     });
 
     testWidgets('marks the active cut without an ACTIVE label', (tester) async {
@@ -131,10 +132,15 @@ void main() {
     ) async {
       await _pumpStoryboardPanel(tester, _projectWithoutStoryboardLayer());
 
-      final block = requireCutBlock(tester, 'cut-a');
-      expect(block.hasStoryboardLayer, isFalse);
-      // D27: the honest empty state — no explanatory copy in the band.
-      expect(block.layerLabel, '');
+      // The row is there with no block on it, and the cut's stretch wears
+      // the button that makes one. D27: no explanatory copy — the row's
+      // name is its kind's own word.
+      expect(conteRowBlocks(tester, 'track-a'), isEmpty);
+      expect(conteCreatePlates(tester, 'track-a'), hasLength(1));
+      expect(
+        conteRowName(tester, 'track-a'),
+        layerKindDisplayName(LayerKind.storyboard),
+      );
     });
 
     testWidgets(
@@ -142,19 +148,15 @@ void main() {
       (tester) async {
         await _pumpStoryboardPanel(tester, _projectWithLayerStack());
 
-        expect(
-          requireCutBlock(tester, 'cut-a').layerLabel,
-          'Middle Storyboard',
-        );
+        expect(conteRowName(tester, 'track-a'), 'Middle Storyboard');
       },
     );
 
     testWidgets('does not select storyboard layer by name', (tester) async {
       await _pumpStoryboardPanel(tester, _projectWithMisleadingLayerNames());
 
-      final block = requireCutBlock(tester, 'cut-a');
-      expect(block.hasStoryboardLayer, isTrue);
-      expect(block.layerLabel, 'Animation Named Layer');
+      expect(conteRowBlocks(tester, 'track-a'), isNotEmpty);
+      expect(conteRowName(tester, 'track-a'), 'Animation Named Layer');
     });
 
     testWidgets('a cut holding two storyboard layers still DRAWS: the row '

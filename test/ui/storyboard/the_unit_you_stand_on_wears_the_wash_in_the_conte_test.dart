@@ -67,6 +67,20 @@ void main() {
                 frames: const [],
                 timeline: const {},
               ),
+              // Two panels: [0, 3) and [3, 8).
+              Layer(
+                id: const LayerId('sb'),
+                name: 'SB',
+                kind: LayerKind.storyboard,
+                frames: [
+                  for (final id in ['p-1', 'p-2'])
+                    Frame(id: FrameId(id), duration: 1, strokes: const []),
+                ],
+                timeline: const {
+                  0: TimelineExposure.drawing(FrameId('p-1'), length: 3),
+                  3: TimelineExposure.drawing(FrameId('p-2'), length: 5),
+                },
+              ),
             ],
           ),
         ],
@@ -234,6 +248,36 @@ void main() {
     );
     expect(wash, findsNothing);
     expect(cutBlocksPainter(tester).blocks().single.isStanding, isTrue);
+  });
+
+  // 🗣️I-73 (유저 2026-10-08: 「콘티행에 서야 콘티행에 서도록」): the conte row
+  // is a row of its own, and its panel is the block you stand on there.
+  testWidgets('on the conte row, its panel — and the cut above it wears '
+      'none', (tester) async {
+    final session = await openConte(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-conte-label-sb-track')),
+    );
+    await tester.pumpAndSettle();
+    session.selectGlobalFrame(4);
+    await tester.pumpAndSettle();
+
+    expect(washed(tester, 4), (
+      start: 3,
+      end: 8,
+      row: rowOf(tester, 'storyboard-conte-row-sb-track'),
+    ));
+    expect(corner(tester), blockCorner(tester), reason: 'a frame block');
+    expect(
+      cutBlocksPainter(tester).blocks().single.isStanding,
+      isFalse,
+      reason: 'one standing place — the V row\'s cut wears none',
+    );
+
+    session.selectGlobalFrame(1);
+    await tester.pumpAndSettle();
+    expect(washed(tester, 1).start, 0);
+    expect(washed(tester, 1).end, 3);
   });
 
   testWidgets('on a lane, its cell', (tester) async {

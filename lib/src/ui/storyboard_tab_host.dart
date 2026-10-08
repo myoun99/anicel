@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart' show LayerKind;
+import '../models/storyboard_coverage.dart' show storyboardConteStart;
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
+import '../models/track_conte_row.dart';
 import '../models/track_id.dart';
 import '../models/working_panel.dart';
 import '../models/track_transform_lane_carrier.dart'
@@ -30,6 +32,7 @@ import 'panels/panel_visibility_scope.dart'
     show PanelInSightValueListenable, PanelVisibilityScope;
 import 'panels/working_panel_surface.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnails;
+import 'storyboard_layer_policy.dart' show storyboardLayerForCut;
 import 'storyboard_panel.dart';
 import 'storyboard/storyboard_rows_channel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -360,21 +363,31 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
 
   /// …and a CONTE block's: the frame block's own double tap
   /// ([activateCellOnDoubleTap]) on the cell it is — its cut's storyboard
-  /// row at the cut's own frame. The press that lands is the whole pick:
-  /// standing on a cut seats its conte row (F-187, 「컷에서면 콘티레이어가
-  /// 있다면 콘티레이어에 서도록」), so the cell is in hand the way the
-  /// timeline's is when its double tap opens it.
+  /// row at the row's own frame. The press that lands is the whole pick:
+  /// standing on the conte row seats the cut's conte layer
+  /// ([Standing.layerAConteStandSeats]), so the cell is in hand the way the
+  /// timeline's is when its double tap opens it. ↩️The press stood on the
+  /// CUT, which seated the conte layer while the conte blocks were the cut
+  /// block's (F-187, 「컷에서면 콘티레이어가 있다면 콘티레이어에 서도록」);
+  /// they are the conte row's now (I-73).
+  ///
+  /// The storyboard's playhead counts the CONTE's frames, and the row's
+  /// cells count the cut's own — the conte begins after the のりしろ an O.L
+  /// leaves before it (F-227, [storyboardConteStart]).
   Future<void> _editConteBlock(
     TrackId trackId,
     LayerId layerId,
     int globalFrame,
   ) {
-    _pressRowFrameHere(TrackRowAddress(trackId), globalFrame);
+    _pressRowFrameHere(LayerRowAddress(trackConteRowId(trackId)), globalFrame);
+    final cut = _session.activeCutOrNull;
+    final row = cut == null ? null : storyboardLayerForCut(cut);
     return activateCellOnDoubleTap(
       context,
       _session,
       layerId: layerId,
-      frameIndex: _session.currentFrameIndex,
+      frameIndex:
+          storyboardConteStart(row?.timeline) + _session.currentFrameIndex,
     );
   }
 

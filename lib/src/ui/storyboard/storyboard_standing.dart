@@ -195,15 +195,30 @@ class _StoryboardStanding {
     );
   }
 
-  /// The unit under [frame] on an S row: what a click there selects
-  /// ([trackRowMaterialBlocks] — its sound or its span, else the one cell),
-  /// read off the row as it is shown: through a drag, previewed (H12); while
-  /// a take rolls, the take.
+  /// The unit under [frame] on a layer row of the track: what a click there
+  /// selects ([trackRowMaterialBlocks] — its sound, its span or its panel,
+  /// else the one cell), read off the row as it is shown: through a drag,
+  /// previewed (H12); while a take rolls, the take.
+  ///
+  /// The CONTE row is shown as the cuts' conte layers on the track's axis
+  /// ([trackConteRowShown]), on the cuts as a drag in flight lays them — so
+  /// its unit is the panel, and a cut with no conte layer holds one cell.
   StandingUnit _unitOn(
     Track track,
     LayerId layerId,
     int frame,
   ) {
+    if (trackIdOfConteRow(layerId) != null) {
+      return standingUnitAt(
+        lanes: [
+          trackRowMaterialBlocks(
+            trackConteRowShown(track.id, _cutsAsShownOn(track)),
+            spans: false,
+          ),
+        ],
+        index: frame,
+      );
+    }
     final spans = layerId == track.transitionLayer.id;
     var shown = timelineDragPreviewGlobalLayerFor(
       _state.widget.dragPreview?.value,
@@ -223,6 +238,23 @@ class _StoryboardStanding {
     );
   }
 
+  /// [track]'s cuts on its axis as the panel shows them now — re-timed by a
+  /// drag in flight ([_StoryboardRailRows._previewedEntriesFor]), else as
+  /// committed.
+  List<StoryboardTimelineLayoutEntry> _cutsAsShownOn(Track track) {
+    final trackIndex = _state.widget.project.tracks.indexOf(track);
+    return _state._railRows._previewedEntriesFor(
+      trackIndex,
+      _state.widget.dragPreview?.value,
+      [
+        for (final entry in buildStoryboardTimelineLayout(
+          _state.widget.project,
+        ))
+          if (entry.trackIndex == trackIndex) entry,
+      ],
+    );
+  }
+
   /// The cross-axis band [row] occupies inside this track's group, or null
   /// when the row belongs to another track (or is not on screen).
   ///
@@ -235,7 +267,7 @@ class _StoryboardStanding {
   ) {
     var y = 0.0;
     for (final slot in _state._railRows._trackGroupRowGeometry(track)) {
-      if (slot.row == row || slot.laneRow == row) {
+      if (_standingAddressOf(slot) == row) {
         return (top: y, height: slot.height);
       }
       y += slot.height;

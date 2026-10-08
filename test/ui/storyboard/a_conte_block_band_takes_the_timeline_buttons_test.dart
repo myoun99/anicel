@@ -12,17 +12,18 @@ import 'package:anicel/src/ui/timeline/toolbar_panel_context.dart';
 import '../../helpers/conte_track_fixture.dart';
 import '../../helpers/home_page_probes.dart';
 import '../flyout_test_helpers.dart' show readCommandEnabled;
+import '../storyboard_conte_row_probe.dart';
 
 /// 🗣️F-186 (유저 2026-09-26): 「콘티패널 컷블록에 대한 선택범위랑 콘티블록에
 /// 대한 선택범위있거든? 타임라인 버튼은 기본적으로 선택안한상태에선
 /// 컷블록을 대상으로 하고, 콘티블록 선택하면 지금 편집버튼같은거
 /// 활성화안되는데 활성화시키고 로직작동가능하도록」.
 ///
-/// The conte-block band is the strip's cut-local selection — the timeline's
-/// own band, on the conte row the press stood the timeline on (F-187) — so
-/// the storyboard's buttons answer it with the timeline's verbs.
-/// [conteTrackProject]: cut-1's conte row is three panels, [0,4) [4,8)
-/// [8,12).
+/// The conte-block band is the conte row's cut-local selection — the
+/// timeline's own band, on the conte layer the press stood the timeline on
+/// (F-187) — so the storyboard's buttons answer it with the timeline's
+/// verbs. [conteTrackProject]: cut-1's conte row is three panels, [0,4)
+/// [4,8) [8,12).
 void main() {
   const conteId = LayerId('cut-1-conte');
   const edit = ValueKey<String>('shared-edit-button');
@@ -41,22 +42,20 @@ void main() {
     return sessionOf(tester);
   }
 
-  /// A point on the V row's STRIP over [globalFrame].
+  /// A point on the CONTE row over [globalFrame] (↩️on the V row's strip,
+  /// while the conte blocks were drawn inside the cut block — I-73).
   Offset stripPoint(WidgetTester tester, int globalFrame) {
-    final row = find.byKey(
-      ValueKey<String>('storyboard-track-timeline-area-${conteTrackId.value}'),
-    );
-    final rect = tester.getTopLeft(row) & tester.getSize(row);
+    final rect = conteRowRect(tester, conteTrackId.value);
     final pixelsPerFrame = tester
         .widget<StoryboardPanel>(find.byType(StoryboardPanel))
         .pixelsPerFrame;
     return Offset(
       rect.left + (globalFrame + 0.5) * pixelsPerFrame,
-      rect.top + rect.height / 2,
+      rect.center.dy,
     );
   }
 
-  /// Sweeps cut-1's SECOND panel, [4, 8), on the strip.
+  /// Sweeps cut-1's SECOND panel, [4, 8), on the conte row.
   Future<void> sweepTheSecondPanel(WidgetTester tester) async {
     final gesture = await tester.startGesture(
       stripPoint(tester, 5),

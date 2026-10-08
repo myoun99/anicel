@@ -47,6 +47,7 @@ import 'package:anicel/src/ui/timeline/timeline_double_tap.dart'
 import 'package:anicel/src/ui/theme/app_scroll_behavior.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
 import '../helpers/fixed_thumbnails.dart';
+import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
@@ -217,8 +218,9 @@ void main() {
           onCutSelected: selectedCutIds.add,
         );
 
-        expect(requireCutBlock(tester, 'cut-a').hasStoryboardLayer, isTrue);
-        expect(requireCutBlock(tester, 'cut-b').hasStoryboardLayer, isFalse);
+        // Cut A's panels are on the conte row; cut B wears the button.
+        expect(conteRowBlocks(tester, 'track-a'), isNotEmpty);
+        expect(conteCreatePlates(tester, 'track-a'), hasLength(1));
 
         await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
         await tester.pumpAndSettle();
@@ -242,8 +244,9 @@ void main() {
           onCutSelected: selectedCutIds.add,
         );
 
-        expect(requireCutBlock(tester, 'cut-a').hasStoryboardLayer, isFalse);
-        expect(requireCutBlock(tester, 'cut-b').hasStoryboardLayer, isFalse);
+        // Neither cut has a conte layer: each wears its own button.
+        expect(conteRowBlocks(tester, 'track-a'), isEmpty);
+        expect(conteCreatePlates(tester, 'track-a'), hasLength(2));
 
         await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
         await tester.pumpAndSettle();
@@ -1800,9 +1803,13 @@ void main() {
       expect(dragSteps.last.$2, 66);
     });
 
-    testWidgets('the strip gesture claims only where a strip EXISTS: over '
-        'the cut it selects panels, over a gap the drag falls through to '
-        'the cut-axis gesture instead of dying', (tester) async {
+    // ↩️One row held both until I-73: the panels' gesture lay over the cut
+    // block, and in a gap its press fell through to the cut-axis gesture
+    // instead of dying (the real-device 「no selection where there is no cut
+    // block」). They are two rows now, each with its own.
+    testWidgets('the panels\' gesture claims only where the conte row HAS '
+        'panels — and the V row\'s drag is the cut-axis one everywhere, a '
+        'cut with panels included', (tester) async {
       final trackSelection = ValueNotifier<TrackFrameRangeSelection?>(null);
       final stripSelection = ValueNotifier<TimelineFrameRangeSelection?>(null);
       addTearDown(trackSelection.dispose);
@@ -1851,35 +1858,44 @@ void main() {
       );
 
       final blockA = cutBlockScreenRect(tester, 'cut-a');
+      final conteRow = conteRowRect(tester, 'track-a');
 
-      // ON the cut (it has a storyboard row): the strip owns the drag.
-      var gesture = await tester.startGesture(
-        Offset(blockA.left + 8 * 4.0, blockA.center.dy),
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pump();
-      await gesture.moveBy(const Offset(8 * 4.0, 0));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
+      Future<void> dragFrom(double frame, double y) async {
+        stripDrags.clear();
+        cutDrags.clear();
+        final gesture = await tester.startGesture(
+          Offset(blockA.left + 8 * frame, y),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveBy(const Offset(8 * 4.0, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
 
+      // The conte row over the cut — it has a storyboard layer: the panels'
+      // gesture owns the drag.
+      await dragFrom(4, conteRow.center.dy);
       expect(stripDrags, isNotEmpty);
       expect(stripDrags.last.$1, const LayerId('sb-a'));
       expect(cutDrags, isEmpty);
 
-      // IN the gap, same height: the strip has nothing there — the press
-      // must fall through and paint a cut-axis run.
-      stripDrags.clear();
-      gesture = await tester.startGesture(
-        Offset(blockA.left + 8 * 28.0, blockA.center.dy),
-        kind: PointerDeviceKind.mouse,
-      );
-      await tester.pump();
-      await gesture.moveBy(const Offset(8 * 4.0, 0));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
+      // The conte row in the gap: it holds nothing there, and no cut is
+      // swept from this row.
+      await dragFrom(28, conteRow.center.dy);
+      expect(stripDrags, isEmpty);
+      expect(cutDrags, isEmpty);
 
+      // The V row over the same cut, on its pictures: the cut's — 「선택도
+      // 내부 콘티쪽 조작해도 … 컷 선택만 되도록」.
+      await dragFrom(4, blockA.center.dy);
+      expect(stripDrags, isEmpty);
+      expect(cutDrags, isNotEmpty);
+      expect(cutDrags.first.$1, 4);
+
+      // …and in the gap, a cut-axis run all the same.
+      await dragFrom(28, blockA.center.dy);
       expect(stripDrags, isEmpty);
       expect(cutDrags, isNotEmpty);
       expect(cutDrags.first.$1, 28);

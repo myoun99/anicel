@@ -3,6 +3,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/pill_subject.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/models/working_panel.dart';
@@ -30,6 +31,7 @@ void main() {
   const trackId = conteTrackId;
   const seId = conteSeId;
   const celA = conteCelId;
+  final conteRow = LayerRowAddress(trackConteRowId(trackId));
 
   /// [conteTrackProject]: a conte row of three panels in cut-1, a gap, a
   /// cut-2 without one, an S row sounding in each cut and a fade in each.
@@ -53,20 +55,24 @@ void main() {
     return landings;
   }
 
-  group('the V row counts PANELS', () {
-    test('a cut with a conte row is its panels, a cut without one is one '
-        'block, and the gap between them is walked a frame at a time', () {
+  // 🗣️I-73 (유저 2026-10-08): 「v행에서는 콘티블록에 서있다거나 하는걸
+  // 안하도록 … 컷 선택만 되도록. 그러고 v행 아래에 콘티행 만들어서 거기서」.
+  // ↩️The V row counted the PANELS (2026-09-24: 「콘티레이어 있으면 콘티레이어
+  // 블록기준」) while they were drawn inside the cut block; they are the
+  // conte row's blocks now, and each row counts its own (R10 #13).
+  group('the V row counts CUTS, and the conte row PANELS', () {
+    test('a cut is one block of the V row whether or not it has a conte '
+        'layer, and the gap between two is walked a frame at a time', () {
       final s = session();
       s.claimStoryboardRow();
       expect(s.currentRow, const TrackRowAddress(trackId));
       s.selectGlobalFrame(0);
 
       expect(
-        flips(s, forward: true, n: 8),
-        [4, 8, 12, 13, 14, 15, 25, 26],
-        reason: '「콘티레이어 있으면 콘티레이어 블록기준」: 0→4→8 are the conte '
-            'blocks, 12..14 the gap, 15 the next cut — one block, it has no '
-            'conte row — and past the last cut the axis goes on',
+        flips(s, forward: true, n: 6),
+        [12, 13, 14, 15, 25, 26],
+        reason: 'cut-1 whole, 12..14 the gap, cut-2 whole — and past the '
+            'last cut the axis goes on (↩️0→4→8 first: cut-1\'s panels)',
       );
     });
 
@@ -75,7 +81,31 @@ void main() {
       s.claimStoryboardRow();
       s.selectGlobalFrame(15);
 
-      expect(flips(s, forward: false, n: 7), [14, 13, 12, 8, 4, 0, 0]);
+      expect(flips(s, forward: false, n: 5), [14, 13, 12, 0, 0]);
+    });
+
+    test('the conte row is its panels; a cut with no conte layer and the '
+        'gap hold none of its blocks, and are walked a frame at a time', () {
+      final s = session();
+      s.standOnRow(conteRow, panel: WorkingPanel.storyboard);
+      expect(s.currentRow, conteRow);
+      s.selectGlobalFrame(0);
+
+      expect(
+        flips(s, forward: true, n: 8),
+        [4, 8, 12, 13, 14, 15, 16, 17],
+        reason: '0→4→8 are cut-1\'s panels; from 12 on the row is empty — '
+            'the gap, then cut-2, which has no conte layer',
+      );
+    });
+
+    test('… backwards too: a step off the empty stretch lands on the last '
+        'panel\'s start', () {
+      final s = session();
+      s.standOnRow(conteRow, panel: WorkingPanel.storyboard);
+      s.selectGlobalFrame(16);
+
+      expect(flips(s, forward: false, n: 8), [15, 14, 13, 12, 8, 4, 0, 0]);
     });
 
     test('a V-row step lands IN the cut it reaches — the canvas follows', () {
@@ -160,9 +190,9 @@ void main() {
       expect(
         s.editingGlobalFrame,
         12,
-        reason: 'the storyboard shows the playhead on frame 11, the last '
-            'conte panel; the next column is the gap, not the block after '
-            'the one the unclamped frame happened to name',
+        reason: 'the storyboard shows the playhead on frame 11, the end of '
+            'cut-1; the next column is the gap, not the block after the one '
+            'the unclamped frame happened to name',
       );
     });
   });

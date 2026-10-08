@@ -295,9 +295,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
   /// design's "칸 클릭 = selectCut + selectLayer + selectFrameIndex".
   ///
   /// ↩️F-187 (유저 2026-09-26): the row is what every door that stands on a
-  /// cut seats ([Standing.layerACutStandSeats]) — its storyboard row, or,
-  /// when it has none, the layer you stood on if the cut shows it
-  /// (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥 그대로둠」).
+  /// conte cell seats ([Standing.layerAConteStandSeats]) — the cut's
+  /// storyboard row, or, when it has none, the layer you stood on if the
+  /// cut shows it (「컷에설때 콘티레이어가 없다면 마지막에 선 레이어 그냥
+  /// 그대로둠」).
   void _selectCell(ContePlacedCell cell) {
     final cutId = CutId(cell.cutId);
     final before = _session.activeLayerId;
@@ -313,7 +314,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     // law asks whether you are landing inside the current selection, and
     // asking that about the frame you are LEAVING answers the wrong
     // question.
-    final seat = _session.standing.layerACutStandSeats(before: before);
+    final seat = _session.standing.layerAConteStandSeats(before: before);
     if (seat != null) {
       _session.standOnRow(
         LayerRowAddress(seat),

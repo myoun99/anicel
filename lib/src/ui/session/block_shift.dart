@@ -5,6 +5,8 @@ import '../../models/layer_id.dart';
 import '../../models/row_block_shift.dart';
 import '../../models/timeline_repeat.dart' show ghostFreeTimeline;
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart' show isTrackConteRow;
+import '../storyboard_layer_policy.dart' show conteLayerInHand;
 import 'active_cut_controllers.dart';
 import 'cut_shift.dart';
 import 'session_roles.dart';
@@ -126,6 +128,18 @@ class BlockShift {
         anchorIsGlobal: true,
         aimedBySelection: false,
       );
+    }
+    // The storyboard's conte row shoves its own panels — the conte layer it
+    // has in hand, which is the active row below — or nothing: over a cut
+    // with no conte layer the active row is some other row of the cut, and
+    // that one is not this rail's to shove (I-73).
+    if (isTrackConteRow(currentRow) &&
+        conteLayerInHand(
+              cut: _project.activeCutOrNull,
+              activeLayerId: _selection.activeLayerId,
+            ) ==
+            null) {
+      return null;
     }
     final layerId = _selection.activeLayerId;
     final index = _controllers.timelineController.currentFrameIndex;

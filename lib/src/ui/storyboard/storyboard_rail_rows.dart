@@ -246,6 +246,34 @@ class _StoryboardRailRows {
   bool _showsTransitionRow(Track track) =>
       _sectionShown(timelineSectionForLayerKind(track.transitionLayer.kind));
 
+  /// Whether the rail shows [track]'s CONTE row (I-73) — the cuts' conte
+  /// layers as one row, under the V row: its section is the one the timeline
+  /// puts that row's kind in, and the legend's filter judges it as it judges
+  /// every row ([_filterAllowsConteRow]). The row is there whether or not a
+  /// cut has a conte layer yet — a cut with none wears the button that makes
+  /// one there.
+  ///
+  /// ⚠️ONE question for the three places that lay the row out, as
+  /// [_showsTransitionRow] is.
+  bool _showsConteRow(Track track) =>
+      _sectionShown(timelineSectionForLayerKind(LayerKind.storyboard)) &&
+      _filterAllowsConteRow(track);
+
+  /// Whether the legend's filter lets the conte row show — judged, like
+  /// every row, ONLY on the facets it carries here ([TimelineRowFilter
+  /// .allowsRow]): its kind, and the colour label its blocks wear
+  /// ([trackConteHeadLayer]'s). It wears no fx switch on this rail yet
+  /// (I-73 ③), so the fx chip has nothing of it to judge.
+  bool _filterAllowsConteRow(Track track) =>
+      _state.widget.rowFilter.allowsRow(
+        standing:
+            _state.widget.selectedRow ==
+            LayerRowAddress(trackConteRowId(track.id)),
+        kind: LayerKind.storyboard,
+        mark: trackConteHeadLayer(track.cuts)?.mark,
+        fxEnabled: true,
+      );
+
   /// One track group's rail rows in TIMELINE order (R6 B3, R7-④): the S
   /// rows (each with its twirled-down Audio lane and Transform group)
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
@@ -590,6 +618,18 @@ class _StoryboardRailRows {
           keyValue: 'storyboard-section-zone-${track.id.value}-v',
           label: 'V',
           rows: vRows,
+        ),
+      // The CONTE row, directly under the V row whose cuts it reads (I-73,
+      // 유저 2026-10-08: 「v행 아래에 콘티행 만들어서 거기서」). The band says
+      // what the timeline's says over the same layers — the section their
+      // kind sits in ([timelineSectionForLayerKind]).
+      if (_showsConteRow(track))
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-conte',
+          label: timelineSectionLabel(
+            timelineSectionForLayerKind(LayerKind.storyboard),
+          ),
+          rows: [_state._rows.conteLabelRow(track)],
         ),
     ];
   }
@@ -1297,6 +1337,7 @@ class _StoryboardRailRows {
       slots.add((
         row: LayerRowAddress(track.transitionLayer.id),
         laneRow: null,
+        standRow: null,
         bandRow: false,
         lane: false,
         railRow: (track: track, layer: track.transitionLayer, seSlot: null),
@@ -1308,6 +1349,7 @@ class _StoryboardRailRows {
       slots.add((
         row: layer == null ? null : LayerRowAddress(layer.id),
         laneRow: null,
+        standRow: null,
         bandRow: false,
         lane: false,
         railRow: (track: track, layer: layer, seSlot: slot),
@@ -1325,6 +1367,7 @@ class _StoryboardRailRows {
           slots.add((
             row: null,
             laneRow: audio ? null : LaneRowAddress(layer.id, lane.laneId),
+            standRow: null,
             bandRow: !audio,
             lane: true,
             railRow: null,
@@ -1334,35 +1377,51 @@ class _StoryboardRailRows {
       }
     }
     // The filter hides the V row as the rail does — the row and its lanes.
-    if (!_filterAllowsTrackRow(track)) {
-      return slots;
-    }
-    slots.add((
-      row: TrackRowAddress(track.id),
-      laneRow: null,
-      bandRow: false,
-      lane: false,
-      railRow: (track: track, layer: null, seSlot: null),
-      height: _state.widget.trackLaneHeight,
-    ));
-    // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape): its fx
-    // chain, and no Transform group — a track row does not own one
-    // ([timelineRowOwnsTransform]). Leaving the removed slots here is exactly
-    // how the ring lands on a neighbour: this table is what the bands and the
-    // select-drag read, so a slot the rail no longer draws shifts every row
-    // under it.
-    if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
-      final carrierId = trackTransformLaneCarrierId(track.id);
-      for (final lane in _trackEffectLanes(track)) {
-        slots.add((
-          row: null,
-          laneRow: LaneRowAddress(carrierId, lane.laneId),
-          bandRow: true,
-          lane: true,
-          railRow: null,
-          height: heights.lane,
-        ));
+    if (_filterAllowsTrackRow(track)) {
+      slots.add((
+        row: TrackRowAddress(track.id),
+        laneRow: null,
+        standRow: null,
+        bandRow: false,
+        lane: false,
+        railRow: (track: track, layer: null, seSlot: null),
+        height: _state.widget.trackLaneHeight,
+      ));
+      // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape):
+      // its fx chain, and no Transform group — a track row does not own one
+      // ([timelineRowOwnsTransform]). Leaving the removed slots here is
+      // exactly how the ring lands on a neighbour: this table is what the
+      // bands and the select-drag read, so a slot the rail no longer draws
+      // shifts every row under it.
+      if (_state.widget.expandedTransformTracks.contains(track.id.value)) {
+        final carrierId = trackTransformLaneCarrierId(track.id);
+        for (final lane in _trackEffectLanes(track)) {
+          slots.add((
+            row: null,
+            laneRow: LaneRowAddress(carrierId, lane.laneId),
+            standRow: null,
+            bandRow: true,
+            lane: true,
+            railRow: null,
+            height: heights.lane,
+          ));
+        }
       }
+    }
+    // The CONTE row closes the group, under the V row and the V row's own
+    // lanes (I-73). It is stood on and nothing else ([_StoryboardRailSlot
+    // .standRow]): no track-axis select-drag lands on it, and its head
+    // carries no column to swipe yet.
+    if (_showsConteRow(track)) {
+      slots.add((
+        row: null,
+        laneRow: null,
+        standRow: LayerRowAddress(trackConteRowId(track.id)),
+        bandRow: false,
+        lane: false,
+        railRow: null,
+        height: heights.conte,
+      ));
     }
     return slots;
   }
@@ -1378,58 +1437,74 @@ class _StoryboardRailRows {
     TimelineScale scale,
     List<Widget> trackGlobalRows,
   ) {
-    // The filter hides the V row as the rail does — the strip and its lanes
-    // with it, or every row under it parts from its label.
-    if (!_filterAllowsTrackRow(track)) {
-      return trackGlobalRows;
-    }
     return [
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
       // The transition row and the S rows are both track-global, so both
       // qualify — a cut trim cannot change either.
       ...trackGlobalRows,
-      _StoryboardTrackRow(
-        track: track,
-        layoutEntries: entries,
-        onRowFramePress: _state.widget.onRowFramePress,
-        onDropMediaAsset: _state.widget.onDropMediaAsset,
-        acceptsMediaAsset: _state.widget.acceptsMediaAsset,
-        laneHeight: _state.widget.trackLaneHeight,
-        width: width,
-        stripEdges: _state.widget.stripEdges,
-        cutMove: _state.widget.cutMove,
-        cutSelect: _state.widget.cutSelect,
-        stripSelect: _state.widget.stripSelect,
-        thumbnails: _state.widget.thumbnails,
-        timelineScale: scale,
-        frameGeometry: _state._frameGeometry,
-        hoveredCutId: _state._hoveredCutId,
-        standingCutId: _state._standing.standingCutOn(track),
-        windowBucket: _state._horizontalWindowBucket,
-        viewportWidth: _state._stripViewportWidth,
-        railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
+      // The filter hides the V row as the rail does — the strip and its
+      // lanes with it, or every row under it parts from its label.
+      if (_filterAllowsTrackRow(track)) ...[
+        _StoryboardTrackRow(
           track: track,
-          anchorRow: anchorRow,
-          crossOffset: crossOffset,
+          layoutEntries: entries,
+          onRowFramePress: _state.widget.onRowFramePress,
+          onDropMediaAsset: _state.widget.onDropMediaAsset,
+          acceptsMediaAsset: _state.widget.acceptsMediaAsset,
+          laneHeight: _state.widget.trackLaneHeight,
+          width: width,
+          stripEdges: _state.widget.stripEdges,
+          cutMove: _state.widget.cutMove,
+          cutSelect: _state.widget.cutSelect,
+          thumbnails: _state.widget.thumbnails,
+          timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
+          hoveredCutId: _state._hoveredCutId,
+          standingCutId: _state._standing.standingCutOn(track),
+          windowBucket: _state._horizontalWindowBucket,
+          viewportWidth: _state._stripViewportWidth,
+          railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
+            track: track,
+            anchorRow: anchorRow,
+            crossOffset: crossOffset,
+          ),
+          showSeconds: _state.widget.showSeconds,
+          projectFrameRate: _state.widget.projectFrameRate,
+          linkedCutIds: _state.widget.linkedCutIds,
+          onOpenCutLinks: _state.widget.onOpenCutLinks,
+          onEditCutBlock: _state.widget.onEditCutBlock,
         ),
-        showSeconds: _state.widget.showSeconds,
-        projectFrameRate: _state.widget.projectFrameRate,
-        onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
-        linkedCutIds: _state.widget.linkedCutIds,
-        onOpenCutLinks: _state.widget.onOpenCutLinks,
-        onEditCutBlock: _state.widget.onEditCutBlock,
-        onEditConteBlock: _state.widget.onEditConteBlock,
-      ),
-      if (_state.widget.expandedTransformTracks.contains(track.id.value))
-        for (final strip in _trackTransformLaneStrips(
-          track,
-          index,
-          entries,
-          width,
-          scale,
-        ))
-          strip,
+        if (_state.widget.expandedTransformTracks.contains(track.id.value))
+          for (final strip in _trackTransformLaneStrips(
+            track,
+            index,
+            entries,
+            width,
+            scale,
+          ))
+            strip,
+      ],
+      // The CONTE row, on the cuts as this step lays them: a cut's panels
+      // ride its trim and its move with the block above them.
+      if (_showsConteRow(track))
+        _StoryboardConteRow(
+          track: track,
+          layoutEntries: entries,
+          width: width,
+          height: _state._rowHeights.conte,
+          timelineScale: scale,
+          frameGeometry: _state._frameGeometry,
+          windowBucket: _state._horizontalWindowBucket,
+          viewportWidth: _state._stripViewportWidth,
+          showSeconds: _state.widget.showSeconds,
+          projectFrameRate: _state.widget.projectFrameRate,
+          onRowFramePress: _state.widget.onRowFramePress,
+          stripEdges: _state.widget.stripEdges,
+          stripSelect: _state.widget.stripSelect,
+          onCreateStoryboardLayer: _state.widget.onCreateStoryboardLayer,
+          onEditConteBlock: _state.widget.onEditConteBlock,
+        ),
     ];
   }
 

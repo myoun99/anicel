@@ -128,12 +128,12 @@ Future<void> tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
       greaterThan(0),
       reason: 'no visible part of $cutId to tap',
     );
-    // ⚠️A QUARTER IN, not the middle (H13, 2026-08-22). A layerless cut now
-    // wears its create '+' whether or not it is the active one, and that
-    // square is centred in the strip — so the geometric centre is a button,
-    // and tapping it here would author a storyboard layer instead of
-    // selecting. A hand aiming at "this cut" has the whole rest of the
-    // block; this helper takes the same room.
+    // A QUARTER IN, not the middle: the frame under this tap is where every
+    // caller's playhead lands, and their premises count from it.
+    // ↩️It was chosen to miss the create '+' (H13, 2026-08-22), a square
+    // centred in a layerless cut's strip that would have authored a
+    // storyboard layer instead of selecting. The '+' is the conte row's
+    // since I-73, and a cut block is the cut's wherever it is touched.
     await tester.tapAt(
       Offset(visible.left + visible.width * 0.25, visible.center.dy),
     );

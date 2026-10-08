@@ -45,28 +45,6 @@ void main() {
       );
     });
 
-    test('drawing start and held cells classify by coverage', () {
-      final fixture = _fixture();
-      final layer = fixture.layer;
-
-      expect(
-        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 0),
-        isTrue,
-      );
-      expect(
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 1),
-        isTrue,
-      );
-      expect(
-        fixture.controller.isHeldExposureForLayer(layer: layer, frameIndex: 3),
-        isFalse,
-      );
-      expect(
-        fixture.controller.isDrawingStartForLayer(layer: layer, frameIndex: 6),
-        isTrue,
-      );
-    });
-
     test('effective duration is the block length', () {
       final fixture = _fixture();
 
@@ -93,13 +71,6 @@ void main() {
           frameIndex: 0,
         ),
         isNull,
-      );
-      expect(
-        fixture.controller.isDrawingStartForLayer(
-          layer: fixture.layer,
-          frameIndex: -1,
-        ),
-        isFalse,
       );
     });
   });

@@ -19,6 +19,7 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
@@ -31,8 +32,6 @@ import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/theme/conte_ink.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show layerMarkColor;
-import 'package:anicel/src/ui/timeline/timeline_cell_marker.dart'
-    show timelineCellWritesNothing;
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show
         storyboardCutBandColor,
@@ -40,20 +39,23 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
         storyboardPanelPictureGroundColor,
         timelineSelectedFrameBorderColor,
         timelineStandingWashColor;
-import 'package:anicel/src/ui/timeline/timeline_frame_coordinate_policy.dart'
-    show timelineFrameEdge;
 import '../helpers/fixed_thumbnails.dart';
+import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
-/// The cut block is FIVE BANDS, top to bottom: the CUT's, the CONTE
-/// BLOCKS', the strip, the conte blocks', the cut's. The strip is the
-/// picture and nothing is written over it; the bands carry the writing —
-/// the cut's number at the left end of its top band and its length at the
-/// right end of its bottom one (the conte sheet's CUT and TIME columns,
-/// which sit outside the picture cell, turned on their side), and each
-/// panel's name and comma count in the conte blocks' pair between (유저
-/// 2026-09-25 · 2026-09-26). ↩️Three bands — one each side, shared by the
-/// cut's writing and the panels' — until 2026-09-26.
+/// The cut block is THREE BANDS, top to bottom: the CUT's, the strip, the
+/// cut's. The strip is the picture and nothing is written over it; the
+/// bands carry the writing — the cut's number at the left end of its top
+/// band and its length at the right end of its bottom one (the conte
+/// sheet's CUT and TIME columns, which sit outside the picture cell, turned
+/// on their side).
+///
+/// ↩️FIVE bands from 2026-09-26: each panel's name and comma count stood in
+/// a pair of the conte blocks' own, between the cut's and the strip (유저
+/// 2026-09-25 · 2026-09-26). I-73 (유저 2026-10-08: 「우선 v행은 지금처럼
+/// 보여주는건 그대로 보여줘 … 컷 선택만 되도록」 · 「띠 둘만 이사로 가자」)
+/// moved that pair out to the conte row under the V row, where a panel is a
+/// frame block and prints as one.
 const _trackId = TrackId('band-track');
 
 const _art = LayerMark(process: LayerProcess.art);
@@ -250,13 +252,47 @@ _ParagraphOffsetSpy _painted(WidgetTester tester) {
   return spy;
 }
 
+/// What the conte row's create buttons lay down — their plates and their
+/// `+`.
+_ParagraphOffsetSpy _paintedCreate(WidgetTester tester) {
+  final spy = _ParagraphOffsetSpy();
+  final create = conteCreateFinder(_trackId.value);
+  tester
+      .widget<CustomPaint>(create)
+      .painter!
+      .paint(spy, tester.getSize(create));
+  return spy;
+}
+
 /// The words laid in [band], left to right.
 List<Rect> _wordsIn(Rect band, _ParagraphOffsetSpy spy) =>
     spy.rects.where((rect) => band.contains(rect.center)).toList()
       ..sort((a, b) => a.left.compareTo(b.left));
 
+/// A copy of [painter] at another height, or under another selection — the
+/// painter answers for any row, not only the one mounted.
+StoryboardCutBlocksPainter _painterLike(
+  StoryboardCutBlocksPainter painter, {
+  double? crossAxisExtent,
+  ValueListenable<TrackFrameRangeSelection?>? selectedRange,
+}) => StoryboardCutBlocksPainter(
+  entries: painter.entries,
+  storyboardCellsByCut: painter.storyboardCellsByCut,
+  geometry: painter.geometry,
+  crossAxisExtent: crossAxisExtent ?? painter.crossAxisExtent,
+  minBlockWidth: painter.minBlockWidth,
+  selectedRange: selectedRange ?? painter.selectedRange,
+  rowAddress: painter.rowAddress,
+  hoveredCutId: painter.hoveredCutId,
+  colorScheme: painter.colorScheme,
+  baseTextStyle: painter.baseTextStyle,
+  showSeconds: painter.showSeconds,
+  countingBase: painter.countingBase,
+  devicePixelRatio: painter.devicePixelRatio,
+);
+
 void main() {
-  testWidgets('the block is FIVE bands, and they tile it exactly', (
+  testWidgets('the block is THREE bands, and they tile it exactly', (
     tester,
   ) async {
     await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
@@ -264,23 +300,18 @@ void main() {
     const band = StoryboardCutBlocksPainter.bandHeight;
 
     expect(block.topBand.top, block.rect.top);
-    expect(block.innerTopBand.top, block.topBand.bottom);
-    expect(block.strip.top, block.innerTopBand.bottom);
-    expect(block.innerBottomBand.top, block.strip.bottom);
-    expect(block.bottomBand.top, block.innerBottomBand.bottom);
+    expect(block.strip.top, block.topBand.bottom);
+    expect(block.bottomBand.top, block.strip.bottom);
     expect(block.bottomBand.bottom, block.rect.bottom);
-    for (final each in [
-      block.topBand,
-      block.innerTopBand,
-      block.innerBottomBand,
-      block.bottomBand,
-    ]) {
+    for (final each in [block.topBand, block.bottomBand]) {
       expect(each.height, band);
     }
-    // 🗣️유저 2026-09-26: 「기본높이는 96으로 가자」 — the strip keeps what the
-    // four bands leave of it.
+    // I-73 (the drawn proposal 유저 took on 2026-10-08: 「높이 70 + 30」):
+    // the strip keeps what the cut's two bands leave of the row — the 44px
+    // it had under four.
     expect(block.rect.height, StoryboardPanel.defaultTrackLaneHeight);
-    expect(block.strip.height, block.rect.height - band * 4);
+    expect(block.strip.height, block.rect.height - band * 2);
+    expect(block.strip.height, 44);
   });
 
   testWidgets('the strip fills the block edge to edge — x IS the frame '
@@ -291,29 +322,25 @@ void main() {
 
     expect(block.strip.left, block.rect.left);
     expect(block.strip.right, block.rect.right);
-    for (final band in [
-      block.topBand,
-      block.innerTopBand,
-      block.innerBottomBand,
-      block.bottomBand,
-    ]) {
+    for (final band in [block.topBand, block.bottomBand]) {
       expect(band.width, block.rect.width);
     }
   });
 
-  testWidgets('🗣️the conte blocks\' bands stand on EVERY cut — one with no '
-      'storyboard layer keeps them in the same place (유저 2026-09-26: 「처음'
-      '부터 콘티블록 생각해서 띠 위치 잡아두는게 콘티블록 있는거랑 없는거랑 ui'
-      '차이 안날거같은데」)', (tester) async {
+  // ↩️유저 2026-09-26: 「처음부터 콘티블록 생각해서 띠 위치 잡아두는게
+  // 콘티블록 있는거랑 없는거랑 ui차이 안날거같은데」 — said of the conte
+  // blocks' bands, which stood on every cut. They are a row of their own now,
+  // and the cut block has nothing of a conte layer's to be different by.
+  testWidgets('🗣️a cut block is the same three bands with a conte layer or '
+      'without one', (tester) async {
     await _pump(tester);
     final bare = requireCutBlock(tester, 'cut-1');
-    expect(bare.hasStoryboardLayer, isFalse, reason: '⛔전제');
     await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     final divided = requireCutBlock(tester, 'cut-1');
 
-    expect(bare.innerTopBand, divided.innerTopBand);
+    expect(bare.topBand, divided.topBand);
     expect(bare.strip, divided.strip);
-    expect(bare.innerBottomBand, divided.innerBottomBand);
+    expect(bare.bottomBand, divided.bottomBand);
   });
 
   testWidgets('a cut with NO storyboard row still has one panel over the '
@@ -323,7 +350,6 @@ void main() {
     await _pump(tester);
     final block = requireCutBlock(tester, 'cut-1');
 
-    expect(block.hasStoryboardLayer, isFalse);
     expect(block.cells, hasLength(1));
     expect(block.cells.single.startIndex, 0);
     expect(block.cells.single.endIndexExclusive, 12);
@@ -333,7 +359,6 @@ void main() {
     await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     final block = requireCutBlock(tester, 'cut-1');
 
-    expect(block.hasStoryboardLayer, isTrue);
     expect(block.cells.map((cell) => cell.startIndex), [0, 4, 9]);
     // The last panel runs to the cut end, whatever its stored length said.
     expect(block.cells.map((cell) => cell.endIndexExclusive), [4, 9, 12]);
@@ -344,51 +369,28 @@ void main() {
       '자리에 두자」)', (tester) async {
     await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
     // The painter answers for any row height — at the V row's floor too.
-    final painter = cutBlocksPainter(tester);
     const floor = StoryboardPanel.minTrackLaneHeight;
-    final short = StoryboardCutBlocksPainter(
-      entries: painter.entries,
-      storyboardLayerNames: painter.storyboardLayerNames,
-      storyboardCellsByCut: painter.storyboardCellsByCut,
-      geometry: painter.geometry,
+    final block = _painterLike(
+      cutBlocksPainter(tester),
       crossAxisExtent: floor,
-      minBlockWidth: painter.minBlockWidth,
-      selectedRange: painter.selectedRange,
-      rowAddress: painter.rowAddress,
-      hoveredCutId: painter.hoveredCutId,
-      colorScheme: painter.colorScheme,
-      baseTextStyle: painter.baseTextStyle,
-      showSeconds: painter.showSeconds,
-      countingBase: painter.countingBase,
-      devicePixelRatio: painter.devicePixelRatio,
-    );
-    final block = short.blocks().single;
+    ).blocks().single;
 
     const band = StoryboardCutBlocksPainter.bandHeight;
     expect(
       floor,
-      band * 4,
-      reason: 'the floor is the four bands alone (유저 2026-09-26: 「최솟값 ok」)',
+      band * 2,
+      reason: 'the floor is the bands alone (유저 2026-09-26: 「최솟값 ok」)',
     );
-    for (final each in [
-      block.topBand,
-      block.innerTopBand,
-      block.innerBottomBand,
-      block.bottomBand,
-    ]) {
+    for (final each in [block.topBand, block.bottomBand]) {
       expect(each.height, band);
     }
     expect(block.strip.height, 0);
-    expect(
-      block.cellHeads,
-      hasLength(3),
-      reason: '↩️under 44px the bands folded and the panel writing went',
-    );
-    expect(block.cellCommaLabels, ['4', '5', '3']);
+    expect(block.title, 'cut-1');
+    expect(block.total, '12', reason: 'every word stays whole');
   });
 
-  testWidgets('🗣️the cut\'s pair of bands wears the cut\'s 색 라벨 and the '
-      'conte blocks\' pair the storyboard layer\'s (유저 2026-09-26: 「블록도 '
+  testWidgets('🗣️the cut\'s bands wear the cut\'s 색 라벨, and the conte '
+      'row\'s blocks the storyboard layer\'s (유저 2026-09-26: 「블록도 '
       '색라벨에맞춰서 프레임블록 칠하는거마냥」 · 「안쪽띠, 콘티블록 라벨 반영」)', (
     tester,
   ) async {
@@ -402,23 +404,41 @@ void main() {
 
     expect(spy.fillOf(block.topBand), layerMarkColor(_art).toARGB32());
     expect(spy.fillOf(block.bottomBand), layerMarkColor(_art).toARGB32());
-    expect(spy.fillOf(block.innerTopBand), layerMarkColor(_conte).toARGB32());
-    expect(
-      spy.fillOf(block.innerBottomBand),
-      layerMarkColor(_conte).toARGB32(),
-    );
+    // ↩️The conte blocks' pair of bands, inside the cut block.
+    final conteRow = conteRowPainter(tester, _trackId.value);
+    for (final frame in [0, 4, 9, 11]) {
+      expect(
+        conteRow.resolvedCellStyleFor(frame).background,
+        layerMarkColor(_conte),
+        reason: 'frame $frame',
+      );
+    }
   });
 
-  testWidgets('with no storyboard layer the conte blocks\' bands are the '
-      'PLATE — no layer, no label to wear', (tester) async {
+  testWidgets('with no storyboard layer the conte row wears the PLATE — no '
+      'layer, no label to wear — and its + reads against it', (tester) async {
     await _pump(tester, cutMark: _art);
     final block = requireCutBlock(tester, 'cut-1');
-    final spy = _painted(tester);
-    final plate = spy.plates.single.color.toARGB32();
+    final cut = _painted(tester);
+    final cutPlate = cut.plates.single.color.toARGB32();
+    final create = _paintedCreate(tester);
+    final plate = conteCreatePlates(tester, _trackId.value).single;
 
-    expect(spy.fillOf(block.topBand), layerMarkColor(_art).toARGB32());
-    expect(spy.fillOf(block.innerTopBand), plate);
-    expect(spy.fillOf(block.innerBottomBand), plate);
+    expect(cut.fillOf(block.topBand), layerMarkColor(_art).toARGB32());
+    expect(
+      create.plates.map((each) => (each.rect, each.color.toARGB32())),
+      [(plate.outerRect, cutPlate)],
+      reason: 'the cut block\'s own plate, over the cut\'s whole stretch',
+    );
+    // The + where a panel's name would stand: at the stretch's left, the
+    // band word's inset in.
+    expect(create.rects, hasLength(1), reason: 'the + and nothing else');
+    expect(create.rects.single.left, closeTo(plate.left + 4, 0.01));
+    expect(
+      conteRowBlocks(tester, _trackId.value),
+      isEmpty,
+      reason: 'and the row holds no block there',
+    );
   });
 
   testWidgets('🗣️the plate is the conte sheet\'s ink, and nothing outlines '
@@ -439,19 +459,14 @@ void main() {
     );
     expect(
       spy.fills.map((fill) => fill.rect).toSet(),
-      {
-        block.topBand,
-        block.innerTopBand,
-        block.innerBottomBand,
-        block.bottomBand,
-      },
+      {block.topBand, block.bottomBand},
       reason: 'the bands and nothing else: no panel silhouette (↩️#15), no '
           'create box (↩️D30), no gap',
     );
   });
 
-  group('🗣️F-248: the cut you stand on wears the standing wash on its four '
-      'bands — 「썸네일 제외한 띠 부분. 컷이나 콘티블록 띠만」', () {
+  group('🗣️F-248: the cut you stand on wears the standing wash on its bands '
+      '— 「썸네일 제외한 띠 부분」', () {
     Future<ValueNotifier<CutId?>> stand(
       WidgetTester tester, {
       TimelineRowAddress? on,
@@ -473,12 +488,7 @@ void main() {
       final spy = _painted(tester);
       return (
         bands: [
-          for (final band in [
-            block.topBand,
-            block.innerTopBand,
-            block.innerBottomBand,
-            block.bottomBand,
-          ])
+          for (final band in [block.topBand, block.bottomBand])
             spy.fillOf(band),
         ],
         plate: spy.plates.single.color.toARGB32(),
@@ -491,15 +501,9 @@ void main() {
     testWidgets('on the V row: the bands, never the plate around its '
         'pictures — and they go with the cut', (tester) async {
       final under = await stand(tester, on: const TrackRowAddress(_trackId));
-      final conte = layerMarkColor(_conte);
       final cut = layerMarkColor(_art);
       final stood = painted(tester);
-      expect(stood.bands, [
-        washed(cut),
-        washed(conte),
-        washed(conte),
-        washed(cut),
-      ]);
+      expect(stood.bands, [washed(cut), washed(cut)]);
       expect(stood.plate, conteSheetInk.toARGB32());
 
       under.value = null;
@@ -519,6 +523,16 @@ void main() {
         layerMarkColor(_art).toARGB32(),
       );
     });
+
+    // One standing place: the conte row is a row of its own, and standing
+    // on it is not standing on the cut above it.
+    testWidgets('standing on the CONTE row under it, none', (tester) async {
+      await stand(tester, on: LayerRowAddress(trackConteRowId(_trackId)));
+      expect(painted(tester).bands, [
+        layerMarkColor(_art).toARGB32(),
+        layerMarkColor(_art).toARGB32(),
+      ]);
+    });
   });
 
   test('a selected band you stand on wears both — the wash under the '
@@ -533,8 +547,8 @@ void main() {
     );
   });
 
-  testWidgets('a range selection tints all FOUR bands and never the plate — '
-      'the selection colours what is not the picture', (tester) async {
+  testWidgets('a range selection tints BOTH bands and never the plate — the '
+      'selection colours what is not the picture', (tester) async {
     await _pump(
       tester,
       storyboardLayer: _dividedStoryboardLayer('cut-1', mark: _conte),
@@ -550,41 +564,16 @@ void main() {
       ),
     );
     addTearDown(range.dispose);
-    final selected = StoryboardCutBlocksPainter(
-      entries: painter.entries,
-      storyboardLayerNames: painter.storyboardLayerNames,
-      storyboardCellsByCut: painter.storyboardCellsByCut,
-      geometry: painter.geometry,
-      crossAxisExtent: painter.crossAxisExtent,
-      minBlockWidth: painter.minBlockWidth,
-      selectedRange: range,
-      rowAddress: painter.rowAddress,
-      hoveredCutId: painter.hoveredCutId,
-      colorScheme: painter.colorScheme,
-      baseTextStyle: painter.baseTextStyle,
-      showSeconds: painter.showSeconds,
-      countingBase: painter.countingBase,
-      devicePixelRatio: painter.devicePixelRatio,
-    );
+    final selected = _painterLike(painter, selectedRange: range);
     final block = selected.blocks().single;
     expect(block.isRangeSelected, isTrue, reason: '⛔전제');
 
     final spy = _ParagraphOffsetSpy();
     selected.paint(spy, Size(block.rect.right, block.rect.bottom));
-    Color tint(StoryboardBand band) =>
-        storyboardCarriedWritingGround(block, painter.colorScheme, band: band);
-    expect(tint(StoryboardBand.cut), isNot(block.cutLabel));
-    expect(tint(StoryboardBand.conte), isNot(block.conteLabel));
-    expect(spy.fillOf(block.topBand), tint(StoryboardBand.cut).toARGB32());
-    expect(spy.fillOf(block.bottomBand), tint(StoryboardBand.cut).toARGB32());
-    expect(
-      spy.fillOf(block.innerTopBand),
-      tint(StoryboardBand.conte).toARGB32(),
-    );
-    expect(
-      spy.fillOf(block.innerBottomBand),
-      tint(StoryboardBand.conte).toARGB32(),
-    );
+    final tint = storyboardCarriedWritingGround(block);
+    expect(tint, isNot(block.cutLabel));
+    expect(spy.fillOf(block.topBand), tint.toARGB32());
+    expect(spy.fillOf(block.bottomBand), tint.toARGB32());
     expect(
       spy.plates.single.color.toARGB32(),
       storyboardCutBlockBackgroundColor(
@@ -595,122 +584,97 @@ void main() {
     );
   });
 
-  testWidgets('🗣️a cut with no storyboard layer: its WHOLE inner top band is '
-      'the create button, the + where a conte block\'s name would stand '
-      '(유저 2026-09-26: 「콘티블록 상단띠 전면을 생성버튼으로」)', (tester) async {
-    await _pump(tester);
-    final block = requireCutBlock(tester, 'cut-1');
-    final spy = _painted(tester);
+  // The panels' writing is the conte row's, printed by the timeline's own
+  // row: a name at its block's head and a length at its end — the frame
+  // block's print, where the cut block's inner bands carried them (#15, 유저
+  // 2026-09-25: 「이름은 윗 띠, 코마는 아랫 띠」).
+  group('the panels\' writing is the conte row\'s', () {
+    testWidgets('#15: each panel carries its frame NAME (nothing when '
+        'unnamed — 유저 09-26, ↩️F-149\'s mark) and its own comma count', (
+      tester,
+    ) async {
+      final layer = Layer(
+        id: const LayerId('cut-1-sb'),
+        name: 'SB',
+        kind: LayerKind.storyboard,
+        frames: [
+          Frame(
+            id: const FrameId('cut-1-a'),
+            duration: 1,
+            strokes: const [],
+            name: 'LO',
+          ),
+          Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('cut-1-c'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 4),
+          4: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 5),
+          9: const TimelineExposure.drawing(FrameId('cut-1-c'), length: 3),
+        },
+      );
+      await _pump(tester, storyboardLayer: layer);
+      final row = conteRowPainter(tester, _trackId.value);
 
-    expect(
-      StoryboardCutBlocksPainter.createAffordanceRectOf(block),
-      block.innerTopBand,
-    );
-    final plus = _wordsIn(block.innerTopBand, spy);
-    expect(plus, hasLength(1), reason: 'the + and nothing else');
-    expect(plus.single.left, closeTo(block.rect.left + 4, 0.01));
-    expect(
-      _wordsIn(block.strip, spy),
-      isEmpty,
-      reason: '↩️D30 stood it in a box centred in the strip',
-    );
+      expect(
+        [
+          for (final start in [0, 4, 9])
+            (row.cellModelAt(start).glyph, row.cellModelAt(start).mark),
+        ],
+        [('LO', null), ('', null), ('', null)],
+      );
+      expect(conteRowRunLabels(tester, _trackId.value), [
+        (0, '4'),
+        (4, '5'),
+        (9, '3'),
+      ]);
+    });
 
-    await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
-    expect(
-      StoryboardCutBlocksPainter.createAffordanceRectOf(
-        requireCutBlock(tester, 'cut-1'),
-      ),
-      isNull,
-      reason: 'a cut with a storyboard layer has conte blocks there instead',
-    );
-  });
+    testWidgets('D23: a ONE-comma panel prints no comma count — the shared '
+        'predicate, same gate as the timeline run labels', (tester) async {
+      final layer = Layer(
+        id: const LayerId('cut-1-sb'),
+        name: 'SB',
+        kind: LayerKind.storyboard,
+        frames: [
+          Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
+        ],
+        timeline: {
+          // Panels are the cut's coverage projection — the last one runs to
+          // the cut's end, so the 1-comma panel goes LAST to stay 1 comma.
+          0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 11),
+          11: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 1),
+        },
+      );
+      await _pump(tester, storyboardLayer: layer);
 
-  testWidgets('#15: each panel carries its frame NAME (nothing when unnamed — '
-      '유저 09-26, ↩️F-149\'s mark) and its own comma count — the timeline '
-      'row conventions carried over', (tester) async {
-    final layer = Layer(
-      id: const LayerId('cut-1-sb'),
-      name: 'SB',
-      kind: LayerKind.storyboard,
-      frames: [
-        Frame(
-          id: const FrameId('cut-1-a'),
-          duration: 1,
-          strokes: const [],
-          name: 'LO',
-        ),
-        Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
-        Frame(id: const FrameId('cut-1-c'), duration: 1, strokes: const []),
-      ],
-      timeline: {
-        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 4),
-        4: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 5),
-        9: const TimelineExposure.drawing(FrameId('cut-1-c'), length: 3),
-      },
-    );
-    await _pump(tester, storyboardLayer: layer);
-    final block = requireCutBlock(tester, 'cut-1');
+      expect(
+        conteRowRunLabels(tester, _trackId.value),
+        [(0, '11')],
+        reason: 'length 1 is silent (2코마부터만 표시); length 11 still counts',
+      );
+    });
 
-    expect(block.cellHeads, [
-      (word: 'LO', mark: null),
-      (word: '', mark: null),
-      (word: '', mark: null),
-    ]);
-    expect(block.cellCommaLabels, ['4', '5', '3']);
-  });
+    testWidgets('the last panel runs to the cut\'s end, whatever its stored '
+        'length said — and counts what it shows', (tester) async {
+      // Stored 0·4, 4·5, 9·3 over a cut of 12: the row tiles the cut.
+      await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
 
-  testWidgets('D23: a ONE-comma panel prints no comma count — the shared '
-      'predicate, same gate as the timeline run labels', (tester) async {
-    final layer = Layer(
-      id: const LayerId('cut-1-sb'),
-      name: 'SB',
-      kind: LayerKind.storyboard,
-      frames: [
-        Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
-        Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
-      ],
-      timeline: {
-        // Panels are the cut's coverage projection — the last one runs to
-        // the cut's end, so the 1-comma panel goes LAST to stay 1 comma.
-        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 11),
-        11: const TimelineExposure.drawing(FrameId('cut-1-b'), length: 1),
-      },
-    );
-    await _pump(tester, storyboardLayer: layer);
-    final block = requireCutBlock(tester, 'cut-1');
-
-    expect(
-      block.cellCommaLabels,
-      ['11', ''],
-      reason: 'length 1 is silent (2코마부터만 표시); length 11 still counts',
-    );
-  });
-
-  testWidgets('#15: the no-row cut\'s single placeholder panel prints no '
-      'writing at all', (tester) async {
-    await _pump(tester);
-    final block = requireCutBlock(tester, 'cut-1');
-
-    expect(block.cellHeads, [timelineCellWritesNothing]);
-    expect(block.cellCommaLabels, ['']);
+      expect(conteRowBlocks(tester, _trackId.value), {0: 4, 4: 5, 9: 3});
+    });
   });
 
   group('#15 R3 — the writing anchors (user 2026-07-29), in the BANDS', () {
-    // 🗣️유저 2026-09-25, to 「패널의 이름·코마 글씨가 썸네일을 가린다」:
-    // 「띠로 옮긴다 — 이름은 윗 띠, 코마는 아랫 띠」 — and since 2026-09-26 the
-    // conte blocks' own pair of bands, inside the cut's. ↩️D29-2 carried
-    // them over the picture on plates of the band's fill, and the plates
-    // covered the pictures.
     const cell = 24.0;
 
     Future<(StoryboardCutBlockVisual, _ParagraphOffsetSpy)> painted(
       WidgetTester tester, {
-      required bool named,
       double pixelsPerFrame = cell,
     }) async {
       await _pump(
         tester,
-        storyboardLayer: _dividedStoryboardLayer('cut-1', named: named),
+        storyboardLayer: _dividedStoryboardLayer('cut-1', named: true),
         pixelsPerFrame: pixelsPerFrame,
         thumbnailFor: (cut, frame, {required shownHeight, region}) =>
             null,
@@ -718,136 +682,34 @@ void main() {
       return (requireCutBlock(tester, 'cut-1'), _painted(tester));
     }
 
-    testWidgets('a panel\'s name stands in the conte blocks\' TOP band from '
-        'the panel\'s left — the cut title\'s anchor — the title alone in '
-        'the cut\'s, and nothing over the picture', (tester) async {
-      final (block, spy) = await painted(tester, named: true);
+    testWidgets('the cut\'s title stands alone in its top band from the '
+        'block\'s left, its length alone in its bottom band at the right — '
+        'and nothing over the picture', (tester) async {
+      final (block, spy) = await painted(tester);
 
       final title = _wordsIn(block.topBand, spy);
       expect(title, hasLength(1), reason: 'the title alone');
       expect(title.single.left, closeTo(block.rect.left + 4, 0.01));
-      final names = _wordsIn(block.innerTopBand, spy);
-      expect(names, hasLength(3), reason: 'a, b and c');
-      final [a, b, c] = names;
-      // Panels a, b and c start at frames 0, 4 and 9; the word inset is 4.
-      expect(a.left, closeTo(block.rect.left + 4, 0.01));
-      expect(b.left, closeTo(block.rect.left + 4 * cell + 4, 0.01));
-      expect(c.left, closeTo(block.rect.left + 9 * cell + 4, 0.01));
-      expect(
-        _wordsIn(block.strip, spy),
-        isEmpty,
-        reason: '🗣️nothing rides the picture',
-      );
-    });
-
-    testWidgets('a name wider than its panel is narrowed into the panel — '
-        'never gone (R26 #38: 「절대 안 사라지도록」)', (tester) async {
-      const narrow = 4.0;
-      final (block, spy) = await painted(
-        tester,
-        named: true,
-        pixelsPerFrame: narrow,
-      );
-      final [a, ...] = _wordsIn(block.innerTopBand, spy);
-      final panelAEnd = block.rect.left + 4 * narrow;
-      expect(a.left, closeTo(block.rect.left + 4, 0.01));
-      expect(
-        a.right,
-        lessThanOrEqualTo(panelAEnd - 4 + 0.01),
-        reason: 'panel a\'s own name, narrowed into its own panel',
-      );
-    });
-
-    testWidgets('a panel\'s comma count stands in the conte blocks\' BOTTOM '
-        'band under the panel\'s last cell, and the cut\'s length alone in '
-        'the cut\'s', (tester) async {
-      final (block, spy) = await painted(tester, named: true);
-
       final length = _wordsIn(block.bottomBand, spy);
       expect(length, hasLength(1), reason: 'the length alone');
       expect(length.single.right, closeTo(block.rect.right - 4, 0.01));
-      final commas = _wordsIn(block.innerBottomBand, spy);
-      expect(commas, hasLength(3), reason: '4, 5 and 3');
-      final [a, b, c] = commas;
-      // F-96: centred on the panel's last cell while it fits — and on the
-      // band's middle across it.
-      expect(a.center.dx, closeTo(block.rect.left + 3.5 * cell, 0.01));
-      expect(b.center.dx, closeTo(block.rect.left + 8.5 * cell, 0.01));
       expect(
-        c.center.dx,
-        closeTo(block.rect.left + 11.5 * cell, 0.01),
-        reason: '↩️it ended before the cut\'s length while the two shared a '
-            'band',
-      );
-      expect(a.center.dy, closeTo(block.innerBottomBand.center.dy, 0.01));
-    });
-
-    // 🧪F-220: the zoom follows every percent, and the law lays cells a
-    // pixel apart in width — 14 and 15 at 14.6. A count centred on a cell
-    // of the zoom's nominal width sat a fraction off the panel's last cell.
-    testWidgets('at a zoom that is not whole pixels the comma count centres '
-        'on the panel\'s last cell as the law laid it', (tester) async {
-      const zoom = 14.6;
-      double edge(int frame) => timelineFrameEdge(frame, zoom);
-      final (block, spy) = await painted(
-        tester,
-        named: true,
-        pixelsPerFrame: zoom,
-      );
-
-      final commas = _wordsIn(block.innerBottomBand, spy);
-      expect(commas, hasLength(3), reason: '4, 5 and 3');
-      // The panels end at frames 4, 9 and 12.
-      for (final (comma, end) in [
-        (commas[0], 4),
-        (commas[1], 9),
-        (commas[2], 12),
-      ]) {
-        expect(
-          comma.center.dx,
-          closeTo(block.rect.left + (edge(end - 1) + edge(end)) / 2, 0.01),
-          reason: 'the panel ending at $end',
-        );
-      }
-    });
-
-    // 🗣️유저 2026-09-26: 「콘티레이어는 이름 없으면 진짜 이름 없도록 … 그리고
-    // 이름없다고해서 띠까지 썸네일 차지한다던가 이런거없이 ui는 안바뀌게」.
-    // ↩️It wore the timeline's in-between mark, drawn on the band, since
-    // 2026-09-24 (「같은취급으로 통일」) — F-149's rule, now animation's alone.
-    testWidgets('🗣️a panel whose drawing has no cel number writes NOTHING '
-        'where its name would stand — no word, no mark — and the bands keep '
-        'their place', (tester) async {
-      final (block, spy) = await painted(tester, named: false);
-
-      expect(
-        _wordsIn(block.innerTopBand, spy),
+        _wordsIn(block.strip, spy),
         isEmpty,
-        reason: 'no name at all',
+        reason: '🗣️nothing rides the picture — a panel\'s name and length '
+            'are the conte row\'s (↩️in bands of their own here)',
       );
-      expect(
-        spy.circles,
-        isEmpty,
-        reason: 'no in-between mark on a storyboard panel',
-      );
-      final named = (await painted(tester, named: true)).$1;
-      expect(block.innerTopBand, named.innerTopBand, reason: 'the band stays');
-      expect(block.strip, named.strip, reason: 'the picture does not grow');
+      expect(spy.circles, isEmpty, reason: 'no mark either');
     });
 
     // 🗣️F-234 (유저 2026-09-29): 「코마텍스트가 위아래 정렬이 중앙이아니라
     // 살짝위라던가 … 특히 컷블록의 코마텍스트. 관련 텍스트 통일」.
-    testWidgets('🚨F-234: every word in the four bands keeps its whole '
-        'height — the block word\'s box, which the band holds — on the '
-        'band\'s middle', (tester) async {
-      final (block, spy) = await painted(tester, named: true);
+    testWidgets('🚨F-234: every word in the bands keeps its whole height — '
+        'the block word\'s box, which the band holds — on the band\'s '
+        'middle', (tester) async {
+      final (block, spy) = await painted(tester);
 
-      for (final band in [
-        block.topBand,
-        block.innerTopBand,
-        block.innerBottomBand,
-        block.bottomBand,
-      ]) {
+      for (final band in [block.topBand, block.bottomBand]) {
         final words = _wordsIn(band, spy);
         expect(words, isNotEmpty, reason: 'fixture: $band writes');
         for (final word in words) {
@@ -864,15 +726,21 @@ void main() {
 
     testWidgets('F-234: the words are printed from the row\'s own ambient '
         'style — the one every block word is printed from', (tester) async {
-      await painted(tester, named: true);
+      await painted(tester);
+      final ambient = DefaultTextStyle.of(
+        tester.element(find.byType(StoryboardPanel)),
+      ).style;
 
       expect(
         cutBlocksPainter(tester).baseTextStyle,
-        DefaultTextStyle.of(
-          tester.element(find.byType(StoryboardPanel)),
-        ).style,
+        ambient,
         reason: '↩️it was the theme\'s labelSmall, a style no other block '
             'word reads',
+      );
+      expect(
+        conteRowPainter(tester, _trackId.value).baseTextStyle,
+        ambient,
+        reason: 'and the conte row\'s words with them',
       );
     });
 
@@ -888,7 +756,7 @@ void main() {
           .where(
             (o) =>
                 (o.dx - (block.rect.left + 4)).abs() < 0.01 &&
-                o.dy < block.innerTopBand.top,
+                o.dy < block.strip.top,
           )
           .toList();
       expect(titleHits.length, 1, reason: 'the fill pass and nothing under it');
@@ -913,65 +781,31 @@ void main() {
     );
   });
 
-  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」. Each word is
-  // first painted at a roomy zoom, where it runs its natural length.
-  group('a word a few pixels long gives up its letter gaps and is not '
-      'narrowed', () {
-    final onePanel = Layer(
-      id: const LayerId('cut-1-sb'),
-      name: 'SB',
-      kind: LayerKind.storyboard,
-      frames: [
-        Frame(id: const FrameId('cut-1-a'), duration: 1, strokes: const []),
-      ],
-      timeline: {
-        0: const TimelineExposure.drawing(FrameId('cut-1-a'), length: 12),
-      },
-    );
-    Future<({double width, double xScale})> wordIn(
-      WidgetTester tester,
-      Rect Function(StoryboardCutBlockVisual block) band, {
-      required double pixelsPerFrame,
-    }) async {
-      await _pump(
-        tester,
-        pixelsPerFrame: pixelsPerFrame,
-        storyboardLayer: onePanel,
-      );
+  // 🗣️F-234-Q1 (유저 2026-09-29): 「글자 사이부터 줄이기」. The word is first
+  // painted at a roomy zoom, where it runs its natural length.
+  testWidgets('a title a few pixels long gives up its letter gaps and is '
+      'not narrowed', (tester) async {
+    Future<({double width, double xScale})> titleAt(
+      double pixelsPerFrame,
+    ) async {
+      await _pump(tester, pixelsPerFrame: pixelsPerFrame);
       final block = requireCutBlock(tester, 'cut-1');
       final spy = _painted(tester);
       final at = spy.rects.indexWhere(
-        (rect) => band(block).contains(rect.center),
+        (rect) => block.topBand.contains(rect.center),
       );
       return (width: spy.rects[at].width, xScale: spy.xScales[at]);
     }
 
-    testWidgets('the cut\'s title', (tester) async {
-      Rect title(StoryboardCutBlockVisual block) => block.topBand;
-      final natural = await wordIn(tester, title, pixelsPerFrame: 12);
-      final tight = await wordIn(tester, title, pixelsPerFrame: 5.25);
-      final room = requireCutBlock(tester, 'cut-1').topBand.width - 8;
-      expect(
-        natural.width - room,
-        inExclusiveRange(0, 4 * maxGapTightening),
-        reason: '⛔전제: longer than its room by less than its four gaps give',
-      );
-      expect(tight.xScale, 1, reason: 'its gaps gave the pixels');
-    });
-
-    testWidgets('a panel\'s comma count', (tester) async {
-      Rect commas(StoryboardCutBlockVisual block) => block.innerBottomBand;
-      final natural = await wordIn(tester, commas, pixelsPerFrame: 12);
-      // Twelve frames of 22/12px: 22px of panel.
-      final tight = await wordIn(tester, commas, pixelsPerFrame: 22 / 12);
-      expect(
-        natural.width - 22,
-        inExclusiveRange(0, maxGapTightening),
-        reason: '⛔전제: 「12」 is longer than its panel by less than its gap',
-      );
-      expect(tight.xScale, 1, reason: 'its gap gave the pixel');
-      expect(tight.width, lessThanOrEqualTo(22), reason: 'set that tight');
-    });
+    final natural = await titleAt(12);
+    final tight = await titleAt(5.25);
+    final room = requireCutBlock(tester, 'cut-1').topBand.width - 8;
+    expect(
+      natural.width - room,
+      inExclusiveRange(0, 4 * maxGapTightening),
+      reason: '⛔전제: longer than its room by less than its four gaps give',
+    );
+    expect(tight.xScale, 1, reason: 'its gaps gave the pixels');
   });
 
   testWidgets('🗣️the row asks its pictures at the strip\'s height in DEVICE '
@@ -1029,20 +863,22 @@ void main() {
     expect(asked, isEmpty, reason: 'a row at its floor shows no picture');
   });
 
-  test('🗣️the V row\'s heights are the user\'s: 96 by default and the four '
-      'bands at the floor (유저 2026-09-26: 「기본높이는 96으로 가자. 최솟값 '
-      'ok. 최대값은 최대한 키울수있으면 좋아」)', () {
-    expect(StoryboardPanel.defaultTrackLaneHeight, 96);
+  test('the V row\'s heights: 70 by default — the cut\'s two bands and the '
+      '44px its picture had — and the two bands at the floor (I-73, the '
+      'proposal 유저 took on 2026-10-08: 「높이 70 + 30」; ↩️96 and four '
+      'bands, 유저 2026-09-26: 「기본높이는 96으로 가자. 최솟값 ok」)', () {
+    expect(StoryboardPanel.defaultTrackLaneHeight, 70);
     expect(
       StoryboardPanel.minTrackLaneHeight,
-      StoryboardCutBlocksPainter.bandHeight * 4,
+      StoryboardCutBlocksPainter.bandHeight * 2,
     );
   });
 
-  testWidgets('🗣️what an edge stands on is read off the block — its four '
-      'bands in their fills, and each picture where it is drawn, on its '
-      'paper (유저 2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 '
-      '가능하지?」)', (tester) async {
+  testWidgets('🗣️what an edge stands on is read off the block — its bands in '
+      'their fill, and each picture where it is drawn, on its paper (유저 '
+      '2026-09-26: 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 가능하지?」)', (
+    tester,
+  ) async {
     final picture = (await tester.runAsync(() async {
       final recorder = ui.PictureRecorder();
       Canvas(recorder).drawRect(
@@ -1064,16 +900,12 @@ void main() {
     final block = requireCutBlock(tester, 'cut-1');
     final grounds = cutBlocksPainter(tester).groundsOf(block);
 
-    expect(grounds.take(4).map((ground) => ground.rect), [
+    expect(grounds.take(2).map((ground) => ground.rect), [
       block.topBand,
-      block.innerTopBand,
-      block.innerBottomBand,
       block.bottomBand,
     ]);
-    expect(grounds.take(4).map((ground) => ground.color), [
+    expect(grounds.take(2).map((ground) => ground.color), [
       layerMarkColor(_art),
-      layerMarkColor(_conte),
-      layerMarkColor(_conte),
       layerMarkColor(_art),
     ]);
     // Panel a (4 frames) is wider than its picture, which is drawn the
@@ -1082,12 +914,12 @@ void main() {
     final drawnWidth = 160 * strip.height / 90;
     expect(drawnWidth, lessThan(4 * cell), reason: '⛔전제');
     expect(
-      grounds[4].rect,
+      grounds[2].rect,
       Rect.fromLTWH(block.rect.left, strip.top, drawnWidth, strip.height),
     );
-    expect(grounds[4].color, storyboardPanelPictureGroundColor);
+    expect(grounds[2].color, storyboardPanelPictureGroundColor);
     expect(
-      grounds.skip(5).map((ground) => (ground.rect, ground.color)),
+      grounds.skip(3).map((ground) => (ground.rect, ground.color)),
       [
         (
           Rect.fromLTRB(
@@ -1112,8 +944,9 @@ void main() {
     );
   });
 
-  testWidgets('each edge reads the grounds of the block it stands in, moved '
-      'into its own chrome layer', (tester) async {
+  testWidgets('each edge reads the grounds of the block it stands in', (
+    tester,
+  ) async {
     await tester.binding.setSurfaceSize(const Size(1400, 700));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -1160,34 +993,31 @@ void main() {
     );
     await tester.pumpAndSettle();
     final painter = cutBlocksPainter(tester);
-    const band = StoryboardCutBlocksPainter.bandHeight;
-    final grounds = StoryboardPlateGrounds(painter, crossOffset: band);
+    final grounds = StoryboardPlateGrounds(painter);
     final blocks = painter.blocks();
     expect(blocks, hasLength(3), reason: '⛔전제');
 
-    // A triangle hanging from each block's conte top band, as a chrome
-    // layer mounted a band down the row sees it.
+    // A triangle hanging in each block's top band, at its end.
     for (final (index, block) in blocks.indexed) {
-      final box = Rect.fromLTWH(block.rect.right - 8, 0, 8, 20);
+      final box = Rect.fromLTWH(block.rect.right - 8, 0, 8, 10);
       final under = grounds.under(box);
       expect(
         under.map((ground) => ground.rect),
-        [block.innerTopBand.shift(const Offset(0, -band))],
+        [block.topBand],
         reason: 'block $index',
       );
       expect(
         under.single.color,
         [
-          layerMarkColor(_conte),
-          // No storyboard layer: the plate, at rest.
-          conteSheetInk,
+          layerMarkColor(_art),
+          layerMarkColor(const LayerMark(process: LayerProcess.key)),
           layerMarkColor(LayerMark.none),
         ][index],
-        reason: 'block $index',
+        reason: 'block $index: its own cut\'s label',
       );
     }
     expect(
-      grounds.under(const Rect.fromLTWH(-40, 0, 8, 20)),
+      grounds.under(const Rect.fromLTWH(-40, 0, 8, 10)),
       isEmpty,
       reason: 'nothing under a box before the first block',
     );

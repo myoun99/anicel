@@ -141,8 +141,8 @@ double blockEdgeGripCornerRadius(
 ///
 /// [paperCorner] is that paper's radius — the block's own
 /// ([blockEdgeGripCornerRadius]), or, where the paper is not the block the
-/// box was laid out for, that paper's: the storyboard's cut plate, round at
-/// the cut's ends and straight between its panels ([TimelineGripPaper]).
+/// box was laid out for, that paper's: the storyboard's cut plate
+/// ([TimelineGripPaper]).
 typedef BlockEdgeGripRound = ({double paperCorner, double bleed});
 
 /// The grip's triangle inside its [box]: the right angle in the block's

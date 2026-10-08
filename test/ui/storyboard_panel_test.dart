@@ -14,6 +14,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/models/storyboard_timeline_layout.dart';
+import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 
 void main() {
@@ -214,13 +215,13 @@ void main() {
     // ↩️F-89 (유저 2026-09-12): the block states the cut's OWN length now,
     // by the frame blocks' run label — for the first cut the two agree.
     expect(block.total, '24');
-    expect(block.hasStoryboardLayer, isFalse);
-    // D27: the honest empty state — no explanatory copy in the band.
-    expect(block.layerLabel, '');
+    // D27: the honest empty state — the conte row holds no block, and no
+    // explanatory copy anywhere.
+    expect(conteRowBlocks(tester, 'track-a'), isEmpty);
   });
 
   testWidgets(
-    'shows storyboard strip and name when a storyboard layer exists',
+    'shows the conte row\'s blocks and name when a storyboard layer exists',
     (tester) async {
       await _pumpPanel(
         tester,
@@ -229,9 +230,8 @@ void main() {
         ),
       );
 
-      final block = requireCutBlock(tester, 'cut-a');
-      expect(block.hasStoryboardLayer, isTrue);
-      expect(block.layerLabel, 'SB');
+      expect(conteRowBlocks(tester, 'track-a'), isNotEmpty);
+      expect(conteRowName(tester, 'track-a'), 'SB');
     },
   );
 
@@ -308,7 +308,10 @@ void main() {
     final block = requireCutBlock(tester, 'cut-a');
     expect(block.title, 'Cut A');
     expect(block.total, isNotNull);
-    expect(block.layerLabel, 'Storyboard Layer With A Long Name');
+    expect(
+      conteRowName(tester, 'track-a'),
+      'Storyboard Layer With A Long Name',
+    );
   });
 
   testWidgets('building the panel does not mutate the project', (tester) async {

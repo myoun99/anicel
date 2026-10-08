@@ -16,13 +16,6 @@ class _TimelineDrawingFrames {
     return _controller.hasSelectedFrameForLayer(layer);
   }
 
-  bool isDrawingStartForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0) {
-      return false;
-    }
-    return layer.timeline[frameIndex]?.isDrawing ?? false;
-  }
-
   /// A drawing can be created on any uncovered cell — and INSIDE a block,
   /// where it divides that block instead (user's rule 2026-07-27).
   ///

@@ -171,7 +171,10 @@ void main() {
     await tester.pump();
     expect(_laneHeights(tester), {ceiling});
 
-    await gesture.moveBy(const Offset(0, -100));
+    // The hand ran the default height and twenty more past the ceiling;
+    // back by the default alone it is still twenty past. (↩️`-100`, which
+    // was short of the overrun only while the default was 96.)
+    await gesture.moveBy(const Offset(0, -_default));
     await tester.pump();
     expect(
       _laneHeights(tester),

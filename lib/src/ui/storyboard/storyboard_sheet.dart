@@ -29,11 +29,12 @@ class _StoryboardSheet {
 
   /// Every track's rows, top to bottom — each track's group as the strip
   /// column stacks it (the transition row, the S rows and their lanes, the
-  /// V row and its lanes).
+  /// V row and its lanes, the conte row) — by the address each is stood on
+  /// ([_standingAddressOf]).
   List<TimelineRowAddress> rows() => [
     for (final track in _state.widget.project.tracks)
       for (final slot in _state._railRows._trackGroupRowGeometry(track))
-        ?(slot.row ?? slot.laneRow),
+        ?_standingAddressOf(slot),
   ];
 
   /// The flip window's picture of [rows]: each row's blocks on the TRACK's
@@ -70,7 +71,7 @@ class _StoryboardSheet {
         ],
       );
       for (final slot in _state._railRows._trackGroupRowGeometry(track)) {
-        final address = slot.row ?? slot.laneRow;
+        final address = _standingAddressOf(slot);
         if (address == null) {
           continue;
         }
@@ -109,14 +110,18 @@ class _StoryboardSheet {
       case TrackRowAddress():
         return flipHudTrackRow(
           name: group.vRowName,
-          panels: withRuns ? storyboardPanelsOnTrack(group.cuts) : const [],
+          cuts: withRuns ? group.cuts : const [],
         );
       case LayerRowAddress(:final layerId):
         final slot = _seSlotOf(track, layerId);
         return flipHudLayerRow(
-          // The S row as this rail draws it (a take in flight stands in for
-          // its lane), else the one other layer row a track group has.
-          slot == -1
+          // The conte row as this rail draws it — the cuts' conte layers on
+          // the track's axis; the S row as this rail draws it (a take in
+          // flight stands in for its lane); else the one other layer row a
+          // track group has.
+          trackIdOfConteRow(layerId) != null
+              ? trackConteRowShown(track.id, group.cuts)
+              : slot == -1
               ? _state.widget.transitionRowShown?.call(
                       track,
                       track.transitionLayer,
@@ -125,10 +130,7 @@ class _StoryboardSheet {
               : (_state._seDisplayAt(track, slot) ?? track.transitionLayer),
           withRuns: withRuns,
           // The strip's own writing on its blocks: the cel each opens with.
-          celNameAt: (layer, frame) {
-            final frameId = layer.timeline[frame]?.frameId;
-            return frameId == null ? null : layer.frameById(frameId)?.name;
-          },
+          celNameAt: timelineOwnCelNameAt,
           spanDefById: _state.widget.transitionDefById,
         );
       case LaneRowAddress(:final layerId, :final laneId):

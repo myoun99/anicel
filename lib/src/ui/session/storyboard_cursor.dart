@@ -9,6 +9,7 @@ import '../../models/layer_kind.dart';
 import '../../models/storyboard_coverage.dart';
 import '../../models/timeline_coverage.dart';
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart';
 import '../storyboard_layer_policy.dart';
 import '../text/app_strings.dart';
 import 'active_cut_controllers.dart';
@@ -164,9 +165,19 @@ class StoryboardCursor {
   }
 
   /// The BLOCK under the storyboard cursor, whatever its kind: the standing
-  /// V row's cut, the standing S row's SE block, or the transition row's
-  /// span. Null where the cursor covers nothing (a gap is an honest
-  /// nothing, not a fallback to the other panel's subject).
+  /// V row's cut, the conte row's panel, the standing S row's SE block, or
+  /// the transition row's span. Null where the cursor covers nothing (a gap
+  /// is an honest nothing, not a fallback to the other panel's subject).
+  ///
+  /// 🗣️THE ROW SAYS WHICH (I-73, 유저 2026-10-08): 「v행에서는 콘티블록에
+  /// 서있다거나 하는걸 안하도록 … 컷 선택만 되도록. 그러고 v행 아래에 콘티행
+  /// 만들어서 거기서」. The V row's block is its CUT; the conte row's is the
+  /// PANEL of the cut that stands under it.
+  ///
+  /// ↩️D28 (2026-08-18) answered both off the V row — 「스토리보드레이어 존재
+  /// 시 대상이 스토리보드레이어로」: a cut with a storyboard layer gave its
+  /// panel, one without gave itself — because the panels were drawn inside
+  /// the cut block and had no row to stand on.
   StoryboardCursorBlock? storyboardCursorBlockOrNull() {
     switch (_selection.storyboardStandingRow) {
       case LayerRowAddress(:final layerId)
@@ -176,28 +187,30 @@ class StoryboardCursor {
           return null;
         }
         return StoryboardCursorTransitionSpan(span.key, span.value.length);
+      case LayerRowAddress(:final layerId)
+          when trackIdOfConteRow(layerId) != null:
+        // A cut with no conte row has no panel, and a gap has no cut.
+        final cut = _cutUnderCursor();
+        return cut == null ? null : _panelUnderCursor(cut);
       case LayerRowAddress(:final layerId):
         return _rowBlockUnderCursor(layerId);
       case LaneRowAddress():
         // A lane row holds keys, not blocks — the lane-verb family owns it.
         return null;
       case TrackRowAddress():
-        // Not parked in a gap ⇒ the cut-local playhead sits inside the
-        // ACTIVE cut, so the cut under the cursor is that cut by
-        // construction (the storyboard's cell press promotes it).
-        if (_timeline.editingSession.playheadInGap) {
-          return null;
-        }
-        final cut = _project.activeCutOrNull;
-        if (cut == null) {
-          return null;
-        }
-        // D28: with a storyboard layer on the cut, the frame verbs target
-        // the PANEL under the cut-local cursor; a cut with NO storyboard
-        // layer keeps the old cut-block law outright.
-        return _panelUnderCursor(cut) ?? StoryboardCursorCutBlock(cut);
+        final cut = _cutUnderCursor();
+        return cut == null ? null : StoryboardCursorCutBlock(cut);
     }
   }
+
+  /// The cut the storyboard's cursor stands in, or null in a gap.
+  ///
+  /// Not parked in a gap ⇒ the cut-local playhead sits inside the ACTIVE
+  /// cut, so the cut under the cursor is that cut by construction (the
+  /// storyboard's cell press promotes it).
+  Cut? _cutUnderCursor() => _timeline.editingSession.playheadInGap
+      ? null
+      : _project.activeCutOrNull;
 
   /// The BLOCK under the TIMELINE's cursor — the row that panel stands on
   /// ([Standing.timelineStandingRow]) × the playhead: the block of a cut's
@@ -268,9 +281,8 @@ class StoryboardCursor {
 
   /// D28: the conte PANEL the cut-local cursor stands on in [cut]'s
   /// storyboard row. Null without a row — and for a ghost or uncovered
-  /// cell (junk the coverage rule merely tolerates), which falls back to
-  /// the cut block rather than lighting a verb the machinery will refuse
-  /// (T25).
+  /// cell (junk the coverage rule merely tolerates), which is nothing
+  /// rather than a verb lit over what the machinery will refuse (T25).
   ///
   /// The storyboard's cursor stands in the CONTE's time; the row's keys
   /// count the cut's frames, which begin earlier in a cut an O.L arrives
@@ -344,22 +356,30 @@ class StoryboardCursor {
         StoryboardCursorRowBlock() ||
         StoryboardCursorCutBlock() ||
         StoryboardCursorTransitionSpan() ||
-        // D28 ⚠️: delete keeps the CUT answer for now — whether the shared
-        // delete should remove the PANEL instead is a recorded user
-        // question (the frame pill retargeted; the verb matrix beyond it
-        // is the user's to rule).
         StoryboardCursorStoryboardPanel() => true,
       };
 
   /// Deletes THE BLOCK UNDER THE CURSOR, whatever its kind — the cut, the
-  /// SE block, or the transition span, each through its own existing
-  /// removal verb. One undo step each, like the cell delete it mirrors.
+  /// conte panel, the SE block, or the transition span, each through its own
+  /// existing removal verb. One undo step each, like the cell delete it
+  /// mirrors.
+  ///
+  /// 🗣️A PANEL IS DELETED AS A PANEL (I-73, 유저 2026-10-08): 「삭제는
+  /// 컷이아니라 해당 서있는 칸이지워지게」 — the cut row's own block, removed by
+  /// the verb the timeline removes it with. ↩️D28 kept the CUT answer for a
+  /// panel under the V row's cursor, with the question left for the user;
+  /// this is its answer, and the V row's block is the cut alone now.
   void deleteBlockAtStoryboardCursor() {
     switch (storyboardCursorBlockOrNull()) {
       case null:
         return;
-      case StoryboardCursorCutBlock() || StoryboardCursorStoryboardPanel():
+      case StoryboardCursorCutBlock():
         _cutVerbs.deleteActiveCut();
+      case StoryboardCursorStoryboardPanel(:final row, :final panelStartIndex):
+        _controllers.timelineController.deleteBlocksForLayers({
+          row.id: [panelStartIndex],
+        });
+        _changes.notifyChanged();
       case StoryboardCursorRowBlock(:final layerId, :final blockStartIndex):
         // ⛔This used to return when `activeCutOrNull == null` — the fourth
         // copy of the sentence H11 retired (「a parked playhead has no cut
@@ -503,10 +523,13 @@ class StoryboardCursorTransitionSpan extends StoryboardCursorBlock {
   final int spanLength;
 }
 
-/// D28: the cut's STORYBOARD PANEL under the cursor — with a storyboard
-/// layer on the cut, the frame verbs target the panel, not the cut
-/// (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」, the later law
-/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel exists).
+/// The cut's STORYBOARD PANEL under the cursor — what the storyboard's
+/// CONTE row stands on (I-73, 유저 2026-10-08).
+///
+/// ↩️D28 (2026-08-18): it was the V row's answer wherever the cut carried a
+/// storyboard layer (「스토리보드레이어 존재 시 대상이 스토리보드레이어로」,
+/// superseding 「컷블록 위 4 = 컷길이 4」 exactly where a panel existed). The
+/// V row's block is its cut again, and the panel has the row it is drawn on.
 class StoryboardCursorStoryboardPanel extends StoryboardCursorBlock {
   const StoryboardCursorStoryboardPanel(
     this.cut,

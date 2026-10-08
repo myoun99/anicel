@@ -24,11 +24,14 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 /// that the cut's title had left the picture (「THE BANDS carry the writing」)
 /// and the panel's labels never had.
 ///
-/// 🗣️유저 2026-09-26: the bands wear LABELS — the cut's pair the cut's
-/// (「블록도 색라벨에맞춰서 프레임블록 칠하는거마냥」), the conte blocks' pair
-/// the storyboard layer's (「안쪽띠, 콘티블록 라벨 반영」). The ground is still
-/// carried: every word stands in a band, and a band's colour is known
-/// without looking at a pixel.
+/// 🗣️유저 2026-09-26: the bands wear the cut's LABEL (「블록도 색라벨에맞춰서
+/// 프레임블록 칠하는거마냥」). The ground is still carried: every word stands
+/// in a band, and a band's colour is known without looking at a pixel.
+///
+/// ↩️The conte blocks' words stood in a pair of bands of their own, in the
+/// storyboard layer's label (「안쪽띠, 콘티블록 라벨 반영」), until I-73 (유저
+/// 2026-10-08: 「띠 둘만 이사로 가자」) made them the conte row's frame blocks
+/// — whose words stand on their own paper, as every frame block's do.
 void main() {
   final conte = layerMarkColor(const LayerMark(process: LayerProcess.conte));
   final art = layerMarkColor(const LayerMark(process: LayerProcess.art));
@@ -36,7 +39,6 @@ void main() {
 
   StoryboardCutBlockVisual visual({
     required Color cutLabel,
-    required Color? conteLabel,
     bool isRangeSelected = false,
   }) => StoryboardCutBlockVisual(
     cutId: const CutId('cut-x'),
@@ -45,82 +47,52 @@ void main() {
     isHovered: false,
     isStanding: false,
     title: '1',
-    layerLabel: '',
-    hasStoryboardLayer: conteLabel != null,
     total: '12',
     thumbnails: const [],
     cells: const [],
     topBand: const Rect.fromLTWH(0, 0, 120, 13),
-    innerTopBand: const Rect.fromLTWH(0, 13, 120, 13),
-    strip: const Rect.fromLTWH(0, 26, 120, 44),
-    innerBottomBand: const Rect.fromLTWH(0, 70, 120, 13),
+    strip: const Rect.fromLTWH(0, 13, 120, 70),
     bottomBand: const Rect.fromLTWH(0, 83, 120, 13),
     cutLabel: cutLabel,
-    conteLabel: conteLabel,
   );
-
-  final scheme = ThemeData.dark().colorScheme;
-  Color ground(StoryboardCutBlockVisual block, StoryboardBand band) =>
-      storyboardCarriedWritingGround(block, scheme, band: band);
 
   test('carried writing asks nothing about the picture — it has no argument '
       'for one', () {
     // The signature is the assertion: a ground that cannot be told about
     // thumbnails cannot diverge when they are switched on.
-    final block = visual(cutLabel: paper, conteLabel: conte);
-    for (final band in StoryboardBand.values) {
-      expect(ground(block, band), isNotNull);
-    }
+    expect(storyboardCarriedWritingGround(visual(cutLabel: paper)), isNotNull);
   });
 
-  test('the cut\'s title and a panel\'s name, in bands of one label, wear ONE '
-      'ink — the disagreement the user read has nowhere to come from', () {
+  test('the cut\'s bands ARE its label, whatever the label', () {
     for (final label in [paper, conte, art]) {
-      final block = visual(cutLabel: label, conteLabel: label);
-      expect(
-        ground(block, StoryboardBand.conte),
-        ground(block, StoryboardBand.cut),
-        reason: 'one label, one ground: the user read one block wearing two '
-            'inks, white on the band and black over the thumbnail',
-      );
+      expect(storyboardCarriedWritingGround(visual(cutLabel: label)), label);
     }
   });
 
-  test('each pair of bands IS its label: the cut\'s the cut\'s, the conte '
-      'blocks\' the storyboard layer\'s', () {
-    final block = visual(cutLabel: art, conteLabel: conte);
-    expect(ground(block, StoryboardBand.cut), art);
-    expect(ground(block, StoryboardBand.conte), conte);
-  });
-
-  test('with no storyboard layer the inner bands are the PLATE — and the '
-      '`+` there reads the plate, never a picture', () {
-    final resting = visual(cutLabel: paper, conteLabel: null);
-    expect(
-      ground(resting, StoryboardBand.conte),
-      storyboardCutBlockBackgroundColor(scheme, hovered: false),
+  test('the `+` of a cut with no conte layer reads the PLATE, never a '
+      'picture', () {
+    final plate = storyboardCutBlockBackgroundColor(
+      ThemeData.dark().colorScheme,
+      hovered: false,
     );
     expect(
-      timelineTextOnColor(ground(resting, StoryboardBand.conte)),
+      timelineTextOnColor(plate),
       isNot(timelineTextOnColor(storyboardPanelPictureGroundColor)),
       reason: 'the `+` once read the picture\'s white while it stood in the '
-          'strip — on this black band that ink would vanish. If these two '
+          'strip — on this black plate that ink would vanish. If these two '
           'ever agree, this test stops proving anything and should be '
           're-read, not deleted',
     );
   });
 
-  test('a range selection tints BOTH pairs of bands, and the writing reads '
-      'against the tint', () {
-    for (final band in StoryboardBand.values) {
-      expect(
-        ground(
-          visual(cutLabel: art, conteLabel: conte, isRangeSelected: true),
-          band,
-        ),
-        isNot(ground(visual(cutLabel: art, conteLabel: conte), band)),
-        reason: '$band: a cut selection colours what is not the picture',
-      );
-    }
+  test('a range selection tints the bands, and the writing reads against '
+      'the tint', () {
+    expect(
+      storyboardCarriedWritingGround(
+        visual(cutLabel: art, isRangeSelected: true),
+      ),
+      isNot(storyboardCarriedWritingGround(visual(cutLabel: art))),
+      reason: 'a cut selection colours what is not the picture',
+    );
   });
 }

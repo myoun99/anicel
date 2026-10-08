@@ -13,31 +13,57 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart'
+    show timelineRowPaperExtent;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineBlockCornerRadiusAt;
 import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart'
     show TimelineRowChromeResolver, TimelineRowGripTarget;
 
+import 'storyboard_conte_row_probe.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
-/// The cut block has no edge grips of its own besides its panels': the first
-/// panel's leading edge is the cut's, the last one's trailing edge is its
-/// length. They stand in their own block's corners — a conte block's, or
-/// the plate's for a cut with none (유저 2026-09-26); ↩️the plate's for every
-/// cut from 2026-09-25, and #757 had put them on the picture strip before
-/// that. EVERY leading edge is a rolling edit with the
-/// block in front of it — the panel before it, or at a cut's first panel the
-/// previous cut's last panel — so the lengths trade and nothing else moves
-/// (I-21: one lead edge law with the frame axis). EVERY trailing edge —
-/// inner and last alike — is its panel's comma: the later panels ripple
-/// along glued and the cut's length rides the row end (edge unification;
-/// the division verb is gone). One shape of grip; where it sits decides what
-/// it re-times.
+/// A PANEL's edges are on the conte row, where the panel is a block: the
+/// first panel's leading edge is the cut's, the last one's trailing edge is
+/// its length. EVERY leading edge is a rolling edit with the block in front
+/// of it — the panel before it, or at a cut's first panel the previous
+/// cut's last panel — so the lengths trade and nothing else moves (I-21:
+/// one lead edge law with the frame axis). EVERY trailing edge — inner and
+/// last alike — is its panel's comma: the later panels ripple along glued
+/// and the cut's length rides the row end (edge unification; the division
+/// verb is gone). One shape of grip; where it sits decides what it
+/// re-times.
+///
+/// 🗣️I-73 (유저 2026-10-08): 「띠 둘만 이사로 가자. 여기서 그럼 v행에
+/// 콘티블록 위치의 칸마다 있던 엣지는 어떻게하지? 그냥 없는게 심플한거같긴
+/// 한데」 — the V row hangs nothing at a panel's place. Each CUT block wears
+/// its own two edges in its plate's corners (the proposal the answer took:
+/// 「V 행의 엣지: 컷의 양 끝만. 썸네일 사이는 구분선만」), and they begin the
+/// verbs the conte row's first and last grips begin: one edit, two doors.
+/// ↩️The cut block had no grips of its own besides its panels' while the
+/// panels stood inside it — in a conte block's corners, or the plate's for
+/// a cut with none (유저 2026-09-26); the plate's for every cut from
+/// 2026-09-25, and #757 had put them on the picture strip before that.
 const _trackId = TrackId('grip-track');
+
+/// The chrome slot each row's grips are painted in.
+const _conteRow = 'storyboard';
+const _vRow = 'storyboard-plate';
+
+/// A PANEL's grip, by its ordinal on the conte row — named for the row.
+String _panelGrip(String edge, int ordinal) =>
+    'block-edge-grip-$edge-${trackConteRowId(_trackId).value}-$ordinal';
+
+/// A CUT's grip, by its ordinal on the V row — named for the track.
+String _cutGrip(String edge, int ordinal) =>
+    'block-edge-grip-$edge-${_trackId.value}-$ordinal';
 
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
   id: LayerId('$cutId-sb'),
@@ -96,7 +122,7 @@ Project _project() => Project(
 );
 
 /// [_project] with its middle cut stripped of its storyboard layer — the
-/// cut whose edges stand on the plate rather than on conte blocks.
+/// cut the conte row holds no panel of.
 Project _mixedProject() => Project(
   id: const ProjectId('grip-project'),
   name: 'Grips',
@@ -160,10 +186,15 @@ Cut _cutById(WidgetTester tester, String id) => _projectOf(
 List<int> _divisionsOf(WidgetTester tester, String cutId) =>
     storyboardLayerForCut(_cutById(tester, cutId))!.timeline.keys.toList();
 
-/// Drags the chrome target [id] by [frames] whole frames.
-Future<void> _dragGrip(WidgetTester tester, String id, int frames) async {
+/// Drags the chrome target [id] of [row]'s slot by [frames] whole frames.
+Future<void> _dragGrip(
+  WidgetTester tester,
+  String id,
+  int frames, {
+  String row = _conteRow,
+}) async {
   final gesture = await tester.startGesture(
-    timelineRowChromeCenter(tester, _trackId.value, id, prefix: 'storyboard'),
+    timelineRowChromeCenter(tester, _trackId.value, id, prefix: row),
     kind: PointerDeviceKind.mouse,
   );
   await tester.pump();
@@ -177,6 +208,19 @@ Future<void> _dragGrip(WidgetTester tester, String id, int frames) async {
   await tester.pumpAndSettle();
 }
 
+/// The two doors onto ONE cut edge: the panel's grip on the conte row and
+/// the cut's own on the V row. [panel] and [cut] are the grips' ordinals.
+typedef _Door = ({String name, String row, String Function(String edge) grip});
+
+List<_Door> _doors({required int panel, required int cut}) => [
+  (
+    name: 'the conte row',
+    row: _conteRow,
+    grip: (edge) => _panelGrip(edge, panel),
+  ),
+  (name: 'the V row', row: _vRow, grip: (edge) => _cutGrip(edge, cut)),
+];
+
 void main() {
   testWidgets('EVERY panel hangs a leading grip — the two edges of one '
       'boundary name two edits, not one', (tester) async {
@@ -189,163 +233,179 @@ void main() {
     // grip trades frames with panel 0 inside a cut that keeps its length
     // (I-21). Same boundary, two different edits.
     expect(
-      timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard'),
+      timelineRowChromeIds(tester, _trackId.value, prefix: _conteRow),
       <String>[
-        'block-edge-grip-start-grip-track-0',
-        'block-edge-grip-end-grip-track-0',
-        'block-edge-grip-start-grip-track-1',
-        'block-edge-grip-end-grip-track-1',
-        'block-edge-grip-start-grip-track-2',
-        'block-edge-grip-end-grip-track-2',
-        'block-edge-grip-start-grip-track-3',
-        'block-edge-grip-end-grip-track-3',
-        'block-edge-grip-start-grip-track-4',
-        'block-edge-grip-end-grip-track-4',
+        for (var ordinal = 0; ordinal < 5; ordinal += 1) ...[
+          _panelGrip('start', ordinal),
+          _panelGrip('end', ordinal),
+        ],
       ],
     );
   });
 
-  testWidgets('🗣️a conte block\'s edges sit in the CONTE BLOCK\'s corners, '
-      'and a cut with none keeps its edges in the plate\'s (유저 2026-09-26: '
-      '「콘티블록이 있으면 애초에 거기에 처음이랑 끝에 엣지가 존재하잖아. 그러니까 '
-      '그거 그대로 두고, 컷블록의 엣지만 삭제」 · 「콘티레이어 없으면 컷블록 '
-      '기존처럼 배치하고, 있으면 콘티블록에 배치된걸로 대체되는」)', (
+  testWidgets('🗣️the V row hangs each CUT\'s two edges and nothing at a '
+      'panel\'s place (유저 2026-10-08: 「v행에 콘티블록 위치의 칸마다 있던 '
+      '엣지는 … 그냥 없는게 심플한거같긴한데」)', (tester) async {
+    await _openStoryboard(tester);
+
+    expect(
+      timelineRowChromeIds(tester, _trackId.value, prefix: _vRow),
+      <String>[
+        for (var ordinal = 0; ordinal < 3; ordinal += 1) ...[
+          _cutGrip('start', ordinal),
+          _cutGrip('end', ordinal),
+        ],
+      ],
+      reason: '↩️a cut with conte blocks had none of its own (유저 '
+          '2026-09-26: 「컷블록의 엣지만 삭제」) while they stood inside it',
+    );
+  });
+
+  testWidgets('a panel\'s edges sit in its own block\'s corners on the '
+      'conte row, and a cut\'s in its plate\'s — whether or not the cut has '
+      'a conte layer', (tester) async {
+    await _openStoryboard(tester, project: _mixedProject());
+
+    final vRow = tester.getRect(
+      find.byKey(
+        ValueKey<String>('storyboard-track-timeline-area-${_trackId.value}'),
+      ),
+    );
+    final conteRow = conteRowRect(tester, _trackId.value);
+    const band = StoryboardCutBlocksPainter.bandHeight;
+    // Panels in track order: cut 1's two and cut 3's two — cut 2 has none.
+    expect(
+      timelineRowChromeIds(tester, _trackId.value, prefix: _conteRow),
+      <String>[
+        for (var ordinal = 0; ordinal < 4; ordinal += 1) ...[
+          _panelGrip('start', ordinal),
+          _panelGrip('end', ordinal),
+        ],
+      ],
+      reason: 'the panels\' edges, on the conte row',
+    );
+    expect(
+      timelineRowChromeIds(tester, _trackId.value, prefix: _vRow),
+      <String>[
+        for (var ordinal = 0; ordinal < 3; ordinal += 1) ...[
+          _cutGrip('start', ordinal),
+          _cutGrip('end', ordinal),
+        ],
+      ],
+      reason: 'every cut\'s, on its plate — the layerless one\'s among them',
+    );
+
+    Rect grip(String id, String row) =>
+        timelineRowChromeGlobalRect(tester, _trackId.value, id, prefix: row);
+    // I-43: the grip is its triangle's box, in the block's corners — the
+    // end edge's at the top, the start edge's at the bottom. On the plate
+    // it is a band deep, never over the pictures (I-52; ↩️half the paper).
+    for (var cut = 0; cut < 3; cut += 1) {
+      final end = grip(_cutGrip('end', cut), _vRow);
+      final start = grip(_cutGrip('start', cut), _vRow);
+      expect(end.top, moreOrLessEquals(vRow.top), reason: 'cut $cut');
+      expect(end.height, moreOrLessEquals(band), reason: 'cut $cut');
+      expect(start.bottom, moreOrLessEquals(vRow.bottom), reason: 'cut $cut');
+      expect(start.height, moreOrLessEquals(band), reason: 'cut $cut');
+    }
+    // On the conte row it is the timeline row's own: half the block's
+    // paper, which stops short of the row's seam (I-44).
+    final paper = timelineRowPaperExtent(conteRow.height);
+    for (var panel = 0; panel < 4; panel += 1) {
+      final end = grip(_panelGrip('end', panel), _conteRow);
+      final start = grip(_panelGrip('start', panel), _conteRow);
+      expect(end.top, moreOrLessEquals(conteRow.top), reason: 'panel $panel');
+      expect(end.height, moreOrLessEquals(paper / 2), reason: 'panel $panel');
+      expect(
+        start.bottom,
+        moreOrLessEquals(conteRow.top + paper),
+        reason: 'panel $panel',
+      );
+      expect(
+        start.height,
+        moreOrLessEquals(paper / 2),
+        reason: 'panel $panel',
+      );
+    }
+  });
+
+  test('a resolver over the same blocks but another paper is another '
+      'resolver', _sameBlocksOtherPaper);
+
+  testWidgets('a triangle takes the corner of the paper it stands in — the '
+      'plate\'s round on the V row, the frame block\'s on the conte row', (
     tester,
   ) async {
     await _openStoryboard(tester, project: _mixedProject());
 
-    final row = find.byKey(
-      ValueKey<String>('storyboard-track-timeline-area-${_trackId.value}'),
-    );
-    final rowRect = tester.getTopLeft(row) & tester.getSize(row);
-    const band = StoryboardCutBlocksPainter.bandHeight;
-    // Panels in track order: cut 1's two, cut 2's placeholder, cut 3's two.
-    expect(
-      timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard'),
-      <String>[
-        for (final ordinal in [0, 1, 3, 4]) ...[
-          'block-edge-grip-start-grip-track-$ordinal',
-          'block-edge-grip-end-grip-track-$ordinal',
-        ],
-      ],
-      reason: 'the conte blocks\' edges, on their own slot',
-    );
-    expect(
-      timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard-plate'),
-      <String>[
-        'block-edge-grip-start-grip-track-2',
-        'block-edge-grip-end-grip-track-2',
-      ],
-      reason: 'the layerless cut\'s, on the plate',
-    );
-
-    Rect grip(String id, String prefix) =>
-        timelineRowChromeGlobalRect(tester, _trackId.value, id, prefix: prefix);
-    // I-43: the grip is its triangle's box, in the block's corners — the
-    // end edge's at the top, the start edge's at the bottom. I-52: a band
-    // deep, never over the pictures (↩️half the paper). The conte block is
-    // the slot inside the cut's bands.
-    final conteEnd = grip('block-edge-grip-end-grip-track-0', 'storyboard');
-    final conteStart = grip('block-edge-grip-start-grip-track-0', 'storyboard');
-    expect(conteEnd.top, moreOrLessEquals(rowRect.top + band));
-    expect(conteEnd.height, moreOrLessEquals(band));
-    expect(conteStart.bottom, moreOrLessEquals(rowRect.bottom - band));
-    expect(conteStart.height, moreOrLessEquals(band));
-    // The cut with none: the plate, as the cut block's edges stood before.
-    final plateEnd = grip(
-      'block-edge-grip-end-grip-track-2',
-      'storyboard-plate',
-    );
-    final plateStart = grip(
-      'block-edge-grip-start-grip-track-2',
-      'storyboard-plate',
-    );
-    expect(plateEnd.top, moreOrLessEquals(rowRect.top));
-    expect(plateEnd.height, moreOrLessEquals(band));
-    expect(plateStart.bottom, moreOrLessEquals(rowRect.bottom));
-    expect(plateStart.height, moreOrLessEquals(band));
-  });
-
-  test('a resolver over the same panels but other plates is another '
-      'resolver', _samePanelsOtherPlates);
-
-
-  testWidgets('a triangle takes the corner of the paper it stands in — '
-      'square in a conte block, which the plate holds inside its bands, and '
-      'the plate\'s round for a cut with none', (tester) async {
-    await _openStoryboard(tester, project: _mixedProject());
-
-    TimelineRowGripTarget grip(String id, String prefix) =>
-        timelineRowChromeTarget(tester, _trackId.value, id, prefix: prefix)
+    TimelineRowGripTarget grip(String id, String row) =>
+        timelineRowChromeTarget(tester, _trackId.value, id, prefix: row)
             as TimelineRowGripTarget;
-    for (final ordinal in [0, 1, 3, 4]) {
+    // The corner a frame block wears on this row at this zoom — ↩️square
+    // while a conte block lay inside its cut's plate (유저 2026-09-26:
+    // 「블록이 모서리 둥근건 블록 자체」); a panel is a block itself here.
+    final block = timelineBlockCornerRadiusAt(
+      cellExtent: _pixelsPerFrame(tester),
+      crossExtent: timelineRowPaperExtent(
+        conteRowRect(tester, _trackId.value).height,
+      ),
+    ).x;
+    expect(block, greaterThan(0), reason: '⛔전제: a round block');
+    for (var panel = 0; panel < 4; panel += 1) {
       for (final edge in ['start', 'end']) {
         expect(
-          grip('block-edge-grip-$edge-grip-track-$ordinal', 'storyboard')
-              .paperCorner,
-          0,
-          reason: 'panel $ordinal\'s $edge edge: the conte block is square '
-              '(유저 2026-09-26: 「블록이 모서리 둥근건 블록 자체」)',
+          grip(_panelGrip(edge, panel), _conteRow).paperCorner,
+          block,
+          reason: 'panel $panel\'s $edge edge',
         );
       }
     }
     // The plate's own corner, as its painter rounds it (F-219).
     final plate = cutBlocksPainter(tester).plateCorner.x;
     expect(plate, greaterThan(0), reason: '⛔전제: a round plate');
-    expect(
-      grip('block-edge-grip-start-grip-track-2', 'storyboard-plate')
-          .paperCorner,
-      plate,
-    );
-    expect(
-      grip('block-edge-grip-end-grip-track-2', 'storyboard-plate').paperCorner,
-      plate,
-    );
+    for (var cut = 0; cut < 3; cut += 1) {
+      for (final edge in ['start', 'end']) {
+        expect(
+          grip(_cutGrip(edge, cut), _vRow).paperCorner,
+          plate,
+          reason: 'cut $cut\'s $edge edge',
+        );
+      }
+    }
 
-    // And the painters draw by it: the ink reaches the box's very corner at
-    // a conte block's cut end, and follows the plate's round at a layerless
-    // cut's.
-    Path inkOf(String prefix, TimelineRowGripTarget target) {
+    // And the painter draws by it: the ink follows the plate's round.
+    Path inkOf(String row, TimelineRowGripTarget target) {
       final laid = _PathSpy();
-      timelineRowChromePainter(tester, _trackId.value, prefix: prefix)!.paint(
+      timelineRowChromePainter(tester, _trackId.value, prefix: row)!.paint(
         laid,
-        tester.getSize(timelineRowChromeFinder(_trackId.value, prefix: prefix)),
+        tester.getSize(timelineRowChromeFinder(_trackId.value, prefix: row)),
       );
       return laid.paths.firstWhere(
         (path) => target.rect.inflate(1).contains(path.getBounds().center),
       );
     }
 
-    final conteCutEnd = grip('block-edge-grip-end-grip-track-1', 'storyboard');
-    expect(
-      inkOf('storyboard', conteCutEnd).contains(
-        conteCutEnd.rect.topRight.translate(-0.5, 0.5),
-      ),
-      isTrue,
-      reason: 'a conte block is square: a sharp corner, at the cut\'s end too',
-    );
-    final plateEnd = grip(
-      'block-edge-grip-end-grip-track-2',
-      'storyboard-plate',
-    );
-    // A point well inside the round's reach at whatever the law gives this
-    // zoom (the round crosses the diagonal at ~0.29 of its radius).
-    expect(
-      inkOf('storyboard-plate', plateEnd).contains(
-        plateEnd.rect.topRight.translate(-plate / 6, plate / 6),
-      ),
-      isFalse,
-      reason: 'the plate\'s own round takes the tip',
-    );
-    // Halfway down the right leg: inside the triangle a band deep (I-52),
-    // and inside the round.
-    expect(
-      inkOf('storyboard-plate', plateEnd).contains(
-        plateEnd.rect.topRight.translate(-1, plateEnd.rect.height / 2),
-      ),
-      isTrue,
-      reason: '⛔전제: the ink is there, inside the round',
-    );
+    for (var cut = 0; cut < 3; cut += 1) {
+      final plateEnd = grip(_cutGrip('end', cut), _vRow);
+      // A point well inside the round's reach at whatever the law gives
+      // this zoom (the round crosses the diagonal at ~0.29 of its radius).
+      expect(
+        inkOf(_vRow, plateEnd).contains(
+          plateEnd.rect.topRight.translate(-plate / 6, plate / 6),
+        ),
+        isFalse,
+        reason: 'cut $cut: the plate\'s own round takes the tip',
+      );
+      // Halfway down the right leg: inside the triangle a band deep
+      // (I-52), and inside the round.
+      expect(
+        inkOf(_vRow, plateEnd).contains(
+          plateEnd.rect.topRight.translate(-1, plateEnd.rect.height / 2),
+        ),
+        isTrue,
+        reason: '⛔전제: the ink is there, inside the round',
+      );
+    }
   });
 
   testWidgets('an edge BETWEEN two panels is that panel\'s COMMA (edge '
@@ -354,7 +414,7 @@ void main() {
     await _openStoryboard(tester);
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
 
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
+    await _dragGrip(tester, _panelGrip('end', 0), 2);
 
     // The first panel's comma grew by 2; the second kept its own 5 and
     // re-keyed right; the cut is 2 longer — where the retired division
@@ -372,7 +432,7 @@ void main() {
       'restore together', (tester) async {
     await _openStoryboard(tester);
 
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
+    await _dragGrip(tester, _panelGrip('end', 0), 2);
     expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
     expect(_cutById(tester, 'cut-1').duration, 12);
 
@@ -383,40 +443,70 @@ void main() {
     expect(_cutById(tester, 'cut-1').duration, 10);
   });
 
-  testWidgets('the LAST panel\'s trailing edge is still the cut\'s LENGTH — '
-      'and the stored comma moves with it (feedback #9)', (tester) async {
-    await _openStoryboard(tester);
+  for (final door in _doors(panel: 1, cut: 0)) {
+    testWidgets('the LAST panel\'s trailing edge is still the cut\'s LENGTH '
+        '— and the stored comma moves with it (feedback #9), from '
+        '${door.name}', (tester) async {
+      await _openStoryboard(tester);
 
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-1', 3);
+      await _dragGrip(tester, door.grip('end'), 3, row: door.row);
 
-    expect(_cutById(tester, 'cut-1').duration, 13);
-    expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
-    // The edge is the ROW's edge: the last cell's stored comma grew by the
-    // same 3 the cut did, so store and coverage stay one picture.
-    final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
-    expect(layer.timeline[5]!.length, 8);
-  });
+      expect(_cutById(tester, 'cut-1').duration, 13);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+      // The edge is the ROW's edge: the last cell's stored comma grew by
+      // the same 3 the cut did, so store and coverage stay one picture.
+      final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
+      expect(layer.timeline[5]!.length, 8);
+    });
+  }
 
-  testWidgets('a cut with ONE panel keeps exactly the two grips it had: the '
-      'new rule\'s degenerate case is the old behaviour', (tester) async {
-    await _openStoryboard(tester);
+  for (final door in _doors(panel: 2, cut: 1)) {
+    testWidgets('a cut with ONE panel keeps exactly the two grips it had: '
+        'the new rule\'s degenerate case is the old behaviour, from '
+        '${door.name}', (tester) async {
+      await _openStoryboard(tester);
 
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-2', 4);
+      await _dragGrip(tester, door.grip('end'), 4, row: door.row);
 
+      expect(_cutById(tester, 'cut-2').duration, 14);
+      expect(_divisionsOf(tester, 'cut-2'), [0]);
+    });
+  }
+
+  for (final door in _doors(panel: 4, cut: 2)) {
+    testWidgets('the LAST cut\'s trailing edge is reachable: the movie-end '
+        'handle no longer sits on top of it, from ${door.name}', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+
+      // Cut 3 ends where the movie does, so its trailing edge grip and the
+      // end-line handle share a frame. The handle is grabbed from the
+      // empty side of the line now, which leaves the grip its own pixels.
+      await _dragGrip(tester, door.grip('end'), 2, row: door.row);
+
+      expect(_cutById(tester, 'cut-3').duration, 8);
+    });
+  }
+
+  testWidgets('a cut with NO conte layer trims by its own two edges',
+      (tester) async {
+    await _openStoryboard(tester, project: _mixedProject());
+
+    await _dragGrip(tester, _cutGrip('end', 1), 4, row: _vRow);
     expect(_cutById(tester, 'cut-2').duration, 14);
-    expect(_divisionsOf(tester, 'cut-2'), [0]);
-  });
 
-  testWidgets('the LAST cut\'s trailing edge is reachable: the movie-end '
-      'handle no longer sits on top of it', (tester) async {
-    await _openStoryboard(tester);
-
-    // Cut 3 ends where the movie does, so its trailing edge grip and the
-    // end-line handle share a frame. The handle is grabbed from the empty
-    // side of the line now, which leaves the grip its own pixels.
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-4', 2);
-
-    expect(_cutById(tester, 'cut-3').duration, 8);
+    await _dragGrip(tester, _cutGrip('start', 1), 2, row: _vRow);
+    expect(
+      _cutById(tester, 'cut-2').duration,
+      12,
+      reason: 'the lead edge is one verb for every cut (R10 R4)',
+    );
+    expect(
+      _cutById(tester, 'cut-1').duration,
+      12,
+      reason: 'the block in front took the frames (I-21)',
+    );
   });
 
   testWidgets('the V rows share ONE height — rail and strip are one row '
@@ -454,7 +544,7 @@ void main() {
     // active-cut layer lookup at all.
     expect(_divisionsOf(tester, 'cut-3'), [0, 3]);
 
-    await _dragGrip(tester, 'block-edge-grip-end-grip-track-3', -1);
+    await _dragGrip(tester, _panelGrip('end', 3), -1);
 
     expect(_divisionsOf(tester, 'cut-3'), [0, 2]);
     expect(_cutById(tester, 'cut-3').duration, 5, reason: 'its own cut rides');
@@ -471,34 +561,36 @@ void main() {
   // These cases pinned the retired law and outlived it; they are rewritten
   // to the one that shipped, not deleted.
   group('the LEAD edge trades with the block in front (I-21)', () {
-    testWidgets('the cut loses frames off its front, its END holds, and the '
-        'emptiness lands at the head of the film — whether or not the cut '
-        'has been drawn on', (tester) async {
-      await _openStoryboard(tester);
-      final firstStart = _cutById(tester, 'cut-1').leadingGapFrames;
-      expect(firstStart, 0);
+    for (final door in _doors(panel: 0, cut: 0)) {
+      testWidgets('the cut loses frames off its front, its END holds, and '
+          'the emptiness lands at the head of the film — whether or not '
+          'the cut has been drawn on, from ${door.name}', (tester) async {
+        await _openStoryboard(tester);
+        final firstStart = _cutById(tester, 'cut-1').leadingGapFrames;
+        expect(firstStart, 0);
 
-      await _dragGrip(tester, 'block-edge-grip-start-grip-track-0', 2);
+        await _dragGrip(tester, door.grip('start'), 2, row: door.row);
 
-      // Cut 1's first panel is the FIRST block of the film, so there is no
-      // block in front to trade with: the head is directly in front of it
-      // and takes the 2 frames.
-      final cut = _cutById(tester, 'cut-1');
-      expect(cut.duration, 8);
-      expect(cut.leadingGapFrames, 2);
-      expect(
-        _cutById(tester, 'cut-2').leadingGapFrames,
-        0,
-        reason: 'the end held, so the follower never moved',
-      );
-      // The panel the grip sat on is the one that lost the frames. Before
-      // 2026-08-02 the row kept its keys and the LAST panel was silently
-      // clipped to the new duration instead — the user's report.
-      expect(_divisionsOf(tester, 'cut-1'), [0, 3]);
-      final row = storyboardLayerForCut(cut)!;
-      expect(row.timeline[0]!.length, 3, reason: 'the grabbed panel, 5 -> 3');
-      expect(row.timeline[3]!.length, 5, reason: 'the other one, untouched');
-    });
+        // Cut 1's first panel is the FIRST block of the film, so there is
+        // no block in front to trade with: the head is directly in front
+        // of it and takes the 2 frames.
+        final cut = _cutById(tester, 'cut-1');
+        expect(cut.duration, 8);
+        expect(cut.leadingGapFrames, 2);
+        expect(
+          _cutById(tester, 'cut-2').leadingGapFrames,
+          0,
+          reason: 'the end held, so the follower never moved',
+        );
+        // The panel the grip sat on is the one that lost the frames. Before
+        // 2026-08-02 the row kept its keys and the LAST panel was silently
+        // clipped to the new duration instead — the user's report.
+        expect(_divisionsOf(tester, 'cut-1'), [0, 3]);
+        final row = storyboardLayerForCut(cut)!;
+        expect(row.timeline[0]!.length, 3, reason: 'the first panel, 5 -> 3');
+        expect(row.timeline[3]!.length, 5, reason: 'the other one, untouched');
+      });
+    }
 
     testWidgets('an INNER panel\'s front grip trades with the panel in front: '
         'that one grows, this one shrinks, and the cut keeps its length', (
@@ -507,7 +599,7 @@ void main() {
       await _openStoryboard(tester);
       expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
 
-      await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
+      await _dragGrip(tester, _panelGrip('start', 1), 2);
 
       final cut = _cutById(tester, 'cut-1');
       expect(cut.duration, 10, reason: 'a front edge never changes the length');
@@ -534,7 +626,7 @@ void main() {
       // is panel 0's comma — the later panels ripple and the cut grows — and
       // the front grip is a rolling edit between the two panels, so the cut
       // keeps its length.
-      await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
+      await _dragGrip(tester, _panelGrip('end', 0), 2);
       expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
       expect(_cutById(tester, 'cut-1').duration, 12);
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
@@ -542,7 +634,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
       await tester.pumpAndSettle();
 
-      await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
+      await _dragGrip(tester, _panelGrip('start', 1), 2);
       expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
       expect(_cutById(tester, 'cut-1').duration, 10);
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
@@ -553,7 +645,7 @@ void main() {
     ) async {
       await _openStoryboard(tester);
 
-      await _dragGrip(tester, 'block-edge-grip-start-grip-track-0', 2);
+      await _dragGrip(tester, _panelGrip('start', 0), 2);
       expect(_cutById(tester, 'cut-1').duration, 8);
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 2);
 
@@ -564,39 +656,40 @@ void main() {
       expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
     });
 
-    testWidgets('on a LATER cut the block in front is the previous cut\'s '
-        'LAST panel: it grows, this cut shrinks, and nothing else moves', (
-      tester,
-    ) async {
-      await _openStoryboard(tester);
+    for (final door in _doors(panel: 2, cut: 1)) {
+      testWidgets('on a LATER cut the block in front is the previous cut\'s '
+          'LAST panel: it grows, this cut shrinks, and nothing else moves, '
+          'from ${door.name}', (tester) async {
+        await _openStoryboard(tester);
 
-      await _dragGrip(tester, 'block-edge-grip-start-grip-track-2', 2);
+        await _dragGrip(tester, door.grip('start'), 2, row: door.row);
 
-      final previous = _cutById(tester, 'cut-1');
-      expect(previous.duration, 12, reason: 'the cut in front GROWS now');
-      expect(
-        previous.leadingGapFrames,
-        0,
-        reason: 'the head of the film never empties',
-      );
-      expect(
-        storyboardLayerForCut(previous)!.timeline[5]!.length,
-        7,
-        reason: 'and the frames land on its last panel, the block in front',
-      );
-      final grabbed = _cutById(tester, 'cut-2');
-      expect(grabbed.duration, 8);
-      expect(
-        grabbed.leadingGapFrames,
-        0,
-        reason: 'no gap is torn open between the glued neighbours',
-      );
-      expect(
-        previous.duration + grabbed.duration,
-        20,
-        reason: 'the grabbed cut\'s END held, so everything after it stayed',
-      );
-    });
+        final previous = _cutById(tester, 'cut-1');
+        expect(previous.duration, 12, reason: 'the cut in front GROWS now');
+        expect(
+          previous.leadingGapFrames,
+          0,
+          reason: 'the head of the film never empties',
+        );
+        expect(
+          storyboardLayerForCut(previous)!.timeline[5]!.length,
+          7,
+          reason: 'and the frames land on its last panel, the block in front',
+        );
+        final grabbed = _cutById(tester, 'cut-2');
+        expect(grabbed.duration, 8);
+        expect(
+          grabbed.leadingGapFrames,
+          0,
+          reason: 'no gap is torn open between the glued neighbours',
+        );
+        expect(
+          previous.duration + grabbed.duration,
+          20,
+          reason: 'the grabbed cut\'s END held, so everything after it stayed',
+        );
+      });
+    }
   });
 
   group('the cut-internal timeline (feedback #9/#10)', () {
@@ -703,14 +796,11 @@ Future<void> _dragTimelineGrip(
   await tester.pumpAndSettle();
 }
 
-/// The same panels under other plates — one cut of two panels, or two cuts
-/// of one — are other corners, so the row must not keep the old resolver.
-void _samePanelsOtherPlates() {
-  TimelineRowChromeResolver resolver(
-    Set<int> starts,
-    Set<int> ends, {
-    double band = 13,
-  }) => TimelineRowChromeResolver(
+/// The same blocks on a plate of other bands, or of another corner, hang
+/// their triangles elsewhere — so the row must not keep the old resolver.
+void _sameBlocksOtherPaper() {
+  TimelineRowChromeResolver resolver({double band = 13, double corner = 8}) =>
+      TimelineRowChromeResolver(
         gripBlocks: const [
           (
             ordinal: 0,
@@ -733,20 +823,19 @@ void _samePanelsOtherPlates() {
         crossAxisExtent: 64,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: (
-          cornerStarts: starts,
-          cornerEnds: ends,
-          cornerRadius: 8,
-          band: band,
-        ),
+        gripPaper: (cornerRadius: corner, band: band),
       );
-  final oneCut = resolver({0}, {10});
-  expect(oneCut.matches(resolver({0}, {10})), isTrue);
-  expect(oneCut.matches(resolver({0, 5}, {5, 10})), isFalse);
+  final row = resolver();
+  expect(row.matches(resolver()), isTrue);
   expect(
-    oneCut.matches(resolver({0}, {10}, band: 20)),
+    row.matches(resolver(band: 20)),
     isFalse,
     reason: 'bands of another depth hang the triangles elsewhere (I-52)',
+  );
+  expect(
+    row.matches(resolver(corner: 4)),
+    isFalse,
+    reason: 'a plate rounded otherwise cuts their tips otherwise',
   );
 }
 

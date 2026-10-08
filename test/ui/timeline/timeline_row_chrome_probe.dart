@@ -9,10 +9,11 @@ import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 /// through the same rects the painter draws and the row hit-tests, so a
 /// probe can never address a target the user could not.
 ///
-/// The storyboard's CUT row mounts the same layer (`prefix: 'storyboard'`,
-/// its track id in place of a layer id). The sparse surfaces (instruction
-/// rows, storyboard SE strips) still mount `BlockEdgeGrip` widgets and keep
-/// their key finders.
+/// The storyboard mounts the same layer twice a track, its track id in
+/// place of a layer id: the CONTE row's panels (`prefix: 'storyboard'`) and
+/// the CUT row's cuts on their plates (`prefix: 'storyboard-plate'`). The
+/// sparse surfaces (instruction rows, storyboard SE strips) still mount
+/// `BlockEdgeGrip` widgets and keep their key finders.
 Finder timelineRowChromeFinder(String layerId, {String prefix = 'timeline'}) =>
     find.byKey(ValueKey<String>('$prefix-edit-chrome-$layerId'));
 

@@ -178,30 +178,9 @@ class ExposureVerbs {
           : TimelineCellExposureState.uncovered;
     }
 
-    if (_controllers.timelineController.isDrawingStartForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    )) {
-      return TimelineCellExposureState.drawingStart;
-    }
-
-    final held = _controllers.timelineController.isHeldExposureForLayer(
-      layer: layer,
-      frameIndex: frameIndex,
-    );
-    // Block-owned dots live on held cells only (offsets 1..length-1), so
-    // markUncovered is never produced anymore — the enum value survives
-    // solely for exhaustive switches over legacy-visual states.
-    if (held &&
-        _controllers.timelineController.hasMarkAt(
-          layer: layer,
-          frameIndex: frameIndex,
-        )) {
-      return TimelineCellExposureState.markHeld;
-    }
-    return held
-        ? TimelineCellExposureState.held
-        : TimelineCellExposureState.uncovered;
+    // Every other row's cells are its own blocks — the reading a row drawn
+    // outside any cut asks too (the storyboard's conte row, I-73).
+    return timelineOwnCelsStateAt(layer, frameIndex);
   }
 
   bool get canDecreaseSelectedExposure {

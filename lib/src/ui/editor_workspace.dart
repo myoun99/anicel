@@ -154,7 +154,6 @@ import 'panels/onion_skin_panel.dart';
 import 'panels/tool_size_preset_panel.dart';
 import 'storyboard_tab_host.dart';
 import 'storyboard/storyboard_rows_channel.dart';
-import 'storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;

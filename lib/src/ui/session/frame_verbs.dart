@@ -418,7 +418,7 @@ class FrameVerbs {
     _selection.clearTimelineSelections();
     switch (_currentRow()) {
       case TrackRowAddress(:final trackId):
-        _trackAxis.flipPanels(trackId, forward: forward);
+        _trackAxis.flipCuts(trackId, forward: forward);
       case LayerRowAddress(:final layerId)
           when _workingPanel() == WorkingPanel.storyboard:
         // The panel being worked in is the one whose row this is — and an S
@@ -429,9 +429,9 @@ class FrameVerbs {
         if (layer == null) {
           // No such layer to stand on — the playhead is parked in a GAP
           // (no cut, so no rows), or the stored row outlived its cut. The
-          // row you are actually on is the TRACK, so walk its panels rather
+          // row you are actually on is the TRACK, so walk its cuts rather
           // than dead-ending: that is how a gap is stepped out of.
-          _trackAxis.flipPanels(_selection.selectedTrackId, forward: forward);
+          _trackAxis.flipCuts(_selection.selectedTrackId, forward: forward);
           return;
         }
         _flipBlocks(layer, forward: forward);
@@ -531,9 +531,7 @@ class FrameVerbs {
         return baseCel == null ? null : base.frameById(baseCel)?.name;
       }
     }
-    return _controllers.timelineController
-        .resolveFrameForLayer(layer: layer, frameIndex: frameIndex)
-        ?.name;
+    return timelineOwnCelNameAt(layer, frameIndex);
   }
 
   int? get selectedEffectiveDuration {

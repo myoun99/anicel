@@ -154,10 +154,6 @@ class TimelineController {
 
   bool hasDrawingAtCurrentFrame({required Layer layer}) =>
       _drawings.hasDrawingAtCurrentFrame(layer: layer);
-  bool isDrawingStartForLayer({
-    required Layer layer,
-    required int frameIndex,
-  }) => _drawings.isDrawingStartForLayer(layer: layer, frameIndex: frameIndex);
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) =>
       _drawings.canCreateDrawingAt(layer: layer, frameIndex: frameIndex);
   void createDrawingFrameForLayer({
@@ -204,14 +200,6 @@ class TimelineController {
     >
     fillsByLayer,
   ) => _drawings.drawingFramesCommandsForLayers(fillsByLayer);
-
-  bool isHeldExposureForLayer({required Layer layer, required int frameIndex}) {
-    if (frameIndex < 0 ||
-        isDrawingStartForLayer(layer: layer, frameIndex: frameIndex)) {
-      return false;
-    }
-    return coveringDrawingBlockAt(layer.timeline, frameIndex) != null;
-  }
 
   // ── the marks: their own object, in their own file ──────────────────
   //

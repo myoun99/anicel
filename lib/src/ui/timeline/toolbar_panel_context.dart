@@ -10,6 +10,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/timeline_row_address.dart';
+import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
 import '../editor_command_actions.dart' show createActiveInstance;
 import '../editor_session_manager.dart';
@@ -20,6 +21,7 @@ import '../session/frame_clipboard.dart' show ClipboardPlace;
 import '../session/what_a_copy_brings.dart' show BringsMedia;
 import '../shortcuts/editor_action_registry.dart' show EditorActionIds;
 import '../shortcuts/editor_shortcut_scope.dart' show editorActionLabel;
+import '../storyboard_layer_policy.dart' show conteLayerInHand;
 
 /// B8 (2026-08-17): 상단 버튼의 패널 스코프 — the shared toolbar's layer,
 /// frame, shared and fx verbs dispatch AGAINST THE PANEL THEY ARE PRESSED
@@ -90,9 +92,10 @@ abstract class ToolbarPanelContext {
   /// The 1/2/3/4/N comma press: the selection's blocks, else THE BLOCK
   /// UNDER THIS PANEL'S CURSOR — on the storyboard that is the standing
   /// row's block at the global playhead, cut blocks included (컷블록 위
-  /// 4 = 컷길이 4 — superseded by D28 where the cut carries a storyboard
-  /// layer: its PANEL takes the comma then), one rule for every block
-  /// kind.
+  /// 4 = 컷길이 4), one rule for every block kind. ↩️D28 handed a cut's
+  /// PANEL the comma off the V row wherever the cut carried a storyboard
+  /// layer; the panel takes it on the conte row now, and the V row's block
+  /// is its cut again (I-73).
   bool get canSetComma;
   void setComma(int comma);
 
@@ -458,10 +461,15 @@ class StoryboardEditLaneKey extends StoryboardEditTarget {
   const StoryboardEditLaneKey();
 }
 
-/// A CELL band — the strip's conte-block selection — is the timeline's band,
-/// so its Edit is the timeline's ([editSelectionInstance], F-186).
-class StoryboardEditCellBand extends StoryboardEditTarget {
-  const StoryboardEditCellBand();
+/// The conte row's cells — its selection band (F-186), or the panel the
+/// conte row is stood on (I-73) — are the timeline's own cells, so their
+/// Edit is the timeline's ([editSelectionInstance]).
+///
+/// ↩️`StoryboardEditCellBand` while the band was the only way this panel
+/// held one: the conte blocks lay inside the cut block, and a press there
+/// with no band stood on the cut.
+class StoryboardEditConteCells extends StoryboardEditTarget {
+  const StoryboardEditConteCells();
 }
 
 /// The storyboard's context: the standing row crossed with the track-global
@@ -519,17 +527,47 @@ class StoryboardToolbarPanelContext
   /// 컷블록을 대상으로 하고, 콘티블록 선택하면 지금 편집버튼같은거
   /// 활성화안되는데 활성화시키고 로직작동가능하도록」.
   ///
-  /// A CELL band here is the strip's conte-block selection — the SAME
+  /// A CELL band here is the conte row's conte-block selection — the SAME
   /// object, on the same cut-local axis, the timeline's rows sweep (the
   /// host's `stripSelect`) — and pressing the block stood the timeline on
   /// its conte row (F-187). So the frame verbs this panel has no answer of
   /// its own for — Edit, the clipboard, X, the mark, 링크 독립 — answer it
   /// with the timeline's ([TimelineToolbarPanelContext]). With no band the
-  /// standing row answers, as it always has: on the V row, the cut block.
+  /// standing row answers, as it always has: on the V row, the cut block —
+  /// and on the conte row, the cell it stands on ([_conteCell]).
   TimelineToolbarPanelContext? get _cellBand =>
       session.cells.cellSelectionClaimsSubject
       ? TimelineToolbarPanelContext(session, waitIn: waitIn)
       : null;
+
+  /// 🗣️I-73 (유저 2026-10-08): 「v행 아래에 콘티행 만들어서 거기서 … 콘티행에
+  /// 서야 콘티행에 서도록」 · 「콘티행도 동일하게 하고싶으니까」.
+  ///
+  /// THE CONTE ROW stood on is the same subject as its cell band, with no
+  /// band on it: the row's cells are a cut's own conte layer's, and standing
+  /// there seated the timeline on that layer
+  /// ([Standing.layerAConteStandSeats]). So the frame verbs F-186 hands a
+  /// band to the timeline for — Edit, the clipboard, X, the mark, 자동 이름
+  /// 지정 — are the timeline's here too, at the playhead: the answers its own
+  /// panel gives over the same cell.
+  ///
+  /// Only while that layer is the one in hand ([conteLayerInHand]). A cut
+  /// with no conte layer has no cell under this row, a gap has no cut, and a
+  /// layer picked in the timeline since is that panel's subject, not this
+  /// row's.
+  TimelineToolbarPanelContext? get _conteCell =>
+      isTrackConteRow(session.storyboardStandingRow) &&
+          conteLayerInHand(
+                cut: session.activeCutOrNull,
+                activeLayerId: session.activeLayerId,
+              ) !=
+              null
+      ? TimelineToolbarPanelContext(session, waitIn: waitIn)
+      : null;
+
+  /// The timeline's context where this panel's subject is one of the
+  /// timeline's own cells: a cell band, else the conte row stood on.
+  TimelineToolbarPanelContext? get _timelinesCells => _cellBand ?? _conteCell;
 
   bool get _standingOnTransitionRow {
     final row = session.storyboardStandingRow;
@@ -551,9 +589,9 @@ class StoryboardToolbarPanelContext
       // creates; opening a covered span is the Edit button's.
       return session.transitions.canCreateTransitionSpanAtPlayhead;
     }
-    // D28: on the cut row with a storyboard layer, the ＋ divides the
-    // panel under the cursor — the same one-resolver pair the dispatch
-    // reads.
+    // D28: on the conte row, the ＋ divides the panel under the cursor —
+    // the same one-resolver pair the dispatch reads. ↩️It divided it off
+    // the cut row while the panels were drawn there (I-73).
     if (session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
       return true;
     }
@@ -583,8 +621,8 @@ class StoryboardToolbarPanelContext
       session.transitions.createTransitionSpanAtPlayhead();
       return;
     }
-    // D28: on the cut row with a storyboard layer, the ＋ divides the
-    // panel under the cursor (self-gated by the one cursor resolver).
+    // D28: on the conte row, the ＋ divides the panel under the cursor
+    // (self-gated by the one cursor resolver).
     if (session.storyboardCursor.canCreateStoryboardPanelAtCursor) {
       session.storyboardCursor.createStoryboardPanelAtCursor();
       return;
@@ -596,18 +634,19 @@ class StoryboardToolbarPanelContext
   // An exposure X and a cell mark are cut-local, active-layer notions with
   // no row-addressed verb on this axis — greyed out honestly rather than
   // dispatched against the other panel's context. ↩️A cell band IS that
-  // axis, so they answer it (F-186, [_cellBand]).
+  // axis, so they answer it (F-186, [_cellBand]) — and so is the conte row
+  // stood on (I-73, [_conteCell]).
   @override
-  bool get canBlankExposure => _cellBand?.canBlankExposure ?? false;
+  bool get canBlankExposure => _timelinesCells?.canBlankExposure ?? false;
 
   @override
-  void blankExposure() => _cellBand?.blankExposure();
+  void blankExposure() => _timelinesCells?.blankExposure();
 
   @override
-  bool get canToggleMark => _cellBand?.canToggleMark ?? false;
+  bool get canToggleMark => _timelinesCells?.canToggleMark ?? false;
 
   @override
-  void toggleMark() => _cellBand?.toggleMark();
+  void toggleMark() => _timelinesCells?.toggleMark();
 
   @override
   bool get canSetComma => session.storyboardCursor.canSetCommaForStoryboardCursor;
@@ -651,17 +690,27 @@ class StoryboardToolbarPanelContext
     }
   }
 
+  /// The conte row's span is its cell's own row's, in the cut it stands in
+  /// — the timeline's answer ([_conteCell]): a sweep on this row stays
+  /// inside its cut, and so does the whole of it.
   @override
-  bool get canSelectRowSpan => _rowSpanTarget != null;
+  bool get canSelectRowSpan =>
+      _conteCell?.canSelectRowSpan ?? _rowSpanTarget != null;
 
   /// Which rail is asking: with nothing selected the frame pill's shove
   /// aims at the row THIS rail lights (a cut row shoves cuts, an S row
-  /// shoves sounds), which is not the session's active-layer fallback.
+  /// shoves sounds, the conte row its panels), which is not the session's
+  /// active-layer fallback.
   @override
   TimelineRowAddress? get shiftCurrentRow => session.selectedRow;
 
   @override
   void selectRowSpan() {
+    final conteCell = _conteCell;
+    if (conteCell != null) {
+      conteCell.selectRowSpan();
+      return;
+    }
     final target = _rowSpanTarget;
     if (target == null) {
       return;
@@ -717,7 +766,7 @@ class StoryboardToolbarPanelContext
     // lands on the band's row at the playhead or refuses (F-186).
     final cellBand = _cellBand;
     if (cellBand != null) {
-      return cellBand.canEditInstance ? const StoryboardEditCellBand() : null;
+      return cellBand.canEditInstance ? const StoryboardEditConteCells() : null;
     }
     if (_bandMissesTheStandingRow) {
       return null;
@@ -736,6 +785,14 @@ class StoryboardToolbarPanelContext
         return session.transitions.transitionSpanAt(session.editingGlobalFrame) !=
                 null
             ? const StoryboardEditTransitionSpan()
+            : null;
+      case LayerRowAddress(:final layerId)
+          when trackIdOfConteRow(layerId) != null:
+        // The conte row's cell is the timeline's own, so its Edit is the
+        // timeline's — the panel under the playhead, or nothing where the
+        // cut has no conte layer ([_conteCell]).
+        return (_conteCell?.canEditInstance ?? false)
+            ? const StoryboardEditConteCells()
             : null;
       case LayerRowAddress(:final layerId):
         final layer = session.trackSeGlobalLayerById(layerId);
@@ -763,16 +820,17 @@ class StoryboardToolbarPanelContext
 
   /// Where this panel's clipboard press stands: under a CELL band the
   /// timeline's own place — the band is the timeline's, on its axis (F-186,
-  /// [_cellBand]) — and with none, the S row this rail stands on at the
-  /// track's playhead ([FrameClipboard.storyboardPlace], F-281).
+  /// [_cellBand]) — and so on the conte row stood on, whose cell is the
+  /// timeline's (I-73, [_conteCell]); with neither, the S row this rail
+  /// stands on at the track's playhead ([FrameClipboard.storyboardPlace],
+  /// F-281).
   ///
   /// ↩️It read: 「The cell clipboard (cut / copy / the two pastes) addresses
   /// the active layer at the cut-local playhead — the timeline panel's noun;
   /// no global-axis clipboard exists to dispatch instead」, and with no cell
   /// band the four answered false outright.
   @override
-  ClipboardPlace? get clipboardPlace =>
-      session.cells.cellSelectionClaimsSubject
+  ClipboardPlace? get clipboardPlace => _timelinesCells != null
       ? session.clipboard.timelinePlace
       : session.clipboard.storyboardPlace;
 
@@ -854,11 +912,29 @@ class StoryboardToolbarPanelContext
     return cut == null ? const [] : [cut.id];
   }
 
+  /// The cuts first, as on every ladder of this panel; with none meant, a
+  /// cel of the timeline's own cells — a cell band's, or the panel the
+  /// conte row is stood on — is unlinked as the timeline unlinks it
+  /// ([_timelinesCells]). 🧪2026-10-08: F-186 named 링크 독립 among the
+  /// band's verbs and this rung never asked it — two panels of one cel
+  /// under a band lit the timeline's button and left this one dark.
   @override
-  bool get canUnlink => _unlinkCutIds.any(session.cutVerbs.cutIsLinked);
+  bool get canUnlink {
+    final cuts = _unlinkCutIds;
+    return cuts.isNotEmpty
+        ? cuts.any(session.cutVerbs.cutIsLinked)
+        : _timelinesCells?.canUnlink ?? false;
+  }
 
   @override
-  void unlink() => session.cutVerbs.unlinkCuts(_unlinkCutIds);
+  void unlink() {
+    final cuts = _unlinkCutIds;
+    if (cuts.isNotEmpty) {
+      session.cutVerbs.unlinkCuts(cuts);
+      return;
+    }
+    _timelinesCells?.unlink();
+  }
 
   /// 자동 이름 지정 on this panel (I-18: 「대상은 선택된 블록들(컷이나
   /// 프레임)이 있으면 선택한 대상만」). The selected cuts first; a CELL band —
@@ -884,6 +960,10 @@ class StoryboardToolbarPanelContext
     return switch (session.storyboardStandingRow) {
       TrackRowAddress(:final trackId) =>
         session.blockNaming.cutsFromThePlayhead(trackId),
+      // The conte row's cells are the timeline's own (I-73, [_conteCell]):
+      // its panels, numbered as that panel numbers them.
+      LayerRowAddress(:final layerId) when trackIdOfConteRow(layerId) != null =>
+        _conteCell?.autoNameTargets,
       LayerRowAddress() || LaneRowAddress() => null,
     };
   }

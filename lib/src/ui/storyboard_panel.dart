@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
+import 'package:flutter/foundation.dart'
+    show Listenable, ValueListenable, listEquals;
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import '../models/timeline_coverage.dart'
         drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
+import '../models/track_conte_row.dart';
 import '../models/track_transform_lane_carrier.dart';
 import 'canvas/canvas_press.dart' show canvasPressButtons, canvasPressPans;
 import 'canvas/flip_hud_controller.dart' show FlipHudAxis;
@@ -92,6 +94,7 @@ import 'timeline/timeline_beat_lines.dart'
         TimelineGridLaw,
         TimelineGridRows,
         TimelineGridSheet,
+        timelineBlockPaperShape,
         timelineLaneGround,
         timelineRowPaperExtent;
 import 'timeline/timeline_double_tap.dart'
@@ -109,7 +112,6 @@ import 'timeline/timeline_cell_style.dart'
         storyboardCutBlockBackgroundColor,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecorationAt,
-        timelineRowSelectionBandDecoration,
         timelineSelectedFrameBorderColor,
         timelineStandingWashDecorationAt;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
@@ -129,9 +131,7 @@ import 'timeline/timeline_frame_range_gesture.dart'
         TimelineLaneRangeHooks,
         TimelineRangeGestureCallbacks;
 import '../models/storyboard_coverage.dart'
-    show
-        StoryboardCoverageCell,
-        storyboardDivisionKeys;
+    show storyboardCoverageCells, storyboardDivisionKeys;
 import '../models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection, TimelineLaneSelection;
 import '../models/timeline_row_address.dart'
@@ -157,6 +157,12 @@ import 'timeline/timeline_instruction_row_visual.dart'
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_row_run_labels_painter.dart'
     show TimelineRowRunLabelsPainter;
+import 'timeline/timeline_row_cells_painter.dart' show TimelineRowCellsPainter;
+import 'timeline/timeline_cell_exposure_state.dart'
+    show timelineOwnCelNameAt, timelineOwnCelsStateAt;
+import 'timeline/timeline_frame_window.dart' show timelineFrameWindowFor;
+import 'timeline/memo_token.dart' show ByList;
+import 'repaint_props.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_grid_metrics.dart';
 import 'timeline/timeline_row_cross_offset.dart';
@@ -177,6 +183,7 @@ import 'listenable_rebind.dart';
 import 'session/row_spans.dart' show trackRowMaterialBlocks;
 import 'sliced_value_listenable_builder.dart' show SlicedListenableBuilder;
 
+part 'storyboard/storyboard_conte_row.dart';
 part 'storyboard/storyboard_standing.dart';
 part 'storyboard/storyboard_rows_and_labels.dart';
 part 'storyboard/storyboard_scroll.dart';
@@ -208,21 +215,37 @@ typedef StoryboardRailRow = ({Track track, Layer? layer, int? seSlot});
 /// [railRow] is the row as the rail's column swipe sees it — the transition,
 /// S and V rows, which carry the columns. A lane carries none, so it has
 /// none, and the walk steps over it.
+///
+/// [standRow] is the address you can STAND on when the row is neither of
+/// those — the track's CONTE row ([trackConteRowId], I-73): its cells are
+/// its cuts' own, selected inside a cut on the cut's own axis, so no
+/// track-axis select-drag lands its head on it and it keeps no [row]
+/// (유저 2026-10-08: the sweep across cuts is for later).
 typedef _StoryboardRailSlot = ({
   TimelineRowAddress? row,
   LaneRowAddress? laneRow,
+  LayerRowAddress? standRow,
   bool bandRow,
   bool lane,
   StoryboardRailRow? railRow,
   double height,
 });
 
-/// The drag hooks the STRIP's edges need, mirroring the timeline's
-/// comma-drag callbacks: live preview per step, ONE undo on release.
+/// The address a rail slot is stood on by — a row's own, a lane's, or the
+/// conte row's — or null for a row nobody stands on (the Audio lane, an S
+/// slot with no layer).
+TimelineRowAddress? _standingAddressOf(_StoryboardRailSlot slot) =>
+    slot.row ?? slot.laneRow ?? slot.standRow;
+
+/// The drag hooks the cuts' and their panels' edges need, mirroring the
+/// timeline's comma-drag callbacks: live preview per step, ONE undo on
+/// release. The V row hangs a cut's own two edges with them, and the conte
+/// row under it every panel's (I-73; ↩️one row hung both while the panels
+/// were drawn inside the cut block).
 ///
-/// There is one shape of edge on this row, and where it sits decides what
-/// it re-times (design, user's rule 2026-07-25; edge unification
-/// 2026-07-28, every-panel leading edges 2026-08-02):
+/// There is one shape of edge, and where it sits decides what it re-times
+/// (design, user's rule 2026-07-25; edge unification 2026-07-28,
+/// every-panel leading edges 2026-08-02):
 ///
 /// - EVERY leading edge — first and inner alike — is the cut's START, with
 ///   the panel it belongs to the one that gives up the commas. It is one
@@ -373,12 +396,13 @@ class StoryboardSeSelectCallbacks {
   final StoryboardRangeMoveCallbacks? move;
 }
 
-/// Range selection on the cut block's STRIP — the cut's own panels.
+/// Range selection on the CONTE ROW — the cut's own panels (↩️the cut
+/// block's strip, until I-73 gave them a row).
 ///
-/// The strip is a CUT-OWNED row, so unlike every other row of this panel it
-/// speaks the cut's local axis: its selection is the ordinary cut-local one
-/// the timeline uses, on that cut's storyboard layer. The mount converts,
-/// which is why these callbacks take a cut-local index and a layer.
+/// Its blocks are a CUT's own, so unlike every other row of this panel it
+/// speaks the cut's axis: its selection is the ordinary cut-local one the
+/// timeline uses, on that cut's storyboard layer. The mount converts, which
+/// is why these callbacks take the layer and a frame of its own.
 class StoryboardStripSelectCallbacks {
   const StoryboardStripSelectCallbacks({
     required this.selection,
@@ -638,31 +662,36 @@ class StoryboardPanel extends StatefulWidget {
   /// height stops reading as a rail. The S rows keep their own sizing —
   /// they twirl audio lanes open, so height means something else there.
   ///
-  /// 🗣️유저 2026-09-26: 「기본높이는 96으로 가자. 최솟값 ok. 최대값은 최대한
-  /// 키울수있으면 좋아」 — with FOUR bands (the cut's and the conte blocks',
-  /// [StoryboardCutBlocksPainter.bandHeight] each) taking 52px first, 96
-  /// leaves the picture 44px, a little more than the 38 the old 64 row
-  /// left it between two bands. The floor is the bands alone: they never
+  /// 🗣️I-73 (유저 2026-10-08: 「띠 둘만 이사로 가자」, and the drawn
+  /// proposal it answered: 「글자 띠 둘이 내려가 콘티 행이 됩니다. 한 번만
+  /// 나옵니다. 높이 70 + 30」): the cut block keeps its own TWO bands
+  /// ([StoryboardCutBlocksPainter.bandHeight] each, 26px) and the picture
+  /// the 44px it had; the conte blocks' two went down to the conte row, a
+  /// row of its own under this one. The floor is the bands alone: they never
   /// fold (유저 2026-09-25: 「띠는 v행 세로 줄어도 고정으로 그 자리에 두자」),
-  /// so at 52 the picture is gone and every word stays whole.
+  /// so at 26 the picture is gone and every word stays whole.
+  /// ↩️96 · 52 while the block wore four bands — 유저 2026-09-26: 「기본높이는
+  /// 96으로 가자. 최솟값 ok. 최대값은 최대한 키울수있으면 좋아」: 96 left the
+  /// picture those same 44px, a little more than the 38 the old 64 row left
+  /// it between two bands.
   ///
   /// The CEILING is the tallest row whose picture stays sharp
   /// ([maxTrackLaneHeightFor]) — 🗣️유저 2026-09-27
   /// (storyboard-v-row-ceiling-Q1): 「그림이 선명한 한 최대로(카메라 프레임
   /// 높이 + 띠)」. ↩️504, while the tallest picture a strip could ask was
   /// the conte's fixed 640px one. ↩️64 · 28 · 160 with two bands.
-  static const double defaultTrackLaneHeight = 96;
+  static const double defaultTrackLaneHeight = 70;
   // The height's LEGAL RANGE — the bar's steppers died with B7 (2026-08-17),
   // and the V-track splitter (2026-09-26) clamps to it
   // ([onResizeTrackLanes]).
   static const double minTrackLaneHeight =
-      StoryboardCutBlocksPainter.bandHeight * 4;
+      StoryboardCutBlocksPainter.bandHeight * 2;
 
   /// The tallest a V row may grow for a film shot through [cameraFrame] on
   /// a screen of [devicePixelRatio]: the strip asks its picture at the
   /// height it shows it, up to the camera frame (`pictureRenderWidthFor`),
   /// so past the frame's own height in the screen's pixels the picture
-  /// would stretch (⛔해상도로 속도를 사지 않는다) — that height, and the four
+  /// would stretch (⛔해상도로 속도를 사지 않는다) — that height, and the
   /// bands over it.
   static double maxTrackLaneHeightFor(
     CanvasSize cameraFrame,
@@ -708,11 +737,11 @@ class StoryboardPanel extends StatefulWidget {
   /// The user's rule (2026-08-02): the body stops at TWO ROWS, where a row
   /// is the timeline's layer row — so both panels stop on the same budget.
   /// ⚠️It named [minTrackLaneHeight] while that floor WAS the same 28px; the
-  /// V rows' floor rose to their four bands (52, 2026-09-26) and the budget
-  /// stays the timeline's.
+  /// V rows' floor is their bands (52 with four, 2026-09-26; 26 with the
+  /// cut's two, I-73) and the budget stays the timeline's.
   ///
   /// WHAT LANDS in that budget is the project's business, not the floor's:
-  /// the default lane is 96 and SE rows are 30, so at the floor the user
+  /// the default lane is 70 and SE rows are 30, so at the floor the user
   /// gets a scrollable sliver rather than two whole lanes. The number's job
   /// is that the body stays scrollABLE — 56 clears the 32px thumb minimum
   /// with room to travel — and that the chrome above and below it survives.
@@ -786,10 +815,10 @@ class StoryboardPanel extends StatefulWidget {
   /// active cut. Null keeps V labels display-only.
   final ValueChanged<TrackId>? onSelectTrack;
 
-  /// Edge-grip hooks for the strip's panel edges: the first panel's front
-  /// edge is the CUT's lead edge, and every trailing edge is its panel's
-  /// comma with the cut's length riding the row end (edge unification).
-  /// Null hides the grips.
+  /// Edge-grip hooks for the V row's cut edges and the conte row's panel
+  /// edges: a cut's — and its first panel's — front edge is the CUT's lead
+  /// edge, and every trailing edge is its panel's comma with the cut's
+  /// length riding the row end (edge unification). Null hides the grips.
   final StoryboardStripEdgeCallbacks? stripEdges;
 
   /// Every V row's height — the rail's label row and the strip row read
@@ -815,12 +844,12 @@ class StoryboardPanel extends StatefulWidget {
   /// a direct slide.
   final StoryboardCutSelectCallbacks? cutSelect;
 
-  /// Range selection on the STRIP — the cut's own panels, on the cut's own
-  /// axis. Null keeps the strip display-only.
+  /// Range selection on the CONTE ROW — the cut's own panels, on the cut's
+  /// own axis. Null keeps the row display-only.
   final StoryboardStripSelectCallbacks? stripSelect;
 
-  /// D30: pressed on a no-layer cut's CREATE affordance in the strip
-  /// slot. The host's gate/dispatch pair is the session's
+  /// D30: pressed on a no-layer cut's CREATE affordance — its stretch of
+  /// the conte row. The host's gate/dispatch pair is the session's
   /// canAddLayerOfKind/addLayerOfKind (T25). Null = display-only.
   final ValueChanged<CutId>? onCreateStoryboardLayer;
 
@@ -1181,8 +1210,8 @@ class StoryboardPanel extends StatefulWidget {
   /// tap, on the cut row.
   final void Function(TrackId trackId, int globalFrame)? onEditCutBlock;
 
-  /// …and a CONTE block double-clicked: the cell it is, of its cut's
-  /// storyboard row [LayerId], at this GLOBAL frame.
+  /// …and a CONTE block double-clicked, on the conte row: the cell it is,
+  /// of its cut's storyboard row [LayerId], at this GLOBAL frame.
   final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
   onEditConteBlock;
 
@@ -2568,6 +2597,11 @@ const double _seRowHeight = 30;
 /// up with the rail's own row pitch.
 const double _transitionRowHeight = 30;
 
+/// The conte row's height — the track's conte layers as one row of frame
+/// blocks under the V row (I-73). Same regulation as an S row: it is the
+/// timeline's own row, drawn by the timeline's own painter.
+const double _conteRowHeight = 30;
+
 /// A twirled-down lane's height — every lane, the Audio lane included: the
 /// timeline draws all its rows at one height, and the labels and the strips
 /// share it (the rail and strips columns must stay height-synced).
@@ -2587,13 +2621,19 @@ const double _laneHeight = 26;
 /// rail's labels, the strips beside them, and the one table the bands, the
 /// sheet and the select-drag read. Two of them on different numbers is a
 /// label and its strip parting ways.
-typedef _StoryboardRowHeights = ({double se, double transition, double lane});
+typedef _StoryboardRowHeights = ({
+  double se,
+  double transition,
+  double conte,
+  double lane,
+});
 
 _StoryboardRowHeights _storyboardRowHeightsIn(BuildContext context) {
   final growth = timelineLayerRowGrowthIn(context);
   return (
     se: _seRowHeight + growth,
     transition: _transitionRowHeight + growth,
+    conte: _conteRowHeight + growth,
     lane: _laneHeight + growth,
   );
 }
@@ -3035,7 +3075,17 @@ class _StoryboardSeLabel extends StatelessWidget {
   );
 }
 
-/// The TRANSITION row's rail label — the track's O.L / F.I / F.O row.
+/// The rail label of a track's row that is ONE layer row and no S slot: the
+/// TRANSITION row — the track's O.L / F.I / F.O row — and the track's CONTE
+/// row (I-73).
+///
+/// What follows is said of the transition row, whose label this was alone
+/// until the conte row took the same skeleton. The conte row hands it no
+/// [layer] yet, so its control slots stand empty and reserved: its head is
+/// to be the timeline's own, one for every cut (I-73 ③, 유저 2026-10-08:
+/// 「콘티행도 동일하게 하고싶으니까 어태치 접기펼치기버튼등 동일하게
+/// 할수있는거 다 넣는거 잊지말고」 · 「콘티레이어 권고한대로 머리만 한벌
+/// ok」).
 ///
 /// The rail's shared column skeleton, like every other row — and the
 /// timeline row's three controls with it (B5③ 2026-08-17, ordered twice):
@@ -3054,9 +3104,13 @@ class _StoryboardSeLabel extends StatelessWidget {
 /// delete are one verb now — [editTransitionSpanInstance], reached from the
 /// frame pill's Edit Instance and from the row's double-tap — so a second
 /// entrance on the rail is the predecessor, not a convenience.
-class _StoryboardTransitionLabel extends StatelessWidget {
-  const _StoryboardTransitionLabel({
+class _StoryboardLayerRowLabel extends StatelessWidget {
+  const _StoryboardLayerRowLabel({
     required this.track,
+    required this.rowId,
+    required this.kind,
+    required this.keyName,
+    required this.name,
     required this.layer,
     required this.active,
     required this.height,
@@ -3068,13 +3122,29 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   });
 
   final Track track;
-  final Layer layer;
+
+  /// The address the row is picked by: the transition layer's own id, or
+  /// the conte row's ([trackConteRowId]) — a row no one cut's layer names.
+  final LayerId rowId;
+
+  /// The row's kind — its type glyph.
+  final LayerKind kind;
+
+  /// The row's word in its keys: `storyboard-<keyName>-label-<track>`.
+  final String keyName;
+
+  /// The name the row prints.
+  final String name;
+
+  /// The layer the row's controls act on and its double click renames —
+  /// the transition layer. Null leaves every control slot empty (the conte
+  /// row, until I-73 ③).
+  final Layer? layer;
 
   /// Whether this row is THE selected row (same highlight as every other).
   final bool active;
 
-  /// The row's height where the panel is shown
-  /// ([_StoryboardRowHeights.transition]).
+  /// The row's height where the panel is shown ([_StoryboardRowHeights]).
   final double height;
   final ValueChanged<LayerId>? onSelectLayer;
   final TimelineLabelDoubleClick? labelDoubleClick;
@@ -3087,12 +3157,16 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onSelect = onSelectLayer;
+    final layer = this.layer;
+    final onToggleTimesheet = onToggleLayerTimesheet;
+    final onMarkSelected = onLayerMarkSelected;
+    final onToggleVisibility = onToggleLayerVisibility;
     return _StoryboardLabelShell(
       selectKey: ValueKey<String>(
-        'storyboard-transition-label-${track.id.value}',
+        'storyboard-$keyName-label-${track.id.value}',
       ),
-      onTap: onSelect == null ? null : () => onSelect(layer.id),
-      layerId: layer.id,
+      onTap: onSelect == null ? null : () => onSelect(rowId),
+      layerId: layer?.id,
       labelDoubleClick: labelDoubleClick,
       height: height,
       active: active,
@@ -3104,26 +3178,26 @@ class _StoryboardTransitionLabel extends StatelessWidget {
               ...layerRailLeadingCells(
                 // B5③: the timeline row's sheet toggle and mark chip in
                 // their shared slots — same widgets, same gates.
-                timesheet: onToggleLayerTimesheet == null
+                timesheet: layer == null || onToggleTimesheet == null
                     ? null
                     : layerRailTimesheetCell(
                         keyPrefix: 'storyboard',
                         layer: layer,
-                        onToggle: onToggleLayerTimesheet!,
+                        onToggle: onToggleTimesheet,
                       ),
-                mark: onLayerMarkSelected != null
-                    ? LayerMarkChip.forLayer(
+                mark: layer == null || onMarkSelected == null
+                    ? null
+                    : LayerMarkChip.forLayer(
                         layer,
                         keyPrefix: 'storyboard',
-                        onMarkSelected: onLayerMarkSelected!,
-                      )
-                    : null,
+                        onMarkSelected: onMarkSelected,
+                      ),
                 typeButton: LayerTypeButton(
                   keyPrefix: 'storyboard',
-                  idValue: '${track.id.value}-transition',
-                  kind: LayerKind.transition,
+                  idValue: '${track.id.value}-$keyName',
+                  kind: kind,
                   height: height,
-                  onTap: onSelect == null ? null : () => onSelect(layer.id),
+                  onTap: onSelect == null ? null : () => onSelect(rowId),
                 ),
               ),
               Expanded(
@@ -3131,9 +3205,9 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                   alignment: Alignment.centerLeft,
                   child: _storyboardRowName(
                     context,
-                    layer.name,
+                    name,
                     active: active,
-                    shown: layer.isVisible,
+                    shown: layer?.isVisible ?? true,
                   ),
                 ),
               ),
@@ -3143,15 +3217,15 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                 // contribution (B5③ — 「비지블 = 해당 합성 반영/미반영」).
                 // fx and opacity stay kind-gated off, exactly like the
                 // timeline row's slots for this kind.
-                visibility: onToggleLayerVisibility != null
-                    ? RailSwipeColumnPointer(
+                visibility: layer == null || onToggleVisibility == null
+                    ? null
+                    : RailSwipeColumnPointer(
                         child: LayerVisibilityToggleButton(
                           keyValue: 'storyboard-layer-visibility-${layer.id}',
                           isVisible: layer.isVisible,
-                          onToggle: () => onToggleLayerVisibility!(layer.id),
+                          onToggle: () => onToggleVisibility(layer.id),
                         ),
-                      )
-                    : null,
+                      ),
               ),
             ],
           ),
@@ -4637,42 +4711,6 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
   }
 }
 
-/// The paper one chrome layer of the V row's edges stands on: its slot in
-/// the row (row-local), whose edges it carries — the conte blocks', or the
-/// placeholders of the cuts that have none — and the corners it rounds them
-/// by.
-typedef _EdgePaper = ({
-  String name,
-  ({double top, double height}) slot,
-  bool conteBlocks,
-  TimelineGripPaper corners,
-});
-
-/// One panel of the strip as the edit chrome sees it: a global frame span,
-/// and what its two edges mean.
-typedef _StoryboardStripGrip = ({
-  CutId cutId,
-  int startFrame,
-  int endFrameExclusive,
-
-  /// This panel's CUT-LOCAL ordinal. Every panel hangs a leading grip
-  /// (user's rule 2026-08-02) and the grip is the same verb whatever the
-  /// ordinal — the cut's lead edge, with this panel the one that gives up
-  /// the commas. The ordinal is what tells the session WHICH panel that is.
-  int panelIndex,
-
-  /// The CUT-LOCAL timeline key of the block this panel's trailing edge
-  /// comma-resizes, or null when that edge is the cut's own length
-  /// instead (the last panel — it goes through the cut-edge begin, which
-  /// also serves cuts with no storyboard row at all).
-  int? commaBlockKey,
-
-  /// Whether the panel is a CONTE BLOCK — its cut has a storyboard layer —
-  /// or the one placeholder of a cut with none. The two stand on different
-  /// paper: the conte blocks' slot, or the whole plate.
-  bool isConteBlock,
-});
-
 class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
@@ -4685,7 +4723,6 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.stripEdges,
     required this.cutMove,
     required this.cutSelect,
-    required this.stripSelect,
     required this.thumbnails,
     required this.timelineScale,
     required this.frameGeometry,
@@ -4696,19 +4733,14 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.showSeconds,
     required this.projectFrameRate,
     this.railRowAt,
-    this.onCreateStoryboardLayer,
     this.linkedCutIds = const {},
     this.onOpenCutLinks,
     this.onEditCutBlock,
-    this.onEditConteBlock,
   });
 
-  /// F-255: a double click on a cut block's own paper, and on a conte
-  /// block ([StoryboardPanel.onEditCutBlock]). Null keeps the paper
-  /// without one.
+  /// F-255: a double click on a cut block
+  /// ([StoryboardPanel.onEditCutBlock]). Null keeps the block without one.
   final void Function(TrackId trackId, int globalFrame)? onEditCutBlock;
-  final void Function(TrackId trackId, LayerId layerId, int globalFrame)?
-  onEditConteBlock;
 
   /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
   /// by the PANEL against the heights it paints. Null keeps the anchor.
@@ -4717,12 +4749,6 @@ class _StoryboardTrackRow extends StatelessWidget {
     double crossOffset,
   )?
   railRowAt;
-
-  /// D30: pressed on a no-layer cut's CREATE affordance (the reserved
-  /// strip slot's content). The gate and the dispatch both live with the
-  /// host's session pair (canAddLayerOfKind/addLayerOfKind — T25); null
-  /// keeps the affordance display-only.
-  final ValueChanged<CutId>? onCreateStoryboardLayer;
 
   /// The LINKED cuts on this track (I-25): their names wear the link icon.
   final Set<CutId> linkedCutIds;
@@ -4749,10 +4775,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   final StoryboardStripEdgeCallbacks? stripEdges;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
-
-  /// Range selection on the STRIP — the cut's own panels, on the cut's own
-  /// axis. Null keeps the strip display-only.
-  final StoryboardStripSelectCallbacks? stripSelect;
   final StoryboardThumbnails? thumbnails;
   final TimelineScale timelineScale;
 
@@ -4778,117 +4800,58 @@ class _StoryboardTrackRow extends StatelessWidget {
   final ProjectFrameRate projectFrameRate;
 
   /// The cut covering track-global [frame], or null in a gap / past the
-  /// end. The row's blocks are the snap material, so a press that lands
-  /// between cuts addresses no cut at all — the same answer
-  /// [TrackFrameAxis.cutBlockAt] gives the shared snap rule.
-  StoryboardTimelineLayoutEntry? _cutAtFrame(int frame) {
-    for (final entry in layoutEntries) {
-      if (frame < entry.startFrame) {
-        return null;
-      }
-      if (frame < entry.endFrame) {
-        return entry;
-      }
-    }
-    return null;
-  }
+  /// end ([_cutEntryAt]). The row's blocks are the snap material, so a press
+  /// that lands between cuts addresses no cut at all.
+  StoryboardTimelineLayoutEntry? _cutAtFrame(int frame) =>
+      _cutEntryAt(layoutEntries, frame);
 
-  /// Each cut's panels, under the coverage rule — the strip's content AND
-  /// the row's grip material, resolved once for both. A cut with no
-  /// storyboard row still answers with ONE cell over the whole cut, so
-  /// neither consumer has an empty case to handle.
-  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() =>
-      storyboardCellsByCut(layoutEntries);
-
-  /// One entry per PANEL of the row, in track order — what the edit chrome
-  /// hangs its grips on.
-  ///
-  /// The cut has no edge grips of its own any more (design, user's rule
-  /// 2026-07-25): a cut edge is always ON the strip, so the first panel's
-  /// leading edge IS the cut's start and the last panel's trailing edge IS
-  /// its length. Each panel therefore carries exactly one edge — its END —
-  /// and only the first carries a start as well, which is what leaves ONE
-  /// grip per boundary instead of two facing each other across it.
-  ///
-  /// A cut with no storyboard row has a single panel spanning it, so it
-  /// grows exactly the two grips it had before: the new rule's degenerate
-  /// case IS the old behaviour, with no branch saying so.
-  ///
-  /// An inner trailing edge needs its panel's own TIMELINE key (the block
-  /// its comma resizes), which the coverage cell cannot answer — the first
-  /// cell's startIndex is clamped to 0 whatever its key says — so the keys
-  /// are read off the row alongside the cells.
-  List<_StoryboardStripGrip> _stripGrips(
-    Map<CutId, List<StoryboardCoverageCell>> cellsByCut,
-  ) => [
-    for (final entry in layoutEntries)
-      if (cellsByCut[entry.cutId] case final cells?)
-        ...() {
-          final layer = storyboardLayerForCut(entry.cut);
-          final keys = storyboardDivisionKeys(
-            timeline: layer?.timeline,
-            cutDuration: entry.duration,
-          );
-          return [
-            for (var index = 0; index < cells.length; index += 1)
-              (
-                cutId: entry.cutId,
-                startFrame: entry.startFrame + cells[index].startIndex,
-                endFrameExclusive:
-                    entry.startFrame + cells[index].endIndexExclusive,
-                panelIndex: index,
-                commaBlockKey: index == cells.length - 1 || index >= keys.length
-                    ? null
-                    : keys[index],
-                isConteBlock: layer != null,
-              ),
-          ];
-        }(),
-  ];
-
-  /// The plates the row's grips stand on: a cut's first panel starts its
-  /// plate and its last panel ends it — the plate's round corners — and
-  /// every boundary between panels is the plate's straight edge. Only a cut
-  /// with no storyboard layer hangs its edges on the plate now, and its one
-  /// placeholder is both. The corner is the one the painter rounds the plate
-  /// by ([StoryboardCutBlocksPainter.plateCorner]).
-  TimelineGripPaper _gripPaper(
-    List<_StoryboardStripGrip> grips,
-    StoryboardCutBlocksPainter blocksPainter,
-  ) => (
-    cornerStarts: {
-      for (final grip in grips)
-        if (grip.panelIndex == 0) grip.startFrame,
-    },
-    cornerEnds: {
-      for (var index = 0; index < grips.length; index += 1)
-        if (index == grips.length - 1 ||
-            grips[index + 1].cutId != grips[index].cutId)
-          grips[index].endFrameExclusive,
-    },
+  /// The plates the row's grips stand on: every cut starts a plate and ends
+  /// it, in the plate's round corners — the corner the painter rounds the
+  /// plate by ([StoryboardCutBlocksPainter.plateCorner]).
+  TimelineGripPaper _gripPaper(StoryboardCutBlocksPainter blocksPainter) => (
     cornerRadius: blocksPainter.plateCorner.x,
     band: StoryboardCutBlocksPainter.bandHeight,
   );
 
-  /// One chrome layer of the row's EDGES, on one [paper]: over its slot
-  /// (row-local), the grips of the panels that are conte blocks or of the
-  /// cuts that have none, rounded by its corners.
+  /// THE ROW'S EDGES — each cut's two ends, in its plate's corners.
   ///
-  /// The ordinals stay the row's — indices into [grips] — so an edge's id
-  /// and the hooks' lookup are the same on either paper.
+  /// 🗣️I-73 (유저 2026-10-08): 「띠 둘만 이사로 가자. 여기서 그럼 v행에
+  /// 콘티블록 위치의 칸마다 있던 엣지는 어떻게하지? 그냥 없는게
+  /// 심플한거같긴한데」 — and the drawn proposal that answer took: 「엣지는
+  /// 컷의 양 끝뿐입니다」 · 「썸네일 사이는 구분선만. 잡을 것이 없습니다.
+  /// 칸의 엣지는 바로 아래 콘티 행에만 있습니다」. A cut block's edges are
+  /// the CUT's: its start and its length — the two verbs the conte row's
+  /// first and last grips begin, from a second door.
+  /// ↩️The cut had NO edge grips of its own (design, user's rule
+  /// 2026-07-25): a cut edge was always on the strip, the first panel's
+  /// leading edge being the cut's start and the last panel's trailing edge
+  /// its length — and from 2026-09-26 (「콘티블록이 있으면 애초에 거기에
+  /// 처음이랑 끝에 엣지가 존재하잖아 … 컷블록의 엣지만 삭제」 · 「콘티레이어
+  /// 없으면 컷블록 기존처럼 배치하고, 있으면 콘티블록에 배치된걸로
+  /// 대체되는」) only a cut with no storyboard layer kept edges in the
+  /// plate's corners. Every cut's are there now — where every edge stood
+  /// from 2026-09-25 (「제대로 컷블록의 위치에 존재하지않아」), and on the
+  /// picture strip before that (#757, 07-25).
+  ///
+  /// 🗣️IN THE BANDS ALONE (I-52, 유저 2026-09-28: 「썸네일이 존재하는 블록은
+  /// 엣지를 썸네일 안가리도록 … 띠에만」 · 「세로로는 해당 상단띠 전체에
+  /// 걸치도록」): a triangle takes one band whole — the back edge's the
+  /// cut's name, the front edge's its length — and never a picture.
+  ///
+  /// THE timeline's chrome layer, not a cut-shaped copy of it: one painter
+  /// and one gesture layer for the row, where this used to be two widgets a
+  /// cut.
   Widget _edgeChrome(
     BuildContext context,
-    _EdgePaper paper,
-    List<_StoryboardStripGrip> grips,
     StoryboardCutBlocksPainter blocksPainter,
-  ) => Positioned(
-    key: ValueKey<String>('storyboard-${paper.name}-slot-${track.id.value}'),
-    left: 0,
-    right: 0,
-    top: paper.slot.top,
-    height: paper.slot.height,
+  ) => Positioned.fill(
+    key: ValueKey<String>(
+      'storyboard-plate-edit-chrome-slot-${track.id.value}',
+    ),
     child: TimelineRowEditChromeLayer(
-      paintKey: ValueKey<String>('storyboard-${paper.name}-${track.id.value}'),
+      paintKey: ValueKey<String>(
+        'storyboard-plate-edit-chrome-${track.id.value}',
+      ),
       // What the triangles stand on: the plate, and over it the block's
       // label bands and pictures, each in its own ink (유저 2026-09-26:
       // 「2여도 흰종이부분에 엣지는 1처럼 제대로 보이게 가능하지?」). ↩️One
@@ -4898,72 +4861,45 @@ class _StoryboardTrackRow extends StatelessWidget {
         Theme.of(context).colorScheme,
         hovered: false,
       ),
-      gripGrounds: () =>
-          StoryboardPlateGrounds(blocksPainter, crossOffset: paper.slot.top),
+      gripGrounds: () => StoryboardPlateGrounds(blocksPainter),
       // The blocks' own window: the row spans the whole film, and the grips
       // are drawn where the view can reach, as the blocks under them are.
       windowBucket: windowBucket,
       viewportMainExtent: viewportWidth,
-      // No layer: these blocks are panels of many cuts, and the row has no
-      // run edges for a LayerId to name.
+      // No layer: these blocks are cuts, and the row has no run edges for a
+      // LayerId to name.
       layerId: null,
       resolver: TimelineRowChromeResolver(
         gripBlocks: [
-          for (var index = 0; index < grips.length; index += 1)
-            if (grips[index].isConteBlock == paper.conteBlocks)
-              (
-                ordinal: index,
-                startIndex: grips[index].startFrame,
-                endIndexExclusive: grips[index].endFrameExclusive,
-                // EVERY panel hangs a leading grip (user's rule 2026-08-02).
-                // R4 had left it on the first panel alone, because P5 #8's
-                // interior front grips DELEGATED to the previous panel's
-                // back grip — two handles doing one thing. They are not
-                // that any more: a front grip takes the frames off the
-                // cut's HEAD and a back grip off its TAIL, so the two edges
-                // of one boundary name two edits.
-                startGrip: true,
-                endGrip: true,
-              ),
+          for (var index = 0; index < layoutEntries.length; index += 1)
+            (
+              ordinal: index,
+              startIndex: layoutEntries[index].startFrame,
+              endIndexExclusive: layoutEntries[index].endFrame,
+              startGrip: true,
+              endGrip: true,
+            ),
         ],
         gripIdScope: track.id.value,
         layer: null,
         baseLayer: null,
-        crossAxisExtent: paper.slot.height,
+        crossAxisExtent: laneHeight,
         axis: Axis.horizontal,
         includeRunEdges: false,
-        gripPaper: paper.corners,
+        gripPaper: _gripPaper(blocksPainter),
       ),
       geometry: frameGeometry,
       axis: Axis.horizontal,
       // The row closes the identity in, by ordinal — the grip hooks
-      // themselves know nothing about cuts or panels.
+      // themselves know nothing about cuts.
       grips: TimelineRowGripCallbacks(
-        onBegin: (_, ordinal, edge) {
-          if (ordinal < 0 || ordinal >= grips.length) {
-            return false;
-          }
-          // R10 R4: no impersonation. A grip reports the edge it IS, and
-          // the rule that decides what moves lives one layer down, in the
-          // session — which is where the "a front edge inside a cut is
-          // really the previous back edge" trick belonged all along.
-          final grip = grips[ordinal];
-          if (edge == TimelineBlockEdge.start) {
-            return stripEdges!.onCutEdgeBegin(
-              grip.cutId,
-              TimelineBlockEdge.start,
-              grip.panelIndex,
-            );
-          }
-          final commaKey = grip.commaBlockKey;
-          return commaKey == null
-              ? stripEdges!.onCutEdgeBegin(
-                  grip.cutId,
-                  TimelineBlockEdge.end,
-                  grip.panelIndex,
-                )
-              : stripEdges!.onCommaBegin(grip.cutId, commaKey);
-        },
+        // R10 R4: no impersonation. A grip reports the edge it IS, and the
+        // rule that decides what moves lives one layer down, in the session.
+        // The cut's own lead edge is its first panel's (ordinal 0).
+        onBegin: (_, ordinal, edge) =>
+            ordinal >= 0 &&
+            ordinal < layoutEntries.length &&
+            stripEdges!.onCutEdgeBegin(layoutEntries[ordinal].cutId, edge, 0),
         onUpdate: stripEdges!.onUpdate,
         onEnd: stripEdges!.onEnd,
         onCancel: stripEdges!.onCancel,
@@ -4971,93 +4907,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       runEdit: null,
     ),
   );
-
-  /// The STRIP's half of the shared range gesture.
-  ///
-  /// The strip is a CUT-OWNED row, so its selection is the cut-local one —
-  /// which is also why the drag never leaves the cut it started in: a
-  /// cut-local index cannot name a frame in another cut. That is the
-  /// "clip to the anchor cut" rule, arriving as arithmetic rather than as
-  /// a guard.
-  ///
-  /// The row address is ignored, as it is on the cut row: the pressed FRAME
-  /// says which cut, and therefore which storyboard layer, the drag is on.
-  /// The strip under [frame]: the covering cut and its storyboard row —
-  /// null in gaps and on cuts without one. The strip GESTURE and its
-  /// hit-test gate read this one answer, so what the callbacks would
-  /// refuse is exactly what the gate lets fall through.
-  ({StoryboardTimelineLayoutEntry entry, Layer layer})? _stripAt(int frame) {
-    final entry = _cutAtFrame(frame);
-    if (entry == null) {
-      return null;
-    }
-    final layer = storyboardLayerForCut(entry.cut);
-    return layer == null ? null : (entry: entry, layer: layer);
-  }
-
-  TimelineRangeGestureCallbacks? _stripGesture() {
-    final stripSelect = this.stripSelect;
-    if (stripSelect == null) {
-      return null;
-    }
-    return TimelineRangeGestureCallbacks(
-      isInSelection: (_, frame) {
-        final strip = _stripAt(frame);
-        final selection = stripSelect.selection.value;
-        return strip != null &&
-            selection != null &&
-            selection.coversLayer(strip.layer.id) &&
-            selection.contains(frame - strip.entry.startFrame);
-      },
-      onSelectUpdate: (_, anchorIndex, headIndex, _) {
-        final strip = _stripAt(anchorIndex);
-        if (strip == null) {
-          return;
-        }
-        final start = strip.entry.startFrame;
-        final lastLocal = strip.entry.duration - 1;
-        int localOf(int globalFrame) =>
-            (globalFrame - start).clamp(0, lastLocal < 0 ? 0 : lastLocal);
-        stripSelect.onDrag(
-          layerId: strip.layer.id,
-          anchorIndex: localOf(anchorIndex),
-          headIndex: localOf(headIndex),
-        );
-      },
-      // The panel press already seeks into its cut, so the tap only drops
-      // the selection (R10: standing is handled by the press here).
-      onTapClear: (_) => stripSelect.onClear(),
-      // Sliding the panels: the same move the timeline's rows do, on the
-      // cut's own axis. The pressed frame says which cut — and therefore
-      // which storyboard row — the drag belongs to, exactly as the select
-      // half reads it.
-      onMoveBegin: (_, frame) {
-        final strip = _stripAt(frame);
-        return strip != null &&
-            (stripSelect.move?.onBegin(strip.layer.id) ?? false);
-      },
-      // No target row is ever reported: a cut has exactly one storyboard
-      // row, so there is nowhere sideways to land.
-      onMoveUpdate: (frameDelta, _) =>
-          stripSelect.move?.onUpdate(frameDelta, null),
-      onMoveEnd: stripSelect.move?.onEnd ?? _noMove,
-      onMoveCancel: stripSelect.move?.onCancel ?? _noMove,
-    );
-  }
-
-  /// Whether the conte blocks' gesture takes a press at [frame]: only where
-  /// there is a strip, and not inside the live CUT selection — a press there
-  /// starts sliding the selected cuts, the shared range gesture's own law,
-  /// which the conte blocks lying over the cut used to shadow (유저
-  /// 2026-09-28, F-203: 「v행 선택범위로 선택…하고 컷 잡아끌때 띠만 잡아야
-  /// 반응하는상황? 그냥 컷 어디 잡아끌든 컷 움직이게」).
-  ///
-  /// The panels keep a press inside their OWN selection (「물론 컷 안
-  /// 콘티블록 선택된상황에선 다르긴한데」) without a term here: the two
-  /// selections never stand together — taking one drops the other — so a
-  /// live panel selection means there is no cut run to yield to.
-  bool _stripClaims(int frame) =>
-      _stripAt(frame) != null && !_isSelectedAt(frame);
 
   /// Whether [frame] sits in the live selection — a plain range test now
   /// that the selection IS a range on this row's own axis.
@@ -5117,10 +4966,11 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// there is no gap rule here — the seek parks, exactly as the ruler's
   /// does. A press inside the live selection stays silent: it is starting a
   /// move, not picking a frame.
-  /// Both halves of the pointer DOWN — the seek AND the D30 create — run
-  /// under this ONE gate pair: secondary buttons are not presses here,
-  /// and a press inside the live selection is starting a move, so it
-  /// neither seeks nor creates.
+  /// The pointer DOWN runs under this ONE gate pair: secondary buttons are
+  /// not presses here, and a press inside the live selection is starting a
+  /// move, so it does not seek. ↩️The D30 create ran under it too, while a
+  /// cut with no storyboard layer wore its button here (I-73: the conte
+  /// row's).
   bool _pressDownGated(PointerDownEvent event) {
     if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
       return true;
@@ -5135,31 +4985,6 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
-  /// D30: a press inside the ACTIVE no-layer cut's create affordance —
-  /// eligibility and rect are [StoryboardCutBlocksPainter
-  /// .createAffordanceRectOf]'s, the SAME call the paint made. The
-  /// visual is the PRE-press snapshot, so a press on a non-active cut's
-  /// block centre stays a SELECT (its slot drew no affordance), and only
-  /// the next press — on the drawn '+' — creates.
-  void _maybeCreateStoryboardLayer(
-    StoryboardCutBlocksPainter painter,
-    PointerDownEvent event,
-  ) {
-    final onCreate = onCreateStoryboardLayer;
-    if (onCreate == null) {
-      return;
-    }
-    final block = painter.blockAt(event.localPosition);
-    if (block == null) {
-      return;
-    }
-    final affordance = StoryboardCutBlocksPainter.createAffordanceRectOf(block);
-    if (affordance == null || !affordance.contains(event.localPosition)) {
-      return;
-    }
-    onCreate(block.cutId);
-  }
-
   int _frameAtX(double x) =>
       timelineScale.pixelsPerFrame <= 0 ? 0 : timelineScale.frameAt(x);
 
@@ -5169,21 +4994,12 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
+    final timelineWidth = _storyboardCutsExtent(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
     final drop = onDropMediaAsset;
-    final cellsByCut = _cellsByCut();
-    final grips = _stripGrips(cellsByCut);
-    // Where the panels are drawn is where their gestures and their EDGES
-    // live — the picture and the pointer read one definition of the slot.
-    // 🗣️The panel is a CONTE BLOCK now, its two bands and its picture (유저
-    // 2026-09-26: 「내부에 콘티블록 있으면 콘티블록의 띠도 생겨서」), so the
-    // slot is the conte blocks', and only the cut's own bands are the cut's.
-    // ↩️It was the strip alone while the bands were all the cut's.
-    final conteSlot = StoryboardCutBlocksPainter.conteBlockBandOf(laneHeight);
 
     // Held in a local so the press layer hit-tests the SAME visuals the
-    // paint lays down (the D30 create affordance reads the block's band).
+    // paint lays down (the link icon reads the block's band).
     //
     // Through the shared builder (D15): the folded storyboard draws its
     // row with this same call, so the picture there cannot be a second
@@ -5281,116 +5097,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                 crossAxisExtent: laneHeight,
                 callbacks: rangeGesture,
               ),
-            // THE CONTE BLOCKS' own gesture, over the slot that draws them.
-            // It sits ABOVE the cut gesture and covers only that slot, so
-            // the split between "the cut's bands are the cut, the conte
-            // blocks are its panels" is hit-testing and not a branch: a
-            // press on a cut band simply misses this and lands on the cut
-            // gesture below — and so does a press inside the live cut
-            // selection, which is starting that selection's move
-            // ([_stripClaims]).
-            if (_stripGesture() case final stripGesture?)
-              Positioned(
-                key: ValueKey<String>(
-                  'storyboard-strip-gesture-slot-${track.id.value}',
-                ),
-                left: 0,
-                right: 0,
-                top: conteSlot.top,
-                height: conteSlot.height,
-                // Hit-testing gates the strip gesture to frames that HAVE a
-                // strip: its pan claims the arena at DOWN (eager), so a
-                // press it cannot answer — a gap, a cut without a
-                // storyboard row — must never reach it, or the cut-axis
-                // gesture below is starved and the drag dies silently (the
-                // real-device "no selection where there is no cut block").
-                child: _FrameHitGate(
-                  claimsDx: (dx) => _stripClaims(_frameAtX(dx)),
-                  // The gesture layer fills its Stack, so it needs one of
-                  // its own here — a second Positioned around it would be
-                  // two ParentDataWidgets on one render object.
-                  child: Stack(
-                    children: [
-                      TimelineFrameRangeGestureLayer(
-                        row: TrackRowAddress(track.id),
-                        geometry: frameGeometry,
-                        crossAxisExtent: conteSlot.height,
-                        callbacks: stripGesture,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            // D30: the conte blocks' own selection band — the timeline's ONE
-            // band decoration, drawn from the cut-local selection's own
-            // numbers. One listener per TRACK row, never per cut
-            // (old-tablet law), pointer-transparent like every band.
-            if (stripSelect case final stripSelect?)
-              Positioned(
-                left: 0,
-                right: 0,
-                top: conteSlot.top,
-                height: conteSlot.height,
-                child: IgnorePointer(
-                  child: ValueListenableBuilder<TimelineFrameRangeSelection?>(
-                    valueListenable: stripSelect.selection,
-                    builder: (context, selection, _) =>
-                        _stripRangeOutline(selection),
-                  ),
-                ),
-              ),
-            // THE EDGES, at the panels' boundaries. They ride ABOVE the strip
-            // and cut gestures so an edge keeps its priority over both; the
-            // middles keep the rest.
-            //
-            // One shape of grip, and where it sits decides what it does: the
-            // first panel's leading edge is the CUT's lead edge, and every
-            // trailing edge is its panel's comma with the cut's length
-            // riding the row end (edge unification — the division verb is
-            // gone). The cut block has no grips of its own besides these.
-            //
-            // 🗣️IN THEIR OWN BLOCK'S CORNERS (유저 2026-09-26: 「콘티블록이
-            // 있으면 애초에 거기에 처음이랑 끝에 엣지가 존재하잖아. 그러니까
-            // 그거 그대로 두고, 컷블록의 엣지만 삭제」 · 「콘티레이어 없으면
-            // 컷블록 기존처럼 배치하고, 있으면 콘티블록에 배치된걸로
-            // 대체되는」): a conte block's edges stand in the conte block's
-            // corners, square inside the plate, and a cut with no storyboard
-            // layer keeps its one placeholder's edges in the plate's round
-            // corners. ↩️Every edge stood in the plate's corners from
-            // 2026-09-25 (「제대로 컷블록의 위치에 존재하지않아」), and on the
-            // picture strip before that (#757, 07-25).
-            //
-            // 🗣️IN THE BANDS ALONE (I-52, 유저 2026-09-28: 「썸네일이 존재하는
-            // 블록은 엣지를 썸네일 안가리도록 … 띠에만」 · 「세로로는 해당
-            // 상단띠 전체에 걸치도록」): on both papers a triangle takes one
-            // band whole — the back edge's the paper's first (the conte
-            // block's name, the cut's name), the front edge's its last (the
-            // comma count, the cut's length) — and never a picture.
-            //
-            // THE timeline's chrome layer, not a cut-shaped copy of it: one
-            // painter and one gesture layer per paper, where this used to be
-            // two widgets a cut.
-            if (stripEdges != null)
-              for (final paper in <_EdgePaper>[
-                (
-                  name: 'edit-chrome',
-                  slot: conteSlot,
-                  conteBlocks: true,
-                  corners: const (
-                    cornerStarts: <int>{},
-                    cornerEnds: <int>{},
-                    cornerRadius: 0.0,
-                    band: StoryboardCutBlocksPainter.bandHeight,
-                  ),
-                ),
-                (
-                  name: 'plate-edit-chrome',
-                  slot: (top: 0.0, height: laneHeight),
-                  conteBlocks: false,
-                  corners: _gripPaper(grips, blocksPainter),
-                ),
-              ])
-                _edgeChrome(context, paper, grips, blocksPainter),
+            // THE EDGES, at the cuts' two ends ([_edgeChrome]). They ride
+            // ABOVE the cut gesture so an edge keeps its priority over it;
+            // the middles keep the rest.
+            if (stripEdges != null) _edgeChrome(context, blocksPainter),
             // A pool file let go on the row's frames. The row stands on that
             // frame through its own press first — landing is standing (T4) —
             // then hands the drop up, where the session names the NEW cut
@@ -5417,70 +5127,16 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
-  /// The strip's range-selection band: the selected panels of the cut
-  /// whose storyboard layer the selection names, or nothing when no
-  /// entry carries that layer.
-  Widget _stripRangeOutline(TimelineFrameRangeSelection? selection) {
-    if (selection == null ||
-        timelineScale.pixelsPerFrame <= 0) {
-      return const SizedBox.shrink();
-    }
-    StoryboardTimelineLayoutEntry? anchor;
-    for (final entry in layoutEntries) {
-      if (storyboardLayerForCut(entry.cut)?.id ==
-          selection.layerId) {
-        anchor = entry;
-        break;
-      }
-    }
-    if (anchor == null) {
-      return const SizedBox.shrink();
-    }
-    return Stack(
-      children: [
-        Positioned(
-          left: timelineScale.leftForFrame(
-            anchor.startFrame + selection.startIndex,
-          ),
-          top: 0,
-          bottom: 0,
-          width: timelineScale.spanWidth(
-            anchor.startFrame + selection.startIndex,
-            anchor.startFrame + selection.endIndexExclusive,
-          ),
-          child: Semantics(
-            key: const ValueKey<String>(
-              'storyboard-strip-range-selection',
-            ),
-            label: AppText.strings.tlSelectedPanelRange,
-            container: true,
-            // The band takes the shape of what it selects (F-26), and a
-            // conte block is square inside its plate (유저 2026-09-26:
-            // 「블록이 모서리 둥근건 블록 자체」). ↩️It wore the frame blocks'
-            // round while each panel did.
-            child: DecoratedBox(
-              decoration: timelineRowSelectionBandDecoration,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   /// The CELL of this row a double click at a position aims at, as the frame
   /// blocks' gate takes it ([timelineCellDoubleTapRecord]), and what a
   /// double click on it opens — null where no block stands.
   ///
   /// 🗣️F-255 (유저 2026-10-01): 「이름변경 입구 확대. 지금 프레임블록이랑
   /// 레이어라벨 더블클릭하면 이름편집인데 콘티블록이나 컷블록에도
-  /// 통일적용」. The row holds TWO papers, and which one a position is on
-  /// is the split its gestures already make by hit-testing: where the conte
-  /// blocks are drawn ([StoryboardCutBlocksPainter.conteBlockBandOf]) over a
-  /// cut that has a storyboard row, the CONTE block — a cell of that row;
-  /// anywhere else on a cut block, the CUT — a cell of the track's row. The
-  /// ROW is what tells the two apart (both count the track's frames, as the
-  /// press does), so they never answer for each other, and neither answers
-  /// for a block of another row.
+  /// 통일적용」 — anywhere on a cut block, the CUT: a cell of the track's row.
+  /// ↩️The row held TWO papers while the conte blocks were drawn inside the
+  /// cut block, and a position over them named the conte block; that double
+  /// click is the conte row's now (I-73).
   ({TimelineRowAddress row, TimelineDoubleTapCells cells, VoidCallback open})?
   _doubleClickCellAt(Offset localPosition) {
     TimelineDoubleTapCells cellAt(int? frame) => (
@@ -5489,28 +5145,11 @@ class _StoryboardTrackRow extends StatelessWidget {
       cellExtent: () => timelineScale.pixelsPerFrame,
     );
     // Aimed FIRST, the way the gate aims a cell narrower than a pixel
-    // ([timelineDoubleTapAim]): the paper, the row and the frame are all
-    // read off the ONE aimed spot, so a pixel that straddles two cuts names
-    // one block and not a row of one with a frame of the other.
+    // ([timelineDoubleTapAim]): the frame is read off the aimed spot, so a
+    // pixel that straddles two cuts names one block.
     final frame = _frameAtX(
       timelineDoubleTapAim(localPosition, cellAt(null)).dx,
     );
-    final conteSlot = StoryboardCutBlocksPainter.conteBlockBandOf(laneHeight);
-    final strip =
-        localPosition.dy >= conteSlot.top &&
-            localPosition.dy < conteSlot.top + conteSlot.height
-        ? _stripAt(frame)
-        : null;
-    if (strip != null) {
-      final onEditConteBlock = this.onEditConteBlock;
-      return onEditConteBlock == null
-          ? null
-          : (
-              row: LayerRowAddress(strip.layer.id),
-              cells: cellAt(frame),
-              open: () => onEditConteBlock(track.id, strip.layer.id, frame),
-            );
-    }
     final onEditCutBlock = this.onEditCutBlock;
     // A frame no cut covers is no cell: a gap holds no block.
     if (onEditCutBlock == null || _cutAtFrame(frame) == null) {
@@ -5524,7 +5163,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   }
 
   /// A press on the cut blocks: gated first, then the press itself, then
-  /// the storyboard-layer create judged on the painter this build drew.
+  /// the link icon judged on the painter this build drew.
   void _onCutPressDown(
     BuildContext context,
     PointerDownEvent event,
@@ -5543,10 +5182,6 @@ class _StoryboardTrackRow extends StatelessWidget {
       return;
     }
     _handlePressDown(event);
-    // The create judges the PRE-press snapshot (the
-    // painter this build drew), so running after the
-    // press's activation cannot widen it (D30).
-    _maybeCreateStoryboardLayer(blocksPainter, event);
     _maybeOpenCutLinks(context, blocksPainter, event);
   }
 
@@ -5566,26 +5201,45 @@ class _StoryboardTrackRow extends StatelessWidget {
     }
     onOpen!(context, block!.cutId);
   }
+}
 
-  double _timelineWidthFor(
-    List<StoryboardTimelineLayoutEntry> entries,
-    TimelineScale scale,
-  ) {
-    const trailingPadding = 12.0;
-
-    if (entries.isEmpty) {
-      return 0;
+/// The cut of [entries] — a track's, in order — covering track-global
+/// [frame], or null in a gap / past the end: the same answer
+/// [TrackFrameAxis.cutBlockAt] gives the shared snap rule. The V row's cuts
+/// and the conte row's panels are both found by it.
+StoryboardTimelineLayoutEntry? _cutEntryAt(
+  List<StoryboardTimelineLayoutEntry> entries,
+  int frame,
+) {
+  for (final entry in entries) {
+    if (frame < entry.startFrame) {
+      return null;
     }
-
-    return entries
-            .map(
-              (entry) => scale.blockEndFor(entry.startFrame, entry.duration),
-            )
-            .reduce(
-              (width, nextWidth) => width > nextWidth ? width : nextWidth,
-            ) +
-        trailingPadding;
+    if (frame < entry.endFrame) {
+      return entry;
+    }
   }
+  return null;
+}
+
+/// How far along the frame axis a track's cuts reach as [entries] lay them,
+/// with room past the last — what the V row and the conte row under it are
+/// at least as wide as, so a cut a drag has pushed past the content's width
+/// is still under a pointer.
+double _storyboardCutsExtent(
+  List<StoryboardTimelineLayoutEntry> entries,
+  TimelineScale scale,
+) {
+  const trailingPadding = 12.0;
+
+  if (entries.isEmpty) {
+    return 0;
+  }
+
+  return entries
+          .map((entry) => scale.blockEndFor(entry.startFrame, entry.duration))
+          .reduce((width, nextWidth) => width > nextWidth ? width : nextWidth) +
+      trailingPadding;
 }
 
 /// Admits pointers only where [claimsDx] says yes — the STRIP gesture's

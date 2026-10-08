@@ -386,14 +386,15 @@ class EdgeDragVerbs {
 
   /// The storyboard's comma press: the selection's blocks, else THE BLOCK
   /// UNDER THE CURSOR takes length [comma] — one rule for every block kind
-  /// (B8: 「컷블록 위 4 = 컷길이 4」, superseded by D28 2026-08-18 exactly
-  /// where the cut carries a storyboard layer — its PANEL takes the comma
-  /// then), each kind through the SAME machinery its own grips already
-  /// commit with:
+  /// (B8: 「컷블록 위 4 = 컷길이 4」 on the V row; a conte PANEL on the conte
+  /// row, I-73 — ↩️D28 gave the panel off the V row), each kind through the
+  /// SAME machinery its own grips already commit with:
   ///
   /// - a CUT block rides the trailing-edge drag verbs, so a conte row's last
   ///   comma and the following gap behave exactly as if the edge had been
   ///   dragged to frame [comma];
+  /// - a conte PANEL rides the storyboard comma drag, as its own trailing
+  ///   grip does;
   /// - a ROW's block — an S row's, a cel row's — takes the comma buttons'
   ///   own retime ([ExposureVerbs.retimeKeepingTheCutOnItsRow]), stated in
   ///   the row's commit keys;

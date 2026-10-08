@@ -5,8 +5,9 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart' show coveringDrawingBlockAt;
 import '../../models/track_frame_axis.dart';
 import '../../models/timeline_run_behavior.dart' show TimelineRunEdgeMode;
+import '../../models/track_conte_row.dart';
 import '../../models/track_id.dart';
-import '../storyboard_layer_policy.dart' show storyboardPanelsOnTrack;
+import '../storyboard_layer_policy.dart' show trackConteRowShown;
 import '../timeline/instruction_span_editing.dart' show instructionSpanCovering;
 import 'active_cut_controllers.dart';
 import 'project_settings.dart';
@@ -50,25 +51,25 @@ class TrackAxisWalk {
   /// — they live on the TRACK, so their flip reads the track's own row.
   final TrackSeDisplay _trackSe;
 
-  /// The V-row half: the track's PANELS are its columns, on the global axis
-  /// ([storyboardPanelsOnTrack]) — a cut's conte blocks where it has a conte
-  /// row, else the cut itself as one block.
+  /// The V row's flip: the track's CUTS are its columns, on the global axis.
   ///
-  /// 🗣️유저 2026-09-24: 「콘티패널에서는 플립이 타임라인패널이랑 같은 규칙으로
-  /// 설정한 상태로 블록/프레임별로 이동. 콘티레이어 있으면 콘티레이어
-  /// 블록기준」. ↩️It counted CUTS, so a cut of five panels was one step
-  /// while the same row's lead edge traded frames panel by panel (I-21).
-  ///
-  /// The same column step the layer row takes, with the track's panels as
-  /// the covering material instead of a layer's blocks — which is the
-  /// whole point of stating the rule as columns. It carried the identical
-  /// key-stepping defect before, so a gap between two cuts was skipped in
-  /// both directions here too.
+  /// 🗣️I-73 (유저 2026-10-08): 「v행에서는 콘티블록에 서있다거나 하는걸
+  /// 안하도록 … 컷 선택만 되도록」 — the V row's blocks are its cuts, and a
+  /// flip counts the row's own blocks (R10 #13). ↩️It counted PANELS from
+  /// 2026-09-24 (「콘티레이어 있으면 콘티레이어 블록기준」) while the panels
+  /// were drawn inside the cut block; they have a row of their own now, and
+  /// that walk is that row's ([flipTrackRow]).
   ///
   /// This is also the axis a GAP is walked on: `selectGlobalFrame` lands
   /// the result inside a cut or parks it in the void, so a playhead
   /// standing between cuts can step out under its own power.
-  void flipPanels(TrackId trackId, {required bool forward}) {
+  ///
+  /// The same step the layer row takes, with the track's cuts as the
+  /// covering material instead of a layer's blocks, which is the whole
+  /// point of stating the rule as columns. It carried the identical
+  /// key-stepping defect before, so a gap between two cuts was skipped in
+  /// both directions here too.
+  void flipCuts(TrackId trackId, {required bool forward}) {
     // The MEMOIZED axis (kept beside the layout it narrows): a flip step
     // is a per-move cost, and rebuilding the whole cross-track layout for
     // each one is exactly the tax that memo exists to remove.
@@ -76,22 +77,16 @@ class TrackAxisWalk {
     if (axis.isEmpty) {
       return;
     }
-    final panels = storyboardPanelsOnTrack(axis.entries);
     final from = _from(axis);
     _land(
       flipColumnStep(
         frame: from,
         direction: forward ? 1 : -1,
         columnAt: (frame) {
-          for (final panel in panels) {
-            if (frame < panel.start) {
-              return null;
-            }
-            if (frame < panel.endExclusive) {
-              return (start: panel.start, endExclusive: panel.endExclusive);
-            }
-          }
-          return null;
+          final cut = axis.cutBlockAt(frame);
+          return cut == null
+              ? null
+              : (start: cut.startIndex, endExclusive: cut.endIndexExclusive);
         },
       ),
       from: from,
@@ -117,18 +112,33 @@ class TrackAxisWalk {
   /// picking the original), and walking that copy kept a storyboard flip
   /// inside one cut — past the cut's end it walked the cut's runway instead
   /// of reaching the next sound.
+  ///
+  /// The track's CONTE row is a row of this rail too — the cuts' conte
+  /// layers as the storyboard draws them, one row of blocks on the track's
+  /// axis ([trackConteRowShown]) — so its flip counts its PANELS, and a step
+  /// off a cut's last panel lands on the next cut's first.
+  ///
+  /// 🗣️유저 2026-09-24: 「콘티패널에서는 플립이 타임라인패널이랑 같은 규칙으로
+  /// 설정한 상태로 블록/프레임별로 이동. 콘티레이어 있으면 콘티레이어
+  /// 블록기준」 — said of the V row while the panels were drawn inside the
+  /// cut block; they have this row now (I-73), and the V row counts its cuts
+  /// again ([flipCuts]). ↩️A cut with no conte layer was one block of that
+  /// walk; it holds no block of this row, so it is walked a frame at a time
+  /// like any stretch a row leaves empty.
   void flipTrackRow(LayerId layerId, {required bool forward}) {
     final track = _trackSe.trackOwnedRailOwner(layerId);
     if (track == null) {
       return;
     }
-    final layer = track.transitionLayer.id == layerId
+    final axis = _projectSettings.axisForTrack(track.id);
+    final layer = trackIdOfConteRow(layerId) != null
+        ? trackConteRowShown(track.id, axis.entries)
+        : track.transitionLayer.id == layerId
         ? track.transitionLayer
         : track.seLayers.where((row) => row.id == layerId).firstOrNull;
     if (layer == null) {
       return;
     }
-    final axis = _projectSettings.axisForTrack(track.id);
     final from = _from(axis);
     _land(
       flipColumnStep(
