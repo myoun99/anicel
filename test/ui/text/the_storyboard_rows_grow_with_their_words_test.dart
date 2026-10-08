@@ -142,7 +142,12 @@ void main() {
           'table grew with the rows', (tester) async {
         atTextScale(tester, scale);
         await openTheBoard(tester);
-        await tester.tap(keyed('storyboard-se-label-').first);
+        // On the label's NAME side, a quarter of the way in. ↩️Its middle
+        // until I-73 (2026-10-08) gave the rail its blend column: at 2×
+        // the controls reach past the middle, and the press landed on the
+        // row's fx button (🧪measured) — which picks no row.
+        final label = tester.getRect(keyed('storyboard-se-label-').first);
+        await tester.tapAt(label.centerLeft + Offset(label.width / 4, 0));
         await tester.pumpAndSettle();
 
         final ring = tester.getRect(

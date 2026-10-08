@@ -820,6 +820,7 @@ void main() {
             return true;
           },
           onCommaBegin: (_, _) => false,
+          onRowEdgeBegin: (_, _, _, _) => false,
           onUpdate: (_) {},
           onEnd: () {},
           onCancel: () {},
@@ -1234,6 +1235,7 @@ void main() {
             return true;
           },
           onCommaBegin: (_, _) => false,
+          onRowEdgeBegin: (_, _, _, _) => false,
           onUpdate: updates.add,
           onEnd: () => ended += 1,
           onCancel: () {},

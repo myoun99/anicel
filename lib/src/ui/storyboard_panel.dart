@@ -8,7 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
 import '../models/attached_layer_resolve.dart'
-    show attachArrowPlacement, attachRowWearsBaseComposite;
+    show
+        attachArrowPlacement,
+        attachRowWearsBaseComposite,
+        isSyncedAttachedLayer;
 import '../models/canvas_size.dart';
 import '../models/conte_group.dart';
 import '../models/cut.dart';
@@ -123,7 +126,8 @@ import 'timeline/timeline_row_edit_chrome.dart'
     show
         TimelineRowChromeResolver,
         TimelineRowEditChromeLayer,
-        TimelineRowGripCallbacks;
+        TimelineRowGripCallbacks,
+        timelineLayerGripBlocks;
 import 'timeline/timeline_frame_geometry.dart'
     show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline/timeline_frame_range_gesture.dart'
@@ -276,13 +280,17 @@ TimelineRowAddress? _standingAddressOf(_StoryboardRailSlot slot) =>
 /// - EVERY trailing edge — inner and last alike — is that panel's comma,
 ///   with the cut's length riding the row end.
 ///
-/// Hence two begins and one set of continuations — the grip that started
+/// A row riding the conte hangs its own blocks' two edges on the row under
+/// it, and they are that block's alone ([onRowEdgeBegin], I-73).
+///
+/// Hence three begins and one set of continuations — the grip that started
 /// decides which session verb the rest of the drag belongs to, and the
 /// mount that knows the geometry is the one that says so.
 class StoryboardStripEdgeCallbacks {
   const StoryboardStripEdgeCallbacks({
     required this.onCutEdgeBegin,
     required this.onCommaBegin,
+    required this.onRowEdgeBegin,
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
@@ -299,6 +307,18 @@ class StoryboardStripEdgeCallbacks {
   /// trailing edge; the later panels ripple and the cut's length follows.
   /// Returns whether the drag may start.
   final bool Function(CutId cutId, int blockStartIndex) onCommaBegin;
+
+  /// Re-times the block keyed [blockStartIndex] — in its row's own frames
+  /// — of [layerId], a row of [cutId] riding the cut's conte: either edge,
+  /// as that row's grips on the timeline do. Returns whether the drag may
+  /// start (a row that owns no timing refuses).
+  final bool Function(
+    CutId cutId,
+    LayerId layerId,
+    int blockStartIndex,
+    TimelineBlockEdge edge,
+  )
+  onRowEdgeBegin;
 
   /// Reports the cumulative whole-frame delta since drag start.
   final ValueChanged<int> onUpdate;
@@ -2795,7 +2815,7 @@ class _StoryboardLabelShell extends StatelessWidget {
             ? null
             : BoxDecoration(
                 color: active
-                    ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+                    ? railSelectedRowColor(colorScheme)
                     : colorScheme.surface,
                 border: Border(
                   left: BorderSide(color: colorScheme.outlineVariant),

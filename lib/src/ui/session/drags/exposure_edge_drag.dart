@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 
 import '../../../controllers/timeline_controller.dart';
+import '../../../models/attached_layer_resolve.dart'
+    show isSyncedAttachedLayer;
 import '../../../models/cut.dart';
 import '../../../models/cut_end_gap.dart';
 import '../../../models/cut_id.dart';
@@ -358,12 +360,8 @@ class ExposureEdgeDrag implements EditorDragSession {
   /// SAME comma verb, so the panel's comma resizes, the later panels ripple
   /// along glued, and the cut's length rides the row end (feedback #9) —
   /// where the retired division verb moved a boundary and pinned the length.
-  /// Null when the cut has no storyboard row, or no such drawing block.
-  ///
-  /// Any cut's panels drag, not only the active cut's: the row comes in
-  /// through the cut, which is why this is NOT [begin] — that path resolves
-  /// the layer and the cut sync through the ACTIVE cut and would sync the
-  /// wrong one.
+  /// Null when the cut has no storyboard row, or no such drawing block
+  /// ([beginOnRowOf], whose conte case this is).
   static ExposureEdgeDrag? beginStoryboardComma({
     required EdgeDragRoles roles,
     required TrackSeDisplay trackSe,
@@ -371,29 +369,66 @@ class ExposureEdgeDrag implements EditorDragSession {
     required int blockStartIndex,
   }) {
     final row = storyboardLayerForCut(cut);
-    final entry = row?.timeline[blockStartIndex];
+    return row == null
+        ? null
+        : beginOnRowOf(
+            roles: roles,
+            trackSe: trackSe,
+            cut: cut,
+            grip: (
+              layerId: row.id,
+              blockStartIndex: blockStartIndex,
+              edge: TimelineBlockEdge.end,
+              startIsGlobal: false,
+            ),
+          );
+  }
+
+  /// Grabs the [grip]'s edge on a row of [cut], the block keyed in the
+  /// row's own frames: the storyboard strip's grips, on the conte's panels
+  /// and on the blocks of the rows riding it (I-73).
+  ///
+  /// Any cut's rows drag there, not only the active cut's: the row comes in
+  /// through the cut, which is why this is NOT [begin] — that path resolves
+  /// the layer and the cut sync through the ACTIVE cut and would sync the
+  /// wrong one.
+  ///
+  /// A row that tiles its cut takes the cut's length along
+  /// ([ridesCutLength] — the conte, feedback #9); any other is re-timed
+  /// alone, as its grip on the timeline re-times it. Null when the cut
+  /// holds no such row, the row owns no timing (a SYNCED attach row: its
+  /// base's grips move both, W5) or holds no such drawing block of its own.
+  static ExposureEdgeDrag? beginOnRowOf({
+    required EdgeDragRoles roles,
+    required TrackSeDisplay trackSe,
+    required Cut cut,
+    required ExposureGrip grip,
+  }) {
+    final row = cut.layers
+        .where((layer) => layer.id == grip.layerId)
+        .firstOrNull;
+    final entry = row?.timeline[grip.blockStartIndex];
     // A negative key is junk data the coverage rule merely tolerates (folded
     // onto frame 0 for display) — resizing it would throw in the comma
     // shift's before-zero guard mid-drag, so refuse at begin.
     if (row == null ||
+        isSyncedAttachedLayer(row) ||
         entry == null ||
         !entry.isDrawing ||
         entry.ghost ||
-        blockStartIndex < 0) {
+        grip.blockStartIndex < 0) {
       return null;
     }
     return ExposureEdgeDrag._(
       roles: roles,
       trackSe: trackSe,
       before: row,
-      edge: TimelineBlockEdge.end,
-      blockStart: blockStartIndex,
+      edge: grip.edge,
+      blockStart: grip.blockStartIndex,
       bulk: null,
-      cutSync: cutSyncSnapshotFor(
-        project: roles.project,
-        cut: cut,
-        row: row,
-      ),
+      cutSync: ridesCutLength(row)
+          ? cutSyncSnapshotFor(project: roles.project, cut: cut, row: row)
+          : null,
     );
   }
 

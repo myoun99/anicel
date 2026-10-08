@@ -705,8 +705,17 @@ void main() {
       expect(session.selectedRow, _conteRow);
       expect(session.editingGlobalFrame, 16);
       expect(session.activeLayerId, const LayerId('cut-2-sb'));
-      // …and it is the one row the rail lights.
-      const lit = ValueKey<String>('storyboard-selected-row');
+      // …and it is the one row the rail lights — as the timeline's row is
+      // lit, which the conte's head is now (I-73: 「타임라인의 콘티 행
+      // 그대로이고 머리도 같습니다」, the drawn proposal 유저 took on
+      // 2026-10-08). ↩️The rail's own label stood there, lit by the key its
+      // other rows still wear.
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-selected-row')),
+        findsNothing,
+        reason: 'no other row of the rail is lit',
+      );
+      const lit = ValueKey<String>('storyboard-selected-layer');
       expect(find.byKey(lit), findsOneWidget);
       expect(
         find.descendant(

@@ -697,6 +697,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                             cutId: cutId,
                             blockStartIndex: blockStartIndex,
                           ),
+                      onRowEdgeBegin: (cutId, layerId, blockStartIndex, edge) =>
+                          _session.edgeDrag.beginStripRowEdgeDrag(
+                            cutId: cutId,
+                            layerId: layerId,
+                            blockStartIndex: blockStartIndex,
+                            edge: edge,
+                          ),
                       onUpdate: _session.edgeDrag.updateCutEdgeDrag,
                       onEnd: _session.edgeDrag.endCutEdgeDrag,
                       onCancel: _session.edgeDrag.cancelCutEdgeDrag,
