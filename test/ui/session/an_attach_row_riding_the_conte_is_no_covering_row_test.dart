@@ -206,4 +206,97 @@ void main() {
     standOn(onConte, 'conte', 0);
     expect(onConte.frameVerbs.canCreateDrawingAtCurrentFrame, isFalse);
   });
+
+  /// One answer per rider: what [act] leaves on the row riding the cel, and
+  /// on the row riding the conte.
+  Map<String, List<String>> onBoth(
+    void Function(EditorSessionManager session, String id) act,
+  ) => {
+    for (final id in const ['on-cel', 'on-conte'])
+      id: () {
+        final session = sessionOf();
+        act(session, id);
+        return blocksOf(session, id);
+      }(),
+  };
+
+  test('🚨a band authors into its gaps, as it does on the row riding a cel',
+      () {
+    final filled = onBoth((session, id) {
+      standOn(session, id, 9);
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: LayerId(id),
+        startIndex: 6,
+        endIndexExclusive: 12,
+      );
+      expect(session.cellInstances.createInstancesForSelection(), isTrue);
+    });
+
+    expect(filled['on-conte'], filled['on-cel']);
+    expect(
+      filled['on-conte'],
+      ['0+4', '4+4', '8+4'],
+      reason: 'LIVENESS: the gap inside the band took a block',
+    );
+  });
+
+  test('🚨its blocks move as the same row\'s riding a cel do — past the '
+      'cut\'s end, and back to its first frame', () {
+    void move(EditorSessionManager session, String id, int by) {
+      final blocks = cutOf(session).layers
+          .firstWhere((layer) => layer.id == LayerId(id))
+          .timeline;
+      session.frameRangeSelection.value = TimelineFrameRangeSelection(
+        layerId: LayerId(id),
+        startIndex: blocks.keys.first,
+        endIndexExclusive: blocks.keys.last + blocks.values.last.length!,
+      );
+      expect(
+        session.rangeMove.beginFrameRangeMoveDrag(LayerId(id)),
+        isTrue,
+        reason: 'fixture: $id by $by',
+      );
+      session.rangeMove.updateFrameRangeMoveDrag(frameDelta: by);
+      session.rangeMove.endFrameRangeMoveDrag();
+    }
+
+    final out = onBoth((session, id) {
+      standOn(session, id, 0);
+      move(session, id, 6);
+    });
+    expect(out['on-conte'], out['on-cel']);
+    expect(
+      out['on-conte'],
+      ['6+4', '10+4'],
+      reason: 'LIVENESS: the cut ends at 12, and the row is not held to it',
+    );
+
+    final back = onBoth((session, id) {
+      standOn(session, id, 0);
+      move(session, id, 6);
+      move(session, id, -6);
+    });
+    expect(back['on-conte'], back['on-cel']);
+    expect(
+      back['on-conte'],
+      ['0+4', '4+4'],
+      reason: 'LIVENESS: its first block is no floor for the row',
+    );
+  });
+
+  test('an IMAGE row\'s kind still answers for every row of it — a row '
+      'riding it among them', () {
+    Layer image(String id, {String? ridesOn}) => Layer(
+      id: LayerId(id),
+      name: id,
+      kind: LayerKind.image,
+      attachedToLayerId: ridesOn == null ? null : LayerId(ridesOn),
+      attachedPlacement: AttachedPlacement.above,
+      frames: const [],
+      timeline: const {},
+    );
+
+    expect(layerCoversWithoutGaps(image('bg')), isTrue);
+    expect(layerCoversWithoutGaps(image('bg+1', ridesOn: 'bg')), isTrue);
+  });
 }

@@ -150,11 +150,14 @@ void main() {
       );
     });
 
-    test('a row riding ANOTHER base is no seat of the conte', () {
+    test('a row riding ANOTHER base is no seat of the conte — under it or '
+        'over it', () {
       final mixed = cutOf('mixed', [
         row('cel', kind: LayerKind.animation),
         row('cel+1', kind: LayerKind.animation, ridesOn: 'cel'),
         row('conte'),
+        row('top', kind: LayerKind.animation),
+        row('top+1', kind: LayerKind.animation, ridesOn: 'top'),
       ]);
 
       expect(
@@ -162,6 +165,7 @@ void main() {
         [0],
       );
       expect(conteSeatOf(mixed, const LayerId('cel+1')), isNull);
+      expect(conteSeatOf(mixed, const LayerId('top+1')), isNull);
     });
 
     test('a seat finds its row, and a row its seat', () {

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -129,6 +130,47 @@ void main() {
         reason: 'by name, each cut would gain a second conte and camera row',
       );
       expect(plan.targetOnlyLayerIds, isEmpty);
+    });
+
+    test('🚨the ONE row of a singleton kind, that is: a row riding the conte '
+        'is a storyboard row too, and pairs by its name like any row (I-73)',
+        () {
+      Layer conte(String id, String name) => Layer(
+        id: LayerId(id),
+        name: name,
+        frames: const [],
+        timeline: const {},
+        kind: LayerKind.storyboard,
+      );
+      // The origin's conte carries a row UNDER it — before it in the stack,
+      // so asked by kind alone it would take the target's conte for itself.
+      final origin = cut('origin', [
+        Layer(
+          id: const LayerId('a-under'),
+          name: 'Conte-1',
+          frames: const [],
+          timeline: const {},
+          kind: LayerKind.storyboard,
+          attachedToLayerId: const LayerId('a-conte'),
+          attachedPlacement: AttachedPlacement.below,
+        ),
+        conte('a-conte', 'B'),
+      ]);
+      final target = cut('target', [conte('b-conte', 'Conte')]);
+
+      final plan = planConvertToLinkedCut(
+        project: project([origin, target]),
+        originCut: origin,
+        targetCut: target,
+      );
+
+      expect(plan.layerPairs, [
+        (
+          originLayerId: const LayerId('a-conte'),
+          targetLayerId: const LayerId('b-conte'),
+        ),
+      ]);
+      expect(plan.originOnlyLayerIds, [const LayerId('a-under')]);
     });
 
     test('two unrelated cuts with nothing in common still union their '

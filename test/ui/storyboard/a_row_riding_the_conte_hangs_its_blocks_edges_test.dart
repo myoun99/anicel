@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -13,13 +16,17 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/storyboard_coverage.dart'
+    show storyboardConteStart;
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 import '../storyboard_conte_row_probe.dart';
 import '../timeline/timeline_row_chrome_probe.dart';
@@ -102,9 +109,10 @@ Cut _cut(String id, int duration, List<Layer> rows) => Cut(
 );
 
 /// Cut 1 covers [0,10): its rider holds two glued blocks, [0,4) and [4,7).
-/// Cut 2 covers [10,20): its rider is SYNCED, and owns no timing. Cut 3
-/// covers [20,26): its rider's one block starts two frames in and runs past
-/// the cut's end — the strip shows it cut off there.
+/// Cut 2 covers [10,20): its rider is SYNCED, and owns no timing — the lane
+/// it stores is not what it shows. Cut 3 covers [20,26): its rider's first
+/// block starts two frames in and runs past the cut's end — the strip shows
+/// it cut off there — and its second lies past the cut altogether.
 Project _project() => Project(
   id: const ProjectId('rider-project'),
   name: 'Riders',
@@ -120,11 +128,11 @@ Project _project() => Project(
         ]),
         _cut('cut-2', 10, [
           _conte('cut-2', {0: 10}),
-          _rider('cut-2', const {}, mode: AttachedMode.synced),
+          _rider('cut-2', {3: 2}, mode: AttachedMode.synced),
         ]),
         _cut('cut-3', 6, [
           _conte('cut-3', {0: 3, 3: 3}),
-          _rider('cut-3', {2: 10}),
+          _rider('cut-3', {2: 10, 14: 2}),
         ]),
       ],
     ),
@@ -204,6 +212,11 @@ void main() {
       reason: 'fixture: the row as the strip draws it',
     );
     expect(
+      _riderBlocks(tester, 'cut-2'),
+      {3: 2},
+      reason: 'fixture: the synced row stores a lane it does not show',
+    );
+    expect(
       timelineRowChromeIds(tester, _riderRow, prefix: 'storyboard'),
       [
         _riderGrip('start', 0),
@@ -275,18 +288,147 @@ void main() {
     );
     expect(
       _riderBlocks(tester, 'cut-3'),
-      {2: 10},
+      {2: 10, 14: 2},
       reason: 'and nothing is written while it is held',
     );
 
     await gesture.up();
     await tester.pumpAndSettle();
 
-    expect(_riderBlocks(tester, 'cut-3'), {1: 11});
+    expect(_riderBlocks(tester, 'cut-3'), {1: 11, 14: 2});
     expect(_cutById(tester, 'cut-3').duration, 6);
     expect(
       (cut: session.activeCutOrNull?.id, frame: session.currentFrameIndex),
       standing,
     );
+  });
+
+  group('where the cut cuts a block off', () {
+    const ppf = 4.0;
+
+    /// Cuts a [0,24) and b [24,48), an O.L over [18,30) between them: six
+    /// frames of it are b's margin, so b's conte begins at its own frame 6
+    /// and the strip shows its rows from there. Cut b's rider holds [0,7) —
+    /// cut off at the START, one frame of it showing — [14,18), whole, and
+    /// [29,35) — cut off at the END, one frame showing.
+    ///
+    /// At four pixels a frame a grip is wider than a frame.
+    Future<EditorSessionManager> open(WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 760));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      Cut cut(String id, Map<int, int> rider) => Cut(
+        id: CutId(id),
+        name: id,
+        duration: 24,
+        canvasSize: const CanvasSize(width: 640, height: 360),
+        layers: [_conte(id, {0: 12, 12: 12}), _rider(id, rider)],
+      );
+      final session = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('ol-riders'),
+          name: 'O.L riders',
+          createdAt: DateTime.utc(2026, 10, 8),
+          tracks: [
+            Track(
+              id: _trackId,
+              name: 'Video',
+              cuts: [
+                cut('a', {0: 4}),
+                cut('b', {0: 7, 14: 4, 29: 6}),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(session.dispose);
+      session.transitions.updateTransitionInstructions({
+        18: const InstructionEvent(instructionId: 'ol', length: 12),
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: session,
+              builder: (context, _) => StoryboardTabHost(
+                session: session,
+                pixelsPerFrame: ppf,
+                onPixelsPerFrameChanged: (_) {},
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+                thumbnails: null,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return session;
+    }
+
+    Cut cutB(EditorSessionManager session) =>
+        session.repository.requireProject().tracks.single.cuts.last;
+
+    testWidgets('🚨a block the cut\'s START cuts off shows from the cut\'s '
+        'first frame, and hangs no leading grip', (tester) async {
+      final session = await open(tester);
+      expect(
+        storyboardConteStart(storyboardLayerForCut(cutB(session))!.timeline),
+        6,
+        reason: 'fixture: b\'s conte begins after its margin',
+      );
+      expect(
+        {
+          for (final MapEntry(key: start, value: block)
+              in conteRowAtSeat(cutB(session), 1)!.timeline.entries)
+            if (!block.ghost) start: block.length,
+        },
+        {0: 7, 14: 4, 29: 6},
+        reason: 'fixture: the rider keeps its own frames',
+      );
+
+      expect(
+        conteRowBlocks(tester, _riderRow),
+        // a's [0,4); b's [0,7) from the cut's first frame, [14,18) eight
+        // frames in, and [29,35) on the cut's last.
+        {0: 4, 24: 1, 32: 4, 47: 1},
+      );
+      expect(
+        timelineRowChromeIds(tester, _riderRow, prefix: 'storyboard'),
+        [
+          _riderGrip('start', 0),
+          _riderGrip('end', 0),
+          _riderGrip('end', 1),
+          _riderGrip('start', 2),
+          _riderGrip('end', 2),
+          _riderGrip('start', 3),
+        ],
+      );
+    });
+
+    testWidgets('🚨a grip keeps to the stretch its block is DRAWN in: one '
+        'frame of a long block showing, the grip is that frame\'s', (
+      tester,
+    ) async {
+      await open(tester);
+      final strip = conteRowRect(tester, _riderRow);
+      Rect grip(String id) => timelineRowChromeGlobalRect(
+        tester,
+        _riderRow,
+        id,
+        prefix: 'storyboard',
+      );
+      double at(int frame) => strip.left + frame * ppf;
+
+      // [0,7) of cut b shows as the track's frame 24 alone.
+      final trailing = grip(_riderGrip('end', 1));
+      expect(trailing.left, greaterThanOrEqualTo(at(24) - 0.01));
+      expect(trailing.right, closeTo(at(25), 0.01));
+      // [29,35) shows as the track's frame 47 alone.
+      final leading = grip(_riderGrip('start', 3));
+      expect(leading.left, closeTo(at(47), 0.01));
+      expect(leading.right, lessThanOrEqualTo(at(48) + 0.01));
+      // LIVENESS: a grip on a block with room is wider than a frame here.
+      expect(grip(_riderGrip('start', 2)).width, greaterThan(ppf));
+    });
   });
 }

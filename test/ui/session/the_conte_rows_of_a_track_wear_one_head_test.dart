@@ -370,6 +370,16 @@ void main() {
       const LayerId('a-conte'),
       const LayerMark(process: LayerProcess.layout),
     );
+    session.effectsAndFx.toggleLayerTransformFx(const LayerId('a-conte'));
+    session.effectsAndFx.updateLayerEffects(const LayerId('a-conte'), [
+      LayerEffect(id: const EffectId('fx-1'), kind: EffectKind.blur),
+    ]);
+    final headSwitch = row(session, 'a-conte').transformEnabled;
+    expect(
+      headSwitch,
+      isNot(row(session, 'c-cel').transformEnabled),
+      reason: 'fixture: the head\'s transform switch is not the default',
+    );
 
     session.selectCut(const CutId('c'));
     session.layerStack.addLayerOfKind(LayerKind.storyboard);
@@ -386,7 +396,35 @@ void main() {
       (born.name, born.opacity, born.isVisible, born.mark),
       ('Board', 0.25, false, const LayerMark(process: LayerProcess.layout)),
     );
+    expect(born.transformEnabled, headSwitch);
+    expect(
+      [for (final effect in born.effects) effect.id.value],
+      ['fx-1'],
+      reason: 'the chain\'s shape is the head\'s',
+    );
     expect(born.timeline, isNotEmpty, reason: 'and it holds its OWN panel');
+  });
+
+  test('🚨a head is renamed from wherever the session stands — under '
+      'another cut, and from a gap — by the rail\'s own rename', () {
+    for (final gap in const [false, true]) {
+      final session = sessionOf(film());
+      if (gap) {
+        session.selectGlobalFrame(25);
+        expect(session.activeCutOrNull, isNull, reason: 'fixture: a gap');
+      } else {
+        session.selectCut(const CutId('b'));
+      }
+
+      // The label's double click renames the rows its press acted on.
+      session.layerVerbs.renameRows(const [LayerId('a-conte')], 'Board');
+
+      expect(
+        heads(session, (row) => row.name),
+        ['Board', 'Board', 'Conte'],
+        reason: gap ? 'from a gap' : 'under cut b',
+      );
+    }
   });
 
   test('the FIRST conte on a track is born as its kind is', () {

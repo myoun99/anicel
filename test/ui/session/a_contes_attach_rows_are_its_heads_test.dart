@@ -17,6 +17,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/commands/link_mirror.dart'
+    show existenceMirrorTargets;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 🗣️I-73 — the drawn proposal 유저 took on 2026-10-08: 「머리 — 이름 ·
@@ -182,35 +184,134 @@ void main() {
       // In b the conte is the bottom row: its attach rows stand right over
       // it, under the cel that was above it.
       expect(cutIn(session, 'b').layers.last.id, const LayerId('b-cel'));
+      // …and each cut holds the cel, the conte and the two rows: nothing
+      // was born riding a row that rides.
+      expect(cutIn(session, 'a').layers, hasLength(4));
+      expect(cutIn(session, 'b').layers, hasLength(4));
     });
 
-    test('🚨wears the head of the seat it lands on, and a cut that already '
-        'holds that seat is given no second row', () {
+    for (final (placement, seat) in const [
+      (AttachedPlacement.above, 1),
+      (AttachedPlacement.below, -1),
+    ]) {
+      test('🚨wears the head of the seat it lands on — ${placement.name} — '
+          'and a cut that already holds that seat is given no second row', () {
+        final session = sessionOf([
+          cutOf('a', [cel('a'), conte('a')]),
+          cutOf('b', [
+            cel('b'),
+            if (placement == AttachedPlacement.below)
+              rider(
+                'b',
+                'side',
+                placement: placement,
+                name: 'Shadow',
+                opacity: 0.5,
+                blendMode: LayerBlendMode.multiply,
+              ),
+            conte('b'),
+            if (placement == AttachedPlacement.above)
+              rider(
+                'b',
+                'side',
+                placement: placement,
+                name: 'Shadow',
+                opacity: 0.5,
+                blendMode: LayerBlendMode.multiply,
+              ),
+          ]),
+        ]);
+        standOn(session, 'a', 'a-conte');
+
+        session.folders.addAttachedLayer(placement);
+
+        final born = seatRow(session, 'a', seat);
+        expect(
+          (born.name, born.opacity, born.blendMode),
+          ('Shadow', 0.5, LayerBlendMode.multiply),
+        );
+        expect(conteGroupOf(cutIn(session, 'b')), hasLength(2));
+        expect(seatRow(session, 'b', seat).id, const LayerId('b-side'));
+      });
+    }
+
+    test('every row the step plants has an id of its own', () {
       final session = sessionOf([
-        cutOf('a', [cel('a'), conte('a')]),
-        cutOf('b', [
-          cel('b'),
-          conte('b'),
-          rider(
-            'b',
-            'over',
-            placement: AttachedPlacement.above,
-            name: 'Shadow',
-            opacity: 0.5,
-            blendMode: LayerBlendMode.multiply,
-          ),
-        ]),
+        for (final cut in const ['a', 'b', 'c', 'd'])
+          cutOf(cut, [cel(cut), conte(cut)]),
       ]);
       standOn(session, 'a', 'a-conte');
 
       session.folders.addAttachedLayer(AttachedPlacement.above);
 
-      final born = seatRow(session, 'a', 1);
+      final planted = [
+        for (final cut in const ['a', 'b', 'c', 'd'])
+          seatRow(session, cut, 1).id,
+      ];
+      expect(planted.toSet(), hasLength(4));
+    });
+
+    test('🚨a row added on ANOTHER row of the cut is that cut\'s alone, and '
+        'wears no head', () {
+      final session = sessionOf([
+        cutOf('a', [cel('a'), conte('a')]),
+        cutOf('b', [
+          cel('b'),
+          conte('b'),
+          rider('b', 'over', placement: AttachedPlacement.above, opacity: 0.5),
+        ]),
+      ]);
+      final bWas = [
+        for (final layer in cutIn(session, 'b').layers) layer.id.value,
+      ];
+      standOn(session, 'a', 'a-cel');
+
+      session.folders.addAttachedLayer(AttachedPlacement.above);
+
+      final born = cutIn(
+        session,
+        'a',
+      ).layers.firstWhere((layer) => layer.id == session.activeLayerId);
+      expect(born.attachedToLayerId, const LayerId('a-cel'), reason: 'fixture');
+      expect(born.opacity, 1, reason: 'the cel\'s row is no seat of the conte');
       expect(
-        (born.name, born.opacity, born.blendMode),
-        ('Shadow', 0.5, LayerBlendMode.multiply),
+        [for (final layer in cutIn(session, 'b').layers) layer.id.value],
+        bWas,
       );
-      expect(seats(session, 'b'), ['1:Shadow', '0:Conte']);
+    });
+
+    test('a row born INTO an organizer of the conte\'s rows is its cut\'s '
+        'alone: it stands where the folder does, on no seat at the edge', () {
+      final session = sessionOf([
+        cutOf('a', [
+          cel('a'),
+          conte('a'),
+          rider('a', 'over', placement: AttachedPlacement.above),
+        ]),
+        cutOf('b', [
+          cel('b'),
+          conte('b'),
+          rider('b', 'over', placement: AttachedPlacement.above),
+        ]),
+      ]);
+      standOn(session, 'a', 'a-over');
+      session.folders.groupActiveAttachIntoFolder();
+      standOn(session, 'a', 'a-over');
+      final organizer = cutIn(
+        session,
+        'a',
+      ).layers.firstWhere((layer) => layer.id == const LayerId('a-over'));
+      expect(organizer.folderId, isNotNull, reason: 'fixture: filed');
+
+      session.folders.addAttachedLayer(AttachedPlacement.above);
+
+      expect(conteGroupOf(cutIn(session, 'a')), hasLength(3));
+      expect(
+        conteGroupOf(cutIn(session, 'b')),
+        hasLength(2),
+        reason: 'the planner stands down: the seat it would name is the '
+            'group\'s edge, and this row stands inside the group',
+      );
     });
   });
 
@@ -278,7 +379,154 @@ void main() {
     }
   });
 
+  group('with 겸용 pairs on the track', () {
+    /// A default project's track, grown to [pairs] 겸용 pairs of cuts — every
+    /// cut with a conte, each pair's contes one layer — the session standing
+    /// on the first cut's conte.
+    ({EditorSessionManager session, List<(CutId, CutId)> pairs}) paired(
+      int pairs,
+    ) {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      final made = <(CutId, CutId)>[];
+      for (var pair = 0; pair < pairs; pair += 1) {
+        if (pair > 0) {
+          session.cutVerbs.createCut();
+        }
+        session.layerStack.addLayerOfKind(LayerKind.storyboard);
+        final source = session.requireActiveCut.id;
+        session.cutVerbs.createLinkedCutFromActiveCut();
+        made.add((source, session.requireActiveCut.id));
+      }
+      session.selectCut(made.first.$1);
+      session.selectLayer(
+        storyboardLayerForCut(session.requireActiveCut)!.id,
+      );
+      return (session: session, pairs: made);
+    }
+
+    Cut cutBy(EditorSessionManager session, CutId id) =>
+        session.activeTrack.cuts.firstWhere((cut) => cut.id == id);
+
+    test('🚨each pair\'s rows are one layer of their own — two pairs, two '
+        'groups', () {
+      final (:session, :pairs) = paired(2);
+      final groupsBefore = session.repository
+          .requireProject()
+          .linkRegistry
+          .groups
+          .length;
+
+      session.folders.addAttachedLayer(AttachedPlacement.above);
+
+      final registry = session.repository.requireProject().linkRegistry;
+      final groupOfPair = [
+        for (final (source, linked) in pairs)
+          {
+            for (final cut in [source, linked])
+              registry
+                  .groupOf(
+                    cutId: cut,
+                    layerId: conteRowAtSeat(cutBy(session, cut), 1)!.id,
+                  )
+                  ?.id,
+          },
+      ];
+      expect(groupOfPair[0], hasLength(1), reason: 'the first pair: one');
+      expect(groupOfPair[1], hasLength(1), reason: 'the second pair: one');
+      expect(groupOfPair[0].single, isNotNull);
+      expect(groupOfPair[1].single, isNot(groupOfPair[0].single));
+      expect(registry.groups, hasLength(groupsBefore + 2));
+    });
+
+    test('🚨a conte born into a pair is born carrying the track\'s rows in '
+        'both cuts — the sibling\'s riding the sibling\'s conte, as the '
+        'same layer', () {
+      final (:session, :pairs) = paired(1);
+      session.folders.addAttachedLayer(AttachedPlacement.above);
+      // A new pair of cuts with no conte yet.
+      session.cutVerbs.createCut();
+      final source = session.requireActiveCut.id;
+      session.cutVerbs.createLinkedCutFromActiveCut();
+      final linked = session.requireActiveCut.id;
+      expect(pairs.single, isNot((source, linked)), reason: 'fixture');
+      expect(storyboardLayerForCut(cutBy(session, linked)), isNull);
+
+      session.selectCut(source);
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+
+      final born = [
+        for (final cut in [source, linked])
+          (
+            conte: storyboardLayerForCut(cutBy(session, cut))!,
+            rider: conteRowAtSeat(cutBy(session, cut), 1)!,
+          ),
+      ];
+      expect(born[0].rider.attachedToLayerId, born[0].conte.id);
+      expect(born[1].rider.attachedToLayerId, born[1].conte.id);
+      final registry = session.repository.requireProject().linkRegistry;
+      final group = registry.groupOf(
+        cutId: source,
+        layerId: born[0].rider.id,
+      );
+      expect(group, isNotNull, reason: 'the born rows are linked');
+      expect(
+        {for (final member in group!.members) member.layerId},
+        {born[0].rider.id, born[1].rider.id},
+      );
+    });
+  });
+
   group('a conte born into a track whose contes carry attach rows', () {
+    test('🚨takes each seat\'s row in its place — two a side, each as its '
+        'head is: its name, its side, off the timesheet', () {
+      final session = sessionOf([
+        cutOf('a', [
+          rider('a', 'deep', placement: AttachedPlacement.below, name: 'Deep'),
+          rider('a', 'under', placement: AttachedPlacement.below),
+          conte('a'),
+          rider('a', 'over', placement: AttachedPlacement.above),
+          rider('a', 'high', placement: AttachedPlacement.above, name: 'High'),
+        ]),
+        cutOf('c', [cel('c')]),
+      ]);
+      expect(
+        seats(session, 'a'),
+        ['2:High', '1:Over', '0:Conte', '-1:Under', '-2:Deep'],
+        reason: 'fixture',
+      );
+      standOn(session, 'c', 'c-cel');
+
+      session.layerStack.addLayerOfKind(LayerKind.storyboard);
+
+      expect(
+        seats(session, 'c'),
+        ['2:High', '1:Over', '0:Conte', '-1:Under', '-2:Deep'],
+      );
+      expect(
+        [
+          for (final seat in const [2, 1, -1, -2])
+            seatRow(session, 'c', seat).attachedPlacement,
+        ],
+        [
+          AttachedPlacement.above,
+          AttachedPlacement.above,
+          AttachedPlacement.below,
+          AttachedPlacement.below,
+        ],
+      );
+      expect(
+        [
+          for (final seat in const [2, 1, -1, -2])
+            seatRow(session, 'c', seat).onTimesheet,
+        ],
+        everyElement(isFalse),
+        reason: 'as the ＋ makes an attach row: off the timesheet',
+      );
+    });
+
     test('is born carrying them — a row a seat, wearing its head and '
         'holding nothing — in one undo', () {
       final session = sessionOf([
@@ -372,6 +620,67 @@ void main() {
         ['a-cel'],
       );
       expect(seats(session, 'b'), ['1:Over', '0:Conte', '-1:Under']);
+    });
+
+    test('whose seat goes with a row: an attach row\'s, in every cut — a '
+        'conte\'s own place is its cut\'s', () {
+      final project = sessionOf(
+        twoCutsWithRiders(),
+      ).repository.requireProject();
+
+      expect(
+        existenceMirrorTargets(
+          project,
+          cutId: const CutId('a'),
+          layerId: const LayerId('a-over'),
+        ),
+        [
+          (cutId: const CutId('a'), layerId: const LayerId('a-over')),
+          (cutId: const CutId('b'), layerId: const LayerId('b-over')),
+        ],
+      );
+      expect(
+        existenceMirrorTargets(
+          project,
+          cutId: const CutId('a'),
+          layerId: const LayerId('a-conte'),
+        ),
+        [(cutId: const CutId('a'), layerId: const LayerId('a-conte'))],
+      );
+    });
+
+    test('🚨the last row of an organizer takes the folder with it — in '
+        'every cut that filed its row, each in its own cut', () {
+      final session = sessionOf(twoCutsWithRiders());
+      for (final cut in const ['a', 'b']) {
+        standOn(session, cut, '$cut-over');
+        session.folders.groupActiveAttachIntoFolder();
+      }
+      List<LayerKind> kindsIn(String cut) => [
+        for (final layer in cutIn(session, cut).layers) layer.kind,
+      ];
+      expect(kindsIn('a'), contains(LayerKind.folder), reason: 'fixture');
+      expect(kindsIn('b'), contains(LayerKind.folder), reason: 'fixture');
+      final before = [
+        for (final cut in const ['a', 'b'])
+          [for (final layer in cutIn(session, cut).layers) layer.id.value],
+      ];
+      standOn(session, 'a', 'a-over');
+      final steps = session.historyManager.undoCount;
+
+      session.layerVerbs.deleteActiveLayer();
+
+      for (final cut in const ['a', 'b']) {
+        expect(seats(session, cut), ['0:Conte', '-1:Under'], reason: cut);
+        expect(kindsIn(cut), isNot(contains(LayerKind.folder)), reason: cut);
+      }
+      expect(session.historyManager.undoCount, steps + 1);
+
+      session.undo();
+      expect([
+        for (final cut in const ['a', 'b'])
+          [for (final layer in cutIn(session, cut).layers) layer.id.value],
+      ], before);
     });
   });
 }

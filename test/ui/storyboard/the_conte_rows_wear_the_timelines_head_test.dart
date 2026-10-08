@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/attached_mode.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte_group.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -21,11 +22,15 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_conte_row.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/canvas/flip_hud_controller.dart'
+    show FlipHudAxis;
 import 'package:anicel/src/ui/session/session_row_button_presses.dart';
+import 'package:anicel/src/ui/storyboard/storyboard_rows_channel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show LayerAttachArrowCell;
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 
 /// 🗣️I-73 (유저 2026-10-08): 「콘티행도 동일하게 하고싶으니까 어태치
@@ -137,6 +142,7 @@ void main() {
     WidgetTester tester,
     Project project, {
     TimelineRowFilter Function()? rowFilter,
+    StoryboardRowsChannel? rowsChannel,
   }) async {
     await tester.binding.setSurfaceSize(const Size(1400, 760));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -160,6 +166,7 @@ void main() {
               onShowSecondsChanged: (_) {},
               thumbnails: null,
               rowFilter: rowFilter?.call() ?? TimelineRowFilter.none,
+              rowsChannel: rowsChannel,
               collapsedAttachBaseIds:
                   session.railView.collapsedAttachBaseIds.value,
               onToggleAttachGroup: SessionRowButtonPresses(
@@ -259,6 +266,11 @@ void main() {
         both((row) => row.transformEnabled),
         [false, false],
         reason: 'fx switch',
+      );
+      expect(
+        headOf(tester, 'conte').fxState,
+        isNot(LayerFxState.on),
+        reason: 'and the button shows what it wrote',
       );
 
       await tester.tap(key('storyboard-layer-blend-a-conte'));
@@ -446,6 +458,144 @@ void main() {
       expect(key('storyboard-conte-row-t1'), findsOneWidget);
       expect(key('storyboard-conte-row-t1-conte+1'), findsOneWidget);
       expect(key('storyboard-conte-row-t1-conte-1'), findsOneWidget);
+      // The twirl is the base's: a row that rides folds nothing.
+      expect(key('storyboard-attach-twirl-a-conte'), findsOneWidget);
+      expect(key('storyboard-attach-twirl-a-over'), findsNothing);
+      expect(key('storyboard-attach-twirl-a-under'), findsNothing);
+      // And the button that makes a cut's conte — cut c has none — is the
+      // conte row's alone.
+      expect(key('storyboard-conte-create-t1'), findsOneWidget);
+      expect(key('storyboard-conte-create-t1-conte+1'), findsNothing);
+      expect(key('storyboard-conte-create-t1-conte-1'), findsNothing);
+    });
+
+    testWidgets('a press on a row that rides, over a cut with no conte, '
+        'makes none — the + is the conte row\'s', (tester) async {
+      final session = await pumpPanel(tester, film(withRiders: true));
+      Layer? conteOfC() => storyboardLayerForCut(
+        session.repository.requireProject().tracks.single.cuts.last,
+      );
+      // Frame 26 is cut c's third frame (12 px a frame).
+      Offset overC(String row) {
+        final strip = tester.getRect(key(row));
+        return strip.topLeft + Offset(26 * 12 + 6, strip.height / 2);
+      }
+
+      await tester.tapAt(overC('storyboard-conte-row-t1-conte+1'));
+      await tester.pumpAndSettle();
+      expect(conteOfC(), isNull);
+
+      await tester.tapAt(overC('storyboard-conte-row-t1'));
+      await tester.pumpAndSettle();
+      expect(conteOfC(), isNotNull, reason: 'LIVENESS: the conte row\'s +');
+    });
+
+    testWidgets('🚨the filter judges each seat on ITS head: a label chip the '
+        'conte wears and its rows do not shows the conte alone', (
+      tester,
+    ) async {
+      await pumpPanel(
+        tester,
+        film(withRiders: true, aMark: conteMark),
+        rowFilter: () => TimelineRowFilter.none.toggledMark(conteMark),
+      );
+
+      expect(label('conte'), findsOneWidget);
+      expect(label('conte+1'), findsNothing);
+      expect(label('conte-1'), findsNothing);
+      expect(key('storyboard-conte-row-t1'), findsOneWidget);
+      expect(key('storyboard-conte-row-t1-conte+1'), findsNothing);
+    });
+
+    testWidgets('🚨a sweep down a column reaches each seat\'s OWN row: the '
+        'eye paints all three, the fx the conte\'s alone, and the sheet '
+        'switch — which no conte row draws — none of them', (tester) async {
+      final session = await pumpPanel(tester, film(withRiders: true));
+      const se = 't1-s1';
+      const group = ['a-over', 'a-conte', 'a-under'];
+      Future<void> sweepDown(String cell) async {
+        final from = tester.getCenter(key('storyboard-layer-$cell-$se'));
+        final to = tester.getRect(label('conte-1')).center.dy;
+        expect(to, greaterThan(from.dy), reason: 'fixture: the group is below');
+        final gesture = await tester.startGesture(from);
+        for (var step = 1; step <= 8; step += 1) {
+          await gesture.moveTo(
+            Offset(from.dx, from.dy + (to - from.dy) * step / 8),
+          );
+          await tester.pump();
+        }
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
+
+      await sweepDown('visibility');
+      expect(
+        [for (final id in group) row(session, id).isVisible],
+        [false, false, false],
+        reason: 'the eye: every seat has its own',
+      );
+
+      await sweepDown('fx');
+      expect(
+        [for (final id in group) row(session, id).transformEnabled],
+        [true, false, true],
+        reason: 'the fx: a row that rides wears its base\'s, and has none',
+      );
+
+      final sheetWas = [for (final id in group) row(session, id).onTimesheet];
+      bool seOnSheet() => session.repository
+          .requireProject()
+          .tracks
+          .single
+          .seLayers
+          .single
+          .onTimesheet;
+      final seWas = seOnSheet();
+      await sweepDown('timesheet');
+      expect(
+        seOnSheet(),
+        isNot(seWas),
+        reason: 'LIVENESS: the sweep toggled the row it started on',
+      );
+      expect(
+        [for (final id in group) row(session, id).onTimesheet],
+        sheetWas,
+      );
+    });
+
+    testWidgets('🚨the flip window reads each seat as the row it is — its '
+        'name, and its own blocks', (tester) async {
+      final channel = StoryboardRowsChannel();
+      await pumpPanel(
+        tester,
+        film(withRiders: true),
+        rowsChannel: channel,
+      );
+      final seats = [
+        for (final seat in const [1, 0, -1])
+          LayerRowAddress(trackConteRowId(trackId, seat: seat)),
+      ];
+      final at = [for (final seat in seats) channel.rows.indexOf(seat)];
+      expect(at, everyElement(isNonNegative), reason: 'fixture: three rows');
+      expect([at[1] - at[0], at[2] - at[1]], [1, 1], reason: 'top row first');
+
+      final hud = channel.snapshotFor(FlipHudAxis.row)!.rows;
+      expect(
+        [for (final index in at) hud[index].name],
+        ['Conte+1', 'Conte', 'Conte-1'],
+      );
+      // A rider holds six frames a cut, the conte its cut's twelve.
+      expect(
+        [
+          for (final index in at)
+            [for (final run in hud[index].runs) run.length],
+        ],
+        [
+          [6, 6],
+          [12, 12],
+          [6, 6],
+        ],
+      );
     });
 
     testWidgets('🚨the conte\'s twirl folds them — on this rail, and in '
@@ -453,9 +603,11 @@ void main() {
       final session = await pumpPanel(tester, film(withRiders: true));
       final twirl = key('storyboard-attach-twirl-a-conte');
       expect(twirl, findsOneWidget);
+      expect(headOf(tester, 'conte').groupFoldExpanded, isTrue);
 
       await tester.tap(twirl);
       await tester.pumpAndSettle();
+      expect(headOf(tester, 'conte').groupFoldExpanded, isFalse);
 
       expect(label('conte+1'), findsNothing);
       expect(label('conte-1'), findsNothing);
@@ -501,6 +653,28 @@ void main() {
       );
       expect(session.activeCutId, const CutId('b'));
       expect(session.activeLayerId, const LayerId('b-over'));
+      // …and the wash is laid on THAT row's block: cut b's row holds
+      // [12, 18) there, where the conte under it holds the cut's twelve.
+      final wash = tester.getRect(key('storyboard-standing-wash'));
+      expect(wash.top, closeTo(strip.top, 1));
+      expect(wash.left, closeTo(strip.left + 12 * 12, 1));
+      expect(wash.width, closeTo(6 * 12, 1));
+    });
+
+    testWidgets('each seat\'s strip wears its own head\'s colour label', (
+      tester,
+    ) async {
+      await pumpPanel(tester, film(withRiders: true, aMark: conteMark));
+      LayerMark shownMark(String row) => (tester
+              .widget<CustomPaint>(key('storyboard-conte-cells-$row'))
+              .painter!
+          as TimelineRowCellsPainter)
+          .layer
+          .mark;
+
+      expect(shownMark('t1'), conteMark);
+      expect(shownMark('t1-conte+1'), LayerMark.none);
+      expect(shownMark('t1-conte-1'), LayerMark.none);
     });
   });
 }

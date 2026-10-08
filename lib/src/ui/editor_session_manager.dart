@@ -257,6 +257,7 @@ class EditorSessionManager extends ChangeNotifier
     // PCM copy, and outside live playback the activation rebuild covers
     // it.
     historyManager.addListener(refreshLiveAudioSchedule);
+    historyManager.addListener(_railFollowsItsHeads);
     layerStack.attach();
     // Every cache's budget, from this device's laws and the allowance a
     // person chose — set now, and again whenever the allowance moves.
@@ -1277,6 +1278,28 @@ class EditorSessionManager extends ChangeNotifier
   // three one answer.
   late final FolderBands folderBands = FolderBands(project: this);
 
+  /// A row a command made in a track's conte family wears the family's
+  /// folds and twirls ([RailView.followHeads]) — asked after EVERY history
+  /// change: a command, an undo, a redo.
+  ///
+  /// ↩️Asked in [refreshAfterCutCommand], beside the links, until a pin
+  /// found the doors that make such a row never come through it
+  /// (2026-10-08): the ＋ that bears a conte and the one that adds a row to
+  /// it stand on their new row themselves. 🧪A conte born beside a folded
+  /// group was born open — folded on the storyboard's rail, whose head is
+  /// the first cut's, and open in its own cut's timeline.
+  ///
+  /// The families are read only while something is folded or twirled open
+  /// (`expand` is lazy): a stroke is a history change too.
+  void _railFollowsItsHeads() {
+    final project = repository.currentProject;
+    if (project != null) {
+      railView.followHeads(
+        project.tracks.expand((track) => conteHeadFamiliesOf(track.cuts)),
+      );
+    }
+  }
+
   @override
   void refreshAfterCutCommand({
     LayerId? preferredActiveLayerId,
@@ -1298,11 +1321,6 @@ class EditorSessionManager extends ChangeNotifier
     // F-302: a row the command linked wears its group's twirls and folds —
     // BEFORE the standing law asks which rows the rail shows.
     railView.followLinks(repository.requireProject().linkRegistry);
-    // And a row born into a track's conte family wears the family's.
-    railView.followHeads([
-      for (final track in repository.requireProject().tracks)
-        ...conteHeadFamiliesOf(track.cuts),
-    ]);
     // F-169: wherever the command left you, it is a row on screen.
     standing.keepStandingShown(
       reveal: reveal,
@@ -1435,6 +1453,7 @@ class EditorSessionManager extends ChangeNotifier
     () => editingFrameCursor.removeListener(_hydrateShownMovieCels),
     () => historyManager.removeListener(projectFile.markDirty),
     () => historyManager.removeListener(refreshLiveAudioSchedule),
+    () => historyManager.removeListener(_railFollowsItsHeads),
     voiceRecording.dispose,
     playbackRig.dispose,
     renderCaches.dispose,

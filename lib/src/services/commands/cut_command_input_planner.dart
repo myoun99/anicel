@@ -498,8 +498,8 @@ class _Planting {
   final Set<CutId> planted = {};
 }
 
-/// [planAddLayerCommandInput] as one of the rows [step] plants: the cuts it
-/// has already planted are passed over.
+/// [planAddLayerCommandInput] as one of the rows [step] plants: its ids are
+/// the step's.
 AddLayerCommandInputPlan _planAddLayerMirrors(
   _Planting step, {
   required CutId cutId,
@@ -509,10 +509,7 @@ AddLayerCommandInputPlan _planAddLayerMirrors(
   if (!layer.kind.linksIntoLinkedCut) {
     return AddLayerCommandInputPlan.none;
   }
-  final siblings = [
-    for (final sibling in linkedCutSiblings(project, cutId: cutId))
-      if (!step.planted.contains(sibling)) sibling,
-  ];
+  final siblings = linkedCutSiblings(project, cutId: cutId);
   if (siblings.isEmpty) {
     return AddLayerCommandInputPlan.none;
   }
@@ -624,13 +621,10 @@ Command plannedAddLayerCommand({
     );
   }
 
-  step.planted.add(cutId);
   final first = plant((cutId: cutId, layer: born, index: insertionIndex));
   return oneStepOf(first.description, [
     first,
-    for (final row in _conteFamilyRowsOf(step, cutId, born))
-      // A cut the row has reached as a 겸용 sibling already holds it.
-      if (!step.planted.contains(row.cutId)) plant(row),
+    for (final row in _conteFamilyRowsOf(step, cutId, born)) plant(row),
     ..._conteAttachRowsBornWith(step, first),
   ])!;
 }
@@ -700,22 +694,28 @@ int? _conteSeatBornAt(Cut cut, Layer layer) {
 /// same seat in every cut. A cut whose group is shaped otherwise is left as
 /// it is: a row added there would land on another seat, and wear another
 /// head.
-List<_PlantedRow> _conteFamilyRowsOf(
+///
+/// ⚠️LAZY, and it has to be: a row is planned once the one before it is
+/// PLANTED. Planting marks the cuts it put the row in — the pressed cut,
+/// and every 겸용 sibling that took it as the same layer — and a marked cut
+/// already holds the row.
+Iterable<_PlantedRow> _conteFamilyRowsOf(
   _Planting step,
   CutId cutId,
   Layer added,
-) {
+) sync* {
   final project = step.project;
   final track = _trackHolding(project, cutId);
   final seat = track == null || !isAttachedLayer(added)
       ? null
       : _conteSeatBornAt(requireCut(project, cutId), added);
   if (track == null || seat == null) {
-    return const [];
+    return;
   }
-  final rows = <_PlantedRow>[];
   for (final cut in track.cuts) {
-    final base = cut.id == cutId ? null : storyboardLayerForCut(cut);
+    final base = step.planted.contains(cut.id)
+        ? null
+        : storyboardLayerForCut(cut);
     if (base == null) {
       continue;
     }
@@ -724,7 +724,7 @@ List<_PlantedRow> _conteFamilyRowsOf(
       folderId: base.folderId,
     );
     if (_conteSeatBornAt(cut, there) == seat) {
-      rows.add((
+      yield (
         cutId: cut.id,
         layer: there.copyWith(id: step.ids.nextLayerId()),
         index: newAttachedRowIndex(
@@ -732,10 +732,9 @@ List<_PlantedRow> _conteFamilyRowsOf(
           cut.layers,
           added.attachedPlacement,
         ),
-      ));
+      );
     }
   }
-  return rows;
 }
 
 /// The attach rows a conte is BORN with: one for every seat the track's
