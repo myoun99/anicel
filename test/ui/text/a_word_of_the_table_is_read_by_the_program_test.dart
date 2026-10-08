@@ -9,7 +9,7 @@
 //
 // ⇒ A WORD OF THE TABLE IS READ BY THE PROGRAM — or it stands in the ledger
 // below: the words that were unread the day this was written (2026-10-08,
-// 37 of 941). Each is one of two things, and telling them apart is reading
+// 36 of 942). Each is one of two things, and telling them apart is reading
 // its place, one at a time — a place that still writes its own words, or a
 // row left behind by something that was removed. The ledger is what is
 // owed, and it only shrinks.
@@ -45,7 +45,6 @@ const _owed = <String>{
   'brGroupOptions',
   'brTransformPreserveColors',
   'brTransformPreserveColorsHint',
-  'canvasPresetDefault',
   'commonFill',
   'cutDelete',
   'exCelCountOne',
@@ -127,6 +126,6 @@ void main() {
       isEmpty,
       reason: 'read now, or gone from the table: take it out of the ledger',
     );
-    expect(_owed, hasLength(37), reason: 'the ledger only shrinks');
+    expect(_owed, hasLength(36), reason: 'the ledger only shrinks');
   });
 }
