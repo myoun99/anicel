@@ -172,6 +172,9 @@ const _checkMarkVerbs = <String, String>{
   'lib/src/ui/canvas/canvas_selection_layer.dart':
       'the APPLY button of a move/transform session — it commits, and shows '
       'no state of its own',
+  'lib/src/ui/canvas/canvas_adjust_layer.dart':
+      'the APPLY button of a canvas adjusted on the canvas (I-79) — it lands '
+      'the edges, and shows no state of its own',
 };
 
 /// Every line of [source] (named [path]) where [pattern] matches CODE — a
