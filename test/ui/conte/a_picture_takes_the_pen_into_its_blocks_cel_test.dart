@@ -47,7 +47,10 @@ import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart'
     show exportFrameGround;
+import 'package:anicel/src/ui/media/viewer_render_tier.dart'
+    show pictureRenderWidthFor;
 import 'package:anicel/src/ui/sheet/sheet_ink_layer.dart';
+import 'package:anicel/src/ui/sheet_painting.dart' show sheetPictureQuality;
 
 /// 🚨A CONTE PICTURE TAKES THE PEN INTO ITS BLOCK'S CEL (유저 2026-09-25,
 /// conte-drawing-target: 「그림 칸 안의 부분은 그 블록의 콘티 레이어
@@ -735,6 +738,10 @@ void main() {
       WidgetTester tester,
       Project project, {
       ui.Image? printed,
+
+      /// The print at the height it is asked for, when it is not one image
+      /// whatever the height ([printed]).
+      ui.Image Function(double shownHeight)? printedAt,
       BitmapSurface? cel,
       CanvasViewport? view,
       BitmapSurface Function(CanvasSize size)? band,
@@ -783,7 +790,7 @@ void main() {
                 listenable: Listenable.merge([session, ink, cels, brushOn]),
                 builder: (context, _) => ConteTabHost(
                   session: session,
-                  thumbnails: printed == null
+                  thumbnails: printed == null && printedAt == null
                       ? null
                       : (
                           resolve:
@@ -794,7 +801,7 @@ void main() {
                                 region,
                               }) {
                                 askedHeights.add(shownHeight);
-                                return printed;
+                                return printed ?? printedAt!(shownHeight);
                               },
                           landed: const _NeverLands(),
                           pending: () => false,
@@ -916,19 +923,33 @@ void main() {
       tester.view.devicePixelRatio = 1.25;
       addTearDown(tester.view.resetDevicePixelRatio);
       // The camera at 4× frames canvas x 240–400, y 135–225: white, and
-      // from x 384 the blue of tile (3, 1). What the print renders of it,
-      // pixel for pixel.
-      final printed = (await tester.runAsync(() async {
+      // from x 384 — nine tenths across — the blue of tile (3, 1). What the
+      // print renders of it, pixel for pixel, at the width it is asked for
+      // (F-215-Q1: at most the camera's 640 — the live composite is drawn
+      // into a raster of that width too).
+      final prints = <ui.Image>[];
+      addTearDown(() {
+        for (final print in prints) {
+          print.dispose();
+        }
+      });
+      ui.Image printedAt(double shownHeight) {
+        final width = pictureRenderWidthFor(
+          shownHeight,
+          Size(canvas.width.toDouble(), canvas.height.toDouble()),
+        );
+        final height = canvas.scaledToWidth(width).height;
         final recorder = ui.PictureRecorder();
         Canvas(recorder)
           ..drawColor(exportFrameGround, BlendMode.src)
           ..drawRect(
-            const Rect.fromLTWH(144, 0, 16, 90),
+            Rect.fromLTRB(width * 0.9, 0, width.toDouble(), height.toDouble()),
             Paint()..color = blue,
           );
-        return recorder.endRecording().toImage(160, 90);
-      }))!;
-      addTearDown(printed.dispose);
+        final print = recorder.endRecording().toImageSync(width, height);
+        prints.add(print);
+        return print;
+      }
       bool hatch(Color color) =>
           color.r < 0.1 && color.g < 0.1 && color.b < 0.1 && color.a > 0.9;
       bool isBlue(Color color) => color == blue;
@@ -941,7 +962,7 @@ void main() {
           final slot = await pumpPanel(
             tester,
             framed(zoom: 4, inkId: 'band'),
-            printed: printed,
+            printedAt: printedAt,
             band: hatched,
             view: CanvasViewport(zoom: zoom, panX: panX, panY: panY),
           );
@@ -973,6 +994,53 @@ void main() {
         }
       }
       expect(moved, isEmpty, reason: 'device pixels the brush switch moved');
+    });
+
+    testWidgets('🗣️F-215-Q1: magnified past the camera, the live picture is '
+        'composited at the camera\'s pixels, not the screen\'s — and laid '
+        'and filtered as the print is (유저 2026-10-08: 「둘 다 카메라 '
+        '해상도로」)', (tester) async {
+      tester.view.devicePixelRatio = 1.25;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final printed = (await tester.runAsync(() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawColor(exportFrameGround, BlendMode.src);
+        return recorder.endRecording().toImage(640, 360);
+      }))!;
+      addTearDown(printed.dispose);
+      // The camera at 4× has four of its 640 pixels across each of the 160
+      // canvas pixels it frames.
+      final slot = await pumpPanel(
+        tester,
+        framed(zoom: 4),
+        printed: printed,
+        view: CanvasViewport(zoom: 6),
+      );
+      expect(
+        slot.width * 1.25,
+        greaterThan(640),
+        reason: '⛔전제: the screen shows more pixels than the camera has',
+      );
+      brushOn.value = true;
+      await tester.pumpAndSettle();
+
+      final live = find.byKey(
+        const ValueKey<String>('conte-picture-live-picture-39-0'),
+      );
+      final stack = tester.widget<CanvasLayerStackView>(live);
+      expect(
+        stack.viewport.zoom * 1.25,
+        closeTo(4, 1e-6),
+        reason: 'device pixels per canvas pixel: the camera\'s, no more',
+      );
+      final laid = tester.widget<Transform>(
+        find.ancestor(of: live, matching: find.byType(Transform)).first,
+      );
+      expect(
+        laid.filterQuality,
+        sheetPictureQuality(640, Offset.zero & Size(slot.width, 1), 1.25),
+        reason: 'laid on the screen with the print\'s own filter',
+      );
     });
 
     testWidgets('the camera\'s work is printed over the live picture — its '

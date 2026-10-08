@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import '../core/contain_rect.dart';
 import '../core/convex_clip.dart' show convexIntersection;
 import '../models/brush_frame_key.dart';
+import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/sheet_marks.dart';
 import '../models/sheet_paint_layer.dart';
 import 'canvas/display_resample.dart';
 import 'canvas/viewport_canvas_transform.dart';
+import 'media/viewer_render_tier.dart' show pictureRenderWidthFor;
 
 /// Draws one baked ink window: the raster where its [placement] lays it,
 /// clipped to the window so a stroke that ran past the box does not bleed
@@ -57,19 +59,42 @@ void paintSheetImageContained(
   );
 }
 
-/// The quality a cell's picture, [image] as it was rendered, is laid into
+/// The quality a cell's picture, a raster [width] pixels wide, is laid into
 /// its [shot] with: what is left of the reduction, as the canvas's display
 /// takes it — the picture was rendered down by the display's own levels
 /// (`CameraFrameRenderService.renderThroughCamera`'s `displayLevels`), so
-/// the print and the live composite beside it reduce one way (F-215, 유저
+/// the print and the live composite reduce one way (F-215, 유저
 /// 2026-09-30: 「왜 브러시허용이랑 렌더링이랑 연관있는거냐고」). ↩️It was
 /// `medium`, which mipmaps where an engine has mips and does not where it
 /// has none.
 FilterQuality sheetPictureQuality(
-  ui.Image image,
+  int width,
   Rect shot,
   double devicePixelRatio,
-) => filterQualityForDisplayScale(shot.width * devicePixelRatio / image.width);
+) => filterQualityForDisplayScale(shot.width * devicePixelRatio / width);
+
+/// The raster a cell's picture is shown from, its brush on or off: as many
+/// pixels as its [shot] shows on a screen of [devicePixelRatio], never more
+/// than what it shows has — [original], the camera's frame or the region
+/// its moving camera sweeps (`pictureRenderWidthFor`, the print's own law).
+///
+/// 🗣️F-215-Q1 (유저 2026-10-08): 「둘 다 카메라 해상도로」 — 「어차피 실제
+/// 인쇄시 카메라해상도기때문」. The print is rendered at this size and the
+/// live composite is drawn into a raster of this size; both are laid on
+/// the screen at [pictureLaid] with [sheetPictureQuality]. ↩️The live
+/// composite drew the canvas's own pixels straight onto the screen:
+/// magnified past the camera it was sharper than the print, and the brush
+/// switch changed the picture (10-02 재발).
+CanvasSize pictureRasterOf(
+  Rect shot,
+  double devicePixelRatio,
+  CanvasSize original,
+) => original.scaledToWidth(
+  pictureRenderWidthFor(
+    shot.height * devicePixelRatio,
+    Size(original.width.toDouble(), original.height.toDouble()),
+  ),
+);
 
 /// Draws [image] filling [rect] — the one image draw a sheet prints a
 /// picture or a media image through, owning the quality its caller names.
@@ -354,28 +379,26 @@ CanvasViewport pictureCanvasViewport(
   viewportTransformMatrix(view).multiplied(canvasToPaper),
 )!;
 
-/// Where the print of [over]'s picture is laid on screen so that each of its
-/// pixels lands where the live composite shows it (F-215, 유저 2026-10-01:
-/// 「픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀? 이동. 대체 왜?」): its frame through
-/// the page's [view], moved by the snap the composite's own painter gives
-/// the canvas ([pictureCanvasViewport]). ↩️It was the frame cut on the
-/// page's grid ([SheetDeviceGrid.printedPicture]): the print pinned its
-/// edges to the grid, the composite its canvas's origin, and the brush
-/// switch moved the picture by the difference.
-Rect pictureLaidAsLive(
-  SheetPictureOverInk over,
-  CanvasViewport view,
-  double devicePixelRatio,
-) {
-  final canvas = pictureCanvasViewport(view, over.canvasToPaper);
-  final snapped = renderSnappedViewport(canvas, devicePixelRatio);
-  final frame = over.picture.frame;
+/// Where [picture]'s raster ([pictureRasterOf]) is laid on screen, its
+/// print and its live composite alike: its frame through the page's
+/// [view] (F-215, 유저 2026-10-01: 「픽쳐칸 그림은 왼쪽위 0.5픽셀?1픽셀?
+/// 이동. 대체 왜?」).
+///
+/// ↩️The print was moved by the snap the live composite's painter gave
+/// the canvas, which it drew straight onto the screen; the composite is a
+/// raster of the print's size now, laid here too, so nothing is left to
+/// follow. Before that it was the frame cut on the page's grid
+/// ([SheetDeviceGrid.printedPicture]): the print pinned its edges to the
+/// grid, the composite its canvas's origin, and the brush switch moved the
+/// picture by the difference.
+Rect pictureLaid(SheetPicture picture, CanvasViewport view) {
+  final frame = picture.frame;
   return Rect.fromLTRB(
     view.panX + view.zoom * frame.left,
     view.panY + view.zoom * frame.top,
     view.panX + view.zoom * frame.right,
     view.panY + view.zoom * frame.bottom,
-  ).shift(Offset(snapped.panX - canvas.panX, snapped.panY - canvas.panY));
+  );
 }
 
 /// Where [over] shows its cut's canvas, exactly, on the paper: the
@@ -625,7 +648,7 @@ class _SheetCanvas {
       canvas,
       image,
       shot,
-      sheetPictureQuality(image, shot, grid.devicePixelRatio),
+      sheetPictureQuality(image.width, shot, grid.devicePixelRatio),
     );
     final laid = _laidAsLive(picture);
     if (laid == null) {
@@ -637,24 +660,21 @@ class _SheetCanvas {
       canvas,
       image,
       laid,
-      sheetPictureQuality(image, laid, grid.devicePixelRatio),
+      sheetPictureQuality(image.width, laid, grid.devicePixelRatio),
     );
     canvas.restore();
   }
 
-  /// Where [picture]'s live composite would lay it, on screen — null for an
-  /// export, and for a picture no ink yields to (no map of its canvas).
+  /// Where [picture]'s live composite lays its raster, on screen
+  /// ([pictureLaid]) — null for an export, and for a picture no ink yields
+  /// to, which has no live composite.
   Rect? _laidAsLive(SheetPicture picture) {
     final shown = view;
-    if (shown == null) {
+    if (shown == null ||
+        !printer.picturesOverInk.any((over) => over.picture == picture)) {
       return null;
     }
-    for (final over in printer.picturesOverInk) {
-      if (over.picture == picture) {
-        return pictureLaidAsLive(over, shown, grid.devicePixelRatio);
-      }
-    }
-    return null;
+    return pictureLaid(picture, shown);
   }
 
   /// A line, anti-aliased: a camera's frame may be turned, and no grid

@@ -65,6 +65,11 @@ typedef ContePicture = ({
   SheetPicture mark,
   Rect shown,
   List<SheetMark> cameraWork,
+
+  /// What the picture shows, in its own pixels: the camera's frame, or the
+  /// region its cell's moving camera sweeps (`pictureView`) — the most its
+  /// raster ever has (`pictureRasterOf`, F-215-Q1).
+  CanvasSize original,
 });
 
 /// The pictures of [page] the brush draws into: one per cell, into its
@@ -132,10 +137,11 @@ ContePicture? _pictureOf(
   final mark = contePictureOf(cell, page.metrics);
   final shown = mark.frame;
   final placement = layerPlacementAt(cut: cut, layer: layer, frameIndex: frame);
-  final canvasToPaper = conteCanvasToPaper(mark, (
+  final camera = (
     pose: project.cameraPoseOf(cut, frame),
     frameSize: project.cameraFrameSize,
-  ));
+  );
+  final canvasToPaper = conteCanvasToPaper(mark, camera);
   // The cell, not the drawing: a drawing exposed twice is two pictures.
   final id = 'picture-${cell.cutId}-${cell.source.startFrame}';
   return (
@@ -158,6 +164,7 @@ ContePicture? _pictureOf(
     mark: mark,
     shown: shown,
     cameraWork: [...conteCameraMarksOf(cell, page.metrics)],
+    original: pictureView(camera, mark.canvasRegion).frameSize,
   );
 }
 
