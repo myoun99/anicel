@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'camera_pose.dart';
+import 'property_track.dart';
 import 'transform_track.dart';
 
 /// Per-cut camera animation: camera poses keyframed by playback frame index.
@@ -77,3 +78,73 @@ class CutCamera {
 /// else, so the verbs that make one ask this first.
 bool cameraKeyFits(int frame, {required int drawnFrameCount}) =>
     frame >= 0 && frame < drawnFrameCount;
+
+/// [camera] with the key on [previousLastFrame] — the last frame its cut
+/// was drawn for — moved to [lastFrame], the last one it is drawn for now:
+/// on every lane that keys it and has nothing on [lastFrame] yet.
+///
+/// 🗣️I-73-camera-row-Q4 (유저 2026-10-09): 「끝 칸의 키는 늘릴때나
+/// 줄일때 컷 끝에 붙어있기만 하면되. 위치만 이동되도록. 밖엔 애초에
+/// 존재못하게하는게 지금구조잖아」 — the key on the end stays on the end
+/// whether the cut grows or shrinks, its pose, type and name its own. The
+/// key on the FIRST frame needs nothing: frame 0 is where the cut begins
+/// however it is trimmed. Nothing is dropped, so the step back is the same
+/// move the other way.
+///
+/// ⚠️A cut of one frame has its key on both ends at once: it stays on the
+/// first.
+CutCamera cameraWithItsEndKeyAt(
+  CutCamera camera, {
+  required int lastFrame,
+  required int previousLastFrame,
+}) {
+  if (previousLastFrame <= 0 ||
+      lastFrame < 0 ||
+      lastFrame == previousLastFrame) {
+    return camera;
+  }
+  PropertyTrack<T> moved<T>(PropertyTrack<T> lane) {
+    final key = lane.keys[previousLastFrame];
+    if (key == null || lane.keys.containsKey(lastFrame)) {
+      return lane;
+    }
+    return PropertyTrack(
+      keys: {
+        for (final entry in lane.keys.entries)
+          if (entry.key != previousLastFrame) entry.key: entry.value,
+        lastFrame: key,
+      },
+    );
+  }
+
+  final track = camera.track;
+  final next = TransformTrack.properties(
+    anchorPoint: moved(track.anchorPoint),
+    position: moved(track.position),
+    scale: moved(track.scale),
+    rotation: moved(track.rotation),
+    opacity: moved(track.opacity),
+  );
+  return next == track ? camera : CutCamera.fromTrack(next);
+}
+
+/// The fewest frames a cut drawn for [drawnFrameCount] frames may be drawn
+/// for and keep [camera]'s keys on them: the key on its last frame comes in
+/// with the end ([cameraWithItsEndKeyAt]), and every other key stays where
+/// it is — so up to the frame after the last of those. The camera lives
+/// inside its cut, as the conte does (`minimumCutDurationFor`, 유저
+/// 2026-07-27): a shrink stops short of a key rather than putting one out.
+int cameraDrawnFrameFloor(CutCamera camera, {required int drawnFrameCount}) {
+  final last = drawnFrameCount - 1;
+  var floor = 1;
+  var keysTheEnd = false;
+  for (final frame in camera.track.keyedFrames) {
+    if (frame == last) {
+      keysTheEnd = true;
+    } else if (frame + 1 > floor) {
+      floor = frame + 1;
+    }
+  }
+  // The key on the end needs a frame of its own past the others.
+  return keysTheEnd && camera.track.keyedFrames.length > 1 ? floor + 1 : floor;
+}

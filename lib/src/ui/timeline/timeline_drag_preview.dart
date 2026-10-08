@@ -359,6 +359,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
     this.previewGaps = const {},
     this.previewOrder = const {},
     this.previewLayers = const {},
+    this.previewCameras = const {},
   });
 
   final Map<CutId, int> previewDurations;
@@ -369,6 +370,12 @@ class CutTrimDragPreview extends TimelineDragPreview {
   /// shortens the cut, and the row's later divisions come left with it, so
   /// one drag previews both or the picture tears in half mid-drag.
   final Map<LayerId, Layer> previewLayers;
+
+  /// The cameras the release leaves otherwise than they stand: a length
+  /// change carries the key on a cut's last frame with that frame
+  /// ([cameraWithItsEndKeyAt], I-73-camera-row-Q4) — under the hand, not on
+  /// release.
+  final Map<CutId, CutCamera> previewCameras;
 
   /// Per track, the cut sequence as the release would leave it. A reorder
   /// carries [previewGaps] too: the gaps stay with their positions, so the
@@ -382,6 +389,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
       mapEquals(other.previewDurations, previewDurations) &&
       mapEquals(other.previewGaps, previewGaps) &&
       mapEquals(other.previewLayers, previewLayers) &&
+      mapEquals(other.previewCameras, previewCameras) &&
       mapOfListsEquals(other.previewOrder, previewOrder);
 
   @override
@@ -395,7 +403,8 @@ class CutTrimDragPreview extends TimelineDragPreview {
 /// [drawn] as its release will leave the rows: the project it previews,
 /// settled the way the write settles it
 /// ([ProjectRepository.settledAsWritten]), every row that pass derived
-/// again joining the drag's own.
+/// again joining the drag's own — and every camera whose end key it
+/// carried (I-73-camera-row-Q4).
 ///
 /// 🗣️F-227: the のりしろ holds and the conte start an O.L asks of the cuts
 /// it joins belong to the write, which reads them off the new layout.
@@ -407,24 +416,27 @@ CutTrimDragPreview cutTrimPreviewAsReleased(
   CutTrimDragPreview drawn,
 ) {
   final draft = _projectWithCutTrimPreview(repository.requireProject(), drawn);
-  final derived = _rowsDerivedAgain(
-    draft,
-    repository.settledAsWritten(draft),
-  );
-  return derived.isEmpty
+  final derived = _derivedAgain(draft, repository.settledAsWritten(draft));
+  return derived.rows.isEmpty && derived.cameras.isEmpty
       ? drawn
       : CutTrimDragPreview(
           previewDurations: drawn.previewDurations,
           previewGaps: drawn.previewGaps,
           previewOrder: drawn.previewOrder,
-          previewLayers: {...drawn.previewLayers, ...derived},
+          previewLayers: {...drawn.previewLayers, ...derived.rows},
+          previewCameras: {...drawn.previewCameras, ...derived.cameras},
         );
 }
 
-/// The cut rows [settled] holds as other instances than [draft] does. The
-/// settle maps tracks and cuts in place, so the two walk side by side.
-Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
-  final derived = <LayerId, Layer>{};
+/// The cut rows and the cameras [settled] holds as other instances than
+/// [draft] does. The settle maps tracks and cuts in place, so the two walk
+/// side by side.
+({Map<LayerId, Layer> rows, Map<CutId, CutCamera> cameras}) _derivedAgain(
+  Project draft,
+  Project settled,
+) {
+  final rows = <LayerId, Layer>{};
+  final cameras = <CutId, CutCamera>{};
   for (var t = 0; t < settled.tracks.length; t += 1) {
     final drafted = draft.tracks[t].cuts;
     final cuts = settled.tracks[t].cuts;
@@ -435,12 +447,15 @@ Map<LayerId, Layer> _rowsDerivedAgain(Project draft, Project settled) {
       final before = {for (final layer in drafted[c].layers) layer.id: layer};
       for (final layer in cuts[c].layers) {
         if (!identical(layer, before[layer.id])) {
-          derived[layer.id] = layer;
+          rows[layer.id] = layer;
         }
+      }
+      if (!identical(cuts[c].camera, drafted[c].camera)) {
+        cameras[cuts[c].id] = cuts[c].camera;
       }
     }
   }
-  return derived;
+  return (rows: rows, cameras: cameras);
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
@@ -604,11 +619,13 @@ Track _trackWithCutTrimPreview(Track track, CutTrimDragPreview trim) {
         .map(
           (cut) =>
               trim.previewDurations.containsKey(cut.id) ||
-                  trim.previewGaps.containsKey(cut.id)
+                  trim.previewGaps.containsKey(cut.id) ||
+                  trim.previewCameras.containsKey(cut.id)
               ? cut.copyWith(
                   duration: trim.previewDurations[cut.id] ?? cut.duration,
                   leadingGapFrames:
                       trim.previewGaps[cut.id] ?? cut.leadingGapFrames,
+                  camera: trim.previewCameras[cut.id] ?? cut.camera,
                 )
               : cut,
         )

@@ -231,6 +231,13 @@ class ProjectRepository {
   ///    edit derived its own; the paths that brought a cut in from OUTSIDE
   ///    did not, and an imported hold printed `H` and covered nothing. A
   ///    write-time invariant covers the next importer by construction.
+  /// 6. THE CAMERA'S END KEY ON THE END ([cameraWithItsEndKeyAt], I-73 ④):
+  ///    the key on a cut's last drawn frame stays on it whenever that frame
+  ///    moves — the same drawn end as 5, moved by the same writes. Where
+  ///    the last frame was is the last write's, read off what it settled;
+  ///    nothing is dropped, so an undo that writes the length back carries
+  ///    the key back, and one that restores the whole project starts the
+  ///    memo afresh and moves nothing.
   /// Identity-preserving on no-ops, so an already-normal project passes
   /// through untouched.
   Project _normalized(Project project) {
@@ -251,7 +258,7 @@ class ProjectRepository {
   Project settledAsWritten(Project draft) =>
       _settle(draft, memo: _settled).project;
 
-  /// The five invariants over every cut [memo] does not already hold
+  /// The six invariants over every cut [memo] does not already hold
   /// settled, and the memo the next write reads.
   static ({Project project, Map<CutId, _Settled> settled}) _settle(
     Project project, {
@@ -264,7 +271,7 @@ class ProjectRepository {
         final handles = handlesByCut[cut.id]!;
         final last = memo[cut.id];
         // A cut this write did not touch, whose のりしろ did not move, is the
-        // very instance the last write settled: all five hold.
+        // very instance the last write settled: all six hold.
         final next =
             last != null && identical(last.cut, cut) && last.handles == handles
             ? cut
@@ -280,6 +287,11 @@ class ProjectRepository {
                     last != null && last.conteRowId == _conteRowIdOf(cut)
                     ? last.handles.head
                     : null,
+                // Where the cut's last frame was when the last write settled
+                // it — the one its camera's end key stood on.
+                previousDrawnFrameCount: last == null
+                    ? null
+                    : drawnFrameCountOf(last.cut, last.handles),
               );
         settled[cut.id] = (
           cut: next,
@@ -305,7 +317,7 @@ class ProjectRepository {
 
   static LayerId? _conteRowIdOf(Cut cut) => storyboardLayerForCut(cut)?.id;
 
-  /// The five invariants above, in their stated order, over one cut of
+  /// The six invariants above, in their stated order, over one cut of
   /// [project] — the project being settled, read for the two things a cut
   /// cannot say alone: the instruction a bare direction block takes, and a
   /// linked attach row's group.
@@ -314,6 +326,7 @@ class ProjectRepository {
     required Project project,
     required CutTransitionHandles handles,
     required int? previousConteStart,
+    required int? previousDrawnFrameCount,
   }) {
     final drawnFrameCount = drawnFrameCountOf(cut, handles);
     final shaped = cutWithSpansOnTheirBlocks(
@@ -337,9 +350,19 @@ class ProjectRepository {
       shaped.layers,
       (layer) => rederiveRunBehaviors(layer, drawnFrameCount: drawnFrameCount),
     );
-    return identical(layers, shaped.layers)
+    final ruled = identical(layers, shaped.layers)
         ? shaped
         : shaped.copyWith(layers: layers);
+    final camera = previousDrawnFrameCount == null
+        ? ruled.camera
+        : cameraWithItsEndKeyAt(
+            ruled.camera,
+            lastFrame: drawnFrameCount - 1,
+            previousLastFrame: previousDrawnFrameCount - 1,
+          );
+    return identical(camera, ruled.camera)
+        ? ruled
+        : ruled.copyWith(camera: camera);
   }
 
   void updateTimesheetInfo(TimesheetInfo info) {

@@ -1,8 +1,10 @@
 import 'dart:collection';
+import 'dart:math' as math;
 
 import '../models/attached_layer_resolve.dart' show attachedRowAsShown;
 import '../models/conte_group.dart';
 import '../models/cut.dart';
+import '../models/cut_camera.dart' show cameraDrawnFrameFloor;
 import '../models/cut_id.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
@@ -260,10 +262,28 @@ int _conteStartOf(StoryboardTimelineLayoutEntry entry) =>
 /// This is the invariant's near half. The far half is that the row is born
 /// covering the cut, so the two together mean the coverage rule never has
 /// a hole to repair.
-int minimumCutDurationFor(Cut cut) {
+///
+/// The CAMERA lives inside its cut the same way (I-73-camera-row-Q4, 유저
+/// 2026-10-09: 「밖엔 애초에 존재못하게하는게 지금구조잖아」): the key on the
+/// cut's last frame comes in with the end, and the end stops short of every
+/// other key ([cameraDrawnFrameFloor]) — counted in the frames the cut is
+/// drawn for, [drawnFrameCount], so the のりしろ it owes is no length to
+/// trim.
+int minimumCutDurationFor(Cut cut, {required int drawnFrameCount}) {
   final layer = storyboardLayerForCut(cut);
-  return layer == null ? 1 : minimumCutDurationForStoryboardRow(layer);
+  final conte = layer == null ? 1 : minimumCutDurationForStoryboardRow(layer);
+  return math.max(
+    conte,
+    minimumCutDurationForCamera(cut, drawnFrameCount: drawnFrameCount),
+  );
 }
+
+/// The camera's half of [minimumCutDurationFor] alone — what a FRONT edge
+/// shrink is bounded by too, where the conte's floor is its first panel's
+/// own rather than its last division.
+int minimumCutDurationForCamera(Cut cut, {required int drawnFrameCount}) =>
+    cameraDrawnFrameFloor(cut.camera, drawnFrameCount: drawnFrameCount) -
+    (drawnFrameCount - cut.duration);
 
 /// The same floor, read off the ROW rather than off the cut.
 ///
