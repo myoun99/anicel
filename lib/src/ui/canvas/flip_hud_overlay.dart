@@ -8,6 +8,7 @@ import '../timeline/inbetween_mark_painter.dart';
 import '../timeline/layer_label_controls.dart' show layerKindIcon;
 import '../timeline/timeline_cell_style.dart';
 import '../timeline/timeline_glyph_cache.dart';
+import '../timeline/timeline_lane_rows.dart' show timelineKeysLineSpan;
 import '../timeline/timeline_playhead.dart' show timelinePlayheadWashColor;
 import 'flip_hud_controller.dart';
 import 'flip_hud_model.dart';
@@ -435,6 +436,11 @@ class FlipHudPainter extends CustomPainter
       if (!blockFrameLines) {
         grid();
       }
+      _paintKeysLine(canvas, row, slots, (
+        origin: originX,
+        step: slotWidth,
+        centre: stripRect.center.dy,
+      ));
       for (var index = first; index <= last; index += 1) {
         final slot = slots[index];
         final run = slot.run;
@@ -789,6 +795,37 @@ class FlipHudPainter extends CustomPainter
       head.word,
       color: timelineDrawingInkColor,
       bold: true,
+    );
+  }
+
+  /// THE LINE BETWEEN A ROW'S KEYS, in the flip window too (I-73-lines-Q1,
+  /// 유저 2026-10-09: 「플립 창에도 긋는다」): the panels' own — from the
+  /// middle of the first key's slot to the middle of the last's
+  /// ([timelineKeysLineSpan]), none beside a key alone — under the marks,
+  /// as thick as the panels draw it, in its keys' colour. [strip] is where
+  /// the slots stand: the first one's leading edge, how wide each is, and
+  /// the middle of the strip across.
+  void _paintKeysLine(
+    Canvas canvas,
+    FlipHudRow row,
+    List<FlipHudSlot> slots,
+    ({double origin, double step, double centre}) strip,
+  ) {
+    final span = timelineKeysLineSpan([
+      for (final run in row.runs)
+        if (run.isKey) run.startIndex,
+    ]);
+    if (span == null) {
+      return;
+    }
+    double centreOf(int frame) =>
+        strip.origin + (flipHudSlotIndexAt(slots, frame) + 0.5) * strip.step;
+    canvas.drawLine(
+      Offset(centreOf(span.first), strip.centre),
+      Offset(centreOf(span.last), strip.centre),
+      Paint()
+        ..color = timelineDrawingHeldColor
+        ..strokeWidth = timelineJoiningLineWidth,
     );
   }
 
