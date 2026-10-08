@@ -20,15 +20,24 @@
 ///   make, by their place from the top, synced to the base. Hidden layers
 ///   come too (Q3: 「모든 레이어를 가져오는게 목표」), as attach rows in a
 ///   folder whose eye is off.
-/// * **The look is kept by baking** (Q5, answered twice: 「최대한 보기
-///   같은걸 원한다」): a row's opacity is its strongest cel's, and a weaker
-///   cel's picture is baked fainter by the difference. A blend cannot be
-///   baked, so a line of cels that blends two ways is two rows — the same
-///   law for hidden layers (「법 통일」).
+/// * **The look is kept by baking** (Q5, answered twice — the second: 「그림에
+///   구워 넣는다(행은 100%)」, 「그냥 불투명도 낮은건 그냥 낮은채로
+///   구워버려서 더이상 진해지지 못하는거 받아들기게 … 최대한 보기 같은걸
+///   원한다」): a cel's row stands at 100%, and every cel's picture is baked
+///   at its own opacity — what CLIP STUDIO showed, and no fainter cel can be
+///   made strong again by its row. ↩️The row first took its strongest cel's
+///   opacity and baked the others by the difference: the same first look,
+///   but a row that was not at 100%, and a 10% rough that a row could raise.
+///   A blend cannot be baked, so a line of cels that blends two ways is two
+///   rows — the same law for hidden layers (「법 통일」).
 /// * A layer outside the cels is an image row (「단일그림은 … 그에 대응하는
-///   이미지레이어로」). A cel placed on no timeline is not imported
-///   (「임포트 안해도 상관없고」), and what there is no place for is said,
-///   never dropped quietly.
+///   이미지레이어로」) — unless some timeline shows it on PART of a cut
+///   only: then it is an animation row holding its one picture where it
+///   shows, and nothing where it does not (Q8: 「일부 구간만 보이는 레이어만
+///   애니메이션 레이어로」). The 겸용 cuts share the row, so a layer shown in
+///   part on one timeline is that row on all of them. A cel placed on no
+///   timeline is not imported (「임포트 안해도 상관없고」), and what there is
+///   no place for is said, never dropped quietly.
 library;
 
 import 'dart:collection';
@@ -113,8 +122,9 @@ final class ClipCelBake {
   /// cel (`A / 3`).
   final String label;
 
-  /// What the picture's alpha is multiplied by: below 1 where the cel was
-  /// fainter than its row's opacity (Q5 — 「낮은채로 구워버려서」).
+  /// What the picture's alpha is multiplied by: the layer's own opacity
+  /// times its folders' in the cel — its row stands at 100% (Q5 — 「낮은채로
+  /// 구워버려서」).
   final double alpha;
 }
 
@@ -365,6 +375,7 @@ final class _PictureRow extends _Row {
     required this.folders,
     required this.frame,
     required this.blend,
+    required this.shownInPart,
   });
 
   final ClipLayer source;
@@ -374,22 +385,38 @@ final class _PictureRow extends _Row {
   final Frame frame;
   final LayerBlendMode blend;
 
+  /// Whether some timeline shows it on PART of a cut only — the row is then
+  /// an animation row holding its picture where it shows (Q8). The 겸용
+  /// cuts share the row, so one such timeline makes it that on all of them.
+  final bool shownInPart;
+
   @override
-  Layer layerIn(int cut, _CutView view) => Layer(
-    id: ids[cut],
-    name: source.name,
-    kind: LayerKind.image,
-    frames: [frame],
-    // Held from the head; the covering law shapes it into the image row's
-    // one cel and its hold (`cutWithCoveringImageRows`).
-    timeline: view.within([...folders, source]).isEmpty
-        ? const {}
-        : {0: TimelineExposure.drawing(frame.id, length: view.duration)},
-    isVisible: source.isShown,
-    opacity: source.opacity / _fullOpacity,
-    blendMode: blend,
-    folderId: parent?.ids[cut],
-  );
+  Layer layerIn(int cut, _CutView view) {
+    final shown = view.within([...folders, source]);
+    return Layer(
+      id: ids[cut],
+      name: source.name,
+      kind: shownInPart ? LayerKind.animation : LayerKind.image,
+      frames: [frame],
+      timeline: shownInPart
+          ? {
+              for (final span in shown)
+                span.start: TimelineExposure.drawing(
+                  frame.id,
+                  length: span.end - span.start,
+                ),
+            }
+          // Held from the head; the covering law shapes it into the image
+          // row's one cel and its hold (`cutWithCoveringImageRows`).
+          : shown.isEmpty
+          ? const {}
+          : {0: TimelineExposure.drawing(frame.id, length: view.duration)},
+      isVisible: source.isShown,
+      opacity: source.opacity / _fullOpacity,
+      blendMode: blend,
+      folderId: parent?.ids[cut],
+    );
+  }
 }
 
 /// An animation folder's base: one cel per CLIP STUDIO cel, timed by each
@@ -401,7 +428,6 @@ final class _BaseRow extends _Row {
     required this.folder,
     required this.folders,
     required this.bank,
-    required this.opacity,
     required this.blend,
   });
 
@@ -412,7 +438,6 @@ final class _BaseRow extends _Row {
 
   /// One cel per CLIP STUDIO cel, named as there.
   final List<Frame> bank;
-  final double opacity;
   final LayerBlendMode blend;
 
   @override
@@ -422,7 +447,6 @@ final class _BaseRow extends _Row {
       name: folder.name,
       frames: bank,
       timeline: _exposures(view),
-      opacity: opacity,
       blendMode: blend,
       kind: LayerKind.animation,
       folderId: parent?.ids[cut],
@@ -483,13 +507,11 @@ final class _AttachRow extends _Row {
     super.ids, {
     required this.base,
     required this.name,
-    required this.opacity,
     required this.blend,
   });
 
   final _BaseRow base;
   final String name;
-  final double opacity;
   final LayerBlendMode blend;
 
   /// [frameId]'s mirror cel — under the canonical member's id, so every 겸용
@@ -505,7 +527,6 @@ final class _AttachRow extends _Row {
         Frame(id: mirrorOf(cel.id), duration: 1, strokes: const []),
     ],
     timeline: const {},
-    opacity: opacity,
     blendMode: blend,
     kind: LayerKind.animation,
     // An attach row is born off the sheet (`addAttachedLayer`).
@@ -557,19 +578,6 @@ final class _Line {
 
   /// Each with the cel it is in, by the cel's place in the bank.
   final leaves = <(int, _Leaf)>[];
-
-  /// The row's opacity: its strongest picture's (Q5 — a bake can only make
-  /// fainter). With no picture at all, its strongest layer's.
-  double get opacity {
-    final drawn = [
-      for (final (_, leaf) in leaves)
-        if (leaf.layer.hasPicture) leaf.opacity,
-    ];
-    return (drawn.isEmpty
-            ? [for (final (_, leaf) in leaves) leaf.opacity]
-            : drawn)
-        .reduce(math.max);
-  }
 }
 
 /// What the planner bakes, before the cuts are made.
@@ -656,6 +664,13 @@ final class _Planner {
       folders: folders,
       frame: frame,
       blend: _blendOf(layer, layer.name),
+      shownInPart: views.any((view) {
+        final shown = view.within([...folders, layer]).fold(
+          0,
+          (frames, span) => frames + span.end - span.start,
+        );
+        return shown > 0 && shown < view.duration;
+      }),
     );
     rows.add(row);
     if (layer.hasPicture) {
@@ -666,29 +681,6 @@ final class _Planner {
         label: layer.name,
         alpha: 1,
       ));
-    }
-    _sayWhereShownInPart(layer, folders);
-  }
-
-  /// An image row holds its picture through the whole cut; a layer whose
-  /// clips cover only part of a timeline is said, by name and cut
-  /// (`csp-clip-import-analysis-Q8` asks what it should become).
-  void _sayWhereShownInPart(ClipLayer layer, List<ClipLayer> folders) {
-    for (final view in views) {
-      final shown = view.within([...folders, layer]).fold(
-        0,
-        (frames, span) => frames + span.end - span.start,
-      );
-      if (shown > 0 && shown < view.duration) {
-        warnings.add(
-          ImportWarning(
-            'clipShownInPart',
-            '{name}: shown on part of {cut} only — here it is shown '
-            'throughout.',
-            {'name': layer.name, 'cut': view.name},
-          ),
-        );
-      }
     }
   }
 
@@ -721,7 +713,6 @@ final class _Planner {
             name: cel.name,
           ),
       ],
-      opacity: baseLine?.opacity ?? 1,
       blend: baseLine?.blend ?? LayerBlendMode.normal,
     );
     if (baseLine != null) {
@@ -775,7 +766,6 @@ final class _Planner {
       _ids(),
       base: base,
       name: name,
-      opacity: line.opacity,
       blend: line.blend,
     );
     _bake(row, line, (cel) => row.mirrorOf(base.bank[cel].id));
@@ -817,10 +807,9 @@ final class _Planner {
     return (visible: ordered(visible.values), hidden: ordered(hidden.values));
   }
 
-  /// Bakes [line]'s pictures into [row] — each fainter by what it lacked of
-  /// the row's opacity.
+  /// Bakes [line]'s pictures into [row] — each at its own opacity, the row
+  /// at 100% (Q5).
   void _bake(_Row row, _Line line, FrameId Function(int cel) frameOf) {
-    final strongest = line.opacity;
     for (final (cel, leaf) in line.leaves) {
       if (leaf.layer.hasPicture) {
         bakes.add((
@@ -828,7 +817,7 @@ final class _Planner {
           frameId: frameOf(cel),
           source: leaf.layer,
           label: leaf.where,
-          alpha: strongest > 0 ? leaf.opacity / strongest : 1,
+          alpha: leaf.opacity,
         ));
       }
     }

@@ -60,7 +60,6 @@ void main() {
     'soundMissing',
     'clipRead',
     'clipFps',
-    'clipShownInPart',
     'clipUnplaced',
     'clipNoSuchCel',
     'clipCelLayers',

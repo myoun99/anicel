@@ -371,8 +371,9 @@ void main() {
       expect(folderStructureProblem(cut.layers), isNull);
     });
 
-    test('🎯a row is as strong as its strongest picture, and a fainter '
-        'cel is baked fainter — a row whose cels agree bakes nothing', () {
+    test('🎯every cel row stands at 100%, and each cel is baked at its OWN '
+        'opacity (Q5: 「그림에 구워 넣는다(행은 100%)」 — 「낮은채로 '
+        '구워버려서 더이상 진해지지 못하는거 받아들기게」)', () {
       final a = animation('A', [
         folder('1', [layer('rough1', opacity: 64), layer('line1')]),
         folder('2', [
@@ -395,9 +396,13 @@ void main() {
       };
 
       expect(
-        cut.layers.firstWhere((layer) => layer.name == 'A').opacity,
-        1,
-        reason: 'line1 and line3 stand at 100%',
+        [
+          for (final layer in cut.layers)
+            if (layer.kind == LayerKind.animation) (layer.name, layer.opacity),
+        ],
+        [('A-2', 1), ('A', 1)],
+        reason: 'the rows are at 100% — the faint cels stay faint by their '
+            'pictures, not by a row that could be raised',
       );
       expect(alpha['line1'], 1);
       expect(
@@ -406,14 +411,13 @@ void main() {
         reason: 'half in a folder at half — its cel folder\'s opacity counts',
       );
       expect(alpha['line3'], 1);
+      expect(alpha['rough1'], 0.25, reason: 'a 25% rough is baked at 25%');
+      expect(alpha['rough2'], 0.25);
       expect(
-        row(cut, 'A-2').opacity,
-        0.25,
-        reason: 'the strongest PICTURE — rough3 at 50% has none',
+        alpha.containsKey('rough3'),
+        isFalse,
+        reason: 'a layer with no picture bakes nothing',
       );
-      expect(alpha['rough1'], 1);
-      expect(alpha['rough2'], 1);
-      expect(alpha.containsKey('rough3'), isFalse);
     });
 
     /// The row each source layer's picture was baked into, by [result]'s
@@ -770,21 +774,70 @@ void main() {
     expect(result.fps, isNull);
   });
 
-  test('a layer outside the cels shown on part of a timeline is said — an '
-      'image row holds its picture throughout (Q8 asks what it becomes)', () {
-    final bg = layer('BG');
-    final result = plan(root([bg]), [
-      timeline([
-        shownOver(bg, [(start: 0, end: 6)]),
-      ]),
-    ]);
+  group('🗣️a layer outside the cels shown on PART of a cut is an animation '
+      'row (Q8: 「일부 구간만 보이는 레이어만 애니메이션 레이어로」)', () {
+    test('🎯its one picture is placed where it shows and nowhere else — and '
+        'there is nothing left to say', () {
+      final bg = layer('BG');
+      final result = plan(root([bg]), [
+        timeline([
+          shownOver(bg, [(start: 0, end: 4), (start: 8, end: 12)]),
+        ]),
+      ]);
+      final shown = row(result.cuts.single, 'BG');
 
-    expect(blocks(row(result.cuts.single, 'BG')), [(0, 1, 'BG')]);
-    expect(
-      [for (final warning in result.warnings) warning.key],
-      ['clipShownInPart'],
-    );
-    expect(result.warnings.single.values, {'name': 'BG', 'cut': 'c1'});
+      expect(shown.kind, LayerKind.animation);
+      expect(blocks(shown), [(0, 4, 'BG'), (8, 4, 'BG')]);
+      expect(shown.frames, hasLength(1), reason: 'one picture, placed twice');
+      expect(result.warnings, isEmpty);
+      expect(
+        result.bakes.single.frameId,
+        shown.frames.single.id,
+        reason: 'its picture is baked into that one cel',
+      );
+    });
+
+    test('🎯the 겸용 cuts share the row: shown in part on ONE timeline, it is '
+        'that row on every one — held through a cut it shows throughout, '
+        'empty where it does not show', () {
+      final bg = layer('BG');
+      final result = plan(root([bg]), [
+        timeline([
+          shownOver(bg, [(start: 0, end: 6)]),
+        ], name: 'c1'),
+        timeline([
+          shownOver(bg, [(start: 0, end: 12)]),
+        ], name: 'c2'),
+        timeline([shownOver(bg, const [])], name: 'c3'),
+      ]);
+
+      expect(
+        [for (final cut in result.cuts) row(cut, 'BG').kind],
+        [LayerKind.animation, LayerKind.animation, LayerKind.animation],
+      );
+      // Lists apart: a record holding a list compares it by identity.
+      expect([for (final cut in result.cuts) blocks(row(cut, 'BG'))], [
+        [(0, 6, 'BG')],
+        [(0, 12, 'BG')],
+        <(int, int, String?)>[],
+      ]);
+    });
+
+    test('⛔CONTROL: shown throughout every cut it is in, it is the image row '
+        'it always was', () {
+      final bg = layer('BG');
+      final result = plan(root([bg]), [
+        timeline([
+          shownOver(bg, [(start: 0, end: 12)]),
+        ], name: 'c1'),
+        timeline([shownOver(bg, const [])], name: 'c2'),
+      ]);
+
+      expect(
+        [for (final cut in result.cuts) row(cut, 'BG').kind],
+        [LayerKind.image, LayerKind.image],
+      );
+    });
   });
 
   test('what has no place here is said by name, and a layer whose track the '

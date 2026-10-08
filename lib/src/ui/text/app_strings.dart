@@ -3599,7 +3599,6 @@ enum AppStrings {
     'importWarning.tvppChunkBroken': 'クリップ{n}: @{at} でチャンクの連なりが切れました — 以降のデータは捨てます。',
     'importWarning.clipRead': 'ファイルの一部をたどれませんでした: {detail}',
     'importWarning.clipFps': 'タイムラインごとにフレームレートが違います — プロジェクトは最初のタイムラインの {fps} fps にしました。',
-    'importWarning.clipShownInPart': '{name}: {cut} の一部の区間にだけ表示されていました — ここではカット全体に表示します。',
     'importWarning.clipUnplaced': '{name}: どのタイムラインにも置かれていないセルが{count}枚あります — 取り込みませんでした。',
     'importWarning.clipNoSuchCel': '{name}: フォルダーにないセルを指すキーが{count}個あります。',
     'importWarning.clipCelLayers': '{name}: セルの中のレイヤーは上から何番目かで行に分けました — それぞれの名前とフォルダーは残りません。',
@@ -4991,7 +4990,6 @@ enum AppStrings {
     'importWarning.tvppChunkBroken': '클립 {n}: @{at} 에서 청크 열이 끊겼습니다 — 이후 데이터는 버립니다.',
     'importWarning.clipRead': '파일의 일부를 따라가지 못했습니다: {detail}',
     'importWarning.clipFps': '타임라인마다 프레임 레이트가 다릅니다 — 프로젝트는 첫 타임라인의 {fps} fps 로 했습니다.',
-    'importWarning.clipShownInPart': '{name}: {cut} 의 일부 구간에만 보이던 레이어입니다 — 여기서는 컷 전체에 보입니다.',
     'importWarning.clipUnplaced': '{name}: 어느 타임라인에도 놓이지 않은 셀 {count}장은 가져오지 않았습니다.',
     'importWarning.clipNoSuchCel': '{name}: 폴더에 없는 셀을 가리키는 키가 {count}개 있습니다.',
     'importWarning.clipCelLayers': '{name}: 셀 안의 레이어는 위에서 몇 번째인가로 행에 나눴습니다 — 각자의 이름과 폴더는 남지 않습니다.',
@@ -6465,9 +6463,6 @@ enum AppStrings {
     'importWarning.clipFps':
         'Les timelines n\'ont pas la même cadence — le projet prend celle de '
         'la première, {fps} i/s.',
-    'importWarning.clipShownInPart':
-        '{name} : visible sur une partie de {cut} seulement — ici, il l\'est '
-        'partout.',
     'importWarning.clipUnplaced':
         '{name} : {count} cellulo(s) ne figurent sur aucune timeline — non '
         'importé(s).',
@@ -7829,7 +7824,6 @@ enum AppStrings {
     'importWarning.tvppChunkBroken': '片段 {n}：块链在 @{at} 处中断——其后的数据被丢弃。',
     'importWarning.clipRead': '文件的一部分无法读取：{detail}',
     'importWarning.clipFps': '各时间轴的帧率不同——项目采用第一条时间轴的 {fps} fps。',
-    'importWarning.clipShownInPart': '{name}：原本只在 {cut} 的一部分区间显示——这里在整个镜头中显示。',
     'importWarning.clipUnplaced': '{name}：有 {count} 张赛璐珞不在任何时间轴上——未导入。',
     'importWarning.clipNoSuchCel': '{name}：有 {count} 个关键帧指向文件夹中不存在的赛璐珞。',
     'importWarning.clipCelLayers': '{name}：赛璐珞中的图层按从上往下的位置分成了行——各自的名称和文件夹不保留。',
