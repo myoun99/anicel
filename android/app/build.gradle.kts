@@ -4,6 +4,23 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// 유저 2026-10-09 (android-release-signed-with-debug-key-Q1, 「지금 업로드 키를
+// 만든다」): a release is signed with the Play upload key. Until then it was
+// the template's debug key — Play refuses that, and the build said nothing.
+// The key and its passwords never enter the repository: the machine that
+// builds a release keeps these four in its own Gradle settings
+// (%USERPROFILE%\.gradle\gradle.properties), where every worktree a release
+// round checks out finds them without a copy.
+val uploadKey: Map<String, String?> =
+    listOf(
+        "anicelUploadStoreFile",
+        "anicelUploadStorePassword",
+        "anicelUploadKeyAlias",
+        "anicelUploadKeyPassword",
+    ).associateWith { providers.gradleProperty(it).orNull }
+val uploadKeyMissing: List<String> =
+    uploadKey.filterValues { it.isNullOrEmpty() }.keys.toList()
+
 android {
     namespace = "com.myoun.anicel"
     compileSdk = flutter.compileSdkVersion
@@ -37,11 +54,36 @@ android {
     // Dart loader picks it up (engine-less devices keep the Dart
     // fallback). The app-level externalNativeBuild that predated the
     // plugin retired with the native/ shim.
+    signingConfigs {
+        if (uploadKeyMissing.isEmpty()) {
+            create("upload") {
+                storeFile = file(uploadKey.getValue("anicelUploadStoreFile")!!)
+                storePassword = uploadKey.getValue("anicelUploadStorePassword")
+                keyAlias = uploadKey.getValue("anicelUploadKeyAlias")
+                keyPassword = uploadKey.getValue("anicelUploadKeyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("upload")
+        }
+    }
+}
+
+// ⛔A release without the key STOPS here; it does not fall back to the debug
+// key, which is the defect the block above replaced. Debug and profile builds
+// never ask (Flutter's profile type inherits the debug signing).
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    doFirst {
+        if (uploadKeyMissing.isNotEmpty()) {
+            throw GradleException(
+                "A release build is signed with the Play upload key, and " +
+                    "this machine's Gradle settings " +
+                    "(%USERPROFILE%/.gradle/gradle.properties) lack: " +
+                    uploadKeyMissing.joinToString(", ") +
+                    ". See board card android-release-signed-with-debug-key.",
+            )
         }
     }
 }
