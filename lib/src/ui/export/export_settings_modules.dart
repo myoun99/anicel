@@ -461,9 +461,16 @@ class ExportFormatModule extends StatelessWidget {
                       capabilities.isVideoEnabled(selection.container, codec)
                   ? () => _change(selection.copyWith(videoCodec: codec))
                   : null,
-              tooltip: capabilities.isVideoEnabled(selection.container, codec)
-                  ? null
-                  : capabilities.reasonFor(selection.container, codec),
+              // 🗣️video-export-speed ② (유저 2026-10-08): 「mov의 코덱 이름
+              // 안보이니까 이거 해결하고싶음. 일단 툴팁으로 띄우는건
+              // 최소한의해결」 — MOV's six share the row and their words
+              // are cut, so each says its whole name on hover, and a
+              // refused one why under it.
+              tooltip: [
+                codec.label,
+                if (!capabilities.isVideoEnabled(selection.container, codec))
+                  ?capabilities.reasonFor(selection.container, codec),
+              ].join('\n'),
             ),
         ],
       ),

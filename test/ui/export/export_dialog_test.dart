@@ -12,6 +12,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
 import 'package:anicel/src/models/export_size_mode.dart';
 import 'package:anicel/src/models/export_spec.dart';
 import 'package:anicel/src/models/frame.dart';
@@ -1065,6 +1066,33 @@ void main() {
       );
     });
 
+    // 🗣️video-export-speed ② (유저 2026-10-08): 「mov의 코덱 이름
+    // 안보이니까 이거 해결하고싶음. 일단 툴팁으로 띄우는건 최소한의해결」.
+    testWidgets('🗣️every codec pill says its whole name on hover — MOV\'s six '
+        'share the row and their words are cut', (tester) async {
+      await pumpDialog(tester, exportSession());
+      await tester.tap(
+        find.byKey(const ValueKey<String>('export-format-container-mov')),
+      );
+      await tester.pump();
+      for (final codec in ExportVideoCodec.codecsFor(
+        ExportVideoContainer.mov,
+      )) {
+        final pill = find.byKey(
+          ValueKey<String>('export-format-codec-${codec.jsonValue}'),
+        );
+        expect(
+          tester
+              .widget<AppTooltip>(
+                find.ancestor(of: pill, matching: find.byType(AppTooltip)),
+              )
+              .message,
+          codec.label,
+          reason: codec.jsonValue,
+        );
+      }
+    });
+
     testWidgets('a restrictive availability grays the pair with a reason',
         (tester) async {
       final restrictive = ExportFormatAvailability(
@@ -1083,11 +1111,15 @@ void main() {
         const ValueKey<String>('export-format-codec-h265'),
       );
       expect(h265, findsOneWidget);
-      expect(
+      final tip = tester.widget<AppTooltip>(
         find.ancestor(of: h265, matching: find.byType(AppTooltip)),
-        findsOneWidget,
-        reason: 'a grayed chip explains itself',
       );
+      expect(
+        tip.message!.split('\n'),
+        hasLength(2),
+        reason: 'a grayed chip says its name, and explains itself under it',
+      );
+      expect(tip.message!.split('\n').first, 'H.265');
       // The tap is a no-op on a grayed chip — H.264 stays selected.
       await tester.tap(h265);
       await tester.pump();
