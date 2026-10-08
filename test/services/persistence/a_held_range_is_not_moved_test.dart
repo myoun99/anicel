@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/fake_video_backend.dart';
 import '../../helpers/placed_sound_conform.dart';
+import '../../helpers/settle_async.dart';
 import '../../helpers/staged_carry.dart';
 import '../../helpers/temp_dir.dart';
 
@@ -448,7 +449,7 @@ void main() {
         kind: MediaAssetKind.video,
         name: 'take',
       );
-      await tester.pumpAndSettle();
+      await settleLoadedPages(tester);
 
       expect(
         backend.openedAt.last.path,
