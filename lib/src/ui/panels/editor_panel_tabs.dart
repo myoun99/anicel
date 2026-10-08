@@ -188,6 +188,7 @@ class EditorPanelTabs extends StatefulWidget {
     this.compact = false,
     this.chromeless = false,
     this.stripAtBottom = false,
+    this.stripEdgeOutline = 0,
     this.trailing,
     this.groupId,
     this.onTabMoved,
@@ -230,6 +231,24 @@ class EditorPanelTabs extends StatefulWidget {
   /// window frame carries "which panel is this". Dock the region at the top
   /// instead and both flip, from the same one law.
   final bool stripAtBottom;
+
+  /// The width of an outline the host draws OVER the strip's outer edge —
+  /// the floating region's ring, which is painted on top of what the region
+  /// holds. The tabs' grip bands stand that far in from the edge.
+  ///
+  /// 🗣️F-257 (유저 2026-10-02): 「바닥 도킹 패널만 탭 띠가 표시안됨. 규칙/법
+  /// 통일」, and where (2026-10-08): 「밑 도킹영역인 지금으로치면
+  /// 타임라인패널이나 콘티패널이 있는곳. 그 곳의 패널 버튼만 버튼에 호버해야
+  /// 드래그가능한 회색 띠가 뜸. 다른 사이드띠 패널들은 패널 안에 들어가기만하면
+  /// 띠가 뜨는데」.
+  ///
+  /// 🔬Measured (2026-10-08, the app's own pixels): the band DID take its
+  /// ink the moment the pointer entered that panel, like every dock's — and
+  /// could not be seen. A resting band is two pixels on the strip's outer
+  /// edge; in the floating region that edge is the region's outline, so the
+  /// ring covered one of the two and dimmed the other. Only the reaching
+  /// band — six pixels, under the pointer — rose clear of it.
+  final double stripEdgeOutline;
 
   /// Controls pinned to the strip's far end — the collapse toggle, and
   /// whatever else belongs to the REGION rather than to a tab.
@@ -818,6 +837,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       onTabDragChanged: widget.onTabDragChanged,
       onPressed: () => widget.onTabSelected(tab.id),
       stripAtBottom: widget.stripAtBottom,
+      edgeOutline: widget.stripEdgeOutline,
     );
     if (!_dragEnabled) {
       return button;
@@ -971,6 +991,7 @@ class _PanelTabButton extends StatefulWidget {
     required this.panelHovered,
     required this.onPressed,
     required this.stripAtBottom,
+    required this.edgeOutline,
     this.dragData,
     this.onTabDragChanged,
   });
@@ -991,6 +1012,10 @@ class _PanelTabButton extends StatefulWidget {
   /// were always on top: the accent rule along the seam the panel wants
   /// invisible, and the square corners on the edge that should be rounded.
   final bool stripAtBottom;
+
+  /// How far in from the strip's outer edge the band stands — the width of
+  /// an outline drawn over that edge ([EditorPanelTabs.stripEdgeOutline]).
+  final double edgeOutline;
 
   /// What this tab carries when lifted; null for locked tabs and
   /// non-draggable groups, which keep the zone's footprint and never arm.
@@ -1067,26 +1092,35 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         // The TARGET is a constant 8px of the edge; the band inside it
         // grows toward the frame, so a pointer resting on the grip never
         // finds the thing it is over moving out from under it.
-        child: Align(
-          alignment: widget.stripAtBottom
-              ? Alignment.bottomCenter
-              : Alignment.topCenter,
-          child: ValueListenableBuilder<bool>(
-            valueListenable: widget.panelHovered,
-            builder: (context, panelHovered, _) => SizedBox(
-              // BOTH axes, not just the height. `Align` hands its child
-              // LOOSE constraints, and a `ColoredBox` with no child takes
-              // `constraints.smallest` — so a band told only how THICK to be
-              // laid out 0px wide. It was coloured correctly, on the right
-              // edge, climbing the right ladder, and invisible: the whole
-              // handle simply did not exist on screen (유저, R4 #6).
-              //
-              // ⚠️Third time this trap has bitten: R1a collapsed a grip's
-              // HEIGHT the same way. A `ColoredBox` is a leaf — it never has
-              // a size of its own to fall back on.
-              width: double.infinity,
-              height: _bandExtent,
-              child: ColoredBox(color: _bandColor(panelHovered)),
+        //
+        // The band itself starts where an outline over that edge ends
+        // (F-257, [EditorPanelTabs.stripEdgeOutline]) — the target does
+        // not move for it.
+        child: Padding(
+          padding: widget.stripAtBottom
+              ? EdgeInsets.only(bottom: widget.edgeOutline)
+              : EdgeInsets.only(top: widget.edgeOutline),
+          child: Align(
+            alignment: widget.stripAtBottom
+                ? Alignment.bottomCenter
+                : Alignment.topCenter,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: widget.panelHovered,
+              builder: (context, panelHovered, _) => SizedBox(
+                // BOTH axes, not just the height. `Align` hands its child
+                // LOOSE constraints, and a `ColoredBox` with no child takes
+                // `constraints.smallest` — so a band told only how THICK to
+                // be laid out 0px wide. It was coloured correctly, on the
+                // right edge, climbing the right ladder, and invisible: the
+                // whole handle simply did not exist on screen (유저, R4 #6).
+                //
+                // ⚠️Third time this trap has bitten: R1a collapsed a grip's
+                // HEIGHT the same way. A `ColoredBox` is a leaf — it never
+                // has a size of its own to fall back on.
+                width: double.infinity,
+                height: _bandExtent,
+                child: ColoredBox(color: _bandColor(panelHovered)),
+              ),
             ),
           ),
         ),
