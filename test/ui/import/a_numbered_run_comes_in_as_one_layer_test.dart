@@ -11,6 +11,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -107,6 +108,28 @@ void main() {
       AppText.strings.imRunSpan('A1', 'A3', 3),
     );
     expect(cellText(tester, 'run', files['B1']!), '—');
+  });
+
+  testWidgets('a run\'s word is never cut — its column is as wide as the '
+      'widest word a row says, not only its answers\'', (tester) async {
+    final paths = (await tester.runAsync(
+      () async => [
+        await writeSolidPng(tempDir, 'ABCD1.png'),
+        await writeSolidPng(tempDir, 'ABCD123.png'),
+      ],
+    ))!;
+    await open(tester, [paths.first]);
+    final cell = find.byKey(ValueKey<String>('import-cell-run-${paths.first}'));
+    expect(
+      cellText(tester, 'run', paths.first),
+      AppText.strings.imRunSpan('ABCD1', 'ABCD123', 2),
+      reason: '⛔전제: a word longer than either answer\'s',
+    );
+
+    final word = tester.renderObject<RenderParagraph>(
+      find.descendant(of: cell, matching: find.byType(RichText)),
+    );
+    expect(word.didExceedMaxLines, isFalse, reason: 'the word fits its line');
   });
 
   testWidgets('a folder with no run asks nothing about one', (tester) async {
