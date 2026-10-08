@@ -899,6 +899,10 @@ static int32_t qa_audio_decode_vorbis(qa_audio_cursor* cursor,
 /// Whether [head]'s second word is one of the boxes a QuickTime movie can
 /// open with — `ftyp` is the ISO file's first box, and the older movies
 /// start with whatever the editor wrote first.
+///
+/// ⚠️Not the question `qa_apple_container_type` (qa_video_apple.m) answers:
+/// that one is handed a movie and names its kind. Two heads read, two
+/// questions — a third reader is the time to make them one.
 static int qa_audio_head_is_a_movie_box(const uint8_t* head) {
   static const char boxes[][4] = {
       {'f', 't', 'y', 'p'}, {'m', 'o', 'o', 'v'}, {'m', 'd', 'a', 't'},
