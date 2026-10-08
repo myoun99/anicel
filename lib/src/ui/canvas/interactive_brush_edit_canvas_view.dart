@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, listEquals;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -18,6 +19,7 @@ import '../../models/brush_input_source.dart';
 import '../../models/canvas_point.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/dirty_region.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../models/tile_coord.dart';
@@ -73,16 +75,6 @@ List<BrushDab>? debugStrokeDabsLaid;
 /// one verb a save needs, not a handle onto its input state.
 typedef StrokeLander = bool Function();
 
-/// Draws a path — two or more points in the view's own space — as ONE
-/// stroke of the brush in hand, and answers whether it is drawn (or will
-/// be, once the cel it asked for is there):
-/// [_BrushEditPathStroke.strokeAlong] handed out, so the tool that traced
-/// the path can have it drawn (I-69, the shape tool).
-///
-/// ⚠️A FUNCTION, for [StrokeLander]'s reason: what leaves this view is the
-/// one verb, not a handle onto its stroke.
-typedef PathStroker = bool Function(List<CanvasPoint> path);
-
 /// How long one frame may spend laying a dragged shape before it hands the
 /// rest of the frame back ([_BrushEditShapeShow]) — a quarter of a 60 Hz
 /// frame, so the outline the hand drags is drawn in the rest of it. A test
@@ -102,7 +94,12 @@ typedef ShapeArea = ({
 });
 
 /// This view's hand for a shape being dragged (I-69-Q4ⓒ) —
-/// [_BrushEditShapeShow] handed out, published as [PathStroker] is.
+/// [_BrushEditShapeShow] handed out, published as [StrokeLander] is.
+///
+/// A shape is an AREA ([show], [land]) or a PATH drawn as ONE stroke of the
+/// brush in hand ([showStroke], [landStroke]) — two or more points in the
+/// view's own space, laid by the stroke's own code (I-69: 「브러시 상태를
+/// 그대로 사용해서 도형그림」).
 abstract interface class ShapeShow {
   /// Lays [area] off screen and shows it when it is whole — the hand's
   /// newest shape once the one being laid is done.
@@ -111,6 +108,14 @@ abstract interface class ShapeShow {
   /// Lands [area] as it is shown — or, when the hand moved on from it, as
   /// laid whole now — and answers whether anything landed.
   bool land(ShapeArea area);
+
+  /// [show] for the stroke along [path].
+  void showStroke(List<CanvasPoint> path);
+
+  /// [land] for the stroke along [path] — laid and landed in one go when
+  /// nothing of it was laid ahead, asking for the cel where there is none
+  /// — and answers whether it is drawn, or will be once that cel is there.
+  bool landStroke(List<CanvasPoint> path);
 
   /// Takes back whatever is shown or being laid: the drag ended without a
   /// shape.
@@ -139,7 +144,6 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.showTransparentBackground = true,
     this.onActiveStrokeChanged,
     this.onStrokeLanderChanged,
-    this.onPathStrokerChanged,
     this.onShapeShowChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
@@ -271,12 +275,8 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// four-step ordering written twice.
   final ValueChanged<StrokeLander?>? onStrokeLanderChanged;
 
-  /// Handed this view's [PathStroker] while it is mounted, and null when
-  /// it goes — published the way [onStrokeLanderChanged] is.
-  final ValueChanged<PathStroker?>? onPathStrokerChanged;
-
   /// Handed this view's [ShapeShow] while it is mounted, and null when it
-  /// goes — published the way [onPathStrokerChanged] is.
+  /// goes — published the way [onStrokeLanderChanged] is.
   final ValueChanged<ShapeShow?>? onShapeShowChanged;
 
   /// PEN-7a mapped-hold session: the pen's tail, or a button mapped to the
@@ -473,7 +473,6 @@ class _InteractiveBrushEditCanvasViewState
     super.initState();
     CanvasTouchContacts.addMultiTouchListener(_press.handleSharedMultiTouch);
     widget.onStrokeLanderChanged?.call(_press.landActiveStroke);
-    widget.onPathStrokerChanged?.call(_pathStroke.strokeAlong);
     widget.onShapeShowChanged?.call(_shapeShow);
     _toolHolds.handOver = _door;
   }
@@ -545,7 +544,6 @@ class _InteractiveBrushEditCanvasViewState
     // rasterizer tiles. Nulling it is the only thing that says 「there is
     // no pen here any more」.
     widget.onStrokeLanderChanged?.call(null);
-    widget.onPathStrokerChanged?.call(null);
     widget.onShapeShowChanged?.call(null);
     if (identical(_toolHolds.handOver, _door)) {
       _toolHolds.handOver = null;

@@ -72,55 +72,116 @@ class _BrushEditStroke {
   /// numbers, which count up from zero.
   static const int _toolsOwnStroke = -1;
 
-  /// A stroke the TOOL lays begins at [canvasPosition] (I-69) — no pointer
-  /// under it and no pen: the pressure rests at full
-  /// ([_BrushEditPressure.restInput]), and nothing is laid here. Its first
-  /// dab is its first advance's, which finds no dab before it and lays the
-  /// start of its segment, turned the way the segment runs
-  /// ([advanceStrokeTo]). A pen's press lays a dab of its own because a pen
-  /// that never moves has still pressed; a path always goes on.
+  /// A stroke the TOOL lays (I-69) OPENS: the brush's settings are taken,
+  /// and the overlay opens in its blend. No pointer is under it and no pen:
+  /// the pressure rests at full ([_BrushEditPressure.restInput]).
+  ///
+  /// 🚨Open is not IN FLIGHT. A shape the hand is still dragging is laid
+  /// under its outline as this stroke ([_BrushEditShapeShow]) and is no
+  /// stroke yet — the host hears nothing, and a save lands nothing of it,
+  /// as it lands nothing of a dragged area — until it lands
+  /// ([flyToolStroke]).
+  void openToolStroke() {
+    final strokeSettings = _state.widget.inputSettings();
+    _state._activeStrokeInputSettings = strokeSettings;
+    _openOverlay(strokeSettings);
+  }
+
+  /// The open stroke STARTS at [canvasPosition] — and starts again from
+  /// nothing there for a dragged shape's newest path, while its last is
+  /// still on screen (I-69-Q4ⓒ): what it stands on is made afresh
+  /// ([_armItsOwn]) and what it laid goes — its dabs, those queued, its
+  /// rasterized tiles. Nothing on screen does.
+  ///
+  /// Nothing is laid here. Its first dab is its first advance's, which
+  /// finds no dab before it and lays the start of its segment, turned the
+  /// way the segment runs ([advanceStrokeTo]). A pen's press lays a dab of
+  /// its own because a pen that never moves has still pressed; a path
+  /// always goes on.
   ///
   /// ⚠️Nothing steadies it and nothing snaps it, and not because anything
   /// here says so: its points go straight to [advanceStrokeTo], past the
   /// stabiliser and the perspective snap a pen's samples pass through
   /// ([takeSample], [advanceStrokeThroughGuides]). A stroke the tool lays
   /// goes where it was told.
-  ///
-  /// ⚠️[_toolsOwnStroke] stands in for the pointer for the length of the
-  /// ONE call that lays the stroke and lands it ([_BrushEditPathStroke]):
-  /// the landing asks whether a stroke is in flight by asking for its
-  /// pointer, and no pointer event is heard in between.
-  void beginToolStroke(
-    CanvasPoint canvasPosition, {
-    required bool startsInsidePasteboard,
-    required int dice,
-  }) {
+  void startToolStrokeAt(CanvasPoint canvasPosition, {required int dice}) {
+    _armItsOwn(
+      _state._activeStrokeInputSettings!,
+      at: canvasPosition,
+      startsInsidePasteboard: _state._isInsidePasteboard(canvasPosition),
+      dice: dice,
+    );
+    _state._pendingOverlayDabs.clear();
+    _state._prepareLiveRasterizer();
+  }
+
+  /// The tool's stroke goes IN FLIGHT: [_toolsOwnStroke] stands in for the
+  /// pointer and the host hears of it — for the length of the ONE call
+  /// that lands it ([_BrushEditPress.landActiveStroke], which asks whether
+  /// a stroke is in flight by asking for its pointer; no pointer event is
+  /// heard in between).
+  void flyToolStroke() {
     _state._activeDrawingPointer = _toolsOwnStroke;
     _state._touchStrokeDownPosition = null;
     _state._touchStrokeCommitted = false;
-    final strokeSettings = _state.widget.inputSettings();
-    _state._activeStrokeInputSettings = strokeSettings;
-    _arm(
-      strokeSettings,
-      at: canvasPosition,
-      startsInsidePasteboard: startsInsidePasteboard,
-      dice: dice,
-    );
+    _state.widget.onActiveStrokeChanged?.call(true);
   }
 
-  /// THE STROKE IS ARMED — everything a stroke stands on before its first
-  /// dab, whoever begins it: the host hears that one is in flight, the
-  /// stabiliser, the snap, the symmetry, the dynamics and the ground mixer
-  /// are made for it from [strokeSettings], and the overlay opens in its
-  /// blend.
+  /// THE PEN'S STROKE IS ARMED — everything it stands on before its first
+  /// dab: the host hears that one is in flight, the stabiliser, the snap,
+  /// the symmetry, the dynamics and the ground mixer are made for it from
+  /// [strokeSettings], and the overlay opens in its blend.
   void _arm(
     BrushEditCanvasInputSettings strokeSettings, {
     required CanvasPoint at,
     required bool startsInsidePasteboard,
     required int dice,
   }) {
-    final canvasPosition = at;
     _state.widget.onActiveStrokeChanged?.call(true);
+    _armItsOwn(
+      strokeSettings,
+      at: at,
+      startsInsidePasteboard: startsInsidePasteboard,
+      dice: dice,
+    );
+    _openOverlay(strokeSettings);
+    _state._prepareLiveRasterizer();
+  }
+
+  /// The overlay opened for a stroke in [strokeSettings]' blend, on the cel
+  /// as it stands.
+  void _openOverlay(BrushEditCanvasInputSettings strokeSettings) {
+    _state._overlay.beginStrokeOverlay();
+    // Overlay stroke configuration AFTER the reset — reset() clears
+    // preBlendBase, so setting it earlier silently disabled the whole
+    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
+    // bug: every parity test staged the model manually and never caught
+    // it). The overlay must display in the stroke's blend mode from the
+    // first dab.
+    final strokeSurface = _state.widget.celNow();
+    _state._overlay._overlayModel.configureTileSize(strokeSurface.tileSize);
+    _state._overlay._overlayModel.erase = strokeSettings.erase;
+    _state._overlay._overlayModel.blendMode = strokeSettings.blendMode;
+    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
+    // own kernels against the cel as it stands (user rule 07-23: ONE
+    // display pipeline for all modes — color included). The GPU never
+    // computes a pixel of the stroke composite, so pen-up cannot move a
+    // byte in any mode. Revert switch if stroke feel regresses on
+    // device: gate this on `blendMode != color` to give plain strokes
+    // their classic stroke-only GPU-srcOver overlay back.
+    _state._overlay._overlayModel.preBlendBase = strokeSurface;
+  }
+
+  /// What a stroke stands on that is its OWN — the stabiliser, the snap,
+  /// the symmetry, the dice, the dynamics, the ground mixer, the dabs laid
+  /// so far — made afresh from [strokeSettings].
+  void _armItsOwn(
+    BrushEditCanvasInputSettings strokeSettings, {
+    required CanvasPoint at,
+    required bool startsInsidePasteboard,
+    required int dice,
+  }) {
+    final canvasPosition = at;
     _state._nextSequence = 0;
     _state._breakCurrentVisibleSegment = !startsInsidePasteboard;
     _state._previousRawCanvasPosition = canvasPosition;
@@ -155,30 +216,10 @@ class _BrushEditStroke {
     _state._groundMixer = strokeSettings.shape.mixesGroundColor
         ? BrushGroundColorMixer(shape: strokeSettings.shape)
         : null;
-    _state._overlay.beginStrokeOverlay();
-    // Overlay stroke configuration AFTER the reset — reset() clears
-    // preBlendBase, so setting it earlier silently disabled the whole
-    // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
-    // bug: every parity test staged the model manually and never caught
-    // it). The overlay must display in the stroke's blend mode from the
-    // first dab.
-    final strokeSurface = _state.widget.celNow();
     _state._groundSampler = _state._groundMixer == null
         ? null
-        : bitmapSurfaceGroundSampler(strokeSurface);
-    _state._overlay._overlayModel.configureTileSize(strokeSurface.tileSize);
-    _state._overlay._overlayModel.erase = strokeSettings.erase;
-    _state._overlay._overlayModel.blendMode = strokeSettings.blendMode;
-    // R27 #4: EVERY stroke pre-blends its live tiles with the commit's
-    // own kernels against the cel as it stands (user rule 07-23: ONE
-    // display pipeline for all modes — color included). The GPU never
-    // computes a pixel of the stroke composite, so pen-up cannot move a
-    // byte in any mode. Revert switch if stroke feel regresses on
-    // device: gate this on `blendMode != color` to give plain strokes
-    // their classic stroke-only GPU-srcOver overlay back.
-    _state._overlay._overlayModel.preBlendBase = strokeSurface;
+        : bitmapSurfaceGroundSampler(_state.widget.celNow());
     _state._collectedDabs.clear();
-    _state._prepareLiveRasterizer();
   }
 
   /// One pen sample for the stroke: painted now — or, while the stroke

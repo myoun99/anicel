@@ -2116,7 +2116,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onStrokeLanderChanged: (lander) =>
           widget.onStrokeLanderChanged?.call(_text.landerBeside(lander)),
       // I-69: the shape tool has the view draw what its drag traced.
-      onPathStrokerChanged: (stroker) => _pathStroker = stroker,
       onShapeShowChanged: (show) => _shapeShow = show,
       onActiveStrokeChanged: (active) {
         if (_strokeActive != active) {
@@ -2353,10 +2352,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
   }
 
-  /// The drawing view's [PathStroker] while it is mounted — how a traced
-  /// shape becomes a stroke ([_drawTracedShape]).
-  PathStroker? _pathStroker;
-
   /// The drawing view's [ShapeShow] while it is mounted — how a shape being
   /// dragged shows its actual result, and lands as shown
   /// ([_showTracedShape], [_drawTracedShape]).
@@ -2364,31 +2359,34 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
   /// and every copy the symmetry guide made of it, the original first — as
-  /// the tool is set to lay it:
+  /// the tool is set to lay it, and as the drag showed it (Q4ⓒ):
   ///
   /// - a line of the BRUSH type as ONE STROKE of the brush in hand, laid by
   ///   the drawing view through the stroke's own code — so the selection
   ///   clips it, symmetry copies it, undo covers it and it is saved as the
-  ///   stroke it is. ⚠️So the stroke is handed the ORIGINAL alone: it makes
-  ///   its own copies, and handed theirs it would copy every copy;
+  ///   stroke it is ([ShapeShow.landStroke]). ⚠️So the stroke is handed the
+  ///   ORIGINAL alone ([_tracedStroke]): it makes its own copies, and
+  ///   handed theirs it would copy every copy;
   /// - everything else — 「채움」, and a line of the 「일반」 type — as ONE
-  ///   AREA, every copy's together ([_tracedArea]), landed as the drag
-  ///   showed it ([ShapeShow.land], the road a fill lands by). Where two
-  ///   copies overlap the area is covered once (유저 답 I-69-Q6: 「따른다 —
-  ///   도형 채우기도 같이 맞춘다」).
+  ///   AREA, every copy's together ([_tracedArea]), landed by the road a
+  ///   fill lands by ([ShapeShow.land]). Where two copies overlap the area
+  ///   is covered once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이
+  ///   맞춘다」).
   void _drawTracedShape(List<DrawnShapePath> copies) {
+    final show = _shapeShow;
+    if (show == null) {
+      return;
+    }
     final onTheRow = _onTheRow(copies);
     if (onTheRow == null) {
-      _shapeShow?.drop();
+      show.drop();
       return;
     }
     if (_brush.shapeDrawsWithTheBrush) {
-      final path = onTheRow.first;
-      _pathStroker?.call([...path.points, if (path.closed) path.points.first]);
+      show.landStroke(_tracedStroke(onTheRow));
       return;
     }
-    // What the drag showed under its outline lands as it is (Q4ⓒ).
-    _shapeShow?.land(_tracedArea(onTheRow));
+    show.land(_tracedArea(onTheRow));
   }
 
   /// The shape a shape-tool drag has traced SO FAR — [copies], as
@@ -2401,11 +2399,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     final onTheRow = copies == null ? null : _onTheRow(copies);
-    if (onTheRow == null || _brush.shapeDrawsWithTheBrush) {
+    if (onTheRow == null) {
       show.drop();
       return;
     }
+    if (_brush.shapeDrawsWithTheBrush) {
+      show.showStroke(_tracedStroke(onTheRow));
+      return;
+    }
     show.show(_tracedArea(onTheRow));
+  }
+
+  /// The STROKE the shape tool lays for [onTheRow] where it draws with the
+  /// brush: along the original alone — the stroke makes the guide's copies
+  /// itself — and round to its start again where it is closed.
+  List<CanvasPoint> _tracedStroke(List<DrawnShapePath> onTheRow) {
+    final path = onTheRow.first;
+    return [...path.points, if (path.closed) path.points.first];
   }
 
   /// [copies] where the row shows them: traced on the canvas, drawn in the

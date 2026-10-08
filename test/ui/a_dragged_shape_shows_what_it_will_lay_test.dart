@@ -22,6 +22,7 @@ import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -50,9 +51,10 @@ void main() {
       BrushFrameEditingCoordinator coordinator,
       HistoryManager history,
       ActiveStrokeOverlayModel overlay,
+      ValueNotifier<BrushToolState> brush,
     })
   >
-  pumpPanel(WidgetTester tester) async {
+  pumpPanel(WidgetTester tester, {ShapeToolOptions options = plain}) async {
     final keys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: keys,
@@ -61,6 +63,13 @@ void main() {
     final history = HistoryManager();
     final overlay = ActiveStrokeOverlayModel();
     addTearDown(overlay.dispose);
+    final brush = ValueNotifier(
+      BrushToolState.defaults.copyWith(
+        tool: CanvasTool.shape,
+        drawShape: CanvasShapeKind.rect,
+        shapeOptions: options,
+      ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -70,13 +79,7 @@ void main() {
             availableFrameKeys: keys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: history,
-            brushToolState: ValueNotifier(
-              BrushToolState.defaults.copyWith(
-                tool: CanvasTool.shape,
-                drawShape: CanvasShapeKind.rect,
-                shapeOptions: plain,
-              ),
-            ),
+            brushToolState: brush,
             selectionCommands: CanvasSelectionCommands(),
             viewport: seedFromRender(tester, CanvasViewport()),
             activeStrokeOverlayModel: overlay,
@@ -95,7 +98,12 @@ void main() {
       ),
     );
     await tester.pump();
-    return (coordinator: coordinator, history: history, overlay: overlay);
+    return (
+      coordinator: coordinator,
+      history: history,
+      overlay: overlay,
+      brush: brush,
+    );
   }
 
   Future<TestGesture> press(WidgetTester tester, Offset at) async {
@@ -313,5 +321,195 @@ void main() {
     await gesture.up();
     await tester.pump();
     expect(alphaAt(env.coordinator, 50, 50), 0);
+  });
+
+  testWidgets('let go on a shape the hand reached after the one on screen, '
+      'its tiles are pictured as themselves — never as the old shape', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+
+    final gesture = await press(tester, const Offset(50, 50));
+    await moveTo(tester, gesture, const Offset(330, 250));
+    for (var frame = 0; frame < 40 && !env.overlay.hasStrokeContent; frame++) {
+      await tester.pump();
+    }
+    final oldPicture = env.overlay.tileImages[TileCoord(x: 0, y: 0)];
+    expect(oldPicture, isNotNull, reason: '⛔premise');
+    await moveTo(tester, gesture, const Offset(100, 100));
+    await gesture.up();
+    await tester.pump();
+
+    // A fill's result tiles all wear one revision, so only the landing
+    // showing ITS tiles first keeps the old shape's picture from being
+    // handed to the new shape's tile.
+    final landed = celOf(env.coordinator).tileAt(TileCoord(x: 0, y: 0))!;
+    expect(
+      BitmapTileImageCache.instance.imageFor(landed),
+      isNot(same(oldPicture)),
+    );
+  });
+
+  testWidgets('a tool switched away mid-drag takes back what it showed', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester);
+
+    final gesture = await press(tester, const Offset(50, 50));
+    await moveTo(tester, gesture, const Offset(330, 250));
+    for (var frame = 0; frame < 40 && !env.overlay.hasStrokeContent; frame++) {
+      await tester.pump();
+    }
+    expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise');
+    env.brush.value = env.brush.value.copyWith(tool: CanvasTool.brush);
+    await tester.pump();
+    await tester.pump();
+
+    expect(env.overlay.hasStrokeContent, isFalse);
+    await gesture.up();
+    await tester.pump();
+    expect(alphaAt(env.coordinator, 50, 50), 0);
+  });
+
+  /// A line of the BRUSH type is THE stroke of the brush in hand (I-69), so
+  /// what comes up under its outline is that stroke, laid by the stroke's
+  /// own code, and what lands is it.
+  group('a line of the brush type', () {
+    const brushLine = ShapeToolOptions(type: ShapeLineType.brush);
+
+    Future<void> untilShown(
+      WidgetTester tester,
+      ActiveStrokeOverlayModel overlay,
+    ) async {
+      for (var frame = 0; frame < 400 && !overlay.hasStrokeContent; frame++) {
+        await tester.pump();
+      }
+    }
+
+    /// What the drag from (50,50) to (330,250) lands let go before a frame
+    /// could lay any of it — the stroke laid in one go — on a panel of its
+    /// own (the one before goes).
+    Future<BitmapSurface> laidInOneGo(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      final env = await pumpPanel(tester, options: brushLine);
+      final quick = await press(tester, const Offset(50, 50));
+      await moveTo(tester, quick, const Offset(330, 250));
+      await quick.up();
+      await tester.pump();
+      return celOf(env.coordinator);
+    }
+
+    testWidgets('comes up as the stroke itself while it is dragged, and '
+        'lands as the same drag let go at once lands', (tester) async {
+      final env = await pumpPanel(tester, options: brushLine);
+      final steps = env.history.undoCount;
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await untilShown(tester, env.overlay);
+      expect(env.overlay.hasStrokeContent, isTrue, reason: 'the stroke shows');
+      expect(alphaAt(env.coordinator, 50, 50), 0, reason: 'nothing landed');
+      expect(env.history.undoCount, steps);
+
+      await gesture.up();
+      await tester.pump();
+      expect(env.overlay.hasStrokeContent, isFalse, reason: 'it has landed');
+      expect(env.history.undoCount, steps + 1, reason: 'one step back');
+      expect(alphaAt(env.coordinator, 50, 50), isNonZero, reason: 'fixture');
+      final shownThenLanded = celOf(env.coordinator);
+
+      expect(
+        firstDifference(await laidInOneGo(tester), shownThenLanded),
+        isNull,
+      );
+    });
+
+    testWidgets('a cancelled drag takes back what it showed and lands '
+        'nothing', (tester) async {
+      final env = await pumpPanel(tester, options: brushLine);
+      final steps = env.history.undoCount;
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await untilShown(tester, env.overlay);
+      expect(env.overlay.hasStrokeContent, isTrue, reason: '⛔premise');
+      await gesture.cancel();
+      await tester.pump();
+
+      expect(env.overlay.hasStrokeContent, isFalse);
+      expect(alphaAt(env.coordinator, 50, 50), 0);
+      expect(env.history.undoCount, steps);
+    });
+
+    // The overlay shows ONE shape. A stroke shown leaves its dabs on it and
+    // an area shown leaves none, which is how the two pins below tell what
+    // came up.
+
+    testWidgets('turned 「일반」 mid-drag, the stroke being laid goes and the '
+        'line\'s own area comes up, and lands', (tester) async {
+      shapeShowFrameShare = Duration.zero;
+      final env = await pumpPanel(tester, options: brushLine);
+      final before = celOf(env.coordinator);
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await tester.pump(); // the stroke started, none of it shown
+      expect(env.overlay.hasStrokeContent, isFalse, reason: '⛔premise');
+      env.brush.value = env.brush.value.copyWith(shapeOptions: plain);
+      await tester.pump();
+      var strokeShown = false;
+      void watch() => strokeShown |= env.overlay.dabs.isNotEmpty;
+      env.overlay.addListener(watch);
+      addTearDown(() => env.overlay.removeListener(watch));
+      await moveTo(tester, gesture, const Offset(330.25, 250.25));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      for (var frame = 0; frame < 200; frame += 1) {
+        await tester.pump();
+      }
+      expect(strokeShown, isFalse, reason: 'the stroke went');
+      expect(env.overlay.hasStrokeContent, isTrue, reason: 'the area shows');
+
+      await gesture.up();
+      await tester.pump();
+      expect(
+        firstDifference(
+          celOf(env.coordinator),
+          laidStraight(before, 330, 250),
+        ),
+        isNull,
+        reason: 'the plain line alone — nothing of the stroke landed',
+      );
+    });
+
+    testWidgets('turned to the brush mid-drag, the area being laid goes and '
+        'the stroke comes up, and lands', (tester) async {
+      shapeShowFrameShare = Duration.zero;
+      final env = await pumpPanel(tester);
+
+      final gesture = await press(tester, const Offset(50, 50));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await tester.pump(); // a piece of the area laid, none shown
+      expect(env.overlay.hasStrokeContent, isFalse, reason: '⛔premise');
+      env.brush.value = env.brush.value.copyWith(shapeOptions: brushLine);
+      await tester.pump();
+      var areaShown = false;
+      void watch() => areaShown |=
+          env.overlay.hasStrokeContent && env.overlay.dabs.isEmpty;
+      env.overlay.addListener(watch);
+      addTearDown(() => env.overlay.removeListener(watch));
+      await moveTo(tester, gesture, const Offset(330.25, 250.25));
+      await moveTo(tester, gesture, const Offset(330, 250));
+      await untilShown(tester, env.overlay);
+      expect(areaShown, isFalse, reason: 'the area went');
+      expect(env.overlay.dabs, isNotEmpty, reason: 'the stroke shows');
+
+      await gesture.up();
+      await tester.pump();
+      final shownThenLanded = celOf(env.coordinator);
+      expect(
+        firstDifference(await laidInOneGo(tester), shownThenLanded),
+        isNull,
+      );
+    });
   });
 }

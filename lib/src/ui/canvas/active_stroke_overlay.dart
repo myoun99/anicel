@@ -186,28 +186,9 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     required DirtyRegion region,
   }) {
     final coords = region.toTileCoords(tileSize: tileSize).toList();
-    final preBlendBase = this.preBlendBase;
-    if (preBlendBase != null &&
-        source is BrushLiveStrokeRasterizer &&
-        source.tileSize == tileSize &&
-        preBlendBase.tileSize == tileSize) {
-      // ONE pooled kernel call for the whole dirty region (ABI 24). A
-      // pointer move touches a neighbourhood of tiles, and staging +
-      // blending + premultiplying them one at a time never engaged the C
-      // worker pool: measured at 256px tiles, an 1800px brush spent
-      // 122ms of every frame there and now spends ~21ms.
-      final blended = source.preBlendedOverlayTiles(
-        coords: coords,
-        base: preBlendBase,
-        mode: blendMode,
-        erase: erase,
-      );
-      for (var i = 0; i < coords.length; i += 1) {
-        final tile = blended[i];
-        if (tile != null) {
-          _showPreBlended(coords[i], tile);
-        }
-      }
+    final preBlended = _preBlendedFrom(source);
+    if (preBlended != null) {
+      _eachPreBlended(preBlended, coords, _showPreBlended);
       return;
     }
     for (final coord in coords) {
@@ -215,13 +196,104 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
   }
 
-  void _showTile(TileCoord coord, ActiveStrokePixelSource source) {
+  /// [updateRegion]'s pictures for [coords], made OFF SCREEN and kept for
+  /// [showStaged] — a dragged shape's stroke is pictured a few tiles a frame
+  /// and comes up whole (I-69-Q4ⓒ). Answers false, staging nothing, where
+  /// [source] does not pre-blend at this overlay's grid: there the pictures
+  /// are made as they are shown, and nothing can be made ahead.
+  bool stageRegion({
+    required ActiveStrokePixelSource source,
+    required List<TileCoord> coords,
+  }) {
+    final preBlended = _preBlendedFrom(source);
+    if (preBlended == null) {
+      return false;
+    }
+    _eachPreBlended(preBlended, coords, _stagePreBlended);
+    return true;
+  }
+
+  /// Everything [stageRegion] made — the stroke of [strokeDabs] — in place
+  /// of everything this overlay showed, in ONE notification, so the old
+  /// stroke and the new never share a frame.
+  void showStaged(List<BrushDab> strokeDabs) {
+    _clearTiles();
+    for (final MapEntry(key: coord, value: staged) in _staged.entries) {
+      _tileImages[coord] = staged.image;
+      final revision = staged.revision;
+      if (revision != null) {
+        _tileImageRevisions[coord] = revision;
+      }
+    }
+    _staged.clear();
+    dabs
+      ..clear()
+      ..addAll(strokeDabs);
+    notifyListeners();
+  }
+
+  /// Drops what [stageRegion] made and [showStaged] has not shown: a stroke
+  /// given up for a newer one. ⚠️Before the newer one is staged — a live
+  /// stroke starts its tile revisions again from nothing, so a picture of
+  /// the old one could pass for the new one's.
+  void dropStaged() {
+    for (final staged in _staged.values) {
+      staged.image.dispose();
+    }
+    _staged.clear();
+  }
+
+  /// Pictures [stageRegion] made and nothing has shown yet.
+  final Map<TileCoord, ({ui.Image image, int? revision})> _staged = {};
+
+  /// How many pictures are staged and not shown.
+  @visibleForTesting
+  int get stagedCount => _staged.length;
+
+  /// [source] when its tiles picture through the pre-blend at this grid —
+  /// the road [updateRegion] takes for a whole region in one kernel call —
+  /// or null.
+  BrushLiveStrokeRasterizer? _preBlendedFrom(ActiveStrokePixelSource source) {
     final preBlendBase = this.preBlendBase;
-    if (preBlendBase != null &&
-        source is BrushLiveStrokeRasterizer &&
-        source.tileSize == tileSize &&
-        preBlendBase.tileSize == tileSize) {
-      _showPromotable(coord, source, preBlendBase);
+    return preBlendBase != null &&
+            source is BrushLiveStrokeRasterizer &&
+            source.tileSize == tileSize &&
+            preBlendBase.tileSize == tileSize
+        ? source
+        : null;
+  }
+
+  /// [coords] pre-blended against [preBlendBase] by [source], each handed
+  /// to [take].
+  ///
+  /// ONE pooled kernel call for the whole region (ABI 24). A pointer move
+  /// touches a neighbourhood of tiles, and staging + blending +
+  /// premultiplying them one at a time never engaged the C worker pool:
+  /// measured at 256px tiles, an 1800px brush spent 122ms of every frame
+  /// there and now spends ~21ms.
+  void _eachPreBlended(
+    BrushLiveStrokeRasterizer source,
+    List<TileCoord> coords,
+    void Function(TileCoord coord, PreBlendedOverlayTile tile) take,
+  ) {
+    final blended = source.preBlendedOverlayTiles(
+      coords: coords,
+      base: preBlendBase!,
+      mode: blendMode,
+      erase: erase,
+    );
+    for (var i = 0; i < coords.length; i += 1) {
+      final tile = blended[i];
+      if (tile != null) {
+        take(coords[i], tile);
+      }
+    }
+  }
+
+  void _showTile(TileCoord coord, ActiveStrokePixelSource source) {
+    final preBlended = _preBlendedFrom(source);
+    if (preBlended != null) {
+      _showPromotable(coord, preBlended, preBlendBase!);
       return;
     }
     final left = coord.x * tileSize;
@@ -307,6 +379,20 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
     }
   }
 
+  /// [_showPreBlended] kept off screen for [showStaged].
+  void _stagePreBlended(TileCoord coord, PreBlendedOverlayTile blended) {
+    try {
+      // Never on screen, so nothing can still be drawing it.
+      _staged.remove(coord)?.image.dispose();
+      _staged[coord] = (
+        image: _pictureOfResult(coord, blended),
+        revision: blended.revision,
+      );
+    } finally {
+      blended.free();
+    }
+  }
+
   /// The picture [coord] shows for [result] — a live stroke's bytes there,
   /// pre-blended against the cel: the result's own picture, or, where the
   /// cel's texts stand over the coordinate ([_platesOver]), the result with
@@ -366,6 +452,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// notification makes the handoff to the committed tiles atomic.
   void reset() {
     _clearTiles();
+    dropStaged();
     preBlendBase = null;
     dabs.clear();
     notifyListeners();
@@ -374,6 +461,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   @override
   void dispose() {
     _clearTiles();
+    dropStaged();
     super.dispose();
   }
 

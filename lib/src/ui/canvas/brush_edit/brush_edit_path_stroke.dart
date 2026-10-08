@@ -17,7 +17,7 @@ part of '../interactive_brush_edit_canvas_view.dart';
 /// What differs is only what a pen brings and a tool does not: no pointer,
 /// no pressure to read (the stroke is laid at full pressure the whole
 /// way), no hand to steady and no ray to snap to — its points go straight
-/// to the stroke's advance ([_BrushEditStroke.beginToolStroke]).
+/// to the stroke's advance ([_BrushEditStroke.startToolStrokeAt]).
 class _BrushEditPathStroke {
   _BrushEditPathStroke(this._state);
 
@@ -25,8 +25,8 @@ class _BrushEditPathStroke {
 
   /// Draws [path] — two or more points in this view's own space — as one
   /// stroke, and answers whether it is drawn, or will be once the cel it
-  /// asked for is there. Published as a [PathStroker] while the view is
-  /// mounted.
+  /// asked for is there: laid and landed in one go, where nothing of it was
+  /// laid while it was dragged ([ShapeShow.landStroke]).
   bool strokeAlong(List<CanvasPoint> path) {
     if (path.length < 2 || _state._activeDrawingPointer != null) {
       return false;
@@ -58,16 +58,14 @@ class _BrushEditPathStroke {
     if (!_state.widget.rowAcceptsStrokes) {
       return false;
     }
-    _state._stroke.beginToolStroke(
-      path.first,
-      startsInsidePasteboard: _state._isInsidePasteboard(path.first),
-      // One path, one roll: the same shape drawn again rolls the same
-      // scatter and jitter.
-      dice: Object.hashAll(path),
-    );
+    final stroke = _state._stroke..openToolStroke();
+    // One path, one roll: the same shape drawn again rolls the same
+    // scatter and jitter.
+    stroke.startToolStrokeAt(path.first, dice: Object.hashAll(path));
     for (final point in path.skip(1)) {
-      _state._stroke.advanceStrokeTo(point);
+      stroke.advanceStrokeTo(point);
     }
+    stroke.flyToolStroke();
     _state._press.landActiveStroke();
     return true;
   }
