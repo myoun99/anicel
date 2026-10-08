@@ -45,11 +45,8 @@ class NativeCallWatch {
   /// [name] starts now — the step the watch names if it never ends.
   void step(String name) => _inbox.send(name);
 
-  /// Every step has ended.
-  void stop() {
-    _inbox.send(null);
-    _isolate.kill();
-  }
+  /// Every step has ended — the watch and its alarm go.
+  void stop() => _isolate.kill(priority: Isolate.immediate);
 }
 
 void _watch(
@@ -82,11 +79,6 @@ void _watch(
   }
 
   inbox.listen((message) {
-    if (message == null) {
-      alarm?.cancel();
-      inbox.close();
-      return;
-    }
     step = message as String;
     arm();
   });
