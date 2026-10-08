@@ -1250,8 +1250,9 @@ typedef _FinishedMask = ({Uint8List mask, int left, int top, int width});
 
 /// The grid an area is cut on: the cel's own tiles. It decides only how
 /// the area is cut, never a byte of what lands — a piece lands 1:1 wherever
-/// it is — and on the cel's grid each piece stages exactly the one tile it
-/// covers when it lands. A surface on another grid lands the same bytes.
+/// it is — and on the cel's grid each piece stages exactly the tiles it
+/// covers when it lands, a run of them along one tile row. A surface on
+/// another grid lands the same bytes.
 const int _pieceSize = defaultCelTileSize;
 
 /// Which of [sheet]'s tiles the finished area can reach: a tile within

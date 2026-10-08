@@ -15,6 +15,9 @@ import 'package:anicel/src/models/cut_piece.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -221,6 +224,8 @@ void main() {
     // panel. Erase rides a flag on the DAB, so passing only the blend mode
     // would paint the flooded region instead of clearing it — asserted on
     // the raster, because a flag can be set and still not erase.
+    // ⚠️A REAL fill's pieces: a plain dab erases on the blend mode alone,
+    // so it never takes the stamp's road, where erase is the dab's flag.
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -245,7 +250,13 @@ void main() {
             tool: CanvasTool.fill,
             fillBlendMode: BrushBlendMode.erase,
           )),
-          fillDabsAt: (_, color, _) => [fillDab(color)],
+          fillDabsAt: (_, color, _) => buildRegionFillDabs(
+            region: CanvasSelectionRegion.shape(
+              CanvasSelectionShape.rect(left: 0, top: 0, right: 16, bottom: 8),
+            ),
+            color: color,
+            options: const FloodFillOptions(expandPx: 0, antiAlias: false),
+          ),
         ),
       ),
     );
