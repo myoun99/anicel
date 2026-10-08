@@ -549,6 +549,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onShowSecondsChanged,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
     this.cutUnderPlayhead,
@@ -948,6 +949,12 @@ class StoryboardPanel extends StatefulWidget {
   /// own, as with the rail.
   final ValueNotifier<double>? frameAxisOffset;
 
+  /// Where the LAYER axis stands, in pixels down the rows — the project's,
+  /// saved with it (F-267), as the timeline's rows are: born there, and
+  /// followed ([followKeptAxis]). Null = nobody keeps it; the rows start at
+  /// the top.
+  final ValueNotifier<double>? layerAxisOffset;
+
   final ProjectFrameRate projectFrameRate;
 
   /// Track-global frame the playhead line sits on (playback position while
@@ -1327,7 +1334,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// [ProjectFrameRate.countingBase]).
   int get _countingFps => widget.projectFrameRate.countingBase;
 
-  final ScrollController _verticalController = ScrollController();
+  /// The host's record of the layer axis ([StoryboardPanel.layerAxisOffset])
+  /// — read ONCE, as the frame axis's is.
+  late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
+
+  /// The rows, born where the project left them (F-267).
+  late final ScrollController _verticalController = ScrollController(
+    initialScrollOffset: _keptLayerAxis?.value ?? 0,
+  );
+
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]) — null when nobody
+  /// keeps it.
+  VoidCallback? _letGoOfKeptRows;
 
   /// 🚨Born where the axis stands, not at zero (F-143) — a fold remounted
   /// this panel until 09-28, and a newborn 0 was read back after layout and
@@ -1431,6 +1449,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // ways (F-202).
     scrollTogether(_verticalController, _horizontalController);
     _horizontalController.addListener(_frameAxis.handleScroll);
+    if (_keptLayerAxis case final kept?) {
+      _letGoOfKeptRows = followKeptAxis(
+        _verticalController,
+        kept,
+        isMounted: () => mounted,
+      );
+    }
     widget.revealSelectionTick?.addListener(_handleRevealSelection);
     widget.playheadFrame?.addListener(_handlePlaybackPage);
     _bindSheet(widget.rowsChannel);
@@ -1538,6 +1563,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     widget.playheadFrame?.removeListener(_handlePlaybackPage);
     _horizontalController.removeListener(_frameAxis.handleScroll);
     _frameAxis.dispose();
+    _letGoOfKeptRows?.call();
     _verticalController.dispose();
     _horizontalController.dispose();
     // ⛔Only our own — the host's outlives this panel by design.

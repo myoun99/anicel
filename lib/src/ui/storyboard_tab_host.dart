@@ -64,6 +64,7 @@ class StoryboardTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.railExtent,
     this.frameAxisOffset,
+    this.layerAxisOffset,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onResizeTrackLanes,
     required this.thumbnails,
@@ -134,9 +135,14 @@ class StoryboardTabHost extends StatefulWidget {
   /// switch AND a restart).
   final LayerRailExtent? railExtent;
 
-  /// Where the storyboard's frame axis stands — kept by the workspace beside
-  /// [railExtent] so it outlives a fold (F-143). Null = the panel's own.
+  /// Where the storyboard's frame axis stands — held above the panel beside
+  /// [railExtent] so it outlives a fold (F-143), and the project's, saved
+  /// with it (F-267). Null = the panel's own.
   final ValueNotifier<double>? frameAxisOffset;
+
+  /// Where the storyboard's rows are scrolled to — the project's too
+  /// (F-267). Null = nobody keeps it.
+  final ValueNotifier<double>? layerAxisOffset;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
   /// switch like the zoom does. ⛔No steppers any more (B7, 유저 2026-08-17):
@@ -678,6 +684,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onShowSecondsChanged: widget.onShowSecondsChanged,
                     railExtent: widget.railExtent,
                     frameAxisOffset: widget.frameAxisOffset,
+                    layerAxisOffset: widget.layerAxisOffset,
                     projectFrameRate: _session.projectSettings.projectFrameRate,
                     // The strip's edges preview live and commit ONE undo on
                     // release, like the timeline's comma drags. Which verb a

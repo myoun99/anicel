@@ -177,6 +177,38 @@ void keepWhereShown(ScrollPosition position, ValueNotifier<double> kept) {
   }
 }
 
+/// [kept] following [controller] for good — a panel's LAYER axis, the
+/// project's (F-267): every scroll of its scrollable writes it
+/// ([keepWhereShown]), and so does the first layout after it is built.
+///
+/// ⚠️The first layout is a write of its own because it says nothing: a
+/// scrollable born past its content's end — the rows were folded since, or
+/// fewer — is held to that end there and no scroll is notified (measured
+/// 10-09: born at 1000 over a 200 range, it stands at 200 from its first
+/// frame). Without it the project goes on keeping a place nobody sees.
+///
+/// Being born where [kept] stands is the caller's (`initialScrollOffset`).
+/// The answer lets go.
+VoidCallback followKeptAxis(
+  ScrollController controller,
+  ValueNotifier<double> kept, {
+  required bool Function() isMounted,
+}) {
+  void keep() {
+    if (controller.hasClients) {
+      keepWhereShown(controller.position, kept);
+    }
+  }
+
+  controller.addListener(keep);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (isMounted()) {
+      keep();
+    }
+  });
+  return () => controller.removeListener(keep);
+}
+
 /// One axis kept as a VALUE rather than by a scrollable — the folded row's,
 /// which stands at the host's kept offset (F-143): where it stands, how
 /// long its window is, how long one step is, and which step the playhead

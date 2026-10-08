@@ -74,8 +74,8 @@ class ProjectResume {
   final Map<String, double> frameAxisOffsets;
 
   /// How far each frame panel was scrolled along its layers — the
-  /// timeline's rows, the sheet's columns — by rail, in pixels (F-267); a
-  /// rail left at its start is not here.
+  /// timeline's rows, the sheet's columns, the conte's rows — by rail, in
+  /// pixels (F-267); a rail left at its start is not here.
   final Map<String, double> layerAxisOffsets;
 
   Map<String, Object?> toJson() => {

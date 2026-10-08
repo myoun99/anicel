@@ -27,9 +27,9 @@ class PanelViewMemory {
   /// row read the one fact (F-143), and a save writes it.
   final Map<String, ValueNotifier<double>> frameAxisOffsets = _onePerRail();
 
-  /// Where each frame grid's LAYER axis is scrolled to — the timeline's
-  /// rows, the sheet's columns — in pixels, one per rail: the grid is born
-  /// there, and a save writes it.
+  /// Where each frame panel's LAYER axis is scrolled to — the timeline's
+  /// rows, the sheet's columns, the conte's rows — in pixels, one per rail:
+  /// the panel is born there, and a save writes it.
   final Map<String, ValueNotifier<double>> layerAxisOffsets = _onePerRail();
 
   static Map<String, ValueNotifier<double>> _onePerRail() => {

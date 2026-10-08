@@ -42,9 +42,6 @@ class _LayerGridScroll {
     if (offset == _state._verticalScrollOffset) {
       return;
     }
-    if (_state._keptLayerAxis case final kept? when controller.hasClients) {
-      keepWhereShown(controller.position, kept);
-    }
     standAt(offset);
   }
 

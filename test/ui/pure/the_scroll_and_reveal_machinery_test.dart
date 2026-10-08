@@ -429,6 +429,51 @@ void main() {
     });
   });
 
+  group('followKeptAxis — a layer axis the project keeps (F-267)', () {
+    testWidgets('every scroll is kept, and letting go stops it', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(0);
+      addTearDown(kept.dispose);
+      final controller = await pumpScrollable(tester);
+      final letGo = followKeptAxis(controller, kept, isMounted: () => true);
+      await tester.pump();
+
+      controller.jumpTo(300);
+      expect(kept.value, 300);
+      letGo();
+      controller.jumpTo(100);
+      expect(kept.value, 300, reason: 'let go of, it keeps nothing');
+    });
+
+    testWidgets('🚨a scrollable born past its end is held there SILENTLY — '
+        'and the first layout is kept, not the place nobody sees', (
+      tester,
+    ) async {
+      final kept = ValueNotifier<double>(1000);
+      addTearDown(kept.dispose);
+      final controller = ScrollController(initialScrollOffset: kept.value);
+      addTearDown(controller.dispose);
+      followKeptAxis(controller, kept, isMounted: () => true);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              height: 100,
+              child: SingleChildScrollView(
+                controller: controller,
+                child: const SizedBox(height: 300),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(controller.offset, 200, reason: '⛔전제: held to its end');
+      expect(kept.value, 200);
+    });
+  });
+
   group('PanelFlashController', () {
     test('🚨the SAME tab twice re-triggers — the sequence is what makes a '
         'second ask visible', () {

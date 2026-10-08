@@ -1033,6 +1033,7 @@ class _WorkspaceTabs {
               },
               railExtent: _state._railExtents[LayerRailId.storyboard],
               frameAxisOffset: _state._frameAxisOffsets[LayerRailId.storyboard],
+              layerAxisOffset: _state._layerAxisOffsets[LayerRailId.storyboard],
               // ⛔No steppers any more (B7): the V rows' splitter is the
               // height's one writer, and it asks the NOTIFIER, not the value
               // this build took — a drag's steps outrun the rebuilds.

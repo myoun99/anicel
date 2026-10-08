@@ -230,6 +230,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   /// — read ONCE, as the frame axis's is.
   late final ValueNotifier<double>? _keptLayerAxis = widget.layerAxisOffset;
 
+  /// Lets go of [_keptLayerAxis] ([followKeptAxis]) — null when nobody
+  /// keeps it.
+  VoidCallback? _letGoOfKeptRows;
+
   /// The frame axis following its controller (UI-R9 #11/#12a): the
   /// activity watch for the lazy endless SHRINK (never rescale the extent
   /// mid-gesture), the trailing room and the notifiers — one object, the
@@ -293,6 +297,13 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       initialScrollOffset: keptRows,
     );
     _scroll.standAt(keptRows);
+    if (_keptLayerAxis case final kept?) {
+      _letGoOfKeptRows = followKeptAxis(
+        _verticalScrollController,
+        kept,
+        isMounted: () => mounted,
+      );
+    }
     // The rows and the frames are the grid: one surface scrolled two ways
     // (F-202).
     scrollTogether(_verticalScrollController, _horizontalScrollController);
@@ -369,6 +380,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _horizontalScrollController
       ..removeListener(_frameAxis.handleScroll)
       ..dispose();
+    _letGoOfKeptRows?.call();
     _verticalScrollController
       ..removeListener(_scroll.handleVerticalScroll)
       ..dispose();

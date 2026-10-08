@@ -4,6 +4,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/editing/default_layer_helpers.dart';
 import 'package:anicel/src/services/editing/run_id_mint.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -45,6 +46,20 @@ void main() {
             ),
           ],
         ),
+      ],
+    );
+  }
+
+  /// The default project with tracks enough for the conte's rows to scroll
+  /// (four: one alone does not — measured 10-09).
+  Project manyTracks() {
+    final project = createDefaultProject();
+    final track = project.tracks.first;
+    return project.copyWith(
+      tracks: [
+        track,
+        for (var i = 1; i < 4; i += 1)
+          track.copyWith(id: TrackId('track-$i'), cuts: const []),
       ],
     );
   }
@@ -92,19 +107,34 @@ void main() {
     expect(conteZoom(), 4, reason: 'and A comes back at its own');
   });
 
-  for (final (sheet, viewportKey, rail) in [
-    ('timeline\'s rows', 'timeline-vertical-scroll-viewport', 'timeline'),
-    ('sheet\'s columns', 'xsheet-layer-horizontal-viewport', 'xsheet'),
+  for (final (sheet, viewportKey, rail, project, button) in [
+    (
+      'timeline\'s rows',
+      'timeline-vertical-scroll-viewport',
+      'timeline',
+      manyRows,
+      null,
+    ),
+    (
+      'sheet\'s columns',
+      'xsheet-layer-horizontal-viewport',
+      'xsheet',
+      manyRows,
+      'timeline-orientation-toggle-button',
+    ),
+    (
+      'conte\'s rows',
+      'storyboard-vertical-viewport',
+      'storyboard',
+      manyTracks,
+      'timeline-mode-storyboard-button',
+    ),
   ]) {
     testWidgets('🚨a project tab shows the $sheet where IT left them — and '
         'the tab beside it at its own', (tester) async {
-      final projects = await openWindow(tester, manyRows());
-      if (rail == 'xsheet') {
-        await tester.tap(
-          find.byKey(
-            const ValueKey<String>('timeline-orientation-toggle-button'),
-          ),
-        );
+      final projects = await openWindow(tester, project());
+      if (button != null) {
+        await tester.tap(find.byKey(ValueKey<String>(button)));
         await tester.pumpAndSettle();
       }
       final layers = find.byKey(ValueKey<String>(viewportKey));
@@ -122,7 +152,7 @@ void main() {
         reason: 'the scroll is the PROJECT\'s to keep',
       );
 
-      projects.open(manyRows());
+      projects.open(project());
       await tester.pumpAndSettle();
       expect(
         controller().offset,
