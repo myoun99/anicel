@@ -51,7 +51,12 @@ import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
-import '../export/export_plan.dart' show sanitizeExportFileComponent;
+import '../export/export_format_availability.dart' show stillFormatWritable;
+import '../export/export_plan.dart'
+    show ExportSizeMode, sanitizeExportFileComponent;
+import '../export/frame_image_file.dart';
+import '../../models/export_format_selection.dart';
+import '../../models/export_spec.dart' show ImageExportSpec;
 import '../panels/workspace_panels_menu.dart';
 import 'project_open_door.dart';
 import 'project_settings_menu.dart';
@@ -347,6 +352,12 @@ class EditorTopStrip extends StatelessWidget {
     );
   }
 
+  /// Whether the playhead stands in a cut — what the rows that write the
+  /// film's pictures out ask. The export dialog is cut-anchored, and so is
+  /// the picture Save As writes (its image tab's): off a cut, in the gap
+  /// state, they are dim (UI-R9 #3).
+  bool get _onACut => session.activeCutOrNull != null;
+
   /// The PROJECT popover: the file itself, and the two doors it has to the
   /// outside world. Export used to sit as its own icon in the strip; it is
   /// a once-a-session verb, so it belongs behind the same button as saving
@@ -377,12 +388,32 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.save_outlined,
       onPressed: () => unawaited(saveProject(context, session)),
     ),
+    // 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
+    // 프로젝트(.anicel) · PNG · JPG」. The format is chosen HERE, the same
+    // on every platform: Android's and iOS's save windows take one type
+    // before they open and offer no list. The first row is the Save As there
+    // always was, and Ctrl+Shift+S still presses it.
     _item(
-      id: 'file-save-as',
-      label: editorActionLabel(EditorActionIds.fileSaveAs),
-      shortcuts: const [EditorActionIds.fileSaveAs],
+      id: 'file-save-as-format',
+      label: AppText.strings.saveAsTitle,
       icon: Icons.save_as_outlined,
-      onPressed: () => unawaited(promptSaveProjectAs(context, session)),
+      submenuBuilder: () => [
+        _item(
+          id: 'file-save-as',
+          label: 'Project (.anicel)…',
+          shortcuts: const [EditorActionIds.fileSaveAs],
+          onPressed: () => unawaited(promptSaveProjectAs(context, session)),
+        ),
+        for (final format in saveAsImageFormats)
+          _item(
+            id: saveAsImageActionId(format),
+            label: '${format.label}…',
+            shortcuts: [saveAsImageActionId(format)],
+            onPressed: _onACut && stillFormatWritable(format)
+                ? () => unawaited(saveFrameAsImage(context, session, format))
+                : null,
+          ),
+      ],
     ),
     // 🗣️유저 2026-09-23: 「나중에 실패본에서 백업하기 … 해당파일
     // 지정해서」. Always in the list, off while this run holds no failed
@@ -418,9 +449,7 @@ class EditorTopStrip extends StatelessWidget {
       label: editorActionLabel(EditorActionIds.fileExport),
       shortcuts: const [EditorActionIds.fileExport],
       icon: Icons.save_alt,
-      // The export dialog is cut-anchored — disabled in the no-cut gap
-      // state (UI-R9 #3).
-      onPressed: session.activeCutOrNull == null
+      onPressed: !_onACut
           ? null
           : () {
               unawaited(
@@ -2380,18 +2409,9 @@ Future<void> promptSaveProjectAs(
     // 🚨AND NOW it is saved — so now is when it says so. The staging window
     // above said 「Ready」; this is the other half of the order 유저
     // 2026-08-31 asked for, and the only moment at which the sentence is
-    // true. There is no work left to do, so the window is a confirmation
-    // and lingers exactly as long as any other save's does.
+    // true.
     if (context.mounted) {
-      await runWithAppProgress<void>(
-        context: context,
-        title: AppText.strings.commonSave,
-        titleIcon: Icons.save_outlined,
-        runningLabel: AppText.strings.saveProgressRunning,
-        doneLabel: AppText.strings.saveProgressDone,
-        windowKey: const ValueKey<String>('save-placed-dialog'),
-        task: (report) async => report(1),
-      );
+      await _saySavedOncePlaced(context);
     }
     if (context.mounted) {
       _tellWhatTheSaveCouldNotCarry(context, session);
@@ -2403,4 +2423,100 @@ Future<void> promptSaveProjectAs(
       RecentProject(path: path, folderBookmark: pick.folderBookmark),
     );
   }
+}
+
+/// The picker PLACED what was saved, so it is saved now — and now is when
+/// it says so: the other half of the order Save As keeps (유저 2026-08-31).
+/// There is no work left to do, so the window is a confirmation and lingers
+/// exactly as long as any other save's does.
+Future<void> _saySavedOncePlaced(BuildContext context) =>
+    runWithAppProgress<void>(
+      context: context,
+      title: AppText.strings.commonSave,
+      titleIcon: Icons.save_outlined,
+      runningLabel: AppText.strings.saveProgressRunning,
+      doneLabel: AppText.strings.saveProgressDone,
+      windowKey: const ValueKey<String>('save-placed-dialog'),
+      task: (report) async => report(1),
+    );
+
+/// 「다른 이름으로 저장」's picture: the frame under the playhead as ONE
+/// [format] file at the canvas's size, where the person says — and the
+/// project stays the file it was. A copy, never where it saves from now on.
+///
+/// 🗣️backlog-21 (유저 08-13): 「다른이름으로 저장으로 csp처럼 현재
+/// 보이는대로 png나 jpg 이런식으로 저장하게하고싶어. 물론 캔버스영역으로
+/// 클립하는건 당연」. What it takes is Q7's answer (09-30): 「내보내기
+/// 「이미지」와 같은 깨끗한 한 장」 — the image tab's picture at size =
+/// canvas ([writeFrameImage]): the layers as they show, none of the editing
+/// marks, the view's rotation and flip ignored, the pasteboard cut off. Its
+/// settings are that tab's defaults, not the ones last used there: this is
+/// Save As, not the export window.
+Future<void> saveFrameAsImage(
+  BuildContext context,
+  EditorSessionManager session,
+  ExportStillFormat format,
+) async {
+  final task = frameUnderThePlayhead(session);
+  if (task == null) {
+    return;
+  }
+  final spec = ImageExportSpec(
+    format: ExportFormatSelection(
+      kind: ExportMediaKind.still,
+      stillFormat: format,
+    ),
+    sizeMode: ExportSizeMode.canvas,
+  );
+  final name = sanitizeExportFileComponent(
+    session.repository.requireProject().name,
+  );
+  final strings = AppText.strings;
+  // ⚠️The order Save As keeps (유저 2026-08-31): where the file is written
+  // into the app for a picker to place, the write ends 「Ready」, and
+  // 「Saved」 waits for the picker.
+  final staged = writtenFileIsStagedFirst;
+  try {
+    final placed = await handWrittenFileToUser(
+      context,
+      suggestedName: '$name.${format.fileExtension}',
+      write: (path) => runWithAppProgress<bool>(
+        context: context,
+        title: strings.commonSave,
+        titleIcon: Icons.save_outlined,
+        runningLabel: staged
+            ? strings.savePrepareRunning
+            : strings.saveProgressRunning,
+        doneLabel: staged ? strings.savePrepareDone : strings.saveProgressDone,
+        windowKey: const ValueKey<String>('save-progress-dialog'),
+        task: (report) async {
+          final written = await writeFrameImage(session, task, spec, (
+            directory: File(path).parent.path,
+            name: fileNameOfPath(path),
+            isCancelled: null,
+            onProgress: null,
+          ));
+          // ⛔Never 「Saved」 over no file: the throw takes the window down
+          // before it says so, and the notice below says why.
+          return written ? true : throw const _NothingWritten();
+        },
+      ),
+    );
+    if (placed != null && staged && context.mounted) {
+      await _saySavedOncePlaced(context);
+    }
+  } on Object catch (error) {
+    if (context.mounted) {
+      showFileError(context, error);
+    }
+  }
+}
+
+/// What a picture save that made no file says: the image tab's own sentence
+/// for the same outcome ([AppStrings.exNothingInFrame]).
+class _NothingWritten implements Exception {
+  const _NothingWritten();
+
+  @override
+  String toString() => AppText.strings.exNothingInFrame;
 }

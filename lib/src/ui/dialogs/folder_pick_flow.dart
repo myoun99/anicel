@@ -940,7 +940,7 @@ Future<String?> handWrittenFileToUser(
   required Future<bool> Function(String path) write,
   List<XTypeGroup> acceptedTypeGroups = const [],
 }) async {
-  if (!FolderPicker.grantsAreScoped) {
+  if (!writtenFileIsStagedFirst) {
     final grant = await pickSaveFileForUser(
       context,
       suggestedName: suggestedName,
@@ -967,6 +967,17 @@ Future<String?> handWrittenFileToUser(
   // path.
   return grant?.path ?? grant?.document?.uri;
 }
+
+/// Whether [handWrittenFileToUser] writes its file into the app FIRST, for
+/// the OS picker to place after — where there is no save window to ask the
+/// place before (iOS, Android).
+///
+/// A caller that says what its write is doing asks it here, so its words
+/// follow the road the door takes: on this road a finished write is READY,
+/// not saved — the picker can still be backed out of (유저 2026-08-31:
+/// 「로딩창뜨고, 준비가 완료됐습니다 띄우고 … 픽커 완료되고 나서
+/// 로딩/저장완료 안내창 띄우는게 직관적」).
+bool get writtenFileIsStagedFirst => FolderPicker.grantsAreScoped;
 
 /// THE SCOPED ROAD: writes a file called [suggestedName] into a staging
 /// directory of its own via [write], hands it to the OS picker, and

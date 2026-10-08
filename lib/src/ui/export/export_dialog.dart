@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../core/argb_channels.dart';
 import '../../core/path_names.dart';
 import '../../models/kept_span.dart';
 import '../../models/canvas_size.dart';
@@ -14,7 +12,6 @@ import '../../models/cut.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_spec.dart';
-import '../../native/qa_image_encoder.dart';
 import '../../services/audio/audio_mixer_reference.dart' show AudioMixSource;
 import '../../services/brush_frame_store.dart' show CelRead;
 import '../../services/export/xdts_builder.dart';
@@ -63,6 +60,7 @@ import '../widgets/settings_rows.dart';
 import 'export_cut_grid.dart';
 import 'export_format_availability.dart';
 import 'export_frame_renderer.dart';
+import 'frame_image_file.dart';
 import 'export_job.dart';
 import 'export_plan.dart';
 import 'export_preset_rail.dart';
@@ -72,6 +70,7 @@ import 'export_queue_column.dart';
 import 'export_settings_modules.dart';
 import 'export_timesheet_render.dart';
 import 'png_sequence_export_service.dart';
+import 'still_image_encoders.dart';
 import 'video_export_service.dart';
 import '../../models/cut_id.dart';
 import '../../models/timesheet_document.dart';
@@ -293,7 +292,8 @@ class ExportDialogState extends State<ExportDialog> {
   @override
   void initState() {
     super.initState();
-    _anchorCut = _session.activeCutSpan.exportAnchorCutOrNull;
+    final underThePlayhead = frameUnderThePlayhead(_session);
+    _anchorCut = underThePlayhead?.cut;
     final restored = AppExport.settings.value;
     _specs = restored.lastSpecs;
     _presetsOpen = restored.presetsDrawerOpen;
@@ -313,10 +313,7 @@ class ExportDialogState extends State<ExportDialog> {
     _ownsAvailability = widget.formatAvailability == null;
     // Grayed pairs re-enable when the async ffmpeg answer lands.
     _availability.addListener(_onAvailabilityChanged);
-    _imageFrame = _session.editingFrameCursor.value.clamp(
-      0,
-      math.max(1, _anchorCut?.duration ?? 1) - 1,
-    );
+    _imageFrame = underThePlayhead?.frameIndex ?? 0;
     if (_session.activeCutSpan.exportAnchorIsFallback) {
       // Standing in a gap: "active cut" would name a cut the user is not
       // on, so the window opens project-scoped.
@@ -1639,72 +1636,6 @@ class ExportDialogState extends State<ExportDialog> {
   String _singleFileName(TextEditingController controller, String extension) =>
       '${_typedName(controller)}.$extension';
 
-  /// Flattens un-premultiplied RGBA over the format's background and
-  /// hands RGB24 to the native stb encoder. Null = no encoder (an older
-  /// binary) — the file skips rather than lying.
-  Future<List<int>?> _encodeJpgImage(
-    ui.Image image,
-    ExportFormatSelection format,
-  ) async {
-    final encoder = QaImageEncoder.instance;
-    if (encoder == null) {
-      return null;
-    }
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    if (data == null) {
-      return null;
-    }
-    final rgba = data.buffer.asUint8List();
-    final pixelCount = image.width * image.height;
-    final rgb = Uint8List(pixelCount * 3);
-    final bg = format.backgroundArgb;
-    final bgR = argbRed(bg);
-    final bgG = argbGreen(bg);
-    final bgB = argbBlue(bg);
-    for (var i = 0; i < pixelCount; i += 1) {
-      final a = rgba[i * 4 + 3];
-      if (a == 255) {
-        rgb[i * 3] = rgba[i * 4];
-        rgb[i * 3 + 1] = rgba[i * 4 + 1];
-        rgb[i * 3 + 2] = rgba[i * 4 + 2];
-      } else {
-        rgb[i * 3] = (rgba[i * 4] * a + bgR * (255 - a)) ~/ 255;
-        rgb[i * 3 + 1] = (rgba[i * 4 + 1] * a + bgG * (255 - a)) ~/ 255;
-        rgb[i * 3 + 2] = (rgba[i * 4 + 2] * a + bgB * (255 - a)) ~/ 255;
-      }
-    }
-    return encoder.encodeJpg(
-      rgb: rgb,
-      width: image.width,
-      height: image.height,
-      quality: format.jpgQuality,
-    );
-  }
-
-  /// The still write-path override per format; null keeps the engine PNG.
-  Future<List<int>?> Function(ui.Image image)? _stillEncodeFor(
-    ExportFormatSelection format,
-  ) {
-    if (format.stillFormat != ExportStillFormat.jpg) {
-      return null;
-    }
-    return (image) => _encodeJpgImage(image, format);
-  }
-
-  ExportFrameRenderer _runRenderer({
-    required bool applyLayerFx,
-    required ExportFormatSelection format,
-    bool alphaVideo = false,
-  }) => ExportFrameRenderer(
-    session: _session,
-    applyLayerFx: applyLayerFx,
-    background: (alphaVideo || (format.isStill && format.wantsAlpha))
-        ? const ui.Color(0x00000000)
-        : format.isStill
-        ? ui.Color(format.backgroundArgb)
-        : const ui.Color(0xFFFFFFFF),
-  );
-
   bool get _canExport => !_isExporting && _writesAnything;
 
   /// Whether this tab's run writes any file at all.
@@ -2311,7 +2242,7 @@ class ExportDialogState extends State<ExportDialog> {
           words: words,
         ),
         fileNameFor: (index) => _contePageFileName(index, pages.length),
-        encoderFor: (_) => _stillEncodeFor(spec.image),
+        encoderFor: (_) => stillEncoderFor(spec.image),
         says: _Tally.contePages,
       );
     }
@@ -2399,7 +2330,8 @@ class ExportDialogState extends State<ExportDialog> {
     final format = spec.format;
     final alphaVideo = format.wantsAlpha;
     final plan = _sequencePlanForRun(video: true);
-    final renderer = _runRenderer(
+    final renderer = ExportFrameRenderer.forFormat(
+      session: _session,
       applyLayerFx: spec.applyLayerFx,
       format: format,
       alphaVideo: alphaVideo,
@@ -2454,7 +2386,8 @@ class ExportDialogState extends State<ExportDialog> {
   Future<String> _exportPngSequence() {
     final spec = _specs.sequence;
     final plan = _sequencePlanForRun(video: false);
-    final renderer = _runRenderer(
+    final renderer = ExportFrameRenderer.forFormat(
+      session: _session,
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
@@ -2463,17 +2396,13 @@ class ExportDialogState extends State<ExportDialog> {
       renderImage: (index) =>
           renderer.renderComposite(plan[index], spec.sizeMode),
       fileNameFor: _sequenceFileNameFor,
-      encoderFor: (_) => _stillEncodeFor(spec.format),
+      encoderFor: (_) => stillEncoderFor(spec.format),
       says: _Tally.frames,
     );
   }
 
   Future<String> _exportCurrentFrame() async {
     final spec = _specs.image;
-    final renderer = _runRenderer(
-      applyLayerFx: spec.applyLayerFx,
-      format: spec.format,
-    );
     final task = ExportFrameTask(
       cut: _activeCut,
       frameIndex: _currentImageFrame(),
@@ -2486,16 +2415,13 @@ class ExportDialogState extends State<ExportDialog> {
           _imageFileController,
           spec.format.stillFormat.fileExtension,
         );
-    final summary = await _exportService.exportImages(
-      count: 1,
-      renderImage: (_) => renderer.renderComposite(task, spec.sizeMode),
-      fileNameFor: (_) => fileName,
-      directoryPath: _outputDirectory,
-      encoderFor: (_) => _stillEncodeFor(spec.format),
+    final written = await writeFrameImage(_session, task, spec, (
+      directory: _outputDirectory,
+      name: fileName,
       isCancelled: () => _cancelRequested,
       onProgress: _reportProgress,
-    );
-    return summary.written == 1
+    ));
+    return written
         ? AppText.strings.exDoneFile(fileName)
         : AppText.strings.exNothingInFrame;
   }
@@ -2515,7 +2441,8 @@ class ExportDialogState extends State<ExportDialog> {
     // one every other tab has carried since R4-new1 — the hardcoded false
     // was the asymmetry, and its stated reason (blur in delivery line art)
     // is a position an artist can choose rather than a law.
-    final renderer = _runRenderer(
+    final renderer = ExportFrameRenderer.forFormat(
+      session: _session,
       applyLayerFx: spec.applyLayerFx,
       format: spec.format,
     );
@@ -2532,20 +2459,20 @@ class ExportDialogState extends State<ExportDialog> {
         (
           fileName: task.fileName,
           render: () => renderer.renderCelGroup(task, spec.sizeMode),
-          encoder: _stillEncodeFor(spec.format),
+          encoder: stillEncoderFor(spec.format),
         ),
       for (final sheet in plan.writtenDocuments)
         if (sheet.kind == ExportCelKind.envelope)
           (
             fileName: sheet.fileName,
             render: () => _renderEnvelope(_envelopeTask(sheet), face: face),
-            encoder: _stillEncodeFor(spec.envelopeImage),
+            encoder: stillEncoderFor(spec.envelopeImage),
           )
         else if (!isDigitalSheet(sheet))
           (
             fileName: sheet.fileName,
             render: () => _renderSheetPage(_sheetPageTask(sheet), face: face),
-            encoder: _stillEncodeFor(spec.sheetImage),
+            encoder: stillEncoderFor(spec.sheetImage),
           ),
     ];
     return _runImageExport(

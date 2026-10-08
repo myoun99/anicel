@@ -417,6 +417,12 @@ enum AppStrings {
   String get closeProjectVanishedBody => _s('closeProjectVanishedBody');
   String get commonSaveAs => _s('commonSaveAs');
 
+  /// 「다른 이름으로 저장」 as the row that opens its formats wears it —
+  /// the verb and nothing after it, since what it opens is a second
+  /// level, not a window (backlog-21-Q1) — and as the formats' actions
+  /// are named over it (「다른 이름으로 저장: PNG」).
+  String get saveAsTitle => _s('saveAsTitle');
+
   /// The window a manual save puts in front of itself, running and finished.
   ///
   /// The finished line is the point of the pair. The running one only says
@@ -1878,6 +1884,7 @@ enum AppStrings {
         'live only inside it. Save As writes what is still open to a new '
         'file.',
     'commonSaveAs': 'Save as…',
+    'saveAsTitle': 'Save as',
     'saveProgressRunning': 'Saving…',
     'saveProgressDone': 'Saved',
     'savePrepareRunning': 'Preparing…',
@@ -3002,6 +3009,7 @@ enum AppStrings {
         'ない絵も一緒に失われます。「名前を付けて保存」なら、今開いているものを新しい'
         'ファイルに書き出せます。',
     'commonSaveAs': '名前を付けて保存…',
+    'saveAsTitle': '名前を付けて保存',
     'saveProgressRunning': '保存中…',
     'saveProgressDone': '保存しました',
     'savePrepareRunning': '準備中…',
@@ -3046,6 +3054,7 @@ enum AppStrings {
     'shortcutAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
     'shortcutAction.edit-preferences': '環境設定…',
     'shortcutAction.work-settings': '作品設定…',
+    'menuAction.file-save-as': 'プロジェクト(.anicel)…',
     'menuAction.project-settings': 'プロジェクト設定',
     'shortcutAction.cut-create-linked': '兼用カットを作成',
     'shortcutAction.cut-convert-linked': '兼用カットに変換…',
@@ -4410,6 +4419,7 @@ enum AppStrings {
         '사라집니다. 「다른 이름으로 저장」하면 지금 열려 있는 것을 새 파일로 '
         '옮길 수 있습니다.',
     'commonSaveAs': '다른 이름으로 저장…',
+    'saveAsTitle': '다른 이름으로 저장',
     'saveProgressRunning': '저장 중…',
     'saveProgressDone': '저장 완료',
     'savePrepareRunning': '준비 중…',
@@ -4454,6 +4464,7 @@ enum AppStrings {
     'shortcutAction.edit-keyboard-shortcuts': '키보드 단축키…',
     'shortcutAction.edit-preferences': '환경설정…',
     'shortcutAction.work-settings': '작품 설정…',
+    'menuAction.file-save-as': '프로젝트(.anicel)…',
     'menuAction.project-settings': '프로젝트 설정',
     'shortcutAction.cut-create-linked': '겸용컷 만들기',
     'shortcutAction.cut-convert-linked': '겸용컷으로 변환…',
@@ -5823,6 +5834,7 @@ enum AppStrings {
         "dessins qui n'existent que dedans. « Enregistrer sous » écrit dans "
         'un nouveau fichier ce qui est encore ouvert.',
     'commonSaveAs': 'Enregistrer sous…',
+    'saveAsTitle': 'Enregistrer sous',
     'saveProgressRunning': 'Enregistrement…',
     'saveProgressDone': 'Enregistré',
     'savePrepareRunning': 'Préparation…',
@@ -5864,6 +5876,7 @@ enum AppStrings {
     'shortcutAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
     'shortcutAction.edit-preferences': 'Préférences…',
     'shortcutAction.work-settings': 'Réglages de l’œuvre…',
+    'menuAction.file-save-as': 'Projet (.anicel)…',
     'menuAction.project-settings': 'Réglages du projet',
     'shortcutAction.cut-create-linked': 'Créer un plan lié',
     'shortcutAction.cut-convert-linked': 'Convertir en plan lié…',
@@ -7304,6 +7317,7 @@ enum AppStrings {
         '此项目的文件已不在。现在关闭会一并失去只存在于该文件中的画稿。'
         '使用「另存为」可将当前仍打开的内容写入新文件。',
     'commonSaveAs': '另存为…',
+    'saveAsTitle': '另存为',
     'saveProgressRunning': '正在保存…',
     'saveProgressDone': '已保存',
     'savePrepareRunning': '正在准备…',
@@ -7344,6 +7358,7 @@ enum AppStrings {
     'shortcutAction.edit-keyboard-shortcuts': '键盘快捷键…',
     'shortcutAction.edit-preferences': '偏好设置…',
     'shortcutAction.work-settings': '作品设置…',
+    'menuAction.file-save-as': '项目(.anicel)…',
     'menuAction.project-settings': '项目设置',
     'shortcutAction.cut-create-linked': '创建链接镜头',
     'shortcutAction.cut-convert-linked': '转换为链接镜头…',

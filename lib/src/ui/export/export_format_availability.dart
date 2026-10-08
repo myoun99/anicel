@@ -97,12 +97,8 @@ class ExportFormatAvailability extends ChangeNotifier {
         : AppText.strings.exCheckingEncoders;
   }
 
-  bool stillAllowed(ExportStillFormat format) => switch (format) {
-    ExportStillFormat.png => true,
-    ExportStillFormat.jpg => _jpgSupported,
-    // The PSD writer lands with the Cels/Image round that consumes it.
-    ExportStillFormat.psd => false,
-  };
+  bool stillAllowed(ExportStillFormat format) =>
+      stillFormatWritable(format, jpgSupported: _jpgSupported);
 
   @override
   void dispose() {
@@ -110,3 +106,16 @@ class ExportFormatAvailability extends ChangeNotifier {
     super.dispose();
   }
 }
+
+/// Whether this machine writes a still in [format] — the rule
+/// [ExportFormatAvailability.stillAllowed] grays the picker by, for a row
+/// with no window to keep the answer in (「다른 이름으로 저장」's pictures):
+/// nothing in a lineup fails only once it is pressed. [jpgSupported] is the
+/// window's own answer, when it holds one.
+bool stillFormatWritable(ExportStillFormat format, {bool? jpgSupported}) =>
+    switch (format) {
+      ExportStillFormat.png => true,
+      ExportStillFormat.jpg => jpgSupported ?? QaImageEncoder.instance != null,
+      // The PSD writer lands with the Cels/Image round that consumes it.
+      ExportStillFormat.psd => false,
+    };

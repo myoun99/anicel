@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/canvas_shape_kind.dart';
+import '../../models/export_format_selection.dart' show ExportStillFormat;
 import '../../models/layer_effect.dart' show EffectKind;
 import '../../models/layer_kind.dart';
 import '../../models/pixel_clipboard_verb.dart';
@@ -367,6 +368,37 @@ String addEffectActionLabel(EffectKind kind, AppLanguage language) =>
     AppStrings.of(
       language,
     ).tlAddEffectTemplate.replaceAll('{name}', kind.labelFor(language));
+
+/// The formats 「다른 이름으로 저장」 writes a picture in, in its second
+/// level's order after the project — its rows and their actions are both
+/// made from this list.
+///
+/// 🗣️backlog-21-Q1 (유저 2026-10-08): 「「다른 이름으로 저장」에 둘째 단 —
+/// 프로젝트(.anicel) · PNG · JPG」. The two the answer names, and no more.
+const saveAsImageFormats = [ExportStillFormat.png, ExportStillFormat.jpg];
+
+/// Save As's picture rows as actions, one per format it writes.
+///
+/// 🗣️I-40: every menu row is an action. Named by composition —
+/// 「다른 이름으로 저장: PNG」 — out of the word the row that opens them
+/// wears and the format's own name. ⚠️Not [EditorActionIds.fileSaveAs]:
+/// that one saves the PROJECT, and its row is the first of the three.
+List<EditorActionDefinition> _saveAsImageActions() => [
+  for (final format in saveAsImageFormats)
+    EditorActionDefinition.composed(
+      id: saveAsImageActionId(format),
+      name: (language) => saveAsImageActionLabel(format, language),
+      category: 'File',
+      defaultActivators: const [],
+      menuRow: true,
+    ),
+];
+
+String saveAsImageActionId(ExportStillFormat format) =>
+    'file-save-as-${format.fileExtension}';
+
+String saveAsImageActionLabel(ExportStillFormat format, AppLanguage language) =>
+    '${AppStrings.of(language).saveAsTitle}: ${format.label}';
 
 /// A blend action's name — 「합성: 곱하기」, 「Blend: Multiply」.
 String blendModeActionLabel(BrushBlendMode mode, AppLanguage language) =>
@@ -873,6 +905,7 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     ],
     menuRow: true,
   ),
+  ..._saveAsImageActions(),
   const EditorActionDefinition(
     id: EditorActionIds.fileBackUpFailedCopy,
     label: 'Back up failed copy…',

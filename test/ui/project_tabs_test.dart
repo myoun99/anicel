@@ -275,6 +275,7 @@ void main() {
     );
 
     await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
     await tapKey(tester, 'menu-file-save-as');
 
     expect(
@@ -305,6 +306,7 @@ void main() {
     final projects = await pumpApp(tester);
 
     await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
     await tapKey(tester, 'menu-file-save-as');
     projects.active.projectFile.bindToSavedFile(
       '$beside/Saved.anicel',
@@ -313,6 +315,7 @@ void main() {
       cleanAsOf: 0,
     );
     await tapKey(tester, 'top-strip-project-button');
+    await tapKey(tester, 'menu-file-save-as-format');
     await tapKey(tester, 'menu-file-save-as');
 
     expect(openedAt, [appDocumentsDirectory(), beside]);

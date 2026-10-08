@@ -9,6 +9,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/cut_id.dart';
+import '../../models/export_format_selection.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
@@ -70,6 +71,28 @@ class ExportFrameRenderer {
     ui.Color background = exportFrameGround,
   }) : renderService =
            renderService ?? CameraFrameRenderService(background: background);
+
+  /// A renderer for a run written in [format], on the ground its files are
+  /// made on: none where the file keeps its alpha — a still asked for RGBA,
+  /// a video with an alpha channel ([alphaVideo]) — the format's colour
+  /// under any other still, and white under a video.
+  ///
+  /// ↩️The export window spelled this for itself; it lives here since
+  /// 「다른 이름으로 저장」 writes the image tab's picture (backlog-21-Q7).
+  ExportFrameRenderer.forFormat({
+    required EditorSessionManager session,
+    required ExportFormatSelection format,
+    required bool applyLayerFx,
+    bool alphaVideo = false,
+  }) : this(
+         session: session,
+         applyLayerFx: applyLayerFx,
+         background: (alphaVideo || (format.isStill && format.wantsAlpha))
+             ? const ui.Color(0x00000000)
+             : format.isStill
+             ? ui.Color(format.backgroundArgb)
+             : const ui.Color(0xFFFFFFFF),
+       );
 
   final EditorSessionManager session;
   final CameraFrameRenderService renderService;

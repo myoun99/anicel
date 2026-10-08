@@ -179,6 +179,7 @@ void main() {
     'closeProjectBody': (s) => s.closeProjectBody,
     'closeProjectVanishedBody': (s) => s.closeProjectVanishedBody,
     'commonSaveAs': (s) => s.commonSaveAs,
+    'saveAsTitle': (s) => s.saveAsTitle,
     'saveProgressRunning': (s) => s.saveProgressRunning,
     'saveProgressDone': (s) => s.saveProgressDone,
     'savePrepareRunning': (s) => s.savePrepareRunning,

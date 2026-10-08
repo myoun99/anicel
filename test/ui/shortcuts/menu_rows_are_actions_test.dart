@@ -81,12 +81,14 @@ void main() {
           EditorActionIds.fileOpen,
           EditorActionIds.fileSave,
           EditorActionIds.fileSaveAs,
+          'file-save-as-png',
+          'file-save-as-jpg',
           EditorActionIds.fileBackUpFailedCopy,
           EditorActionIds.fileImport,
           EditorActionIds.fileExport,
         ],
       );
-      expect(menuActions, hasLength(19));
+      expect(menuActions, hasLength(21));
       expect(
         editorActionDefinitions.last.category,
         panelActionCategory,
