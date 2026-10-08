@@ -26,7 +26,7 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     this.startShape,
     required this.screenOffset,
     required this.marqueeShapes,
-    required this.openTrail,
+    required this.openTrails,
     this.closeTarget,
     this.closeTargetArmed = true,
     this.cursor,
@@ -78,10 +78,12 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
   /// is being dragged.
   final List<CanvasSelectionShape> marqueeShapes;
 
-  /// An outline still being drawn and not yet closable: the lasso's raw
-  /// trail, or a polygon's vertices with the rubber band to the cursor on
-  /// the end. Drawn open, because it IS open.
-  final List<CanvasPoint> openTrail;
+  /// Outlines still being drawn and not yet closable: the lasso's raw
+  /// trail or a line's two ends, with every copy a symmetry guide is making
+  /// of it — or a polygon's vertices with the rubber band to the cursor on
+  /// the end. Drawn open, because they ARE open. The band hangs off the
+  /// first, the hand's own.
+  final List<List<CanvasPoint>> openTrails;
 
   /// Where tapping would END the outline — the polygon's first vertex, from
   /// the moment it is placed.
@@ -242,23 +244,28 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
         );
       }
       _paintAnts(canvas, path, phase);
-    } else if (openTrail.isNotEmpty) {
+    } else {
       // Not closable yet: show the outline as far as it has been drawn,
       // plus the segment the next tap would lay (TS6). With one vertex the
       // band IS the whole drawing — which is the point, since a lone
       // vertex has no segment of its own to show.
-      final band = cursor?.value;
-      final path = Path()
-        ..moveTo(_map(openTrail.first).dx, _map(openTrail.first).dy);
-      for (final point in openTrail.skip(1)) {
-        final mapped = _map(point);
-        path.lineTo(mapped.dx, mapped.dy);
-      }
-      if (band != null) {
-        path.lineTo(band.dx, band.dy);
-      }
-      if (openTrail.length >= 2 || band != null) {
-        _paintAnts(canvas, path, phase);
+      for (var i = 0; i < openTrails.length; i += 1) {
+        final trail = openTrails[i];
+        if (trail.isEmpty) {
+          continue;
+        }
+        final band = i == 0 ? cursor?.value : null;
+        final path = Path()..moveTo(_map(trail.first).dx, _map(trail.first).dy);
+        for (final point in trail.skip(1)) {
+          final mapped = _map(point);
+          path.lineTo(mapped.dx, mapped.dy);
+        }
+        if (band != null) {
+          path.lineTo(band.dx, band.dy);
+        }
+        if (trail.length >= 2 || band != null) {
+          _paintAnts(canvas, path, phase);
+        }
       }
     }
 
@@ -313,9 +320,9 @@ class SelectionAntsPainter extends CustomPainter with RepaintOnProps {
     startShape,
     screenOffset,
     ByList(marqueeShapes),
-    // The live trail is a fresh list per pointer sample, and it is compared
+    // A live trail is a fresh list per pointer sample, and each is compared
     // by identity for that reason — as a `List`'s own `==` already was.
-    ByIdentity(openTrail),
+    ByList([for (final trail in openTrails) ByIdentity(trail)]),
     closeTarget,
     closeTargetArmed,
     ByIdentity(cursor),

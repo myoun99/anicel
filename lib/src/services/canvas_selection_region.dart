@@ -432,6 +432,25 @@ class CanvasSelectionRegion {
     SelectionCombineMode mode,
   ) => combine(this, shape, mode);
 
+  /// [parts] together, as ONE region — what one act covers when each copy
+  /// a guide made of it is a region of its own (a plain line is a union of
+  /// pieces, I-69). Null when there is nothing to hold.
+  ///
+  /// [combineCopies] for whole regions: the copies of one act are a union,
+  /// so where two copies overlap the area is covered once, not twice.
+  static CanvasSelectionRegion? unionOf(List<CanvasSelectionRegion> parts) =>
+      switch (parts) {
+        [] => null,
+        [final only] => only,
+        _ => CanvasSelectionRegion([
+          for (var i = 0; i < parts.length; i += 1)
+            CanvasSelectionStep.region(
+              parts[i],
+              i == 0 ? SelectionCombineMode.replace : SelectionCombineMode.add,
+            ),
+        ]),
+      };
+
   /// 선택 반전 (I-23, 유저 2026-09-12: 「선택반전기능. 내용은 선택되지 않은
   /// 부분을 선택함」): what [region] does NOT select, out to [wall] — the
   /// pasteboard's edge (I-23-Q1: 「페이스트보드 벽까지」).

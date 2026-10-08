@@ -20,8 +20,8 @@ import '../../services/command.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
-import '../../services/canvas_selection.dart'
-    show CanvasSelectionShape, SelectionMaskOptions;
+import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/canvas_selection_region.dart';
 import '../../services/cut_piece_slot.dart';
 import '../../services/last_stroke_slot.dart';
 import '../../services/cache_invalidation_executor.dart';
@@ -283,8 +283,8 @@ class MainCanvasBrushHost extends StatefulWidget {
   fillDabsAt;
 
   /// Forwarded to [BrushCanvasPanel]: builds the stamp pieces of a drawn
-  /// shape fill.
-  final List<BrushDab> Function(CanvasSelectionShape shape, int color)?
+  /// shape fill's area.
+  final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
   shapeFillDabsFor;
 
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time

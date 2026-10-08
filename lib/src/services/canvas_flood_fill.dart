@@ -22,7 +22,6 @@ import '../core/dev_profile.dart';
 import '../core/rgb_tolerance.dart';
 import 'canvas_color_sampler.dart';
 import 'canvas_read_source.dart';
-import 'canvas_selection.dart';
 import 'canvas_selection_region.dart';
 import 'cel_text_laying.dart';
 import 'cut_frame_composite_plan.dart';
@@ -1138,26 +1137,12 @@ FloodFillRegion? _gapCloseFloodRegion({
   );
 }
 
-/// The SHAPE fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다):
-/// the outline the user just drew, filled with [color] whatever is under
-/// it — [buildRegionFillDabs] for one outline.
-List<BrushDab> buildShapeFillDabs({
-  required CanvasSelectionShape shape,
-  required int color,
-  double opacity = 1.0,
-  FloodFillOptions options = const FloodFillOptions(),
-}) => buildRegionFillDabs(
-  region: CanvasSelectionRegion.shape(shape),
-  color: color,
-  opacity: opacity,
-  options: options,
-);
-
 /// An AREA laid as stamp pieces ([_stampPieces]): every pixel [region]
 /// covers, painted [color] whatever is under it and whoever asked — the
-/// fill tool's shape fill ([buildShapeFillDabs]), and what the shape tool
-/// lays without the brush: its fill and its plain line (I-69). Empty when
-/// the region covers no pixel at all.
+/// fill tool's shape fill (유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든
+/// 채운다), and what the shape tool lays without the brush: its fill and
+/// its plain line (I-69). Under a symmetry guide [region] is every copy
+/// together. Empty when the region covers no pixel at all.
 ///
 /// It shares the flood's tail rather than resembling it. Once there is a
 /// coverage mask the two are the same problem, so the expand and

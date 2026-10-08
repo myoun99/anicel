@@ -501,12 +501,12 @@ class _InteractiveCanvasBuild {
           message: AppText.strings.noticeFillRegionOpen,
         ),
       ),
-      // The SHAPE fill's dab. No cut, no frame, no surfaces: a
+      // The SHAPE fill's pieces. No cut, no frame, no surfaces: a
       // drawn outline is filled whatever is under it, so it never
       // reads the picture — which is why this line is short and
       // the one above is not.
-      shapeFillDabsFor: (shape, color) => buildShapeFillDabs(
-        shape: shape,
+      shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+        region: area,
         color: color,
         opacity: _state.widget.brushToolState.value.activeOpacity,
         options: _state.widget.fillOptions?.value ?? const FloodFillOptions(),

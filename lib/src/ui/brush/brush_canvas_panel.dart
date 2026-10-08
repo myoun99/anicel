@@ -831,11 +831,12 @@ class BrushCanvasPanel extends StatefulWidget {
   )?
   fillDabsAt;
 
-  /// Builds the stamp pieces of a finished SHAPE FILL outline. Supplied by
+  /// Builds the stamp pieces of a finished SHAPE FILL — the AREA it fills,
+  /// its outline and every copy a guide made of it together. Supplied by
   /// the host for the same reason [fillDabsAt] is — the fill's knobs live
   /// up there, and the panel commits whatever comes back. Null disables
   /// the shape fill.
-  final List<BrushDab> Function(CanvasSelectionShape shape, int color)?
+  final List<BrushDab> Function(CanvasSelectionRegion area, int color)?
   shapeFillDabsFor;
 
   /// R26 (C2): the Select tool's lift-time mask knobs — read at lift.
@@ -1772,7 +1773,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   // there is no
                   // outline in
                   // progress.
-                  openTrail:
+                  openTrails:
                       const [],
                 ),
             child:
@@ -2353,33 +2354,48 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// shape becomes a stroke ([_drawTracedShape]).
   PathStroker? _pathStroker;
 
-  /// Draw a finished shape-tool drag (I-69) — [path], as the tool is set to
-  /// lay it:
+  /// Draw a finished shape-tool drag (I-69) — [copies], the traced path
+  /// and every copy the symmetry guide made of it, the original first — as
+  /// the tool is set to lay it:
   ///
   /// - a line of the BRUSH type as ONE STROKE of the brush in hand, laid by
   ///   the drawing view through the stroke's own code — so the selection
   ///   clips it, symmetry copies it, undo covers it and it is saved as the
-  ///   stroke it is;
+  ///   stroke it is. ⚠️So the stroke is handed the ORIGINAL alone: it makes
+  ///   its own copies, and handed theirs it would copy every copy;
   /// - everything else — 「채움」, and a line of the 「일반」 type — as ONE
-  ///   AREA ([_shapeToolArea]), down the funnel a shape fill lands by.
-  void _drawTracedShape(DrawnShapePath path) {
+  ///   AREA, every copy's together ([_shapeToolArea]), down the funnel a
+  ///   shape fill lands by. Where two copies overlap the area is covered
+  ///   once (유저 답 I-69-Q6: 「따른다 — 도형 채우기도 같이 맞춘다」).
+  void _drawTracedShape(List<DrawnShapePath> copies) {
     // Traced on the canvas, drawn in the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
-    final onTheRow = <CanvasPoint>[];
-    for (final point in path.points) {
-      final there = _selectionSeat.pointOnTheRow(point);
-      if (there == null) {
-        // The placement has collapsed the row: it shows nothing to draw on.
-        return;
+    final onTheRow = <DrawnShapePath>[];
+    for (final path in copies) {
+      final points = <CanvasPoint>[];
+      for (final point in path.points) {
+        final there = _selectionSeat.pointOnTheRow(point);
+        if (there == null) {
+          // The placement has collapsed the row: it shows nothing to draw
+          // on.
+          return;
+        }
+        points.add(there);
       }
-      onTheRow.add(there);
+      onTheRow.add((points: points, closed: path.closed));
+    }
+    if (onTheRow.isEmpty) {
+      return;
     }
     if (_brush.shapeDrawsWithTheBrush) {
-      _pathStroker?.call([...onTheRow, if (path.closed) onTheRow.first]);
+      final path = onTheRow.first;
+      _pathStroker?.call([...path.points, if (path.closed) path.points.first]);
       return;
     }
     _layArea((color) {
-      final area = _shapeToolArea((points: onTheRow, closed: path.closed));
+      final area = CanvasSelectionRegion.unionOf([
+        for (final path in onTheRow) ?_shapeToolArea(path),
+      ]);
       // Exactly the area — it grows by nothing — at the tool's OWN opacity
       // and with the tool's own edge: no brush is read (유저 답 I-69-Q8:
       // 「일반은 브러시랑 전혀 관계없는 독립적인것임」 · Q9: 「채움은 타입과
@@ -2420,21 +2436,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         ),
       };
 
-  /// Paint a finished shape-fill outline.
+  /// Paint a finished shape-fill outline — [copies], the outline and every
+  /// copy the symmetry guide made of it, the original first, filled as ONE
+  /// area, as a selection takes them (유저 답 I-69-Q6).
   ///
   /// Straight through the stroke funnel like the bucket's own pieces, so
   /// the live selection clips it, undo covers it and serialization is free
   /// — the fill has landed this way since P6 and the shape fill is the same
   /// stamp from a different source.
-  void _fillDrawnShape(CanvasSelectionShape shape) {
+  void _fillDrawnShape(List<CanvasSelectionShape> copies) {
     final build = widget.shapeFillDabsFor;
     // Drawn on the canvas, painted into the row's own artwork where the row
     // shows it (a-marquee-on-a-posed-row).
-    final onTheRow = _selectionSeat.shapeOnTheRow(shape);
-    if (build == null || onTheRow == null) {
+    final onTheRow = <CanvasSelectionRegion>[];
+    for (final shape in copies) {
+      final there = _selectionSeat.shapeOnTheRow(shape);
+      if (there == null) {
+        return;
+      }
+      onTheRow.add(CanvasSelectionRegion.shape(there));
+    }
+    final area = CanvasSelectionRegion.unionOf(onTheRow);
+    if (build == null || area == null) {
       return;
     }
-    _layArea((color) => build(onTheRow, color));
+    _layArea((color) => build(area, color));
   }
 
   /// Lays an AREA as one stroke, whichever tool drew it — the fill tool's

@@ -170,21 +170,24 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// not silently swallow one press.
   final ValueChanged<CanvasSelectionShape>? onCutShape;
 
-  /// A finished SHAPE FILL outline. Same arrangement as [onCutShape] and
-  /// for the same reason: the host paints the outline, and the committed
-  /// selection is not touched. The undo it leaves behind is the fill
-  /// itself, arriving through the stroke funnel like any other mark.
-  final ValueChanged<CanvasSelectionShape>? onFillShape;
+  /// A finished SHAPE FILL outline, with every copy the symmetry guide makes
+  /// of it — the original first ([_symmetryCopies], the copies the drag's
+  /// preview showed). Same arrangement as [onCutShape] and for the same
+  /// reason: the host paints the outline, and the committed selection is
+  /// not touched. The undo it leaves behind is the fill itself, arriving
+  /// through the stroke funnel like any other mark.
+  final ValueChanged<List<CanvasSelectionShape>>? onFillShape;
 
   /// A finished SHAPE-TOOL drag (I-69): the path the host draws as the
   /// tool is set to — a stroke of the brush in hand, the tool's own plain
-  /// line, or the shape's inside. The selection is not touched, and the
-  /// undo it leaves behind is that one mark's — the same arrangement as
-  /// [onFillShape].
+  /// line, or the shape's inside — with every copy the symmetry guide makes
+  /// of it, the original first, as [onFillShape] hands its outline. The
+  /// selection is not touched, and the undo it leaves behind is that one
+  /// mark's.
   ///
   /// ⚠️A PATH, not an outline: the line is two ends with no inside, so it
   /// is no [CanvasSelectionShape] at all ([MarqueeDrag.path]).
-  final ValueChanged<DrawnShapePath>? onDrawShape;
+  final ValueChanged<List<DrawnShapePath>>? onDrawShape;
 
   /// The shape tool's 「비율 고정」 switch (유저 답 I-69-Q5, 2026-10-08:
   /// 「설정 스위치 + Shift」): a shape being DRAWN is a square, a circle, a
@@ -2988,7 +2991,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // and what the drag traced is drawn rather than folded into anything.
       final path = drag.path();
       if (path != null) {
-        widget.onDrawShape?.call(path);
+        widget.onDrawShape?.call([
+          for (final points in _guideCopiesOf(path.points))
+            (points: points, closed: path.closed),
+        ]);
       }
       return;
     }
@@ -3016,7 +3022,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     if (widget.tool == CanvasSelectionTool.fillShape) {
       if (drawn != null) {
-        widget.onFillShape?.call(drawn);
+        widget.onFillShape?.call(_symmetryCopies(drawn));
       }
       return;
     }
@@ -3068,18 +3074,29 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (drawn == null) {
       return const [];
     }
+    return [
+      for (final points in _guideCopiesOf(drawn.points))
+        if (identical(points, drawn.points))
+          drawn
+        else
+          CanvasSelectionShape(points),
+    ];
+  }
+
+  /// [points] and every copy the symmetry guide makes of them, the
+  /// original first and itself — [_symmetryCopies] for a path, which is
+  /// what the shape tool draws and what a trace still being dragged is.
+  List<List<CanvasPoint>> _guideCopiesOf(List<CanvasPoint> points) {
     final symmetry = widget.symmetry;
     if (symmetry == null) {
-      return [drawn];
+      return [points];
     }
     return [
       for (final copy in symmetryTransforms(symmetry))
         if (copy.isIdentity)
-          drawn
+          points
         else
-          CanvasSelectionShape([
-            for (final point in drawn.points) copy.apply(point),
-          ]),
+          [for (final point in points) copy.apply(point)],
     ];
   }
 
@@ -3464,9 +3481,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
               for (final copy in _symmetryCopies(_marqueeDrag?.shape()))
                 ?copy.clippedTo(widget.canvasSize.pasteboardRect),
             ],
-            openTrail: _tapsVertices
-                ? (widget.selectionCommands?.polygonPoints ?? const [])
-                : (_marqueeDrag?.openTrail ?? const []),
+            // A trail still being dragged — the lasso's, the line's two
+            // ends — with every copy the guide makes of it, the promise
+            // [marqueeShapes] keeps for an outline. ⚠️The polygon's trace
+            // is one: its band runs to the cursor, which no guide copies.
+            openTrails: _tapsVertices
+                ? [widget.selectionCommands?.polygonPoints ?? const []]
+                : _guideCopiesOf(_marqueeDrag?.openTrail ?? const []),
             // TS6: from the FIRST vertex, not from the third. It used
             // to wait for `canClosePolygon` so the ring never offered
             // a tap that would do nothing — and the answer to that was

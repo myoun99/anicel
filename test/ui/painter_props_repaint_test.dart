@@ -52,7 +52,7 @@ SelectionAntsPainter _ants(List<CanvasSelectionShape> shapes) =>
       committedRegion: null,
       screenOffset: Offset.zero,
       marqueeShapes: shapes,
-      openTrail: const <CanvasPoint>[],
+      openTrails: const <List<CanvasPoint>>[],
     );
 
 void main() {

@@ -242,8 +242,8 @@ void main() {
                 selectionCommands: commands,
                 viewport: liveViewport,
                 onViewportChanged: onViewportChanged,
-                shapeFillDabsFor: (shape, color) => buildShapeFillDabs(
-                  shape: shape,
+                shapeFillDabsFor: (area, color) => buildRegionFillDabs(
+                  region: area,
                   color: color,
                   options: const FloodFillOptions(
                     expandPx: 0,

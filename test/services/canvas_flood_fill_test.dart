@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
 import 'package:anicel/src/models/brush_history_policy.dart';
 import 'package:anicel/src/models/canvas_point.dart';
@@ -579,12 +580,25 @@ void main() {
     });
   });
 
-  group('buildShapeFillDabs', () {
+  /// A shape fill: one outline, filled as the fill tool lays it.
+  List<BrushDab> shapeFill({
+    required CanvasSelectionShape shape,
+    required int color,
+    double opacity = 1.0,
+    FloodFillOptions options = const FloodFillOptions(),
+  }) => buildRegionFillDabs(
+    region: CanvasSelectionRegion.shape(shape),
+    color: color,
+    opacity: opacity,
+    options: options,
+  );
+
+  group('a shape fill', () {
     test('fills the outline with the colour, corners and all', () {
       // 유저 확정: 올가미 채우기는 A — 내부에 뭐가 있든 채운다. There is no
       // picture in this test at all, which is the point: a shape fill has
       // no seed, no tolerance and nothing to read.
-      final dabs = buildShapeFillDabs(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape.rect(
           left: 10,
           top: 10,
@@ -620,7 +634,7 @@ void main() {
         bottom: 10,
       );
       const options = FloodFillOptions(expandPx: 0, antiAlias: false);
-      final full = buildShapeFillDabs(
+      final full = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: options,
@@ -628,7 +642,7 @@ void main() {
       expect({for (final piece in full) piece.opacity}, {1.0},
           reason: 'unasked is unchanged');
 
-      final half = buildShapeFillDabs(
+      final half = shapeFill(
         shape: shape,
         color: 0xFF000000,
         opacity: 0.5,
@@ -643,7 +657,7 @@ void main() {
     });
 
     test('the ellipse loses the box corners it was drawn in', () {
-      final dabs = buildShapeFillDabs(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape.ellipse(
           left: 0,
           top: 0,
@@ -660,7 +674,7 @@ void main() {
     test('an outline enclosing nothing fills nothing', () {
       // Three collinear points have no area — the same rule that makes a
       // lasso dragged in a straight line cut nothing.
-      final dabs = buildShapeFillDabs(
+      final dabs = shapeFill(
         shape: CanvasSelectionShape([
           CanvasPoint(x: 0, y: 0),
           CanvasPoint(x: 10, y: 0),
@@ -680,12 +694,12 @@ void main() {
         right: 40,
         bottom: 30,
       );
-      final hard = buildShapeFillDabs(
+      final hard = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: false),
       );
-      final soft = buildShapeFillDabs(
+      final soft = shapeFill(
         shape: shape,
         color: 0xFF000000,
         options: const FloodFillOptions(expandPx: 0, antiAlias: true),
