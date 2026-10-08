@@ -457,6 +457,13 @@ void main() {
       session.selectCut(source);
       session.layerStack.addLayerOfKind(LayerKind.storyboard);
 
+      for (final cut in [source, linked]) {
+        expect(
+          conteRowAtSeat(cutBy(session, cut), 1),
+          isNotNull,
+          reason: 'a row rides the conte of $cut',
+        );
+      }
       final born = [
         for (final cut in [source, linked])
           (

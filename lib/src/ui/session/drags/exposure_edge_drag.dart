@@ -408,15 +408,15 @@ class ExposureEdgeDrag implements EditorDragSession {
         .where((layer) => layer.id == grip.layerId)
         .firstOrNull;
     final entry = row?.timeline[grip.blockStartIndex];
-    // A negative key is junk data the coverage rule merely tolerates (folded
-    // onto frame 0 for display) — resizing it would throw in the comma
-    // shift's before-zero guard mid-drag, so refuse at begin.
+    // ↩️A key before frame 0 was refused here by name (2026-07-29: junk the
+    // coverage rule tolerated). A layer holds none since its timeline is
+    // copied through `nonNegativeIndexedCopy` (2026-09-06), so there is no
+    // such entry to find.
     if (row == null ||
         isSyncedAttachedLayer(row) ||
         entry == null ||
         !entry.isDrawing ||
-        entry.ghost ||
-        grip.blockStartIndex < 0) {
+        entry.ghost) {
       return null;
     }
     return ExposureEdgeDrag._(
