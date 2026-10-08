@@ -848,30 +848,76 @@ Future<bool> _letIn(HttpRequest req, String path) async {
 /// What a browser from another machine sees until it has shown the secret.
 /// ⚠️Self-contained, like the rebuilding page: nothing of the board — not
 /// its script, not its style — is handed to somebody who is not in yet.
+// 🗣️card board-door-shows-what-was-typed (유저 2026-10-09, from the phone:
+// 「적어도 비밀번호 표시하는버튼있으면 틀린지아닌지 알수있을텐데」). The page
+// answered only a door that opened: a wrong secret, a refusal, a board it
+// could not reach and a browser that kept no key all looked the same — a
+// press that did nothing — so nobody could tell from the phone what had
+// failed. ⇒ What was typed can be SHOWN, a phone keyboard does not get to
+// change it (no capital, no correction), and a door that stays shut says
+// which of the four it was, on a line whose place is always there.
 String _doorPage() => """
 <!doctype html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>보드</title>
 <style>
-body{margin:0;display:grid;place-items:center;height:100vh;
+body{margin:0;display:grid;place-items:center;min-height:100vh;
   font:15px/1.6 "BIZ UDPGothic","Nanum Gothic",system-ui,sans-serif;
   background:#14161a;color:#e6e8ec}
-form{display:flex;gap:8px}
+main{width:min(32em,92vw)}
+form{display:flex;flex-wrap:wrap;gap:8px}
 input,button{font:inherit;padding:8px 12px;border-radius:6px;
   border:1px solid #3a3f4a;background:#1c1f25;color:inherit}
-input{width:22em}
-</style></head><body>
+input{flex:1 1 14em;min-width:0}
+#why{min-height:3.2em;margin:8px 0 0;color:#ff8a80}
+</style></head><body><main>
 <form id="door">
 <input id="secret" type="password" autocomplete="current-password"
+  autocapitalize="none" autocorrect="off" spellcheck="false"
   aria-label="비밀값" autofocus>
+<button type="button" id="show" aria-pressed="false">보기</button>
 <button>들어가기</button>
 </form>
+<p id="why" role="status"></p>
+</main>
 <script>
+var secret = document.getElementById('secret');
+var why = document.getElementById('why');
+var shown = document.getElementById('show');
+shown.addEventListener('click', function(){
+  var hidden = secret.type === 'password';
+  secret.type = hidden ? 'text' : 'password';
+  shown.textContent = hidden ? '숨기기' : '보기';
+  shown.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+  secret.focus();
+});
+// Let in a moment ago, and shown the door again: the cookie did not stay.
+try {
+  var entered = Number(sessionStorage.getItem('door-entered') || 0);
+  sessionStorage.removeItem('door-entered');
+  if (entered && Date.now() - entered < 15000) {
+    why.textContent = '비밀값은 맞았는데 브라우저가 열쇠(쿠키)를 남기지 않았습니다.';
+  }
+} catch (e) {}
 document.getElementById('door').addEventListener('submit', function(e){
   e.preventDefault();
-  var secret = document.getElementById('secret').value;
-  fetch('/enter', {method:'POST', body: secret})
-    .then(function(r){ if (r.ok) location.reload(); });
+  why.textContent = '';
+  fetch('/enter', {method:'POST', body: secret.value, cache:'no-store'})
+    .then(function(r){
+      if (r.ok) {
+        try { sessionStorage.setItem('door-entered', String(Date.now())); }
+        catch (e) {}
+        location.reload();
+        return;
+      }
+      why.textContent = r.status === 401
+        ? '비밀값이 맞지 않습니다.'
+        : r.status === 403
+        ? '보드가 거절했습니다 — 이 페이지 밖에서 온 요청으로 보였습니다(403).'
+        : '보드가 ' + r.status + ' 로 답했습니다.';
+    }, function(){
+      why.textContent = '보드 서버에 닿지 못했습니다.';
+    });
 });
 </script>
 </body></html>

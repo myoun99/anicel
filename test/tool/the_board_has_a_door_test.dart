@@ -254,6 +254,39 @@ void main() {
       expect(answer.body, isNot(contains('the first card')));
     });
 
+    // 🗣️card board-door-shows-what-was-typed (유저 2026-10-09, from the
+    // phone: 「적어도 비밀번호 표시하는버튼있으면 틀린지아닌지 알수있을텐데」).
+    // The page answered only a door that opened; every failure looked like
+    // a press that did nothing. 🧪Its script was run by hand that day in the
+    // app's browser with the request stood in for: the button shows and
+    // hides what was typed, and 401, 403, another status and an unreachable
+    // board each wrote their own line — at a phone's width, nothing wider
+    // than the screen.
+    test('🚨what was typed at the door can be shown, a phone keyboard keeps '
+        'off it, and a door that stays shut says why — on a line whose place '
+        'is there before it says anything', () async {
+      final page = (await ask('GET', '/')).body;
+      expect(page, contains('id="show"'));
+      for (final attribute in const [
+        'autocapitalize="none"',
+        'autocorrect="off"',
+        'spellcheck="false"',
+      ]) {
+        expect(page, contains(attribute));
+      }
+      expect(page, contains('<p id="why" role="status"></p>'));
+      expect(page, contains('#why{min-height:'));
+      for (final sentence in const [
+        '비밀값이 맞지 않습니다.',
+        '이 페이지 밖에서 온 요청으로 보였습니다(403).',
+        ' 로 답했습니다.',
+        '보드 서버에 닿지 못했습니다.',
+        '비밀값은 맞았는데 브라우저가 열쇠(쿠키)를 남기지 않았습니다.',
+      ]) {
+        expect(page, contains(sentence));
+      }
+    });
+
     test('a wrong secret at the door gets no cookie', () async {
       final answer = await ask('POST', '/enter', body: 'not-the-secret');
       expect(answer.status, HttpStatus.unauthorized);
