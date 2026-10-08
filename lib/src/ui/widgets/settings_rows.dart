@@ -46,6 +46,7 @@ class SettingsSwitchRow extends StatelessWidget {
     super.key,
     this.tileKey,
     required this.label,
+    this.leading,
     this.help,
     required this.value,
     required this.onChanged,
@@ -55,6 +56,11 @@ class SettingsSwitchRow extends StatelessWidget {
 
   final Key? tileKey;
   final String label;
+
+  /// What the row IS, before its label, where the label alone does not say
+  /// it — the export window's attach column marks the base and an attach
+  /// row's side there (export-four-tabs).
+  final Widget? leading;
 
   /// What the control does, for the tooltip. Null where the label says it
   /// on its own — which is most of them.
@@ -92,6 +98,9 @@ class SettingsSwitchRow extends StatelessWidget {
           contentPadding: EdgeInsets.zero,
           dense: true,
           enabled: enabled,
+          leading: leading,
+          minLeadingWidth: leading == null ? null : 0,
+          horizontalTitleGap: leading == null ? null : 6,
           title: Text(label),
           trailing: BooleanDot(
             value: value,

@@ -1120,11 +1120,9 @@ enum AppStrings {
   /// Why a drawing of the Cels list is no file as things stand — said at
   /// the pointer when its block is pressed (유저 2026-10-06: 「나갈 수 없는
   /// 그림은 작동하려하면 이유 띄우자」).
-  String get noticeExportRowOff => _s('noticeExportRowOff');
   String get noticeExportNoPicture => _s('noticeExportNoPicture');
   String get noticeExportNotPlaced => _s('noticeExportNotPlaced');
   String get noticeExportSameName => _s('noticeExportSameName');
-  String get noticeExportRidesBase => _s('noticeExportRidesBase');
   String get exDigits => _s('exDigits');
   String get exApplyLayerFx => _s('exApplyLayerFx');
   String get exApplyLayerFxHelp => _s('exApplyLayerFxHelp');
@@ -2352,12 +2350,10 @@ enum AppStrings {
     'exEnvelopeFormat': 'Cut envelope format',
     'exWrittenCount': '{n} files',
     'exWrittenCountOne': '{n} file',
-    'noticeExportRowOff': 'This row is off',
     'noticeExportNoPicture': 'No row that is on holds a picture for this cel',
     'noticeExportNotPlaced': 'This drawing is not on the timeline',
     'noticeExportSameName':
         'A row of the same name already exports this picture',
-    'noticeExportRidesBase': 'This drawing goes out on its base layer\'s cels',
     'exDigits': 'Digits',
     'exApplyLayerFx': 'Apply layer FX',
     'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
@@ -3626,11 +3622,9 @@ enum AppStrings {
     'exEnvelopeFormat': 'カット袋形式',
     'exWrittenCount': '{n}枚',
     'exWrittenCountOne': '{n}枚',
-    'noticeExportRowOff': 'この行はオフです',
     'noticeExportNoPicture': 'このセルにはオンの行の絵がありません',
     'noticeExportNotPlaced': 'タイムラインに置かれていない絵です',
     'noticeExportSameName': '同じ名前の行がこの絵を書き出します',
-    'noticeExportRidesBase': '基準レイヤーのセルに重ねて書き出されます',
     'exDigits': '桁数',
     'exApplyLayerFx': 'レイヤーFXを適用',
     'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
@@ -5053,11 +5047,9 @@ enum AppStrings {
     'exEnvelopeFormat': '컷 봉투 형식',
     'exWrittenCount': '{n}장',
     'exWrittenCountOne': '{n}장',
-    'noticeExportRowOff': '꺼져 있는 줄입니다',
     'noticeExportNoPicture': '이 셀에 켜진 그림이 존재하지 않습니다',
     'noticeExportNotPlaced': '타임라인에 놓이지 않은 그림입니다',
     'noticeExportSameName': '같은 이름의 줄이 이 그림을 내보냅니다',
-    'noticeExportRidesBase': '기준 레이어의 셀에 얹혀 나가는 그림입니다',
     'exDigits': '자릿수',
     'exApplyLayerFx': '레이어 FX 적용',
     'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
@@ -6523,13 +6515,10 @@ enum AppStrings {
     'exEnvelopeFormat': 'Format de l\'enveloppe de plan',
     'exWrittenCount': '{n} fichiers',
     'exWrittenCountOne': '{n} fichier',
-    'noticeExportRowOff': 'Cette ligne est désactivée',
     'noticeExportNoPicture':
         'Aucune ligne active n\'a de dessin pour ce cellulo',
     'noticeExportNotPlaced': 'Ce dessin n\'est pas sur la timeline',
     'noticeExportSameName': 'Une ligne du même nom exporte déjà ce dessin',
-    'noticeExportRidesBase':
-        'Ce dessin part sur les cellulos de son calque de base',
     'exDigits': 'Chiffres',
     'exApplyLayerFx': 'Appliquer les FX de calque',
     'exApplyLayerFxHelp':
@@ -7967,11 +7956,9 @@ enum AppStrings {
     'exEnvelopeFormat': '卡袋格式',
     'exWrittenCount': '{n}张',
     'exWrittenCountOne': '{n}张',
-    'noticeExportRowOff': '该行已关闭',
     'noticeExportNoPicture': '此赛璐珞没有已开启的画',
     'noticeExportNotPlaced': '此画未放在时间轴上',
     'noticeExportSameName': '同名的行已导出此画',
-    'noticeExportRidesBase': '此画叠在基准图层的赛璐珞上导出',
     'exDigits': '位数',
     'exApplyLayerFx': '应用图层 FX',
     'exApplyLayerFxHelp': '应用图层 FX（变换与动画不透明度）',

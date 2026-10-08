@@ -19,7 +19,6 @@ class ExportDocumentSheet extends ExportListSheet {
     required this.pageCount,
     required this.fileName,
     this.skipped = false,
-    this.refused,
   });
 
   /// [ExportCelKind.timesheet] or [ExportCelKind.envelope].
@@ -46,8 +45,11 @@ class ExportDocumentSheet extends ExportListSheet {
   @override
   final bool skipped;
 
+  /// A page of a document whose kind is written is always a file: its row
+  /// turns its pages off ([skipped]) — ↩️its row had an off of its own
+  /// that refused every page (export-four-tabs ③).
   @override
-  final ExportCelRefusal? refused;
+  ExportCelRefusal? get refused => null;
 
   @override
   CutId get deltaCut => of.id;
@@ -67,6 +69,10 @@ class ExportDocumentSheet extends ExportListSheet {
   bool get laid => false;
 
   ExportDocumentPage get ref => (document: kind, page: page);
+
+  @override
+  ExportCelsCutDelta offIn(ExportCelsCutDelta delta, {required bool off}) =>
+      delta.withPageSkipped(ref, off);
 }
 
 /// What a document file is called before its prefix and its extension.

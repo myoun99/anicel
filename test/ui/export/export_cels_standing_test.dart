@@ -79,7 +79,6 @@ void main() {
     Cut cut, {
     CelsExportSpec spec = celsAlone,
     ExportCelsCutDelta? delta,
-    Set<LayerId> shut = const {},
   }) {
     final overrides = delta == null
         ? ExportProjectOverrides()
@@ -98,19 +97,21 @@ void main() {
       spec: spec,
       overrides: overrides,
     );
-    return (
-      plan: plan,
-      rows: ExportCelsListing(cut, spec).rows(
-        selection: resolveExportCelsSelection(
-          cut: cut,
-          spec: spec,
-          delta: delta,
-        ),
-        plan: plan,
-        shut: shut,
-      ),
-    );
+    return (plan: plan, rows: ExportCelsListing(cut, spec).rows(plan));
   }
+
+  /// The attach column of [row]: what the filters of [spec] admit.
+  List<String> stack(
+    Cut cut,
+    ExportCelsBoardRow row, {
+    CelsExportSpec spec = celsAlone,
+  }) => [
+    for (final layer in ExportCelsListing(
+      cut,
+      spec,
+    ).stackOf(row, resolveExportCelsSelection(cut: cut, spec: spec)))
+      layer.id.value,
+  ];
 
   List<String> ids(List<ExportCelsBoardRow> rows) => [
     for (final row in rows) row.idValue,
@@ -126,100 +127,86 @@ void main() {
   ExportCelRef ref(String row, String cel) =>
       (row: LayerId(row), cel: FrameId('$row-$cel'));
 
+  // export-four-tabs (유저 2026-10-09): 「결국 나가는건 파일 하나니까
+  // 파일기준 행이니까 접기 펼치기 없이 한 행만 보이면되」 · 「블록 없어도 그냥
+  // 행 보이게」 · 「필터전부」.
   group('the rows', () {
-    test('are the cut\'s listed rows as the timeline draws them, each with '
-        'the drawings that stand on it', () {
+    test('are the cut\'s STACKS as the timeline draws them, each with the '
+        'files its bundle writes — no folder row, no attach row', () {
       final rows = board(film()).rows;
-      expect(ids(rows), ['f', 'c', 'b', 'ar', 'a', 'l']);
+      expect(ids(rows), ['c', 'b', 'a', 'l']);
       expect(names(of(rows, 'a').sheets), ['1', '2', '3', '4']);
-      expect(names(of(rows, 'ar').sheets), ['1', '2']);
-      expect(of(rows, 'f').sheets, isEmpty);
     });
 
-    test('a row\'s switch reads the selection; a folder\'s, what its rows '
-        'say together', () {
+    test('🚨a stack that holds no picture is a row all the same — off, with '
+        'no file, and stood on like any', () {
       final rows = board(film()).rows;
-      expect(of(rows, 'a').state, BooleanMix.on);
-      expect(of(rows, 'l').state, BooleanMix.off, reason: 'LO, under 원화');
-      expect(of(rows, 'f').state, BooleanMix.on);
+      final lo = of(rows, 'l');
+      expect(lo.sheets, isEmpty, reason: 'LO, under the 원화 label');
+      expect(lo.state, BooleanMix.off);
+    });
+
+    test('a free attach row that is its stack\'s only picture lends the row '
+        'its name and its drawings — the row stays its base\'s', () {
+      final rows = board(
+        film(),
+        delta: ExportCelsCutDelta().withLayerOverride(
+          const LayerId('a'),
+          false,
+        ),
+      ).rows;
+      final a = of(rows, 'a');
+      expect(a.name, 'A_r');
+      expect(names(a.sheets), ['1', '2']);
+      expect(ids(rows), ['c', 'b', 'a', 'l'], reason: 'one row a stack');
+    });
+
+    test('🚨a row\'s switch says its files: on, mixed while some are off — '
+        'and a row whose one file is off IS a row switched off', () {
+      final some = board(
+        film(),
+        delta: ExportCelsCutDelta().withCelSkipped(ref('a', '2'), true),
+      ).rows;
+      expect(of(some, 'a').state, BooleanMix.mixed);
+      expect(of(some, 'b').state, BooleanMix.on);
 
       final one = board(
         film(),
-        delta: ExportCelsCutDelta().withLayerOverride(
-          const LayerId('c'),
-          false,
-        ),
+        delta: ExportCelsCutDelta().withCelSkipped(ref('c', '1'), true),
       ).rows;
-      expect(of(one, 'f').state, BooleanMix.mixed);
       expect(of(one, 'c').state, BooleanMix.off);
-      expect(of(one, 'b').state, BooleanMix.on);
-
-      final none = board(
-        film(),
-        delta: ExportCelsCutDelta()
-            .withLayerOverride(const LayerId('c'), false)
-            .withLayerOverride(const LayerId('b'), false),
-      ).rows;
-      expect(of(none, 'f').state, BooleanMix.off);
-    });
-
-    test('a twirl is worn by a folder and by a base with attach rows — and '
-        'shut, it folds what is under it away', () {
-      final rows = board(film()).rows;
-      expect(of(rows, 'f').open, isTrue);
-      expect(of(rows, 'a').open, isTrue);
-      expect(of(rows, 'b').open, isNull, reason: 'nothing rides it');
-      expect(of(rows, 'ar').open, isNull);
-
-      final folded = board(
-        film(),
-        shut: {const LayerId('f'), const LayerId('a')},
-      ).rows;
-      expect(ids(folded), ['f', 'a', 'l']);
-      expect(of(folded, 'f').open, isFalse);
-      expect(of(folded, 'a').open, isFalse);
-      expect(
-        of(folded, 'f').state,
-        BooleanMix.on,
-        reason: 'a folder still says what the rows it folds say',
-      );
-    });
-
-    test('a folder says what the rows under it say at ANY depth — a row in '
-        'a folder of its own, inside it, counts', () {
-      // F holds B, and a folder G that holds D.
-      final nested = Cut(
-        id: cutId,
-        name: '301',
-        duration: 8,
-        canvasSize: const CanvasSize(width: 8, height: 8),
-        layers: [
-          row('b', 'B', ['1'], folder: 'f'),
-          row('d', 'D', ['1'], folder: 'g'),
-          createFolderLayer(
-            id: const LayerId('g'),
-            name: 'G',
-            parentId: const LayerId('f'),
-          ),
-          createFolderLayer(id: const LayerId('f'), name: 'F'),
-          createCameraLayer(cutId: cutId),
-        ],
-      );
-      final rows = board(
-        nested,
-        delta: ExportCelsCutDelta().withLayerOverride(
-          const LayerId('d'),
-          false,
-        ),
-      ).rows;
-      expect(of(rows, 'g').state, BooleanMix.off);
-      expect(of(rows, 'b').state, BooleanMix.on);
-      expect(of(rows, 'f').state, BooleanMix.mixed);
     });
 
     test('a row of a kind that is off is not a row of the list', () {
       final rows = board(film(), spec: const CelsExportSpec(kinds: {})).rows;
       expect(rows, isEmpty);
+    });
+  });
+
+  group('the attach column of a row', () {
+    test('🚨is its base and the attach rows riding it, as the timeline '
+        'stacks them — a document holds none', () {
+      final cut = film();
+      final rows = board(cut).rows;
+      expect(stack(cut, of(rows, 'a')), ['ar', 'a']);
+      expect(stack(cut, of(rows, 'b')), ['b']);
+    });
+
+    test('🚨an attach row a filter leaves out is not offered; the base always '
+        'is', () {
+      final cut = film();
+      final rows = board(cut).rows;
+      const noAttach = CelsExportSpec(
+        kinds: {ExportCelKind.cel},
+        label: key,
+        attach: false,
+      );
+      expect(stack(cut, of(rows, 'a'), spec: noAttach), ['a']);
+
+      // The base answers no filter here: 「LO」 leaves A out, and it is
+      // still the stack's line.
+      const lo = CelsExportSpec(kinds: {ExportCelKind.cel}, label: layout);
+      expect(stack(cut, of(board(cut, spec: lo).rows, 'a'), spec: lo), ['a']);
     });
   });
 
@@ -232,16 +219,18 @@ void main() {
       expect(names(exportCelsPages(of(rows, 'a'))), ['1', '3', '4']);
     });
 
-    test('on a row that is OFF, the drawings that were left on (유저 '
-        '2026-10-06: 「그 상태에서 콘티행 off해도 1,3 활성화되있으니까 서서 '
-        '보여줄수있게」)', () {
+    test('on a row that is OFF — every file of it off — all its files: it is '
+        'still stood on to be looked at', () {
       final rows = board(
         film(),
-        delta: ExportCelsCutDelta().withCelSkipped(ref('l', '1'), true),
+        delta: ExportCelsCutDelta()
+            .withCelSkipped(ref('b', '1'), true)
+            .withCelSkipped(ref('b', '2'), true)
+            .withCelSkipped(ref('b', '3'), true),
       ).rows;
-      final off = of(rows, 'l');
-      expect(off.sheets.every((sheet) => !sheet.planned), isTrue);
-      expect(names(exportCelsPages(off)), ['2']);
+      final off = of(rows, 'b');
+      expect(off.state, BooleanMix.off);
+      expect(names(exportCelsPages(off)), ['1', '2', '3']);
     });
   });
 
@@ -279,12 +268,24 @@ void main() {
       expect(backOnA.shown, 'a-3');
     });
 
-    test('a folder is not stood on — it holds no drawing', () {
+    // 유저 2026-10-08: 「그림 자체가 존재안하는 레이어는 서있는것도
+    // 불가능한데, 서있을수는 있게하고」.
+    test('a row with no file is stood on — nothing is shown, and the place '
+        'is kept for the next row', () {
       final rows = board(film()).rows;
-      final onA = const ExportCelsStanding().standingOn('a',
-        rows,
-      );
-      expect(onA.standingOn('f', rows), onA);
+      final third = const ExportCelsStanding()
+          .standingOn('a', rows)
+          .stepped(2, rows);
+      final onLo = third.standingOn('l', rows);
+      expect((onLo.row, onLo.shown, onLo.place), ('l', null, 2));
+      expect(onLo.rowIn(rows)?.idValue, 'l');
+      expect(onLo.standingOn('a', rows).shown, 'a-3');
+    });
+
+    test('a row the list does not show is not stood on', () {
+      final rows = board(film()).rows;
+      final onA = const ExportCelsStanding().standingOn('a', rows);
+      expect(onA.standingOn('f', rows), onA, reason: 'a folder is no row');
     });
 
     test('the steps stop at the row\'s ends', () {
@@ -327,12 +328,22 @@ void main() {
     test('the row stood on leaves the list: the first row left with a '
         'drawing is stood on', () {
       final rows = board(film()).rows;
-      final onC = const ExportCelsStanding().standingOn('c',
-        rows,
-      );
-      final folded = board(film(), shut: {const LayerId('f')}).rows;
-      final settled = onC.settledOn(folded);
-      expect((settled.row, settled.shown), ('ar', 'ar-1'));
+      final onC = const ExportCelsStanding().standingOn('c', rows);
+      final withoutC = film();
+      final gone = board(
+        Cut(
+          id: cutId,
+          name: withoutC.name,
+          duration: withoutC.duration,
+          canvasSize: withoutC.canvasSize,
+          layers: [
+            for (final layer in withoutC.layers)
+              if (layer.id != const LayerId('c')) layer,
+          ],
+        ),
+      ).rows;
+      final settled = onC.settledOn(gone);
+      expect((settled.row, settled.shown), ('b', 'b-1'));
     });
 
     test('a standing that still holds is left as it is', () {

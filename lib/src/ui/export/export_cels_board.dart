@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/export_cel_kind.dart';
 import '../../models/layer.dart';
-import '../../models/layer_folder.dart';
+import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
 import '../input/control_press_claim.dart';
 import '../text/app_strings.dart';
@@ -20,20 +20,20 @@ import '../widgets/boolean_dot.dart';
 import '../widgets/pill_strip.dart';
 import 'export_cel_group_plan.dart';
 
-/// ONE ROW of the Cels tab's list: what its switch says, whether it folds
-/// what is under it, and the files that stand on it, a block each — a row
-/// of the cut the list shows ([ExportCelsLayerRow]), or one of the cut's
-/// documents ([ExportCelsDocumentRow]).
+/// ONE ROW of the Cels tab's list — a series of FILES: what its switch says
+/// and the files that stand on it, a block each — a stack of the cut the
+/// list shows ([ExportCelsLayerRow]), or one of the cut's documents
+/// ([ExportCelsDocumentRow]).
+///
+/// 🗣️export-four-tabs (유저 2026-10-09): 「결국 나가는건 파일 하나니까
+/// 파일기준 행이니까 접기 펼치기 없이 한 행만 보이면되」. ↩️A row was a
+/// layer: a folder's switched the rows under it, and a base's twirl folded
+/// its attach rows away.
 sealed class ExportCelsBoardRow {
-  const ExportCelsBoardRow({required this.state, this.open});
+  const ExportCelsBoardRow({required this.state});
 
-  /// On or off — and, over more than one thing (a folder's rows, the
-  /// documents of a 겸용 group's cuts), what they say together.
+  /// Its files on, off — or, where they disagree, mixed ([exportRowState]).
   final BooleanMix state;
-
-  /// Whether what this row holds under it — a folder's rows, a base's
-  /// attach rows — is shown; null on a row that holds nothing.
-  final bool? open;
 
   /// Names the row in the list: its widget keys, and where the list stands.
   String get idValue;
@@ -47,32 +47,37 @@ sealed class ExportCelsBoardRow {
   LayerMark get mark;
 }
 
-/// A row of the cut.
+/// A STACK of the cut: a base and the attach rows riding it, which its
+/// files hold as the attach column says ([ExportCelsStack]).
 final class ExportCelsLayerRow extends ExportCelsBoardRow {
   const ExportCelsLayerRow({
     required this.layer,
+    required this.base,
     required super.state,
     required this.sheets,
-    super.open,
   });
 
+  /// The row its files stand on — the stack's base, or the free attach row
+  /// that is the stack's only picture, whose name and frames they take.
   final Layer layer;
 
-  /// The row's drawings: none on a folder, and none on a synced attach row
-  /// (its drawings follow its base's).
+  /// The stack's base: what the row IS — where the list stands, what the
+  /// attach column opens — whichever row its files stand on.
+  final LayerId base;
+
+  /// The drawings of [layer] the plan files — none while the stack holds
+  /// no picture.
   @override
   final List<ExportCelSheet> sheets;
 
   @override
-  String get idValue => layer.id.value;
+  String get idValue => base.value;
 
   @override
   String get name => layer.name;
 
   @override
   LayerMark get mark => layer.mark;
-
-  bool get isFolder => layer.kind.groupsLayers;
 }
 
 /// One of the cut's DOCUMENTS the tab writes beside its cels — its
@@ -104,15 +109,18 @@ final class ExportCelsDocumentRow extends ExportCelsBoardRow {
 }
 
 /// The Cels tab's list, under its preview (F-289): the rules that pick the
-/// rows on the left, and beside them the cut's rows AS THE TIMELINE DRAWS
-/// THEM — the rail's own leading cells, then one block a drawing.
+/// rows on the left, the attach column beside them, and the cut's FILE rows
+/// in the timeline's order — the rail's own leading cells, then one block a
+/// drawing.
 ///
-/// 🗣️유저 2026-10-06: 「타임라인처럼 어태치레이어 펼치는 버튼 똑같이
-/// 통일해서 넣어서 … 그냥 세로말고 타임라인처럼 가로로 … 다만 물론
+/// 🗣️유저 2026-10-06: 「그냥 세로말고 타임라인처럼 가로로 … 다만 물론
 /// 타임라인처럼 코마수에따라 버튼 늘리거나 하지않고 지금처럼 하나의 정해진
 /// 크기의 버튼으로서」, under the preview (「가로/아래가 좋고」), eight rows
 /// tall with both scrollbars standing (「8줄? 고정으로 두고 스크롤바 가로
-/// 세로 두고싶어」).
+/// 세로 두고싶어」). ↩️It folded a base's attach rows behind the timeline's
+/// twirl (「타임라인처럼 어태치레이어 펼치는 버튼 똑같이 통일해서」); a row is
+/// a stack's files now, and what they hold is the attach column's
+/// (export-four-tabs, 유저 2026-10-09).
 ///
 /// A block is BRIGHT while its file is written and HOLLOW while it is not
 /// (「흐린블록은 상태적으로 필요없다고생각해」): pressed, a drawing the export
@@ -124,14 +132,13 @@ class ExportCelsBoard extends StatefulWidget {
   const ExportCelsBoard({
     super.key,
     required this.rules,
+    required this.stack,
     required this.band,
     required this.rows,
-    required this.layers,
     required this.standing,
     required this.shown,
     required this.enabled,
     required this.onRowSwitched,
-    required this.onFolded,
     required this.onStoodOn,
     required this.onSheetPressed,
   });
@@ -139,13 +146,13 @@ class ExportCelsBoard extends StatefulWidget {
   /// The rules column ([ExportCelsRules]).
   final Widget rules;
 
+  /// The attach column of the row stood on ([ExportCelsStack]).
+  final Widget stack;
+
   /// The band over the rows ([ExportCelsBand]).
   final Widget band;
 
   final List<ExportCelsBoardRow> rows;
-
-  /// The cut's stack — a row's nesting depth is read from it.
-  final List<Layer> layers;
 
   /// The row stood on, and the file of it the preview shows
   /// ([ExportCelsBoardRow.idValue] · [ExportListSheet.idValue]).
@@ -155,10 +162,8 @@ class ExportCelsBoard extends StatefulWidget {
   /// False while an export runs: nothing here takes a press.
   final bool enabled;
 
-  /// A row's switch, pressed: what the row — or every row under a folder —
-  /// should become.
+  /// A row's switch, pressed: what its files should become.
   final void Function(ExportCelsBoardRow row, bool on) onRowSwitched;
-  final ValueChanged<ExportCelsBoardRow> onFolded;
   final ValueChanged<ExportCelsBoardRow> onStoodOn;
   final ValueChanged<ExportListSheet> onSheetPressed;
 
@@ -186,10 +191,19 @@ class ExportCelsBoard extends StatefulWidget {
       AppScrollbarLane.wide +
       2;
 
-  /// The narrowest the board lays out at: the rules, the vertical bar's
-  /// lane, the rail and five blocks.
+  /// The attach column's width (export-four-tabs-Q1, 유저 2026-10-08: 「안 A —
+  /// 규칙 칸과 행 사이에 어태치 칸(184px)」).
+  static const double stackWidth = 184;
+
+  /// The narrowest the board lays out at: the rules, the attach column, the
+  /// vertical bar's lane, the rail and five blocks.
   static const double minimumWidth =
-      rulesWidth + AppScrollbarLane.wide + railWidth + 5 * blockWidth + 2;
+      rulesWidth +
+      stackWidth +
+      AppScrollbarLane.wide +
+      railWidth +
+      5 * blockWidth +
+      2;
 
   @override
   State<ExportCelsBoard> createState() => _ExportCelsBoardState();
@@ -223,6 +237,11 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
             width: ExportCelsBoard.rulesWidth,
             decoration: BoxDecoration(border: Border(right: line)),
             child: widget.rules,
+          ),
+          Container(
+            width: ExportCelsBoard.stackWidth,
+            decoration: BoxDecoration(border: Border(right: line)),
+            child: widget.stack,
           ),
           Expanded(
             child: Column(
@@ -335,7 +354,8 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
   );
 
   /// A row's rail: the timeline rail's leading cells ([_leading]), then the
-  /// nesting guides, the name and the fold twirl's seat.
+  /// name. ↩️The nesting guides and the fold twirl's seat stood after them
+  /// while a row was a layer among folders.
   Widget _rail(BuildContext context, ExportCelsBoardRow row, double height) {
     final scheme = Theme.of(context).colorScheme;
     final on = row.state != BooleanMix.off;
@@ -357,14 +377,7 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           ..._leading(row, ink: ink, lit: on),
-          if (row case ExportCelsLayerRow(:final layer))
-            ?layerRailDepthGuides(
-              Axis.horizontal,
-              widget.layers.ancestryOf(layer.folderId).length,
-              colorScheme: scheme,
-            ),
           Expanded(child: _name(context, row, ink)),
-          _twirlSeat(row),
         ],
       ),
     );
@@ -397,7 +410,6 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
             keyPrefix: 'export-cels',
             idValue: idValue,
             kind: layer.kind,
-            folderCollapsed: row.open == false,
           ),
         ),
       ),
@@ -417,80 +429,44 @@ class _ExportCelsBoardState extends State<ExportCelsBoard> {
     };
   }
 
-  /// The row's name — and, on a row that holds drawings, the press that
-  /// stands the list on it.
+  /// The row's name — the press that stands the list on it, whether or not
+  /// it holds a file (its attach column is where a picture is put back).
   Widget _name(BuildContext context, ExportCelsBoardRow row, Color ink) {
     final idValue = row.idValue;
-    final name = Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        row.name,
-        key: ValueKey<String>('export-cels-name-$idValue'),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: layerRowNameStyle(context).copyWith(color: ink),
-      ),
-    );
-    if (row.sheets.isEmpty) {
-      return name;
-    }
     return ControlPressClaim(
       onPressed: () => widget.onStoodOn(row),
       child: InkWell(
         key: ValueKey<String>('export-cels-stand-$idValue'),
         onTap: silentPress(() => widget.onStoodOn(row)),
-        child: name,
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            row.name,
+            key: ValueKey<String>('export-cels-name-$idValue'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: layerRowNameStyle(context).copyWith(color: ink),
+          ),
+        ),
       ),
     );
   }
 
-  /// The fold twirl's seat: every row's, at the name's far edge as the rail
-  /// has it (F-29), whether or not the row folds anything.
-  Widget _twirlSeat(ExportCelsBoardRow row) {
-    final open = row.open;
-    final idValue = row.idValue;
-    return SizedBox(
-      key: ValueKey<String>('export-cels-twirl-seat-$idValue'),
-      width: layerLaneToggleSlotWidth,
-      child: open == null
-          ? null
-          : LayerFoldTwirl(
-              keyValue: 'export-cels-twirl-$idValue',
-              expanded: open,
-              onToggle: () => widget.onFolded(row),
-            ),
-    );
-  }
-
-  /// The row's switch: the app's boolean — and over more than one thing (a
-  /// folder's rows, a document's files) the one that can say they disagree.
-  Widget _switch(ExportCelsBoardRow row) {
-    final idValue = row.idValue;
-    final pressed = widget.enabled
-        ? (bool on) => widget.onRowSwitched(row, on)
-        : null;
-    const box = AppIconButtonBox(
+  /// The row's switch: the app's boolean over its files — the one that can
+  /// say they disagree ([exportRowState]).
+  Widget _switch(ExportCelsBoardRow row) => BooleanMixDotButton(
+    keyValue: 'export-cels-switch-${row.idValue}',
+    tooltip: AppText.strings.exExport,
+    value: row.state,
+    size: const AppIconButtonBox(
       width: layerSectionLabelSlotWidth,
       height: 24,
       iconSize: 14,
-    );
-    final one = row is ExportCelsLayerRow && !row.isFolder;
-    return !one
-        ? BooleanMixDotButton(
-            keyValue: 'export-cels-switch-$idValue',
-            tooltip: AppText.strings.exExport,
-            value: row.state,
-            size: box,
-            onChanged: pressed,
-          )
-        : BooleanDotButton(
-            keyValue: 'export-cels-switch-$idValue',
-            tooltip: AppText.strings.exExport,
-            value: row.state == BooleanMix.on,
-            size: box,
-            onChanged: pressed,
-          );
-  }
+    ),
+    onChanged: widget.enabled
+        ? (bool on) => widget.onRowSwitched(row, on)
+        : null,
+  );
 
   /// The row's drawings, a block each.
   Widget _blocks(BuildContext context, ExportCelsBoardRow row, double height) {

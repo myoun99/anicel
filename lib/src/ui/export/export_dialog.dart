@@ -46,10 +46,10 @@ import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
 import 'export_cels_board.dart';
+import 'export_cels_stack.dart';
 import 'export_cels_standing.dart';
 import 'export_conte_render.dart';
 import 'export_cels_selection.dart';
-import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/commands/link_mirror.dart' show linkedCutSiblings;
@@ -265,9 +265,6 @@ class ExportDialogState extends State<ExportDialog> {
   /// Where the Cels list stands ([ExportCelsStanding]).
   ExportCelsStanding _celStanding = const ExportCelsStanding();
 
-  /// The rows of the Cels list whose twirl is shut.
-  final Set<LayerId> _celShut = {};
-
   /// Why a press in this window did nothing, said at the pointer — the
   /// window's own channel: the editor's overlay lies under this window's
   /// barrier, where a notice would be said to nobody.
@@ -482,10 +479,7 @@ class ExportDialogState extends State<ExportDialog> {
   _celsList() {
     final plan = _celGroupPlan();
     final cut = _celCutShown(plan);
-    final rows = ExportCelsListing(
-      cut,
-      _specs.cels,
-    ).rows(selection: _celsSelectionOf(cut), plan: plan, shut: _celShut);
+    final rows = _celRowsOf(plan, cut);
     return (
       plan: plan,
       cut: cut,
@@ -493,6 +487,25 @@ class ExportDialogState extends State<ExportDialog> {
       standing: _celStanding.settledOn(rows),
     );
   }
+
+  /// The Cels list's rows for [cut] under [plan] — memoized on the two, the
+  /// rows' only inputs: the plan is made again whenever the project or the
+  /// spec moves ([_celGroupPlan]), so a new plan is new rows, and the board,
+  /// the preview, the label button and the settle share one reading a
+  /// build.
+  List<ExportCelsBoardRow> _celRowsOf(ExportCelGroupPlan plan, Cut cut) {
+    final cached = _celRowsCache;
+    if (cached != null &&
+        identical(cached.$1, plan) &&
+        identical(cached.$2, cut)) {
+      return cached.$3;
+    }
+    final rows = ExportCelsListing(cut, _specs.cels).rows(plan);
+    _celRowsCache = (plan, cut, rows);
+    return rows;
+  }
+
+  (ExportCelGroupPlan, Cut, List<ExportCelsBoardRow>)? _celRowsCache;
 
   /// The Cels tab's list, under its preview ([ExportCelsBoard]): the rules
   /// that pick the rows, the band, and the cut's rows with a block a
@@ -509,6 +522,7 @@ class ExportDialogState extends State<ExportDialog> {
     final (cut: _, :pages, :at) = _celPages();
     return ExportCelsBoard(
       rules: _celRules(cut),
+      stack: _celStack(cut, row),
       band: ExportCelsBand(
         cutPicker: _celCutPicker(plan, cut),
         count: AppText.strings.exWrittenCount(plan.length),
@@ -518,26 +532,78 @@ class ExportDialogState extends State<ExportDialog> {
         directions: _celDirections(cut, standing.sheetIn(rows)),
       ),
       rows: rows,
-      layers: cut.layers,
       standing: row?.idValue,
       shown: standing.shown,
       enabled: !_isExporting,
-      onRowSwitched: (row, on) => switch (row) {
-        ExportCelsLayerRow(:final layer) => _toggleCelRows(
-          cut,
-          row.isFolder
-              ? ExportCelsListing(cut, _specs.cels).leavesOf(layer)
-              : [layer],
-          on,
-        ),
-        ExportCelsDocumentRow() => _toggleCelDocument(row, on),
-      },
-      onFolded: _foldCelRow,
+      onRowSwitched: (row, on) => _switchCelRow(cut, row, on),
       onStoodOn: (row) => _standCels(
         (standing, rows) => standing.standingOn(row.idValue, rows),
       ),
       onSheetPressed: _pressCelSheet,
     );
+  }
+
+  /// The attach column of [row] — the row the list stands on
+  /// ([ExportCelsStack]): what its files can hold, each line switched as the
+  /// rules and the hand say ([_celsSelectionOf]).
+  Widget _celStack(Cut cut, ExportCelsBoardRow? row) {
+    final selection = _celsSelectionOf(cut);
+    return ExportCelsStack(
+      row: row,
+      lines: [
+        if (row != null)
+          for (final layer in ExportCelsListing(
+            cut,
+            _specs.cels,
+          ).stackOf(row, _celsSelectionOf(cut, withDelta: false)))
+            (layer: layer, on: selection.includes(layer)),
+      ],
+      onSwitched: _isExporting
+          ? null
+          : (layer, on) => _toggleCelRows(cut, [layer], on),
+    );
+  }
+
+  /// A row's switch: every file of the row turned off, or back on
+  /// (export-four-tabs ③). On a row whose stack holds no picture there is
+  /// no file to turn: its BASE is put back in, and its files come with it
+  /// (ⓑ, 유저 2026-10-09: 「가」).
+  void _switchCelRow(Cut cut, ExportCelsBoardRow row, bool on) {
+    final files = [
+      for (final sheet in row.sheets)
+        if (sheet.planned) sheet,
+    ];
+    if (files.isNotEmpty) {
+      _turnCelFiles(files, off: !on);
+      return;
+    }
+    if (on && row is ExportCelsLayerRow) {
+      _toggleCelRows(cut, [
+        for (final layer in cut.layers)
+          if (layer.id == row.base) layer,
+      ], true);
+    }
+  }
+
+  /// Turns [files] off, or back on — each in the delta of its own cut (a
+  /// 겸용 group's cuts each keep a timesheet): a block's press is one file,
+  /// a row's switch every file of its row.
+  void _turnCelFiles(Iterable<ExportListSheet> files, {required bool off}) {
+    _session.repository.updateExportOverrides((overrides) {
+      var next = overrides;
+      for (final file in files) {
+        next = next.withCelsDelta(
+          file.deltaCut,
+          file.offIn(
+            next.deltaFor(file.deltaCut) ?? ExportCelsCutDelta(),
+            off: off,
+          ),
+        );
+      }
+      return next;
+    });
+    setState(() {});
+    _settleStanding();
   }
 
   /// Moves where the Cels list stands, and shows it.
@@ -556,21 +622,6 @@ class ExportDialogState extends State<ExportDialog> {
   void _stepCel(int steps) =>
       _standCels((standing, rows) => standing.stepped(steps, rows));
 
-  /// A twirl, pressed: what the row holds under it folds away, or comes
-  /// back. The window's own fold — the film's folds are the film's.
-  void _foldCelRow(ExportCelsBoardRow row) {
-    // Only a row of the cut holds rows under it.
-    if (row is! ExportCelsLayerRow) {
-      return;
-    }
-    setState(() {
-      if (!_celShut.remove(row.layer.id)) {
-        _celShut.add(row.layer.id);
-      }
-    });
-    _settleStanding();
-  }
-
   /// A block, pressed: a file the export would write is turned off, or
   /// back on — and one it would not says why, where the pointer is
   /// (유저 2026-10-06: 「나갈 수 없는 그림은 작동하려하면 이유 띄우자」).
@@ -579,43 +630,13 @@ class ExportDialogState extends State<ExportDialog> {
     if (refused != null) {
       final strings = AppText.strings;
       _notices.show(switch (refused) {
-        ExportCelRefusal.rowOff => strings.noticeExportRowOff,
         ExportCelRefusal.noPicture => strings.noticeExportNoPicture,
         ExportCelRefusal.notPlaced => strings.noticeExportNotPlaced,
         ExportCelRefusal.sameName => strings.noticeExportSameName,
-        ExportCelRefusal.ridesBase => strings.noticeExportRidesBase,
       });
       return;
     }
-    _editCelDelta(sheet.deltaCut, (delta) => switch (sheet) {
-      ExportCelSheet() => delta.withCelSkipped(sheet.ref, !sheet.skipped),
-      ExportDocumentSheet() => delta.withPageSkipped(
-        sheet.ref,
-        !sheet.skipped,
-      ),
-      _ => delta,
-    });
-  }
-
-  /// A document row's switch: its files are written, or none of them is —
-  /// each answer kept with the cut its document is of (a 겸용 group's cuts
-  /// each keep a timesheet).
-  void _toggleCelDocument(ExportCelsDocumentRow row, bool on) {
-    _session.repository.updateExportOverrides((overrides) {
-      var next = overrides;
-      for (final cutId in {for (final sheet in row.sheets) sheet.deltaCut}) {
-        next = next.withCelsDelta(
-          cutId,
-          (next.deltaFor(cutId) ?? ExportCelsCutDelta()).withDocumentOff(
-            row.kind,
-            !on,
-          ),
-        );
-      }
-      return next;
-    });
-    setState(() {});
-    _settleStanding();
+    _turnCelFiles([sheet], off: !sheet.skipped);
   }
 
   /// The direction drawings of [cut] the band offers to lay over [shown],
@@ -3306,8 +3327,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// Turns [rows] of [cut] on or off — storing null where the wish equals
   /// the rule's outcome, so the delta stays exactly the hand exceptions
-  /// (Reset = clear, a filter press re-applies the rule). A row's switch and
-  /// a folder's (every row under it at once) are one write.
+  /// (Reset = clear, a filter press re-applies the rule). A line of the
+  /// attach column ([ExportCelsStack]), and the base a row with no file
+  /// puts back ([_switchCelRow]). ↩️A list row's switch, and a folder's
+  /// (every row under it at once).
   void _toggleCelRows(Cut cut, Iterable<Layer> rows, bool include) {
     final rule = _celsSelectionOf(cut, withDelta: false);
     _editCelDelta(cut.id, (delta) {

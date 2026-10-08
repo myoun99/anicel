@@ -21,6 +21,7 @@ import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/layer_process.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/app_export_settings.dart';
@@ -97,9 +98,10 @@ void main() {
 
   /// CUT1: a paper row · base A (2 cels) with a synced colour row · a base B
   /// wearing LO (so the 원화 label leaves it out) · folder F holding C (off
-  /// the sheet) and D · a direction row. CUT2·CUT3 are 겸용 siblings and
-  /// CUT4 stands alone — the scope grid's material.
-  EditorSessionManager celsSession() {
+  /// the sheet) and D — and, given [unplaced], a drawing of D's no block
+  /// shows · a direction row. CUT2·CUT3 are 겸용 siblings and CUT4 stands
+  /// alone — the scope grid's material.
+  EditorSessionManager celsSession({Frame? unplaced}) {
     return EditorSessionManager(
       initialProject: Project(
         id: const ProjectId('project'),
@@ -135,7 +137,19 @@ void main() {
                   ], mark: const LayerMark(process: LayerProcess.layout)),
                   createFolderLayer(id: const LayerId('f'), name: 'F'),
                   drawing('c', 'C', [frame('x1')], folder: 'f', onTimesheet: false),
-                  drawing('d', 'D', [frame('y1')], folder: 'f'),
+                  if (unplaced == null)
+                    drawing('d', 'D', [frame('y1')], folder: 'f')
+                  else
+                    Layer(
+                      id: const LayerId('d'),
+                      name: 'D',
+                      frames: [frame('y1'), unplaced],
+                      mark: key,
+                      folderId: const LayerId('f'),
+                      timeline: const {
+                        0: TimelineExposure.drawing(FrameId('y1'), length: 1),
+                      },
+                    ),
                   Layer(
                     id: const LayerId('inst'),
                     name: 'Camera',
@@ -234,9 +248,11 @@ void main() {
   Future<void> pressBlock(WidgetTester tester, String row, String cel) =>
       tapKey(tester, 'export-cels-block-$row-$cel');
 
-  testWidgets('the list is the cut\'s rows as the timeline draws them, each '
-      'led by its switch — the rule\'s picks on, the rest off; the paper and '
-      'the rows of a kind that is off are not in it', (tester) async {
+  testWidgets('the list is the cut\'s STACKS as the timeline draws them, each '
+      'led by its switch over its files; the paper, the attach rows, the '
+      'folders and the rows of a kind that is off are not in it', (
+    tester,
+  ) async {
     final session = celsSession();
     await pumpCels(tester, session);
 
@@ -245,30 +261,20 @@ void main() {
       tester.celsBoardRowIds,
       [
         for (final layer in horizontalLayerDisplayOrder(cut.layers))
-          if (const {
-            'a',
-            'a-color',
-            'b',
-            'f',
-            'c',
-            'd',
-          }.contains(layer.id.value))
+          if (const {'a', 'b', 'c', 'd'}.contains(layer.id.value))
             layer.id.value,
       ],
-      reason: 'the paper is applied, not listed, and the direction kind is off',
+      reason: 'the paper is applied, the colour row is in A\'s files, a '
+          'folder is no file, and the direction kind is off',
     );
-    expect(tester.celsBoardRowIds, hasLength(6));
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
-    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.on);
+    // B wears LO: the 원화 label leaves its stack nothing to hold — a row all
+    // the same, off (유저 2026-10-09: 「블록 없어도 그냥 행 보이게」).
     expect(tester.celsBoardSwitchState('b'), BooleanMix.off);
-    // The folder's rows are both in, so the folder reads whole.
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
 
-    // One block a drawing: A's two, bright — and B's one, hollow, its row
-    // off. A synced attach row has none of its own.
+    // One block a drawing: A's two, bright — and none on B.
     expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
-    expect(tester.celsBoardBlocksOf('a-color'), isEmpty);
-    expect(tester.celsBoardBlocksOf('b'), [('1', false)]);
+    expect(tester.celsBoardBlocksOf('b'), isEmpty);
     expect(tester.celsBoardBlocksOf('c'), [('1', true)]);
 
     // A ×2 + C + D; the paper row is applied, not counted.
@@ -317,11 +323,12 @@ void main() {
     );
   });
 
-  testWidgets('switching on a row the filters left out forces it in: the '
-      'plan grows, the label reads 「커스텀」, and a filter pill drops the '
-      'exception', (tester) async {
+  testWidgets('switching on a row the filters left nothing to hold puts its '
+      'base back in: the plan grows, the label reads 「커스텀」, and a filter '
+      'pill drops the exception', (tester) async {
     // 유저 2026-10-06: 「색라벨 필터 LO일때에서 작감용지 레이어 추가하면
-    // 색라벨필터 LO인채인데, 그게아니라 커스텀인상태로 필터 바꾸고싶어」.
+    // 색라벨필터 LO인채인데, 그게아니라 커스텀인상태로 필터 바꾸고싶어」 ·
+    // export-four-tabs ⓑ (2026-10-09): 「가」 — the base line, switched on.
     final session = celsSession();
     await pumpCels(tester, session);
 
@@ -442,27 +449,39 @@ void main() {
       'leaves nothing', (tester) async {
     // 유저 2026-09-09: 「기준/부속 고르면 기준레이어+부속레이어까지 묶고, 부속만
     // 되있으면 기준레이어가 아닌 부속레이어만 묶고」.
+    // 🚨Each press is answered AT ONCE — the list, the attach column and the
+    // count after the one frame the press draws (유저 2026-10-09: 「필터나
+    // 이런거 바꾸면 바로 적용안되있고 리빌드하는 행동하면 적용되있다거나
+    // 하는문제 매번있으니까 잘 확인하고」): [tapKey] pumps once.
     final state = await pumpCels(tester, celsSession());
+    await standOn(tester, 'a');
+    expect(tester.celsStackLines, [('a-color', true), ('a', true)]);
 
+    // 부속 off: the filter leaves the colour row out — so the attach column
+    // does not offer it (export-four-tabs ⓐ 「필터전부」).
     await tapKey(tester, 'export-cels-select-attach');
     expect(state.debugSpecs.cels.attach, isFalse);
     expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
-    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.off);
+    expect(tester.celsStackLines, [('a', true)]);
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
 
     await tapKey(tester, 'export-cels-select-base');
     expect(state.debugSpecs.cels.base, isFalse);
     expect(celCount(tester), AppText.strings.exWrittenCount(0));
-
-    // 부속 alone: the colour row rides base A's axis — two cels named by A,
-    // their blocks standing on A's row, bright, though A's own switch is
-    // off.
-    await tapKey(tester, 'export-cels-select-attach');
     expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
-    expect(tester.celsBoardSwitchState('a-color'), BooleanMix.on);
+    expect(
+      tester.celsStackLines,
+      [('a', false)],
+      reason: 'the base is offered whatever the filters say',
+    );
+
+    // 부속 alone: the colour row rides base A's axis — two files named by
+    // A, standing on A's row, which says its files: on.
+    await tapKey(tester, 'export-cels-select-attach');
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(tester.celsStackLines, [('a-color', true), ('a', false)]);
     expect(celCount(tester), AppText.strings.exWrittenCount(2));
     expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
-    await standOn(tester, 'a');
     expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
   });
 
@@ -536,34 +555,111 @@ void main() {
     );
   });
 
-  testWidgets('🗣️the folder\'s switch turns its rows together, and says so '
-      'when they disagree (F-289-Q13: 「폴더줄의 스위치는 섞임모양 넣는게 '
-      '나을거같아」)', (tester) async {
+  // export-four-tabs ③ (유저 2026-10-09): a row's switch is its FILES — 「한
+  // 장만 있을때 그 블록 빈블록만들면 해당 행 체크해제랑 동일한 로직」. ↩️It
+  // was a row exception, and a folder's switched the rows under it.
+  testWidgets('🚨a row\'s switch turns every file of its row: off, the row '
+      'dims and stays — stood on, the preview turns through its files; on, '
+      'they are all back — and no label leaves its rule', (tester) async {
     final session = celsSession();
     await pumpCels(tester, session);
 
-    await tapKey(tester, 'export-cels-switch-c');
-    expect(deltaOf(session)?.layerOverrides[const LayerId('c')], isFalse);
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.mixed);
-    expect(celCount(tester), AppText.strings.exWrittenCount(3));
-
-    // Mixed → all on: the exception that equals the rule again disappears.
-    await tapKey(tester, 'export-cels-switch-f');
+    await tapKey(tester, 'export-cels-switch-a');
+    expect(deltaOf(session)?.skippedCels, {ref('a', 'f1'), ref('a', 'f2')});
     expect(deltaOf(session)?.layerOverrides ?? const {}, isEmpty);
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
+    expect(tester.celsBoardBlocksOf('a'), [('1', false), ('2', false)]);
+    expect(celCount(tester), AppText.strings.exWrittenCount(2));
+    expect(textOf(tester, 'export-cels-label-text'), exportCelLabelText(key));
+    await standOn(tester, 'a');
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
 
-    // All on → all off: both rows in one write.
-    await tapKey(tester, 'export-cels-switch-f');
-    expect(deltaOf(session)?.layerOverrides, {
-      const LayerId('c'): false,
-      const LayerId('d'): false,
-    });
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.off);
+    // One file back: mixed — and a press on a mixed switch turns all on.
+    await pressBlock(tester, 'a', 'f1');
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.mixed);
+    await tapKey(tester, 'export-cels-switch-a');
+    expect(deltaOf(session), isNull);
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
+
+    // A row with one file: its block emptied IS the row switched off.
+    await pressBlock(tester, 'c', 'x1');
+    expect(tester.celsBoardSwitchState('c'), BooleanMix.off);
+  });
+
+  // export-four-tabs ④ (유저 2026-10-09): the attach column — 「그 파일에
+  // 무엇이 담기나」.
+  testWidgets('🚨the attach column is the stood row\'s stack, each line '
+      'switched as the rules and the hand say; a line switched by hand is a '
+      'row exception, and the list, the count and the preview follow AT '
+      'ONCE', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    await standOn(tester, 'a');
+    expect(tester.celsStackLines, [('a-color', true), ('a', true)]);
+    final before = tester.exportPreviewDocument!.look;
+    await tester.settleExportPreview();
+    final pictureBefore = tester.exportPreviewImage;
+    expect(pictureBefore, isNotNull, reason: '⛔전제: a picture is up');
+
+    await tester.pressInCelsBoard(tester.celsStackSwitch('a-color'));
+    expect(deltaOf(session)?.layerOverrides, {const LayerId('a-color'): false});
+    expect(tester.celsStackLines, [('a-color', false), ('a', true)]);
+    expect(
+      textOf(tester, 'export-cels-label-text'),
+      AppText.strings.exSelCustom,
+    );
+    expect(celCount(tester), AppText.strings.exWrittenCount(4));
+    expect(
+      tester.exportPreviewDocument!.look,
+      isNot(before),
+      reason: 'the file A1 holds no colour now: the preview draws it again',
+    );
+    // 🚨…with no other press: the picture lands for the look the press made
+    // (유저 2026-10-09: 「리빌드하는 행동하면 적용되있다거나 하는문제」).
+    await tester.settleExportPreview();
+    expect(tester.exportPreviewImage, isNotNull);
+    expect(tester.exportPreviewImage, isNot(same(pictureBefore)));
+  });
+
+  testWidgets('🚨「어태치만」: the base switched off in the column, its colour '
+      'row on — the row keeps its files, numbered by the base and holding '
+      'the colour alone', (tester) async {
+    final session = celsSession();
+    await pumpCels(tester, session);
+    await standOn(tester, 'a');
+
+    await tester.pressInCelsBoard(tester.celsStackSwitch('a'));
+    expect(deltaOf(session)?.layerOverrides, {const LayerId('a'): false});
+    expect(tester.celsStackLines, [('a-color', true), ('a', false)]);
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    expect(tester.celsBoardBlocksOf('a'), [('1', true), ('2', true)]);
+    expect(tester.exportPreviewLine, 'A1.png · 1 / 2');
+  });
+
+  testWidgets('🚨every line switched off: the row stays, off with no file, '
+      'and is still stood on — its switch puts the base back', (
+    tester,
+  ) async {
+    // 유저 2026-10-09: 「마지막 어태치줄 체크해제못하는게 신경쓰이고 그냥
+    // 말없이 출력행에서 안보이면 별로라. 보이더라도 다른거처럼 이름 흐리게」.
+    final session = celsSession();
+    await pumpCels(tester, session);
+    await standOn(tester, 'a');
+
+    await tester.pressInCelsBoard(tester.celsStackSwitch('a-color'));
+    await tester.pressInCelsBoard(tester.celsStackSwitch('a'));
+    expect(tester.celsStackLines, [('a-color', false), ('a', false)]);
+    expect(tester.celsBoardRowIds, contains('a'));
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.off);
+    expect(tester.celsBoardBlocksOf('a'), isEmpty);
+    expect('${tester.celsBoard.standing}', 'a');
     expect(celCount(tester), AppText.strings.exWrittenCount(2));
 
-    // All off → all on.
-    await tapKey(tester, 'export-cels-switch-f');
-    expect(tester.celsBoardSwitchState('f'), BooleanMix.on);
+    await tapKey(tester, 'export-cels-switch-a');
+    expect(deltaOf(session)?.layerOverrides, {const LayerId('a-color'): false});
+    expect(tester.celsStackLines, [('a-color', false), ('a', true)]);
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
     expect(celCount(tester), AppText.strings.exWrittenCount(4));
   });
 
@@ -578,8 +674,8 @@ void main() {
     expect(deltaOf(session)?.skippedCels, {ref('a', 'f1')});
     expect(celCount(tester), AppText.strings.exWrittenCount(3));
     expect(tester.celsBoardBlocksOf('a'), [('1', false), ('2', true)]);
-    // The row is a different question — it stays as it was.
-    expect(tester.celsBoardSwitchState('a'), BooleanMix.on);
+    // The row says its files: some are off (export-four-tabs ③).
+    expect(tester.celsBoardSwitchState('a'), BooleanMix.mixed);
 
     await pressBlock(tester, 'a', 'f1');
     expect(deltaOf(session), isNull);
@@ -596,18 +692,25 @@ void main() {
   testWidgets('🗣️a drawing that cannot go out says why when it is pressed, '
       'and stays as it was (유저 2026-10-06: 「나갈 수 없는 그림은 '
       '작동하려하면 이유 띄우자」)', (tester) async {
-    final session = celsSession();
+    // D's second drawing is on no block of the timeline: no cut places it.
+    final session = celsSession(
+      unplaced: Frame(
+        id: const FrameId('y2'),
+        duration: 1,
+        strokes: const [],
+        name: '2',
+      ),
+    );
     await pumpCels(tester, session);
 
-    // B wears LO: the 원화 label leaves its row off.
-    await pressBlock(tester, 'b', 'b1');
-    expect(find.text(AppText.strings.noticeExportRowOff), findsOneWidget);
+    await pressBlock(tester, 'd', 'y2');
+    expect(find.text(AppText.strings.noticeExportNotPlaced), findsOneWidget);
     expect(deltaOf(session), isNull, reason: 'a refusal writes nothing');
-    expect(tester.celsBoardBlocksOf('b'), [('1', false)]);
+    expect(tester.celsBoardBlocksOf('d'), [('1', true), ('2', false)]);
 
     // The notice goes by itself.
     await tester.pump(const Duration(seconds: 2));
-    expect(find.text(AppText.strings.noticeExportRowOff), findsNothing);
+    expect(find.text(AppText.strings.noticeExportNotPlaced), findsNothing);
   });
 
   testWidgets('the row stood on is what the preview turns through — the '
@@ -634,48 +737,19 @@ void main() {
   });
 
   testWidgets('the drawing shown is turned off: the nearest one left is '
-      'shown — and on a row that is off, the drawings left on are', (
-    tester,
-  ) async {
+      'shown — and on a row that holds no file, nothing is', (tester) async {
     await pumpCels(tester, celsSession());
 
     await standOn(tester, 'a');
     await pressBlock(tester, 'a', 'f1');
     expect(tester.exportPreviewLine, 'A2.png · 1 / 1');
 
-    // B's row is off: its one drawing is what the preview shows of it, by
-    // the name its block wears.
+    // B's stack holds no picture: stood on, the preview has nothing to show
+    // — its attach column is where a picture is put back.
     await standOn(tester, 'b');
-    expect(tester.exportPreviewLine, '1 · 1 / 1');
-  });
-
-  testWidgets('a twirl folds what the row holds under it — the window\'s '
-      'own fold, the film\'s rows as they were', (tester) async {
-    final session = celsSession();
-    await pumpCels(tester, session);
-    final before = session.repository.requireProject();
-
-    await tapKey(tester, 'export-cels-twirl-f');
-    expect(tester.celsBoardRowIds, isNot(contains('c')));
-    expect(tester.celsBoardRowIds, isNot(contains('d')));
-    expect(tester.celsBoardRowIds, contains('f'));
-    expect(
-      tester.celsBoardSwitchState('f'),
-      BooleanMix.on,
-      reason: 'it still says what the rows it folds say',
-    );
-    expect(celCount(tester), AppText.strings.exWrittenCount(4));
-
-    await tapKey(tester, 'export-cels-twirl-a');
-    expect(tester.celsBoardRowIds, isNot(contains('a-color')));
-
-    await tapKey(tester, 'export-cels-twirl-f');
-    expect(tester.celsBoardRowIds, containsAll(['c', 'd']));
-    expect(
-      identical(session.repository.requireProject(), before),
-      isTrue,
-      reason: 'a fold in this window is not an edit of the film',
-    );
+    expect('${tester.celsBoard.standing}', 'b');
+    expect(tester.exportPreviewDocument, isNull);
+    expect(tester.celsStackLines, [('b', false)]);
   });
 
   testWidgets('🗣️「이 그림에 디렉션 적용」: a pill a direction drawing lays '

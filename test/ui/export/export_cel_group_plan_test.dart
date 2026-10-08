@@ -1404,7 +1404,8 @@ void main() {
     ExportProjectOverrides hand(ExportCelsCutDelta delta) =>
         ExportProjectOverrides().withCelsDelta(const CutId('cut'), delta);
 
-    test('written, turned off — and a row that is off, refused whole', () {
+    test('written, turned off — and a row that is off, answered for not at '
+        'all (export-four-tabs ②)', () {
       final built = plan(
         [
           base('a', 'A', [frame('f1'), frame('f2')]),
@@ -1417,16 +1418,12 @@ void main() {
           ), true),
         ),
       );
-      expect(answers(built), {
-        'A 1': 'written',
-        'A 2': 'off',
-        'B 1': 'rowOff',
-      });
+      expect(answers(built), {'A 1': 'written', 'A 2': 'off'});
       expect(files(built), ['A1.png', 'A2.png'], reason: 'planned alone');
       expect(
         built.sheets.last.look.fileName,
-        isEmpty,
-        reason: 'a drawing that is no file has no name',
+        'A2.png',
+        reason: 'a file turned off keeps its name for when it is back on',
       );
     });
 
@@ -1514,21 +1511,21 @@ void main() {
       );
     });
 
+    // export-four-tabs ② (유저 2026-10-09): the list is the FILES, so only a
+    // bundle's axis has sheets. ↩️The free row riding its base answered
+    // 「ridesBase」, and the base of a lone free row 「rowOff」, a sheet a
+    // drawing.
     test('a FREE attach row holds drawings of its own: beside its base they '
-        'ride the base\'s cels, alone they are the cels — and the base\'s '
-        'are off', () {
+        'ride the base\'s cels, alone they are the cels — and the files are '
+        'the axis\'s alone', () {
       final baseA = base('a', 'A', [frame('f1'), frame('f2')]);
       final free = rider('a-r', 'A_r', [frame('r1'), frame('r2')], on: 'a');
 
       expect(answers(plan([baseA, free])), {
         'A 1': 'written',
         'A 2': 'written',
-        'A_r 1': 'ridesBase',
-        'A_r 2': 'ridesBase',
       });
       expect(answers(plan([baseA, free], spec: attach)), {
-        'A 1': 'rowOff',
-        'A 2': 'rowOff',
         'A_r 1': 'written',
         'A_r 2': 'written',
       });
@@ -1544,12 +1541,7 @@ void main() {
             ),
           ),
         ),
-        {
-          'A 1': 'written',
-          'A 2': 'written',
-          'A_r 1': 'rowOff',
-          'A_r 2': 'rowOff',
-        },
+        {'A 1': 'written', 'A 2': 'written'},
       );
     });
 
@@ -1577,37 +1569,40 @@ void main() {
       expect(answers(built), {'A 1': 'written'});
     });
 
-    test('what the preview shows of a drawing that is refused: the drawing '
-        'by itself over its cut\'s paper — and bare where no cut places it', (
-    ) {
-      final paperRow = base('p', 'Paper', [frame('p1')], mark: paper);
+    // export-four-tabs ② (유저 2026-10-09): the list is FILE rows, so the
+    // plan answers for the drawings of a bundle's axis and no others. ↩️A row
+    // that was off, and a free attach row its base's cels carry, had a
+    // refused sheet a drawing.
+    test('a stack that holds no picture has no sheet — nor does a free '
+        'attach row its base\'s cels carry', () {
       final off = base('b', 'B', [frame('g1')], mark: layout);
-      final look = plan([paperRow, off]).sheets.single.look;
-      expect(names(look.members), ['Paper', 'B']);
-      expect(
-        [for (final frame in look.memberFrames) frame?.id.value],
-        ['p1', 'g1'],
-      );
+      expect(plan([off]).sheets, isEmpty);
 
-      final nowhere = base('c', 'C', [frame('h1')], mark: layout, shown: false);
+      final carried = plan([
+        base('a', 'A', [frame('f1')]),
+        rider('a-x', 'AX', [frame('x1')], on: 'a', free: true),
+      ]);
+      expect(answers(carried), {'A 1': 'written'});
+    });
+
+    test('a drawing a cut never places is refused bare: the drawing by '
+        'itself, over no paper', () {
+      final paperRow = base('p', 'Paper', [frame('p1')], mark: paper);
+      final nowhere = base('c', 'C', [frame('h1')], shown: false);
       final bare = plan([paperRow, nowhere]).sheets.single;
-      expect(bare.refused, ExportCelRefusal.rowOff);
+      expect(bare.refused, ExportCelRefusal.notPlaced);
       expect(names(bare.look.members), ['C']);
       expect(bare.look.memberFrames.single?.id.value, 'h1');
     });
 
-    test('a drawing turned off is remembered through a refusal: the row '
-        'back on lights the ones that were left on', () {
+    test('a drawing turned off is remembered while its stack holds no '
+        'picture: the base back in lights the ones that were left on', () {
       final rows = [base('b', 'B', [frame('g1'), frame('g2')], mark: layout)];
       final off = ExportCelsCutDelta().withCelSkipped((
         row: const LayerId('b'),
         cel: const FrameId('g1'),
       ), true);
-      final refused = plan(rows, overrides: hand(off));
-      expect(
-        [for (final sheet in refused.sheets) (sheet.refused, sheet.skipped)],
-        [(ExportCelRefusal.rowOff, true), (ExportCelRefusal.rowOff, false)],
-      );
+      expect(plan(rows, overrides: hand(off)).sheets, isEmpty);
       final on = plan(
         rows,
         overrides: hand(off.withLayerOverride(const LayerId('b'), true)),
@@ -1844,16 +1839,20 @@ void main() {
       ]);
     });
 
-    test('a document\'s row switched off refuses its files — and a file '
-        'turned off stays planned and is not written', () {
+    // export-four-tabs ③ (유저 2026-10-09): a document's row switched off is
+    // its files turned off — ↩️its row had an off of its own, which refused
+    // every page and took their names.
+    test('a document\'s files turned off — every page, as its row\'s switch '
+        'turns them — stay planned under their names and are not written', () {
+      const sheet1 = (document: ExportCelKind.timesheet, page: 0);
+      const sheet2 = (document: ExportCelKind.timesheet, page: 1);
+      const envelope = (document: ExportCelKind.envelope, page: 0);
       final hand = ExportProjectOverrides().withCelsDelta(
         const CutId('cut'),
         ExportCelsCutDelta()
-            .withDocumentOff(ExportCelKind.timesheet, true)
-            .withPageSkipped(
-              (document: ExportCelKind.envelope, page: 0),
-              true,
-            ),
+            .withPageSkipped(sheet1, true)
+            .withPageSkipped(sheet2, true)
+            .withPageSkipped(envelope, true),
       );
       final built = paged(2, overrides: hand);
       expect(
@@ -1862,8 +1861,8 @@ void main() {
             (sheet.kind, sheet.refused, sheet.skipped, sheet.fileName),
         ],
         [
-          (ExportCelKind.timesheet, ExportCelRefusal.rowOff, false, ''),
-          (ExportCelKind.timesheet, ExportCelRefusal.rowOff, false, ''),
+          (ExportCelKind.timesheet, null, true, '_TSCUT1_1.png'),
+          (ExportCelKind.timesheet, null, true, '_TSCUT1_2.png'),
           (ExportCelKind.envelope, null, true, '_CUTCUT1_envelope.png'),
         ],
       );
@@ -1986,14 +1985,17 @@ void main() {
       );
 
       // The plan READS the delta of the cut a document is of: C2's sheet
-      // switched off is C2's alone, though the group is C1's entry.
+      // turned off is C2's alone, though the group is C1's entry.
       final c2Off = buildExportCelGroupPlan(
         project: project,
         activeCutId: const CutId('c2'),
         spec: documents.copyWith(scope: ExportScopeKind.project),
         overrides: ExportProjectOverrides().withCelsDelta(
           const CutId('c2'),
-          ExportCelsCutDelta().withDocumentOff(ExportCelKind.timesheet, true),
+          ExportCelsCutDelta().withPageSkipped((
+            document: ExportCelKind.timesheet,
+            page: 0,
+          ), true),
         ),
       );
       expect(c2Off.writtenFileNames, [

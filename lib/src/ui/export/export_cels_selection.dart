@@ -83,6 +83,24 @@ bool exportCelsListsRow(Layer layer, List<Layer> layers, CelsExportSpec spec) {
   return kind != null && spec.kinds.contains(kind);
 }
 
+/// Whether [layer] heads a STACK under [spec]: the row a bundle hangs from
+/// — the plan numbers its files by it, or by the free attach row that is
+/// its only picture — and the row the Cels list has for them, whether or
+/// not the stack holds a picture (export-four-tabs, 유저 2026-10-09: 「블록
+/// 없어도 그냥 행 보이게」).
+///
+/// An attach row rides someone else's bundle, a row that holds no cel
+/// holds no bundle either, and a row of a kind the export does not write is
+/// not listed ([exportCelsListsRow]).
+bool exportCelsHeadsAStack(
+  Layer layer,
+  List<Layer> layers,
+  CelsExportSpec spec,
+) =>
+    !isAttachedLayer(layer) &&
+    layer.kind.exportsCels &&
+    exportCelsListsRow(layer, layers, spec);
+
 /// Resolves which of [cut]'s layers the Cels export covers under [spec]'s
 /// rules and the cut's manual [delta].
 ///

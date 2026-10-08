@@ -145,8 +145,8 @@ class ExportCelSheet extends ExportListSheet {
   /// The cut the window lists it in.
   final Cut cut;
 
-  /// The row its block stands on, in [cut]: a base, or a free attach row —
-  /// the rows that hold drawings of their own.
+  /// The row its block stands on, in [cut]: its bundle's axis — a base, or
+  /// a free attach row that is the only picture of its base's stack.
   final Layer row;
 
   /// The row's drawing.
@@ -172,8 +172,10 @@ class ExportCelSheet extends ExportListSheet {
   final ExportCelRefusal? refused;
 
   /// The picture: the cel that is written, for a planned drawing — or, for
-  /// one that is [refused], the drawing by itself over its cut's paper,
-  /// which is what the preview shows of a row that is off.
+  /// one that is [refused], the drawing by itself over its cut's paper.
+  ///
+  /// ↩️That was what the preview showed of a row that was off, while a row
+  /// whose files can be none was in the list.
   final ExportCelGroupTask look;
 
   /// Its picture's own answer, so the list and the run cannot say two
@@ -195,6 +197,10 @@ class ExportCelSheet extends ExportListSheet {
   CutId get deltaCut => cut.id;
 
   ExportCelRef get ref => (row: row.id, cel: frame.id);
+
+  @override
+  ExportCelsCutDelta offIn(ExportCelsCutDelta delta, {required bool off}) =>
+      delta.withCelSkipped(ref, off);
 }
 
 /// The preview cache key for [task]: everything its picture depends on.
@@ -337,7 +343,8 @@ typedef _CutRun = ({
   ExportCelsCutDelta? delta,
 });
 
-/// One sheet per drawing of every listed row of [cut].
+/// One sheet per drawing of every bundle's AXIS in [cut] — the rows whose
+/// drawings are files.
 ///
 /// A bundle exists for every base whose stack holds a selected picture —
 /// the base itself, or an attach row riding it (어태치 preset: the base is
@@ -345,20 +352,18 @@ typedef _CutRun = ({
 /// member has a frame: 「그림이 존재하는 영역만 출력」 — paper alone is not a
 /// picture. A drawing that is not planned is still answered for, with why
 /// ([ExportCelRefusal]).
+///
+/// ↩️The other rows of a stack — a free attach row its base's cels carry,
+/// a row that is off — were answered for too, every drawing refused, while
+/// the list showed every layer. It shows the files now (export-four-tabs
+/// ②, 유저 2026-10-09: 「결국 나가는건 파일 하나니까 파일기준 행」).
 Iterable<ExportCelSheet> _celSheetsFor(
   _CutRun cut,
   ExportCelsSelection selection,
 ) sync* {
   final unnamedFiled = <String>{};
-  for (final stack in _celStacksOf(cut, selection)) {
-    final bundle = stack.bundle;
-    for (final row in stack.rows) {
-      if (bundle != null && row.id == bundle.axis.id) {
-        yield* _axisSheets(bundle, cut, unnamedFiled: unnamedFiled);
-      } else {
-        yield* _sheetsBesideTheAxis(row, bundle, cut);
-      }
-    }
+  for (final bundle in _celBundlesOf(cut, selection)) {
+    yield* _axisSheets(bundle, cut, unnamedFiled: unnamedFiled);
   }
 }
 
@@ -372,15 +377,11 @@ typedef _CelBundle = ({
   Set<LayerId> pictureIds,
 });
 
-/// One listed base's stack: the rows of it that hold drawings of their own
-/// — the base and the FREE attach rows riding it (a synced one follows the
-/// base's cels) — and the bundle the selection makes of it, or null where
-/// it keeps no picture of the stack at all.
-typedef _CelStack = ({List<Layer> rows, _CelBundle? bundle});
-
-/// Every listed base's stack, in stack order. A base of a kind the export
-/// does not write is not listed, so it is not here ([exportCelsListsRow]).
-Iterable<_CelStack> _celStacksOf(
+/// The bundle the selection makes of every listed base's stack, in stack
+/// order — none of a stack it keeps no picture of. A base of a kind the
+/// export does not write is not listed, so it is not here
+/// ([exportCelsListsRow]).
+Iterable<_CelBundle> _celBundlesOf(
   _CutRun cut,
   ExportCelsSelection selection,
 ) sync* {
@@ -388,25 +389,16 @@ Iterable<_CelStack> _celStacksOf(
   final selectedIds = {for (final layer in selection.celLayers) layer.id};
   final paperIds = {for (final layer in selection.paperLayers) layer.id};
   for (final base in layers) {
-    if (!_canOwnABundle(base) ||
-        !exportCelsListsRow(base, layers, cut.run.spec)) {
+    if (!exportCelsHeadsAStack(base, layers, cut.run.spec)) {
       continue;
     }
     final pictures = _bundlePictures(cut.cut, base, selectedIds);
-    yield (
-      rows: [
-        base,
-        for (final rider in attachedLayersOf(base.id, layers))
-          if (!isSyncedAttachedLayer(rider) &&
-              exportCelsListsRow(rider, layers, cut.run.spec))
-            rider,
-      ],
-      bundle: pictures.isEmpty
-          ? null
-          : _bundleOf(cut.cut, _bundleAxis(pictures, base), {
-              for (final layer in pictures) layer.id,
-            }, paperIds),
-    );
+    if (pictures.isEmpty) {
+      continue;
+    }
+    yield _bundleOf(cut.cut, _bundleAxis(pictures, base), {
+      for (final layer in pictures) layer.id,
+    }, paperIds);
   }
 }
 
@@ -488,12 +480,6 @@ _BundleIn? _shownIn(List<_BundleIn> group, FrameId frameId) => group
     .firstWhereOrNull(
       (there) => firstExposureOf(there.bundle.axis, frameId) != null,
     );
-
-/// Whether a row can be the base a bundle hangs from: an attach row rides
-/// someone else's bundle, and a row that holds no cel holds no bundle
-/// either.
-bool _canOwnABundle(Layer layer) =>
-    !isAttachedLayer(layer) && layer.kind.exportsCels;
 
 /// [base]'s own stack, filtered to what the selection keeps: the base
 /// itself and the rows attached to it, in cut order.
@@ -730,47 +716,34 @@ ExportCelSheet _sheet(
   look: look,
 );
 
-/// The drawings of [row] — a row of a listed stack that is NOT its bundle's
-/// axis — none of them a file: its base's cels carry it ([bundle] holds it
-/// as a picture), or it is off.
-Iterable<ExportCelSheet> _sheetsBesideTheAxis(
-  Layer row,
-  _CelBundle? bundle,
-  _CutRun cut,
-) sync* {
-  final why = bundle != null && bundle.pictureIds.contains(row.id)
-      ? ExportCelRefusal.ridesBase
-      : ExportCelRefusal.rowOff;
-  for (final drawing in _celsOf(row, cut.run.project.cameraInstructions)) {
-    yield _refusedSheet(drawing, cut, why);
-  }
-}
-
-/// [drawing] as one the export does not write: [why], and what it looks
-/// like by itself — its row alone over the paper of the cut that shows it,
-/// laid by the same steps a written cel is ([_placedIn]). A drawing no cut
-/// shows is the bare drawing.
+/// [drawing] as one the export does not write: [why] — with what the hand
+/// did to it kept beside it (turned off, a direction laid over it) for when
+/// it can be a file again. Its picture is the bare drawing: no file is
+/// written from it, and the preview turns through files alone.
+///
+/// ↩️It was the drawing laid by itself over the paper of the cut that shows
+/// it — a walk across the 겸용 group a drawing — for the preview of a row
+/// that was off, while such a row was in the list (export-four-tabs).
 ExportCelSheet _refusedSheet(
   _RowCel drawing,
   _CutRun cut,
   ExportCelRefusal why,
 ) {
   final (:row, :frame, celName: _, word: _) = drawing;
-  final alone = _bundleOf(cut.cut, row, {row.id}, {
-    for (final paper in exportPaperRowsOf(cut.cut, cut.run.spec)) paper.id,
-  });
-  final placed =
-      _placedIn(_bundleAcrossTheGroup(cut, alone), frame) ??
-      (
-        shown: (cut: cut.cut, bundle: _bundleOf(cut.cut, row, {row.id}, {})),
-        baseFrame: frame,
-        frames: <Frame?>[frame],
-      );
   return _sheet(
     drawing,
     cut,
     refused: why,
-    look: _cel(placed, cut, drawing, fileName: ''),
+    look: _cel(
+      (
+        shown: (cut: cut.cut, bundle: _bundleOf(cut.cut, row, {row.id}, {})),
+        baseFrame: frame,
+        frames: <Frame?>[frame],
+      ),
+      cut,
+      drawing,
+      fileName: '',
+    ),
   );
 }
 
@@ -1050,8 +1023,11 @@ List<Cut> _cutsOf(_CutRun entry) =>
     : [entry.cut];
 
 /// The files of [document], listed in [entry]'s cut. Each answers to the
-/// delta of the cut the document is OF: its row switched off there, or the
-/// file itself turned off.
+/// delta of the cut the document is OF: the file turned off there — its
+/// block, or its row's switch, which turns every page.
+///
+/// ↩️Its row had an off of its own there, which refused every page and
+/// took their names back from the run (export-four-tabs ③).
 Iterable<ExportDocumentSheet> _filesOf(
   _Document document,
   _CutRun entry,
@@ -1059,7 +1035,6 @@ Iterable<ExportDocumentSheet> _filesOf(
 ) sync* {
   final (:kind, :of, :pages) = document;
   final delta = overrides?.deltaFor(of.id);
-  final off = delta?.documentsOff.contains(kind) ?? false;
   for (var page = 0; page < pages; page += 1) {
     yield ExportDocumentSheet(
       kind: kind,
@@ -1069,18 +1044,14 @@ Iterable<ExportDocumentSheet> _filesOf(
       pageCount: pages,
       skipped:
           delta?.skippedPages.contains((document: kind, page: page)) ?? false,
-      refused: off ? ExportCelRefusal.rowOff : null,
-      // A file that is not written takes no name from the run.
-      fileName: off
-          ? ''
-          : entry.run.namer.uniqueDocumentName(
-              projectName: entry.run.project.name,
-              cutName: entry.cutName,
-              base:
-                  '${entry.run.spec.naming.prefixOf(kind)}'
-                  '${exportDocumentBase(kind, of, page, pages)}',
-              extension: exportDocumentExtension(kind, entry.run.spec),
-            ),
+      fileName: entry.run.namer.uniqueDocumentName(
+        projectName: entry.run.project.name,
+        cutName: entry.cutName,
+        base:
+            '${entry.run.spec.naming.prefixOf(kind)}'
+            '${exportDocumentBase(kind, of, page, pages)}',
+        extension: exportDocumentExtension(kind, entry.run.spec),
+      ),
     );
   }
 }
